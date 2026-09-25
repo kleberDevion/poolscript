@@ -383,11 +383,10 @@ os.writeFile(PASTA + "/jit.pr",
              + "post(n, s, fib(15), t, big, 1 < 2, \"a\" < \"b\", not (2 > 1))\n")
 com = roda("JINGA_JIT_LOG=1 '" + POOL + "' jit.pr")
 sem = roda("'" + POOL + "' --sem-jit jit.pr")
-# `fib` NAO compila de proposito: chamada e retorno ainda saem pro
-# interpretador, e um proto cuja proporcao de saidas passa de 15% (fora de
-# laco) fica com o interpretador — em nativo ele seria mais lento.
+# `fib` compila: a chamada entre functs nativas e direta (jit_chama), sem
+# passar pelo interpretador, e o `return` volta pro chamador nativo.
 confere("com codigo de maquina o programa roda e o log diz o que compilou",
-        com["rc"] == 0 and "[jit] <module>" in com["saida"] and not "[jit] fib" in com["saida"])
+        com["rc"] == 0 and "[jit] <module>" in com["saida"] and "[jit] fib" in com["saida"])
 confere("com e sem codigo de maquina a saida e a mesma",
         sem["rc"] == 0 and "300000 45 610 012 9223372036854775808 True True False" in sem["saida"]
         and "300000 45 610 012 9223372036854775808 True True False" in com["saida"])

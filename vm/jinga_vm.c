@@ -24482,9 +24482,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
          * `jit_roda`, fora do laço; `ip` e `sp` nunca têm o endereço tomado
          * (senão o GCC os tiraria dos registradores no laço inteiro). */
         if (p->jit_estado == 1 && p->nativo && !vm->dbg.ativo) {
-            int32_t ip_novo_;
-            sp = jit_roda(vm, p, fp, lbase, sp, locals_top, ip - 2, &ip_novo_);
-            ip = ip_novo_;
+            /* o nativo pode ter chamado outras functs direto e parado num
+             * frame mais fundo: o interpretador ADOTA o frame que voltou */
+            JitCtx cx_ = jit_roda(vm, p, fp, lbase, sp, locals_top, ip - 2, cl, nargs);
+            fp = cx_.fp; lbase = cx_.lbase; sp = cx_.sp; locals_top = cx_.locals_top;
+            ip = cx_.ip; p = &vm->protos[cx_.proto]; cl = cx_.cl; nargs = cx_.nargs;
             o = p->code[ip]; arg = p->code[ip + 1]; ip += 2;
             goto *TAB[o];
         }

@@ -1014,6 +1014,79 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "post(fib(20))\n",
   "6765", NULL, 0 },
+
+/* ── chamada direta entre functs em codigo de maquina (jit_chama) ── */
+{ "erro tres frames abaixo de chamadas diretas: sobe com o traceback inteiro",
+  "funct c(int x) {\n"
+  "    raise Exception(\"fundo\")\n"
+  "}\n"
+  "funct b(int x) { return c(x) + 1 }\n"
+  "funct a(int x) { return b(x) + 1 }\n"
+  "post(a(1))\n",
+  "", "Exception: fundo", -1 },
+{ "try no chamador pega o erro de uma funct chamada direto",
+  "funct c(int x) {\n"
+  "    raise Exception(\"fundo\")\n"
+  "}\n"
+  "funct b(int x) { return c(x) }\n"
+  "funct a(int x) {\n"
+  "    try { return b(x) }\n"
+  "    catch (e) { return \"pego\" }\n"
+  "}\n"
+  "post(a(1), a(2))\n",
+  "pego pego", NULL, 0 },
+{ "recursao sem fim continua dando RecursionError, nao estouro da pilha C",
+  "funct r(int n) { return r(n + 1) }\n"
+  "r(0)\n",
+  "", "maximum recursion depth exceeded", -1 },
+{ "recursao mutua e chamada de dentro de closure",
+  "funct par(int n) {\n"
+  "    if n == 0 { return true }\n"
+  "    return impar(n - 1)\n"
+  "}\n"
+  "funct impar(int n) {\n"
+  "    if n == 0 { return false }\n"
+  "    return par(n - 1)\n"
+  "}\n"
+  "funct fora() {\n"
+  "    k = 3\n"
+  "    funct dentro() { return par(k) }\n"
+  "    return dentro\n"
+  "}\n"
+  "post(par(10), impar(7), fora()())\n",
+  "True True False", NULL, 0 },
+{ "parametro tipado errado numa chamada direta levanta a mesma frase",
+  "funct f(int a) { return a }\n"
+  "funct g(x) { return f(x) }\n"
+  "v = [\"a\"][0]\n"
+  "post(g(v))\n",
+  "", "parâmetro a de f() esperava int, recebeu str", -1 },
+{ "locais e resultados atravessam chamadas diretas aninhadas",
+  "funct sq(int x) { return x * x }\n"
+  "funct soma(int n) {\n"
+  "    int s = 0\n"
+  "    int i = 0\n"
+  "    while i < n {\n"
+  "        s = s + sq(i)\n"
+  "        i++\n"
+  "    }\n"
+  "    return s\n"
+  "}\n"
+  "post(soma(100), sq(12))\n",
+  "328350 144", NULL, 0 },
+{ "funct com padrao, *args, gerador e metodo continuam certos (nao sao chamada direta)",
+  "funct d(a, b = 2) { return a + b }\n"
+  "funct v(*args) { return len(args) }\n"
+  "funct g() { yield 1\n yield 2 }\n"
+  "Entity P() {\n"
+  "    funct __init__(self, n) { self.n = n }\n"
+  "    funct dobro(self) { return self.n * 2 }\n"
+  "}\n"
+  "funct usa(int k) { return d(k) + v(1, 2, k) + P(k).dobro() }\n"
+  "s = 0\n"
+  "for each x in g() { s = s + x }\n"
+  "post(usa(5), s)\n",
+  "20 3", NULL, 0 },
 /* O future de uma `tarefa()` solta nao e alcancavel pelo programa: o aviso do
  * fim procurava no heap, e o GC o levava antes. Agora ele e raiz ate o erro ser
  * lido ou avisado. As duas listas grandes forcam coleta. */

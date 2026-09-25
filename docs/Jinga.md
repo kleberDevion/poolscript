@@ -1,4 +1,4 @@
-# Jinga v15.94.2
+# Jinga v15.94.3
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 jinga --version
-# Jinga 15.94.2 [PSVM] (2026-09-24) Runtime standalone
+# Jinga 15.94.3 [PSVM] (2026-09-24) Runtime standalone
 #                       ^ a data da compilação DESTE binário: duas
 #                         cópias da mesma versão se distinguem por ela
 ```
@@ -67,7 +67,7 @@ não dependem do clock da máquina, da versão 15.93.1 até esta:
 | programa | interpretador antes | interpretador depois | código de máquina |
 |---|---|---|---|
 | `int n = 0; while n < 10000000 { n++ }` | 5,19 G / 1,59 G (12 bytecodes por volta) | 1,12 G / 0,46 G (5 por volta) | 0,33 G / 0,087 G |
-| `fib(27)` com `int n` (317.811 chamadas) | 605 M / 203 M | 349 M / 116 M | fica no interpretador (ver abaixo) |
+| `fib(27)` com `int n` (317.811 chamadas) | 605 M / 203 M | 349 M / 116 M | 253 M / 63 M |
 | lista: 1 milhão de `l[i % 200000]` | 1,14 G / 334 M | 731 M / 268 M | |
 | dict: 300 mil `d[str(i)]` | 1,07 G / 345 M | 935 M / 329 M | |
 | objeto: 300 mil `p.mais()` | 798 M / 211 M | 628 M / 163 M | |
@@ -76,10 +76,20 @@ não dependem do clock da máquina, da versão 15.93.1 até esta:
 Sair pro interpretador e voltar custa o mesmo que três a oito instruções
 interpretadas, então um proto em que mais de 15% das instruções dentro dos
 laços (ou do proto inteiro, sem laço) sempre saem fica com o interpretador —
-em nativo ele seria mais lento (medido). Hoje é o caso de uma funct que só
-chama e retorna, como `fib`: chamada e retorno ainda saem; a chamada direta
-entre código nativo é o próximo passo. `JINGA_JIT_LOG=1` mostra o que
-compilou.
+em nativo ele seria mais lento (medido: `p.mais()` num laço ficava 215 M
+ciclos contra 163 M). É o caso de código que vive de membro de objeto, de
+coleção e de método. `JINGA_JIT_LOG=1` mostra o que compilou.
+
+**Chamada direta.** Uma funct nativa que chama outra funct (`V_FUNC`, sem
+gerador, `async` ou `@static`, aridade exata, sem valor padrão nem
+`*args`/`**kwarg`) entra nela sem passar pelo interpretador: o registro do
+frame é empilhado exatamente como o interpretador empilha, os argumentos
+são conferidos pelos mesmos tipos, e o `return` volta pro chamador nativo.
+Qualquer outra forma de chamada — método, builtin, padrão, nomeado — e
+qualquer coisa que o chamado não faça em linha voltam pro interpretador, que
+adota o frame em que parou e segue com as regras de sempre (traceback com
+todos os frames, `try` do chamador, `RecursionError` nos mesmos limites).
+`fib(30)`: 549 M ciclos só no interpretador, 267 M com código de máquina.
 
 O laço tipado passou de 165 ciclos por volta pra 8,7. Em relógio de parede,
 o mesmo laço a 1 bilhão de voltas: 2,7 s como executável `-o`, 17,5 s com

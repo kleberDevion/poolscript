@@ -36,11 +36,20 @@
 #include <sys/mman.h>
 #include <stddef.h>
 
-/* O que o interpretador entrega ao nativo e recebe de volta. */
+/* O estado do frame corrente, que o interpretador entrega ao nativo e
+ * recebe de volta — inclusive quando o nativo chamou outra funct direto
+ * (`jit_chama`) e voltou de um frame mais fundo: o interpretador ADOTA o
+ * frame que estiver aqui. `direto` = 1 quando este frame foi chamado de
+ * dentro do código nativo (o `return` dele volta pro chamador nativo); 0
+ * quando o interpretador o entrou (o `return` é ilha do interpretador). */
 typedef struct {
     int32_t fp, lbase, sp, locals_top, ip;
+    int32_t proto, nargs, direto;
+    PSClosure *cl;
 } JitCtx;
-typedef void (*JitFn)(VM *vm, JitCtx *cx, const void *retoma);
+/* o que o nativo devolve em eax */
+enum { JIT_ILHA = 1, JIT_RET = 2 };
+typedef int (*JitFn)(VM *vm, JitCtx *cx, const void *retoma);
 
 /* um trecho executável por proto compilado; solto no `libera_vm` */
 typedef struct JitTrecho {
@@ -127,6 +136,11 @@ static void x_cmp_mem32_imm8(JitBuf *j, int base, int32_t d, int8_t imm) { jb_re
 static void x_cmp_mem64_imm8(JitBuf *j, int base, int32_t d, int8_t imm) { jb_rex(j, 1, 0, base); jb_byte(j, 0x83); jb_mem(j, 7, base, d); jb_byte(j, (uint8_t)imm); }
 static void x_shl_r64(JitBuf *j, int reg, uint8_t n)                { jb_rex(j, 1, 0, reg); jb_byte(j, 0xC1); jb_regreg(j, 4, reg); jb_byte(j, n); }
 static void x_shr_r64(JitBuf *j, int reg, uint8_t n)                { jb_rex(j, 1, 0, reg); jb_byte(j, 0xC1); jb_regreg(j, 5, reg); jb_byte(j, n); }
+static void x_sub_r64_imm8(JitBuf *j, int reg, int8_t imm)          { jb_rex(j, 1, 0, reg); jb_byte(j, 0x83); jb_regreg(j, 5, reg); jb_byte(j, (uint8_t)imm); }
+static void x_mov_r32_imm32(JitBuf *j, int reg, int32_t imm)        { if (reg >= 8) jb_byte(j, 0x41); jb_byte(j, (uint8_t)(0xB8 | (reg & 7))); jb_u32(j, (uint32_t)imm); }
+static void x_test_r32_r32(JitBuf *j, int a, int b)                 { jb_rex(j, 0, b, a); jb_byte(j, 0x85); jb_regreg(j, b, a); }
+static void x_cmp_r32_imm8(JitBuf *j, int reg, int8_t imm)          { jb_rex(j, 0, 0, reg); jb_byte(j, 0x83); jb_regreg(j, 7, reg); jb_byte(j, (uint8_t)imm); }
+static void x_call_r64(JitBuf *j, int reg)                          { if (reg >= 8) jb_byte(j, 0x41); jb_byte(j, 0xFF); jb_regreg(j, 2, reg); }
 static void x_setcc_al(JitBuf *j, int cc)                           { jb_byte(j, 0x0F); jb_byte(j, (uint8_t)(0x90 | cc)); jb_byte(j, 0xC0); }
 static void x_movzx_eax_al(JitBuf *j)                               { jb_byte(j, 0x0F); jb_byte(j, 0xB6); jb_byte(j, 0xC0); }
 static void x_push(JitBuf *j, int reg) { if (reg >= 8) jb_byte(j, 0x41); jb_byte(j, (uint8_t)(0x50 | (reg & 7))); }
@@ -139,8 +153,10 @@ static size_t x_jcc(JitBuf *j, int cc) { jb_byte(j, 0x0F); jb_byte(j, (uint8_t)(
 static size_t x_jmp(JitBuf *j)         { jb_byte(j, 0xE9); jb_u32(j, 0); return j->n - 4; }
 
 /* ── gerador ────────────────────────────────────────────────────────────── */
-enum { FIX_INSTR = 0, FIX_ILHA = 1, FIX_SAI = 2 };
+enum { FIX_INSTR = 0, FIX_ILHA = 1, FIX_SAI = 2, FIX_SAI_RET = 3, FIX_PROPAGA = 4 };
 typedef struct { size_t campo; int32_t alvo; int tipo; } JitFix;
+
+static int jit_chama(VM *vm, JitCtx *cx, int n);
 
 typedef struct {
     JitBuf   j;
@@ -397,6 +413,47 @@ static void jg_instr(JitGen *g, const Proto *p, int32_t i)
         case OP_TO_BOOL:
             x_cmp_mem32_imm8(j, RBX, -16, (int8_t)V_BOOL); jg_ilha_se(g, CC_NE, i);
             break;
+        case OP_CALL: {
+            /* Chamada DIRETA de funct nativa: o `jit_chama` empilha o registro
+             * do frame como o interpretador faz e entra no código do
+             * chamado; volta com 0 (resultado já na pilha, sp novo em cx),
+             * 1 (não é o caso simples: o interpretador refaz este CALL) ou
+             * 2 (o chamado saiu por uma ilha: cx é do frame mais fundo — sai
+             * sem tocar nele, e o interpretador o adota). */
+            x_mov_mem32_imm(j, R15, (int32_t)offsetof(JitCtx, ip), ip + 2);
+            x_mov_r64_r64(j, RAX, RBX);
+            x_sub_r64_r64(j, RAX, R13);
+            x_shr_r64(j, RAX, 4);
+            x_mov_mem_r32(j, R15, (int32_t)offsetof(JitCtx, sp), RAX);
+            x_mov_r64_r64(j, RDI, R12);
+            x_mov_r64_r64(j, RSI, R15);
+            x_mov_r32_imm32(j, RDX, arg);
+            x_mov_r64_imm64(j, RAX, (uint64_t)(uintptr_t)jit_chama);
+            x_call_r64(j, RAX);
+            x_test_r32_r32(j, RAX, RAX);
+            size_t ok = x_jcc(j, CC_E);
+            x_cmp_r32_imm8(j, RAX, 2);
+            jg_fix(g, x_jcc(&g->j, CC_E), FIX_PROPAGA, 0);
+            jg_ilha_sempre(g, i);
+            g->ilhas_certas--;                         /* tem caminho rápido: não conta como ilha certa */
+            g->ilha[i] = 1;
+            size_t aqui = j->n;
+            j->b[ok] = (uint8_t)(aqui - (ok + 4)); j->b[ok + 1] = (uint8_t)((aqui - (ok + 4)) >> 8);
+            j->b[ok + 2] = (uint8_t)((aqui - (ok + 4)) >> 16); j->b[ok + 3] = (uint8_t)((aqui - (ok + 4)) >> 24);
+            x_mov_r32_mem(j, RAX, R15, (int32_t)offsetof(JitCtx, sp));
+            x_shl_r64(j, RAX, 4);
+            x_mov_r64_r64(j, RBX, R13);
+            x_add_r64_r64(j, RBX, RAX);
+            break;
+        }
+        case OP_RETURN:
+            /* frame chamado direto do nativo: devolve pro `jit_chama`; frame
+             * entrado pelo interpretador: o `return` é ilha dele */
+            x_cmp_mem32_imm8(j, R15, (int32_t)offsetof(JitCtx, direto), 0);
+            jg_ilha_se(g, CC_E, i);
+            x_mov_mem32_imm(j, R15, (int32_t)offsetof(JitCtx, ip), ip + 2);
+            jg_fix(g, x_jmp(j), FIX_SAI_RET, 0);
+            break;
         case OP_ITER_RANGE: {
             /* [ini, quant, passo, i] em rbx-64..rbx-16, tudo int (RANGE_PREPARA) */
             int32_t alvo = arg / 2;
@@ -444,8 +501,10 @@ static int jit_compila_proto(VM *vm, Proto *p)
     if (!g.pos || !g.ilha) { free(g.pos); free(g.ilha); return -1; }
     JitBuf *j = &g.j;
 
-    /* prólogo: salva os preservados, carrega o estado do frame */
+    /* prólogo: salva os preservados, carrega o estado do frame. O `sub rsp, 8`
+     * alinha a pilha C em 16 pro `call` do jit_chama. */
     x_push(j, RBX); x_push(j, RBP); x_push(j, R12); x_push(j, R13); x_push(j, R14); x_push(j, R15);
+    x_sub_r64_imm8(j, RSP, 8);
     x_mov_r64_r64(j, R12, RDI);
     x_mov_r64_r64(j, R15, RSI);
     x_mov_r64_mem(j, R13, R12, (int32_t)offsetof(VM, stack));
@@ -490,14 +549,36 @@ static int jit_compila_proto(VM *vm, Proto *p)
         else if (g.ilhas_certas * 100 > g.ninstr * 15) j->falhou = 1;
     }
 
-    /* saída: publica o topo da pilha e devolve */
+    /* saídas: ilha (publica o topo, eax = 1), return direto (publica o topo,
+     * eax = 2) e propagação (NÃO publica: cx é do frame mais fundo; eax = 1) */
     size_t sai = j->n;
     x_mov_r64_r64(j, RAX, RBX);
     x_sub_r64_r64(j, RAX, R13);
     x_shr_r64(j, RAX, 4);
     x_mov_mem_r32(j, R15, (int32_t)offsetof(JitCtx, sp), RAX);
+    x_mov_r32_imm32(j, RAX, JIT_ILHA);
+    size_t epilogo = j->n;
+    x_add_r64_imm8(j, RSP, 8);
     x_pop(j, R15); x_pop(j, R14); x_pop(j, R13); x_pop(j, R12); x_pop(j, RBP); x_pop(j, RBX);
     x_ret(j);
+    size_t sai_ret = j->n;
+    x_mov_r64_r64(j, RAX, RBX);
+    x_sub_r64_r64(j, RAX, R13);
+    x_shr_r64(j, RAX, 4);
+    x_mov_mem_r32(j, R15, (int32_t)offsetof(JitCtx, sp), RAX);
+    x_mov_r32_imm32(j, RAX, JIT_RET);
+    {
+        size_t f = x_jmp(j);
+        int32_t rel = (int32_t)epilogo - (int32_t)(f + 4);
+        j->b[f] = (uint8_t)rel; j->b[f + 1] = (uint8_t)(rel >> 8); j->b[f + 2] = (uint8_t)(rel >> 16); j->b[f + 3] = (uint8_t)(rel >> 24);
+    }
+    size_t propaga = j->n;
+    x_mov_r32_imm32(j, RAX, JIT_ILHA);
+    {
+        size_t f = x_jmp(j);
+        int32_t rel = (int32_t)epilogo - (int32_t)(f + 4);
+        j->b[f] = (uint8_t)rel; j->b[f + 1] = (uint8_t)(rel >> 8); j->b[f + 2] = (uint8_t)(rel >> 16); j->b[f + 3] = (uint8_t)(rel >> 24);
+    }
 
     /* as ilhas: anota o ip (já com o +2, como o interpretador conta) e sai */
     int32_t *ilha_pos = malloc(sizeof(int32_t) * (size_t)g.ninstr);
@@ -512,8 +593,10 @@ static int jit_compila_proto(VM *vm, Proto *p)
     /* resolve os saltos */
     for (int k = 0; k < g.nfx && !j->falhou; k++) {
         size_t campo = g.fx[k].campo;
-        int32_t alvo_off = g.fx[k].tipo == FIX_INSTR ? g.pos[g.fx[k].alvo]
-                         : g.fx[k].tipo == FIX_ILHA  ? ilha_pos[g.fx[k].alvo]
+        int32_t alvo_off = g.fx[k].tipo == FIX_INSTR   ? g.pos[g.fx[k].alvo]
+                         : g.fx[k].tipo == FIX_ILHA    ? ilha_pos[g.fx[k].alvo]
+                         : g.fx[k].tipo == FIX_SAI_RET ? (int32_t)sai_ret
+                         : g.fx[k].tipo == FIX_PROPAGA ? (int32_t)propaga
                          : (int32_t)sai;
         if (alvo_off < 0) { j->falhou = 1; break; }
         int32_t rel = alvo_off - (int32_t)(campo + 4);
@@ -550,14 +633,68 @@ static int jit_compila_proto(VM *vm, Proto *p)
  * executá-la). Fora do laço da VM, e sem inline, de propósito: o bloco em
  * linha mudava a alocação de registradores do laço inteiro e o
  * interpretador ficava mais lento mesmo sem nativo nenhum. */
-static __attribute__((noinline)) int32_t jit_roda(VM *vm, Proto *p, int fp, int lbase, int32_t sp,
-                                                  int locals_top, int32_t ip, int32_t *ip_novo)
+static __attribute__((noinline)) JitCtx jit_roda(VM *vm, Proto *p, int fp, int lbase, int32_t sp,
+                                                 int locals_top, int32_t ip, PSClosure *cl, int nargs)
 {
     JitCtx cx;
     cx.fp = fp; cx.lbase = lbase; cx.sp = sp; cx.locals_top = locals_top; cx.ip = ip;
+    cx.proto = (int32_t)(p - vm->protos); cx.nargs = nargs; cx.direto = 0; cx.cl = cl;
     ((JitFn)p->nativo)(vm, &cx, (const char *)p->nativo + p->nativo_ip[ip / 2]);
-    *ip_novo = cx.ip - 2;
-    return cx.sp;
+    cx.ip -= 2;                        /* a instrução em que parou, pro interpretador executar */
+    return cx;
+}
+
+/* CALL de dentro do código nativo. Só o caso simples — o alvo é uma funct
+ * (V_FUNC) com código nativo, sem gerador/async/@static, aridade exata, sem
+ * padrão nem `*args`/`**kwarg` — e só dentro dos mesmos limites que o
+ * interpretador confere; qualquer outra forma devolve 1 e o interpretador
+ * refaz o CALL do zero, com as frases de sempre. Empilha o registro do
+ * chamador exatamente como o `chama_proto`, liga os argumentos e entra no
+ * chamado no MESMO cx (o do chamador fica guardado aqui, na pilha C).
+ *   0 = o chamado devolveu: resultado no lugar do alvo, cx é o chamador;
+ *   2 = o chamado saiu por uma ilha: cx é o frame mais fundo — o chamador
+ *       nativo sai sem tocar nele e o interpretador o adota. */
+static int jit_chama(VM *vm, JitCtx *cx, int n)
+{
+    Value *stack = vm->stack;
+    int32_t sp = cx->sp;
+    Value alvo = stack[sp - n - 1];
+    if (alvo.t != V_FUNC) return 1;
+    Proto *np = &vm->protos[alvo.as.proto];
+    if (np->eh_gerador || np->eh_async || np->eh_static || np->nparams != n
+            || np->ndefaults != 0 || np->slot_vararg >= 0 || np->slot_kwarg >= 0
+            || np->jit_estado == 2 || vm->dbg.ativo) return 1;
+    if (np->jit_estado == 0 && jit_compila_proto(vm, np) != 0) return 1;
+    if (cx->fp + 1 >= vm->frames_teto || cx->locals_top + np->nlocals >= vm->locals_teto
+            || sp + np->ncode / 2 + 8 >= vm->stack_teto || ps_pilha_apertada()) return 1;
+    if (np->param_cod && checa_param_tipos(vm, np, &stack[sp - n], n, 0) != 0) {
+        /* tipo errado: quem levanta, com a frase e a posição, é o CALL do
+         * interpretador ao refazer — o texto que a conferência deixou aqui
+         * não pode sobrar pra confundir um erro seguinte */
+        vm->erro[0] = '\0'; vm->erro_tipo[0] = '\0';
+        return 1;
+    }
+
+    Frame *f = &vm->frames[cx->fp];
+    f->proto = cx->proto; f->ip = cx->ip; f->locals_base = cx->lbase; f->stack_base = sp - n - 1;
+    f->nargs = cx->nargs; f->cl = cx->cl; f->devolve_self = 0;
+    Value *d = &vm->locals[cx->locals_top];
+    for (int k = 0; k < n; k++) d[k] = stack[sp - n + k];
+    for (int k = n; k < np->nlocals; k++) d[k] = MK_UNSET();
+
+    JitCtx salvo = *cx;
+    cx->fp = salvo.fp + 1; cx->lbase = salvo.locals_top; cx->locals_top = salvo.locals_top + np->nlocals;
+    cx->sp = sp - n - 1; cx->ip = 0; cx->proto = alvo.as.proto; cx->nargs = n; cx->direto = 1; cx->cl = NULL;
+    /* retoma na PRIMEIRA instrução (offset `nativo_ip[0]`), não no prólogo:
+     * o prólogo termina num `jmp` pro ponto de retomada, e retomar nele
+     * mesmo era empilhar os registradores sem fim */
+    int st = ((JitFn)np->nativo)(vm, cx, (const char *)np->nativo + np->nativo_ip[0]);
+    if (st != JIT_RET) return 2;
+    Value r = vm->stack[cx->sp - 1];
+    *cx = salvo;
+    vm->stack[sp - n - 1] = r;
+    cx->sp = sp - n;
+    return 0;
 }
 
 static void jit_solta(VM *vm)
