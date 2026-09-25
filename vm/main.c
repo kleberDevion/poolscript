@@ -51,6 +51,7 @@ static void ajuda(void)
 "  jinga --tokens [arq]       Tokens do lexer em JSON (pro realce); sem arquivo, stdin\n"
 "  jinga --ast [arq]          A arvore do parser em JSON (pro editor); sem arquivo, stdin\n"
 "  jinga --bytecode [arq]     O bytecode que o compilador gera, uma instrucao por linha\n"
+"  jinga --sem-jit ...        Roda so no interpretador, sem gerar codigo de maquina\n"
 "  jinga --utf16 ...          Com --tokens/--ast/--contexto/--check: colunas em UTF-16\n"
 "  jinga --version / -V       Mostra a versao\n"
 "  jinga --help / -h          Mostra esta ajuda\n"
@@ -1558,6 +1559,16 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--utf16") != 0) continue;
         g_utf16 = 1;
+        for (int k = i; k + 1 < argc; k++) argv[k] = argv[k + 1];
+        argc--;
+        i--;
+    }
+    /* `--sem-jit` desliga o código de máquina (o mesmo que JINGA_JIT=0):
+     * pra comparar, e pra provar que o interpretador continua sendo a
+     * referência. Sai do argv como o `--utf16`. */
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--sem-jit") != 0) continue;
+        setenv("JINGA_JIT", "0", 1);
         for (int k = i; k + 1 < argc; k++) argv[k] = argv[k + 1];
         argc--;
         i--;

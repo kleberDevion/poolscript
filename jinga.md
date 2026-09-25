@@ -14,8 +14,11 @@ converte a pasta inteira com `jinga scripts/migra_pr.pr <pasta> --aplica
 ## Como funciona — a PSVM
 
 Jinga roda numa **máquina virtual em C**: lexer → parser → compilador →
-bytecode → VM. Tudo vive em `vm/` e vira um binário só, o `jinga` (no
-repositório, `make pool` o gera como `./pool`).
+bytecode → VM, e no x86-64 o bytecode de cada funct vira código de máquina
+na primeira vez que ela roda (`vm/ps_jit_x64.h`; o que o nativo não faz em
+linha volta pro interpretador instrução a instrução). Tudo vive em `vm/` e
+vira um binário só, o `jinga` (no repositório, `make pool` o gera como
+`./pool`).
 
 | Etapa | Arquivo |
 |---|---|
@@ -195,5 +198,5 @@ minhalib`, onde quer que as libs estejam (`JINGA_HOME` incluso).
 
 ## Versionamento
 
-Versão mais recente — **15.93.6** (a fonte é `vm/ps_versao.h`; `jinga --version`
+Versão mais recente — **15.94.0** (a fonte é `vm/ps_versao.h`; `jinga --version`
 mostra a do binário).

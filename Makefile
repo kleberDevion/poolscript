@@ -487,6 +487,10 @@ avisos:
 check: pool testar
 	./testar
 	@echo
+	# A MESMA suite com o codigo de maquina desligado: o interpretador
+	# continua sendo a referencia, e os dois tem que concordar em tudo.
+	JINGA_JIT=0 ./testar
+	@echo
 	# Unidade em C: os ramos de erro dos modulos puros, que fonte .pr nao alcanca.
 	@$(MAKE) --no-print-directory unidade
 	@echo

@@ -67,7 +67,8 @@ no meio — quem só quer rodar não precisa de toolchain nenhuma.
 
 O que está embutido é o **fonte**: o executável compila pra bytecode na
 partida (milissegundos) e roda no mesmo motor que `jinga arquivo.pr` usa —
-a velocidade é a mesma, nem mais, nem menos (ver "Desempenho" em
+inclusive o código de máquina que cada funct ganha na primeira vez que roda
+(x86-64). A velocidade é a mesma, nem mais, nem menos (ver "Desempenho" em
 `docs/Jinga.md`).
 
 **Os módulos vão junto.** Todo `.pr` que o programa alcança por `import` —

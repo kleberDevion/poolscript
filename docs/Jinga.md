@@ -1,4 +1,4 @@
-# Jinga v15.93.6
+# Jinga v15.94.0
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 jinga --version
-# Jinga 15.93.6 [PSVM] (2026-09-24) Runtime standalone
+# Jinga 15.94.0 [PSVM] (2026-09-24) Runtime standalone
 #                       ^ a data da compilação DESTE binário: duas
 #                         cópias da mesma versão se distinguem por ela
 ```
@@ -47,21 +47,38 @@ instrução, `for each i in range(...)` decodifica os limites uma vez, e a
 chamada com argumentos posicionais na aridade exata copia direto pros slots.
 `jinga --bytecode arquivo.pr` mostra o que cada laço virou.
 
+**Código de máquina.** No x86-64, cada funct (e o módulo) vira código de
+máquina na primeira vez que roda: carregar e guardar variáveis, `int` com
+`int`, comparação com desvio, `n++`, `range`, o teste de tipo da variável
+declarada — tudo em linha, sem despacho. O que o código nativo não faz em
+linha (uma chamada, um `return`, uma string, um estouro de 64 bits, um
+`import`, uma coleta de lixo devida) ele devolve ao interpretador, que
+executa exatamente aquela instrução com a regra de sempre e volta pro
+nativo na seguinte. Por isso não existe uma segunda semântica: erro,
+`try`, gerador, fibra e depurador continuam sendo os do interpretador, e a
+mensagem de erro é a mesma. `jinga --sem-jit arquivo.pr` (ou
+`JINGA_JIT=0`) desliga; `JINGA_JIT_LOG=1` diz no stderr o que compilou. Sob
+`--debug` nada é compilado. Se o sistema recusar memória executável, o
+programa segue interpretado. Fora do x86-64 é só o interpretador.
+
 Medido com contadores de hardware (`perf stat`, instruções / ciclos), que
-não dependem do clock da máquina, entre a versão 15.93.1 e a 15.93.6:
+não dependem do clock da máquina, da versão 15.93.1 até esta:
 
-| programa | antes | depois |
-|---|---|---|
-| `int n = 0; while n < 10000000 { n++ }` | 5,19 G / 1,59 G (12 bytecodes por volta) | 1,12 G / 0,46 G (5 por volta) |
-| `fib(27)` com `int n` (317.811 chamadas) | 605 M / 203 M | 349 M / 116 M |
-| lista: 1 milhão de `l[i % 200000]` | 1,14 G / 334 M | 731 M / 268 M |
-| dict: 300 mil `d[str(i)]` | 1,07 G / 345 M | 935 M / 329 M |
-| objeto: 300 mil `p.mais()` | 798 M / 211 M | 628 M / 163 M |
-| 60 mil `s = s + "abc"` | 19,6 s | 0,31 s |
+| programa | interpretador antes | interpretador depois | código de máquina |
+|---|---|---|---|
+| `int n = 0; while n < 10000000 { n++ }` | 5,19 G / 1,59 G (12 bytecodes por volta) | 1,12 G / 0,46 G (5 por volta) | 0,33 G / 0,087 G |
+| `fib(27)` com `int n` (317.811 chamadas) | 605 M / 203 M | 349 M / 116 M | 329 M / 99 M |
+| lista: 1 milhão de `l[i % 200000]` | 1,14 G / 334 M | 731 M / 268 M | |
+| dict: 300 mil `d[str(i)]` | 1,07 G / 345 M | 935 M / 329 M | |
+| objeto: 300 mil `p.mais()` | 798 M / 211 M | 628 M / 163 M | |
+| 60 mil `s = s + "abc"` | 19,6 s | 0,31 s | |
 
-A concatenação era quadrática porque toda string nascia com o hash pronto:
-`s = s + "abc"` hashava a string inteira a cada volta. O hash agora é
-calculado na primeira vez que alguém precisa dele (chave de dict, `==`).
+O laço tipado passou de 165 ciclos por volta pra 8,7. Em relógio de parede,
+o mesmo laço a 1 bilhão de voltas: 2,7 s como executável `-o`, 17,5 s com
+`--sem-jit`. A concatenação era quadrática porque toda string nascia com o
+hash pronto: `s = s + "abc"` hashava a string inteira a cada volta. O hash
+agora é calculado na primeira vez que alguém precisa dele (chave de dict,
+`==`).
 
 Nesta máquina (notebook, governor `powersave`) o relógio de parede varia até
 2x entre duas execuções iguais conforme a temperatura; `teste/bench.pr`

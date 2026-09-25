@@ -373,6 +373,28 @@ os.writeFile(PASTA + "/rng.pr", "s = 0\nfor each i in range(3) {\n    s = s + i\
 r = roda("'" + POOL + "' --bytecode rng.pr")
 confere("range decodificado uma vez: RANGE_PREPARA antes do ITER_RANGE",
         "RANGE_PREPARA" in opcodes_de(r["saida"], 0) and "ITER_RANGE" in opcodes_de(r["saida"], 0))
+
+# ── código de máquina (x86-64): o mesmo resultado com e sem ele ──────────────
+os.writeFile(PASTA + "/jit.pr",
+             "int n = 0\nwhile n < 300000 {\n    n++\n}\ns = 0\nfor each i in range(10) {\n    s = s + i\n}\n"
+             + "funct fib(int k) {\n    if k < 2 { return k }\n    return fib(k - 1) + fib(k - 2)\n}\n"
+             + "t = \"\"\ni = 0\nwhile i < 3 {\n    t = t + str(i)\n    i = i + 1\n}\n"
+             + "big = 9223372036854775807\nbig = big + 1\n"
+             + "post(n, s, fib(15), t, big, 1 < 2, \"a\" < \"b\", not (2 > 1))\n")
+com = roda("JINGA_JIT_LOG=1 '" + POOL + "' jit.pr")
+sem = roda("'" + POOL + "' --sem-jit jit.pr")
+confere("com codigo de maquina o programa roda e o log diz o que compilou",
+        com["rc"] == 0 and "[jit] <module>" in com["saida"] and "[jit] fib" in com["saida"])
+confere("com e sem codigo de maquina a saida e a mesma",
+        sem["rc"] == 0 and "300000 45 610 012 9223372036854775808 True True False" in sem["saida"]
+        and "300000 45 610 012 9223372036854775808 True True False" in com["saida"])
+falha = roda("JINGA_JIT_FALHA=1 JINGA_JIT_LOG=1 '" + POOL + "' jit.pr")
+confere("mmap recusado: o programa segue interpretado, sem abortar",
+        falha["rc"] == 0 and "300000 45 610" in falha["saida"] and not "[jit]" in falha["saida"])
+os.writeFile(PASTA + "/jit_erro.pr", "int n = 9223372036854775807\nwhile n < 9223372036854775807 + 0 {\n    n++\n}\nn++\n")
+r = roda("'" + POOL + "' jit_erro.pr")
+confere("estouro dentro do nativo: o erro e o do interpretador, na linha certa",
+        r["rc"] != 0 and "declare como 'long n'" in r["saida"] and "linha 5" in r["saida"])
 r = roda("printf 'x = = 1\\n' | '" + POOL + "' --bytecode")
 confere("--bytecode com erro de sintaxe sai como ao rodar", r["rc"] != 0 and "SyntaxError" in r["saida"])
 

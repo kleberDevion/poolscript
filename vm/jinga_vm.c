@@ -1037,6 +1037,12 @@ typedef struct {
      * já que os slots são reaproveitados entre blocos. */
     PSVarDbg *vars;
     int       nvars;
+    /* Código de máquina deste proto (ver ps_jit_x64.h): a entrada, o offset
+     * nativo de cada instrução (retomar em qualquer `ip`) e o estado da
+     * compilação preguiçosa — 0 nunca tentou, 1 compilado, 2 não compila. */
+    void     *nativo;
+    int32_t  *nativo_ip;
+    int       jit_estado;
 } Proto;
 
 typedef struct {
@@ -1271,6 +1277,8 @@ struct VM_ {
     Obj    *objetos;
     size_t  alocado;
     size_t  proximo_gc;
+    /* trechos de código de máquina (mmap), soltos no `libera_vm` */
+    struct JitTrecho *jit_trechos;
     long    ciclos_gc;
     long    objetos_liberados;
 
@@ -24290,6 +24298,21 @@ static void dbg_passo(VM *vm, Proto *p, int ip, int fp, int sp, int locals_top)
 #  define PROXIMA() continue
 #endif
 
+/* Código de máquina (x86-64, só com o goto calculado): o proto é compilado
+ * na primeira execução e o laço entra nele em cada fronteira de frame. O
+ * que o nativo não faz em linha, ele devolve ao interpretador instrução a
+ * instrução (`entra_nativo`/`L_uma`). */
+#if defined(PS_GOTO) && defined(__x86_64__) && !defined(PS_SEM_JIT)
+#  define PS_JIT 1
+#  include "ps_jit_x64.h"
+#  define JIT_TENTA(pp)                                                      \
+    do {                                                                     \
+        if ((pp)->jit_estado != 2 && !vm->dbg.ativo                          \
+                && ((pp)->nativo || jit_compila_proto(vm, (pp)) == 0))       \
+            goto entra_nativo;                                               \
+    } while (0)
+#endif
+
 /* Ponto seguro do GC: aqui sp/locals_top descrevem exatamente o que está
  * vivo. Publicar no VM antes de coletar é o que torna as raízes visíveis
  * pro coletor. O closure do frame em execução não está em lugar nenhum da
@@ -24409,9 +24432,21 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 #undef PS_OP
     };
     const void *const *tab = vm->dbg.ativo ? TAB_DBG : TAB;
+#ifdef PS_JIT
+    /* Depois de uma instrução-ilha (a que o nativo devolveu), TODO despacho
+     * cai em L_uma, que volta pro código de máquina do frame corrente. */
+    static const void *const TAB_UMA[] = {
+#define PS_OP(nome, num, texto) [num] = &&L_uma,
+#include "ps_opcodes.def"
+#undef PS_OP
+    };
+#endif
 #endif
 
     int32_t o, arg;
+#ifdef PS_JIT
+    JIT_TENTA(p);                       /* frame de base: módulo, callback, gerador retomado */
+#endif
     for (;;) {
         o   = p->code[ip];
         arg = p->code[ip + 1];
@@ -24424,6 +24459,28 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         dbg_passo(vm, p, ip - 2, fp, sp, locals_top);
         tab = vm->dbg.ativo ? TAB_DBG : TAB;
         goto *TAB[o];
+#ifdef PS_JIT
+    entra_nativo: {
+        /* O código de máquina do frame corrente roda a partir de `ip` até
+         * uma instrução que ele não faz em linha; volta com `sp` e o `ip`
+         * dela (+2). O interpretador executa ESSA instrução com o tratador
+         * de sempre — a tabela `TAB_UMA` faz o despacho seguinte cair em
+         * L_uma, que reentra no nativo na instrução seguinte. */
+        JitCtx cx_;
+        cx_.fp = fp; cx_.lbase = lbase; cx_.sp = sp; cx_.locals_top = locals_top; cx_.ip = ip;
+        ((JitFn)p->nativo)(vm, &cx_, (const char *)p->nativo + p->nativo_ip[ip / 2]);
+        sp = cx_.sp;
+        ip = cx_.ip - 2;
+        tab = TAB_UMA;
+        o = p->code[ip]; arg = p->code[ip + 1]; ip += 2;
+        goto *TAB[o];
+    }
+    L_uma:
+        /* a ilha rodou (e pode ter trocado de frame: CALL, RETURN, catch) */
+        if (p->jit_estado == 1 && p->nativo && !vm->dbg.ativo) { ip -= 2; tab = TAB; goto entra_nativo; }
+        tab = vm->dbg.ativo ? TAB_DBG : TAB;
+        goto *TAB[o];
+#endif
 #else
         /* Depurador: um `if` previsível por instrução, e só. Fica ANTES de
          * consumir o opcode porque quem depura espera parar EM CIMA da linha
@@ -25524,6 +25581,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             ip    = 0;
             lbase = nb;
             nargs = cp_npos + cp.desloca;
+#ifdef PS_JIT
+            JIT_TENTA(np);              /* o chamado tem código de máquina? entra nele */
+#endif
             break;
         }
 
@@ -25740,6 +25800,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             sp    = vm->frames[fp].stack_base;
             nargs = vm->frames[fp].nargs;
             stack[sp++] = r;
+#ifdef PS_JIT
+            JIT_TENTA(p);               /* de volta ao chamador: se é nativo, retoma nele */
+#endif
             break;
         }
 
@@ -27948,6 +28011,9 @@ static void libera_vm(VM *vm)
 {
     libera_objetos(vm);
     fib_pool_solta();      /* pilhas de fibra são mmap: devolvem ao sistema */
+#ifdef PS_JIT
+    jit_solta(vm);         /* código de máquina: mmap também */
+#endif
     estrela_cache_solta(); /* o que cada arquivo exporta, lembrado pro `import *` */
     if (vm->nomes_globais) {
         for (int i = 0; i < vm->n_nomes_globais; i++) free(vm->nomes_globais[i]);
@@ -27975,6 +28041,7 @@ static void libera_vm(VM *vm)
             for (int k = 0; k < vm->protos[i].nvars; k++)
                 free(vm->protos[i].vars[k].nome);
             free(vm->protos[i].vars);
+            free(vm->protos[i].nativo_ip);
             /* A tabela de capturas de toda funct aninhada (closure): copiada
              * na carga do programa e de cada módulo, e nunca solta — o
              * LeakSanitizer acusava em todo programa com closure, e o
@@ -28152,6 +28219,7 @@ static int proto_assume(Proto *p, PSProto *o)
     }
     p->vars = o->vars;                 o->vars = NULL;
     p->nvars = o->nvars;               o->nvars = 0;
+    p->nativo = NULL; p->nativo_ip = NULL; p->jit_estado = 0;
     return falta ? -1 : 0;             /* sem memória: o que foi assumido já é da VM */
 }
 
