@@ -13,6 +13,6 @@
 #ifndef PS_VERSAO_H
 #define PS_VERSAO_H
 
-#define PS_VERSAO "16.0.2"
+#define PS_VERSAO "16.0.3"
 
 #endif /* PS_VERSAO_H */

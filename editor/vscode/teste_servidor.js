@@ -346,6 +346,42 @@ async function main() {
     }
     conf('hover responde em TODOS os ' + apelidos.length + ' apelidos de tipo do motor', ok === apelidos.length, { ok, apelidos });
   }
+  /* enum: hover e completion com o VALOR e o tipo de cada membro (ele,
+   * 2026-09-26, `enum User { nome='kleber' idade=17 }`: o hover em
+   * `User.idade` mostrava so o nome) */
+  {
+    const src = "enum User {\n    nome='kleber'\n    idade=17\n}\n\npost(User.idade, User.nome)\nUser.\n";
+    const m = await conversa(src, [
+      { jsonrpc: '2.0', id: 20, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 5, character: 11 } } },
+      { jsonrpc: '2.0', id: 21, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 0, character: 6 } } },
+      compl(22, 6, 5),
+    ]);
+    const t20 = (() => { const h = resp(m, 20); return h && h.result && h.result.contents ? (h.result.contents.value || '') : ''; })();
+    conf('hover em `User.idade` diz o tipo e o valor (int User.idade = 17) e de que enum e',
+         t20.includes('int User.idade = 17') && t20.includes('membro do enum `User`'), t20.slice(0, 200));
+    const t21 = (() => { const h = resp(m, 21); return h && h.result && h.result.contents ? (h.result.contents.value || '') : ''; })();
+    conf('hover no enum lista os membros com os valores',
+         t21.includes('enum User {') && t21.includes("nome = \"kleber\"") && t21.includes('idade = 17') && t21.includes('2 membros'),
+         t21.slice(0, 220));
+    const itens = (resp(m, 22) && resp(m, 22).result) ? (resp(m, 22).result.items || resp(m, 22).result) : [];
+    const idade = itens.find((i) => i.label === 'idade');
+    conf('completion de `User.` traz os dois membros com o valor no detalhe',
+         itens.length === 2 && !!idade && idade.detail.includes('17'), itens.map((i) => i.label + ' | ' + i.detail));
+  }
+  /* hover NUNCA em branco (ele, 2026-09-26: "eu nao vou querer hover em
+   * branco"): nome que nada liga, membro que o tipo nao tem, e string */
+  {
+    const src = 'x = "abc"\npost(naoexiste)\npost(x.nada)\npost("um texto")\n';
+    const m = await conversa(src, [
+      { jsonrpc: '2.0', id: 23, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 1, character: 7 } } },
+      { jsonrpc: '2.0', id: 24, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 2, character: 8 } } },
+      { jsonrpc: '2.0', id: 25, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 3, character: 9 } } },
+    ]);
+    const t = (id) => { const h = resp(m, id); return h && h.result && h.result.contents ? (h.result.contents.value || '') : ''; };
+    conf('hover em nome que nada liga diz que nao esta definido', t(23).includes('naoexiste') && t(23).includes('não definido'), t(23).slice(0, 160));
+    conf('hover em membro que o tipo nao tem diz o que o tipo tem', t(24).includes('não tem `nada`') && t(24).includes('`upper`'), t(24).slice(0, 200));
+    conf('hover dentro de string diz que e str', t(25).includes('str') && t(25).includes('literal de texto'), t(25).slice(0, 160));
+  }
   /* hover no campo sem tipo criado no __init__: o tipo inferido, e SEM
    * "herdado de" quando o campo e da propria classe */
   {
@@ -358,7 +394,7 @@ async function main() {
     const h = resp(m, 11);
     const t = h && h.result && h.result.contents ? (h.result.contents.value || '') : '';
     conf('hover de `self.con` (campo sem tipo) mostra o tipo inferido e nao diz "herdado de"',
-         t.includes('DbConnection') && t.includes(' con') && t.includes('Db.') && !t.includes('herdado de'),
+         t.includes('DbConnection') && t.includes(' Db.con') && !t.includes('herdado de'),
          t.slice(0, 160));
   }
   /* Variadico: `*args`/`**kwarg` levam a estrela na assinatura que o editor
@@ -1079,7 +1115,9 @@ async function main() {
       conf('definicao de nome trazido por `*` vai na declaracao, no arquivo do modulo',
            !!d && !!d.result && d.result.uri.endsWith('/estrela_fonte.pr') && d.result.range.start.line === 0,
            d && d.result);
-      conf('`private funct` NAO e resolvida pelo `*` (hover mudo)', valor(m, 5) === '', valor(m, 5));
+      conf('`private funct` NAO e resolvida pelo `*` (hover diz que e private la)',
+           valor(m, 5).includes('private') && valor(m, 5).includes('estrela_fonte') && !valor(m, 5).includes('estrela_fonte.pr'),
+           valor(m, 5));
       const d2 = resp(m, 6);
       conf('`private funct` NAO e resolvida pelo `*` (sem definicao)', !!d2 && !d2.result, d2 && d2.result);
       conf('`_interno` (topo, com sublinhado) E resolvido pelo `*`', valor(m, 7).includes('_interno'), valor(m, 7));
@@ -1433,8 +1471,8 @@ async function main() {
          txt(m, 39).includes('receptor de tipo desconhecido') && txt(m, 39).includes('byte.decode('), txt(m, 39));
     conf('hover na variavel de literal de bytes diz `byte h`',
          txt(m, 40).includes('byte h'), txt(m, 40));
-    conf('membro inexistente numa Entity NAO vira candidato de outro tipo (k.upper fica mudo)',
-         txt(m, 41) === '', txt(m, 41));
+    conf('membro inexistente numa Entity NAO vira candidato de outro tipo (k.upper diz que C nao tem)',
+         txt(m, 41).includes('não tem `upper`') && !txt(m, 41).includes('str.upper'), txt(m, 41));
   }
   /* `Parsing` nasce ligado, sem import (a VM liga o nome). O editor só
    * resolvia `x.membro` com `x` vindo de import: `Parsing.` ficava mudo em

@@ -117,6 +117,12 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   título a traz em crase; numa variável, o tipo construído (`Jinker mapping`)
   e a linha; num parâmetro, `byte raw` e a funct dona; numa funct do arquivo,
   `int async funct f(...)` e o decorador em cima; num `model`, os campos;
+  num `enum`, os membros com o valor de cada um; num membro de enum,
+  `int User.idade = 17` e de qual enum é. O hover **nunca fica em branco**:
+  nome que nada liga diz "não definido" (e, se um `import *` o deixou de
+  fora por ser `private`, diz de qual módulo); membro que o tipo não tem
+  diz `` `C` não tem `upper` `` e lista o que `C` tem; dentro de uma
+  string diz que é `str` (ou `byte`), com a página do tipo;
 - **outline** — a classe como um nó, com campos e métodos aninhados dentro;
 - **diagnóstico** — `jinga --check` no arquivo, ao abrir e ao salvar, com linha
   e coluna do erro;

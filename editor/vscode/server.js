@@ -1230,8 +1230,11 @@ function membrosDe(doc, alvo, linha) {
       .map((f) => ({ nome: f.texto, kind: 'campo', tipo: f.texto2 || '', linha: f.l - 1, coluna: f.c - 1 }));
   }
   if (alvo.tipo === 'enum') {
+    /* cada membro com o TIPO do literal e o VALOR escrito (`idade = 17`):
+     * é o que o hover e o completion mostram — antes saía só o nome */
     return (alvo.no.lista || []).filter((m) => m && m.k === 'EnumMember')
-      .map((m) => ({ nome: m.texto, kind: 'campo', tipo: '', linha: m.l - 1, coluna: m.c - 1 }));
+      .map((m) => ({ nome: m.texto, kind: 'campo', tipo: tipoDoLiteral(m.a), valorTxt: valorDeParamTxt(m.a),
+                     de: alvo.no.texto, linha: m.l - 1, coluna: m.c - 1 }));
   }
   if (alvo.tipo === 'entity') return membrosDaEntidade(doc, alvo.nome, !!alvo.interno, undefined, !!alvo.base);
   if (alvo.tipo === 'uniao') {
@@ -1349,7 +1352,8 @@ function itemDeMembro(m, deOnde) {
   const it = {
     label: m.nome,
     kind,
-    detail: assinatura(m) + priv + herd,
+    /* membro de enum: o valor junto (`int idade = 17`) */
+    detail: assinatura(m) + (m.kind === 'campo' && m.valorTxt ? ' = ' + m.valorTxt : '') + priv + herd,
     sortText: (m.privado ? '1' : '0') + m.nome,
   };
   if (m.escopo) {
@@ -1814,6 +1818,17 @@ conexao.onCompletion((p) => {
 /* O valor de um parâmetro de campo de model, como foi escrito: literal
  * (o `--ast` traz `lit` e o valor), lista de literais, `-n`, ou o nome de
  * tipo/model do `of=`. */
+/* O tipo de um LITERAL da árvore (`lit` do --ast): str, int, flo, bool,
+ * byte; lista/dict/tup pelos nós deles. '' quando não é literal. */
+function tipoDoLiteral(v) {
+  if (!v) return '';
+  if (v.k === 'Literal') return v.lit === 'bytes' ? 'byte' : (v.lit === 'null' ? 'Null' : (v.lit || ''));
+  if (v.k === 'ListLiteral') return 'list';
+  if (v.k === 'DictLiteral') return 'dict';
+  if (v.k === 'TupleLiteral') return 'tup';
+  return '';
+}
+
 function valorDeParamTxt(v) {
   if (!v) return '';
   if (v.k === 'Literal') {
@@ -2331,7 +2346,16 @@ function hoverDoImportado(doc, alvo, nome, linha) {
 conexao.onHover((p) => {
   const doc = docs.get(p.textDocument.uri);
   if (!doc) return null;
-  if (dentroDeTextoLivre(doc, p.position)) return null;
+  if (dentroDeTextoLivre(doc, p.position)) {
+    /* dentro de string: é um `str` (ou `byte`), e o hover diz isso em vez
+     * de ficar em branco; comentário não tem o que dizer */
+    const tk = tokensDe(doc).find((t) => t.l0 === p.position.line && p.position.character > t.c0
+                                      && p.position.character <= t.c0 + t.n && t.t !== 'COMMENT');
+    if (!tk) return null;
+    const tipoLit = tk.t === 'BYTES' ? 'byte' : 'str';
+    return md('```ps\n' + tipoLit + '\n```\n\nliteral de ' + (tk.t === 'FSTRING' ? 'texto interpolado (f-string)' : tipoLit === 'byte' ? 'bytes' : 'texto')
+              + apresentaTipo(doc, { tipo: 'tipo_motor', nome: tipoLit }));
+  }
 
   /* palavra-chave — o lexer é quem diz; `json`/`str` são também módulo/tipo
    * do motor, e aí a resposta é a do motor. Depois de um `.` o token com
@@ -2385,12 +2409,12 @@ conexao.onHover((p) => {
     const lit = receptorLiteral(doc, { line: p.position.line, character: tok.c0 });
     if (lit) {
       const m = membrosDe(doc, { tipo: 'tipo_motor', nome: lit }, p.position.line)
-                  .find((x) => x.nome === nome);
-      if (!m) return null;
+                  .find((x) => x.nome === nome) || universalChamado(nome);
+      if (!m) return semMembro(lit, nome);
       const prosa = m.escopo ? resumoDe(m.escopo, m.nome) : '';
       return md('```ps\n' + lit + '.' + assinatura(m) + '\n```' + (prosa ? '\n\n' + prosa : ''));
     }
-    return hoverCandidatos(nome);
+    return hoverCandidatos(nome) || md('```ps\n' + nome + '\n```\n\nmembro de um receptor de tipo desconhecido — nenhum tipo do motor tem `' + nome + '`');
   }
 
   if (partes.length) {                       /* `alvo.membro` */
@@ -2398,8 +2422,18 @@ conexao.onHover((p) => {
     const membros = membrosDe(doc, alvo, p.position.line);
     const m = membros.find((x) => x.nome === nome) || universalChamado(nome);
     /* receptor conhecido mas de tipo desconhecido (`head = lines[0]`): os
-     * candidatos por nome; membro inexistente numa Entity/módulo: nada */
-    if (!m) return alvo && alvo.tipo === 'universal' ? hoverCandidatos(nome) : null;
+     * candidatos por nome; membro inexistente num tipo conhecido: diz que
+     * não existe e o que existe — hover nunca em branco (ele, 2026-09-26) */
+    if (!m) {
+      if (alvo && (alvo.tipo === 'entity' || alvo.tipo === 'tipo_motor' || alvo.tipo === 'import' || alvo.tipo === 'enum' || alvo.tipo === 'model')) {
+        const dono = alvo.nome || (alvo.alvo && (alvo.alvo.mod || alvo.alvo.membro)) || partes[partes.length - 1];
+        const nomes = membros.slice(0, 12).map((x) => '`' + x.nome + '`');
+        return md('```ps\n' + partes.join('.') + '.' + nome + '\n```\n\n`' + dono + '` não tem `' + nome + '`'
+                  + (nomes.length ? ' — tem: ' + nomes.join(', ') + (membros.length > 12 ? ' … e mais ' + (membros.length - 12) : '') : ''));
+      }
+      return hoverCandidatos(nome)
+          || md('```ps\n' + partes.join('.') + '.' + nome + '\n```\n\nreceptor de tipo desconhecido, e nenhum tipo do motor tem `' + nome + '`');
+    }
     /* o dono é o TIPO do receptor: `self.con` e `u.con` são `Db.con`, e
      * "herdado de" só quando o membro veio de um pai de verdade — antes
      * `self.con` dizia "herdado de `Db`" no campo da própria classe */
@@ -2411,9 +2445,17 @@ conexao.onHover((p) => {
     const nomeDe = (inf) => inf ? (inf.nome || (inf.nomes || []).join('|') || '') : '';
     if (mm.kind === 'campo' && !mm.tipo && mm.valor) mm.tipo = nomeDe(tipoDaExpressao(doc, mm.valor, mm.linha));
     if (mm.kind === 'action' && !mm.retorna && mm.corpo) mm.retorna = nomeDe(retornoInferido(doc, mm)) || null;
+    /* membro de enum: o valor escrito, e de qual enum é */
+    const val = mm.kind === 'campo' && mm.valorTxt ? ' = ' + mm.valorTxt : '';
+    const deEnum = alvo && alvo.tipo === 'enum' ? '\n\nmembro do enum `' + dono + '` · declarado na linha ' + (m.linha + 1) : '';
+    /* campo: `int User.idade = 17` (tipo antes, como na declaração);
+     * método: `Dono.metodo(params) -> retorno` */
+    const cab = mm.kind === 'campo'
+      ? (mm.tipo ? mm.tipo + ' ' : '') + dono + '.' + mm.nome + val
+      : dono + '.' + assinatura(mm);
     return md('```ps\n' + (m.privado ? 'private ' : '') + (m.estatica ? 'static ' : '')
-              + (m.nonnull ? 'nonnull ' : '') + dono + '.' + assinatura(mm)
-              + '\n```' + herd + (prosa ? '\n\n' + prosa : ''));
+              + (m.nonnull ? 'nonnull ' : '') + cab
+              + '\n```' + herd + deEnum + (prosa ? '\n\n' + prosa : ''));
   }
 
   /* O `*` que liga o nome NESTA linha vem antes do que o arquivo declara mais
@@ -2469,6 +2511,14 @@ conexao.onHover((p) => {
         .map((f) => f.texto + ': ' + (f.texto2 || '') + paramsDeCampoTxt(f));
       return md('```ps\nmodel ' + b.nome + '() { ' + campos.join(', ') + ' }\n```\n\nmodel · declarado na ' + onde);
     }
+    if (b.kind === 'enum') {
+      /* o enum inteiro: cada membro com o valor e o tipo dele */
+      const ms = (no.lista || []).filter((m) => m && m.k === 'EnumMember');
+      const linhas = ms.map((m) => '    ' + m.texto + (m.a ? ' = ' + valorDeParamTxt(m.a) : ''));
+      return md('```ps\nenum ' + b.nome + ' {\n' + linhas.join('\n') + '\n}\n```\n\nenum · ' + ms.length
+                + ' membros · declarado na ' + onde
+                + (ms.length ? '\n\n' + ms.map((m) => '`' + m.texto + '`' + (m.a ? ': ' + (tipoDoLiteral(m.a) || 'valor') : '')).join(', ') : ''));
+    }
     /* variável: o tipo é o declarado (`str x`) ou o da expressão atribuída
      * (`x = Jinker(...)`, `cur = con.cursor()`), e o hover apresenta o TIPO
      * junto — o que ele é, quantos membros, a página com o exemplo (ele,
@@ -2502,8 +2552,42 @@ conexao.onHover((p) => {
   }
   const alvo = alvoDoImport(doc, nome, p.position.line);
   if (alvo) return hoverDoImportado(doc, alvo, nome, p.position.line);
-  return null;
+  /* nome que nada liga: dizer isso é melhor que um hover em branco — e se
+   * um `import *` o deixou de fora por ser `private`, dizer de onde */
+  const priv = privadoNaEstrela(doc, nome);
+  if (priv) {
+    return md('```ps\nprivate ' + assinatura(priv.b) + '\n```\n\n`' + nome + '` é `private` em `' + priv.mod
+              + '`: o `import *` não o traz (rodando dá `NameError`)');
+  }
+  return md('```ps\n' + nome + '\n```\n\nnome não definido neste arquivo nem por import (rodando dá `NameError`)');
 });
+
+/* `from m import *` deixa o `private` de fora; o hover no nome diz isso em
+ * vez de "não definido". Devolve a declaração e o módulo, ou null. */
+function privadoNaEstrela(doc, nome) {
+  const idx = idxDoc(doc);
+  const dirDoc = pastaDoDoc(doc);
+  for (let i = (idx.estrelas || []).length - 1; i >= 0; i--) {
+    const est = idx.estrelas[i];
+    let mod = est.mod || '';
+    let pontos = est.pontos || 0;
+    if (!est.aspas) while (mod.startsWith('.')) { pontos++; mod = mod.slice(1); }
+    if (!mod || nativoDe(mod, est.aspas, pontos)) continue;
+    const arq = arquivoDoImport(mod, dirDoc, est.aspas, pontos, dirDoc);
+    const ix = arq && indiceDeArquivo(arq);
+    if (!ix) continue;
+    const b = ix.topo.find((x) => x.privado && x.nome === nome);
+    if (b) return { b, mod: est.mod };
+  }
+  return null;
+}
+
+/* `"x".nada` / `str` sem esse membro: diz que não existe e o que existe. */
+function semMembro(tipo, nome) {
+  const ms = META.tipos[tipo] || [];
+  return md('```ps\n' + tipo + '.' + nome + '\n```\n\n`' + tipo + '` não tem `' + nome + '`'
+            + (ms.length ? ' — tem: ' + listaMembros(tipo, 12) : ''));
+}
 
 conexao.onDefinition((p) => {
   const doc = docs.get(p.textDocument.uri);
