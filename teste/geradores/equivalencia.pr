@@ -78,8 +78,8 @@ F("funct", ['funct f() {\n    return 7\n}\npost(f())',
              'funct f()\n{\n    return 7\n}\npost(f())'])
 F("try", ['try {\n    raise B("x")\n} catch (e) {\n    post("peguei")\n}',
           'try\n{\n    raise B("x")\n}\ncatch (e)\n{\n    post("peguei")\n}'])
-F("Entity", ['Entity P() {\n    funct m(self) {\n        return 3\n    }\n}\npost(P().m())',
-             'Entity P()\n{\n    funct m(self)\n    {\n        return 3\n    }\n}\npost(P().m())'])
+F("Entity", ['Entity P {\n    funct m(self) {\n        return 3\n    }\n}\npost(P().m())',
+             'Entity P\n{\n    funct m(self)\n    {\n        return 3\n    }\n}\npost(P().m())'])
 
 # ── match x if/elif x dict ──────────────────────────────────────────────────
 for each par in [["1", "um"], ["2", "dois"], ["9", "outro"]] {
@@ -95,14 +95,14 @@ for each k in [0, 3, -2] {
     F(f"captura {k}", [
       f'funct mult(k):\n    funct f(x):\n        return x * k\n    return f\npost(mult({k})(7))',
       f'funct f(x, k):\n    return x * k\npost(f(7, {k}))',
-      f'Entity M():\n    funct __init__(self, k):\n        self.k = k\n    funct ap(self, x):\n        return x * self.k\npost(M({k}).ap(7))',
+      f'Entity M:\n    funct __init__(self, k):\n        self.k = k\n    funct ap(self, x):\n        return x * self.k\npost(M({k}).ap(7))',
       f'k = {k}\nfunct f(x):\n    return x * k\npost(f(7))'])
 }
 
 # ── contador: closure x Entity x lista ──────────────────────────────────────
 F("contador 3x", [
   'funct faz():\n    n = 0\n    funct inc():\n        n = n + 1\n        return n\n    return inc\nc = faz()\npost(c(), c(), c())',
-  'Entity C():\n    funct __init__(self):\n        self.n = 0\n    funct inc(self):\n        self.n = self.n + 1\n        return self.n\nc = C()\npost(c.inc(), c.inc(), c.inc())',
+  'Entity C:\n    funct __init__(self):\n        self.n = 0\n    funct inc(self):\n        self.n = self.n + 1\n        return self.n\nc = C()\npost(c.inc(), c.inc(), c.inc())',
   'l = [0]\nfunct inc():\n    l[0] = l[0] + 1\n    return l[0]\npost(inc(), inc(), inc())'])
 
 # ── gerador x lista x map ───────────────────────────────────────────────────
@@ -158,23 +158,23 @@ F("contar caractere", [
 # ── herança: base() x campo direto x método do pai ──────────────────────────
 for each v in [0, 5, -3] {
     F(f"heranca {v}", [
-      f'Entity A():\n    funct __init__(self, x):\n        self.x = x\n'
-      + f'Entity B(A):\n    funct __init__(self, x):\n        base(x)\n'
+      f'Entity A:\n    funct __init__(self, x):\n        self.x = x\n'
+      + f'Entity B(A):\n    funct __init__(self, x):\n        base().__init__(x)\n'
       + f'post(B({v}).x)',
-      f'Entity A():\n    funct __init__(self, x):\n        self.x = x\npost(A({v}).x)',
-      f'Entity B():\n    funct __init__(self, x):\n        self.x = x\n'
+      f'Entity A:\n    funct __init__(self, x):\n        self.x = x\npost(A({v}).x)',
+      f'Entity B:\n    funct __init__(self, x):\n        self.x = x\n'
       + f'    funct pega(self):\n        return self.x\npost(B({v}).pega())'])
 }
 
 # ── private: acesso de dentro x funct solta ────────────────────────────────
 F("private lido de dentro", [
-  'Entity P():\n    private s: int\n    funct ve(self):\n        return self.s\npost(P(9).ve())',
-  'Entity Q():\n    s: int\n    funct ve(self):\n        return self.s\npost(Q(9).ve())',
+  'Entity P:\n    private s: int\n    funct ve(self):\n        return self.s\npost(P(9).ve())',
+  'Entity Q:\n    s: int\n    funct ve(self):\n        return self.s\npost(Q(9).ve())',
   'funct ve(s):\n    return s\npost(ve(9))'])
 
 # ── @static x funct solta ──────────────────────────────────────────────────
 F("static", [
-  'Entity K():\n    @static\n    funct f(self, n):\n        return n + 1\npost(K.f(4))',
+  'Entity K:\n    @static\n    funct f(self, n):\n        return n + 1\npost(K.f(4))',
   'funct f(n):\n    return n + 1\npost(f(4))'])
 
 # ── unpacking x índice ──────────────────────────────────────────────────────

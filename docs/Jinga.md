@@ -1,4 +1,4 @@
-# Jinga v15.94.4
+# Jinga v15.95.0
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 jinga --version
-# Jinga 15.94.4 [PSVM] (2026-09-24) Runtime standalone
+# Jinga 15.95.0 [PSVM] (2026-09-24) Runtime standalone
 #                       ^ a data da compilação DESTE binário: duas
 #                         cópias da mesma versão se distinguem por ela
 ```
@@ -768,7 +768,7 @@ Para instância de Entity, `is` compara a **classe exata** — ele não sobe pel
 herança:
 
 ```jinga
-Entity Animal() { }
+Entity Animal { }
 Entity Gato(Animal) { }
 g = Gato()
 

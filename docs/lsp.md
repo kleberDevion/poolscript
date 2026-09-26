@@ -56,6 +56,16 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   construtor (`private str nome = n`, §7.6.1) e o criado com `self.x = …`.
   Vale também pra Entity de **outro arquivo**, pelo `import`.
 
+  Campo criado com `self.x = …` **sem tipo declarado** ganha o tipo da
+  expressão atribuída (`self.con = psodbc.connect(...)` → `self.con.` lista
+  `cursor/commit/…` e `self.con.cursor().` segue até `execute/fetchall`);
+  método sem tipo de retorno declarado ganha o tipo dos `return` dele
+  quando todos concordam. `base(` oferece os pais da Entity; `base().` /
+  `base(Pai).` lista o que o pai tem, com o `__init__` (07-entity §7.5.2);
+  hover em `base` mostra a seção. Item de lista/dict (`sys.argv[0].`) é de
+  tipo desconhecido, texto indexado é texto; `str(x).` / `int(x).` começam
+  a cadeia no tipo; `sys.stdout.` entra no submódulo.
+
   > O nome de Entity é `IDENT_UPPER` no lexer (§1.4) e o servidor exigia
   > `IDENT`. Uma linha — e com ela toda Entity, de todo arquivo, era invisível:
   > `self.` dava zero, `c.` dava zero, e o nome da classe não aparecia em lista

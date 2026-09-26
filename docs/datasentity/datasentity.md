@@ -25,7 +25,7 @@ from datasentity import dataentity, asdict, astuple, aslist, asjson
 from datasentity import dataentity, asdict, astuple, aslist, asjson
 
 @dataentity
-Entity Pessoa() {
+Entity Pessoa {
     nome: str
     idade: int = 18          # default opcional
 }
@@ -47,7 +47,7 @@ post(q.idade)       # 18
 Sem ele, você escreveria o `__init__` na mão:
 
 ```
-Entity Pessoa() {
+Entity Pessoa {
     funct __init__(self, nome, idade) {
         self.nome = nome
         self.idade = idade

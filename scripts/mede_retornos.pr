@@ -580,11 +580,11 @@ import datasentity
 from datasentity import dataentity, asdict, astuple, aslist, asjson
 
 @dataentity
-Entity MrP() {
+Entity MrP {
     nome: str
 }
 
-Entity MrQ() {
+Entity MrQ {
     nome: str
 }
 

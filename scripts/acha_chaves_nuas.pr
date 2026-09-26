@@ -9,7 +9,7 @@
 # Lê os tokens do próprio motor (`jinga --tokens`), não regex: um `{` é dict
 # quando vem em posição de EXPRESSÃO (depois de `=`, `(`, `,`, `[`, `:`,
 # `return`, operador…) e é bloco quando vem depois de `)`, de um nome ou de
-# palavra de fluxo (`Entity X() {`, `if x {`, `else {`). Dentro de um dict, o
+# palavra de fluxo (`Entity X {`, `if x {`, `else {`). Dentro de um dict, o
 # nome que vem logo antes de `:` (depois de `{` ou de `,`) é a chave nua.
 import os
 import sys

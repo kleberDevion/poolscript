@@ -106,7 +106,7 @@ converta você: `saudacao(str(5), 3)`.
 Numa **Entity**, o tipo aceita subclasse onde a mãe foi pedida:
 
 ```ps
-Entity Animal() { str nome }
+Entity Animal { str nome }
 Entity Cachorro(Animal) { }
 
 funct fala(Animal a) { post(a.nome) }
@@ -188,7 +188,7 @@ g(1, c=3, b=5)   # 1 5 {'c': 3}
 **Espalhamento na chamada.** Do outro lado, `f(*lista)` passa os itens de
 uma `list`/`tup` como posicionais e `f(**dict)` passa as chaves de um `dict`
 como nomeados — em qualquer chamada (funct, método, Entity, builtin,
-decorador, `base()`), misturados com argumentos comuns e na ordem escrita:
+decorador, `base().__init__()`), misturados com argumentos comuns e na ordem escrita:
 
 ```ps
 funct soma(a, b, c=0) {
@@ -335,7 +335,7 @@ modificadores, **é** o tipo de retorno — qualquer tipo da linguagem
 `Object`) e também o nome de uma classe sua:
 
 ```ps
-Entity Pessoa() { nome: str }
+Entity Pessoa { nome: str }
 
 str  funct nome()      { return "ana" }
 list funct itens()     { return [1, 2] }
@@ -369,7 +369,7 @@ e os modificadores vêm em qualquer ordem:
 ```ps
 import sys
 
-public class C() {
+public class C {
     public static string funct main() {
         sys.stdout.writeln("Ola mundo!")
         return "Ola mundo!"
@@ -393,7 +393,7 @@ Além do tipo de retorno, do `async` e da visibilidade, dois modificadores vêm
 | `nonnull` | nenhum parâmetro pode chegar `Null` — inclusive por valor padrão |
 
 ```ps
-Entity Mat() {
+Entity Mat {
     static funct soma(a, b) {
         return a + b
     }

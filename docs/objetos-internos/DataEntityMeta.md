@@ -8,7 +8,7 @@ O que o `@dataentity` deixa é uma Entity comum:
 
 ```ps
 @dataentity
-Entity Pessoa() {
+Entity Pessoa {
     nome: str
     idade: int = 18
 }

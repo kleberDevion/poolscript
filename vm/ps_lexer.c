@@ -577,7 +577,13 @@ static void trata_newline(Lexer *lx)
             int vazia = q >= lx->len || lx->src[q] == '\n' || lx->src[q] == '\r' || lx->src[q] == '#';
             int fechador = !vazia && (lx->src[q] == ')' || lx->src[q] == ']' || lx->src[q] == '}');
             int recuou = !vazia && !fechador && c - 1 <= lx->grupos[k].indent;
-            if (recuou || lx_so_declaracao(lx, lx->pos)) grupo_forca(lx, k, lx->linha, c);
+            /* (c) `}` numa linha MENOS indentada que a do abridor fecha o
+             * bloco de fora, nunca um dict de dentro do grupo: `f(` como
+             * último comando do método, com o `}` do método logo abaixo —
+             * é o que o editor manda ao pedir a assinatura ali. `})` na
+             * mesma indentação (dict multilinha) continua continuação. */
+            int fecha_bloco = !vazia && lx->src[q] == '}' && c - 1 < lx->grupos[k].indent;
+            if (recuou || fecha_bloco || lx_so_declaracao(lx, lx->pos)) grupo_forca(lx, k, lx->linha, c);
         }
     }
 

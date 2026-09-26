@@ -215,11 +215,11 @@ os.mkdir(EST + "/sub", exist_ok=true)
 os.writeFile(EST + "/m.pr",
     "import json\n"
     + "funct f() {\n    return \"f\"\n}\n"
-    + "Entity E() {\n}\n"
+    + "Entity E {\n}\n"
     + "x = 1\n"
     + "_u = 2\n"
     + "private funct p() {\n    return 1\n}\n"
-    + "private class Pc() {\n}\n"
+    + "private class Pc {\n}\n"
     + "if true {\n    bloco = 3\n}\n"
     + "funct init() {\n    global cfg\n    cfg = 9\n}\n"
     + "init()\n"

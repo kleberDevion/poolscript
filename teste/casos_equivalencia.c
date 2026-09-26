@@ -324,7 +324,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "peguei", NULL, 0 },
 { "equiv: Entity [1/2]",
-  "Entity P() {\n"
+  "Entity P {\n"
   "    funct m(self) {\n"
   "        return 3\n"
   "    }\n"
@@ -333,7 +333,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "3", NULL, 0 },
 { "equiv: Entity [2/2]",
-  "Entity P()\n"
+  "Entity P\n"
   "{\n"
   "    funct m(self)\n"
   "    {\n"
@@ -466,7 +466,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "0", NULL, 0 },
 { "equiv: captura 0 [3/4]",
-  "Entity M() {\n"
+  "Entity M {\n"
   "    funct __init__(self, k) {\n"
   "        self.k = k\n"
   "    }\n"
@@ -503,7 +503,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "21", NULL, 0 },
 { "equiv: captura 3 [3/4]",
-  "Entity M() {\n"
+  "Entity M {\n"
   "    funct __init__(self, k) {\n"
   "        self.k = k\n"
   "    }\n"
@@ -540,7 +540,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "-14", NULL, 0 },
 { "equiv: captura -2 [3/4]",
-  "Entity M() {\n"
+  "Entity M {\n"
   "    funct __init__(self, k) {\n"
   "        self.k = k\n"
   "    }\n"
@@ -573,7 +573,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "1 2 3", NULL, 0 },
 { "equiv: contador 3x [2/3]",
-  "Entity C() {\n"
+  "Entity C {\n"
   "    funct __init__(self) {\n"
   "        self.n = 0\n"
   "    }\n"
@@ -840,21 +840,21 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "3", NULL, 0 },
 { "equiv: heranca 0 [1/3]",
-  "Entity A() {\n"
+  "Entity A {\n"
   "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
   "}\n"
   "Entity B(A) {\n"
   "    funct __init__(self, x) {\n"
-  "        base(x)\n"
+  "        base().__init__(x)\n"
   "    }\n"
   "}\n"
   "post(B(0).x)\n"
   "\n",
   "0", NULL, 0 },
 { "equiv: heranca 0 [2/3]",
-  "Entity A() {\n"
+  "Entity A {\n"
   "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
@@ -863,7 +863,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "0", NULL, 0 },
 { "equiv: heranca 0 [3/3]",
-  "Entity B() {\n"
+  "Entity B {\n"
   "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
@@ -875,21 +875,21 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "0", NULL, 0 },
 { "equiv: heranca 5 [1/3]",
-  "Entity A() {\n"
+  "Entity A {\n"
   "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
   "}\n"
   "Entity B(A) {\n"
   "    funct __init__(self, x) {\n"
-  "        base(x)\n"
+  "        base().__init__(x)\n"
   "    }\n"
   "}\n"
   "post(B(5).x)\n"
   "\n",
   "5", NULL, 0 },
 { "equiv: heranca 5 [2/3]",
-  "Entity A() {\n"
+  "Entity A {\n"
   "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
@@ -898,7 +898,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "5", NULL, 0 },
 { "equiv: heranca 5 [3/3]",
-  "Entity B() {\n"
+  "Entity B {\n"
   "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
@@ -910,21 +910,21 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "5", NULL, 0 },
 { "equiv: heranca -3 [1/3]",
-  "Entity A() {\n"
+  "Entity A {\n"
   "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
   "}\n"
   "Entity B(A) {\n"
   "    funct __init__(self, x) {\n"
-  "        base(x)\n"
+  "        base().__init__(x)\n"
   "    }\n"
   "}\n"
   "post(B(-3).x)\n"
   "\n",
   "-3", NULL, 0 },
 { "equiv: heranca -3 [2/3]",
-  "Entity A() {\n"
+  "Entity A {\n"
   "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
@@ -933,7 +933,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "-3", NULL, 0 },
 { "equiv: heranca -3 [3/3]",
-  "Entity B() {\n"
+  "Entity B {\n"
   "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
@@ -945,7 +945,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "-3", NULL, 0 },
 { "equiv: private lido de dentro [1/3]",
-  "Entity P() {\n"
+  "Entity P {\n"
   "    private s: int\n"
   "    funct ve(self) {\n"
   "        return self.s\n"
@@ -955,7 +955,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "9", NULL, 0 },
 { "equiv: private lido de dentro [2/3]",
-  "Entity Q() {\n"
+  "Entity Q {\n"
   "    s: int\n"
   "    funct ve(self) {\n"
   "        return self.s\n"
@@ -972,7 +972,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "9", NULL, 0 },
 { "equiv: static [1/2]",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    @static\n"
   "    funct f(self, n) {\n"
   "        return n + 1\n"

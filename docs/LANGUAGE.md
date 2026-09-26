@@ -147,7 +147,7 @@ else
 ```
 d = { "a": 1, "b": 2 }     # dicionário
 s = "abcdef"[1:3]          # fatia
-Entity P() { nome: str }   # campo tipado
+Entity P { nome: str }   # campo tipado
 ```
 
 ## Tipos e variáveis
@@ -207,8 +207,9 @@ funct f(while) { ... }       # erro: 'while' é palavra reservada
 for each return in xs { }    # erro: 'return' é palavra reservada
 ```
 
-`base` entra na lista mesmo não sendo keyword: é a chamada da superclasse
-dentro de `__init__`, então ligá-la a um nome quebrava `base(...)` — antes
+`base` entra na lista mesmo não sendo keyword: é o pai dentro de um método
+(`base().__init__(...)`, `base(Pai).metodo(...)`), então ligá-la a um nome
+quebrava `base(...)` — antes
 `base = 5` era aceito sem erro e só estourava depois, como
 `NameError: name 'base' is not defined`.
 
@@ -722,7 +723,7 @@ Daqui pra frente o texto usa `class`, mas tudo vale igual para os três.
 ### Declaração e instância
 
 ```
-class Animal() {
+class Animal {
     funct __init__(self, nome) {
         self.nome = nome
     }
@@ -739,7 +740,7 @@ post(a.falar())         # Bicho faz um som
 Regras concretas:
 
 - **Os parênteses após o nome são obrigatórios**, mesmo sem herança:
-  `class Animal()` — `class Animal` sozinho é erro de sintaxe.
+  `class Animal` — `class Animal` sozinho é erro de sintaxe.
 - **`__init__` é opcional.** Sem ele, a instância nasce sem atributos e você
   os cria depois (`obj.x = ...`) ou só usa os métodos.
 - **Todo método declarado precisa de `self` como primeiro parâmetro** — é o
@@ -757,7 +758,7 @@ Membro `private` só é acessível **de dentro de um método da própria classe*
 tentar ler, escrever ou chamar de fora levanta erro:
 
 ```
-Entity Conta() {
+Entity Conta {
     private saldo: int = 0          # só a própria classe mexe
     public dono: str = "kleber"     # público (igual a não pôr nada)
 
@@ -787,14 +788,15 @@ c.saldo = 9             # ERRO: escrita em private de fora
 
 ### Herança simples e `base()`
 
-`base(...)` chama o `__init__` do **pai imediato**. Só funciona dentro de um
-`__init__` (fora dele dá erro "base() só pode ser chamado dentro de um
-__init__ de Entity").
+`base()` é o pai (o `super` de outras linguagens): `base().__init__(...)` roda o
+`__init__` dele com o `self` atual, `base().metodo(...)` chama a versão do
+pai de qualquer método (mesmo sobrescrito) e `base().campo` lê um campo
+(static do pai, ou da instância). Vale em qualquer método com `self`.
 
 ```
 class Cachorro(Animal) {
     funct __init__(self, nome, raca) {
-        base(nome)          # executa Animal.__init__(self, nome)
+        base().__init__(nome)          # executa Animal.__init__(self, nome)
         self.raca = raca    # e aí adiciona o atributo próprio
     }
     funct falar(self) {      # sobrescreve o falar do pai
@@ -804,7 +806,7 @@ class Cachorro(Animal) {
 
 c = Cachorro("Rex", "vira-lata")
 post(c.falar())     # Rex (vira-lata) late
-post(c.nome)        # Rex   — atributo herdado, criado pelo base()
+post(c.nome)        # Rex   — atributo herdado, criado pelo base().__init__()
 ```
 
 Método **não sobrescrito** é herdado direto — `Gato` abaixo não define
@@ -813,7 +815,7 @@ Método **não sobrescrito** é herdado direto — `Gato` abaixo não define
 ```
 class Gato(Animal) {
     funct __init__(self, nome) {
-        base(nome)
+        base().__init__(nome)
     }
 }
 
@@ -824,20 +826,20 @@ Cadeia de qualquer profundidade funciona; cada nível chama o `base()` do seu
 pai imediato:
 
 ```
-class Base() {
+class Base {
     funct __init__(self, x) {
         self.x = x
     }
 }
 class Meio(Base) {
     funct __init__(self, x, y) {
-        base(x)          # Base.__init__
+        base().__init__(x)          # Base.__init__
         self.y = y
     }
 }
 class Topo(Meio) {
     funct __init__(self, x, y, z) {
-        base(x, y)       # Meio.__init__
+        base().__init__(x, y)       # Meio.__init__
         self.z = z
     }
 }
@@ -846,19 +848,19 @@ t = Topo(1, 2, 3)
 post(t.x, t.y, t.z)      # 1 2 3
 ```
 
-### Herança múltipla e `base(Pai, ...)`
+### Herança múltipla e `base(Pai)`
 
-Com mais de um pai, `base(...)` sozinho miraria só o **primeiro** pai da lista.
-Para escolher um pai específico, passe o nome dele como primeiro argumento:
-`base(NomePai, args...)`.
+Com mais de um pai, `base()` sem nome é erro (`base() com mais de um pai:
+diga qual, base(Motor) ou base(Roda)`): o nome do pai vai dentro dos
+parênteses. `base(Pai)` também serve pra mirar um avô numa cadeia.
 
 ```
-class Motor() {
+class Motor {
     funct __init__(self, cavalos) {
         self.cavalos = cavalos
     }
 }
-class Roda() {
+class Roda {
     funct __init__(self, qtd) {
         self.qtd_rodas = qtd
     }
@@ -866,8 +868,8 @@ class Roda() {
 
 class Carro(Motor, Roda) {
     funct __init__(self) {
-        base(Motor, 300)     # mira Motor, passa 300
-        base(Roda, 4)        # mira Roda, passa 4
+        base(Motor).__init__(300)     # mira Motor, passa 300
+        base(Roda).__init__(4)        # mira Roda, passa 4
         self.tipo = "esportivo"
     }
 }
@@ -876,24 +878,13 @@ c = Carro()
 post(c.cavalos, c.qtd_rodas, c.tipo)   # 300 4 esportivo
 ```
 
-> **Especificação:** o alvo do pai só é reconhecido quando há
-> uma **vírgula** depois do nome. `base(Motor, 300)` funciona. Mas
-> `base(Motor)` — nome sozinho, sem vírgula — **NÃO** mira o pai `Motor`: o
-> parser trata `Motor` como um *argumento comum* passado para o primeiro pai, e
-> você recebe um erro tipo `esperava até 0 argumento(s), recebeu 1`.
->
-> Para mirar um pai que **não recebe argumentos**, use a **vírgula final**:
-> `base(Motor,)` — mira `Motor` com zero args. Isso funciona:
->
-> ```
-> class A():
->     funct __init__(self):
->         self.a = 1
-> class C(A, B):
->     funct __init__(self):
->         base(A,)     # vírgula final = mira A, sem argumentos
->         base(B,)
-> ```
+`base(X)` com X que não é ancestral é erro na declaração (`'X' nao e pai de
+'Carro' (pais: Motor, Roda)`); `base(Pai)` sem `.membro` depois, e a forma
+antiga `base(args)`, acusam a forma certa (`base(Pai) precisa de um membro:
+base(Pai).__init__(...) ou base(Pai).metodo(...)`). Escrever por `base` é
+erro (`base().x = 1` → `atribua pelo self: self.x = ...`), e o `private` do
+pai continua invisível pro filho. Os detalhes estão em
+[07-entity §7.5.2](linguagem/07-entity.md).
 
 Resolução de métodos (não-`__init__`) na herança múltipla é **esquerda-para-
 direita**: `class C(A, B)` procura o método primeiro em `C`, depois em `A` (e
@@ -905,7 +896,7 @@ Método com o modificador `static` colado na cabeça é chamado direto na classe
 sem criar objeto e sem `self`:
 
 ```
-class Util() {
+class Util {
     static funct dobro(n) {
         return n * 2
     }
@@ -929,7 +920,7 @@ Com `nonnull` na cabeça, a chamada falha se qualquer argumento recebido for
 `Null`.
 
 ```
-class Calc() {
+class Calc {
     funct __init__(self) {
         self.total = 0
     }
@@ -949,7 +940,7 @@ c.somar(Null)     # ERRO: nonnull: parametro 'valor' em 'somar' nao pode ser Nul
 durante a instanciação:
 
 ```
-class I() {
+class I {
     nonnull funct __init__(self, dono) {
         self.dono = dono
     }
@@ -977,7 +968,7 @@ de `datasentity`:
 from datasentity import dataentity, asdict, astuple, aslist, asjson
 
 @dataentity
-class Pessoa() {
+class Pessoa {
     nome: str
     idade: int = 18        # default opcional
 }

@@ -43,10 +43,10 @@ PROGRAMAS = [
     ["lista",       "l = []\nfor each i in range(200) {\n    l.append(i * 2)\n}\npost(sum(l), len(l))\n"],
     ["dict",        "d = {}\nfor each i in range(200) {\n    d[str(i)] = i\n}\npost(len(d), d[\"77\"])\n"],
     ["closure",     "funct faz() {\n    n = 0\n    funct inc() {\n        n = n + 1\n        return n\n    }\n    return inc\n}\nc = faz()\npost(c(), c())\n"],
-    ["entity",      "Entity P() {\n    funct __init__(self, x) {\n        self.x = x\n    }\n    funct d(self) {\n        return self.x * 2\n    }\n}\npost(P(21).d())\n"],
+    ["entity",      "Entity P {\n    funct __init__(self, x) {\n        self.x = x\n    }\n    funct d(self) {\n        return self.x * 2\n    }\n}\npost(P(21).d())\n"],
     # Entity SEM __init__: passa pelo sintetiza_init, que é o realloc duplo do
     # achado C1 da auditoria — o que deixava ponteiro pendurado no descritor.
-    ["entity_init", "Entity S() {\n    funct m(self) {\n        return 1\n    }\n}\npost(S().m())\n"],
+    ["entity_init", "Entity S {\n    funct m(self) {\n        return 1\n    }\n}\npost(S().m())\n"],
     ["fstring",     "n = \"ana\"\nfor each i in range(50) {\n    x = f\"{n} tem {i} anos e {i * 2} meses\"\n}\npost(x)\n"],
     ["json",        "import json\nd = {\"a\": [1, 2, 3], \"b\": {\"c\": \"d\"}}\ns = json.stringify(d)\npost(json.parse(s)[\"b\"][\"c\"])\n"],
     ["regex",       "import regex\np = regex.compile(\"(\\\\d+)-(\\\\w+)\")\npost(p.findall(\"1-a 22-bb 333-ccc\"))\n"],
@@ -74,9 +74,9 @@ PROGRAMAS = [
     # gerador chamado por nome: CALL_KW -> novo_gerador -> liga_args em g->locais.
     ["gerador_nome", "funct g(a, *r) {\n    yield a\n    for each x in r {\n        yield x * 10\n    }\n}\npost(list(g(a=1)))\npost(list(g(1, 2, 3)))\npost(list(g(*[4, 5])))\n"],
     # instanciacao com **kw no __init__, por CALL_EX e por CALL_KW.
-    ["entity_kw",   "Entity P() {\n    funct __init__(self, nome, **kw) {\n        self.nome = nome\n        self.extra = kw\n    }\n}\nd = {\"nome\": \"d\", \"a\": 1, \"b\": 2}\np = P(**d)\nq = P(nome=\"k\", x=1)\npost(p.nome, p.extra, q.nome, q.extra)\n"],
-    # base(*args, **kw): CALL_BASE por CALL_EX.
-    ["base_espalha", "Entity A() {\n    funct __init__(self, x, y=0, **kw) {\n        self.x = x\n        self.y = y\n        self.kw = kw\n    }\n}\nEntity B(A) {\n    funct __init__(self, *args, **kw) {\n        base(*args, **kw)\n    }\n}\nb = B(1, 2, z=3)\nc = B(x=4)\npost(b.x, b.y, b.kw, c.x, c.y, c.kw)\n"],
+    ["entity_kw",   "Entity P {\n    funct __init__(self, nome, **kw) {\n        self.nome = nome\n        self.extra = kw\n    }\n}\nd = {\"nome\": \"d\", \"a\": 1, \"b\": 2}\np = P(**d)\nq = P(nome=\"k\", x=1)\npost(p.nome, p.extra, q.nome, q.extra)\n"],
+    # base().__init__(*args, **kw): CALL_BASE por CALL_EX.
+    ["base_espalha", "Entity A {\n    funct __init__(self, x, y=0, **kw) {\n        self.x = x\n        self.y = y\n        self.kw = kw\n    }\n}\nEntity B(A) {\n    funct __init__(self, *args, **kw) {\n        base().__init__(*args, **kw)\n    }\n}\nb = B(1, 2, z=3)\nc = B(x=4)\npost(b.x, b.y, b.kw, c.x, c.y, c.kw)\n"],
     # a closure que o decorador devolve, chamada por nome (o CALL_KW normaliza
     # closure) e repassando com *args/**kwarg.
     ["closure_nome", "funct rota(prefixo) {\n    funct decora(f) {\n        funct envolve(*args, **kwarg) {\n            return prefixo + f(*args, **kwarg)\n        }\n        return envolve\n    }\n    return decora\n}\n@rota(\"/x\")\nfunct h(nome, sufixo=\"!\") {\n    return nome + sufixo\n}\npost(h(nome=\"a\"))\npost(h(\"b\", sufixo=\"?\"))\n"],

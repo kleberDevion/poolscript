@@ -99,7 +99,7 @@ O `:` continua com os outros três papéis, que **não** abrem bloco:
 ```ps
 d = { "a": 1 }              # separador de dicionário
 s = "abcdef"[1:3]           # fatia
-Entity P() { nome: str }    # tipo de campo
+Entity P { nome: str }    # tipo de campo
 ```
 
 ### 1.3.2. Indentação e quebra de linha
@@ -188,7 +188,8 @@ Agrupadas por papel:
 | Conversão / operador | `to` `count` |
 
 `dict` é apelido de `json`; `tup` nomeia a tupla; `base` é reconhecida
-contextualmente dentro de `Entity` (chama o construtor do pai). `action` e
+contextualmente dentro de `Entity` (designa o pai: `base().__init__(...)`,
+`base(Pai).metodo(...)`, `base(Pai).campo` — 07-entity §7.5.2). `action` e
 `reaction` **saíram**: não são mais reservadas, e o parser as recusa com a
 palavra nova na mensagem (seção 6.1).
 

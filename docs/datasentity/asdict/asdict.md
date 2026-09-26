@@ -14,7 +14,7 @@ asdict(instance) -> dict
 from datasentity import dataentity, asdict
 
 @dataentity
-Entity Pessoa() {
+Entity Pessoa {
     nome: str
     idade: int
 }

@@ -67,23 +67,40 @@ function cadeiaAntes(linha, coluna) {
 
     /* `random.asterisco().` — o `)` vem antes do nome. Pula o grupo casado
      * andando pra trás; sem isto a cadeia parava no primeiro parêntese e o
-     * que devia sugerir os membros do retorno não sugeria nada. */
-    while (i > 0 && (linha[i - 1] === ' ' || linha[i - 1] === '\t')) i--;
-    if (i > 0 && linha[i - 1] === ')') {
+     * que devia sugerir os membros do retorno não sugeria nada. O mesmo pra
+     * `sys.argv[0].` e `l[i][j].`: sem pular o `[...]` a cadeia quebrava e o
+     * completion caía nos nomes do arquivo. Vários grupos seguidos
+     * (`f()[0].`) são pulados um a um. */
+    let grupo = null;                           /* o texto dentro do último `(...)` */
+    let indexado = false;                       /* passou por um `[...]` */
+    for (;;) {
+      while (i > 0 && (linha[i - 1] === ' ' || linha[i - 1] === '\t')) i--;
+      const fecha = i > 0 ? linha[i - 1] : '';
+      if (fecha !== ')' && fecha !== ']') break;
+      const abre = fecha === ')' ? '(' : '[';
+      const fimGrupo = i - 1;
       let prof = 0;
       while (i > 0) {
         const c = linha[i - 1];
-        if (c === ')') prof++;
-        else if (c === '(') { prof--; if (prof === 0) { i--; break; } }
+        if (c === fecha) prof++;
+        else if (c === abre) { prof--; if (prof === 0) { i--; break; } }
         i--;
       }
-      if (prof !== 0) break;                    /* parêntese sem par: desiste */
+      if (prof !== 0) return { partes, parcial, terminaEmPonto: partes.length > 0 };
+      if (fecha === ')') grupo = linha.slice(i + 1, fimGrupo);
+      else indexado = true;
     }
 
     fim = i;
     while (i > 0 && ehNomeChar(linha[i - 1])) i--;
-    const seg = linha.slice(i, fim);
+    let seg = linha.slice(i, fim);
     if (seg === '') break;
+    /* `base(Pai).` — o pai vai junto no segmento: quem resolve a cadeia lê
+     * `base(Pai)` e sabe qual Entity é */
+    if (seg === 'base' && grupo !== null) seg = 'base(' + grupo.trim() + ')';
+    /* `l[i].` — o ITEM, não a lista: a marca `[]` diz a quem resolve que o
+     * tipo é o do conteúdo (texto indexado é texto; o resto ninguém sabe) */
+    if (indexado) seg = seg + '[]';
     partes.unshift(seg);
   }
   return { partes, parcial, terminaEmPonto: partes.length > 0 };
@@ -384,17 +401,24 @@ function membrosDaEntity(no) {
     if (m.k !== 'ActionDecl') continue;                   /* métodos */
     const ps = (m.lista || []).filter((p) => p && p.texto && p.texto !== 'self')
                               .map((p) => ({ nome: nomeParam(p), tipo: p.texto2 || null, default: null }));
+    /* `corpo`: o bloco do método, pra quem precisa inferir o retorno de um
+     * método SEM tipo declarado pelos `return` dele (`self.f().` só oferecia
+     * `type`) */
     poe({ nome: m.texto, kind: 'action', params: ps, retorna: m.texto2 || null,
           privado: !!m.private, estatica: !!m.static || decStatic,
           nonnull: !!m.nonnull || decNonnull,
-          linha: m.l - 1, coluna: m.c - 1 });
+          linha: m.l - 1, coluna: m.c - 1, corpo: m.b || null });
     decStatic = false; decNonnull = false;
-    /* campos que o CORPO cria: `self.x = …` e `private str x = …` */
+    /* campos que o CORPO cria: `self.x = …` e `private str x = …`.
+     * O `valor` (a expressão atribuída) viaja no membro: é dele que sai o
+     * tipo de um campo sem declaração — `self.con = psodbc.connect(...)` e
+     * depois `self.con.cursor().` — o "terceiro ponto" que só respondia
+     * `type`. */
     const corpo = (no2) => {
       if (!no2 || typeof no2 !== 'object') return;
       if (no2.k === 'MemberAssignment' && no2.a && no2.a.k === 'Name' && no2.a.texto === 'self') {
         poe({ nome: no2.texto, kind: 'campo', tipo: '', privado: false,
-              linha: no2.l - 1, coluna: no2.c - 1 });
+              linha: no2.l - 1, coluna: no2.c - 1, valor: no2.b || null });
       }
       if (no2.k === 'FieldDecl') {
         poe({ nome: no2.texto, kind: 'campo', tipo: no2.texto2 || '',

@@ -206,6 +206,14 @@ typedef struct {
     Obj      obj;
     int32_t  len;
     uint32_t hash;          /* 0 = ainda não calculado; peça por `str_hash` */
+    /* A string é imutável, então o que se conta uma vez vale pra sempre:
+     * `ncp1` = caracteres (codepoints) + 1, 0 = ainda não contado (peça por
+     * `str_ncp`); `cache_cp`/`cache_byte` = a última posição
+     * caractere→byte resolvida (`str_byte_de`), pra `s[i]` em laço andar a
+     * partir dela. Antes cada `s[i]` contava a string inteira e depois
+     * andava do zero: 20 mil `x[i]` numa str de 1 M caracteres não terminavam. */
+    uint32_t ncp1;
+    int32_t  cache_cp, cache_byte;
     char     chars[];       /* membro flexível: string vive junto do cabeçalho,
                              * numa alocação só em vez de duas */
 } PSString;
@@ -1431,6 +1439,7 @@ static PSString *nova_string(VM *vm, const char *chars, int len)
     memcpy(s->chars, chars, (size_t)len);
     s->chars[len] = '\0';
     s->hash = 0;                       /* preguiçoso: ver str_hash */
+    s->ncp1 = 0; s->cache_cp = 0; s->cache_byte = 0;   /* preguiçoso: ver str_ncp */
     vm->alocado += sizeof(PSString) + (size_t)len + 1;
     return s;
 }
@@ -1559,7 +1568,8 @@ static int val_iguais(const Value *a, const Value *b);
 static int model_valida(const PSModel *m, const Value *v);
 static int utf8_conta(const char *s, int len);
 static int utf8_le(const char *s, int len, int i, uint32_t *cp);
-static int utf8_byte_de(const char *s, int len, int64_t cp);
+static int str_ncp(PSString *s);
+static int str_byte_de(PSString *s, int64_t cp);
 
 static uint32_t hash_valor(const Value *v)
 {
@@ -2487,6 +2497,20 @@ static const char *nome_do_global(VM *vm, int32_t arg)
  * campo, e ainda assim a checagem só olhava F. Agora a hierarquia inteira é
  * varrida e a pergunta é outra: o proto que está rodando pertence a ALGUMA
  * classe que declara este nome como private? Se pertence, passa. */
+/* `pai` é a própria classe `cl` ou um ancestral dela? (o `base(Pai)`) */
+static int classe_descende_de(PSClass *cl, PSClass *pai)
+{
+    PSClass *pilha[64]; int np = 0;
+    if (cl) pilha[np++] = cl;
+    while (np > 0) {
+        PSClass *c = pilha[--np];
+        if (c == pai) return 1;
+        for (int32_t i = 0; i < c->npais && np < 64; i++)
+            if (c->pais[i]) pilha[np++] = c->pais[i];
+    }
+    return 0;
+}
+
 static int priv_barrado(PSClass *cl, const char *nome, int32_t proto_atual)
 {
     PSClass *pilha[64]; int np = 0;
@@ -3477,7 +3501,7 @@ static int nativa_len(VM *vm, Value *args, int n, Value *out)
     if (v.t == V_NULL) { *out = MK_INT(0); return 0; }   /* len(null) = 0, como o interp */
     /* string conta CARACTERES (codepoints), como o método s.len() e o
      * interpretador — contar bytes fazia len("olá") responder 4 */
-    if (EH_STRING(v)) { *out = MK_INT(utf8_conta(COMO_STRING(v)->chars, COMO_STRING(v)->len)); return 0; }
+    if (EH_STRING(v)) { *out = MK_INT(str_ncp(COMO_STRING(v))); return 0; }
     if (EH_BYTES(v))  { *out = MK_INT(COMO_BYTES(v)->len); return 0; }
     if (EH_SEQ(v))    { *out = MK_INT(COMO_LIST(v)->len);   return 0; }
     if (EH_DICT(v))   { *out = MK_INT(COMO_DICT(v)->count); return 0; }
@@ -4368,7 +4392,7 @@ static int iteravel_tam(const Value *v)
     if (EH_SEQ(*v))    return COMO_LIST(*v)->len;
     /* CODEPOINTS, não bytes: `list("ção")` tem 3 itens, não 5. Iterar por
      * byte parte o UTF-8 no meio e devolve lixo. */
-    if (EH_STRING(*v)) return utf8_conta(COMO_STRING(*v)->chars, COMO_STRING(*v)->len);
+    if (EH_STRING(*v)) return str_ncp(COMO_STRING(*v));
     /* bytes itera em BYTES e cada item é um INTEIRO 0..255 — não um pedaço de
      * bytes de tamanho 1, e não codepoint. É o que
      * torna `for each b in dados` útil pra dado binário. */
@@ -5012,23 +5036,49 @@ static int utf8_escreve(char *dest, uint32_t cp)
 }
 
 /* byte onde começa o codepoint `cp` (0..n); cp == n (ou além) -> len */
-static int utf8_byte_de(const char *s, int len, int64_t cp)
-{
-    int i = 0;
-    while (cp > 0 && i < len) {
-        uint32_t c;
-        int k = utf8_le(s, len, i, &c);
-        i += k ? k : 1;
-        cp--;
-    }
-    return i;
-}
-
 static int utf8_conta(const char *s, int len)
 {
     int n = 0;
     for (int i = 0; i < len; ) { uint32_t cp; int k = utf8_le(s, len, i, &cp); if (!k) break; i += k; n++; }
     return n;
+}
+
+/* Caracteres (codepoints) da string, contados UMA vez e guardados nela. */
+static int str_ncp(PSString *s)
+{
+    if (s->ncp1 == 0) s->ncp1 = (uint32_t)utf8_conta(s->chars, s->len) + 1;
+    return (int)(s->ncp1 - 1);
+}
+
+/* Byte onde começa o caractere `cp` da string. ASCII puro (caracteres ==
+ * bytes) responde direto; senão anda a partir da última posição resolvida
+ * quando ela está antes — `s[i]` em laço fica linear no total, não por
+ * acesso. `cp` fora da faixa devolve `len`. */
+static int str_byte_de(PSString *s, int64_t cp)
+{
+    int ncp = str_ncp(s);
+    if (cp <= 0) return 0;
+    if (ncp == s->len) return cp < s->len ? (int)cp : s->len;
+    if (cp >= ncp) return s->len;
+    /* parte de onde for mais perto: do começo ou da última posição — e
+     * anda pra TRÁS também (byte de continuação é 10xxxxxx), senão
+     * `t[i:i+6]` em laço, que pede i+6 e depois i+1, recomeçava do zero */
+    int i = 0, k = 0;
+    int64_t d_cache = cp >= s->cache_cp ? cp - s->cache_cp : s->cache_cp - cp;
+    if (d_cache < cp) { i = s->cache_byte; k = s->cache_cp; }
+    while (k < cp && i < s->len) {
+        uint32_t c;
+        int n = utf8_le(s->chars, s->len, i, &c);
+        i += n ? n : 1;
+        k++;
+    }
+    while (k > cp && i > 0) {
+        i--;
+        while (i > 0 && ((unsigned char)s->chars[i] & 0xC0) == 0x80) i--;
+        k--;
+    }
+    s->cache_cp = k; s->cache_byte = i;
+    return i;
 }
 
 /* Maiúscula/minúscula cobrindo ASCII, Latin-1 Suplementar e Latin Estendido-A.
@@ -5427,7 +5477,7 @@ static int posicao_cp(const char *s, int bytes)
 static int faixa_busca(VM *vm, PSString *s, Value *args, int n, const char *quem,
                        int *b0, int *b1)
 {
-    int64_t total = utf8_conta(s->chars, s->len);
+    int64_t total = str_ncp(s);
     int64_t i0 = 0, i1 = total;
     if (n >= 2 && args[1].t != V_NULL) {
         if (args[1].t != V_INT)
@@ -5449,8 +5499,8 @@ static int faixa_busca(VM *vm, PSString *s, Value *args, int n, const char *quem
         if (i1 < 0) i1 = 0;
         if (i1 > total) i1 = total;
     }
-    *b0 = utf8_byte_de(s->chars, s->len, i0);
-    *b1 = utf8_byte_de(s->chars, s->len, i1);
+    *b0 = str_byte_de(s, i0);
+    *b1 = str_byte_de(s, i1);
     return 0;
 }
 
@@ -5515,7 +5565,7 @@ static int met_len(VM *vm, Value alvo, Value *args, int n, Value *out)
     (void)args;
     if (n != 0) return erro_aridade(vm, "len", 0, 0, n);
     PSString *s = COMO_STRING(alvo);
-    *out = MK_INT(utf8_conta(s->chars, s->len));
+    *out = MK_INT(str_ncp(s));
     return 0;
 }
 
@@ -7151,6 +7201,7 @@ static PSString *novo_bytes(VM *vm, const char *dados, int n)
     memcpy(b->chars, dados, (size_t)n);
     b->chars[n] = '\0';
     b->hash = 0;                       /* preguiçoso: ver str_hash */
+    b->ncp1 = 0; b->cache_cp = 0; b->cache_byte = 0;
     vm->alocado += sizeof(PSString) + (size_t)n + 1;
     return b;
 }
@@ -10302,7 +10353,7 @@ static int count_percorre(VM *vm, Value cont, int64_t tipo, const Value *val, in
     int n_itens;
     if (EH_SEQ(cont))         n_itens = COMO_LIST(cont)->len;
     else if (EH_DICT(cont))   n_itens = COMO_DICT(cont)->count;
-    else if (EH_STRING(cont)) n_itens = utf8_conta(COMO_STRING(cont)->chars, COMO_STRING(cont)->len);
+    else if (EH_STRING(cont)) n_itens = str_ncp(COMO_STRING(cont));
     else {
         /* Container que não se itera conta ZERO, não é erro — `count` é uma
          * pergunta ("quantos?"), e a resposta pra algo sem itens é nenhum. */
@@ -16192,6 +16243,7 @@ static PSString *resp_corpo(VM *vm, PSResponse *rp)
     b->len = (int)lidos;
     b->chars[lidos] = '\0';
     b->hash = 0;                       /* preguiçoso: ver str_hash */
+    b->ncp1 = 0; b->cache_cp = 0; b->cache_byte = 0;
     vm->alocado += sizeof(PSString) + rp->nbytes + 1;
     rp->corpo = MK_OBJ(b);
     return b;
@@ -24574,6 +24626,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 memcpy(r->chars + x->len, y->chars, (size_t)y->len);
                 r->chars[r->len] = '\0';
                 r->hash = 0;           /* preguiçoso: ver str_hash */
+                r->ncp1 = 0; r->cache_cp = 0; r->cache_byte = 0;
                 vm->alocado += sizeof(PSString) + (size_t)r->len + 1;
                 stack[sp - 1] = MK_OBJ(r);
             }
@@ -24589,6 +24642,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 memcpy(r->chars + x->len, y->chars, (size_t)y->len);
                 r->chars[r->len] = '\0';
                 r->hash = 0;           /* preguiçoso: ver str_hash */
+                r->ncp1 = 0; r->cache_cp = 0; r->cache_byte = 0;
                 vm->alocado += sizeof(PSString) + (size_t)r->len + 1;
                 stack[sp - 1] = MK_OBJ(r);
             }
@@ -26078,14 +26132,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 PSString *s = COMO_STRING(alvo);
                 int64_t i = idx.as.i;
                 /* índice em CARACTERES (codepoints), não em bytes — "pão"[1]
-                 * é "ã" inteiro, igual ao interp */
-                int64_t ncp = utf8_conta(s->chars, s->len);
+                 * é "ã" inteiro, igual ao interp. Contagem e posição vêm da
+                 * memória da própria string (str_ncp/str_byte_de). */
+                int64_t ncp = str_ncp(s);
                 /* mesma regra da lista: LEVANTA, e diz o tamanho em
                  * CARACTERES — que é a unidade do índice aqui, não bytes. */
                 if (i < -ncp || i >= ncp)
                     ERRO_T(vm, "IndexError", "string index out of range");
                 if (i < 0) i += ncp;
-                int b = utf8_byte_de(s->chars, s->len, i);
+                int b = str_byte_de(s, i);
                 uint32_t ponto;
                 int k = utf8_le(s->chars, s->len, b, &ponto);
                 if (!k) k = 1;
@@ -26301,7 +26356,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (EH_SEQ(alvo))         n = COMO_LIST(alvo)->len;
             /* string fatia em CARACTERES (codepoints), não em bytes — senão
              * "padrão"[0:5] cortava o "ã" no meio e divergia do interp */
-            else if (EH_STRING(alvo)) n = utf8_conta(COMO_STRING(alvo)->chars, COMO_STRING(alvo)->len);
+            else if (EH_STRING(alvo)) n = str_ncp(COMO_STRING(alvo));
             /* bytes fatia em BYTES (não tem codepoint): `b[1:3]` dava
              * "tipo nao fatiavel" e o interp já fatiava */
             else if (EH_BYTES(alvo))  n = COMO_BYTES(alvo)->len;
@@ -26364,12 +26419,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 TXTBUF_AUTO t = {0};
                 if (st == 1) {
                     /* caminho comum: uma faixa contígua de bytes */
-                    int b0 = utf8_byte_de(src->chars, src->len, i0);
-                    int b1 = utf8_byte_de(src->chars, src->len, i1);
+                    int b0 = str_byte_de(src, i0);
+                    int b1 = str_byte_de(src, i1);
                     if (b1 > b0 && txt_put(&t, src->chars + b0, b1 - b0) != 0) { ERRO(vm, "sem memoria"); }
                 } else {
                     for (int64_t i = i0; (st > 0 ? i < i1 : i > i1); i += st) {
-                        int b = utf8_byte_de(src->chars, src->len, i);
+                        int b = str_byte_de(src, i);
                         uint32_t ponto;
                         int k = utf8_le(src->chars, src->len, b, &ponto);
                         if (!k) k = 1;
@@ -27056,7 +27111,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     stack[sp - 1] = v;
                     goto membro_ok;
                 }
-                /* `private class Nome()` e `private funct f()` não saem do
+                /* `private class Nome {` e `private funct f()` não saem do
                  * arquivo — a frase diz que o nome existe */
                 if (rm == MEMBRO_PRIVADO)
                     ERRO_TF(vm, "AttributeError", "module '%s' has no attribute '%s'"
@@ -27846,6 +27901,60 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (!b) ERRO(vm, "sem memoria em base()");
             stack[sp - 1] = MK_OBJ(b);
             break;
+        }
+
+        PS_CASE(LOAD_BASE_MEMBRO) {
+            /* `base(Pai).membro`: [pai] -> [membro], com o self do frame.
+             * A ordem é a do `self.membro` numa instância: `private`, campo
+             * static do pai, método do pai (a versão DELE — a partir do pai,
+             * nunca da classe do self, senão o override da filha voltaria),
+             * campo da instância. */
+            Value paiv = stack[sp - 1];
+            if (!EH_CLASS(paiv)) ERRO(vm, "base() exige uma Entity pai");
+            PSClass *pai = COMO_CLASS(paiv);
+            const char *pnome = pai->nome ? pai->nome : "?";
+            Value nomev = p->consts[arg];
+            if (!EH_STRING(nomev)) ERRO(vm, "nome de membro invalido");
+            const char *nome = COMO_STRING(nomev)->chars;
+            Value selfv = lbase >= 0 ? vm->locals[lbase] : MK_NULL();
+            /* pai importado, que o checador não enxergou: confere aqui */
+            if (EH_INST(selfv) && !classe_descende_de(COMO_INST(selfv)->classe, pai))
+                ERRO_TF(vm, "RuntimeError", "'%s' nao e pai de '%s'", pnome,
+                        COMO_INST(selfv)->classe && COMO_INST(selfv)->classe->nome
+                            ? COMO_INST(selfv)->classe->nome : "?");
+            if (priv_barrado(pai, nome, (int32_t)(p - vm->protos)))
+                ERRO_TF(vm, "RuntimeError",
+                        "acesso negado: '%s' e private de %s (so acessivel de dentro da classe)",
+                        nome, pnome);
+            {
+                Value ev;
+                if (classe_estatico(pai, &nomev, &ev) == 0) {
+                    stack[sp - 1] = ev;
+                    break;
+                }
+            }
+            Value metv = MK_NULL();
+            int32_t mp = acha_metodo(pai, nome, &metv);
+            if (mp >= 0) {
+                vm->sp = sp; vm->locals_top = locals_top;
+                PSBound *b = novo_bound(vm, selfv, vm->protos[mp].eh_static ? MK_FUNC(mp) : metv);
+                if (!b) ERRO(vm, "sem memoria");
+                stack[sp - 1] = MK_OBJ(b);
+                break;
+            }
+            if (EH_INST(selfv)) {
+                PSInstance *inst = COMO_INST(selfv);
+                Value v;
+                if (inst->campos && dict_get(inst->campos, &nomev, &v) == 0) {
+                    stack[sp - 1] = v;
+                    break;
+                }
+            }
+            {
+                char dica[160];
+                ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'%s",
+                        pnome, nome, dica_membro(paiv, nome, dica, sizeof(dica)));
+            }
         }
 
         PS_CASE(CALL_BASE) {

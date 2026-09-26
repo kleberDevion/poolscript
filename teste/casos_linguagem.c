@@ -151,7 +151,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(l)\n",
   "[3, 2, 1]", NULL, 0 },
 { "alvo membro de Entity",
-  "Entity O() {\n"
+  "Entity O {\n"
   "    x: int\n"
   "    y: int\n"
   "}\n"
@@ -160,7 +160,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(o.x, o.y)\n",
   "5 6", NULL, 0 },
 { "alvo em cadeia: membro e depois indice",
-  "Entity O() {\n"
+  "Entity O {\n"
   "    d: dict\n"
   "}\n"
   "o = O({})\n"
@@ -244,7 +244,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * empurrado pra lista de METODOS (que so olha N_ACTION_DECL). Compilava,
  * sumia, e `self.x` dava AttributeError sem uma linha de aviso. */
 { "campo declarado no construtor, com tipo e visibilidade",
-  "private Class Pagamento() {\n"
+  "private Class Pagamento {\n"
   "    public funct __init__(self, nome, doc) {\n"
   "        private str name = nome\n"
   "        private int cpf = doc\n"
@@ -258,7 +258,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "campo private declarado no construtor BARRA de fora",
   /* Registrar a visibilidade e o ponto: `private` que compila e nao barra e
    * pior que nao ter encapsulamento, porque parece que tem. */
-  "Class A() {\n"
+  "Class A {\n"
   "    public funct __init__(self, nome) {\n"
   "        private str name = nome\n"
   "    }\n"
@@ -266,7 +266,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(A(\"ana\").name)\n",
   "", "acesso negado: 'name' e private de A", 1 },
 { "public declarado no construtor NAO barra",
-  "Class A() {\n"
+  "Class A {\n"
   "    public funct __init__(self, nome) {\n"
   "        public str name = nome\n"
   "    }\n"
@@ -274,7 +274,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(A(\"ana\").name)\n",
   "ana", NULL, 0 },
 { "o tipo do campo e conferido como o da variavel",
-  "Class A() {\n"
+  "Class A {\n"
   "    public funct __init__(self) {\n"
   "        private int n = 5.9\n"
   "    }\n"
@@ -282,7 +282,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "a = A()\n",
   "", "AttributedValueError: campo n de A esperava int, recebeu flo", 2 },
 { "tipo nao escalar guarda sem conferir, como na variavel",
-  "Class A() {\n"
+  "Class A {\n"
   "    public funct __init__(self) {\n"
   "        public list itens = [1, 2]\n"
   "    }\n"
@@ -291,21 +291,21 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(A().ver())\n",
   "[1, 2]", NULL, 0 },
 { "a mesma declaracao vale NO CORPO da classe",
-  "Class A() {\n"
+  "Class A {\n"
   "    str x = \"a\"\n"
   "    public funct ver(self) { return self.x }\n"
   "}\n"
   "post(A().ver())\n",
   "a", NULL, 0 },
 { "no corpo da classe, sem default, vira parametro do construtor",
-  "Class A() {\n"
+  "Class A {\n"
   "    str x\n"
   "    public funct ver(self) { return self.x }\n"
   "}\n"
   "post(A(\"oi\").ver())\n",
   "oi", NULL, 0 },
 { "private no corpo da classe pela forma nova tambem barra",
-  "Class A() {\n"
+  "Class A {\n"
   "    private str x = \"a\"\n"
   "}\n"
   "post(A().x)\n",
@@ -314,7 +314,7 @@ const Caso CASOS_LINGUAGEM[] = {
   /* A condicao que separa `int funct f()` de `str x = 1` no corpo da
    * classe: depois do tipo de RETORNO vem sempre outra palavra da
    * linguagem. */
-  "Class A() {\n"
+  "Class A {\n"
   "    int funct f(self) { return 7 }\n"
   "    public async int funct g(self) { return 8 }\n"
   "}\n"
@@ -323,7 +323,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "7 8", NULL, 0 },
 { "a ordem 'nome: tipo' dentro da funct diz o conserto",
   /* Era `SyntaxError: expressao invalida` apontando pro ':'. */
-  "Class A() {\n"
+  "Class A {\n"
   "    public funct __init__(self, nome) {\n"
   "        private name: str = nome\n"
   "    }\n"
@@ -331,7 +331,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "", "dentro de uma funct escreva 'private <tipo> name = <valor>'", 2 },
 { "private sem tipo nenhum nao passa mais calado",
   /* Antes: compilava, e `private` virava um nome inexistente em runtime. */
-  "Class A() {\n"
+  "Class A {\n"
   "    public funct __init__(self, nome) {\n"
   "        private name = nome\n"
   "    }\n"
@@ -359,7 +359,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "3 -4 3", NULL, 0 },
 
 { "private class e private funct continuam valendo",
-  "private Class A() {\n"
+  "private Class A {\n"
   "    private saldo: int\n"
   "    public funct ver(self) { return self.saldo }\n"
   "    private funct log(self) { return \"x\" }\n"
@@ -596,7 +596,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(fora())\n",
   "0", NULL, 0 },
 { "aninhada dentro de método enxerga self",
-  "Entity C() {\n"
+  "Entity C {\n"
   "    funct __init__(self) {\n"
   "        self.v = 3\n"
   "    }\n"
@@ -996,7 +996,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(f(1, 2))\n",
   "", "takes 1 positional argument but 2 were given", -1 },
 { "metodo, @static, padrao, *args e nomeado seguem funcionando",
-  "Entity P() {\n"
+  "Entity P {\n"
   "    funct __init__(self, n) { self.n = n }\n"
   "    funct mais(self, k) { return self.n + k }\n"
   "    @static\n"
@@ -1078,7 +1078,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "funct d(a, b = 2) { return a + b }\n"
   "funct v(*args) { return len(args) }\n"
   "funct g() { yield 1\n yield 2 }\n"
-  "Entity P() {\n"
+  "Entity P {\n"
   "    funct __init__(self, n) { self.n = n }\n"
   "    funct dobro(self) { return self.n * 2 }\n"
   "}\n"
@@ -1371,14 +1371,14 @@ const Caso CASOS_LINGUAGEM[] = {
   "    post(f())\n"
   "}\n", "1", NULL, 0 },
 { "metodo ':' dentro de Entity de chaves",
-  "Entity P() {\n"
+  "Entity P {\n"
   "    funct m(self) {\n"
   "        return 3\n"
   "    }\n"
   "}\n"
   "post(P().m())\n", "3", NULL, 0 },
 { "metodo de chaves dentro de Entity ':'",
-  "Entity Q() {\n"
+  "Entity Q {\n"
   "    funct m(self) {\n"
   "        return 4\n"
   "    }\n"
@@ -1478,7 +1478,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * atribuições de `h` reocupam a memória da declaração anterior. */
 { "tipo fixado por global de dentro de funct sobrevive a declaracao seguinte",
   "g = Null\n"
-  "Entity Bar() {\n"
+  "Entity Bar {\n"
   "    funct __init__(self) {\n"
   "        self.x = 1\n"
   "    }\n"
@@ -1591,7 +1591,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "pass e palavra reservada",
   "pass = 1\n", "", "palavra reservada", 2 },
 { "pass no corpo de classe",
-  "class Vazia() {\n"
+  "class Vazia {\n"
   "    pass\n"
   "}\n"
   "post(type(Vazia))\n", "Entity", NULL, 0 },
@@ -1687,7 +1687,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "bloco com ':' numa linha so tambem e recusado",
   "if true: post(\"A\")\n", "", "bloco com ':' nao existe mais", 2 },
 { "Entity com ':' e recusada",
-  "Entity A():\n    funct m(self) { return 1 }\n", "", "bloco com ':' nao existe mais", 2 },
+  "Entity A:\n    funct m(self) { return 1 }\n", "", "bloco com ':' nao existe mais", 2 },
 { "a mensagem diz o que usar no lugar",
   "while true:\n    break\n", "", "use '{ }'", 2 },
 { "dicionario com ':' continua valendo",
@@ -1695,7 +1695,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "fatia com ':' continua valendo",
   "post(\"abcdef\"[1:3], [1,2,3][0:2])\n", "bc [1, 2]", NULL, 0 },
 { "campo tipado de Entity com ':' continua valendo",
-  "Entity P() {\n    nome: str\n}\np = P(\"ana\")\npost(p.nome)\n", "ana", NULL, 0 },
+  "Entity P {\n    nome: str\n}\np = P(\"ana\")\npost(p.nome)\n", "ana", NULL, 0 },
 
 /* ── closure DENTRO de módulo importado ─────────────────────────────────────
  * O índice de proto do `OP_MAKE_CLOSURE` e o índice de global do
@@ -1989,7 +1989,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * grafia do mesmo no (`nome: tipo`, `tipo nome`, `nome = valor`), dinamica
  * como `x = 1`, e entra no construtor sintetizado como argumento opcional. */
 { "campo sem tipo no corpo da classe: `nome = valor`, `private nome = valor`",
-  "class P() {\n"
+  "class P {\n"
   "    nome = \"a\"\n"
   "    private conexao = \"\"\n"
   "    LIMITE = 10\n"
@@ -2089,7 +2089,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "", "AttributedValueError: variável l esperava list, recebeu str", 2 },
 { "tipagem estatica: Object recebe instancia de classe e o app do jinker",
   "from jinker import Jinker\n"
-  "class C() {\n"
+  "class C {\n"
   "    funct m(self) {\n"
   "        return 1\n"
   "    }\n"
@@ -2113,7 +2113,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "Object f = funct(){ return 1 }\npost(type(f), f())\n", "funct 1", NULL, 0 },
 { "Object aceita funct nomeada, builtin e metodo",
   "funct nom() { return 1 }\n"
-  "class C() { funct m(self) { return 2 } }\n"
+  "class C { funct m(self) { return 2 } }\n"
   "Object a = nom\nObject b = post\nObject c = C().m\n"
   "post(a(), c())\n", "1 2", NULL, 0 },
 { "Object no parametro aceita funct",
@@ -2207,7 +2207,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n",
   "dois", NULL, 0 },
 { "Entity sem __init__ e sem campo nao recebe argumento",
-  "Entity Zero() {\n"
+  "Entity Zero {\n"
   "    funct m(self) {\n"
   "        return 1\n"
   "    }\n"
@@ -2216,7 +2216,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "Zero(1, 2, 3)\n",
   "1", "TypeError: Zero() takes no arguments (3 given)", 1 },
 { "@static chamado pela instancia: a mensagem diz pra chamar pela Entity",
-  "Entity Mat() {\n"
+  "Entity Mat {\n"
   "    @static\n"
   "    funct soma(a, b) {\n"
   "        return a + b\n"
@@ -2255,7 +2255,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * nunca era registrada e o cliente via 404 — sem aviso. O `register` abaixo
  * imprime quando é chamado; o caso reprova se o decorador não pegar. */
 { "decorador pega `int async funct` (tipo antes de async)",
-  "class Reg() {\n"
+  "class Reg {\n"
   "    funct reg(self) {\n"
   "        return self\n"
   "    }\n"
@@ -2271,7 +2271,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n",
   "registrou", NULL, 0 },
 { "decorador pega `public int async funct` e `bool async funct`",
-  "class Reg() {\n"
+  "class Reg {\n"
   "    funct reg(self) {\n"
   "        return self\n"
   "    }\n"
@@ -2412,20 +2412,20 @@ const Caso CASOS_LINGUAGEM[] = {
 { "post de uma funct imprime <funct #N>",
   "funct f() {\n    return 1\n}\npost(f)\n", "<funct #1>", NULL, 0 },
 { "static colado: chamavel pela Entity",
-  "Entity Mat() {\n    static funct soma(a, b) {\n        return a + b\n    }\n}\n"
+  "Entity Mat {\n    static funct soma(a, b) {\n        return a + b\n    }\n}\n"
   "post(Mat.soma(1, 2))\n", "3", NULL, 0 },
 { "static colado: pela instancia e erro, e a mensagem fala em static",
-  "Entity Mat() {\n    static funct soma(a, b) {\n        return a + b\n    }\n}\n"
+  "Entity Mat {\n    static funct soma(a, b) {\n        return a + b\n    }\n}\n"
   "m = Mat()\nm.soma(1, 2)\n",
   "", "RuntimeError: funct 'soma' e static: chame pela Entity (Tipo.soma(...)), nao pela instancia", 1 },
 { "nonnull colado: valor passa, Null nao",
   "nonnull funct e(v) {\n    return v\n}\npost(e(5))\ne(Null)\n",
   "5", "nonnull: parametro 'v' em 'e' nao pode ser Null", 1 },
 { "modificadores colados em qualquer ordem: private static int funct",
-  "Entity K() {\n    private static int funct tres() {\n        return 3\n    }\n}\n"
+  "Entity K {\n    private static int funct tres() {\n        return 3\n    }\n}\n"
   "post(K.tres())\n", "3", NULL, 0 },
 { "modificadores colados em qualquer ordem: static nonnull funct",
-  "Entity K() {\n    static nonnull funct eco(x) {\n        return x\n    }\n}\n"
+  "Entity K {\n    static nonnull funct eco(x) {\n        return x\n    }\n}\n"
   "post(K.eco(\"ok\"))\n", "ok", NULL, 0 },
 { "modificadores colados em qualquer ordem: nonnull async funct",
   "nonnull async funct f(v) {\n    return v\n}\npost(gather(f(7))[0])\n", "7", NULL, 0 },
@@ -2435,21 +2435,21 @@ const Caso CASOS_LINGUAGEM[] = {
  * metodo static, da classe e dos pais, em metodo comum ou static. So o campo
  * entrava; `s()` solto passava no --check e dava NameError rodando. */
 { "metodo static pelo nome solto, de metodo comum e de metodo static",
-  "class A() {\n    public static int total = 3\n    static funct s() {\n        return 1\n    }\n"
+  "class A {\n    public static int total = 3\n    static funct s() {\n        return 1\n    }\n"
   "    funct n(self) {\n        return s() + total\n    }\n    static funct t() {\n        return s()\n    }\n}\n"
   "post(A().n(), A.t())\n", "4 1", NULL, 0 },
 { "static do PAI pelo nome solto na classe filha (campo e metodo)",
-  "class Pai() {\n    public static int total = 7\n    static funct s() {\n        return 2\n    }\n}\n"
+  "class Pai {\n    public static int total = 7\n    static funct s() {\n        return 2\n    }\n}\n"
   "class Filha(Pai) {\n    funct f(self) {\n        return total + s()\n    }\n}\npost(Filha().f())\n",
   "9", NULL, 0 },
 { "static solto: a aridade do metodo e conferida antes de rodar, como em A.s()",
-  "class A() {\n    static funct s(a) {\n        return a\n    }\n    funct n(self) {\n        return s(1, 2)\n    }\n}\n",
+  "class A {\n    static funct s(a) {\n        return a\n    }\n    funct n(self) {\n        return s(1, 2)\n    }\n}\n",
   "", "TypeError: s() takes 1 positional argument but 2 were given", 2 },
 { "metodo COMUM pelo nome solto nao existe: NameError antes de rodar (era so rodando)",
-  "class A() {\n    funct m(self) {\n        return 1\n    }\n    funct n(self) {\n        return m()\n    }\n}\npost(A().n())\n",
+  "class A {\n    funct m(self) {\n        return 1\n    }\n    funct n(self) {\n        return m()\n    }\n}\npost(A().n())\n",
   "", "NameError: name 'm' is not defined", 2 },
 { "parametro com o mesmo nome ganha do static (o nome solto e o parametro)",
-  "class A() {\n    public static int total = 1\n    funct n(self, total) {\n        return total\n    }\n}\npost(A().n(\"p\"))\n",
+  "class A {\n    public static int total = 1\n    funct n(self, total) {\n        return total\n    }\n}\npost(A().n(\"p\"))\n",
   "p", NULL, 0 },
 { "NonNull colado, na grafia do decorador antigo",
   "NonNull funct e(v) {\n    return v\n}\ne(Null)\n",
@@ -2463,19 +2463,19 @@ const Caso CASOS_LINGUAGEM[] = {
  * As 24 permutacoes de {public, int, static, async} foram medidas; aqui ficam
  * as que cobrem cada posicao do que quebrava. */
 { "Entity: `public int static funct` (a ordem dele) e chamavel pelo tipo",
-  "Entity A() {\n    public int static funct r(n) {\n        return n\n    }\n}\npost(A.r(2))\n",
+  "Entity A {\n    public int static funct r(n) {\n        return n\n    }\n}\npost(A.r(2))\n",
   "2", NULL, 0 },
 { "Entity: visibilidade DEPOIS do modificador (`static public funct`)",
-  "Entity A() {\n    static public funct b(n) {\n        return n\n    }\n}\npost(A.b(3))\n",
+  "Entity A {\n    static public funct b(n) {\n        return n\n    }\n}\npost(A.b(3))\n",
   "3", NULL, 0 },
 { "Entity: `int static funct` sem visibilidade nenhuma",
-  "Entity A() {\n    int static funct d(n) {\n        return n\n    }\n}\npost(A.d(4))\n",
+  "Entity A {\n    int static funct d(n) {\n        return n\n    }\n}\npost(A.d(4))\n",
   "4", NULL, 0 },
 { "Entity: `static private funct` mantem o private lido na cabeca",
-  "Entity A() {\n    static private funct p(n) {\n        return n\n    }\n}\nx = A()\nx.p(1)\n",
+  "Entity A {\n    static private funct p(n) {\n        return n\n    }\n}\nx = A()\nx.p(1)\n",
   "", "acesso negado: 'p' e private de A (so acessivel de dentro da classe)", 1 },
 { "Entity: campo `int y = 2` continua campo ao lado de funct com modificador",
-  "Entity A() {\n    static funct m(n) {\n        return n\n    }\n    int y = 2\n}\n"
+  "Entity A {\n    static funct m(n) {\n        return n\n    }\n    int y = 2\n}\n"
   "post(A.m(1), A(2).y)\n", "1 2", NULL, 0 },
 { "topo: a ordem tambem e livre fora de Entity",
   "static private int funct f(n) {\n    return n\n}\npost(f(9))\n", "9", NULL, 0 },
@@ -2525,7 +2525,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "action g() {\n    return 1\n}\n",
   "", "'action' saiu da linguagem; a funcao se declara com 'funct': funct g(args) { ... }", 2 },
 { "grafia morta: metodo de Entity",
-  "Entity A() {\n    action m(self) {\n        return 1\n    }\n}\n",
+  "Entity A {\n    action m(self) {\n        return 1\n    }\n}\n",
   "", "'action' saiu da linguagem; o metodo se declara com 'funct': funct m(self) { ... }", 2 },
 { "grafia morta: lambda",
   "x = action(y) {\n    return y\n}\n",
@@ -2536,7 +2536,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "`action` como NOME comum continua valendo (nao e mais reservada)",
   "action = 5\nreaction = 2\npost(action + reaction)\n", "7", NULL, 0 },
 { "@static continua valendo junto com o modificador colado",
-  "Entity M() {\n    @static\n    funct velha(a) {\n        return a\n    }\n"
+  "Entity M {\n    @static\n    funct velha(a) {\n        return a\n    }\n"
   "    static funct nova(a) {\n        return a\n    }\n}\n"
   "post(M.velha(1), M.nova(2))\n", "1 2", NULL, 0 },
 { "@NonNull continua valendo",
@@ -2576,7 +2576,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "list funct vale como retorno",
   "list funct f() {\n    return [1, 2]\n}\npost(f())\n", "[1, 2]", NULL, 0 },
 { "nome de classe vale como tipo de retorno",
-  "class P() {\n    funct __init__(self, n) {\n        self.n = n\n    }\n}\n"
+  "class P {\n    funct __init__(self, n) {\n        self.n = n\n    }\n}\n"
   "P funct cria(n) {\n    return P(n)\n}\npost(cria(7).n)\n", "7", NULL, 0 },
 /* O apelido resolve pro canonico: `string` E `str`. */
 { "apelido de tipo vale como retorno",
@@ -2587,13 +2587,13 @@ const Caso CASOS_LINGUAGEM[] = {
  * tipo `static`. O metodo sumia da classe e o arquivo rodava sem erro nenhum e
  * sem fazer nada — foi assim que ele apareceu. */
 { "apelido de tipo na cabeca dentro de classe nao vira campo",
-  "public class C() {\n    public static string funct main() {\n        post(\"rodou\")\n        return \"rodou\"\n    }\n}\n"
+  "public class C {\n    public static string funct main() {\n        post(\"rodou\")\n        return \"rodou\"\n    }\n}\n"
   "C.main()\n",
   "rodou", NULL, 0 },
 { "static colado registra o metodo como estatico",
-  "class C() {\n    static funct m() {\n        post(\"ok\")\n    }\n}\nC.m()\n", "ok", NULL, 0 },
+  "class C {\n    static funct m() {\n        post(\"ok\")\n    }\n}\nC.m()\n", "ok", NULL, 0 },
 { "static continua valendo depois do tipo",
-  "class C() {\n    str static funct m() {\n        post(\"ok\")\n        return \"ok\"\n    }\n}\nC.m()\n",
+  "class C {\n    str static funct m() {\n        post(\"ok\")\n        return \"ok\"\n    }\n}\nC.m()\n",
   "ok", NULL, 0 },
 
 /* ── campo `static`, 2026-09-08 ────────────────────────────────────────────
@@ -2602,57 +2602,57 @@ const Caso CASOS_LINGUAGEM[] = {
  * `self.x` na instancia. Sem ele, `App.mapp` nao existia e um metodo static
  * nao tinha como enxergar o campo — o arquivo dele rodava sem fazer nada. */
 { "campo static: Classe.x e nome solto em metodo static",
-  "class C(){\n    static int x = 7\n    static funct le(){ return x }\n}\npost(C.x, C.le())\n", "7 7", NULL, 0 },
+  "class C {\n    static int x = 7\n    static funct le(){ return x }\n}\npost(C.x, C.le())\n", "7 7", NULL, 0 },
 { "campo static: modificadores em qualquer ordem",
-  "class C(){\n    static public int x = 7\n    private static int y = 8\n}\npost(C.x, C.y)\n", "7 8", NULL, 0 },
+  "class C {\n    static public int x = 7\n    private static int y = 8\n}\npost(C.x, C.y)\n", "7 8", NULL, 0 },
 { "campo static sem inicializador nasce Null",
-  "class C(){\n    static int x\n}\npost(C.x)\n", "Null", NULL, 0 },
+  "class C {\n    static int x\n}\npost(C.x)\n", "Null", NULL, 0 },
 { "campo static e UM so: instancias leem e a reescrita e da classe",
-  "class K(){\n    static int n = 0\n    funct inc(self){ K.n = K.n + 1 }\n}\na = K()\nb = K()\na.inc()\nb.inc()\npost(K.n, a.n, b.n)\n", "2 2 2", NULL, 0 },
+  "class K {\n    static int n = 0\n    funct inc(self){ K.n = K.n + 1 }\n}\na = K()\nb = K()\na.inc()\nb.inc()\npost(K.n, a.n, b.n)\n", "2 2 2", NULL, 0 },
 /* Parametro com o mesmo nome GANHA do campo static; o herdado le-se por
  * `self.`/`Classe.` (o nome solto cobre os static da propria classe). */
 { "campo static: local ganha, heranca por self. e Classe.",
-  "class B(){\n    static int fundo = 1\n}\nclass C(B){\n    static int x = 7\n"
+  "class B {\n    static int fundo = 1\n}\nclass C(B){\n    static int x = 7\n"
   "    funct m(self, x){ return x }\n    funct s(self){ return self.x + self.fundo }\n"
   "    static funct t(){ return x + C.fundo }\n}\nc = C()\npost(c.m(99), c.s(), C.fundo, C.t())\n",
   "99 8 1 8", NULL, 0 },
 { "campo static nao entra no __init__ sintetizado",
-  "class P(){\n    static int total = 0\n    str nome\n    int idade = 3\n}\np = P(\"ana\")\npost(p.nome, p.idade, P.total)\n",
+  "class P {\n    static int total = 0\n    str nome\n    int idade = 3\n}\np = P(\"ana\")\npost(p.nome, p.idade, P.total)\n",
   "ana 3 0", NULL, 0 },
 /* ── decorador `@obj.metodo()` DENTRO da classe, 2026-09-08 ────────────────
  * Era descartado pelo compilador: o metodo compilava sem registro nenhum e a
  * rota nunca existia, calada. Agora vale nas tres posicoes — funct solta, em
  * cima da classe e em cima do metodo — pelo MESMO protocolo (register). */
 { "decorador @obj.m() nas tres posicoes: funct, classe, metodo",
-  "class Reg(){\n    funct __init__(self){ self.v = [] }\n"
+  "class Reg {\n    funct __init__(self){ self.v = [] }\n"
   "    funct rota(self, c){ self.c = c\n        return self }\n"
   "    funct register(self, h){ addEnd(self.v, self.c)\n        return h }\n}\nr = Reg()\n"
   "@r.rota(\"/funct\")\nfunct f(){ return 1 }\n"
-  "@r.rota(\"/classe\")\nclass H(){\n    funct handler(self){ return 1 }\n}\n"
-  "class D(){\n    @r.rota(\"/dentro\")\n    static funct h(){ return 1 }\n"
+  "@r.rota(\"/classe\")\nclass H {\n    funct handler(self){ return 1 }\n}\n"
+  "class D {\n    @r.rota(\"/dentro\")\n    static funct h(){ return 1 }\n"
   "    @r.rota(\"/inst\")\n    funct i(self){ return 1 }\n}\npost(r.v)\n",
   "['/funct', '/classe', '/dentro', '/inst']", NULL, 0 },
 /* O arquivo dele: campo static + decorador no corpo usando o campo. */
 { "decorador no corpo da classe le campo static da propria classe",
-  "class Reg(){\n    funct __init__(self){ self.v = [] }\n"
+  "class Reg {\n    funct __init__(self){ self.v = [] }\n"
   "    funct rota(self, c){ self.c = c\n        return self }\n"
   "    funct register(self, h){ addEnd(self.v, self.c)\n        return h }\n}\n"
-  "public class App(){\n    public static object mapp = Reg()\n"
+  "public class App {\n    public static object mapp = Reg()\n"
   "    @mapp.rota(\"/opa\")\n    public string static funct handler(data){ return \"ok\" }\n}\n"
   "post(App.mapp.v)\n",
   "['/opa']", NULL, 0 },
 /* Sem o `static` o decorador nao tem como ler o campo — e a mensagem diz o
  * que falta, em vez de um NameError apontando pra linha da classe. */
 { "decorador no corpo lendo campo de INSTANCIA e recusado com a palavra certa",
-  "class Reg(){\n    funct rota(self, c){ return self }\n}\n"
-  "class App(){\n    object mapp = Reg()\n    @mapp.rota(\"/x\")\n    static funct h(){ return 1 }\n}\n",
+  "class Reg {\n    funct rota(self, c){ return self }\n}\n"
+  "class App {\n    object mapp = Reg()\n    @mapp.rota(\"/x\")\n    static funct h(){ return 1 }\n}\n",
   "", "campo de instancia", 2 },
 /* A ordem dos modificadores do CAMPO e de quem escreve, como na cabeca de
  * funct. `private object static nome` era lido com `static` como o NOME do
  * campo: virava campo de instancia chamado `static`, calado, e `C.nome` nao
  * existia. As dez ordens abaixo tem que dar o mesmo. */
 { "campo static: modificador antes OU depois do tipo, qualquer ordem",
-  "class C(){\n"
+  "class C {\n"
   "    static int a = 1\n"
   "    private static int b = 2\n"
   "    static private int c = 3\n"
@@ -2665,7 +2665,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\npost(C.a, C.b, C.c, C.d, C.e, C.f, C.g, C.h, C.i)\n",
   "1 2 3 4 5 6 7 8 9", NULL, 0 },
 { "funct: modificador depois do tipo continua valendo",
-  "class C(){\n    int private static funct m(){ return 1 }\n}\npost(C.m())\n",
+  "class C {\n    int private static funct m(){ return 1 }\n}\npost(C.m())\n",
   "1", NULL, 0 },
 
 /* ── import por caminho entre aspas (`import '../x.pr'`), 2026-09-06 ───────
@@ -2969,11 +2969,11 @@ const Caso CASOS_LINGUAGEM[] = {
   "funct pad(str a, int n = 2) { return a * n }\npost(pad(\"x\"), pad(\"x\", 3))\n",
   "xx xxx", NULL, 0 },
 { "o tipo vale no METODO da Entity",
-  "Entity P() {\n  str nome\n  public str funct diz(self, str saud) { return saud + self.nome }\n}\n"
+  "Entity P {\n  str nome\n  public str funct diz(self, str saud) { return saud + self.nome }\n}\n"
   "P p = P(\"Ana\")\npost(p.diz(\"ola \"))\np.diz(9)\n",
   "", "AttributedValueError: parâmetro saud de diz() esperava str, recebeu int", 2 },
 { "o tipo vale no metodo static chamado na Entity",
-  "Entity P() {\n  str nome\n  @static\n  public static funct cria(str nome) { return P(nome) }\n}\n"
+  "Entity P {\n  str nome\n  @static\n  public static funct cria(str nome) { return P(nome) }\n}\n"
   "post(P.cria(\"Ana\").nome)\nP.cria(1)\n",
   "", "AttributedValueError: parâmetro nome de cria() esperava str, recebeu int", 2 },
 { "o tipo vale na lambda",
@@ -2987,11 +2987,11 @@ const Caso CASOS_LINGUAGEM[] = {
   "async funct af(str s) { post(s) }\ngather([af(1)])\n",
   "", "AttributedValueError: parâmetro s de af() esperava str, recebeu int", 2 },
 { "nome de Entity serve de tipo, e subclasse passa (como em Java)",
-  "Entity Animal() { str nome }\nEntity Cachorro(Animal) { }\n"
+  "Entity Animal { str nome }\nEntity Cachorro(Animal) { }\n"
   "funct fala(Animal a) { post(a.nome) }\nfala(Cachorro(\"Rex\"))\n",
   "Rex", NULL, 0 },
 { "Entity errada no lugar de outra e recusada",
-  "Entity Animal() { str nome }\nEntity Carro() { str nome }\n"
+  "Entity Animal { str nome }\nEntity Carro { str nome }\n"
   "funct fala(Animal a) { post(a.nome) }\nfala(Carro(\"Fusca\"))\n",
   "", "AttributedValueError: parâmetro a de fala() esperava Animal, recebeu Carro", 2 },
 { "PoolFile serve de tipo de parametro — o handle do open() E PoolFile",
@@ -3133,8 +3133,8 @@ const Caso CASOS_LINGUAGEM[] = {
 { "break fora de laco e SyntaxError, rc 2",
   "break\n", "", "SyntaxError: 'break' fora de laco", 2 },
 { "base() com posicional depois de nomeado e SyntaxError, rc 2 (era rc 3)",
-  "Entity A() { int x\n    funct __init__(self, x, b) { self.x = x } }\n"
-  "Entity B(A) {\n    funct __init__(self) { base(1, b=2, 3) }\n}\nB()\n", "",
+  "Entity A { int x\n    funct __init__(self, x, b) { self.x = x } }\n"
+  "Entity B(A) {\n    funct __init__(self) { base().__init__(1, b=2, 3) }\n}\nB()\n", "",
   "SyntaxError: argumento posicional depois de nomeado", 2 },
 /* Limite do motor continua rc 3, mas a frase diz que e limite — antes o
  * estouro de 32 lacos era SILENCIOSO: o chamador escrevia no laco de fora e
@@ -3260,18 +3260,18 @@ const Caso CASOS_LINGUAGEM[] = {
 { "membro errado em list sugere o metodo de list",
   "xs = [1]\nxs.apend(2)\n", "", "'list' object has no attribute 'apend'. Did you mean: 'append'?", 2 },
 { "membro errado numa Entity: sugere o metodo, antes de rodar",
-  "class Conta() {\n    funct __init__(self) { self.saldo = 1 }\n    funct extrato(self) { return self.saldo }\n}\n"
+  "class Conta {\n    funct __init__(self) { self.saldo = 1 }\n    funct extrato(self) { return self.saldo }\n}\n"
   "c = Conta()\npost(c.extrat())\n", "",
   "AttributeError: 'Conta' object has no attribute 'extrat'. Did you mean: 'extrato'?", 2 },
 { "membro errado numa Entity vindo de parametro sem tipo: a mesma frase rodando",
-  "class Conta() {\n    funct __init__(self) { self.saldo = 1 }\n    funct extrato(self) { return self.saldo }\n}\n"
+  "class Conta {\n    funct __init__(self) { self.saldo = 1 }\n    funct extrato(self) { return self.saldo }\n}\n"
   "funct f(c) {\n    return c.extrat()\n}\npost(f(Conta()))\n", "",
   "AttributeError: 'Conta' object has no attribute 'extrat'. Did you mean: 'extrato'?", 1 },
 { "campo errado numa Entity: sugere o campo gravado em self",
-  "class Conta() {\n    funct __init__(self) { self.saldo = 1 }\n}\nc = Conta()\npost(c.sald)\n", "",
+  "class Conta {\n    funct __init__(self) { self.saldo = 1 }\n}\nc = Conta()\npost(c.sald)\n", "",
   "'Conta' object has no attribute 'sald'. Did you mean: 'saldo'?", 2 },
 { "metodo static errado pela classe: sugere",
-  "class K() {\n    static funct dobro(n) { return n * 2 }\n}\npost(K.dobr(2))\n", "",
+  "class K {\n    static funct dobro(n) { return n * 2 }\n}\npost(K.dobr(2))\n", "",
   "'K' object has no attribute 'dobr'. Did you mean: 'dobro'?", 2 },
 { "nome sem parecido nenhum: a frase fica como era",
   "s = \"abc\"\npost(s.zzzz())\n", "", "AttributeError: 'str' object has no attribute 'zzzz'", 2 },
@@ -3388,10 +3388,10 @@ const Caso CASOS_LINGUAGEM[] = {
 /* Argumentos demais com default: metodo e funct escondiam o minimo; so a
  * instanciacao e OP_CALL_KW diziam "from N to M". */
 { "metodo com default: argumentos demais diz o intervalo",
-  "Entity C() {\n    funct soma(self, a, b = 2) {\n        return a + b\n    }\n}\nc = C()\nc.soma(1, 2, 3)\n",
+  "Entity C {\n    funct soma(self, a, b = 2) {\n        return a + b\n    }\n}\nc = C()\nc.soma(1, 2, 3)\n",
   "", "TypeError: soma() takes from 2 to 3 positional arguments but 4 were given", 2 },
 { "@static com default: argumentos demais diz o intervalo sem contar self",
-  "Entity C() {\n    @static\n    funct soma(a, b = 2) {\n        return a + b\n    }\n}\nC.soma(1, 2, 3)\n",
+  "Entity C {\n    @static\n    funct soma(a, b = 2) {\n        return a + b\n    }\n}\nC.soma(1, 2, 3)\n",
   "", "TypeError: soma() takes from 1 to 2 positional arguments but 3 were given", 2 },
 { "funct sem default segue com a frase simples",
   "funct f(a) {\n    return a\n}\npost(f(1, 2))\n",
@@ -3406,14 +3406,98 @@ const Caso CASOS_LINGUAGEM[] = {
 /* base() num pai sem __init__ nem campos: o caminho posicional engolia os
  * argumentos calado e o nomeado levantava. Agora os dois levantam. */
 { "base() posicional em pai sem __init__ e TypeError",
-  "Entity A() {\n}\nEntity B(A) {\n    funct __init__(self, nome) {\n        base(nome)\n    }\n}\nB(\"som\")\n",
-  "", "TypeError: base(): a Entity pai 'A' nao tem __init__", 1 },
+  "Entity A {\n}\nEntity B(A) {\n    funct __init__(self, nome) {\n        base().__init__(nome)\n    }\n}\nB(\"som\")\n",
+  "", "TypeError: base(): a Entity pai 'A' nao tem __init__", 2 },
 { "base() nomeado em pai sem __init__ da a MESMA frase",
-  "Entity A() {\n}\nEntity B(A) {\n    funct __init__(self, nome) {\n        base(nome=nome)\n    }\n}\nB(\"som\")\n",
-  "", "TypeError: base(): a Entity pai 'A' nao tem __init__", 1 },
+  "Entity A {\n}\nEntity B(A) {\n    funct __init__(self, nome) {\n        base().__init__(nome=nome)\n    }\n}\nB(\"som\")\n",
+  "", "TypeError: base(): a Entity pai 'A' nao tem __init__", 2 },
 { "base() em pai com construtor de campos segue funcionando",
-  "Entity A() {\n    nome: str\n}\nEntity B(A) {\n    funct __init__(self, nome, y) {\n        base(nome)\n        self.y = y\n    }\n}\nb = B(\"ana\", 2)\npost(b.nome, b.y)\n",
+  "Entity A {\n    nome: str\n}\nEntity B(A) {\n    funct __init__(self, nome, y) {\n        base().__init__(nome)\n        self.y = y\n    }\n}\nb = B(\"ana\", 2)\npost(b.nome, b.y)\n",
   "ana 2", NULL, 0 },
+/* Cabeçalho sem `()` (2026-09-25): o parêntese fica só na instanciação;
+ * herança continua entre parênteses. O `()` vazio acusa a forma certa. */
+{ "class sem parenteses: Entity, class, Class, private e decorada",
+  "funct marca(c) { return c }\nEntity A {\n    x: int\n}\nclass B {\n    funct __init__(self) { self.y = 2 }\n}\nprivate Class C {\n    funct v(self) { return 3 }\n}\n@marca\nclass D {\n    funct w(self) { return 4 }\n}\npost(A(1).x, B().y, C().v(), D().w())\n",
+  "1 2 3 4", NULL, 0 },
+{ "class X() com () vazio e erro que diz a forma certa",
+  "class Ponto() {\n    x: int\n}\n",
+  "", "SyntaxError: o '()' fica so na instanciacao: escreva `class Ponto {` (heranca: `class Ponto(Pai) {`)", 2 },
+{ "Entity X() com () vazio: a frase usa a palavra escrita",
+  "Entity Ponto() {\n    x: int\n}\n",
+  "", "escreva `Entity Ponto {` (heranca: `Entity Ponto(Pai) {`)", 2 },
+{ "class X( sem fechar acusa o parentese aberto",
+  "class X( {\n}\n",
+  "", "parentese '(' aberto nao foi fechado", 2 },
+{ "class X(1) acusa que falta o nome do pai",
+  "class X(1) {\n}\n",
+  "", "esperado o nome do pai depois de '(' (heranca: `class X(Pai) {`)", 2 },
+{ "heranca continua entre parenteses e a chave pode ir na linha de baixo",
+  "Entity A {\n    funct v(self) { return 1 }\n}\nEntity B(A)\n{\n    funct w(self) { return 2 }\n}\nb = B()\npost(b.v(), b.w())\n",
+  "1 2", NULL, 0 },
+/* `base()` / `base(Pai)` como o super: alcança tudo que o pai tem. */
+{ "base(Pai).__init__ com dois pais mira cada um",
+  "Entity Motor {\n    funct __init__(self, cavalos) { self.cavalos = cavalos }\n}\nEntity Roda {\n    funct __init__(self, qtd) { self.qtd = qtd }\n}\nEntity Carro(Motor, Roda) {\n    funct __init__(self) {\n        base(Motor).__init__(300)\n        base(Roda).__init__(4)\n    }\n}\nc = Carro()\npost(c.cavalos, c.qtd)\n",
+  "300 4", NULL, 0 },
+{ "base() sem nome com dois pais e erro que lista os pais",
+  "Entity A {\n}\nEntity M {\n}\nEntity B(A, M) {\n    funct __init__(self) { base().__init__() }\n}\n",
+  "", "SyntaxError: base() com mais de um pai: diga qual, base(A) ou base(M)", 2 },
+{ "base(X) com X que nao e ancestral e erro",
+  "Entity A {\n}\nEntity Z {\n}\nEntity B(A) {\n    funct __init__(self) { base(Z).__init__() }\n}\n",
+  "", "SyntaxError: 'Z' nao e pai de 'B' (pais: A)", 2 },
+{ "base(Avo).__init__ mira o avo pulando o pai",
+  "Entity A {\n    funct __init__(self, x) { self.x = x }\n}\nEntity B(A) {\n    funct __init__(self, x) { base().__init__(x * 10) }\n}\nEntity K(B) {\n    funct __init__(self) { base(A).__init__(9) }\n}\npost(K().x, B(1).x)\n",
+  "9 10", NULL, 0 },
+{ "base().metodo() chama a versao do pai mesmo sobrescrita",
+  "Entity A {\n    str funct nome(self) { return \"A\" }\n    funct fala(self, s) { return \"A diz \" + s }\n}\nEntity B(A) {\n    str funct nome(self) { return \"B>\" + base().nome() }\n    funct fala(self, s) { return base(A).fala(s) + \"!\" }\n}\nb = B()\npost(b.nome(), b.fala(\"oi\"))\n",
+  "B>A A diz oi!", NULL, 0 },
+{ "base().campo le static do pai e campo da instancia",
+  "Entity A {\n    static int total = 7\n    funct __init__(self, x) { self.x = x }\n}\nEntity B(A) {\n    funct __init__(self, x) { base().__init__(x) }\n    funct soma(self) { return base().x + base(A).total }\n}\npost(B(1).soma())\n",
+  "8", NULL, 0 },
+{ "base().campo private do pai continua negado pro filho",
+  "Entity A {\n    private int s\n    funct __init__(self) { self.s = 1 }\n}\nEntity B(A) {\n    funct __init__(self) { base().__init__() }\n    funct q(self) { return base().s }\n}\npost(B().q())\n",
+  "", "RuntimeError: acesso negado: 's' e private de A (so acessivel de dentro da classe)", 1 },
+{ "base(Pai).x = v e erro: atribua pelo self",
+  "Entity A {\n    funct __init__(self, x) { self.x = x }\n}\nEntity B(A) {\n    funct __init__(self) { base(A).x = 1 }\n}\n",
+  "", "SyntaxError: atribua pelo self: self.x = ... (base(Pai).x le o campo, nao grava)", 2 },
+{ "base(x) na forma antiga acusa a nova",
+  "Entity A {\n    funct __init__(self, x) { self.x = x }\n}\nEntity B(A) {\n    funct __init__(self, x) { base(x) }\n}\n",
+  "", "SyntaxError: base(Pai) precisa de um membro: base(Pai).__init__(...) ou base(Pai).metodo(...)", 2 },
+{ "base(1) acusa que so aceita o nome do pai",
+  "Entity A {\n}\nEntity B(A) {\n    funct __init__(self) { base(1).__init__() }\n}\n",
+  "", "SyntaxError: base(...) recebe so o nome do pai: base().__init__(x) ou base(Pai).__init__(x)", 2 },
+{ "base().__init__ com nomeado, espalhado e **kw",
+  "Entity A {\n    funct __init__(self, x, y = 2) { self.x = x\n        self.y = y }\n}\nEntity B(A) {\n    funct __init__(self, *a, **k) { base().__init__(*a, **k) }\n}\nEntity C(A) {\n    funct __init__(self) { base().__init__(y=5, x=1) }\n}\nb = B(3, y=4)\nc = C()\npost(b.x, b.y, c.x, c.y)\n",
+  "3 4 1 5", NULL, 0 },
+{ "base().metodo() em metodo do pai trocado por decorador",
+  "funct dobra(f) {\n    funct w(*a, **k) { return f(*a, **k) * 2 }\n    return w\n}\nEntity A {\n    @dobra\n    funct v(self) { return 5 }\n}\nEntity B(A) {\n    funct v(self) { return base().v() + 1 }\n}\npost(B().v())\n",
+  "11", NULL, 0 },
+{ "base().metodo() tipado encadeia com o checador",
+  "Entity A {\n    str funct nome(self) { return \"a\" }\n}\nEntity B(A) {\n    funct __init__(self) { self.k = base().nome().upper() }\n}\npost(B().k)\n",
+  "A", NULL, 0 },
+{ "base().__init__ com aridade errada e erro antes de rodar, a frase de A(1, 2)",
+  "Entity A {\n    funct __init__(self, x) { self.x = x }\n}\nEntity B(A) {\n    funct __init__(self) { base().__init__(1, 2) }\n}\nB()\n",
+  "", "TypeError: __init__() takes 2 positional arguments but 3 were given", 2 },
+{ "base().nada acusa o membro que o pai nao tem antes de rodar",
+  "Entity A {\n    funct __init__(self, x) { self.x = x }\n}\nEntity B(A) {\n    funct __init__(self) { base().__init__(1) }\n    funct q(self) { return base().nada }\n}\nB().q()\n",
+  "", "AttributeError: 'A' object has no attribute 'nada'", 2 },
+{ "base() fora de Entity acusa",
+  "funct f() { base().__init__() }\n",
+  "", "SyntaxError: base() fora de Entity com heranca", 2 },
+{ "base() numa Entity sem heranca acusa",
+  "Entity A {\n    funct __init__(self) { base().__init__() }\n}\n",
+  "", "SyntaxError: base() numa Entity sem heranca: nao ha pai pra inicializar", 2 },
+{ "base().__init__ em qualquer metodo com self, nao so no __init__",
+  "Entity A {\n    funct __init__(self, x) { self.x = x }\n}\nEntity B(A) {\n    funct __init__(self) { self.x = 0 }\n    funct reinicia(self, x) { base().__init__(x) }\n}\nb = B()\nb.reinicia(7)\npost(b.x)\n",
+  "7", NULL, 0 },
+/* `s[i]` e `s[i:j]` contavam a string inteira do zero a cada acesso: 200 mil
+ * índices numa str de 200 mil caracteres com acento não terminavam. A
+ * contagem e a última posição ficam guardadas na própria string. */
+{ "indexar str grande com acento em laco termina (contagem guardada)",
+  "x = \"é\" * 200000\ni = 0\nn = 0\nwhile i < 200000 {\n    if x[i] == \"é\" { n = n + 1 }\n    i = i + 1\n}\npost(n)\n",
+  "200000", NULL, 0 },
+{ "fatiar str grande com acento em laco termina, inclusive andando pra tras",
+  "t = \"ção\" * 50000\ni = 0\nn = 0\nwhile i < 100000 {\n    if t[i:i + 3] == \"ção\" { n = n + 1 }\n    i = i + 1\n}\ni = 149999\ns = \"\"\nwhile i > 149990 {\n    s = s + t[i]\n    i = i - 1\n}\npost(n, s, t[-3:], t[1:4], len(t))\n",
+  "33334 oãçoãçoãç ção ãoç 150000", NULL, 0 },
 
 /* ── EXCECOES COMO VALORES (2026-09-12) ──────────────────────────────────────
  * Os nomes da tabela EXCECOES[] (Exception, ValueError, ...) sao globais: um
@@ -3467,7 +3551,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * AttributeError) e DESCARTAVA calado todo decorador de um nome que nao
  * fosse static/NonNull/dataentity — junto com a funct embaixo. Strings
  * medidas no binario. */
-#define DEC_NET "Entity NET() {\n    funct __init__(self) {\n        self.rotas = {}\n    }\n" \
+#define DEC_NET "Entity NET {\n    funct __init__(self) {\n        self.rotas = {}\n    }\n" \
                 "    funct route(self, caminho) {\n        funct registra(f) {\n" \
                 "            self.rotas[caminho] = f\n            return f\n        }\n" \
                 "        return registra\n    }\n}\n"
@@ -3487,7 +3571,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "funct ruim(f) {\n    return \"x\"\n}\n@ruim\nfunct h() {\n    return 1\n}\npost(h)\n",
   "x", NULL, 0 },
 { "@obj.m() que devolve str: nem registra nem envolve",
-  "Entity R() {\n    funct route(self, c) {\n        return \"oi\"\n    }\n}\napp = R()\n@app.route(\"/x\")\nfunct h() {\n    return 1\n}\n",
+  "Entity R {\n    funct route(self, c) {\n        return \"oi\"\n    }\n}\napp = R()\n@app.route(\"/x\")\nfunct h() {\n    return 1\n}\n",
   "", "TypeError: decorador @app.route vale 'str', que nao registra (.register) nem envolve (chamavel) a funct", 1 },
 { "@nao_existe e NameError na linha do @, nao funct engolida",
   "@nao_existe\nfunct h() {\n    return 1\n}\npost(h())\n",
@@ -3496,38 +3580,38 @@ const Caso CASOS_LINGUAGEM[] = {
   "x = 5\n@x\nfunct h() {\n    return 1\n}\n",
   "", "TypeError: decorador @x vale 'int', que nao registra (.register) nem envolve (chamavel) a funct", 1 },
 { "metodo static na Entity com decorador registrador da lib",
-  DEC_NET "Entity App() {\n    static object app = NET()\n    @app.route(\"/m\")\n    static funct m() {\n        return \"m\"\n    }\n}\npost(App.app.rotas[\"/m\"]())\n",
+  DEC_NET "Entity App {\n    static object app = NET()\n    @app.route(\"/m\")\n    static funct m() {\n        return \"m\"\n    }\n}\npost(App.app.rotas[\"/m\"]())\n",
   "m", NULL, 0 },
 /* ── decorador que ENVOLVE um metodo: o que ele devolve vale como o metodo ──
  * A tabela de metodos da classe guarda o valor; `inst.m` liga o receptor e o
  * chamado recebe o receptor no 1o argumento. Antes era TypeError ("de metodo
  * so pode registrar") — limitacao sem motivo, tirada. */
 { "decorador em metodo: o wrapper vale como o metodo e recebe o self no 1o argumento",
-  "funct log(f) {\n    funct w(*args, **kwarg) {\n        post(\"antes\", len(args))\n        return f(*args, **kwarg)\n    }\n    return w\n}\nEntity C() {\n    funct __init__(self) {\n        self.v = 7\n    }\n    @log\n    funct m(self, x) {\n        return self.v + x\n    }\n}\nc = C()\npost(c.m(1))\npost(c.m(x=2))\npost(c.m(*[3]))\n",
+  "funct log(f) {\n    funct w(*args, **kwarg) {\n        post(\"antes\", len(args))\n        return f(*args, **kwarg)\n    }\n    return w\n}\nEntity C {\n    funct __init__(self) {\n        self.v = 7\n    }\n    @log\n    funct m(self, x) {\n        return self.v + x\n    }\n}\nc = C()\npost(c.m(1))\npost(c.m(x=2))\npost(c.m(*[3]))\n",
   "antes 2\n8\nantes 1\n9\nantes 2\n10", NULL, 0 },
 { "decorador em metodo: empilhados compoem de baixo pra cima, como na funct solta",
-  "funct a(f) {\n    funct w(*args) {\n        return \"a(\" + f(*args) + \")\"\n    }\n    return w\n}\nfunct b(f) {\n    funct w(*args) {\n        return \"b(\" + f(*args) + \")\"\n    }\n    return w\n}\nEntity C() {\n    @a\n    @b\n    funct m(self) {\n        return \"m\"\n    }\n}\npost(C().m())\n",
+  "funct a(f) {\n    funct w(*args) {\n        return \"a(\" + f(*args) + \")\"\n    }\n    return w\n}\nfunct b(f) {\n    funct w(*args) {\n        return \"b(\" + f(*args) + \")\"\n    }\n    return w\n}\nEntity C {\n    @a\n    @b\n    funct m(self) {\n        return \"m\"\n    }\n}\npost(C().m())\n",
   "a(b(m))", NULL, 0 },
 { "decorador em metodo static: vale pela classe, e pela instancia segue o erro de static",
-  "funct dobra(f) {\n    funct w(*args) {\n        return f(*args) * 2\n    }\n    return w\n}\nEntity C() {\n    @dobra\n    static funct s(x) {\n        return x + 1\n    }\n}\npost(C.s(4))\nC().s(4)\n",
+  "funct dobra(f) {\n    funct w(*args) {\n        return f(*args) * 2\n    }\n    return w\n}\nEntity C {\n    @dobra\n    static funct s(x) {\n        return x + 1\n    }\n}\npost(C.s(4))\nC().s(4)\n",
   "10", "RuntimeError: funct 's' e static: chame pela Entity (Tipo.s(...)), nao pela instancia", 1 },
 { "decorador em __init__: vale na instanciacao posicional, nomeada e no base()",
-  "funct conta(f) {\n    funct w(*args, **kwarg) {\n        post(\"init\", len(args), kwarg)\n        return f(*args, **kwarg)\n    }\n    return w\n}\nEntity A() {\n    @conta\n    funct __init__(self, v = 0) {\n        self.v = v\n    }\n}\nEntity B(A) {\n    funct __init__(self) {\n        base(v=9)\n    }\n}\nEntity D(A) {\n    funct __init__(self) {\n        base(8)\n    }\n}\npost(A(3).v, A(v=4).v, B().v, D().v)\n",
+  "funct conta(f) {\n    funct w(*args, **kwarg) {\n        post(\"init\", len(args), kwarg)\n        return f(*args, **kwarg)\n    }\n    return w\n}\nEntity A {\n    @conta\n    funct __init__(self, v = 0) {\n        self.v = v\n    }\n}\nEntity B(A) {\n    funct __init__(self) {\n        base().__init__(v=9)\n    }\n}\nEntity D(A) {\n    funct __init__(self) {\n        base().__init__(8)\n    }\n}\npost(A(3).v, A(v=4).v, B().v, D().v)\n",
   "init 2 {}\ninit 1 {'v': 4}\ninit 1 {'v': 9}\ninit 2 {}\n3 4 9 8", NULL, 0 },
 { "decorador em metodo: o metodo envolvido passa por callback do C (map)",
-  "funct dobra(f) {\n    funct w(*args) {\n        return f(*args) * 2\n    }\n    return w\n}\nEntity E() {\n    funct __init__(self) {\n        self.k = 10\n    }\n    @dobra\n    funct soma(self, x) {\n        return self.k + x\n    }\n}\npost(map([1, 2], E().soma))\n",
+  "funct dobra(f) {\n    funct w(*args) {\n        return f(*args) * 2\n    }\n    return w\n}\nEntity E {\n    funct __init__(self) {\n        self.k = 10\n    }\n    @dobra\n    funct soma(self, x) {\n        return self.k + x\n    }\n}\npost(map([1, 2], E().soma))\n",
   "[22, 24]", NULL, 0 },
 { "decorador em metodo: a filha herda o metodo envolvido, e o private segue de dentro",
-  "funct passa(f) {\n    funct w(*args) {\n        return f(*args)\n    }\n    return w\n}\nEntity P() {\n    private segredo = 5\n    funct __init__(self) {\n        self.segredo = 5\n    }\n    @passa\n    funct ver(self) {\n        return self.segredo\n    }\n}\nEntity F(P) {\n}\npost(F().ver())\n",
+  "funct passa(f) {\n    funct w(*args) {\n        return f(*args)\n    }\n    return w\n}\nEntity P {\n    private segredo = 5\n    funct __init__(self) {\n        self.segredo = 5\n    }\n    @passa\n    funct ver(self) {\n        return self.segredo\n    }\n}\nEntity F(P) {\n}\npost(F().ver())\n",
   "5", NULL, 0 },
 { "decorador em metodo: o wrapper e de fora da classe e nao le private",
-  "funct espia(f) {\n    funct w(self) {\n        return self.segredo\n    }\n    return w\n}\nEntity Q() {\n    private segredo = 1\n    funct __init__(self) {\n        self.segredo = 1\n    }\n    @espia\n    funct ver(self) {\n        return 0\n    }\n}\nQ().ver()\n",
+  "funct espia(f) {\n    funct w(self) {\n        return self.segredo\n    }\n    return w\n}\nEntity Q {\n    private segredo = 1\n    funct __init__(self) {\n        self.segredo = 1\n    }\n    @espia\n    funct ver(self) {\n        return 0\n    }\n}\nQ().ver()\n",
   "", "RuntimeError: acesso negado: 'segredo' e private de Q (so acessivel de dentro da classe)", 1 },
 { "decorador em metodo: registrador e wrapper nas duas ordens, uma instancia por classe",
-  "Entity Reg() {\n    funct __init__(self) {\n        self.itens = []\n    }\n    funct register(self, f) {\n        self.itens.append(f)\n    }\n}\nr = Reg()\nfunct lock(f) {\n    funct w(*args) {\n        post(\"lock\")\n        return f(*args)\n    }\n    return w\n}\nEntity H() {\n    funct __init__(self) {\n        post(\"init H\")\n    }\n    @r\n    @lock\n    funct um(self) {\n        return \"um\"\n    }\n    @lock\n    @r\n    funct dois(self) {\n        return \"dois\"\n    }\n    @r\n    funct tres(self) {\n        return self\n    }\n}\npost(r.itens[0]())\npost(r.itens[1]())\npost(r.itens[2]() == r.itens[2]())\n",
+  "Entity Reg {\n    funct __init__(self) {\n        self.itens = []\n    }\n    funct register(self, f) {\n        self.itens.append(f)\n    }\n}\nr = Reg()\nfunct lock(f) {\n    funct w(*args) {\n        post(\"lock\")\n        return f(*args)\n    }\n    return w\n}\nEntity H {\n    funct __init__(self) {\n        post(\"init H\")\n    }\n    @r\n    @lock\n    funct um(self) {\n        return \"um\"\n    }\n    @lock\n    @r\n    funct dois(self) {\n        return \"dois\"\n    }\n    @r\n    funct tres(self) {\n        return self\n    }\n}\npost(r.itens[0]())\npost(r.itens[1]())\npost(r.itens[2]() == r.itens[2]())\n",
   "init H\nlock\num\ndois\nTrue", NULL, 0 },
 { "decorador em metodo gerador e em metodo async",
-  "funct passa(f) {\n    funct w(*args, **kwarg) {\n        return f(*args, **kwarg)\n    }\n    return w\n}\nEntity G() {\n    @passa\n    funct gera(self, n) {\n        for each i in range(n) {\n            yield i\n        }\n    }\n    @passa\n    async funct pega(self, x) {\n        return x * 3\n    }\n}\ng = G()\npost(list(g.gera(3)))\npost(await g.pega(5))\n",
+  "funct passa(f) {\n    funct w(*args, **kwarg) {\n        return f(*args, **kwarg)\n    }\n    return w\n}\nEntity G {\n    @passa\n    funct gera(self, n) {\n        for each i in range(n) {\n            yield i\n        }\n    }\n    @passa\n    async funct pega(self, x) {\n        return x * 3\n    }\n}\ng = G()\npost(list(g.gera(3)))\npost(await g.pega(5))\n",
   "[0, 1, 2]\n15", NULL, 0 },
 /* `chama_valor` (callback do C) deslocava o `self` pelo NOME do 1o parametro
  * sem olhar `static`: `map([7], f)` com `funct f(self, x)` ligava `[Null, 7]`
@@ -3540,13 +3624,13 @@ const Caso CASOS_LINGUAGEM[] = {
   "async funct f(self, x) {\n    return [self, x]\n}\npost(await f(1, 2))\n",
   "[1, 2]", NULL, 0 },
 { "decorador em metodo que devolve Null mantem o metodo",
-  "funct nada(f) {\n    return Null\n}\nEntity C() {\n    @nada\n    funct m(self) {\n        return \"original\"\n    }\n}\npost(C().m())\n",
+  "funct nada(f) {\n    return Null\n}\nEntity C {\n    @nada\n    funct m(self) {\n        return \"original\"\n    }\n}\npost(C().m())\n",
   "original", NULL, 0 },
 { "@reg sobre Entity: o decorador recebe a funct do 1o metodo",
-  "funct reg(f) {\n    post(\"recebeu\", type(f))\n}\n@reg\nEntity H() {\n    funct handler(self) {\n        return 1\n    }\n}\npost(H().handler())\n",
+  "funct reg(f) {\n    post(\"recebeu\", type(f))\n}\n@reg\nEntity H {\n    funct handler(self) {\n        return 1\n    }\n}\npost(H().handler())\n",
   "recebeu funct\n1", NULL, 0 },
 { "@log sobre Entity envolve o 1o metodo",
-  "funct log(f) {\n    funct w(*args) {\n        return \"log:\" + f(*args)\n    }\n    return w\n}\n@log\nEntity H() {\n    funct handler(self) {\n        return \"h\"\n    }\n}\npost(H().handler())\n",
+  "funct log(f) {\n    funct w(*args) {\n        return \"log:\" + f(*args)\n    }\n    return w\n}\n@log\nEntity H {\n    funct handler(self) {\n        return \"h\"\n    }\n}\npost(H().handler())\n",
   "log:h", NULL, 0 },
 { "decoradores empilhados: o de dentro aplica primeiro",
   "funct a(f) {\n    funct wa() {\n        return \"a(\" + f() + \")\"\n    }\n    return wa\n}\nfunct b(f) {\n    funct wb() {\n        return \"b(\" + f() + \")\"\n    }\n    return wb\n}\n@a\n@b\nfunct h() {\n    return \"h\"\n}\npost(h())\n",
@@ -3554,7 +3638,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "@x sem funct ou Entity embaixo e SyntaxError, nao ignorado",
   "@x\ny = 1\n", "", "SyntaxError: decorador sem funct ou Entity embaixo", 2 },
 { "decorador sobre Entity sem metodo e SyntaxError, nao silencio",
-  "funct reg(f) {\n    return f\n}\n@reg\nEntity Vazia() {\n    x: int\n}\npost(\"fim\")\n",
+  "funct reg(f) {\n    return f\n}\n@reg\nEntity Vazia {\n    x: int\n}\npost(\"fim\")\n",
   "", "SyntaxError: decorador em cima de Entity 'Vazia' sem metodo: nao ha o que registrar", 2 },
 /* `app.middleware()` COM parenteses e o registrador do decorador: guardado em
  * `middleware=`, a rota rodava sem middleware nenhum, calada. */
@@ -3671,7 +3755,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(max(*[1, 5, 3]))\npost(len(*[\"abc\"]))\npost(\"a-b\".split(*[\"-\"]))\n", "5\n3\n['a', 'b']", NULL, 0 },
 /* O caso do dono: decorador de lib guardando os nomeados da rota. */
 { "variadico: decorador de lib com route(self, caminho, **kwarg) e @app.route(\"/y\", **opts)",
-  "Entity NET() {\n    funct __init__(self) {\n        self.rotas = {}\n        self.opcoes = {}\n    }\n"
+  "Entity NET {\n    funct __init__(self) {\n        self.rotas = {}\n        self.opcoes = {}\n    }\n"
   "    funct route(self, caminho, **kwarg) {\n        funct registra(f) {\n            self.rotas[caminho] = f\n"
   "            self.opcoes[caminho] = kwarg\n            return f\n        }\n        return registra\n    }\n}\n"
   "app = NET()\n@app.route(\"/x\", auth=\"jwt\", methods=[\"GET\"])\nfunct h(**kwarg) {\n    return kwarg\n}\n"
@@ -3681,7 +3765,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "{'auth': 'jwt', 'methods': ['GET']} {'auth': 'jwt', 'methods': ['GET']}\n{'auth': 'none'} g", NULL, 0 },
 { "variadico: lambda, metodo, @static e gerador com *args",
   "g = funct(*args) {\n    return args\n}\npost(g(1, 2))\n"
-  "Entity C() {\n    funct m(self, *args, **kwarg) {\n        return [args, kwarg]\n    }\n"
+  "Entity C {\n    funct m(self, *args, **kwarg) {\n        return [args, kwarg]\n    }\n"
   "    @static\n    funct s(*args) {\n        return args\n    }\n}\npost(C().m(1, k=2), C.s(3, 4))\n"
   "funct ger(*args) {\n    for each a in args {\n        yield a * 10\n    }\n}\npost(list(ger(1, 2)))\npost(list(ger(*[3])))\n",
   "(1, 2)\n[(1,), {'k': 2}] (3, 4)\n[10, 20]\n[30]", NULL, 0 },
@@ -3695,13 +3779,13 @@ const Caso CASOS_LINGUAGEM[] = {
   "funct ger(a, b=1) {\n    yield a\n    yield b\n}\npost(list(ger(b=5, a=2)))\n", "[2, 5]", NULL, 0 },
 { "variadico: lambda aceita valor padrao (mesma regra da declaracao)",
   "g = funct(x=1) {\n    return x\n}\npost(g(), g(5))\n", "1 5", NULL, 0 },
-{ "espalhar: base(**kwarg) e base(*args)",
-  "Entity A() {\n    funct __init__(self, x, y=0) {\n        self.x = x\n        self.y = y\n    }\n}\n"
-  "Entity B(A) {\n    funct __init__(self, **kwarg) {\n        base(**kwarg)\n    }\n}\n"
-  "Entity C(A) {\n    funct __init__(self, *args) {\n        base(*args)\n    }\n}\n"
+{ "espalhar: base().__init__(**kwarg) e base().__init__(*args)",
+  "Entity A {\n    funct __init__(self, x, y=0) {\n        self.x = x\n        self.y = y\n    }\n}\n"
+  "Entity B(A) {\n    funct __init__(self, **kwarg) {\n        base().__init__(**kwarg)\n    }\n}\n"
+  "Entity C(A) {\n    funct __init__(self, *args) {\n        base().__init__(*args)\n    }\n}\n"
   "b = B(x=1, y=2)\nc = C(3)\npost(b.x, b.y, c.x, c.y)\n", "1 2 3 0", NULL, 0 },
 { "variadico: instanciacao por nome com **kwarg no __init__",
-  "Entity P() {\n    funct __init__(self, nome, **kwarg) {\n        self.nome = nome\n        self.extra = kwarg\n    }\n}\n"
+  "Entity P {\n    funct __init__(self, nome, **kwarg) {\n        self.nome = nome\n        self.extra = kwarg\n    }\n}\n"
   "p = P(nome=\"k\", idade=3)\npost(p.nome, p.extra)\n", "k {'idade': 3}", NULL, 0 },
 { "variadico: async funct com *args",
   "async funct f(a, *args) {\n    return [a, args]\n}\npost(await f(1, 2, 3))\n", "[1, (2, 3)]", NULL, 0 },
@@ -3729,14 +3813,14 @@ const Caso CASOS_LINGUAGEM[] = {
   "[1, 10]", NULL, 0 },
 /* só a funct solta e a @static viravam fibra; o método rodava inline */
 { "variadico: async como metodo de instancia devolve future nos 4 caminhos de chamada",
-  "Entity C() {\n    async funct m(self, a) {\n        return a\n    }\n}\nc = C()\nf = c.m\n"
+  "Entity C {\n    async funct m(self, a) {\n        return a\n    }\n}\nc = C()\nf = c.m\n"
   "post(type(c.m(1)), type(c.m(*[1])), type(c.m(a=1)), type(f(1)))\n",
   "future future future future", NULL, 0 },
 { "async: metodo async como callback do C (map) devolve os futures",
-  "Entity C() {\n    async funct m(self, a) {\n        return a\n    }\n}\nc = C()\npost(await map([1, 2], c.m))\n",
+  "Entity C {\n    async funct m(self, a) {\n        return a\n    }\n}\nc = C()\npost(await map([1, 2], c.m))\n",
   "[1, 2]", NULL, 0 },
 { "async: @static async chamada pela Entity",
-  "Entity C() {\n    @static\n    async funct s(self, a) {\n        return a\n    }\n}\npost(await C.s(3))\n",
+  "Entity C {\n    @static\n    async funct s(self, a) {\n        return a\n    }\n}\npost(await C.s(3))\n",
   "3", NULL, 0 },
 /* a fibra guardava 32 argumentos crus; passar disso era TypeError */
 { "async: *args com 40 argumentos (a fibra nao tem teto de 32)",
@@ -3750,11 +3834,11 @@ const Caso CASOS_LINGUAGEM[] = {
   "2", NULL, 0 },
 /* gerador: `o.conta(2)` entrava no corpo e dava "yield fora de gerador" */
 { "variadico: gerador como metodo chamado pela instancia cria o gerador nos 4 caminhos",
-  "Entity G() {\n    funct conta(self, n) {\n        for each i in range(n) {\n            yield i\n        }\n    }\n}\n"
+  "Entity G {\n    funct conta(self, n) {\n        for each i in range(n) {\n            yield i\n        }\n    }\n}\n"
   "o = G()\npost(list(o.conta(2)))\npost(list(o.conta(*[2])))\nfor each x in o.conta(2) {\n    post(x)\n}\npost(list(o.conta(n=2)))\n",
   "[0, 1]\n[0, 1]\n0\n1\n[0, 1]", NULL, 0 },
 { "gerador: metodo gerador ligado solto e como callback do C",
-  "Entity G() {\n    funct conta(self, n) {\n        for each i in range(n) {\n            yield i\n        }\n    }\n}\n"
+  "Entity G {\n    funct conta(self, n) {\n        for each i in range(n) {\n            yield i\n        }\n    }\n}\n"
   "o = G()\nf = o.conta\npost(list(f(2)))\npost(list(map([2], o.conta)[0]))\n",
   "[0, 1]\n[0, 1]", NULL, 0 },
 { "gerador: funct geradora como callback do C cria o gerador",
@@ -3765,62 +3849,62 @@ const Caso CASOS_LINGUAGEM[] = {
   "1", NULL, 0 },
 /* instância: o RETURN lia o slot 0 do __init__, que é do 1º parâmetro */
 { "variadico: __init__(*args) sem self devolve a instancia, nao a tup dos argumentos",
-  "Entity E() {\n    funct __init__(*args) {\n        post(len(args), type(args[0]))\n    }\n}\ne = E(1, 2)\npost(type(e))\n",
+  "Entity E {\n    funct __init__(*args) {\n        post(len(args), type(args[0]))\n    }\n}\ne = E(1, 2)\npost(type(e))\n",
   "3 E\nE", NULL, 0 },
 { "instancia: __init__(*args, **kw) sem self recebe a instancia no args",
-  "Entity E() {\n    funct __init__(*args, **kw) {\n        post(len(args), type(args[0]), kw)\n    }\n}\npost(type(E(1, a=2)))\n",
+  "Entity E {\n    funct __init__(*args, **kw) {\n        post(len(args), type(args[0]), kw)\n    }\n}\npost(type(E(1, a=2)))\n",
   "2 E {'a': 2}\nE", NULL, 0 },
 { "instancia: __init__(*args) sem self com E(*lista)",
-  "Entity E() {\n    funct __init__(*args) {\n        post(len(args), type(args[0]))\n    }\n}\npost(type(E(*[1, 2])))\n",
+  "Entity E {\n    funct __init__(*args) {\n        post(len(args), type(args[0]))\n    }\n}\npost(type(E(*[1, 2])))\n",
   "3 E\nE", NULL, 0 },
 /* Era "reatribuir o 1o parametro ainda devolve a instancia": `__init__(x)`
  * recebia a instancia em `x` e valia. Metodo sem `self` e erro (7.3) — e o
  * erro sai na DECLARACAO, antes de rodar, dizendo que nome achou no lugar. */
 { "instancia: __init__ com 1o parametro que nao e self e erro na declaracao",
-  "Entity E() {\n    funct __init__(x) {\n        x = 5\n    }\n}\npost(type(E()))\n",
+  "Entity E {\n    funct __init__(x) {\n        x = 5\n    }\n}\npost(type(E()))\n",
   "", "TypeError: método __init__(x) sem self: o primeiro parâmetro de um método é self, não 'x' (ou marque static)", 2 },
 { "instancia: __init__(**kw) sem self e erro na declaracao (a instancia entraria como posicional)",
-  "Entity E() {\n    funct __init__(**kw) {\n        post(kw)\n    }\n}\nE(a=1)\n",
+  "Entity E {\n    funct __init__(**kw) {\n        post(kw)\n    }\n}\nE(a=1)\n",
   "", "TypeError: método __init__(**kw) sem self: o primeiro parâmetro de um método é self (ou marque static)", 2 },
 /* a Entity como valor era "'Entity' object is not callable" no callback */
 { "instancia: Entity como callback do C (map) instancia",
-  "Entity P() {\n    funct __init__(self, x) {\n        self.x = x\n    }\n}\npost(map([1, 2], P)[1].x)\n",
+  "Entity P {\n    funct __init__(self, x) {\n        self.x = x\n    }\n}\npost(map([1, 2], P)[1].x)\n",
   "2", NULL, 0 },
 { "instancia: Entity sem __init__ como callback com argumento e TypeError",
-  "Entity Z() {\n}\npost(map([1], Z))\n",
+  "Entity Z {\n}\npost(map([1], Z))\n",
   "", "TypeError: Z() takes no arguments (1 given)", 1 },
 { "instancia: __init__ gerador e TypeError",
-  "Entity E() {\n    funct __init__(self) {\n        yield 1\n    }\n}\nE()\n",
+  "Entity E {\n    funct __init__(self) {\n        yield 1\n    }\n}\nE()\n",
   "", "TypeError: __init__() should return None, not 'generator'", 1 },
 { "instancia: __init__ async e TypeError, tambem vindo do C",
-  "Entity E() {\n    async funct __init__(self, x) {\n        post(1)\n    }\n}\nmap([1], E)\n",
+  "Entity E {\n    async funct __init__(self, x) {\n        post(1)\n    }\n}\nmap([1], E)\n",
   "", "TypeError: __init__() should return None, not 'future'", 1 },
 { "instancia: base() numa funct sem self e recusado na declaracao",
-  "Entity A() {\n    funct __init__(self, *a) {\n        self.a = a\n    }\n}\nEntity B(A) {\n    funct __init__(*args) {\n        base(1)\n    }\n}\n",
+  "Entity A {\n    funct __init__(self, *a) {\n        self.a = a\n    }\n}\nEntity B(A) {\n    funct __init__(*args) {\n        base().__init__(1)\n    }\n}\n",
   "", "SyntaxError: base() precisa do self: declare `funct __init__(self, ...)` (o self e o objeto que o pai inicializa)", 2 },
 { "instancia: base() entrega o self ao __init__(*args) do pai sem self",
-  "Entity A() {\n    funct __init__(*a) {\n        post(len(a), type(a[0]))\n    }\n}\nEntity B(A) {\n    funct __init__(self) {\n        base(1, 2)\n    }\n}\nB()\n",
+  "Entity A {\n    funct __init__(*a) {\n        post(len(a), type(a[0]))\n    }\n}\nEntity B(A) {\n    funct __init__(self) {\n        base().__init__(1, 2)\n    }\n}\nB()\n",
   "3 B", NULL, 0 },
 /* @static: o callback do C e o decorador contavam o buraco do self na frase */
 { "variadico: callback do C esconde o buraco do @static na frase de aridade, como o OP_CALL",
-  "Entity C() {\n    @static\n    funct s(self) {\n        return 1\n    }\n}\npost(map([7], C.s))\n",
+  "Entity C {\n    @static\n    funct s(self) {\n        return 1\n    }\n}\npost(map([7], C.s))\n",
   "", "TypeError: s() takes 0 positional arguments but 1 was given", 1 },
 { "variadico: decorador esconde o buraco do @static na frase de aridade, como o OP_CALL",
-  "Entity C() {\n    @static\n    funct s(self) {\n        return 1\n    }\n}\n@C.s\nfunct h() {\n    return 1\n}\n",
+  "Entity C {\n    @static\n    funct s(self) {\n        return 1\n    }\n}\n@C.s\nfunct h() {\n    return 1\n}\n",
   "", "TypeError: s() takes 0 positional arguments but 1 was given", 1 },
 { "static: funct @static ligada solta como callback esconde o buraco do self",
-  "Entity C() {\n    @static\n    funct s(self) {\n        return 1\n    }\n}\nf = C.s\npost(map([7], f))\n",
+  "Entity C {\n    @static\n    funct s(self) {\n        return 1\n    }\n}\nf = C.s\npost(map([7], f))\n",
   "", "TypeError: s() takes 0 positional arguments but 1 was given", 1 },
 /* nonnull: o buraco UNSET do self era acusado como parâmetro Null */
 { "variadico: nonnull + static com self nao acusa o buraco do self como Null",
-  "Entity C() {\n    nonnull static funct f(self, a) {\n        return a\n    }\n    static funct g(self, a) {\n        return a\n    }\n}\n"
+  "Entity C {\n    nonnull static funct f(self, a) {\n        return a\n    }\n    static funct g(self, a) {\n        return a\n    }\n}\n"
   "post(C.g(5))\npost(C.f(5))\n",
   "5\n5", NULL, 0 },
 { "nonnull static: Null no parametro real continua recusado",
-  "Entity C() {\n    nonnull static funct f(self, a) {\n        return a\n    }\n}\nC.f(Null)\n",
+  "Entity C {\n    nonnull static funct f(self, a) {\n        return a\n    }\n}\nC.f(Null)\n",
   "", "RuntimeError: nonnull: parametro 'a' em 'f' nao pode ser Null", 1 },
 { "nonnull static como callback do C",
-  "Entity C() {\n    nonnull static funct f(self, a) {\n        return a\n    }\n}\npost(map([5], C.f))\n",
+  "Entity C {\n    nonnull static funct f(self, a) {\n        return a\n    }\n}\npost(map([5], C.f))\n",
   "[5]", NULL, 0 },
 
 /* ── atalho do `for each ... in range(...)`: toda forma de ligar `range` ─────
@@ -3866,12 +3950,12 @@ const Caso CASOS_LINGUAGEM[] = {
   "SyntaxError: <funct>() tem parametros demais (maximo 256)", NULL, 0 },
 { "parametros: metodo com self + 256 parametros e recusado na declaracao",
   "import os\nimport sys\nps = []\nfor each i in range(256) {\n    addEnd(ps, \"p\" + str(i))\n}\n"
-  "os.writeFile(\"j.pr\", \"Entity E() {\\n    funct m(self, \" + \", \".join(ps) + \") {\\n        return 1\\n    }\\n}\\n\")\n"
+  "os.writeFile(\"j.pr\", \"Entity E {\\n    funct m(self, \" + \", \".join(ps) + \") {\\n        return 1\\n    }\\n}\\n\")\n"
   "os.cmd(\"'\" + sys.executable + \"' j.pr > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
   "SyntaxError: m() tem parametros demais (maximo 256)", NULL, 0 },
 { "parametros: Entity com 256 campos e recusada na declaracao",
   "import os\nimport sys\ncs = \"\"\nfor each i in range(256) {\n    cs = cs + \"    c\" + str(i) + \": int\\n\"\n}\n"
-  "os.writeFile(\"j.pr\", \"Entity E() {\\n\" + cs + \"}\\n\")\n"
+  "os.writeFile(\"j.pr\", \"Entity E {\\n\" + cs + \"}\\n\")\n"
   "os.cmd(\"'\" + sys.executable + \"' j.pr > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
   "SyntaxError: Entity E: o __init__ gerado dos campos tem parametros demais (maximo 256: self + 255 campos)", NULL, 0 },
 { "parametros: funct com exatamente 256 parametros roda",
@@ -3894,7 +3978,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "f = funct(int *a) {\n    return a\n}\n",
   "", "SyntaxError: parametro `*int a` nao aceita tipo: `*args` e sempre tup e `**kwarg` sempre dict — escreva `*a`", 2 },
 { "tipo em estrela: metodo m(self, int *a)",
-  "Entity E() {\n    funct m(self, int *a) {\n        return a\n    }\n}\n",
+  "Entity E {\n    funct m(self, int *a) {\n        return a\n    }\n}\n",
   "", "SyntaxError: parametro `*int a` nao aceita tipo: `*args` e sempre tup e `**kwarg` sempre dict — escreva `*a`", 2 },
 
 /* ── o frame corrente é raiz: closure e instância durante o C ────────────────
@@ -3923,7 +4007,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(fabrica(3)([1, 2]))\n",
   "[[3, 6], 3]", NULL, 0 },
 { "instancia descartada antes de um callback com GC nao e marcada depois de liberada",
-  "Entity Ponto() {\n    funct __init__(self, x, y) {\n        self.x = x\n    }\n}\n"
+  "Entity Ponto {\n    funct __init__(self, x, y) {\n        self.x = x\n    }\n}\n"
   "funct dobro(v) {\n    lixo = \"\"\n    for each i in range(60000) {\n        lixo = str(i) + \"aaaaaaaa\"\n    }\n    return v * 2\n}\n"
   "funct trabalha(nums) {\n    Ponto(1, 2)\n    for each i in range(60000) {\n        s = str(i) + \"bbbbbbbb\"\n    }\n    return map(nums, dobro)\n}\n"
   "post(trabalha([10, 20]))\n",
@@ -3954,7 +4038,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * buraco como o OP_CALL ("from 1 to 2 ... but 3"). A doc 14.1 promete
  * "f() takes N positional arguments but M were given" sem fixar N. */
 { "static com self chamado por nome com posicionais demais: frase do CALL_KW = a do OP_CALL (fotografia)",
-  "Entity C() {\n    static funct f(self, a, b=10) {\n        return a + b\n    }\n}\npost(C.f(1, 2, 3, b=4))\n",
+  "Entity C {\n    static funct f(self, a, b=10) {\n        return a + b\n    }\n}\npost(C.f(1, 2, 3, b=4))\n",
   "", "TypeError: f() takes from 1 to 2 positional arguments but 3 were given", 2 },
 
 /* ── import *: as três grafias e as recusas ──────────────────────────────────
@@ -3979,7 +4063,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "funct g() {\n    from json import *\n}\n",
   "", "SyntaxError: `*` do import so vale no topo do arquivo; dentro de funct ou bloco nomeie o que usa: from json import a, b", 2 },
 { "import *: dentro de metodo e recusado",
-  "Entity E() {\n    funct m(self) {\n        import json *\n    }\n}\n",
+  "Entity E {\n    funct m(self) {\n        import json *\n    }\n}\n",
   "", "SyntaxError: `*` do import so vale no topo do arquivo; dentro de funct ou bloco nomeie o que usa: from json import a, b", 2 },
 { "import *: dentro de lambda e recusado",
   "f = funct() {\n    PUSH json GET *\n}\n",

@@ -1205,7 +1205,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "\nfim", NULL, 0 },
 { "matriz: char em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        char c = 64\n"
   "        post(c)\n"
@@ -1215,7 +1215,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "@", NULL, 0 },
 { "matriz: char_texto em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        char c = \"ç\"\n"
   "        post(c, len(c))\n"
@@ -1225,7 +1225,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "ç 1", NULL, 0 },
 { "matriz: closure em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        a = 1\n"
   "        funct inc() {\n"
@@ -1239,7 +1239,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "2 3", NULL, 0 },
 { "matriz: closure_self em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        x = 5\n"
   "        funct le() {\n"
@@ -1252,7 +1252,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "5", NULL, 0 },
 { "matriz: startswith em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        post(\"abc\".startswith((\"z\", \"a\")))\n"
   "    }\n"
@@ -1261,7 +1261,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "True", NULL, 0 },
 { "matriz: index_faixa em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        l = [1, 2, 3, 2]\n"
   "        post(l.index(2, 2))\n"
@@ -1271,7 +1271,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "3", NULL, 0 },
 { "matriz: encode em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        post(\"café\".encode(\"latin-1\"))\n"
   "    }\n"
@@ -1280,7 +1280,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "b'caf\\xe9'", NULL, 0 },
 { "matriz: decode em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
   "    }\n"
@@ -1289,7 +1289,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "café", NULL, 0 },
 { "matriz: num_base em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        post(0x1F, 0b101, 1_000, 1e3)\n"
   "    }\n"
@@ -1298,7 +1298,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        post(\"Ω\".lower(), \"ß\".upper())\n"
   "    }\n"
@@ -1307,7 +1307,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "ω SS", NULL, 0 },
 { "matriz: isdigit em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        post(\"²\".isdigit(), \"²\".isdecimal())\n"
   "    }\n"
@@ -1316,7 +1316,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "True False", NULL, 0 },
 { "matriz: regex_split em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        import regex\n"
   "        post(regex.split(r\"(,)\", \"a,b\"))\n"
@@ -1326,7 +1326,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        import regex\n"
   "        post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
@@ -1336,7 +1336,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "a[1]", NULL, 0 },
 { "matriz: json_par_surrogate em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        import json\n"
   "        post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
@@ -1346,7 +1346,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "{'a': '𠮷'}", NULL, 0 },
 { "matriz: await_lista em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        async funct d(n) {\n"
   "            return n * 2\n"
@@ -1358,7 +1358,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "[2, 4]", NULL, 0 },
 { "matriz: int_inf em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        try {\n"
   "            post(int(flo(\"inf\")))\n"
@@ -1371,7 +1371,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "ok-erro", NULL, 0 },
 { "matriz: nul em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        post(len(\"a\\x00b\"))\n"
   "    }\n"
@@ -1380,7 +1380,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "3", NULL, 0 },
 { "matriz: fatia em metodo",
-  "Entity K() {\n"
+  "Entity K {\n"
   "    funct m(self) {\n"
   "        post(\"abcdef\"[999999999999999999999:])\n"
   "    }\n"

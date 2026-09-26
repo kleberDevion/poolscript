@@ -15,7 +15,7 @@ astuple(instance) -> tup
 from datasentity import dataentity, astuple
 
 @dataentity
-Entity Pessoa() {
+Entity Pessoa {
     nome: str
     idade: int
 }

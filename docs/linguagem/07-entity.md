@@ -13,21 +13,24 @@ Tudo verificado na VM.
 ## 7.1. Declaração
 
 ```ps
-Entity Usuario() {
+Entity Usuario {
     nome: str
     idade: int
 }
 ```
 
 - O nome da Entity começa com **maiúscula** por convenção (é `IDENT_UPPER`,
-  seção 1.4). O motor não exige: `Entity usuario()` compila e roda. A maiúscula
+  seção 1.4). O motor não exige: `Entity usuario` compila e roda. A maiúscula
   é o que separa, à leitura, o tipo do valor.
-- Os **parênteses são obrigatórios**: `Entity Usuario:` é erro; use
-  `Entity Usuario()`. Entre eles vão as superclasses (7.6), ou nada.
+- **Sem parênteses** no cabeçalho: o `()` fica só na instanciação
+  (`Usuario("ana", 3)`). Herança vai entre parênteses depois do nome:
+  `Entity Cao(Animal) {` (7.5). `Entity Usuario() {` com `()` vazio é erro
+  (`o '()' fica so na instanciacao: escreva Entity Usuario {`), e
+  `Entity Usuario:` também (`bloco com ':' nao existe mais`).
 - **`class` e `Class` são sinônimos de `Entity`** — mesma semântica.
 
 ```ps
-class Ponto() {          # idêntico a Entity Ponto()
+class Ponto {          # idêntico a Entity Ponto {
     x: int
     y: int
 }
@@ -44,7 +47,7 @@ e aí o campo aceita qualquer valor, como um `x = 1`. A partir deles a linguagem
 ordem declarada:
 
 ```ps
-Entity Usuario() {
+Entity Usuario {
     nome: str
     idade: int
 }
@@ -54,7 +57,7 @@ post(u.nome, u.idade)      # ana 30
 ```
 
 ```ps
-Entity Usuario() {         # idêntico ao de cima
+Entity Usuario {         # idêntico ao de cima
     str nome
     int idade
 }
@@ -63,7 +66,7 @@ Entity Usuario() {         # idêntico ao de cima
 - **Valor padrão** num campo torna o argumento opcional:
 
   ```ps
-  Entity Config() {
+  Entity Config {
       host: str = "localhost"
       porta: int = 8080
   }
@@ -76,7 +79,7 @@ Entity Usuario() {         # idêntico ao de cima
   com `self.x = ...` — ele passa a existir na instância:
 
   ```ps
-  Entity Bolsa() {
+  Entity Bolsa {
       funct guarda(self, item) {
           self.conteudo = item
       }
@@ -87,7 +90,7 @@ Entity Usuario() {         # idêntico ao de cima
   `Livro(...)`; lê-lo pelo nome do tipo é erro, acusado **antes de rodar**:
 
   ```ps
-  Entity Livro() {
+  Entity Livro {
       public string autor = "admin"
   }
 
@@ -97,10 +100,10 @@ Entity Usuario() {         # idêntico ao de cima
   As duas saídas, conforme o que se quer:
 
   ```ps
-  Entity Livro() {
+  Entity Livro {
       public string autor = "admin"
   }
-  Entity Livro2() {
+  Entity Livro2 {
       public static string autor = "admin"
   }
 
@@ -118,7 +121,7 @@ Para um construtor com lógica própria (validação, campos derivados), defina
 `funct __init__(self, …)`. Isso **substitui** o construtor sintetizado:
 
 ```ps
-Entity Retangulo() {
+Entity Retangulo {
     funct __init__(self, largura, altura) {
         self.largura = largura
         self.altura  = altura
@@ -136,7 +139,7 @@ retornar, e não o que ficou no primeiro parâmetro. A instância entra como o
 primeiro item da tup:
 
 ```ps
-Entity E() {
+Entity E {
     funct __init__(*args) {
         post(len(args), type(args[0]))   # 3 E
     }
@@ -161,7 +164,7 @@ no primeiro `self` do corpo, que seria só o sintoma. É um erro só: o motor
 não repete o mesmo defeito em cada `self` e em cada chamada.
 
 ```ps
-Entity Conta() {
+Entity Conta {
     saldo: int
     funct extrato() {        # TypeError: método extrato() sem self: o primeiro parâmetro de um método é self (ou marque static)
         return self.saldo
@@ -174,7 +177,7 @@ mensagem diz qual nome encontrou. A exceção é `*args` na frente: a instância
 entra na tup (7.2).
 
 ```ps
-Entity Contador() {
+Entity Contador {
     valor: int
     funct inc(self) {
         self.valor += 1
@@ -200,7 +203,7 @@ Prefixado com `static`, o método **não recebe `self`** e é chamado **na
 própria Entity** (não numa instância):
 
 ```ps
-Entity Mat() {
+Entity Mat {
     static funct soma(a, b) {
         return a + b
     }
@@ -222,7 +225,7 @@ quando a classe é declarada, e existe antes de qualquer instância.
 ```ps
 import jinker
 
-class App() {
+class App {
     public static object mapp = jinker.Jinker(__name__)
 
     @mapp.post("/opa/<data>")
@@ -241,7 +244,7 @@ Os modificadores vêm em qualquer ordem, antes **ou depois** do tipo — a mesma
 regra da cabeça de funct:
 
 ```ps
-class Config() {
+class Config {
     static int a = 1
     private static int b = 2
     private int static c = 3         # o `static` depois do tipo também vale
@@ -271,7 +274,7 @@ conferida antes de rodar como em `App.s()`. Método comum (com `self`) não:
 `m()` solto é `NameError` — ele é da instância, `self.m()`.
 
 ```ps
-class Pai() {
+class Pai {
     public static int total = 7
     static funct dobro(n) { return n * 2 }
 }
@@ -287,7 +290,7 @@ soltos, e o hover/definição num nome solto vai no campo ou método.
 
 É **um só** valor, compartilhado: `K.n = K.n + 1` num método muda o que toda
 instância lê em `self.n`. E ele **não entra** no construtor sintetizado —
-`class P() { static int total = 0  str nome }` continua sendo `P("ana")`.
+`class P { static int total = 0  str nome }` continua sendo `P("ana")`.
 
 Por que existe: sem ele, `App.mapp` não existia, um método `static` não tinha
 como enxergar o campo, e o decorador no corpo da classe rodava antes de haver
@@ -297,12 +300,13 @@ instância — o programa acima passava no `--check` e não fazia nada.
 
 ## 7.5. Herança
 
-Uma Entity pode herdar de uma ou mais outras, listadas entre os parênteses. Os
+Uma Entity pode herdar de uma ou mais outras, listadas entre parênteses depois
+do nome (`Entity Cao(Animal) {`; sem herança não há parênteses). Os
 **métodos** do(s) pai(s) ficam disponíveis; um método redefinido no filho
 **sobrescreve** o do pai.
 
 ```ps
-Entity Animal() {
+Entity Animal {
     nome: str
     funct fala(self) {
         return "..."
@@ -332,44 +336,97 @@ Entity C(A, B) {          # herda métodos de A e de B
   só com os **campos dele** — os do pai não entram automaticamente. Para incluí-los,
   redeclare-os no filho ou escreva um `__init__` próprio.
 
-### 7.5.2. `base(...)` — construtor do pai
+### 7.5.2. `base()` / `base(Pai)` — o pai, como o `super`
 
-Dentro de um `__init__` próprio, `base(args)` chama o **construtor da
-superclasse**:
+`base()` designa o pai, e `.membro` em cima dele alcança **tudo que o pai
+tem** com o `self` atual: o construtor (`base().__init__(args)`), qualquer
+método (`base().fala()`, mesmo que o filho o sobrescreva) e os campos
+(`base().x`). Com um pai só, `base()`; com mais de um, ou pra mirar um avô,
+o nome vai dentro: `base(Pai)`.
 
 ```ps
-Entity A() {
+Entity A {
+    static int total = 7
     funct __init__(self, x) {
         self.x = x
+    }
+    str funct fala(self) {
+        return "A diz"
     }
 }
 
 Entity B(A) {
     funct __init__(self, x, y) {
-        base(x)          # roda o __init__ de A
+        base().__init__(x)          # roda o __init__ de A com este self
         self.y = y
+    }
+    str funct fala(self) {
+        return base().fala() + " e B tambem"   # a versao de A, sobrescrita aqui
+    }
+    int funct soma(self) {
+        return base().x + base().total         # campo da instancia e static do pai
     }
 }
 
 b = B(1, 2)
-post(b.x, b.y)           # 1 2
+post(b.x, b.y, b.fala(), b.soma())   # 1 2 A diz e B tambem 8
 ```
 
-`base` serve para o **construtor** do pai; não é a forma de chamar um método
-qualquer da superclasse.
+Regras:
 
-`base(...)` entrega ao pai o `self` do construtor atual, então ele só vale num
-`__init__` que declara `self` como primeiro parâmetro. Sem `self` é erro na
-declaração:
+- **`.__init__(args)`** aceita posicional, nomeado (`base().__init__(x=1)`)
+  e espalhado (`base().__init__(*a, **kw)`); o `self` é sempre o do método
+  atual. Aridade e tipos são conferidos antes de rodar, com as mesmas frases
+  de `A(1, 2)`.
+- **`.metodo(args)`** chama a versão do pai (a dele própria, ou a que ele
+  herdou), ligada ao `self` atual. Vale em qualquer método com `self`, não
+  só no `__init__`.
+- **`.campo`** lê: campo `static` do pai, ou o campo da instância (é o mesmo
+  objeto que `self.campo`). Escrever é pelo `self`: `base().x = 1` é erro
+  (`atribua pelo self: self.x = ...`).
+- **`private` do pai** continua invisível pro filho, também por `base()`:
+  `acesso negado: 'x' e private de A`.
+- **Mais de um pai:** `base()` sem nome é erro que lista as opções
+  (`base() com mais de um pai: diga qual, base(A) ou base(B)`);
+  `base(Pai)` mira o pai escrito. `base(X)` com X que não é ancestral:
+  `'X' nao e pai de 'Filha' (pais: A, B)`.
+
+```ps
+Entity Motor {
+    funct __init__(self, cavalos) { self.cavalos = cavalos }
+}
+Entity Roda {
+    funct __init__(self, qtd) { self.qtd = qtd }
+}
+Entity Carro(Motor, Roda) {
+    funct __init__(self) {
+        base(Motor).__init__(300)
+        base(Roda).__init__(4)
+    }
+}
+c = Carro()
+post(c.cavalos, c.qtd)   # 300 4
+```
+
+`base(...)` só vale dentro de um método que declara `self` como primeiro
+parâmetro (o `self` é o objeto que o pai recebe). Sem `self`, fora de Entity,
+ou numa Entity sem herança, é erro na declaração:
 
 ```
 SyntaxError: base() precisa do self: declare `funct __init__(self, ...)` (o self e o objeto que o pai inicializa)
+SyntaxError: base() fora de Entity com heranca
+SyntaxError: base() numa Entity sem heranca: nao ha pai pra inicializar
 ```
 
-O pai precisa **ter** construtor: um `__init__` próprio ou campos declarados
-(que sintetizam um). Se não tem nenhum dos dois, `base(...)` levanta
+`base(Pai)` sem `.membro` depois, e a forma antiga `base(args)`, acusam a
+forma certa: `base(Pai) precisa de um membro: base(Pai).__init__(...) ou
+base(Pai).metodo(...)`. Membro que o pai não tem: `AttributeError: 'A' object
+has no attribute 'z'`.
+
+O pai precisa **ter** construtor pra `base().__init__`: um `__init__` próprio
+ou campos declarados (que sintetizam um). Se não tem nenhum dos dois:
 `TypeError: base(): a Entity pai 'A' nao tem __init__` — posicional ou
-nomeado, a resposta é a mesma.
+nomeado, a resposta é a mesma, e sai antes de rodar.
 
 ---
 
@@ -380,7 +437,7 @@ Entity**. Acessá-lo de fora é erro (`acesso negado: 'x' e private de … (so a
 regra é **imposta pela VM**, não é só convenção.
 
 ```ps
-Entity Conta() {
+Entity Conta {
     private saldo: int
     public funct ver(self) {
         return self.saldo
@@ -405,7 +462,7 @@ O campo pode nascer no `__init__`, com tipo e visibilidade, na forma
 `<visibilidade> <tipo> <nome> = <valor>`:
 
 ```ps
-private Class Pagamento() {
+private Class Pagamento {
     public funct __init__(self, nome, doc) {
         private str name = nome
         private int cpf  = doc
@@ -439,7 +496,8 @@ post(p.name)             # ERRO — name é private
 
 ## 7.7. Resumo
 
-- `Entity Nome()` (parênteses obrigatórios); `class`/`Class` são sinônimos.
+- `Entity Nome {` (sem parênteses; herança: `Entity Nome(Pai) {`);
+  `class`/`Class` são sinônimos.
 - Campos `nome: tipo` (ou `tipo nome`) sintetizam o construtor (1 arg por campo,
   na ordem); padrão torna opcional; campo criado no método via `self.x = …`.
 - Campo declarado no construtor: `private <tipo> <nome> = <valor>` (7.6.1).
@@ -447,5 +505,6 @@ post(p.name)             # ERRO — name é private
 - Métodos têm `self` como 1º parâmetro; `static` não tem `self` e é chamado na
   Entity.
 - Herança (inclusive múltipla) compartilha métodos; filho com campos gera o
-  próprio construtor; `base(...)` chama o construtor do pai.
+  próprio construtor; `base().__init__(...)` chama o construtor do pai, e
+  `base(Pai).metodo()` / `base(Pai).campo` alcançam o resto do pai (7.5.2).
 - `private` é imposto pela VM; `public` é o padrão.

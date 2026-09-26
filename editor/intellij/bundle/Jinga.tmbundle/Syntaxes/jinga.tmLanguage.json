@@ -365,6 +365,11 @@
           "match": "\\b__\\w+__\\b"
         },
         {
+          "comment": "base(Pai).membro: o pai, como o super; contextual, so com ( logo depois",
+          "name": "keyword.control.base.jinga",
+          "match": "\\bbase(?=\\s*\\()"
+        },
+        {
           "match": "\\b([A-Za-z_]\\w*)\\s*(?=\\()",
           "captures": {
             "1": {

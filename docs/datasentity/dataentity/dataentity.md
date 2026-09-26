@@ -7,7 +7,7 @@ partir dos campos tipados declarados no corpo.
 from datasentity import dataentity
 
 @dataentity
-Entity Nome() {
+Entity Nome {
     campo: tipo
     campo: tipo = default
 }
@@ -21,7 +21,7 @@ Entity Nome() {
 from datasentity import dataentity
 
 @dataentity
-Entity Pessoa() {
+Entity Pessoa {
     nome: str
     idade: int = 18          # com default
 }
@@ -51,7 +51,7 @@ Com o `@dataentity`, a instância vira facilmente dict/tupla/lista/JSON:
 from datasentity import dataentity, asdict, asjson
 
 @dataentity
-Entity Pessoa() {
+Entity Pessoa {
     nome: str
     idade: int
 }

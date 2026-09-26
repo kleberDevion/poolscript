@@ -234,7 +234,7 @@ function remendaPontosSoltos(texto) {
  * caractere: string e comentário chegam como UM token cada, então o `(` de
  * dentro de `"a("` não existe aqui. Contar no texto cru erraria exatamente no
  * caso que o teste cobre. */
-function fechaAbertos(texto) {
+function fechaAbertos(texto, off) {
   const bruto = motor(['--tokens'], texto);
   const t0 = bruto.trim();
   if (!t0.startsWith('[') && !t0.startsWith('{')) return texto;
@@ -252,17 +252,40 @@ function fechaAbertos(texto) {
      * token da própria f-string: contar de novo o `(` de `f"{g(1)}"` fecharia
      * um parêntese que não está aberto */
     if (t.em) continue;
-    if (par[t.t]) { pilha.push(t.t); continue; }
+    if (par[t.t]) { pilha.push({ t: t.t, l: t.l }); continue; }
     if (fecha[t.t]) {
       /* fecha o que estiver aberto; desemparelhado é erro do usuário, não
        * nosso — e aí não há o que remendar */
-      if (pilha.length && pilha[pilha.length - 1] === fecha[t.t]) pilha.pop();
+      if (pilha.length && pilha[pilha.length - 1].t === fecha[t.t]) pilha.pop();
     }
   }
   if (!pilha.length) return texto;
-  let cauda = '';
-  for (let i = pilha.length - 1; i >= 0; i--) cauda += par[pilha[i]];
-  return texto + cauda;
+  /* O grupo aberto ATÉ a linha do cursor fecha no FIM DESSA LINHA, não no fim
+   * do arquivo: `f(` como último comando de um método, com o `}` logo
+   * abaixo, virava `f(\n}\n)` — o `}` caía dentro do parêntese e nem a
+   * chamada nem o método sobreviviam ao parse; a assinatura ali era nada.
+   * Grupo aberto DEPOIS do cursor continua fechando no fim. */
+  let linhaCursor = 0;
+  if (off !== undefined && off !== null) {
+    linhaCursor = 1;
+    for (let i = 0; i < off && i < texto.length; i++) if (texto[i] === '\n') linhaCursor++;
+  }
+  let noCursor = '', noFim = '';
+  for (let i = pilha.length - 1; i >= 0; i--) {
+    if (linhaCursor > 0 && pilha[i].l <= linhaCursor) noCursor += par[pilha[i].t];
+    else noFim += par[pilha[i].t];
+  }
+  /* O fechador entra no COMEÇO da linha seguinte, não no fim da do cursor:
+   * com uma f-string aberta (`post(f"sao {tot`) o fim da linha ainda é
+   * string, e o `)` cairia dentro dela. Na linha de baixo ele fecha o
+   * parêntese (quebra de linha dentro de `(` não conta) antes do `}`. */
+  let saida = texto;
+  if (noCursor) {
+    const fimLinha = texto.indexOf('\n', off);
+    if (fimLinha < 0) saida = texto + noCursor;
+    else saida = texto.slice(0, fimLinha + 1) + noCursor + texto.slice(fimLinha + 1);
+  }
+  return saida + noFim;
 }
 
 function indiceNoCursor(doc, pos) {
@@ -290,11 +313,11 @@ function indiceNoCursor(doc, pos) {
    * sugerir bem enquanto se digita: era por isso que o construtor, os campos
    * e os métodos da própria classe sumiam. Se a árvore voltou vazia, tira o
    * fragmento e tenta de novo. O `--ast` extra só roda nesse caso. */
-  let arvore = arvoreDe(fechaAbertos(remendaPontosSoltos(comCursor)));
+  let arvore = arvoreDe(fechaAbertos(remendaPontosSoltos(comCursor), off));
   if (!arvore || !(arvore.lista || []).length) {
     const sem = semParcialNoCursor(comCursor, off);
     if (sem !== null) {
-      const alt = arvoreDe(fechaAbertos(remendaPontosSoltos(sem)));
+      const alt = arvoreDe(fechaAbertos(remendaPontosSoltos(sem), off));
       if (alt && (alt.lista || []).length) arvore = alt;
     }
   }
@@ -723,7 +746,9 @@ function ligacaoLocal(idx, nome, linha) {
   return null;
 }
 
-function membrosDaEntidade(doc, nome, interno, vistos) {
+/* `comInit`: depois de `base(Pai).` o `__init__` do pai É chamável
+ * (`base().__init__(x)`); em `c.` continua escondido. */
+function membrosDaEntidade(doc, nome, interno, vistos, comInit) {
   vistos = vistos || new Set();
   if (vistos.has(nome)) return [];
   vistos.add(nome);
@@ -732,7 +757,7 @@ function membrosDaEntidade(doc, nome, interno, vistos) {
   const out = [];
   const jaTem = new Set();
   for (const m of e.membros) {
-    if (m.nome === '__init__') continue;      /* chama-se `C(...)`, nunca `c.__init__()` */
+    if (m.nome === '__init__' && !comInit) continue;   /* chama-se `C(...)`, nunca `c.__init__()` */
     if (m.privado && !interno) continue;
     if (jaTem.has(m.nome)) continue;
     jaTem.add(m.nome);
@@ -837,7 +862,88 @@ function tipoDoNome(doc, nome, linha) {
    * ninguém sabe: ao menos o que todo valor tem (`type`…). Devolver nada
    * fazia `for each x in …` + `x.` ficar mudo. */
   for (const b of A.visiveisEm(idx, linha)) if (b.nome === nome) return { tipo: 'universal' };
+  /* `str(x).upper().` — a cadeia começa numa CONVERSÃO: o nome é o do tipo
+   * do motor (`bytes(...)` produz `byte`). Sem isto a cadeia morria no
+   * primeiro passo e o completion não oferecia nada. */
+  const conv = nome === 'bytes' ? 'byte' : nome;
+  if (META.tipos && META.tipos[conv]) return { tipo: 'tipo_motor', nome: conv };
   return null;
+}
+
+/* ── o tipo de uma EXPRESSÃO da árvore ───────────────────────────────────
+ *
+ * Uma regra só, usada pelo campo criado no corpo (`self.con = psodbc.
+ * connect(...)`), pelo retorno inferido de método sem tipo e por quem mais
+ * precisar tipar um nó: literal → tipo do motor; nome/cadeia/chamada → a
+ * mesma resolução de `a.b.c` do completion, tirada da árvore em vez do
+ * texto. `null` = não dá pra saber. */
+function partesDoNo(no) {
+  const partes = [];
+  let cur = no;
+  while (cur && typeof cur === 'object') {
+    if (cur.k === 'Name') { partes.unshift(cur.texto); return partes; }
+    if (cur.k === 'MemberAccess') { partes.unshift(cur.texto); cur = cur.a; continue; }
+    if (cur.k === 'Call') { cur = cur.a; continue; }        /* o retorno do chamado */
+    if (cur.k === 'BaseCall') { partes.unshift('base(' + (cur.texto2 || '') + ')'); return partes; }
+    return null;
+  }
+  return null;
+}
+
+function tipoDaExpressao(doc, no, linha) {
+  if (!no || typeof no !== 'object') return null;
+  switch (no.k) {
+    case 'Literal':
+      if (typeof no.texto === 'string') return { tipo: 'tipo_motor', nome: no.lit === 'bytes' ? 'byte' : 'str' };
+      return null;
+    case 'InterpolatedString': return { tipo: 'tipo_motor', nome: 'str' };
+    case 'ListLiteral': case 'ListComp': return { tipo: 'tipo_motor', nome: 'list' };
+    case 'DictLiteral': return { tipo: 'tipo_motor', nome: 'dict' };
+    case 'TupleLiteral': return { tipo: 'tipo_motor', nome: 'tup' };
+    case 'SliceAccess': return tipoDaExpressao(doc, no.a, linha);
+    case 'IndexAccess': {
+      /* `s[i]` de texto é texto; o item de lista/dict ninguém sabe */
+      const t = tipoDaExpressao(doc, no.a, linha);
+      return t && t.tipo === 'tipo_motor' && t.nome === 'str' ? t : { tipo: 'universal' };
+    }
+    case 'Name': case 'MemberAccess': case 'Call': case 'BaseCall': {
+      const partes = partesDoNo(no);
+      return partes && partes.length ? alvoDaCadeia(doc, partes, linha) : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/* O tipo que um método/funct SEM tipo declarado devolve, pelos `return`
+ * dele: só quando todos concordam. `INFERINDO` corta a recursão de um
+ * método que devolve `self.mesmo()`. */
+const INFERINDO = new Set();
+function retornoInferido(doc, m) {
+  if (!m || !m.corpo) return null;
+  const chave = m.nome + '@' + m.linha;
+  if (INFERINDO.has(chave)) return null;
+  INFERINDO.add(chave);
+  try {
+    let achado = null, bate = true;
+    const anda = (no) => {
+      if (!no || typeof no !== 'object' || !bate) return;
+      if (no.k === 'ActionDecl' || no.k === 'LambdaExpr') return;   /* retorno de outra funct */
+      if (no.k === 'ReturnStmt') {
+        const t = no.a ? tipoDaExpressao(doc, no.a, no.l - 1) : null;
+        if (!t || t.tipo === 'universal') { bate = false; return; }
+        const rot = t.tipo + ':' + (t.nome || (t.nomes || []).join('|'));
+        if (achado && achado.rot !== rot) { bate = false; return; }
+        achado = { rot, alvo: t };
+        return;
+      }
+      A.cada(no, anda);
+    };
+    anda(m.corpo);
+    return bate && achado ? achado.alvo : null;
+  } finally {
+    INFERINDO.delete(chave);
+  }
 }
 
 /* O que TODO valor da linguagem tem — a tabela `__universal__` do motor. */
@@ -888,9 +994,41 @@ function membrosDaCadeia(doc, partes, linha) {
  * `membrosDaCadeia` porque o hover precisa saber se o alvo é `universal`
  * (tipo desconhecido — cabe listar candidatos) ou uma Entity/módulo onde o
  * membro simplesmente não existe (aí é erro de digitação, fica mudo). */
+/* `x[]` (a marca que `cadeiaAntes` põe em `x[i]`): o tipo do ITEM — texto
+ * indexado é texto; item de lista/dict/tup ninguém sabe (universal). */
+function alvoIndexado(alvo) {
+  if (!alvo) return null;
+  if (alvo.tipo === 'tipo_motor' && alvo.nome === 'str') return alvo;
+  return { tipo: 'universal' };
+}
+
 function alvoDaCadeia(doc, partes, linha) {
   if (!partes.length) return null;
-  let alvo = tipoDoNome(doc, partes[0], linha);
+  let alvo;
+  if (partes[0].endsWith('[]')) {
+    alvo = alvoIndexado(alvoDaCadeia(doc, [partes[0].slice(0, -2)], linha));
+  } else if (partes.length > 1 && partes[partes.length - 1].endsWith('[]')) {
+    /* `a.b[i].c`: resolve `a.b`, pega o item, e segue */
+    const ate = partes.slice(0, -1).concat([partes[partes.length - 1].slice(0, -2)]);
+    alvo = alvoIndexado(alvoDaCadeia(doc, ate, linha));
+    partes = [];
+  } else if (partes.some((p) => p.endsWith('[]'))) {
+    const k = partes.findIndex((p) => p.endsWith('[]'));
+    const ate = partes.slice(0, k).concat([partes[k].slice(0, -2)]);
+    alvo = alvoIndexado(alvoDaCadeia(doc, ate, linha));
+    partes = [''].concat(partes.slice(k + 1));
+  } else if (partes[0] === 'base' || partes[0].startsWith('base(')) {
+    /* `base().` / `base(Pai).` — o pai da Entity do cursor (o escrito, ou o
+     * único); os membros dele, com o `__init__`, que aqui é chamável */
+    const ent = A.entidadeEm(idxDoc(doc), linha);
+    if (!ent) return null;
+    const dentro = partes[0].startsWith('base(') ? partes[0].slice(5, -1).trim() : '';
+    const pai = dentro || (ent.bases.length === 1 ? ent.bases[0] : null);
+    if (!pai) return null;
+    alvo = { tipo: 'entity', nome: pai, interno: false, base: true };
+  } else {
+    alvo = tipoDoNome(doc, partes[0], linha);
+  }
   if (!alvo) return null;
 
   for (let i = 1; i < partes.length; i++) {
@@ -904,6 +1042,20 @@ function alvoDaCadeia(doc, partes, linha) {
     const t = tipoEncadeado(m.retorna || m.tipo);
     const modBase = alvo.via ? alvo.via.mod : (alvo.tipo === 'import' && alvo.alvo ? alvo.alvo.mod : null);
     const via = modBase ? { mod: modBase, membro: passo } : undefined;
+    /* `sys.stdout.` — o membro é um SUBMÓDULO (retorno `module`): o que vem
+     * depois são os membros dele, pela tabela `sys.stdout` do motor */
+    if (t === 'module' && modBase && META.modulos[modBase + '.' + passo]) {
+      alvo = { tipo: 'import', alvo: { tipo: 'modulo', mod: modBase + '.' + passo } };
+      continue;
+    }
+    /* campo criado no corpo sem tipo (`self.con = psodbc.connect(...)`) e
+     * método sem tipo declarado: o tipo vem da EXPRESSÃO — é o terceiro
+     * ponto (`self.con.cursor().`) que só respondia `type` */
+    if (!t && !(m.retorna || m.tipo)) {
+      const inf = m.kind === 'campo' && m.valor ? tipoDaExpressao(doc, m.valor, m.linha)
+                : m.kind === 'action' && m.corpo ? retornoInferido(doc, m) : null;
+      if (inf) { alvo = inf; continue; }
+    }
     const uniao = !t ? alvoDoRetorno(m.retorna || m.tipo, via) : null;
     if (t && META.tipos[t]) alvo = { tipo: 'tipo_motor', nome: t, via };
     else if (uniao) alvo = uniao;
@@ -926,7 +1078,7 @@ function membrosDe(doc, alvo, linha) {
     return (alvo.no.lista || []).filter((m) => m && m.k === 'EnumMember')
       .map((m) => ({ nome: m.texto, kind: 'campo', tipo: '', linha: m.l - 1, coluna: m.c - 1 }));
   }
-  if (alvo.tipo === 'entity') return membrosDaEntidade(doc, alvo.nome, !!alvo.interno);
+  if (alvo.tipo === 'entity') return membrosDaEntidade(doc, alvo.nome, !!alvo.interno, undefined, !!alvo.base);
   if (alvo.tipo === 'uniao') {
     /* Retorno com mais de um tipo (`os.run` devolve int, str ou Process): os
      * membros dos dois lados, sem repetir, cada um dizendo de qual tipo veio.
@@ -964,8 +1116,12 @@ function membrosDe(doc, alvo, linha) {
     if (a.tipo === 'arquivo') return membrosDeArquivo(a.arquivo, pastaDoDoc(doc));
     if (a.tipo === 'membro_modulo') {
       for (const m of META.modulos[a.mod] || []) {
+        if (m.nome !== a.membro) continue;
+        /* `from sys import stdout` + `stdout.`: o membro é um submódulo */
+        if (m.retorna === 'module' && META.modulos[a.mod + '.' + a.membro])
+          return exportadosDe({ mod: a.mod + '.' + a.membro }, '', '', new Set());
         const t = tipoEncadeado(m.retorna);
-        if (m.nome === a.membro && t && META.tipos[t])
+        if (t && META.tipos[t])
           return (META.tipos[t] || [])
             .map((x) => Object.assign({ kind: 'action', escopo: [`${a.mod}/${a.membro}`, a.mod, t] }, x));
       }
@@ -1082,6 +1238,8 @@ function chamadaEm(doc, pos) {
   while (cur) {
     if (cur.k === 'Name') { partes.unshift(cur.texto); break; }
     if (cur.k === 'MemberAccess') { partes.unshift(cur.texto); cur = cur.a; continue; }
+    /* `base(Pai).__init__(` — o pai é o receptor; `alvoDaCadeia` lê `base(Pai)` */
+    if (cur.k === 'BaseCall') { partes.unshift('base(' + (cur.texto2 || '') + ')'); break; }
     if (cur.k === 'Literal' && typeof cur.texto === 'string' && partes.length) {
       receptor = cur.lit === 'bytes' ? 'byte' : 'str';
       break;
@@ -1593,6 +1751,23 @@ function completa(doc, p) {
   const lit = receptorLiteral(doc, p.position);
   if (lit) return membrosDe(doc, { tipo: 'tipo_motor', nome: lit }, p.position.line).map((m) => itemDeMembro(m, lit));
 
+  /* `base(` — o que vai aqui é o NOME DE UM PAI da Entity do cursor. Pelo
+   * texto, não pela árvore: `base(` aberto (mesmo remendado, `base()`) não é
+   * programa válido — o parser exige `.membro` depois. */
+  {
+    const ate = linhaAte(doc, p.position);
+    const antesDoParcial = ate.slice(0, ate.length - cad.parcial.length).trimEnd();
+    if (antesDoParcial.endsWith('base(')) {
+      const ent = A.entidadeEm(idxDoc(doc), p.position.line);
+      if (ent) {
+        return ent.bases.map((b) => ({
+          label: b, kind: CompletionItemKind.Class,
+          detail: `pai de ${ent.nome} — base(${b}).__init__(...) / .metodo(...) / .campo`,
+        }));
+      }
+    }
+  }
+
   /* `alvo.` / `a.b.c.` — membros do que a cadeia designa */
   if (cad.terminaEmPonto && cad.partes.length) {
     const membros = membrosDaCadeia(doc, cad.partes, p.position.line);
@@ -2023,6 +2198,15 @@ conexao.onHover((p) => {
   const { partes, nome } = nomeSob(doc, p.position);
   if (!nome) return null;
 
+  /* `base` — contextual, chega como IDENT: o pai, como o `super`. A prosa
+   * é a seção 7.5.2 de 07-entity, pela crase do título. */
+  if (nome === 'base' && !partes.length && !aposPonto) {
+    const s = secaoDaLinguagem('base()') || secaoDaLinguagem('base(Pai)');
+    const prosa = s ? trechoDaSecao(s)
+                    : 'o pai, como o `super`: `base().__init__(args)`, `base(Pai).metodo(args)`, `base(Pai).campo`';
+    return md('```ps\nbase(Pai).membro\n```\n\n' + prosa);
+  }
+
   /* Membro de um receptor que a cadeia de nomes NÃO lê: literal (`"x".encode`,
    * `b"x".decode`) ou expressão (`lines[1].decode`). O `aposPonto` diz que há
    * receptor; o literal responde pelo tipo dele, o resto vira candidatos. */
@@ -2045,11 +2229,19 @@ conexao.onHover((p) => {
     /* receptor conhecido mas de tipo desconhecido (`head = lines[0]`): os
      * candidatos por nome; membro inexistente numa Entity/módulo: nada */
     if (!m) return alvo && alvo.tipo === 'universal' ? hoverCandidatos(nome) : null;
-    const dono = partes[partes.length - 1];
+    /* o dono é o TIPO do receptor: `self.con` e `u.con` são `Db.con`, e
+     * "herdado de" só quando o membro veio de um pai de verdade — antes
+     * `self.con` dizia "herdado de `Db`" no campo da própria classe */
+    const dono = alvo && alvo.tipo === 'entity' ? alvo.nome : partes[partes.length - 1];
     const prosa = m.escopo ? resumoDe(m.escopo, m.nome) : '';
     const herd = m.de && m.de !== dono ? `\n\nherdado de \`${m.de}\`` : '';
+    /* campo sem tipo declarado / método sem retorno declarado: o inferido */
+    const mm = Object.assign({}, m);
+    const nomeDe = (inf) => inf ? (inf.nome || (inf.nomes || []).join('|') || '') : '';
+    if (mm.kind === 'campo' && !mm.tipo && mm.valor) mm.tipo = nomeDe(tipoDaExpressao(doc, mm.valor, mm.linha));
+    if (mm.kind === 'action' && !mm.retorna && mm.corpo) mm.retorna = nomeDe(retornoInferido(doc, mm)) || null;
     return md('```ps\n' + (m.privado ? 'private ' : '') + (m.estatica ? 'static ' : '')
-              + (m.nonnull ? 'nonnull ' : '') + dono + '.' + assinatura(m)
+              + (m.nonnull ? 'nonnull ' : '') + dono + '.' + assinatura(mm)
               + '\n```' + herd + (prosa ? '\n\n' + prosa : ''));
   }
 

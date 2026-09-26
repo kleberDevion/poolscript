@@ -97,6 +97,7 @@ void ps_desmonta(const PSPrograma *prog, FILE *f)
                 case OP_LOAD_CONST: case OP_GET_MEMBER: case OP_SET_MEMBER:
                 case OP_IMPORT_MOD: case OP_IMPORT_FROM: case OP_LOAD_METODO:
                 case OP_SET_METODO: case OP_IMPORT_FROM_ESTRELA: case OP_CONFERE_TIPO:
+                case OP_LOAD_BASE_MEMBRO:
                     if (arg >= 0 && arg < p->nconsts) { fputs("; ", f); desmonta_const(&p->consts[arg], f); }
                     break;
                 case OP_COERCE_DECL:
@@ -2553,10 +2554,95 @@ static const char *tp_binario(C *c, const char *op, const char *a, const char *b
     return NULL;
 }
 
+/* ── base(): o pai que `base()` / `base(Pai)` designa ──────────────────────
+ * `Pai` é ancestral de `classe`? 1 = sim; 0 = não; -1 = um pai não é do
+ * arquivo, não dá pra saber (a VM confere rodando). */
+static int tp_eh_ancestral(C *c, const char *classe, const char *pai, int prof)
+{
+    PSNode *d = tp_tipo_arq(c, classe);
+    if (!d || d->kind != N_ENTITY_DECL || prof > 32) return -1;
+    int incerto = 0;
+    for (int32_t i = 0; i < d->lista2.n; i++) {
+        const char *q = d->lista2.itens[i]->texto;
+        if (!q) continue;
+        if (strcmp(q, pai) == 0) return 1;
+        int r = tp_eh_ancestral(c, q, pai, prof + 1);
+        if (r == 1) return 1;
+        if (r == -1) incerto = 1;
+    }
+    return incerto ? -1 : 0;
+}
+
+/* "base(A) ou base(B)" / "A, B" com os pais diretos da Entity. */
+static void base_lista_pais(PSNode *ent, char *buf, size_t cap, int com_base)
+{
+    buf[0] = '\0';
+    for (int32_t i = 0; i < ent->lista2.n; i++) {
+        const char *q = ent->lista2.itens[i]->texto ? ent->lista2.itens[i]->texto : "?";
+        size_t k = strlen(buf);
+        if (k + strlen(q) + 12 >= cap) break;
+        if (com_base) snprintf(buf + k, cap - k, "%sbase(%s)", i ? " ou " : "", q);
+        else          snprintf(buf + k, cap - k, "%s%s", i ? ", " : "", q);
+    }
+}
+
+/* O nome do pai SEM acusar nada (pra `tp_de`, que roda mais de uma vez por
+ * nó): o escrito, ou o único pai da Entity atual. NULL = não dá pra saber. */
+static const char *base_pai_nome(C *c, PSNode *n)
+{
+    if (n->texto2) return n->texto2;
+    PSNode *ent = c->dentro_entity ? c->entity_no : NULL;
+    if (!ent || ent->lista2.n != 1) return NULL;
+    return ent->lista2.itens[0]->texto;
+}
+
+/* O pai que `base(...)` designa, acusando o que estiver errado: fora de
+ * Entity, Entity sem pai, método sem `self`, `base()` com mais de um pai,
+ * `base(X)` com X que não é ancestral. NULL = acusou. */
+static const char *base_pai(C *c, Unidade *u, PSNode *n)
+{
+    PSNode *ent = c->dentro_entity ? c->entity_no : NULL;
+    if (!ent) { cerro_sx(c, n, "base() fora de Entity com heranca"); return NULL; }
+    if (ent->lista2.n == 0) {
+        cerro_sx(c, n, "base() numa Entity sem heranca: nao ha pai pra inicializar");
+        return NULL;
+    }
+    /* `base(...)` entrega ao pai o `self` do método (o OP_LOAD_SELF lê o
+     * slot 0). Numa funct cujo 1º parâmetro não é `self` — `funct
+     * __init__(*args)` — o slot 0 é outra coisa. Sem self não há objeto. */
+    if (u->eh_modulo || u->nlocais == 0 || strcmp(u->locais[0], "self") != 0) {
+        cerro_sx(c, n, "base() precisa do self: declare `funct %s(self, ...)` "
+                       "(o self e o objeto que o pai inicializa)",
+                 u->nome_funct ? u->nome_funct : "__init__");
+        return NULL;
+    }
+    char lista[256];
+    if (!n->texto2) {
+        if (ent->lista2.n > 1) {
+            base_lista_pais(ent, lista, sizeof(lista), 1);
+            cerro_sx(c, n, "base() com mais de um pai: diga qual, %s", lista);
+            return NULL;
+        }
+        return ent->lista2.itens[0]->texto;
+    }
+    for (int32_t i = 0; i < ent->lista2.n; i++)
+        if (ent->lista2.itens[i]->texto && strcmp(ent->lista2.itens[i]->texto, n->texto2) == 0)
+            return n->texto2;
+    if (ent->texto && tp_eh_ancestral(c, ent->texto, n->texto2, 0) == 0) {
+        base_lista_pais(ent, lista, sizeof(lista), 0);
+        cerro_sx(c, n, "'%s' nao e pai de '%s' (pais: %s)", n->texto2, ent->texto, lista);
+        return NULL;
+    }
+    return n->texto2;                 /* ancestral, ou pai importado: a VM confere */
+}
+
 static const char *tp_de(C *c, Unidade *u, PSNode *n)
 {
     if (!n) return NULL;
     switch (n->kind) {
+        /* `base(Pai)` VALE o pai pra quem confere o `.membro` em cima dele:
+         * campo/método/aridade saem pelo mesmo caminho de `p.membro` */
+        case N_BASE_CALL_NODE: return base_pai_nome(c, n);
         case N_LITERAL:
             switch (n->lit) {
                 case L_INT: case L_BIGINT: return "int";
@@ -3339,6 +3425,42 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
         return;
     }
     if (f->kind != N_MEMBER_ACCESS || !f->texto || !f->a) return;
+    if (f->a->kind == N_BASE_CALL_NODE) {
+        /* `base(Pai).__init__(...)` / `base(Pai).metodo(...)`: o método do
+         * pai com o self na frente, conferido como `A(...)` e `p.m(...)` */
+        const char *pai = base_pai_nome(c, f->a);
+        PSNode *d = pai ? tp_tipo_arq(c, pai) : NULL;
+        if (!d || d->kind != N_ENTITY_DECL) return;
+        if (strcmp(f->texto, "__init__") == 0) {
+            PSNode *init = tp_metodo(c, pai, "__init__", 0);
+            if (init) {
+                if (!tp_metodo_decorado(c, pai, init))
+                    tp_confere_args(c, u, n, "__init__", &init->lista, 1, 0, NULL);
+                return;
+            }
+            if (d->lista2.n == 0 && d->lista2_alias.n > 0) {
+                tp_confere_args(c, u, n, "__init__", &d->lista2_alias, 1, 0, pai);
+                return;
+            }
+            /* sem `__init__` nem campos (e sem pai que os traga): a frase da VM */
+            if (d->lista2.n == 0)
+                terro(c, f, "TypeError", "base(): a Entity pai '%s' nao tem __init__", pai);
+            return;
+        }
+        PSNode *m = tp_metodo(c, pai, f->texto, 0);
+        if (!m) {
+            if (tp_classe_tem(c, pai, f->texto, 0) == 0) {
+                char dica[160];
+                terro(c, f, "AttributeError", "'%s' object has no attribute '%s'%s", pai, f->texto,
+                      tp_dica_membro(c, pai, f->texto, dica, sizeof(dica)));
+            }
+            return;
+        }
+        if (tp_metodo_decorado(c, pai, m) || tp_campo_tipo(c, pai, f->texto, 0)) return;
+        tp_confere_args(c, u, n, m->texto ? m->texto : "?", &m->lista,
+                        tp_metodo_estatico(c, pai, m) ? 0 : 1, 0, NULL);
+        return;
+    }
     {
         /* `util.soma(...)` / `util.Conta(...)` de um `.pr` importado: a
          * assinatura vem da AST do módulo (funct decorada por decorador
@@ -4040,6 +4162,35 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
 
         case N_CALL:
             tp_confere_chamada(c, u, n);
+            if (n->a && n->a->kind == N_MEMBER_ACCESS && n->a->a
+                    && n->a->a->kind == N_BASE_CALL_NODE) {
+                /* `base(Pai).membro(args)`: a classe pai é carregada pelo
+                 * NOME — buscar pela instância acharia o override da filha e
+                 * recursaria pra sempre. `__init__` só com posicionais vai
+                 * pelo CALL_BASE (sem criar bound); o resto liga o método
+                 * ao self (LOAD_BASE_MEMBRO) e chama como qualquer bound,
+                 * inclusive com nomeado e espalhado. */
+                PSNode *f = n->a;
+                const char *pai = base_pai(c, u, f->a);
+                if (!pai) return;
+                int32_t nkw_b = 0;
+                for (int32_t i = 0; i < n->lista.n; i++)
+                    if (n->lista.itens[i]->texto || n->lista.itens[i]->i2) nkw_b++;
+                carrega_nome(c, u, pai);
+                if (f->texto && strcmp(f->texto, "__init__") == 0 && nkw_b == 0) {
+                    emite(c, u, OP_LOAD_SELF, 0);
+                    for (int32_t i = 0; i < n->lista.n; i++)
+                        expr(c, u, n->lista.itens[i]->a);
+                    emite(c, u, OP_CALL_BASE, n->lista.n);
+                    return;
+                }
+                emite(c, u, OP_LOAD_BASE_MEMBRO,
+                      idx_const(c, u, K_STR, 0, 0, f->texto ? f->texto : "",
+                                f->texto ? (int32_t)strlen(f->texto) : 0));
+                tp_confere_saida(c, u, n);
+                emite_args_e_chama(c, u, n, &n->lista);
+                return;
+            }
             expr(c, u, n->a);
             /* depois do chamado: ele pode ter chamadas dentro, e a marca de
              * saída é só desta */
@@ -4266,6 +4417,16 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
 
         case N_MEMBER_ACCESS:
             tp_confere_membro(c, u, n);
+            if (n->a && n->a->kind == N_BASE_CALL_NODE) {
+                /* `base(Pai).campo` / `base(Pai).metodo` (sem chamar) */
+                const char *pai = base_pai(c, u, n->a);
+                if (!pai) return;
+                carrega_nome(c, u, pai);
+                emite(c, u, OP_LOAD_BASE_MEMBRO,
+                      idx_const(c, u, K_STR, 0, 0, n->texto ? n->texto : "",
+                                n->texto ? (int32_t)strlen(n->texto) : 0));
+                return;
+            }
             expr(c, u, n->a);
             emite(c, u, OP_GET_MEMBER,
                   idx_const(c, u, K_STR, 0, 0, n->texto ? n->texto : "",
@@ -4278,50 +4439,11 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             emite(c, u, OP_AWAIT, 0);
             return;
 
-        case N_BASE_CALL_NODE: {
-            /* `base(v)` chama o __init__ do PRIMEIRO pai com o self atual.
-             * Emite a classe pai explicitamente: buscar pela instância
-             * acharia o override da filha e recursaria pra sempre. */
-            const char *pai = n->texto2 ? n->texto2 : c->entity_pai;
-            if (!pai) {
-                /* `base()` numa Entity SEM herança era um no-op calado: quem
-                 * escreveu isso errou (não há pai pra inicializar) e o erro
-                 * ficava escondido. Agora fala. */
-                cerro_sx(c, n, "%s", c->dentro_entity
-                             ? "base() numa Entity sem heranca: nao ha pai pra inicializar"
-                             : "base() fora de Entity com heranca");
-                return;
-            }
-            /* `base(...)` passa o `self` do frame ao `__init__` do pai (o
-             * OP_LOAD_SELF lê o slot 0). Numa funct cujo 1º parâmetro não é
-             * `self` — `funct __init__(*args)` — o slot 0 é outra coisa, e o
-             * pai inicializava a tup: `self.a = a` dava "'tup' object has no
-             * attribute 'a'". Sem self não há objeto pra entregar. */
-            if (u->eh_modulo || u->nlocais == 0 || strcmp(u->locais[0], "self") != 0) {
-                cerro_sx(c, n, "base() precisa do self: declare `funct __init__(self, ...)` "
-                               "(o self e o objeto que o pai inicializa)");
-                return;
-            }
-            int32_t nkw_b = 0;
-            for (int32_t i = 0; i < n->lista.n; i++)
-                if (n->lista.itens[i]->texto || n->lista.itens[i]->i2) nkw_b++;
-            if (nkw_b == 0) {
-                carrega_nome(c, u, pai);
-                emite(c, u, OP_LOAD_SELF, 0);
-                for (int32_t i = 0; i < n->lista.n; i++)
-                    expr(c, u, n->lista.itens[i]->a);
-                emite(c, u, OP_CALL_BASE, n->lista.n);
-                return;
-            }
-            /* Com argumento NOMEADO ou espalhado (`base(x=5)`, `base(**kw)`),
-             * em vez de repetir aqui toda a resolução de nome/default do
-             * OP_CALL_KW, o `__init__` do pai é carregado LIGADO ao self e a
-             * chamada segue o caminho normal. */
-            carrega_nome(c, u, pai);
-            emite(c, u, OP_LOAD_BASE_INIT, 0);
-            emite_args_e_chama(c, u, n, &n->lista);
+        case N_BASE_CALL_NODE:
+            /* `base(Pai)` só existe embaixo de um `.membro` (o parser exige);
+             * solto, é o que a frase diz. */
+            cerro_sx(c, n, "base(Pai) precisa de um membro: base(Pai).__init__(...) ou base(Pai).metodo(...)");
             return;
-        }
 
         case N_POSTFIX_OP: {
             /* `x++` devolve o valor ANTIGO e guarda o novo — por isso o DUP
@@ -5620,6 +5742,13 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
         }
 
         case N_MEMBER_ASSIGNMENT: {
+            /* `base(Pai).x = v`: o campo mora no MESMO objeto que `self.x`;
+             * escrever por `base` só esconderia isso. */
+            if (n->a && n->a->kind == N_BASE_CALL_NODE) {
+                cerro_sx(c, n, "atribua pelo self: self.%s = ... (base(Pai).%s le o campo, nao grava)",
+                         n->texto ? n->texto : "x", n->texto ? n->texto : "x");
+                return;
+            }
             /* Entity do arquivo: o campo tem que existir nela (declarado no
              * corpo, `private <tipo> x` ou gravado em `self.x` por um método),
              * e campo tipado recebe o tipo dele. A VM confere o tipo de novo
@@ -5951,6 +6080,11 @@ static void guarda_em_alvo(C *c, Unidade *u, PSNode *e)
             emite(c, u, OP_INDEX_SET, 0);
             return;
         case N_MEMBER_ACCESS: {                      /* `o.x, y = ...` */
+            if (e->a && e->a->kind == N_BASE_CALL_NODE) {
+                cerro_sx(c, e, "atribua pelo self: self.%s = ... (base(Pai).%s le o campo, nao grava)",
+                         e->texto ? e->texto : "x", e->texto ? e->texto : "x");
+                return;
+            }
             int32_t mi = idx_const(c, u, K_STR, 0, 0, e->texto ? e->texto : "",
                                    e->texto ? (int32_t)strlen(e->texto) : 0);
             expr(c, u, e->a);                        /* objeto */

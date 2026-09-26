@@ -14,7 +14,7 @@ asjson(instance) -> str
 from datasentity import dataentity, asjson
 
 @dataentity
-Entity Pessoa() {
+Entity Pessoa {
     nome: str
     idade: int
 }

@@ -1,0 +1,389 @@
+# Migrador da sintaxe de classe (2026-09-25): o `()` vazio saiu do cabeçalho
+# e o `base(...)` virou `base().__init__(...)`.
+#
+#     class Nome() {            ->  class Nome {
+#     Entity Nome() {           ->  Entity Nome {          (class/Class/Entity)
+#     class Filha(Pai) {        ->  fica como está (herança continua entre parênteses)
+#     base(x, y)                ->  base().__init__(x, y)
+#     base()                    ->  base().__init__()
+#     base(Pai).membro          ->  fica (já é a forma nova)
+#
+# Passa em qualquer pasta — o repositório da linguagem, um projeto seu, as
+# libs instaladas — e mexe só em arquivo de texto (`.pr`, `.md`, `.c`, `.h`,
+# `.js`, `.sh`, `.txt`). Serve pros programas que vivem DENTRO de string (os
+# casos em C de `teste/*.c`, os fontes que os testes escrevem) porque o
+# critério é textual: a palavra tem borda (o caractere antes não é de nome,
+# ou é o `n`/`t` de um `\n`/`\t` escapado de string C) e o que vem depois do
+# nome é exatamente `(` + espaços + `)`.
+#
+#     jinga scripts/migra_classe.pr <pasta|arquivo>...             # só mostra
+#     jinga scripts/migra_classe.pr <pasta|arquivo>... --aplica    # grava
+#     jinga scripts/migra_classe.pr --libs --aplica                # libs instaladas
+#     jinga scripts/migra_classe.pr <pasta> --aplica --confere     # e roda --check nos .pr
+#
+# `--confere` usa o próprio binário que roda o script (`sys.executable`):
+# precisa ser um que já aceite a forma nova.
+import os
+import sys
+
+PALAVRAS = ["Entity", "Class", "class"]
+PULA_PASTA = [".git", "node_modules", "dist", "__pycache__", ".venv", "fuzz_corpus",
+              "scratchpad"]
+# `vm/` fica de fora: lá `base()` aparece em MENSAGEM de erro do motor, e
+# este arquivo também (os exemplos do cabeçalho acima).
+PULA_ARQUIVO = ["migra_classe.pr"]
+TEXTO = [".pr", ".md", ".c", ".h", ".js", ".sh"]
+
+
+funct eh_texto(nome) {
+    ponto = nome.rfind(".")
+    if ponto < 0 {
+        return false
+    }
+    ext = nome[ponto:]
+    for each e in TEXTO {
+        if ext == e {
+            return true
+        }
+    }
+    return false
+}
+
+
+funct char_de_nome(c) {
+    if c == "" {
+        return false
+    }
+    if c >= "a" and c <= "z" {
+        return true
+    }
+    if c >= "A" and c <= "Z" {
+        return true
+    }
+    if c >= "0" and c <= "9" {
+        return true
+    }
+    return c == "_"
+}
+
+
+# A palavra em `i` começa com borda? Borda é: início do texto, caractere que
+# não é de nome, ou o `n`/`t` de um escape de string C (`"\nEntity A() {"`),
+# que é colado na palavra sem ser parte dela.
+funct borda_antes(texto, i) {
+    if i == 0 {
+        return true
+    }
+    antes = texto[i - 1]
+    if not char_de_nome(antes) {
+        return true
+    }
+    if (antes == "n" or antes == "t") and i >= 2 and texto[i - 2] == "\\" {
+        return true
+    }
+    return false
+}
+
+
+funct pula_espacos(texto, i) {
+    n = len(texto)
+    while i < n and (texto[i] == " " or texto[i] == "\t") {
+        i = i + 1
+    }
+    return i
+}
+
+
+# `class Nome()` -> `class Nome`. Devolve [texto_novo, trocas].
+funct tira_parenteses_vazios(texto) {
+    pedacos = []
+    trocas = 0
+    n = len(texto)
+    i = 0
+    ini = 0
+    while i < n {
+        achou = ""
+        for each pal in PALAVRAS {
+            m = len(pal)
+            if i + m <= n and texto[i:i + m] == pal and borda_antes(texto, i) {
+                if i + m < n and (texto[i + m] == " " or texto[i + m] == "\t") {
+                    achou = pal
+                }
+            }
+        }
+        if achou == "" {
+            i = i + 1
+            continue
+        }
+        # palavra + espaços + NOME + espaços + `(` + espaços + `)`
+        j = pula_espacos(texto, i + len(achou))
+        k = j
+        while k < n and char_de_nome(texto[k]) {
+            k = k + 1
+        }
+        if k == j {
+            i = i + 1
+            continue
+        }
+        a = pula_espacos(texto, k)
+        if a >= n or texto[a] != "(" {
+            i = k
+            continue
+        }
+        b = pula_espacos(texto, a + 1)
+        if b >= n or texto[b] != ")" {
+            i = k
+            continue
+        }
+        # `class X(){` fica `class X {`; `class X() {` fica `class X {`
+        addEnd(pedacos, texto[ini:k])
+        if b + 1 < n and texto[b + 1] == "{" {
+            addEnd(pedacos, " ")
+        }
+        trocas = trocas + 1
+        i = b + 1
+        ini = i
+    }
+    if trocas == 0 {
+        return [texto, 0]
+    }
+    addEnd(pedacos, texto[ini:n])
+    return ["".join(pedacos), trocas]
+}
+
+
+# `base(args)` -> `base().__init__(args)`. `base(Pai).x` (já novo) e
+# `base(...)` (prosa da doc) ficam. Devolve [texto_novo, trocas].
+funct converte_base(texto) {
+    pedacos = []
+    trocas = 0
+    n = len(texto)
+    i = 0
+    ini = 0
+    while i < n {
+        if not (texto[i] == "b" and i + 5 <= n and texto[i:i + 5] == "base(" and borda_antes(texto, i)) {
+            i = i + 1
+            continue
+        }
+        # acha o `)` que fecha, contando profundidade
+        prof = 0
+        j = i + 4
+        fecha = -1
+        while j < n {
+            c = texto[j]
+            if c == "(" {
+                prof = prof + 1
+            } elif c == ")" {
+                prof = prof - 1
+                if prof == 0 {
+                    fecha = j
+                    break
+                }
+            } elif c == "\n" and prof == 1 {
+                break                       # quebrou a linha sem fechar: não é chamada
+            }
+            j = j + 1
+        }
+        if fecha < 0 {
+            i = i + 5
+            continue
+        }
+        dentro = texto[i + 5:fecha].strip()
+        depois = ""
+        if fecha + 1 < n {
+            depois = texto[fecha + 1]
+        }
+        if depois == "." or dentro == "..." {
+            i = fecha + 1
+            continue
+        }
+        # `base()` vazio só é CHAMADA quando termina o comando: fim de linha
+        # (ou o `\n` escapado de string C), `}` ou `;`. Seguido de `:` ou de
+        # palavra é a frase de uma mensagem de erro ("base() precisa do
+        # self", "base(): a Entity pai…"), que fica como está.
+        if dentro == "" {
+            k = pula_espacos(texto, fecha + 1)
+            resto = ""
+            if k < n {
+                resto = texto[k]
+            }
+            eh_escape = k + 1 < n and texto[k] == "\\" and (texto[k + 1] == "n" or texto[k + 1] == "\"")
+            if not (resto == "" or resto == "\n" or resto == "}" or resto == ";" or eh_escape) {
+                i = fecha + 1
+                continue
+            }
+        }
+        addEnd(pedacos, texto[ini:i])
+        addEnd(pedacos, "base().__init__(" + texto[i + 5:fecha] + ")")
+        trocas = trocas + 1
+        i = fecha + 1
+        ini = i
+    }
+    if trocas == 0 {
+        return [texto, 0]
+    }
+    addEnd(pedacos, texto[ini:n])
+    return ["".join(pedacos), trocas]
+}
+
+
+funct converte(texto) {
+    r1 = tira_parenteses_vazios(texto)
+    r2 = converte_base(r1[0])
+    return [r2[0], r1[1], r2[1]]
+}
+
+
+funct varre(dir, arquivos) {
+    itens = []
+    try {
+        itens = os.ls(dir)
+    } catch (e) {
+        post("  (nao deu pra ler " + dir + ")")
+        return
+    }
+    for each ent in itens {
+        nome = ent["name"]
+        caminho = dir + "/" + nome
+        if ent["type"] == "dir" {
+            pula = false
+            for each p in PULA_PASTA {
+                if nome == p {
+                    pula = true
+                }
+            }
+            if not pula {
+                varre(caminho, arquivos)
+            }
+            continue
+        }
+        pula_arq = false
+        for each p in PULA_ARQUIVO {
+            if nome == p {
+                pula_arq = true
+            }
+        }
+        if eh_texto(nome) and not pula_arq {
+            addEnd(arquivos, caminho)
+        }
+    }
+}
+
+
+# Devolve [arquivos tocados, cabecalhos, bases].
+funct migra(arquivos, aplica, confere) {
+    tocados = 0
+    cab = 0
+    bas = 0
+    for each caminho in arquivos {
+        conteudo = ""
+        try {
+            conteudo = os.readFile(caminho)
+        } catch (e) {
+            continue
+        }
+        if conteudo.find(chr(0)) >= 0 {
+            continue
+        }
+        r = converte(conteudo)
+        if r[1] == 0 and r[2] == 0 {
+            continue
+        }
+        tocados = tocados + 1
+        cab = cab + r[1]
+        bas = bas + r[2]
+        post("  " + str(r[1]).rjust(4) + " cabecalho(s) " + str(r[2]).rjust(3) + " base()  " + caminho)
+        if aplica {
+            os.writeFile(caminho, r[0])
+            if confere and caminho.endswith(".pr") {
+                saida = os.cmd("'" + sys.executable + "' --check '" + caminho + "' 2>&1", capture=true)
+                if saida == Null or not saida.startswith("{\"ok\":true") {
+                    post("    --check REPROVOU:", saida)
+                }
+            }
+        }
+    }
+    return [tocados, cab, bas]
+}
+
+
+# As libs instaladas, na ordem do motor: `JINGA_HOME`, `POOLSCRIPT_HOME`,
+# `~/.jinga` (ou `~/.poolscript` que o `jpkg` ainda não moveu).
+funct pasta_libs() {
+    home = os.getenv("JINGA_HOME", "")
+    if home == "" {
+        home = os.getenv("POOLSCRIPT_HOME", "")
+    }
+    if home == "" {
+        home = os.getenv("HOME", "") + "/.jinga"
+        velha = os.getenv("HOME", "") + "/.poolscript"
+        if not os.exists(home) and os.exists(velha) {
+            home = velha
+        }
+    }
+    return home + "/libs"
+}
+
+
+funct principal() {
+    alvos = []
+    aplica = false
+    confere = false
+    libs = false
+    i = 1
+    while i < len(sys.argv) {
+        a = sys.argv[i]
+        if a == "--aplica" {
+            aplica = true
+        } elif a == "--confere" {
+            confere = true
+        } elif a == "--libs" {
+            libs = true
+        } elif a == "--sem" {
+            i = i + 1
+            if i >= len(sys.argv) {
+                post("--sem precisa do nome da pasta")
+                return 2
+            }
+            addEnd(PULA_PASTA, sys.argv[i])
+        } elif a.startswith("--") {
+            post("opcao desconhecida:", a)
+            return 2
+        } else {
+            addEnd(alvos, a)
+        }
+        i = i + 1
+    }
+    if libs {
+        addEnd(alvos, pasta_libs())
+    }
+    if len(alvos) == 0 {
+        post("uso: jinga scripts/migra_classe.pr <pasta|arquivo>... [--aplica] [--confere] [--libs] [--sem PASTA]")
+        post("     sem --aplica ele so mostra o que faria")
+        return 2
+    }
+    arquivos = []
+    for each alvo in alvos {
+        if os.isdir(alvo) {
+            varre(alvo, arquivos)
+        } elif os.exists(alvo) {
+            addEnd(arquivos, alvo)
+        } else {
+            post("nao existe:", alvo)
+            return 2
+        }
+    }
+    r = migra(arquivos, aplica, confere)
+    post("")
+    if aplica {
+        post("pronto:", r[0], "arquivo(s) reescritos;", r[1], "cabecalho(s) sem '()',", r[2], "base() convertidos")
+    } else {
+        post("nada mudou;", r[0], "arquivo(s) mudariam com --aplica (", r[1], "cabecalhos,", r[2], "base() )")
+    }
+    return 0
+}
+
+
+if __name__ == "main" {
+    sys.exit(principal())
+}

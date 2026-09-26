@@ -43,7 +43,7 @@ const Caso CASOS_ERROS[] = {
   "post(x)\n",
   "1", NULL, 0 },
 { "método de instância sem argumento",
-  "class C() {\n"
+  "class C {\n"
   "    funct m(self, a) {\n"
   "        return a\n"
   "    }\n"
@@ -51,7 +51,7 @@ const Caso CASOS_ERROS[] = {
   "post(C().m())\n",
   "", "TypeError: m() missing 1 required positional argument: 'a'", 2 },
 { "__init__ sem argumento",
-  "class C() {\n"
+  "class C {\n"
   "    funct __init__(self, a) {\n"
   "        self.a = a\n"
   "    }\n"
@@ -79,7 +79,7 @@ const Caso CASOS_ERROS[] = {
   "post(f(1, c=2))\n",
   "", "TypeError: f() got an unexpected keyword argument 'c'", 2 },
 { "nomeado inexistente em método",
-  "class C() {\n"
+  "class C {\n"
   "    funct m(self, a) {\n"
   "        return a\n"
   "    }\n"
@@ -89,7 +89,7 @@ const Caso CASOS_ERROS[] = {
 
 /* ── @static: sem ele, não dá pra chamar na classe ── */
 { "método normal chamado na classe",
-  "class C() {\n"
+  "class C {\n"
   "    funct m(self, a) {\n"
   "        return a\n"
   "    }\n"
@@ -100,13 +100,13 @@ const Caso CASOS_ERROS[] = {
  * causa (falta a instância). Antes saía "'C' object has no attribute 'author'.
  * Did you mean: 'author'?" — sugeria o nome que estava escrito certo. */
 { "campo de instância lido pela classe",
-  "class C() {\n"
+  "class C {\n"
   "    public string author = \"admin\"\n"
   "}\n"
   "post(C.author)\n",
   "", "RuntimeError: Entity 'C' não tem campo estático 'author' — instancie primeiro", 2 },
 { "campo de instância herdado, lido pela classe",
-  "class Base() {\n"
+  "class Base {\n"
   "    public string author = \"admin\"\n"
   "}\n"
   "class C(Base) {\n"
@@ -114,13 +114,13 @@ const Caso CASOS_ERROS[] = {
   "post(C.author)\n",
   "", "RuntimeError: Entity 'C' não tem campo estático 'author' — instancie primeiro", 2 },
 { "campo static lido pela classe continua valendo",
-  "class C() {\n"
+  "class C {\n"
   "    public static string casa = \"acme\"\n"
   "}\n"
   "post(C.casa)\n",
   "acme", NULL, 0 },
 { "campo de instância pela instância continua valendo",
-  "class C() {\n"
+  "class C {\n"
   "    public string author = \"admin\"\n"
   "}\n"
   "x = C()\n"
@@ -128,13 +128,13 @@ const Caso CASOS_ERROS[] = {
   "admin", NULL, 0 },
 /* O "Did you mean" nunca sugere o nome que foi escrito. */
 { "membro ausente parecido ainda sugere",
-  "class C() {\n"
+  "class C {\n"
   "    public string author = \"admin\"\n"
   "}\n"
   "post(C().autor)\n",
   "", "AttributeError: 'C' object has no attribute 'autor'. Did you mean: 'author'?", 2 },
 { "@static com self na assinatura",
-  "class C() {\n"
+  "class C {\n"
   "    @static\n"
   "    funct m(self, a, b=10) {\n"
   "        return a + b\n"
@@ -143,7 +143,7 @@ const Caso CASOS_ERROS[] = {
   "post(C.m(5))\n",
   "15", NULL, 0 },
 { "@static sem self",
-  "class C() {\n"
+  "class C {\n"
   "    @static\n"
   "    funct m(a) {\n"
   "        return a\n"
@@ -160,7 +160,7 @@ const Caso CASOS_ERROS[] = {
  * aparece. Um erro só: o método ganha um `self` sintetizado depois de acusado,
  * então o resto da conferência não repete o mesmo defeito em cascata. */
 { "método sem self: erro na linha da declaração, não no uso",
-  "public class ServerMessage() {\n"
+  "public class ServerMessage {\n"
   "    funct __init__(self, tup hoster) {\n"
   "        self.host = hoster\n"
   "    }\n"
@@ -170,7 +170,7 @@ const Caso CASOS_ERROS[] = {
   "}\n",
   "", "TypeError: método _send() sem self: o primeiro parâmetro de um método é self (ou marque static)", 2 },
 { "método sem self que nem usa self: a chamada pela instância receberia a instância",
-  "class C() {\n"
+  "class C {\n"
   "    funct ping() {\n"
   "        return \"pong\"\n"
   "    }\n"
@@ -178,7 +178,7 @@ const Caso CASOS_ERROS[] = {
   "post(C().ping())\n",
   "", "TypeError: método ping() sem self: o primeiro parâmetro de um método é self (ou marque static)", 2 },
 { "método com primeiro parâmetro de outro nome: diz qual",
-  "class C() {\n"
+  "class C {\n"
   "    funct ping(x) {\n"
   "        return x\n"
   "    }\n"
@@ -186,7 +186,7 @@ const Caso CASOS_ERROS[] = {
   "post(C().ping(7))\n",
   "", "TypeError: método ping(x) sem self: o primeiro parâmetro de um método é self, não 'x' (ou marque static)", 2 },
 { "__init__ sem self",
-  "Entity E() {\n"
+  "Entity E {\n"
   "    funct __init__() {\n"
   "        self.n = 1\n"
   "    }\n"
@@ -194,7 +194,7 @@ const Caso CASOS_ERROS[] = {
   "post(E().n)\n",
   "", "TypeError: método __init__() sem self: o primeiro parâmetro de um método é self (ou marque static)", 2 },
 { "método sem self em Entity com campos",
-  "Entity Conta() {\n"
+  "Entity Conta {\n"
   "    saldo: int\n"
   "    funct extrato() {\n"
   "        return self.saldo\n"
@@ -203,7 +203,7 @@ const Caso CASOS_ERROS[] = {
   "post(Conta(10).extrato())\n",
   "", "TypeError: método extrato() sem self: o primeiro parâmetro de um método é self (ou marque static)", 2 },
 { "static funct sem self continua válido",
-  "class C() {\n"
+  "class C {\n"
   "    static funct ping() {\n"
   "        return \"pong\"\n"
   "    }\n"
@@ -211,7 +211,7 @@ const Caso CASOS_ERROS[] = {
   "post(C.ping())\n",
   "pong", NULL, 0 },
 { "__init__(*args) recebe a instância na tup (7.2): não é erro",
-  "Entity E() {\n"
+  "Entity E {\n"
   "    funct __init__(*args) {\n"
   "        post(len(args), type(args[0]))\n"
   "    }\n"
@@ -268,7 +268,7 @@ const Caso CASOS_ERROS[] = {
 
 /* ── nonnull (e o decorador @NonNull, a grafia antiga) ── */
 { "@NonNull dentro de Entity",
-  "class C() {\n"
+  "class C {\n"
   "    @NonNull\n"
   "    funct f(self, a) {\n"
   "        return a\n"
@@ -277,7 +277,7 @@ const Caso CASOS_ERROS[] = {
   "post(C().f(null))\n",
   "", "nonnull", 1 },
 { "nonnull colado dentro de Entity",
-  "class C() {\n"
+  "class C {\n"
   "    nonnull funct f(self, a) {\n"
   "        return a\n"
   "    }\n"
@@ -285,7 +285,7 @@ const Caso CASOS_ERROS[] = {
   "post(C().f(null))\n",
   "", "nonnull: parametro 'a' em 'f' nao pode ser Null", 1 },
 { "@NonNull com valor válido passa",
-  "class C() {\n"
+  "class C {\n"
   "    @NonNull\n"
   "    funct f(self, a) {\n"
   "        return a\n"

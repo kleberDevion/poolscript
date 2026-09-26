@@ -255,6 +255,49 @@ async function main() {
       ? (hv.result.contents.value || String(hv.result.contents)) : '';
     conf('hover da funct tipada mostra o tipo do parametro', txt.includes('str corpo'), txt);
   }
+  /* `base(A).__init__(` como ULTIMO comando do metodo, com o `}` logo abaixo:
+   * a assinatura e a do __init__ do pai. Antes o remendo fechava o `(` no fim
+   * do arquivo e o lexer nao sincronizava no `}` menos indentado — nenhuma
+   * chamada aberta no fim de um metodo tinha assinatura. */
+  {
+    const src = 'Entity A {\n    funct __init__(self, x, y) { self.x = x }\n}\n'
+              + 'Entity B(A) {\n    funct __init__(self) {\n        base(A).__init__(\n    }\n}\n'
+              + 'funct f(a, b) { return 1 }\nfunct g() {\n    f(\n}\n';
+    const m = await conversa(src, [
+      { jsonrpc: '2.0', id: 8, method: 'textDocument/signatureHelp',
+        params: { textDocument: { uri: URI }, position: { line: 5, character: 25 } } },
+      { jsonrpc: '2.0', id: 9, method: 'textDocument/signatureHelp',
+        params: { textDocument: { uri: URI }, position: { line: 10, character: 6 } } },
+      { jsonrpc: '2.0', id: 10, method: 'textDocument/hover',
+        params: { textDocument: { uri: URI }, position: { line: 5, character: 9 } } },
+    ]);
+    const s8 = resp(m, 8);
+    const l8 = s8 && s8.result && s8.result.signatures[0] ? s8.result.signatures[0].label : '';
+    conf('signatureHelp de `base(A).__init__(` mostra os parametros do __init__ do pai',
+         l8.includes('x') && l8.includes('y'), l8);
+    const s9 = resp(m, 9);
+    const l9 = s9 && s9.result && s9.result.signatures[0] ? s9.result.signatures[0].label : '';
+    conf('signatureHelp de `f(` como ultimo comando do metodo (o `}` logo abaixo)',
+         l9.startsWith('f('), l9);
+    const h10 = resp(m, 10);
+    const t10 = h10 && h10.result && h10.result.contents ? (h10.result.contents.value || '') : '';
+    conf('hover em `base` explica o pai (secao 7.5.2)', t10.includes('base(Pai)') && t10.includes('pai'), t10.slice(0, 120));
+  }
+  /* hover no campo sem tipo criado no __init__: o tipo inferido, e SEM
+   * "herdado de" quando o campo e da propria classe */
+  {
+    const src = 'import psodbc\nEntity Db {\n    funct __init__(self) {\n        self.con = psodbc.connect("x")\n    }\n'
+              + '    funct q(self) {\n        c = self.con.cursor()\n    }\n}\n';
+    const m = await conversa(src, [
+      { jsonrpc: '2.0', id: 11, method: 'textDocument/hover',
+        params: { textDocument: { uri: URI }, position: { line: 6, character: 17 } } },
+    ]);
+    const h = resp(m, 11);
+    const t = h && h.result && h.result.contents ? (h.result.contents.value || '') : '';
+    conf('hover de `self.con` (campo sem tipo) mostra o tipo inferido e nao diz "herdado de"',
+         t.includes('DbConnection') && t.includes(' con') && t.includes('Db.') && !t.includes('herdado de'),
+         t.slice(0, 160));
+  }
   /* Variadico: `*args`/`**kwarg` levam a estrela na assinatura que o editor
    * mostra — sem ela, `route(caminho, kwarg)` mentiria sobre como chamar. */
   {
@@ -368,7 +411,7 @@ async function main() {
    * `self` do corpo (o sintoma) — o sublinhado cai na linha do `funct`, e é
    * um só (o motor não repete o defeito em cascata). */
   {
-    const m = await conversa('class C() {\n    funct __init__(self) {\n        self.x = 1\n    }\n'
+    const m = await conversa('class C {\n    funct __init__(self) {\n        self.x = 1\n    }\n'
                              + '    funct m() {\n        return self.x\n    }\n}\nC().m()\n', []);
     const ds = m.filter((x) => x.method === 'textDocument/publishDiagnostics');
     const ultimo = ds[ds.length - 1];
@@ -688,25 +731,68 @@ async function main() {
       ['sem receptor: os LITERAIS e `__name__` aparecem',
        ['x = 1', 'x'], 1, undefined, ['true', 'false', 'Null', '__name__'], []],
       ['dentro da Entity o CONSTRUTOR e sugerido',
-       ['Entity Conta() {', '    saldo: int', '    f'], 2, undefined, ['__init__'], []],
+       ['Entity Conta {', '    saldo: int', '    f'], 2, undefined, ['__init__'], []],
       ['Entity que JA tem __init__ nao sugere outro',
-       ['Entity Conta() {', '    funct __init__(self) {', '        self.s = 0', '    }', '    f'], 4, undefined,
+       ['Entity Conta {', '    funct __init__(self) {', '        self.s = 0', '    }', '    f'], 4, undefined,
        [], ['__init__']],
       /* a reforma: `funct` e os modificadores COLADOS. `static`/`nonnull` não são
        * palavra reservada, então nada disso vem de graça do --metadata. */
       ["`static funct` numa Entity: o completion de `Tipo.` diz que e static",
-       ['Entity Mat() {', '    static funct soma(a, b) {', '        return a + b', '    }', '}', 'Mat.'],
+       ['Entity Mat {', '    static funct soma(a, b) {', '        return a + b', '    }', '}', 'Mat.'],
        5, undefined, ['soma'], []],
       ["`@static` (o decorador) marca o metodo igual ao modificador colado",
-       ['Entity Mat() {', '    @static', '    funct soma(a, b) {', '        return a + b', '    }', '}', 'Mat.'],
+       ['Entity Mat {', '    @static', '    funct soma(a, b) {', '        return a + b', '    }', '}', 'Mat.'],
        6, undefined, ['soma'], []],
       ["`funct` do arquivo aparece no completion sem receptor",
        ['funct minha(a) {', '    return a', '}', 'm'], 3, undefined, ['minha'], []],
       ['`self.` dentro de `if`, campo `private str nome` do corpo e metodo HERDADO',
-       ['class Base() {', '    funct b(self) {', '        return 1', '    }', '}', 'class C(Base) {',
+       ['class Base {', '    funct b(self) {', '        return 1', '    }', '}', 'class C(Base) {',
         '    private str nome = "a"', '    int n = 1', '    funct __init__(self, x) {', '        self.x = x', '    }',
         '    funct m(self) {', '        if self.n > 0 {', '            self.', '        }', '    }', '}'],
        13, undefined, ['nome', 'n', 'x', 'm', 'b'], []],
+      /* O TERCEIRO PONTO (ele, 2026-09-25: "o hover ainda sugere type em todo
+       * terceiro . de member access"). Medido: campo criado no __init__ sem
+       * tipo (`self.con = psodbc.connect(...)`) ficava sem tipo — `self.con.`
+       * só `type`, `self.con.cursor().` NADA; `sys.stdout.` só `type`;
+       * `sys.argv[0].` caía nos nomes do arquivo; `str(x).upper().` nada;
+       * `self.f().` de metodo sem tipo declarado só `type`. */
+      ['campo sem tipo criado no __init__ (`self.con = psodbc.connect(...)`): `self.con.` tem o tipo',
+       ['import psodbc', 'Entity Db {', '    funct __init__(self) {', '        self.con = psodbc.connect("x")', '    }',
+        '    funct q(self) {', '        self.con.', '    }', '}'],
+       6, undefined, ['cursor', 'commit'], []],
+      ['terceiro ponto: `self.con.cursor().` lista os metodos do cursor',
+       ['import psodbc', 'Entity Db {', '    funct __init__(self) {', '        self.con = psodbc.connect("x")', '    }',
+        '    funct q(self) {', '        self.con.cursor().', '    }', '}'],
+       6, undefined, ['execute', 'fetchall', 'fetchone'], ['self', 'post']],
+      ['campo sem tipo = Entity(...): `self.e.rua.` chega no str',
+       ['Entity End {', '    str rua', '}', 'Entity U {', '    funct __init__(self) {', '        self.e = End("r")', '    }',
+        '    funct f(self) {', '        self.e.rua.', '    }', '}'],
+       8, undefined, ['upper', 'strip'], ['self']],
+      ['campo sem tipo = parametro TIPADO do __init__: `self.nome.` e str',
+       ['Entity U {', '    funct __init__(self, str n) {', '        self.nome = n', '    }',
+        '    funct f(self) {', '        self.nome.', '    }', '}'],
+       5, undefined, ['upper'], ['self']],
+      ['metodo sem tipo declarado: o retorno vem dos `return` (`self.f().`)',
+       ['Entity U {', '    funct f(self) { return "a" }', '    funct g(self) {', '        self.f().', '    }', '}'],
+       3, undefined, ['upper'], ['self']],
+      ['`sys.stdout.` entra no submodulo (write/writeln/flush)',
+       ['import sys', 'sys.stdout.'], 1, undefined, ['write', 'writeln', 'flush'], ['argv']],
+      ['`sys.argv[0].` e item de tipo desconhecido: universais, nunca os nomes do arquivo',
+       ['import sys', 'minha_var = 1', 'sys.argv[0].'], 2, undefined, ['type'], ['append', 'minha_var', 'sys']],
+      ['`str(x).upper().` comeca a cadeia no tipo da conversao',
+       ['x = 1', 'str(x).upper().'], 1, undefined, ['lower', 'strip'], ['x']],
+      /* `base()` / `base(Pai)`, como o super (07-entity §7.5.2) */
+      ['`base().` lista o que o pai tem, com o `__init__`',
+       ['Entity A {', '    funct __init__(self, x) { self.x = x }', '    funct fala(self) { return 1 }', '}',
+        'Entity B(A) {', '    funct __init__(self) {', '        base().', '    }', '}'],
+       6, undefined, ['__init__', 'fala', 'x'], ['self']],
+      ['`base(A).` idem, pelo nome',
+       ['Entity A {', '    funct __init__(self, x) { self.x = x }', '    funct fala(self) { return 1 }', '}',
+        'Entity B(A) {', '    funct __init__(self) {', '        base(A).', '    }', '}'],
+       6, undefined, ['__init__', 'fala'], ['self']],
+      ['`base(` oferece os PAIS da Entity',
+       ['Entity A {', '}', 'Entity M {', '}', 'Entity B(A, M) {', '    funct __init__(self) {', '        base(', '    }', '}'],
+       6, undefined, ['A', 'M'], ['B', 'self', 'post']],
     ];
     for (const [nome, linhas, line, ch, espera, nao] of casos) {
       const src = linhas.join('\n') + '\n';
@@ -729,7 +815,7 @@ async function main() {
    * negativo: `static = 1` é uma variável, não um modificador. */
   {
     const MOD = [
-      'Entity Mat() {',
+      'Entity Mat {',
       '    static funct soma(a, b) {',
       '        return a + b',
       '    }',
@@ -763,7 +849,7 @@ async function main() {
    * era invisível. */
   const OO = [
     'import mail',
-    'Entity Base() {',
+    'Entity Base {',
     '    public funct ping(self) { return "pong" }',
     '}',
     'Entity Conta(Base) {',
@@ -836,7 +922,7 @@ async function main() {
   {
     const dir = path.join(os.tmpdir(), 'ps_lsp_t');
     fs.writeFileSync(path.join(dir, 'modelo.pr'),
-      'Entity Usuario() {\n    nome: str\n    public funct saudacao(self) { return "oi" }\n}\n');
+      'Entity Usuario {\n    nome: str\n    public funct saudacao(self) { return "oi" }\n}\n');
     const m = await conversa('import modelo\nu = modelo.Usuario("ana")\nu.\n', [compl(2, 2, 2)]);
     const L = rotulos(resp(m, 2));
     conf('Entity de arquivo importado expoe os membros dela',
@@ -1029,10 +1115,10 @@ async function main() {
    * vazio. */
   {
     const src = [
-      'Entity Motor() {',
+      'Entity Motor {',
       '    public funct ligar(self) { return 1 }',
       '}',
-      'Entity Carro() {',
+      'Entity Carro {',
       '    motor: Motor',
       '    private funct interna(self) { return 0 }',
       '    public funct andar(self, marcha) {',
@@ -1215,7 +1301,7 @@ async function main() {
               + 'e = lines[1].decode()\n'                   // 11 decode@13
               + 'head = lines[0]\n'                         // 12
               + 't = head.decode()\n'                       // 13 decode@9
-              + 'Entity C() {\n    funct m(self) {\n        return 1\n    }\n}\n'   // 14-18
+              + 'Entity C {\n    funct m(self) {\n        return 1\n    }\n}\n'   // 14-18
               + 'k = C()\n'                                 // 19
               + 'k.upper()\n';                              // 20 upper@2
     const m = await conversa(src, [
@@ -1252,7 +1338,7 @@ async function main() {
    * todo lugar — no topo e dentro de classe, que foi onde ele viu. */
   {
     const src = 'x = Parsing.integer("5", to int)\n'           // 0  integer@12
-              + 'class K() {\n'                               // 1
+              + 'class K {\n'                               // 1
               + '    funct m(self) {\n'                       // 2
               + '        return Parsing.integer("7", to int)\n' // 3  integer@23
               + '    }\n'                                     // 4
@@ -1264,7 +1350,7 @@ async function main() {
          valor(m, 47).includes('Parsing.integer('), valor(m, 47));
     conf('hover no proprio `Parsing` diz que e modulo',
          valor(m, 48).includes('Parsing'), valor(m, 48));
-    const mc = await conversa('class K() {\n    funct m(self) {\n        Parsing.\n    }\n}\n', [compl(49, 2, 16)]);
+    const mc = await conversa('class K {\n    funct m(self) {\n        Parsing.\n    }\n}\n', [compl(49, 2, 16)]);
     const lc = rotulos(resp(mc, 49));
     conf('completion `Parsing.` dentro de metodo de classe lista os membros',
          lc.includes('integer') && lc.includes('TransientValue'), lc.slice(0, 8));
@@ -1390,7 +1476,7 @@ async function main() {
     /* (`base` é palavra reservada — o `base(...)` da herança — e não serve de
      * nome de campo; o fixture usa `raiz`) */
     const SRC = [
-      'class Pai() {',                          // 0
+      'class Pai {',                          // 0
       '    public static int raiz = 1',         // 1
       '    static funct dobro(n) { return n * 2 }',   // 2
       '}',                                      // 3

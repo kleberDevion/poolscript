@@ -91,7 +91,7 @@ O lado esquerdo pode ser um elemento, um membro ou uma chave:
 l = [1, 2, 3]
 l[0] = 99            # índice de lista
 
-Entity Ponto() { campo: int }
+Entity Ponto { campo: int }
 obj = Ponto(0)
 obj.campo = 10       # membro de Entity (self.x dentro dela)
 
@@ -130,7 +130,7 @@ lista[c], lista[c + 1] = lista[c + 1], lista[c]
 d = {}
 d["a"], d["b"] = 1, 2       # {'a': 1, 'b': 2}
 
-Entity P() {
+Entity P {
     x: int
     y: int
 }
@@ -265,7 +265,7 @@ classe, servidor, conexão, arquivo — e é como se declara o que uma lib devol
 
 ```ps
 from jinker import Jinker
-Entity Conta() { nome: str }
+Entity Conta { nome: str }
 
 Object app = Jinker(__name__)
 object c = Conta("ana")      # `object` e `Object` são o mesmo tipo

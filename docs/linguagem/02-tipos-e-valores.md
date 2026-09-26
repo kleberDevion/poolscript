@@ -56,7 +56,7 @@ post({tls: true})              # NameError: name 'tls' is not defined
 ```
 
 Bloco e dict se separam pela **posição** do `{`: em posição de instrução
-(`if x {`, `Entity P() {`) é bloco; em posição de expressão (`= {`, `f({`,
+(`if x {`, `Entity P {`) é bloco; em posição de expressão (`= {`, `f({`,
 `return {`) é dict. Dentro de `Entity`, `model` e `class`, `nome: tipo` é
 declaração de campo, não entrada de dict.
 

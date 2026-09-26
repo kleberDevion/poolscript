@@ -256,3 +256,8 @@ PS_OP(DEC_LOCAL_INT,      112, "DEC_LOCAL_INT")
  * três operandos e recalculava a quantidade a cada iteração.
  *   RANGE_PREPARA [.., ini, fim, passo, 0] -> [.., ini, quant, passo, 0] */
 PS_OP(RANGE_PREPARA,      113, "RANGE_PREPARA")
+/* `base(Pai).membro`: [pai] -> [membro], com o `self` do frame (slot 0).
+ * Campo static do pai, método do pai ligado ao self (a versão DELE, achada a
+ * partir do pai), ou campo da instância; respeita `private`. arg = índice da
+ * const com o nome. O `__init__` posicional puro continua no CALL_BASE. */
+PS_OP(LOAD_BASE_MEMBRO,   114, "LOAD_BASE_MEMBRO")

@@ -116,7 +116,7 @@ typedef struct {
      * de fora da classe (encapsulamento). */
     char   **priv_nomes;
     int32_t  npriv;
-    /* `private class Nome()` — a classe INTEIRA não é exportada no import. */
+    /* `private class Nome {` — a classe INTEIRA não é exportada no import. */
     int32_t  classe_privada;
     /* Campos de instância com tipo escrito — `nome: str` no corpo e `private
      * str nome = x` dentro de um método —, nome e tipo em paralelo. A VM

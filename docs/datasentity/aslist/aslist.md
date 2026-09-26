@@ -15,7 +15,7 @@ aslist(instance) -> list
 from datasentity import dataentity, aslist
 
 @dataentity
-Entity Pessoa() {
+Entity Pessoa {
     nome: str
     idade: int
 }

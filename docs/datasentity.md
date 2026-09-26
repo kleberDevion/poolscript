@@ -17,7 +17,7 @@ com valor padrão são opcionais.
 
 ```
 @dataentity
-Entity Person() {
+Entity Person {
     nome:  str
     idade: int
     email: str
@@ -80,7 +80,7 @@ from datasentity import dataentity, asdict
 from jinker import Jinker, cors, jsonify
 
 @dataentity
-Entity Produto() {
+Entity Produto {
     nome:  str
     preco: flo
 }

@@ -52,7 +52,7 @@ dentro de classe (ver [decoradores](../../linguagem/14-decoradores.md)):
 funct f() { return {"ok": true} }        # registra f
 
 @app.get("/classe")
-class H() {
+class H {
     funct handler(self) { return {"ok": true} }   # registra o 1º método, ligado à instância de H
 }
 ```

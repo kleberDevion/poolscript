@@ -21,7 +21,7 @@ Dentro de uma `Entity`, marca um método que **não recebe `self`** e é chamado
 colado na declaração:
 
 ```ps
-Entity Mat() {
+Entity Mat {
     static funct soma(a, b) {
         return a + b
     }
@@ -40,7 +40,7 @@ funct 'soma' e static: chame pela Entity (Tipo.soma(...)), nao pela instancia
 A grafia antiga, em linha própria, faz exatamente o mesmo:
 
 ```ps
-Entity Mat() {
+Entity Mat {
     @static
     funct soma(a, b) {
         return a + b
@@ -60,7 +60,7 @@ Você pode escrever `self` num método `static` — útil quando o **mesmo** mé
 `self`.
 
 ```ps
-Entity C() {
+Entity C {
     static funct f(self, a, b=10) {
         return a + b
     }
@@ -120,7 +120,7 @@ intenção**, deixando claro que aquela Entity é um registro de dados.
 
 ```ps
 @dataentity
-Entity Pessoa() {
+Entity Pessoa {
     nome: str
     idade: int = 18
 }
@@ -139,7 +139,7 @@ São **funções** (recebem a instância), não métodos:
 from datasentity import dataentity, asdict, astuple, aslist, asjson
 
 @dataentity
-Entity Pessoa() {
+Entity Pessoa {
     nome: str
     idade: int
 }
@@ -194,7 +194,7 @@ decorador aceita qualquer opção nomeada — `auth=`, `methods=` — sem obriga
 quem escreve a rota a montar um dict:
 
 ```ps
-Entity NET() {
+Entity NET {
     funct __init__(self) {
         self.rotas = {}
         self.opcoes = {}
@@ -269,7 +269,7 @@ fica na tabela de métodos da classe, e chamar pela instância entrega o
 receptor como **1º argumento** — então um wrapper `(*args, **kwargs)` repassa
 com `func(*args, **kwargs)` e o `self` chega certo. Vale por posição, por nome,
 com `*lista`, em callback (`map`), em método `static`, gerador, `async`, no
-`__init__` (e no `base()`) e na classe filha, que herda o método envolvido:
+`__init__` (e no `base().__init__()`) e na classe filha, que herda o método envolvido:
 
 ```ps
 bool trava = False
@@ -290,7 +290,7 @@ funct Controller(func) {
     return wrapper
 }
 
-Entity Conta() {
+Entity Conta {
     funct __init__(self) {
         self.saldo = 10
     }
@@ -315,7 +315,7 @@ primeiro. Com um registrador no meio, a ordem decide o que é registrado:
 import jinker
 funct Controller(f) { return f }        # o decorador que envolve (aqui, sem lock)
 
-class Painel() {
+class Painel {
     public static object app = jinker.Jinker(__name__)
 
     @app.get("/lock/:id")      # registra o método JÁ envolvido: a rota roda travada
@@ -336,11 +336,11 @@ não troca o método.
 
 ```ps
 # um registrador seu: `rota(path)` devolve o objeto com `.register(handler)`
-Entity Registro() {
+Entity Registro {
     funct __init__(self, path) { self.path = path }
     funct register(self, handler) { post("registrou", self.path) }
 }
-Entity Registrador() {
+Entity Registrador {
     funct rota(self, path) { return Registro(path) }
 }
 r = Registrador()
@@ -349,11 +349,11 @@ r = Registrador()
 funct f() { return 1 }             # registra f
 
 @r.rota("/classe")
-class H() {
+class H {
     funct handler(self) { return 1 }   # registra H.handler ligado à instância de H
 }
 
-class D() {
+class D {
     @r.rota("/dentro")
     static funct h() { return 1 }      # registra D.h — a própria funct
 
@@ -369,7 +369,7 @@ existir instância. Por isso o objeto que ele usa precisa ser um campo
 ```ps
 import jinker
 
-class App() {
+class App {
     public static object mapp = jinker.Jinker(__name__)   # static: existe já na declaração
 
     @mapp.post("/opa/<data>")

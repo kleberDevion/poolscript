@@ -83,7 +83,7 @@ CASOS = [
     ["closure", "funct fora() {\n    x = 0\n    funct dentro() {\n        x = x + 1\n        return x\n    }\n    return dentro\n}\nf = fora()\ni = 0\nwhile (i < 400000) {\n    f()\n    i = i + 1\n}\npost(f())\n",
      "CELL_GET/CELL_SET e MAKE_CLOSURE — o caminho que a captura de variável usa"],
 
-    ["objeto", "Entity P() {\n    funct __init__(self, n) {\n        self.n = n\n    }\n    funct mais(self) {\n        self.n = self.n + 1\n        return self.n\n    }\n}\np = P(0)\ni = 0\nwhile (i < 300000) {\n    p.mais()\n    i = i + 1\n}\npost(p.n)\n",
+    ["objeto", "Entity P {\n    funct __init__(self, n) {\n        self.n = n\n    }\n    funct mais(self) {\n        self.n = self.n + 1\n        return self.n\n    }\n}\np = P(0)\ni = 0\nwhile (i < 300000) {\n    p.mais()\n    i = i + 1\n}\npost(p.n)\n",
      "GET_MEMBER/SET_MEMBER e chamada de método de entity"],
 
     ["gc", "i = 0\nwhile (i < 300000) {\n    l = [i, i + 1, [i]]\n    d = {\"a\": l}\n    i = i + 1\n}\npost(\"fim\")\n",

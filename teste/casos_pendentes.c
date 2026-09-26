@@ -66,30 +66,30 @@ const Caso CASOS_PENDENTES[] = {
 
 /* ── herança / Entity ───────────────────────────────────────────────────── */
 { "base() em Entity sem pai é erro",
-  "Entity B() {\n"
+  "Entity B {\n"
   "    funct __init__(self) {\n"
-  "        base()\n"
+  "        base().__init__()\n"
   "        self.m = 2\n"
   "    }\n"
   "}\n"
   "b = B()\n",
   "", "base()", 2 },
 { "base() com argumento nomeado",
-  "Entity A() {\n"
+  "Entity A {\n"
   "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
   "}\n"
   "Entity B(A) {\n"
   "    funct __init__(self) {\n"
-  "        base(x=5)\n"
+  "        base().__init__(x=5)\n"
   "    }\n"
   "}\n"
   "b = B()\n"
   "post(b.x)\n",
   "5", NULL, 0 },
 { "campo private do pai visível no método do pai",
-  "Entity P() {\n"
+  "Entity P {\n"
   "    private s: int\n"
   "    funct mostra(self) {\n"
   "        return self.s\n"
@@ -103,7 +103,7 @@ const Caso CASOS_PENDENTES[] = {
   "7", NULL, 0 },
 { "@dataentity aponta o parâmetro certo que falta",
   "@dataentity\n"
-  "Entity P() {\n"
+  "Entity P {\n"
   "    a: int\n"
   "    b: int = 2\n"
   "    c: int\n"

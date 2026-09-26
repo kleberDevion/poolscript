@@ -867,37 +867,31 @@ static PSNode *primario(P *p)
         }
         case T_IDENT:
         case T_IDENT_UPPER: {
-            /* `base(...)` — chamada do __init__ do pai. `base` não é keyword
-             * global (é contextual), por isso chega aqui como IDENT. */
+            /* `base().membro` / `base(Pai).membro` — o pai, com o `self` de
+             * quem chama: `base(Pai).__init__(x)`, `base(Pai).metodo(x)`,
+             * `base(Pai).campo`. `base` não é keyword global (é contextual),
+             * por isso chega aqui como IDENT. O `texto2` guarda o nome do
+             * pai (NULL = o único pai); o `.membro` vem pelo `posfixo`.
+             * A forma antiga `base(args)` acusa a nova. */
             if (t->texto && strcmp(t->texto, "base") == 0
                     && espia(p, 1)->type == T_LPAREN) {
                 p->pos += 2;
                 PSNode *n = ps_node_novo(p->arena, N_BASE_CALL_NODE, t->line, t->col);
                 if (!n) return NULL;
-                if (!checa(p, T_RPAREN)) {
-                    for (;;) {
-                        PSToken *at = atual(p);
-                        const char *nome_arg = NULL;
-                        int estrela = estrela_de_argumento(p);   /* `base(*a, **kw)` */
-                        if (!estrela
-                                && (at->type == T_IDENT || at->type == T_IDENT_UPPER)
-                                && espia(p, 1)->type == T_OP && espia(p, 1)->texto
-                                && strcmp(espia(p, 1)->texto, "=") == 0
-                                && espia(p, 2)->type != T_COMMA
-                                && espia(p, 2)->type != T_RPAREN) {
-                            nome_arg = dup_tok(p, at);
-                            p->pos += 2;
-                        }
-                        PSNode *v = expressao(p);
-                        if (FALHOU(p)) return NULL;
-                        PSNode *arg = ps_node_novo(p->arena, N_CALL_ARG, t->line, t->col);
-                        if (!arg) return NULL;
-                        arg->a = v; arg->texto = nome_arg; arg->i2 = estrela;
-                        if (ps_vec_push(p->arena, &n->lista, arg) != 0) return NULL;
-                        if (!aceita(p, T_COMMA)) break;
-                    }
+                if ((checa(p, T_IDENT) || checa(p, T_IDENT_UPPER)) && espia(p, 1)->type == T_RPAREN) {
+                    n->texto2 = dup_tok(p, atual(p));
+                    p->pos++;
                 }
-                if (!exige(p, T_RPAREN, "faltou ')' em base()")) return NULL;
+                if (!checa(p, T_RPAREN)) {
+                    perro(p, "base(...) recebe so o nome do pai: base().__init__(x) ou base(Pai).__init__(x)",
+                          atual(p));
+                    return NULL;
+                }
+                p->pos++;
+                if (!checa(p, T_DOT)) {
+                    perro(p, "base(Pai) precisa de um membro: base(Pai).__init__(...) ou base(Pai).metodo(...)", t);
+                    return NULL;
+                }
                 return n;
             }
             /* `base` sem `(` não é nome válido — mesmo erro do interp */
@@ -2853,7 +2847,7 @@ static PSNode *statement_no(P *p)
         return NULL;
     }
 
-    /* `public class Nome()` / `private class Nome()` — modificador de visibilidade
+    /* `public class Nome {` / `private class Nome {` — modificador de visibilidade
      * na PRÓPRIA classe. `private` = não exportada no import (só usável no arquivo).
      * `is_private` não entra na serialização do AST, então o diff continua batendo. */
     int classe_priv = 0;
@@ -2868,25 +2862,41 @@ static PSNode *statement_no(P *p)
             t = atual(p);      /* agora aponta pro Entity/class/Class */
         }
     }
-    /* Entity Nome(Pai) { action ... | campo: tipo | @decorador } */
+    /* Entity Nome { funct ... | campo: tipo | @decorador }
+     * Entity Filha(Pai, Mae) { ... }
+     * O `()` fica só na instanciação: `class Nome() {` é erro que diz isso. */
     if (checa_kw(p, "Entity") || checa_kw(p, "class") || checa_kw(p, "Class")) {
+        const char *kw = t->texto;
         p->pos++;
         PSNode *n = ps_node_novo(p->arena, N_ENTITY_DECL, t->line, t->col);
         if (!n) return NULL;
         n->is_private = classe_priv;
         n->texto = exige_nome(p, "Entity");
         if (FALHOU(p)) return NULL;
-        if (!exige(p, T_LPAREN, "esperado '(' apos nome da Entity")) return NULL;
-        while (checa(p, T_IDENT) || checa(p, T_IDENT_UPPER)) {
-            PSToken *pt = atual(p);
+        if (checa(p, T_LPAREN)) {
+            PSToken *abre = atual(p);
             p->pos++;
-            PSNode *pai = ps_node_novo(p->arena, N_NAME, pt->line, pt->col);
-            if (!pai) return NULL;
-            pai->texto = dup_tok(p, pt);
-            if (ps_vec_push(p->arena, &n->lista2, pai) != 0) return NULL;
-            if (!aceita(p, T_COMMA)) break;
+            if (checa(p, T_RPAREN)) {
+                perro_f(p, abre, "o '()' fica so na instanciacao: escreva `%s %s {` "
+                                 "(heranca: `%s %s(Pai) {`)", kw, n->texto, kw, n->texto);
+                return NULL;
+            }
+            if (!checa(p, T_IDENT) && !checa(p, T_IDENT_UPPER)) {
+                perro_f(p, atual(p), "esperado o nome do pai depois de '(' "
+                                     "(heranca: `%s %s(Pai) {`)", kw, n->texto);
+                return NULL;
+            }
+            while (checa(p, T_IDENT) || checa(p, T_IDENT_UPPER)) {
+                PSToken *pt = atual(p);
+                p->pos++;
+                PSNode *pai = ps_node_novo(p->arena, N_NAME, pt->line, pt->col);
+                if (!pai) return NULL;
+                pai->texto = dup_tok(p, pt);
+                if (ps_vec_push(p->arena, &n->lista2, pai) != 0) return NULL;
+                if (!aceita(p, T_COMMA)) break;
+            }
+            if (!exige(p, T_RPAREN, "esperado ')' apos heranca da Entity")) return NULL;
         }
-        if (!exige(p, T_RPAREN, "esperado ')' apos heranca da Entity")) return NULL;
         pula_separadores(p);
 
         /* corpo da Entity/class: só `{ }`, como todo bloco da linguagem.
@@ -3256,7 +3266,7 @@ static PSNode *statement_no(P *p)
              * registrada, e o cliente recebia 404 — sem um aviso sequer. */
             PSToken *nt = atual(p);
             int eh_action = (cabeca_de_funct(p, 0) >= 0);
-            /* @app.route(...) class Nome(): ... — handler baseado em classe.
+            /* @app.route(...) class Nome { ... } — handler baseado em classe.
              * O decorador captura a classe (com prefixo private/public opcional)
              * como bloco; o compilador enxerga a action dentro dela. */
             int eh_classe = (nt->type == T_KW && nt->texto
@@ -3964,6 +3974,16 @@ static PSNode *statement_no(P *p)
     /* expressão solta */
     PSNode *e = expressao(p);
     if (FALHOU(p)) return NULL;
+
+    /* `base(Pai).x = v`: o campo mora no MESMO objeto que `self.x`; escrever
+     * por `base` só esconderia isso. Sem esta cláusula caía no genérico
+     * "expressao invalida", que não diz o conserto. */
+    if (e->kind == N_MEMBER_ACCESS && e->a && e->a->kind == N_BASE_CALL_NODE
+            && checa(p, T_OP) && atual(p)->texto && eh_op_atribuicao(atual(p)->texto)) {
+        perro_f(p, atual(p), "atribua pelo self: self.%s = ... (base(Pai).%s le o campo, nao grava)",
+                e->texto ? e->texto : "x", e->texto ? e->texto : "x");
+        return NULL;
+    }
 
     /* `alvo[i] = v` e as formas aumentadas. Reconhecido DEPOIS de montar a
      * expressão, não por lookahead: o alvo pode ser qualquer coisa indexável

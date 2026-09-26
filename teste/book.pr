@@ -1,4 +1,4 @@
-public Class book(){
+public Class book {
     public static funct isBook(*args){
        for each i in args {
           if (i == 'cu'){
