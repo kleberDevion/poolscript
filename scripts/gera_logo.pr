@@ -150,13 +150,23 @@ funct hexcor(c) {
 }
 
 funct svg() {
-    # M ponta esquerda de fora -> arco de fora (sentido horário, > 180 graus)
-    # até o pescoço -> haste até o corte -> corte -> haste pra baixo até o
-    # pescoço de dentro -> arco de dentro (anti-horário) -> fecha no corte.
+    # M ponta esquerda de fora -> arco de fora POR BAIXO até o pescoço ->
+    # haste até o corte -> corte -> haste pra baixo até o pescoço de dentro
+    # -> arco de dentro por baixo de volta à ponta -> fecha no corte.
+    #
+    # As bandeiras do arco (large-arc, sweep) são as do SVG com y PRA BAIXO:
+    # sweep=1 anda no sentido dos ângulos crescentes, que na tela é horário
+    # e passa por CIMA quando se vai da ponta esquerda (190 graus) ao
+    # pescoço (12 graus). O gancho do J fica embaixo: ponta -> pescoço é
+    # 178 graus no sentido decrescente (large=0, sweep=0), e a volta de
+    # dentro, pescoço -> ponta, é 186 graus no crescente (large=1, sweep=1).
+    # Com `1 1` / `1 0` o desktop desenhava o gancho invertido, por cima —
+    # "o J deformado" (2026-09-26); o PNG dos editores, que vem do
+    # rasterizador `dentro()`, sempre esteve certo.
     caminho = ("M" + par(EO)
-        + " A" + num(R) + " " + num(R) + " 0 1 1 " + par(PO)
+        + " A" + num(R) + " " + num(R) + " 0 0 0 " + par(PO)
         + " L" + par(TO) + " L" + par(TI) + " L" + par(PI)
-        + " A" + num(RI) + " " + num(RI) + " 0 1 0 " + par(EI) + " Z")
+        + " A" + num(RI) + " " + num(RI) + " 0 1 1 " + par(EI) + " Z")
     bandeira = par(FBL) + " " + par(FBR) + " " + par(FTR) + " " + par(FTL)
     return ("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"512\" height=\"512\" viewBox=\"0 0 1000 1000\">\n"
         + "  <!--\n"

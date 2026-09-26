@@ -48,7 +48,7 @@ aí é shell, e vale a advertência de injeção lá embaixo.
 
 ```
 versao = os.run(["jinga", "--version"], capture=true)
-post(versao)                        # "Jinga 15.95.0 [PSVM] (2026-09-24) Runtime standalone"
+post(versao)                        # "Jinga 15.95.1 [PSVM] (2026-09-24) Runtime standalone"
 ```
 
 Com `capture=true` o `run` **espera** o processo terminar: colher a saída exige
