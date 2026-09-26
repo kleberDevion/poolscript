@@ -173,8 +173,9 @@ async function main() {
     const src = 'import regex\nregex.sub("(", ';
     const m = await conversa(src, [compl(2, 1, 15)]);
     const L = rotulos(resp(m, 2));
+    /* os `nome=` que faltam vêm no topo (o escopo vem junto, de propósito) */
     conf('parentese dentro de string nao confunde a chamada',
-         L.length > 0 && L.every((x) => x.endsWith('=')), L);
+         L.length > 0 && L[0].endsWith('=') && L.includes('repl=') && !L.includes('pattern='), L.slice(0, 6));
   }
 
   /* ── 4. função LOCAL não oferecia parâmetro nenhum ─────────────────────── */
@@ -843,6 +844,16 @@ async function main() {
        ['import sys', 'minha_var = 1', 'sys.argv[0].'], 2, undefined, [], ['type', 'append', 'minha_var', 'sys']],
       ['receptor conhecido lista SO o que o tipo tem: sem `type` colado (`c = b` de psodbc.connect)',
        ['import psodbc', 'b = psodbc.connect("x")', 'c = b', 'c.'], 3, undefined, ['cursor', 'commit', 'close'], ['type', 'post']],
+      /* Dentro de uma chamada: os `nome=` que faltam E o escopo inteiro, com o
+       * campo static da classe pelo nome solto (ele, 2026-09-26: "por que o
+       * hover nao me sugere a variavel que eu defini"). Antes a lista era SO
+       * os parametros. */
+      ['dentro de `connect(url=DatabasePriv` vem o campo static da classe, alem dos `nome=` que faltam',
+       ['import psodbc', 'import os', 'public class Bank {', '    private static String DatabasePrivateKey = os.getenv("X")',
+        '    private funct Dbconnector(self){', '        object conn = psodbc.connect(url=DatabasePrivate)', '    }', '}'],
+       5, 56, ['DatabasePrivateKey', 'host=', 'self'], ['url=']],
+      ['dentro de `soma(x, ` vem `b=` primeiro e as variaveis do arquivo',
+       ['funct soma(a, b) { return a + b }', 'x = 1', 'soma(x, '], 2, undefined, ['b=', 'x', 'soma'], ['a=']],
       ['`str(x).upper().` comeca a cadeia no tipo da conversao',
        ['x = 1', 'str(x).upper().'], 1, undefined, ['lower', 'strip'], ['x']],
       /* `base()` / `base(Pai)`, como o super (07-entity §7.5.2) */

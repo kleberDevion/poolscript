@@ -1941,25 +1941,11 @@ function completa(doc, p) {
     if (ps) return ps;
   }
 
-  const ch = dentroDeParenteses(doc, p.position) ? chamadaEm(doc, p.position) : null;
-  if (ch && !cad.partes.length) {
-    const ps = paramsDoChamado(doc, ch, p.position.line);
-    /* `*args`/`**kwarg` não existem como nomeado (`args=` cai no dict, e
-     * `*args=` é SyntaxError): não se oferecem */
-    const faltam = ps.filter((x, i) => i >= ch.posicionais && !ch.nomeados.has(x.nome)
-                                       && !String(x.nome).startsWith('*'));
-    if (faltam.length) {
-      return faltam.map((x) => ({
-        label: `${x.nome}=`,
-        kind: CompletionItemKind.Variable,
-        detail: x.default === null || x.default === undefined
-          ? 'parametro' : `parametro (padrao ${x.default})`,
-      }));
-    }
-  }
-
-  /* sem receptor: o que está REALMENTE em escopo nesta linha */
-  const idx = idxDoc(doc);
+  /* Dentro de uma chamada: os `nome=` que ainda cabem vêm NO TOPO da lista,
+   * e o escopo inteiro vem JUNTO — o argumento é quase sempre uma variável.
+   * Antes a lista era SÓ os parâmetros: em `connect(url=DatabasePriv` o
+   * campo static `DatabasePrivateKey` da classe nunca aparecia (ele,
+   * 2026-09-26: "por que o hover não me sugere a variável que eu defini"). */
   const itens = [];
   const jaTem = new Set();
   const poe = (label, kind, detail, ordem) => {
@@ -1967,6 +1953,21 @@ function completa(doc, p) {
     jaTem.add(label);
     itens.push({ label, kind, detail, sortText: ordem + label });
   };
+  const ch = dentroDeParenteses(doc, p.position) ? chamadaEm(doc, p.position) : null;
+  if (ch && !cad.partes.length) {
+    const ps = paramsDoChamado(doc, ch, p.position.line);
+    /* `*args`/`**kwarg` não existem como nomeado (`args=` cai no dict, e
+     * `*args=` é SyntaxError): não se oferecem */
+    const faltam = ps.filter((x, i) => i >= ch.posicionais && !ch.nomeados.has(x.nome)
+                                       && !String(x.nome).startsWith('*'));
+    for (const x of faltam) {
+      poe(`${x.nome}=`, CompletionItemKind.Variable,
+          x.default === null || x.default === undefined ? 'parametro' : `parametro (padrao ${x.default})`, '00');
+    }
+  }
+
+  /* sem receptor: o que está REALMENTE em escopo nesta linha */
+  const idx = idxDoc(doc);
 
   const KIND = {
     parametro: CompletionItemKind.Variable,

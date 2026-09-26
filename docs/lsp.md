@@ -64,7 +64,10 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   lista é só o que o tipo tem: o universal `type()` não é colado nela
   (colado em toda lista, lia como "não sei o tipo"). Tipo sem métodos
   (`int`, `flo`, `bool`) e retorno que depende do conteúdo (`json.parse`,
-  `list.pop`) não oferecem nada; o hover diz o tipo;
+  `list.pop`) não oferecem nada; o hover diz o tipo. Dentro de uma
+  chamada (`connect(url=…`) os `nome=` que ainda faltam vêm no topo e o
+  escopo inteiro vem junto — variável, parâmetro, campo `static` da
+  classe pelo nome solto;
   método sem tipo de retorno declarado ganha o tipo dos `return` dele
   quando todos concordam. `base(` oferece os pais da Entity; `base().` /
   `base(Pai).` lista o que o pai tem, com o `__init__` (07-entity §7.5.2);
