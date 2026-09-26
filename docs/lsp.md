@@ -94,6 +94,13 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   `model` e `enum` do arquivo (`Rota.`, `Cor.`), `self.` com campos do corpo
   da classe, de `self.x = …` e os herdados. Receptor que existe mas cujo tipo
   é desconhecido (`for each x in …`) recebe ao menos o que todo valor tem;
+- **hover de um valor apresenta o TIPO dele** — `Jinker nome` e, embaixo,
+  o que `Jinker` é (quantos métodos), o resumo e o primeiro exemplo da
+  página da doc; instância de Entity do arquivo mostra `class X { … }` com
+  os membros; `int n` diz que só tem `type()`; retorno com mais de um tipo
+  (`str|Process`) descreve cada lado. Apelido de tipo (`String`,
+  `Integer`… a tabela `tipos_apelidos` do motor, inteira) responde como o
+  tipo que designa;
 - **hover** — a assinatura real do método e o tipo que ele devolve, com a
   prosa da página `docs/…` achada pelo **caminho** (`jinker/request/get`;
   método de tipo em `docs/<tipo>/`, como `docs/str/upper/`, `docs/byte/decode/`).

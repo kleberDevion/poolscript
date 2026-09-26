@@ -145,23 +145,112 @@ function paginaDe(escopo, nome) {
   PAGINAS.set(chave, vazio);
   const raiz = raizDoc();
   if (!raiz) return vazio;
-  const p = path.join(raiz, escopo, nome, `${nome}.md`);
-  let texto;
-  try { texto = fs.readFileSync(p, 'utf8'); } catch (_) { return vazio; }
-  const partes = [];
-  let titulo = '';
-  for (const linha of texto.split('\n')) {
-    const t = linha.trim();
-    if (!titulo) { if (t.startsWith('# ')) titulo = t.slice(2).trim(); continue; }
-    if (t === '') { if (partes.length) break; continue; }
-    if (t.startsWith('#') || t.startsWith('|') || t.startsWith('```')) break;
-    partes.push(t);
-  }
-  const pg = { titulo, resumo: partes.join(' ') };
+  const pg = paginaArquivo(path.join(raiz, escopo, nome, `${nome}.md`));
   PAGINAS.set(chave, pg);
   return pg;
 }
 function resumoDe(escopo, nome) { return paginaDe(escopo, nome).resumo; }
+
+/* Uma página da doc lida do disco: o título (`# ...`), o primeiro parágrafo
+ * (resumo) e o PRIMEIRO bloco de código (exemplo) — é o que o hover mostra
+ * de um tipo, pra quem passa o mouse ver o que a coisa é e como se usa. */
+function paginaArquivo(arq) {
+  const vazio = { titulo: '', resumo: '', exemplo: '' };
+  let texto;
+  try { texto = fs.readFileSync(arq, 'utf8'); } catch (_) { return vazio; }
+  const partes = [];
+  let titulo = '';
+  let exemplo = null;
+  let resumoFechado = false;
+  for (const linha of texto.split('\n')) {
+    const t = linha.trim();
+    if (exemplo !== null) {
+      if (t.startsWith('```')) { resumoFechado = true; break; }
+      exemplo.push(linha);
+      continue;
+    }
+    if (!titulo) { if (t.startsWith('# ')) titulo = t.slice(2).trim(); continue; }
+    if (t.startsWith('```')) { if (!resumoFechado) resumoFechado = true; exemplo = []; continue; }
+    if (resumoFechado) { if (t.startsWith('#')) break; continue; }
+    if (t === '') { if (partes.length) resumoFechado = true; continue; }
+    if (t.startsWith('#') || t.startsWith('|')) { resumoFechado = true; continue; }
+    partes.push(t);
+  }
+  const ex = (exemplo || []).join('\n').trim();
+  return { titulo, resumo: partes.join(' '), exemplo: ex.split('\n').slice(0, 14).join('\n') };
+}
+
+/* A página de um TIPO: `docs/<mod>/<Tipo>/<Tipo>.md` (tipo de módulo, pela
+ * procedência), `docs/<tipo>/<tipo>.md` (str, list, dict…) ou
+ * `docs/objetos-internos/<Tipo>.md`. Sem apelido: `String` é `str`. */
+const PAGINAS_TIPO = new Map();
+function paginaDoTipo(t, via) {
+  if (!t) return null;
+  const nome = (META.tipos_apelidos || {})[t] || t;
+  const chave = (via && via.mod ? via.mod + '/' : '') + nome;
+  if (PAGINAS_TIPO.has(chave)) return PAGINAS_TIPO.get(chave);
+  const raiz = raizDoc();
+  let pg = null;
+  if (raiz) {
+    const cands = [];
+    if (via && via.mod) cands.push(path.join(raiz, via.mod, nome, `${nome}.md`));
+    cands.push(path.join(raiz, nome, `${nome}.md`));
+    cands.push(path.join(raiz, 'objetos-internos', `${nome}.md`));
+    /* tipo cuja página mora dentro de um módulo, sem a procedência à mão:
+     * a primeira pasta de módulo que tem `<Tipo>/<Tipo>.md` */
+    for (const mod of Object.keys(META.modulos || {})) {
+      if (!mod.includes('.')) cands.push(path.join(raiz, mod, nome, `${nome}.md`));
+    }
+    for (const c of cands) {
+      const p = paginaArquivo(c);
+      if (p.titulo || p.resumo) { pg = p; break; }
+    }
+  }
+  PAGINAS_TIPO.set(chave, pg);
+  return pg;
+}
+
+/* O que o hover diz de um TIPO: `class Nome` + quantos membros + a página
+ * (resumo e exemplo). Entity do arquivo: a cabeça dela e os membros. Vale
+ * pra tudo que tem tipo — variável, campo, retorno. */
+function apresentaTipo(doc, alvo) {
+  if (!alvo) return '';
+  if (alvo.tipo === 'entity') {
+    const e = achaEntidade(doc, alvo.nome);
+    if (!e) return '';
+    const membros = e.membros.filter((m) => m.nome !== '__init__').slice(0, 8)
+      .map((m) => '    ' + (m.privado ? 'private ' : '') + (m.estatica ? 'static ' : '')
+                  + (m.kind === 'action' ? 'funct ' : '') + assinatura(m));
+    const init = e.membros.find((m) => m.nome === '__init__');
+    const cab = 'class ' + e.nome + (e.bases.length ? '(' + e.bases.join(', ') + ')' : '') + ' {';
+    const cons = init ? ['    funct __init__(' + (init.params || []).map(rotuloParam).join(', ') + ')'] : [];
+    return '\n\n```ps\n' + cab + '\n' + cons.concat(membros).join('\n') + (e.membros.length > 9 ? '\n    ...' : '')
+         + '\n}\n```\n\nclass do arquivo · ' + e.membros.length + ' membros · declarada na linha ' + (e.linha + 1);
+  }
+  /* retorno com mais de um tipo (`os.run` → `int|str|Process`): cada lado
+   * dito, sem exemplo — quem escolhe o lado é o `capture` da chamada */
+  if (alvo.tipo === 'uniao') {
+    return '\n\n' + (alvo.nomes || []).map((t) => {
+      const pg = paginaDoTipo(t, alvo.via);
+      const n = (META.tipos[t] || []).length;
+      return '`' + t + '` · ' + (n ? n + ' métodos' : 'só `type()`') + (pg && pg.resumo ? ' — ' + pg.resumo : '');
+    }).join('\n\n');
+  }
+  const nome = alvo.tipo === 'tipo_motor' || alvo.tipo === 'escalar' ? alvo.nome : null;
+  if (!nome) return '';
+  const pg = paginaDoTipo(nome, alvo.via);
+  const n = (META.tipos[nome] || []).length;
+  let s = '\n\n`' + nome + '` · tipo' + (n ? ' · ' + n + ' métodos' : ' · só `type()`');
+  if (pg && pg.resumo) s += '\n\n' + pg.resumo;
+  else {
+    /* int/flo/bool não têm pasta na doc: a seção da linguagem que os
+     * apresenta (02-tipos-e-valores), pela crase do título */
+    const sec = secaoDaLinguagem(nome);
+    if (sec) s += '\n\n' + trechoDaSecao(sec);
+  }
+  if (pg && pg.exemplo) s += '\n\n```ps\n' + pg.exemplo + '\n```';
+  return s;
+}
 
 /* ── a árvore do documento ───────────────────────────────────────────────
  *
@@ -860,6 +949,7 @@ function tipoDaExpressao(doc, no, linha) {
   switch (no.k) {
     case 'Literal':
       if (typeof no.texto === 'string') return { tipo: 'tipo_motor', nome: no.lit === 'bytes' ? 'byte' : 'str' };
+      if (no.lit === 'int' || no.lit === 'flo' || no.lit === 'bool') return { tipo: 'escalar', nome: no.lit };
       return null;
     case 'InterpolatedString': return { tipo: 'tipo_motor', nome: 'str' };
     case 'ListLiteral': case 'ListComp': return { tipo: 'tipo_motor', nome: 'list' };
@@ -2178,9 +2268,18 @@ conexao.onHover((p) => {
   if (tok && MODIFICADORES.includes(tok.v) && !aposPonto && ehCabecaDeFunct(doc, tok)) {
     return hoverDeKeyword(doc, tok);
   }
+  /* `String`, `Integer`…: apelidos de tipo, que o lexer entrega como IDENT
+   * (não são reservados). Respondem como o tipo que designam — antes o
+   * hover ficava mudo neles ("String e seus irmãos estão ofuscados"). */
+  if (tok && !aposPonto && (META.tipos_apelidos || {})[tok.v]) {
+    const real = META.tipos_apelidos[tok.v];
+    return md('```ps\n' + tok.v + ' = ' + real + '\n```\n\napelido de tipo'
+              + apresentaTipo(doc, META.tipos[real] ? { tipo: 'tipo_motor', nome: real } : { tipo: 'escalar', nome: real }));
+  }
   if (tok && tok.t === 'KW' && !aposPonto && !META.modulos[tok.v]) {
-    if (META.tipos[tok.v]) {
-      return md('```ps\n' + tok.v + '\n```\n\ntipo · ' + (META.tipos[tok.v] || []).length + ' métodos');
+    if (META.tipos[tok.v] || ESCALARES.has(tok.v)) {
+      return md('```ps\n' + tok.v + '\n```'
+                + apresentaTipo(doc, META.tipos[tok.v] ? { tipo: 'tipo_motor', nome: tok.v } : { tipo: 'escalar', nome: tok.v }));
     }
     const pg = paginaDe('builtins', tok.v);
     if (pg.titulo) return md('```ps\n' + pg.titulo.split('`').join('') + '\n```' + (pg.resumo ? '\n\n' + pg.resumo : ''));
@@ -2290,10 +2389,18 @@ conexao.onHover((p) => {
         .map((f) => f.texto + ': ' + (f.texto2 || '') + paramsDeCampoTxt(f));
       return md('```ps\nmodel ' + b.nome + '() { ' + campos.join(', ') + ' }\n```\n\nmodel · declarado na ' + onde);
     }
-    /* variável: o tipo é o declarado (`str x`) ou o construído (`x = Jinker(...)`) */
+    /* variável: o tipo é o declarado (`str x`) ou o da expressão atribuída
+     * (`x = Jinker(...)`, `cur = con.cursor()`), e o hover apresenta o TIPO
+     * junto — o que ele é, quantos membros, a página com o exemplo (ele,
+     * 2026-09-26: "o hover deve mostrar que é uma classe, e um exemplo
+     * interno dela, e isso deve valer para tudo") */
     const t = tipoDoNome(doc, nome, p.position.line);
-    const tipo = b.tipo || (t && t.tipo !== 'import' && t.nome) || '';
-    return md('```ps\n' + (tipo ? tipo + ' ' : '') + b.nome + '\n```\n\n' + b.kind + ' · declarada na ' + onde);
+    const tipo = b.tipo || (t && t.tipo !== 'import' && (t.nome || (t.nomes || []).join('|'))) || '';
+    const alvoT = t && t.tipo !== 'import' ? t
+                : (b.tipo && META.tipos[(META.tipos_apelidos || {})[b.tipo] || b.tipo])
+                  ? { tipo: 'tipo_motor', nome: (META.tipos_apelidos || {})[b.tipo] || b.tipo } : null;
+    return md('```ps\n' + (tipo ? tipo + ' ' : '') + b.nome + '\n```\n\n' + b.kind + ' · declarada na ' + onde
+              + apresentaTipo(doc, alvoT));
   }
   /* Exceção do motor: a cadeia de pais e os filhos saem de `META.excecoes`
    * (a tabela do `catch`). Não há página por nome em docs/exceptions/<nome>/;

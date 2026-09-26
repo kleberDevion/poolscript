@@ -16,6 +16,8 @@ const os = require('os');
 
 const JINGA = process.argv[2] || 'jinga';
 const SERVIDOR = path.join(__dirname, 'server.js');
+/* as tabelas do motor, pros casos dirigidos por tabela (apelidos de tipo…) */
+const META_LOCAL = JSON.parse(require('child_process').execFileSync(JINGA, ['--metadata']).toString());
 
 let falhas = 0;
 let feitos = 0;
@@ -282,6 +284,48 @@ async function main() {
     const h10 = resp(m, 10);
     const t10 = h10 && h10.result && h10.result.contents ? (h10.result.contents.value || '') : '';
     conf('hover em `base` explica o pai (secao 7.5.2)', t10.includes('base(Pai)') && t10.includes('pai'), t10.slice(0, 120));
+  }
+  /* O hover de um VALOR apresenta o tipo dele: o que e, quantos membros, o
+   * resumo e o primeiro exemplo da pagina da doc (ele, 2026-09-26: "o hover
+   * deve mostrar que e uma classe, e um exemplo interno dela, e isso deve
+   * valer para tudo"); apelido de tipo (`String`, `Integer`...) responde
+   * como o tipo — antes ficava mudo. A lista de apelidos vem do motor. */
+  {
+    const src = 'from jinker import Jinker\nnome = Jinker(__name__)\npost(nome)\n'
+              + 'n = 1\npost(n)\n'
+              + 'Entity Osx {\n    int x\n    funct dobra(self) { return self.x * 2 }\n}\no = Osx(1)\npost(o)\n'
+              + 'String s = "a"\npost(s)\n'
+              + 'import os\np = os.run(["ls"], capture="live")\npost(p)\n';
+    const m = await conversa(src, [
+      { jsonrpc: '2.0', id: 12, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 2, character: 6 } } },
+      { jsonrpc: '2.0', id: 13, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 4, character: 6 } } },
+      { jsonrpc: '2.0', id: 14, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 10, character: 6 } } },
+      { jsonrpc: '2.0', id: 15, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 11, character: 2 } } },
+      { jsonrpc: '2.0', id: 16, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 15, character: 6 } } },
+    ]);
+    const txt = (id) => { const h = resp(m, id); return h && h.result && h.result.contents ? (h.result.contents.value || '') : ''; };
+    conf('hover de `nome = Jinker(...)` apresenta o tipo Jinker com a pagina e o exemplo',
+         txt(12).includes('Jinker nome') && txt(12).includes('`Jinker` · tipo') && txt(12).includes('from jinker import Jinker'),
+         txt(12).slice(0, 200));
+    conf('hover de `n = 1` diz `int n` (escalar: so type())',
+         txt(13).includes('int n') && txt(13).includes('só `type()`'), txt(13).slice(0, 160));
+    conf('hover de instancia de Entity do arquivo mostra a classe e os membros',
+         txt(14).includes('Osx o') && txt(14).includes('class Osx {') && txt(14).includes('funct dobra('), txt(14).slice(0, 200));
+    conf('hover no apelido `String` responde como o tipo str',
+         txt(15).includes('String = str') && txt(15).includes('`str` · tipo'), txt(15).slice(0, 160));
+    conf('hover de retorno com mais de um tipo diz cada lado',
+         txt(16).includes('str|Process') && txt(16).includes('`Process`'), txt(16).slice(0, 200));
+    /* todos os apelidos que o motor publica, nao dois */
+    const apelidos = Object.keys(META_LOCAL.tipos_apelidos || {});
+    let ok = 0;
+    for (const ap of apelidos) {
+      const r = await conversa(ap + ' v = Null\n', [
+        { jsonrpc: '2.0', id: 17, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 0, character: 1 } } },
+      ]);
+      const h = resp(r, 17); const t = h && h.result && h.result.contents ? (h.result.contents.value || '') : '';
+      if (t.includes(ap + ' = ' + META_LOCAL.tipos_apelidos[ap])) ok++;
+    }
+    conf('hover responde em TODOS os ' + apelidos.length + ' apelidos de tipo do motor', ok === apelidos.length, { ok, apelidos });
   }
   /* hover no campo sem tipo criado no __init__: o tipo inferido, e SEM
    * "herdado de" quando o campo e da propria classe */
