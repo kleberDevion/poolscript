@@ -59,7 +59,10 @@ arquivo**:
 
 Fica **de fora**:
 
-- o que é `private` (`private funct`, `private class`);
+- o que é `private` — **qualquer** declaração do topo: `private funct`,
+  `private class`, `private model`, `private enum`, e variável (`private x =
+  1`, `private int n = 1`, `private a, b = 1, 2`). O `private` é do **nome**,
+  no módulo inteiro: reatribuir `x` depois não o expõe;
 - o que só existe **dentro de um bloco** (`if`, `for each`, `try`, o guard
   `if __name__ == "main"`) — no fim do bloco o nome some, como em qualquer
   lugar;
@@ -85,7 +88,35 @@ que não tem arquivo, sai como `(unknown location)`. O `AttributeError` é o que
 traz a sugestão de nome parecido (`Did you mean: 'parse'?`) — o `ImportError`
 não sugere, e a sugestão só aponta nome que o módulo exporta. Nome que existe
 mas é `private` sai como
-`AttributeError: module '…' has no attribute '…' (existe, mas é private)`.
+`AttributeError: module '…' has no attribute '…' (existe, mas é private)` —
+e sai **antes de rodar**: o `--check` (e o `jinga` que barra na tipagem)
+acusa `m.x` e `from m import x` com a mesma frase, mais `declarada em m.pr,
+linha N` e o quadro da declaração. Rodando, o traceback termina com a nota
+`'x' e private: declarada em m.pr, linha N` e a linha do fonte, com o cursor
+no nome:
+
+```ps
+# lib.pr
+private x = 5
+private funct f() {
+    return x
+}
+pub = 9
+
+# main.pr
+import lib
+post(lib.pub)          # 9
+post(lib.x)            # AttributeError: module 'lib' has no attribute 'x' (existe, mas é private: declarada em lib.pr, linha 1)
+from lib import f      # a mesma frase
+from lib import *      # traz `pub`; `x` e `f` ficam de fora (NameError no uso)
+```
+
+`private` só tem efeito no **topo do arquivo** (e no corpo da Entity, seção
+7). Dentro de uma funct, de um `if`/`for`/`try` ou do guard `if __name__ ==
+"main"` ele não esconderia nada — e por isso é erro, não silêncio:
+`'private' aqui nao tem efeito: so vale no topo do arquivo (o que nao sai
+pelo import) ou no corpo da Entity`. Antes de uma coisa que não é declaração
+(`private if`, `private x += 1`) também é erro de sintaxe.
 
 ### 9.2.1. `*` — todos os nomes que o módulo exporta
 
@@ -425,7 +456,8 @@ post(mymod.saudar("ana"))
 - **`import mod [as m]`** — liga o módulo; acesso por `mod.x`.
 - **`from mod import x [as y], z`** — liga nomes soltos.
 - **O que sai de um módulo**: o que o arquivo liga no nível do arquivo (funct,
-  Entity, enum, model, variável, os imports dele, `global x`), sem `private`,
+  Entity, enum, model, variável, os imports dele, `global x`), sem `private`
+  (que vale em qualquer uma dessas declarações, e é acusado antes de rodar),
   sem o que só existe em bloco e sem o builtin que ele só usa — a mesma regra
   pra `from mod import x`, `mod.x` e `*`.
 - **`from mod import *`** = **`import mod *`** = **`PUSH mod GET *`** — liga

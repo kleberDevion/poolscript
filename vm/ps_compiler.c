@@ -1588,16 +1588,81 @@ static int nome_ja_existe(Unidade *u, const char *nome)
  *
  * Nome sem tipo declarado continua como sempre: `x = 1` depois `x = "a"`. */
 
-/* `private action f()` no nivel do modulo: o nome entra na lista que o
- * `import` consulta. Antes o `private` compilava e nao fazia nada. */
-static void priv_global_add(C *c, const char *nome)
+static void terro(C *c, PSNode *n, const char *classe, const char *fmt, ...);
+
+/* `private <declaracao>` no topo do modulo: o nome entra na lista que o
+ * `import` consulta, com a linha/coluna da declaracao (o traceback do acesso
+ * negado mostra onde o nome foi declarado private). Antes o `private` de
+ * funct compilava e nao fazia nada. */
+static void priv_global_add(C *c, const char *nome, PSNode *no)
 {
     if (!nome || !c->out) return;
-    char **nv = realloc(c->out->priv_globais, sizeof(char *) * (size_t)(c->out->npriv_globais + 1));
+    PSPrograma *o = c->out;
+    int32_t n = o->npriv_globais;
+    char **nv = realloc(o->priv_globais, sizeof(char *) * (size_t)(n + 1));
     if (!nv) { cerro(c, "sem memoria", NULL); return; }
-    c->out->priv_globais = nv;
-    c->out->priv_globais[c->out->npriv_globais] = strdup(nome);
-    if (c->out->priv_globais[c->out->npriv_globais]) c->out->npriv_globais++;
+    o->priv_globais = nv;
+    int32_t *nl = realloc(o->priv_linhas, sizeof(int32_t) * (size_t)(n + 1));
+    if (!nl) { cerro(c, "sem memoria", NULL); return; }
+    o->priv_linhas = nl;
+    int32_t *nc = realloc(o->priv_cols, sizeof(int32_t) * (size_t)(n + 1));
+    if (!nc) { cerro(c, "sem memoria", NULL); return; }
+    o->priv_cols = nc;
+    o->priv_globais[n] = strdup(nome);
+    if (!o->priv_globais[n]) { cerro(c, "sem memoria", NULL); return; }
+    o->priv_linhas[n] = no ? no->line : 0;
+    o->priv_cols[n]   = no ? no->col : 0;
+    o->npriv_globais = n + 1;
+}
+
+/* O statement `n` esta no TOPO do arquivo (fora de funct, de bloco e de
+ * Entity)? E onde `private`/`public` tem efeito no modulo. Declaracao dentro
+ * de um bloco de decorador do topo (`@app.get` em cima da funct) conta como
+ * topo — e como o `modulo_decl` a enxerga. */
+static int decorador_contem(PSNode *s, PSNode *n)
+{
+    if (!s || s->kind != N_DECORATOR_STMT || !s->b || s->b->kind != N_BLOCK) return 0;
+    for (int32_t k = 0; k < s->b->lista.n; k++) {
+        PSNode *d = s->b->lista.itens[k];
+        if (d == n || decorador_contem(d, n)) return 1;
+    }
+    return 0;
+}
+
+static int no_topo_do_modulo(C *c, Unidade *u, PSNode *n)
+{
+    if (!u->eh_modulo || c->dentro_entity || !c->stmt_topo) return 0;
+    return c->stmt_topo == n || decorador_contem(c->stmt_topo, n);
+}
+
+/* `private` numa declaracao: no topo do modulo registra o nome; em qualquer
+ * outro lugar (dentro de funct, de `if`/`for`/`try`, do guard `if __name__`)
+ * nao teria efeito nenhum — e palavra que nao faz o que diz e erro, nao
+ * silencio. `no_erro` e o no acusado (o da declaracao). */
+static void priv_declara(C *c, Unidade *u, PSNode *decl, PSNode *no_erro, const char *nome)
+{
+    if (no_topo_do_modulo(c, u, decl)) { priv_global_add(c, nome, decl); return; }
+    /* `private name = nome` dentro de um metodo de Entity: quem escreve isso
+     * quer o CAMPO do objeto, e a forma dele leva o tipo */
+    if (c->dentro_entity && !u->eh_modulo && decl->kind == N_ASSIGNMENT) {
+        terro(c, no_erro, "SyntaxError",
+              "'private %s = ...' dentro de uma funct de Entity declara campo do objeto: "
+              "escreva 'private <tipo> %s = <valor>'", nome ? nome : "nome", nome ? nome : "nome");
+        return;
+    }
+    terro(c, no_erro, "SyntaxError",
+          "'private' aqui nao tem efeito: so vale no topo do arquivo (o que nao sai pelo import) "
+          "ou no corpo da Entity");
+}
+
+/* Os NOMEs de um alvo de desempacotamento (`a, (b, *c) = …`), pra marca-los
+ * private. Membro e indice (`o.x, l[i] = …`) nao declaram nome: passam. */
+static void priv_alvos_unpack(C *c, Unidade *u, PSNode *decl, PSNode *alvo)
+{
+    if (!alvo) return;
+    if (alvo->kind == N_NAME) { priv_declara(c, u, decl, decl, alvo->texto); return; }
+    if (alvo->kind == N_UNPACK_TARGET)
+        for (int32_t i = 0; i < alvo->lista.n; i++) priv_alvos_unpack(c, u, decl, alvo->lista.itens[i]);
 }
 
 /* Código TIPO_* de um nome de tipo (canônico ou apelido), ou -1. É o código da
@@ -2834,6 +2899,76 @@ static int modulo_exporta(const PSModuloAst *ma, const char *nome)
     return 0;
 }
 
+/* O nome `nome` esta declarado `private` no topo do modulo `ma` (funct, class,
+ * model, enum, variavel, desempacotamento — inclusive dentro de bloco de
+ * decorador do topo)? Devolve o no da declaracao, pra frase dizer onde. */
+static PSNode *modulo_privado_em(PSNode *s, const char *nome)
+{
+    if (!s) return NULL;
+    if (s->kind == N_DECORATOR_STMT && s->b && s->b->kind == N_BLOCK) {
+        for (int32_t k = 0; k < s->b->lista.n; k++) {
+            PSNode *d = modulo_privado_em(s->b->lista.itens[k], nome);
+            if (d) return d;
+        }
+        return NULL;
+    }
+    if (!s->is_private) return NULL;
+    switch (s->kind) {
+        case N_ACTION_DECL: case N_ENTITY_DECL: case N_MODEL_DECL: case N_ENUM_DECL:
+        case N_ASSIGNMENT: case N_VAR_DECL: case N_FIELD_DECL:
+            return (s->texto && !strcmp(s->texto, nome)) ? s : NULL;
+        case N_UNPACK_ASSIGNMENT: {
+            /* os NOMEs do alvo, em qualquer profundidade */
+            PSNode *pilha[64]; int np = 0;
+            if (s->a) pilha[np++] = s->a;
+            while (np > 0) {
+                PSNode *a = pilha[--np];
+                if (!a) continue;
+                if (a->kind == N_NAME && a->texto && !strcmp(a->texto, nome)) return s;
+                if (a->kind == N_UNPACK_TARGET)
+                    for (int32_t i = 0; i < a->lista.n && np < 64; i++) pilha[np++] = a->lista.itens[i];
+            }
+            return NULL;
+        }
+        default: return NULL;
+    }
+}
+
+static PSNode *modulo_privado(const PSModuloAst *ma, const char *nome)
+{
+    if (!ma || !ma->programa || !nome) return NULL;
+    for (int32_t i = 0; i < ma->programa->lista.n; i++) {
+        PSNode *d = modulo_privado_em(ma->programa->lista.itens[i], nome);
+        if (d) return d;
+    }
+    return NULL;
+}
+
+/* `m.x` / `from m import x` com `x` private em `m`: a frase do runtime
+ * ("existe, mas é private"), antes de rodar, com o quadro da declaracao (o
+ * arquivo do modulo, a linha e o nome — o cursor vai em cima do nome). */
+static const char *base_do_caminho(const char *p)
+{
+    const char *b = p ? strrchr(p, '/') : NULL;
+    return b ? b + 1 : (p ? p : "?");
+}
+
+static void terro_privado(C *c, PSNode *n, const PSModuloAst *ma, const char *vis,
+                          const char *nome, PSNode *decl)
+{
+    int32_t antes = c->nerros;
+    terro(c, n, "AttributeError",
+          "module '%s' has no attribute '%s' (existe, mas é private: declarada em %s, linha %d)",
+          vis, nome, base_do_caminho(ma->caminho), decl->line);
+    if (c->nerros > antes) {
+        PSErroTipo *e = &c->erros[c->nerros - 1];
+        snprintf(e->arquivo, sizeof(e->arquivo), "%s", ma->caminho ? ma->caminho : "");
+        e->linha_arq = decl->line;
+        e->col_arq = decl->col;
+        snprintf(e->nome_arq, sizeof(e->nome_arq), "%s", nome);
+    }
+}
+
 /* O nome `n` é um módulo `.pr` importado (`import util`, `import a.b as u`)? */
 static SimInfo *tp_sim_mod_pr(C *c, Unidade *u, PSNode *n)
 {
@@ -2943,6 +3078,14 @@ static void tp_grava_import(C *c, PSNode *n, const char *mod, const char *membro
         return;
     }
     int deco = 0;
+    PSNode *priv = modulo_privado(ma, membro);
+    if (priv) {
+        /* `from m import x` com `x` private: a mesma frase que `m.x` — o
+         * runtime tambem acusa AttributeError aqui, nao ImportError */
+        terro_privado(c, tp_no_do_import(n, membro), ma, vis, membro, priv);
+        c->grava.tem_valor = 1;
+        return;
+    }
     PSNode *d = modulo_decl(ma, membro, &deco);
     if (!d) {
         /* variável do módulo (tipo só rodando), ou nome que ele não tem —
@@ -3225,7 +3368,10 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
         SimInfo *sm = tp_sim_mod_pr(c, u, n->a);
         if (sm) {
             const PSModuloAst *ma = sm->mod_pr;
-            if (!ma->incompleto && !modulo_decl(ma, n->texto, NULL) && !modulo_exporta(ma, n->texto))
+            PSNode *priv = modulo_privado(ma, n->texto);
+            if (priv)
+                terro_privado(c, n, ma, sm->mod_pr_nome ? sm->mod_pr_nome : "?", n->texto, priv);
+            else if (!ma->incompleto && !modulo_decl(ma, n->texto, NULL) && !modulo_exporta(ma, n->texto))
                 terro(c, n, "AttributeError", "module '%s' has no attribute '%s'",
                       sm->mod_pr_nome ? sm->mod_pr_nome : "?", n->texto);
             return;
@@ -4693,7 +4839,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             int32_t idx = compila_action(c, n, u);
             if (CFALHOU(c)) return;
             emite_funcao(c, u, idx);
-            if (u->eh_modulo && n->is_private) priv_global_add(c, n->texto);
+            if (n->is_private) priv_declara(c, u, n, n, n->texto);
             memset(&c->grava, 0, sizeof(c->grava));
             c->grava.tem_valor = 1;
             c->grava.tipo = "funct";
@@ -4741,6 +4887,9 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 c->grava.declara = n->texto2;
             }
             guarda_nome_modo(c, u, vn, 1);
+            /* `private int n = 1` no topo (veio de N_FIELD_DECL, ver
+             * `topo_campo_vira_var`): o nome não sai pelo import */
+            if (n->is_private && !CFALHOU(c)) priv_declara(c, u, n, n, vn);
             return;
         }
 
@@ -4751,6 +4900,19 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * corte de private. A visibilidade em si é registrada na CLASSE,
              * no N_ENTITY_DECL, senão o `private` compilaria sem barrar nada. */
             if (!c->dentro_entity || u->eh_modulo || !nome_ja_existe(u, "self")) {
+                /* No TOPO do arquivo esta grafia e a variavel tipada do modulo
+                 * com visibilidade — e ja chegou aqui como N_VAR_DECL (ver
+                 * `topo_campo_vira_var`). O que sobra e o `private` fora do
+                 * lugar. */
+                if (u->eh_modulo) {
+                    /* dentro de um bloco do modulo (`if`, `for`, o guard):
+                     * nem campo (nao tem self) nem variavel de modulo (nao e
+                     * o topo) */
+                    cerro_sx(c, n, "'%s' aqui nao tem efeito: so vale no topo do arquivo "
+                                   "(o que nao sai pelo import) ou no corpo da Entity",
+                             n->is_private ? "private" : "public");
+                    return;
+                }
                 cerro_sx(c, n, "'%s %s %s = ...' declara campo do objeto: so vale dentro de uma "
                                "funct de Entity que recebe 'self'",
                          n->is_private ? "private" : "public",
@@ -4815,6 +4977,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             }
             guarda_nome(c, u, n->texto ? n->texto : "");
             if (strcmp(op, "=") != 0) funde_incremento(c, u);   /* `x += 1` em int declarado */
+            if (n->is_private && !CFALHOU(c)) priv_declara(c, u, n, n, n->texto);
             return;
         }
 
@@ -5013,6 +5176,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             if (!alvo || alvo->kind != N_UNPACK_TARGET) { cerro_sx(c, n, "alvo de desempacotamento invalido"); return; }
             expr(c, u, n->b);
             compila_unpack_alvo(c, u, alvo);
+            if (n->is_private && !CFALHOU(c)) priv_alvos_unpack(c, u, n, alvo);
             return;
         }
 
@@ -5072,6 +5236,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * outra árvore e podia colidir por posição) */
             c->grava.decl = gemeo_de(c, n);
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
+            if (n->is_private) priv_declara(c, u, n, n, n->texto);
             return;
         }
 
@@ -5112,6 +5277,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * outra árvore e podia colidir por posição) */
             c->grava.decl = gemeo_de(c, n);
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
+            if (n->is_private) priv_declara(c, u, n, n, n->texto);
             return;
         }
 
@@ -5524,6 +5690,9 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * outra árvore e podia colidir por posição) */
             c->grava.decl = gemeo_de(c, n);
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
+            /* `private class`: alem de `classe_privada`, entra na tabela dos
+             * nomes private do modulo — e ela que diz ONDE foi declarada */
+            if (n->is_private) priv_declara(c, u, n, n, n->texto);
 
             /* A classe existe. Agora, nesta ordem:
              *   1) campos `static` — `Classe.x = <inicializador>` (ou Null);
@@ -6805,9 +6974,22 @@ static void compila_prepara(C *c, PSPrograma *out, const PSResolvedor *resolve)
 /* Primeira passada, uma declaração de topo: o que se colhe da declaração
  * INTEIRA (`cheia`) e o que se registra da PODADA (`podada`, que é a que
  * vive até o fim). Na compilação da árvore inteira as duas são o mesmo nó. */
+/* `private int n = 1` no TOPO do arquivo: o parser entrega N_FIELD_DECL (ele
+ * não sabe se está num método de Entity, onde a mesma grafia é campo do
+ * objeto). No topo é a variável tipada do módulo com visibilidade — o mesmo
+ * N_VAR_DECL de `int n = 1`. A troca é feita aqui, na entrada de cada
+ * passada, pra TODA a coleta (nomes ligados, tipo do topo) já vê-la como
+ * variável. */
+static void topo_campo_vira_var(PSNode *s)
+{
+    if (s && s->kind == N_FIELD_DECL) s->kind = N_VAR_DECL;
+}
+
 static void passada1_stmt(C *c, PSNode *cheia, PSNode *podada)
 {
     if (CFALHOU(c)) return;
+    topo_campo_vira_var(cheia);
+    topo_campo_vira_var(podada);
     coleta_tipos_topo(c, cheia);
     resolve_estrela(c, podada);
     tp_coleta_tipos_arq(c, podada);
@@ -6838,6 +7020,7 @@ static void passada2_stmt(C *c, Unidade *u, PSNode *s)
 {
     if (CFALHOU(c)) return;
     int32_t marca = c->n_self_sint;
+    topo_campo_vira_var(s);
     c->stmt_topo = s;
     stmt(c, u, s);
     c->stmt_topo = NULL;
@@ -7110,6 +7293,8 @@ void ps_compila_free(PSPrograma *p)
     free(p->enums);
     for (int32_t i = 0; i < p->npriv_globais; i++) free(p->priv_globais[i]);
     free(p->priv_globais);
+    free(p->priv_linhas);
+    free(p->priv_cols);
     for (int32_t i = 0; i < p->nexportados; i++) free(p->exportados[i]);
     free(p->exportados);
     free(p->erros_tipo);

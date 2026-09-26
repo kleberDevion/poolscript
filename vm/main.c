@@ -148,20 +148,63 @@ static const char *limpa_arquivo(const char *fn, char *buf, size_t cap)
 }
 
 /* Um quadro: "  em <arq>, linha N" + a linha do fonte + o cursor `^^^`. Igual
- * ao `_fmt_frame` do interpretador. `col<=0` => cursor na 1ª não-branco. */
-static void mostra_linha(const char *buf, size_t l, int col)
+ * ao `_fmt_frame` do interpretador. `col<=0` => cursor na 1ª não-branco.
+ * `nome` (opcional): o cursor vai em cima dessa palavra inteira, procurada a
+ * partir de `col` — o quadro de uma declaração (`private funct f() {`) aponta
+ * o NOME, não a palavra-chave onde o nó começa. */
+static int eh_letra_nome(char ch)
+{
+    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')
+        || ch == '_' || (unsigned char)ch >= 0x80;
+}
+
+static void mostra_linha(const char *buf, size_t l, int col, const char *nome)
 {
     while (l > 0 && (buf[l-1] == '\n' || buf[l-1] == '\r')) l--;
     size_t sp;
     if (col > 0) sp = (size_t)(col - 1);
     else { sp = 0; while (sp < l && (buf[sp] == ' ' || buf[sp] == '\t')) sp++; }
+    if (nome && nome[0]) {
+        size_t ln = strlen(nome);
+        for (size_t i = sp < l ? sp : 0; i + ln <= l; i++) {
+            if (memcmp(buf + i, nome, ln) != 0) continue;
+            if (i > 0 && eh_letra_nome(buf[i - 1])) continue;
+            if (i + ln < l && eh_letra_nome(buf[i + ln])) continue;
+            sp = i;
+            break;
+        }
+    }
     fprintf(stderr, "  | %.*s\n  | %*s^^^\n", (int)l, buf, (int)sp, "");
+}
+
+static void mostra_trecho(const char *origem, int linha, int col, const char *nome);
+
+static void imprime_quadro_nome(const char *origem, int linha, int col, const char *nome)
+{
+    char nome_buf[1024];
+    fprintf(stderr, "  em %s, linha %d\n", limpa_arquivo(origem, nome_buf, sizeof(nome_buf)), linha);
+    mostra_trecho(origem, linha, col, nome);
 }
 
 static void imprime_quadro(const char *origem, int linha, int col)
 {
+    imprime_quadro_nome(origem, linha, col, NULL);
+}
+
+/* A nota depois do traceback: `m.x` negado por `private` diz onde `x` foi
+ * declarado, com a linha do fonte e o cursor no nome. */
+static void imprime_nota_privado(const char *nome, const char *origem, int linha, int col)
+{
     char nome_buf[1024];
-    fprintf(stderr, "  em %s, linha %d\n", limpa_arquivo(origem, nome_buf, sizeof(nome_buf)), linha);
+    fprintf(stderr, "  '%s' e private: declarada em %s, linha %d\n",
+            nome, limpa_arquivo(origem, nome_buf, sizeof(nome_buf)), linha);
+    mostra_trecho(origem, linha, col, nome);
+}
+
+/* A linha `linha` do arquivo `origem` (do fonte embutido ou do disco), com o
+ * cursor. Nada quando não há linha ou o arquivo não abre. */
+static void mostra_trecho(const char *origem, int linha, int col, const char *nome)
+{
     if (linha <= 0 || !origem || origem[0] == '<') return;
     /* Executavel gerado: a linha vem do fonte EMBUTIDO. Abrir `origem` no
      * disco lia a linha N do proprio ELF (quando `origem` era o binario) ou
@@ -178,7 +221,7 @@ static void imprime_quadro(const char *origem, int linha, int col)
         }
         if (p > fim) return;
         const char *nl = memchr(p, '\n', (size_t)(fim - p));
-        mostra_linha(p, nl ? (size_t)(nl - p) : (size_t)(fim - p), col);
+        mostra_linha(p, nl ? (size_t)(nl - p) : (size_t)(fim - p), col, nome);
         return;
     }
     FILE *f = fopen(origem, "rb");
@@ -187,7 +230,7 @@ static void imprime_quadro(const char *origem, int linha, int col)
     int atual = 0;
     while (fgets(buf, sizeof(buf), f)) {
         if (++atual != linha) continue;
-        mostra_linha(buf, strlen(buf), col);
+        mostra_linha(buf, strlen(buf), col, nome);
         break;
     }
     fclose(f);
@@ -213,7 +256,8 @@ static int reporta(PSErroExec *e, const char *origem)
                  * depois do quadro do import (como o traceback: o mais fundo
                  * por ultimo) */
                 if (e->tipos[i].arquivo[0])
-                    imprime_quadro(e->tipos[i].arquivo, e->tipos[i].linha_arq, e->tipos[i].col_arq);
+                    imprime_quadro_nome(e->tipos[i].arquivo, e->tipos[i].linha_arq, e->tipos[i].col_arq,
+                                        e->tipos[i].nome_arq[0] ? e->tipos[i].nome_arq : NULL);
             }
             if (n == 0) {
                 fprintf(stderr, "%s: %s\n", e->tipo_nome[0] ? e->tipo_nome : "AttributedValueError", e->msg);
@@ -253,6 +297,9 @@ static int reporta(PSErroExec *e, const char *origem)
             } else if (e->linha > 0) {
                 imprime_quadro(origem, e->linha, e->col);
             }
+            /* acesso a nome `private` de módulo: onde ele foi declarado */
+            if (e->nota_arquivo[0] && e->nota_linha > 0)
+                imprime_nota_privado(e->nota_nome, e->nota_arquivo, e->nota_linha, e->nota_col);
             return 1;
     }
 }

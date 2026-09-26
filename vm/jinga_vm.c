@@ -439,6 +439,8 @@ typedef struct {
     int32_t  n;
     char   **nomes;      /* nome de cada global, na ordem */
     unsigned char *priv; /* 1 = `private` no modulo: nao sai por import (paralelo a nomes) */
+    int32_t *priv_linha; /* onde o `private` foi declarado (paralelo a nomes; 0 = nao sabe) */
+    int32_t *priv_col;
     unsigned char *exporta; /* 1 = o arquivo liga o nome (PSPrograma.exportados), paralelo a nomes */
 } PSModuloPS;
 
@@ -1347,6 +1349,12 @@ struct VM_ {
      * e a posição reais até o quadro final do traceback. */
     char    mod_erro_arquivo[1024];   /* mesmo tamanho do `abspath` que o alimenta */
     int     mod_erro_linha, mod_erro_col;
+    /* Nota do traceback: `m.x` negado por `private` mostra ONDE `x` foi
+     * declarado (arquivo do módulo, linha, coluna, nome). Vazio = sem nota;
+     * o `catch` limpa. */
+    char    nota_arquivo[1024];
+    char    nota_nome[64];
+    int     nota_linha, nota_col;
 };
 
 /* Handler de `try`: onde saltar e qual estado restaurar. Guardar fp/sp/
@@ -1977,6 +1985,8 @@ static void fin_moduleps(VM *vm, Obj *o) {
     for (int32_t i = 0; i < m->n; i++) free(m->nomes[i]);
     free(m->nomes);
     free(m->priv);
+    free(m->priv_linha);
+    free(m->priv_col);
     free(m->exporta);
     free(m->nome);
     free(m->caminho);
@@ -23369,6 +23379,27 @@ static int membro_de_modulo(VM *vm, Value alvo, const char *nome, Value *out)
     return MEMBRO_AUSENTE;
 }
 
+/* `m.x` negado por `private`: a declaração (arquivo do módulo, linha, coluna,
+ * nome) vai na nota do traceback — o quadro "'x' e private: declarada em
+ * m.pr, linha N" com a linha do fonte. Sem posição (classe private atrás de
+ * outro nome, `Q = P`) a nota fica vazia. */
+static void nota_privado(VM *vm, Value alvo, const char *nome)
+{
+    vm->nota_arquivo[0] = '\0';
+    vm->nota_linha = vm->nota_col = 0;
+    if (!EH_MODPS(alvo)) return;
+    PSModuloPS *m = COMO_MODPS(alvo);
+    for (int32_t k = 0; k < m->n; k++) {
+        if (strcmp(m->nomes[k], nome) != 0) continue;
+        if (!m->priv_linha || m->priv_linha[k] <= 0) return;
+        snprintf(vm->nota_arquivo, sizeof(vm->nota_arquivo), "%s", m->caminho ? m->caminho : "");
+        snprintf(vm->nota_nome, sizeof(vm->nota_nome), "%s", nome);
+        vm->nota_linha = m->priv_linha[k];
+        vm->nota_col   = m->priv_col ? m->priv_col[k] : 0;
+        return;
+    }
+}
+
 /* "Did you mean" de `m.x`: só entre o que o módulo exporta — sugerir um
  * builtin que ele só chamou seria mandar pra um nome que também não sai. */
 static const char *sugere_membro(VM *vm, Value alvo, const char *nome)
@@ -27111,11 +27142,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     stack[sp - 1] = v;
                     goto membro_ok;
                 }
-                /* `private class Nome {` e `private funct f()` não saem do
-                 * arquivo — a frase diz que o nome existe */
-                if (rm == MEMBRO_PRIVADO)
+                /* `private <declaracao>` não sai do arquivo — a frase diz que
+                 * o nome existe, e a nota do traceback diz onde foi declarado */
+                if (rm == MEMBRO_PRIVADO) {
+                    nota_privado(vm, alvo, nome);
                     ERRO_TF(vm, "AttributeError", "module '%s' has no attribute '%s'"
                             " (existe, mas é private)", mnome, nome);
+                }
                 /* `from mod import x` com x ausente: sem sugestão de nome (ela
                  * só sai no AttributeError de `mod.x`); o arquivo do módulo
                  * vai entre parênteses, e o nativo, que não tem arquivo, sai
@@ -28119,6 +28152,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             vm->pego_proto = p ? (int)(p - vm->protos) : -1;
             vm->pego_linha = linha_agora;
             vm->pego_col   = col_agora;
+            /* erro pego: a nota do traceback (declaração private) morre com
+             * ele — um erro seguinte, sem relação, não pode herdá-la */
+            vm->nota_arquivo[0] = '\0';
+            vm->nota_linha = vm->nota_col = 0;
             fp = h->fp;
             locals_top = h->locals_top;
             sp = h->sp;
@@ -29679,12 +29716,22 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     m->nomes = calloc((size_t)(prog->nglobais > 0 ? prog->nglobais : 1), sizeof(char *));
     if (!m->nome || !m->caminho || !m->nomes) { ps_compila_free(prog); snprintf(vm->erro, sizeof(vm->erro), "sem memoria"); return -1; }
     for (int32_t i = 0; i < prog->nglobais; i++) m->nomes[i] = strdup(prog->globais[i]);
-    /* `private action` do modulo: marca o nome pra nao sair no import */
-    m->priv = calloc((size_t)(prog->nglobais > 0 ? prog->nglobais : 1), 1);
-    if (!m->priv) { ps_compila_free(prog); snprintf(vm->erro, sizeof(vm->erro), "sem memoria"); return -1; }
+    /* `private <declaracao>` do modulo: marca o nome pra nao sair no import,
+     * e guarda onde foi declarado (a nota do traceback do acesso negado) */
+    size_t ng = (size_t)(prog->nglobais > 0 ? prog->nglobais : 1);
+    m->priv = calloc(ng, 1);
+    m->priv_linha = calloc(ng, sizeof(int32_t));
+    m->priv_col = calloc(ng, sizeof(int32_t));
+    if (!m->priv || !m->priv_linha || !m->priv_col) { ps_compila_free(prog); snprintf(vm->erro, sizeof(vm->erro), "sem memoria"); return -1; }
     for (int32_t i = 0; i < prog->nglobais; i++) {
         for (int32_t k = 0; k < prog->npriv_globais; k++)
-            if (strcmp(prog->globais[i], prog->priv_globais[k]) == 0) m->priv[i] = 1;
+            if (strcmp(prog->globais[i], prog->priv_globais[k]) == 0) {
+                m->priv[i] = 1;
+                if (prog->priv_linhas && !m->priv_linha[i]) {
+                    m->priv_linha[i] = prog->priv_linhas[k];
+                    m->priv_col[i] = prog->priv_cols ? prog->priv_cols[k] : 0;
+                }
+            }
         /* `private class` marcada pela DECLARAÇÃO: olhar o valor falhava com
          * o nome ainda sem valor (import em ciclo), e a frase virava "não
          * existe" em vez de "existe, mas é private" */
@@ -30303,6 +30350,7 @@ static void erro_de_compilacao(const PSPrograma *prog, PSErroExec *e)
         snprintf(e->tipos[i].arquivo, sizeof(e->tipos[i].arquivo), "%s", prog->erros_tipo[i].arquivo);
         e->tipos[i].linha_arq = prog->erros_tipo[i].linha_arq;
         e->tipos[i].col_arq = prog->erros_tipo[i].col_arq;
+        snprintf(e->tipos[i].nome_arq, sizeof(e->tipos[i].nome_arq), "%s", prog->erros_tipo[i].nome_arq);
     }
     e->ntipos = prog->nerros_tipo;
 }
@@ -30787,6 +30835,13 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
                      pr->arquivo ? pr->arquivo : "");
             e->tb[i].linha = vm.tb[i].linha;
             e->tb[i].col   = vm.tb[i].col;
+        }
+        /* a nota (onde o nome private foi declarado) vai junto */
+        if (vm.nota_arquivo[0] && vm.nota_linha > 0) {
+            snprintf(e->nota_arquivo, sizeof(e->nota_arquivo), "%s", vm.nota_arquivo);
+            snprintf(e->nota_nome, sizeof(e->nota_nome), "%s", vm.nota_nome);
+            e->nota_linha = vm.nota_linha;
+            e->nota_col   = vm.nota_col;
         }
         /* Módulo que não compilou: o quadro mais interno é o do ARQUIVO DA
          * LIB, não o do `import`. Sem ele o erro dizia "em d.pr, linha 1" pra

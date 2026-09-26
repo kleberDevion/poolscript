@@ -131,7 +131,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "", "SyntaxError: 'private nome: tipo' so vale no corpo da Entity \xe2\x80\x94 dentro de uma funct escreva 'private <tipo> name = <valor>'", 2 },
 { "dif #39",
   "Class A {\n    public funct __init__(self, nome) {\n        private name = nome\n    }\n}\n",
-  "", "SyntaxError: 'private' so vale antes de class/Entity, de funct ou de '<tipo> <nome> = <valor>'", 2 },
+  "", "SyntaxError: 'private name = ...' dentro de uma funct de Entity declara campo do objeto: escreva 'private <tipo> name = <valor>'", 2 },
 { "dif #40",
   "funct f(n) {\n    private str x = n\n}\n",
   "", "SyntaxError: 'private str x = ...' declara campo do objeto: so vale dentro de uma funct de Entity que recebe 'self'", 2 },

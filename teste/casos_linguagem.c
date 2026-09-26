@@ -336,7 +336,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "        private name = nome\n"
   "    }\n"
   "}\n",
-  "", "'private' so vale antes de class/Entity", 2 },
+  "", "'private name = ...' dentro de uma funct de Entity declara campo do objeto: escreva 'private <tipo> name = <valor>'", 2 },
 { "campo do objeto exige uma funct com self",
   "funct f(n) {\n"
   "    private str x = n\n"
@@ -4112,6 +4112,60 @@ const Caso CASOS_LINGUAGEM[] = {
  * `from bytes import hex` — a linha de cima ainda usa o embutido */
 { "import *: membro do modulo sombreia o builtin de mesmo nome a partir do import",
   "post(hex(255))\nfrom bytes import *\npost(hex(new([255, 1])))\n", "0xff\nff01", NULL, 0 },
+
+/* ── `public`/`private` em QUALQUER declaracao do topo do modulo (2026-09-26) ──
+ * Antes so funct e class aceitavam; variavel, desempacotamento, model e enum
+ * eram recusados com a frase errada ("so vale antes de class/Entity, de funct
+ * ou de '<tipo> <nome> = <valor>'"), e `private int n = 1` no topo era lido
+ * como campo de objeto. O que nao sai pelo import esta em cli_roda.pr (dois
+ * arquivos); aqui e a declaracao em si e o `private` fora do lugar, que
+ * compilava CALADO em funct aninhada. */
+{ "private em variavel do topo: roda e o nome existe no arquivo",
+  "private x = 1\npost(x)\n", "1", NULL, 0 },
+{ "private em variavel tipada do topo e a variavel tipada de sempre",
+  "private int n = 1\nn = n + 1\npost(n)\n", "2", NULL, 0 },
+{ "private em variavel tipada confere o tipo como a sem modificador",
+  "private int n = 1\nn = \"a\"\n", "", "variável n esperava int, recebeu str", 2 },
+{ "private com tipo de classe que nao existe: o erro de tipo de sempre",
+  "private Conta c = 1\n", "", "tipo Conta não existe (variável c)", 2 },
+{ "private em desempacotamento marca os dois nomes",
+  "private a, b = 1, 2\npost(a, b)\n", "1 2", NULL, 0 },
+{ "private em desempacotamento aninhado",
+  "private (a, b), c = (1, 2), 3\npost(a, b, c)\n", "1 2 3", NULL, 0 },
+{ "private model do topo valida como sempre",
+  "private model M() {\n    x: int\n}\npost({\"x\": 1} == M)\n", "True", NULL, 0 },
+{ "private enum do topo",
+  "private enum E {\n    A = 1\n}\npost(E.A)\n", "1", NULL, 0 },
+{ "private class do topo continua valendo",
+  "private class K {\n    funct m(self) {\n        return 2\n    }\n}\npost(K().m())\n", "2", NULL, 0 },
+{ "public na variavel do topo e aceito (e o default)",
+  "public x = 1\npost(x)\n", "1", NULL, 0 },
+{ "o private e do nome: reatribuir depois continua valendo",
+  "private x = 1\nx = 2\npost(x)\n", "2", NULL, 0 },
+{ "private x += 1 nao e declaracao",
+  "x = 1\nprivate x += 1\n", "", "'private' vai na declaracao (private x = ...), nao na atribuicao composta", 2 },
+{ "private antes de if nao e declaracao",
+  "private if true {\n    post(1)\n}\n", "",
+  "'private' so vale numa declaracao: funct, class, model, enum ou variavel (private x = 1, private int x = 1)", 2 },
+{ "private sozinho na linha nao e declaracao",
+  "private\nx = 1\n", "", "'private' so vale numa declaracao: funct, class, model, enum ou variavel", 2 },
+{ "private funct aninhada em funct nao tem efeito: e erro, nao silencio",
+  "funct g() {\n    private funct h() {\n        return 1\n    }\n    return h()\n}\npost(g())\n", "",
+  "'private' aqui nao tem efeito: so vale no topo do arquivo (o que nao sai pelo import) ou no corpo da Entity", 2 },
+{ "private variavel dentro de funct: erro",
+  "funct g() {\n    private x = 1\n}\n", "", "'private' aqui nao tem efeito: so vale no topo do arquivo", 2 },
+{ "private variavel dentro de bloco do topo: erro",
+  "if true {\n    private x = 1\n}\n", "", "'private' aqui nao tem efeito: so vale no topo do arquivo", 2 },
+{ "private int x dentro de bloco do topo: erro (nao e campo, nao e o topo)",
+  "if true {\n    private int x = 1\n}\n", "", "'private' aqui nao tem efeito: so vale no topo do arquivo", 2 },
+{ "private nome = valor dentro de metodo: a forma do campo leva o tipo",
+  "Entity A {\n    funct __init__(self) {\n        private x = 1\n    }\n}\n", "",
+  "'private x = ...' dentro de uma funct de Entity declara campo do objeto: escreva 'private <tipo> x = <valor>'", 2 },
+{ "private class dentro de funct: erro",
+  "funct g() {\n    private class K {\n    }\n}\n", "", "'private' aqui nao tem efeito: so vale no topo do arquivo", 2 },
+{ "private str x = v dentro de metodo de Entity continua campo do objeto",
+  "Entity A {\n    funct __init__(self) {\n        private str x = \"a\"\n    }\n    funct le(self) {\n        return self.x\n    }\n}\npost(A().le())\n",
+  "a", NULL, 0 },
 
 /* ── CLI ── */
 { "--check não executa o script",

@@ -194,6 +194,9 @@ typedef struct {
     char    arquivo[1024];
     int32_t linha_arq;
     int32_t col_arq;
+    /* O NOME que o quadro do outro arquivo aponta (`'f' e private`): o
+     * cursor vai em cima dele na linha, e nao na palavra-chave. */
+    char    nome_arq[64];
 } PSErroTipo;
 
 typedef struct {
@@ -212,11 +215,13 @@ typedef struct {
     PSEnumDef  *enums;
     int32_t     nenums;
 
-    /* Nomes de MODULO marcados `private` (action, reaction): nao saem no
-     * `import` nem no `from ... import`. `private class` ja tinha o seu
-     * caminho (PSClassDef.classe_privada); action de modulo compilava o
-     * `private` e nao fazia nada com ele. */
+    /* Nomes de MODULO marcados `private` — funct, class, model, enum,
+     * variavel, desempacotamento: nao saem no `import`, no `from ... import`
+     * nem no `*`. `priv_linhas`/`priv_cols` (paralelos) guardam ONDE cada um
+     * foi declarado: o traceback do acesso negado mostra a declaracao. */
     char   **priv_globais;
+    int32_t *priv_linhas;
+    int32_t *priv_cols;
     int32_t  npriv_globais;
 
     /* O que o `import` deste arquivo enxerga: os nomes que ele liga no nível

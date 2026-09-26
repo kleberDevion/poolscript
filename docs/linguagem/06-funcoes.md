@@ -439,6 +439,12 @@ static nonnull funct f(v) { }
 private static int funct f() { }
 ```
 
+`private`/`public` só têm efeito no **topo do arquivo** (a funct não sai pelo
+import, seção [9.2](09-imports.md)) e no corpo da Entity (seção 7). Numa
+funct aninhada em outra funct ou num bloco, o modificador não esconderia
+nada — e é erro (`'private' aqui nao tem efeito: so vale no topo do arquivo
+(o que nao sai pelo import) ou no corpo da Entity`), não silêncio.
+
 Vale igual com um [decorador](14-decoradores.md) em cima: `@app.post("/x")`
 seguido de `int async funct h()` registra `h` como qualquer outra ordem.
 

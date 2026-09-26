@@ -1298,6 +1298,88 @@ confere("--confere nao reprovou nada", not "REPROVOU" in r["saida"])
 r = roda("cd " + MIGC + " && '" + POOL + "' velho.pr")
 confere("o programa migrado roda com a sintaxe nova", r["rc"] == 0 and "1 3" in r["saida"])
 
+# ── `private` em qualquer declaração do topo: o que NÃO sai pelo import ──────
+#
+# Dois arquivos: a lib declara private de cada tipo (funct, variável, tipada,
+# desempacotamento, model, enum, class) e uma funct que usa tudo por dentro.
+# Quem importa: por dentro funciona; `lib.x`, `from lib import x` e o `*`
+# recusam. A recusa sai ANTES de rodar (`--check` e o `jinga` barrado pela
+# tipagem, com o quadro da declaração) e RODANDO (o alias `m = lib` o
+# checador não segue: aí é a VM, com a nota "'x' e private: declarada em").
+PRIV = PASTA + "/priv"
+os.mkdir(PRIV, exist_ok=true)
+os.writeFile(PRIV + "/lib.pr",
+    "private funct f() {\n    return 1\n}\n"
+    + "private x = 5\n"
+    + "private int n = 7\n"
+    + "private a, b = 3, 4\n"
+    + "private model M() {\n    x: int\n}\n"
+    + "private enum E {\n    A = 1\n}\n"
+    + "private class K {\n    funct m(self) {\n        return 2\n    }\n}\n"
+    + "pub = 9\n"
+    + "funct usa() {\n    return [f(), x, n, a, b, E.A, K().m(), {\"x\": 1} == M]\n}\n")
+os.writeFile(PRIV + "/dentro.pr", "import lib\npost(lib.usa())\npost(lib.pub)\n")
+r = roda("cd " + PRIV + " && '" + POOL + "' --check lib.pr")
+confere("a lib com private em toda declaracao passa no --check", "\"ok\":true" in r["saida"])
+r = roda("cd " + PRIV + " && '" + POOL + "' dentro.pr")
+confere("por dentro da lib todo private e alcancado, e o publico sai",
+        r["rc"] == 0 and "[1, 5, 7, 3, 4, 1, 2, True]" in r["saida"] and "9" in r["saida"])
+
+# cada nome private, pelos dois caminhos, antes de rodar
+for each caso in [["f", 1, "post(lib.f())"], ["x", 4, "post(lib.x)"], ["n", 5, "post(lib.n)"],
+                  ["b", 6, "post(lib.b)"], ["M", 7, "post(lib.M)"], ["E", 10, "post(lib.E.A)"],
+                  ["K", 13, "post(lib.K())"]]
+{
+    nome = caso[0]
+    linha = caso[1]
+    os.writeFile(PRIV + "/usa_" + nome + ".pr", "import lib\n" + caso[2] + "\n")
+    r = roda("cd " + PRIV + " && '" + POOL + "' --check usa_" + nome + ".pr")
+    confere("--check acusa lib." + nome + " private antes de rodar, com a declaracao",
+            "\"ok\":false" in r["saida"]
+            and "(existe, mas é private: declarada em lib.pr, linha " + str(linha) + ")" in r["saida"]
+            and "\"linha_arquivo\":" + str(linha) in r["saida"] and "/lib.pr\"" in r["saida"])
+    r = roda("cd " + PRIV + " && '" + POOL + "' usa_" + nome + ".pr")
+    confere("jinga barra lib." + nome + " pela tipagem e mostra os dois quadros",
+            r["rc"] == 2 and "em usa_" + nome + ".pr, linha 2" in r["saida"]
+            and "em lib.pr, linha " + str(linha) in r["saida"])
+    os.writeFile(PRIV + "/de_" + nome + ".pr", "from lib import " + nome + "\n")
+    r = roda("cd " + PRIV + " && '" + POOL + "' --check de_" + nome + ".pr")
+    confere("--check acusa `from lib import " + nome + "` private",
+            "\"ok\":false" in r["saida"] and "(existe, mas é private: declarada em lib.pr, linha " + str(linha) + ")" in r["saida"])
+}
+# o cursor do quadro da declaração vai em cima do NOME, não da palavra-chave
+r = roda("cd " + PRIV + " && '" + POOL + "' usa_f.pr")
+confere("o quadro da declaracao poe o cursor no nome",
+        "| private funct f() {\n  |               ^^^" in r["saida"])
+
+# o `*` deixa os private de fora: `pub` vem, `x` dá NameError
+os.writeFile(PRIV + "/estrela.pr", "from lib import *\npost(pub)\npost(x)\n")
+r = roda("cd " + PRIV + " && '" + POOL + "' --check estrela.pr")
+confere("o `*` nao traz variavel private (NameError antes de rodar)",
+        "\"ok\":false" in r["saida"] and "name 'x' is not defined" in r["saida"])
+
+# RODANDO, pelo alias que o checador não segue: traceback com a cadeia de
+# chamadores E a nota da declaração, com a linha do fonte e o cursor no nome
+os.writeFile(PRIV + "/alias.pr",
+    "import lib\nm = lib\nfunct h() {\n    return m.f()\n}\nfunct g() {\n    return h()\n}\npost(g())\n")
+r = roda("cd " + PRIV + " && '" + POOL + "' alias.pr")
+confere("rodando: a recusa do private traz o traceback inteiro e a nota da declaracao",
+        r["rc"] == 1
+        and "AttributeError: module 'lib' has no attribute 'f' (existe, mas é private)" in r["saida"]
+        and "em alias.pr, linha 4" in r["saida"] and "em alias.pr, linha 7" in r["saida"]
+        and "'f' e private: declarada em lib.pr, linha 1\n  | private funct f() {\n  |               ^^^" in r["saida"])
+os.writeFile(PRIV + "/alias_var.pr", "import lib\nm = lib\npost(m.n)\n")
+r = roda("cd " + PRIV + " && '" + POOL + "' alias_var.pr")
+confere("rodando: variavel tipada private tambem leva a nota",
+        "'n' e private: declarada em lib.pr, linha 5\n  | private int n = 7\n  |             ^^^" in r["saida"])
+# erro pego: a nota morre com ele — o erro seguinte, sem relação, não a herda
+os.writeFile(PRIV + "/pego.pr",
+    "import lib\nm = lib\ntry {\n    post(m.x)\n} catch (e) {\n    post(\"pego:\", e)\n}\npost(m.nao)\n")
+r = roda("cd " + PRIV + " && '" + POOL + "' pego.pr")
+confere("a nota da declaracao nao vaza pro erro seguinte depois de um catch",
+        "pego: module 'lib' has no attribute 'x' (existe, mas é private)" in r["saida"]
+        and "has no attribute 'nao'" in r["saida"] and not "declarada em" in r["saida"])
+
 # ── relatório ───────────────────────────────────────────────────────────────
 post("")
 post("cli/jpkg:", ok, "checagens passaram")

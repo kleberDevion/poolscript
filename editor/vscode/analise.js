@@ -335,8 +335,11 @@ function topoDaArvore(arvore) {
         return;
       }
       default:
-        /* atribuição, declaração tipada, desempacotamento, model, enum */
-        ligacoesDe(no, (nome, kind, tipo, origem) => poe(nome, kind, tipo, origem));
+        /* atribuição, declaração tipada, desempacotamento, model, enum — com
+         * o `private` do topo (`private x = 1`, `private enum E`), que o
+         * import não traz */
+        ligacoesDe(no, (nome, kind, tipo, origem) =>
+          poe(nome, kind, tipo, origem, { privado: !!(origem && origem.private) }));
     }
   };
   for (const s of arvore.lista || []) comando(s);

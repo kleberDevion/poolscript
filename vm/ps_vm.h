@@ -61,8 +61,16 @@ typedef struct {
     /* `linha_fim`/`col_fim`: onde o trecho acusado termina (0 = não medido). */
     struct PSErroTipoExec { char msg[256]; char classe[32]; int linha; int col;
                             int linha_fim; int col_fim;
-                            char arquivo[1024]; int linha_arq; int col_arq; } *tipos;
+                            char arquivo[1024]; int linha_arq; int col_arq;
+                            char nome_arq[64]; } *tipos;
     int        ntipos;
+    /* Nota do runtime depois do traceback: o acesso a um nome `private` de
+     * módulo mostra ONDE ele foi declarado (`'f' e private: declarada em
+     * lib.pr, linha 1` + a linha do fonte). Vazio = sem nota. */
+    char       nota_nome[64];
+    char       nota_arquivo[1024];
+    int        nota_linha;
+    int        nota_col;
 } PSErroExec;
 
 /* Roda o `.pr` inteiro. 0 = sucesso; -1 preenche `e`. */

@@ -536,9 +536,16 @@ static int lx_so_declaracao(const Lexer *lx, size_t p)
         return seguido_de_nome || (q > fim && q < n && s[q] == '.');
 #undef LX_EH
     /* `... funct nome`: até 8 palavras separadas por espaço, e a primeira
-     * `funct` tem que vir seguida de NOME (sem nome é lambda) */
+     * `funct` tem que vir seguida de NOME (sem nome é lambda). Com
+     * modificador na frente (`private model M`, `public class C`,
+     * `private enum E`) a palavra da declaração também pode ser uma dessas. */
     for (int k = 0; k < 8; k++) {
-        if (fim - p == 5 && memcmp(s + p, "funct", 5) == 0) return seguido_de_nome;
+        size_t tp = fim - p;
+#define LX_EH_P(lit) (tp == sizeof(lit) - 1 && memcmp(s + p, lit, tp) == 0)
+        if (LX_EH_P("funct") || LX_EH_P("class") || LX_EH_P("Class") || LX_EH_P("Entity")
+                || LX_EH_P("model") || LX_EH_P("enum"))
+            return seguido_de_nome;
+#undef LX_EH_P
         if (q == fim || q >= n) return 0;                 /* palavra colada em pontuação */
         p = q;
         if (!lx_palavra(s, n, p, &fim)) return 0;

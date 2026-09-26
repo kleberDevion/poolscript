@@ -3828,6 +3828,46 @@ static PSNode *statement_no(P *p)
                 return NULL;
             }
 
+            /* `private model M() {` / `private enum E {` / `private x = 1` /
+             * `private a, b = 1, 2`: a declaração de sempre, com a marca. O
+             * modificador sai e o statement segue pelo caminho dele — o nó
+             * que volta é o mesmo de sem `private`, só com `is_private`. Quem
+             * decide se o ponto é o topo do arquivo é o compilador (o parser
+             * não guarda profundidade). */
+            {
+                int eh_decl_kw = tt->type == T_KW && tt->texto
+                                 && (strcmp(tt->texto, "model") == 0 || strcmp(tt->texto, "enum") == 0);
+                int eh_nome = tt->type == T_IDENT || tt->type == T_IDENT_UPPER;
+                int nome_atrib = eh_nome && nmt->type == T_OP && nmt->texto && eh_op_atribuicao(nmt->texto);
+                int nome_lista = eh_nome && nmt->type == T_COMMA;
+                if (nome_atrib && strcmp(nmt->texto, "=") != 0) {
+                    perro_f(p, m0, "'%s' vai na declaracao (%s %s = ...), nao na atribuicao composta",
+                            m0->texto, m0->texto, tt->texto ? tt->texto : "x");
+                    return NULL;
+                }
+                int eh_unpack = 0;
+                if (!eh_decl_kw && !nome_atrib && !nome_lista) {
+                    /* `private (a, b), c = …` / `private *a, b = …`: o teste
+                     * de desempacotamento, a partir do token depois do
+                     * modificador */
+                    p->pos++; eh_unpack = parece_unpack(p); p->pos--;
+                }
+                if (eh_decl_kw || nome_atrib || nome_lista || eh_unpack) {
+                    p->pos++;                               /* private/public */
+                    PSNode *n = statement(p);
+                    if (FALHOU(p) || !n) return NULL;
+                    if (n->kind == N_MODEL_DECL || n->kind == N_ENUM_DECL
+                            || n->kind == N_UNPACK_ASSIGNMENT
+                            || (n->kind == N_ASSIGNMENT && n->texto2 && strcmp(n->texto2, "=") == 0)) {
+                        n->is_private = is_priv;
+                        return n;
+                    }
+                    perro_f(p, m0, "'%s' so vale numa declaracao: funct, class, model, enum ou variavel "
+                                   "(%s x = 1, %s int x = 1)", m0->texto, m0->texto, m0->texto);
+                    return NULL;
+                }
+            }
+
             /* `<tipo> <nome> = <valor>`. O tipo é o mesmo conjunto que o campo
              * `nome: tipo` aceita (qualquer nome de tipo, Entity inclusive);
              * a checagem em runtime só existe pros escalares, igual ao
@@ -3854,13 +3894,12 @@ static PSNode *statement_no(P *p)
                 return n;
             }
 
-            /* Sobrou: `private` sem nada válido atrás. Os usos legítimos
-             * (classe, action/reaction, campo) já retornaram acima. */
-            char m[200];
-            snprintf(m, sizeof(m),
-                     "'%s' so vale antes de class/Entity, de funct ou de "
-                     "'<tipo> <nome> = <valor>'", m0->texto);
-            perro(p, m, m0);
+            /* Sobrou: `private` sem declaração atrás (`private if`, `private
+             * import`, `private 1 + 2`, `private` sozinho na linha). Os usos
+             * legítimos (class, funct, model, enum, variável, campo) já
+             * retornaram acima. */
+            perro_f(p, m0, "'%s' so vale numa declaracao: funct, class, model, enum ou variavel "
+                           "(%s x = 1, %s int x = 1)", m0->texto, m0->texto, m0->texto);
             return NULL;
         }
     }

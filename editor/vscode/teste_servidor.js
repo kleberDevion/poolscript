@@ -1127,6 +1127,30 @@ async function main() {
       conf('completion depois do `*`: topo e `_x` sim; private, nome de bloco e o modulo nao',
            faltam.length === 0 && sobram.length === 0, { faltam, sobram });
     }
+    /* `private` em QUALQUER declaracao do topo (2026-09-26): variavel, tipada,
+     * desempacotamento, model e enum tambem ficam fora do `lib.`, do `from lib
+     * import ` e do `*`; o hover em `lib.x` diz que existe mas e private. */
+    {
+      fs.writeFileSync(path.join(dir, 'priv_lib.pr'),
+        'private x = 1\nprivate int n = 2\nprivate a, b = 3, 4\nprivate enum E {\n    A = 1\n}\n'
+        + 'private model M() {\n    x: int\n}\npub = 9\nfunct usa() {\n    return x\n}\n');
+      const m = await conversa('import priv_lib\npriv_lib.\npriv_lib.x\nfrom priv_lib import \n', [
+        compl(2, 1, 9), hov(3, 2, 10), compl(4, 3, 21),
+      ]);
+      const L = rotulos(resp(m, 2));
+      const sobram = ['x', 'n', 'a', 'b', 'E', 'M'].filter((e) => L.includes(e));
+      conf('`lib.` nao oferece variavel, tipada, desempacotada, enum nem model private',
+           L.includes('pub') && L.includes('usa') && sobram.length === 0, { L, sobram });
+      conf('hover em `lib.x` private diz que existe, mas e private, e onde',
+           valor(m, 3).includes('private') && valor(m, 3).includes('não sai pelo import') && valor(m, 3).includes('linha 1'),
+           valor(m, 3));
+      const L2 = rotulos(resp(m, 4));
+      conf('`from lib import ` tambem esconde os private novos',
+           L2.includes('pub') && !L2.includes('x') && !L2.includes('E'), L2);
+      const m2 = await conversa('from priv_lib import *\nx\n', [hov(5, 1, 0)]);
+      conf('nome private de variavel deixado de fora pelo `*`: o hover diz que e private la',
+           valor(m2, 5).includes('private') && valor(m2, 5).includes('priv_lib'), valor(m2, 5));
+    }
     /* a MESMA regra no `from m import ` e no `m.` */
     const casos = [
       ['`from estrela_fonte import ` -> `*`, topo e `_x`; sem private nem nome de bloco',

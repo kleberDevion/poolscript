@@ -11,7 +11,9 @@ Verificado na VM.
 ## 8.1. `model` — esquema de validação de dict
 
 Um `model` descreve os campos que um dict deve ter e de que tipo. Depois, o
-operador `==` valida um dict contra o model.
+operador `==` valida um dict contra o model. `private model M() {` no topo
+do arquivo é o mesmo model, só que não sai pelo import (seção
+[9.2](09-imports.md)).
 
 ```ps
 model Usuario() {
@@ -143,6 +145,8 @@ com `model=` ([route.md](../jinker/route/route.md)): o 422 traz `campo
 ## 8.2. `enum` — constantes inteiras nomeadas
 
 Um `enum` agrupa constantes sob um nome. Cada membro é, no fundo, um **inteiro**.
+`private enum E {` no topo do arquivo não sai pelo import (seção
+[9.2](09-imports.md)).
 
 ```ps
 enum Cor {

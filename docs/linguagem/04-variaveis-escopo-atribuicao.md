@@ -39,6 +39,23 @@ A declaração tipada **exige** um valor: `int x` sozinho é erro de sintaxe
 Não existe **atribuição encadeada**: `a = b = 5` é erro de sintaxe. Atribua uma
 por linha (ou use desempacotamento, 4.4).
 
+### 4.1.1. `private` na variável de módulo
+
+No **topo do arquivo**, as duas formas (e o desempacotamento, 4.5) aceitam
+`private` na frente: a variável existe e funciona como qualquer outra dentro
+do arquivo, mas **não sai pelo import** (`m.x`, `from m import x` e `*` — a
+regra da seção [9.2](09-imports.md)). `public` é o default e é aceito.
+
+```ps
+private x = 1               # simples
+private int n = 1           # tipada: o tipo é conferido como sem o modificador
+private a, b = 1, 2         # os dois nomes
+public y = 2                # igual a `y = 2`
+```
+
+O `private` é do **nome**: `x = 2` mais abaixo continua private. Fora do topo
+(dentro de funct ou de bloco) ele não esconderia nada, e é erro (9.2).
+
 ---
 
 ## 4.2. Atribuição aumentada

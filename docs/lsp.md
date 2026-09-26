@@ -121,8 +121,12 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   `int User.idade = 17` e de qual enum é. O hover **nunca fica em branco**:
   nome que nada liga diz "não definido" (e, se um `import *` o deixou de
   fora por ser `private`, diz de qual módulo); membro que o tipo não tem
-  diz `` `C` não tem `upper` `` e lista o que `C` tem; dentro de uma
-  string diz que é `str` (ou `byte`), com a página do tipo;
+  diz `` `C` não tem `upper` `` e lista o que `C` tem; `lib.x` com `x`
+  `private` na lib (funct, class, model, enum ou variável) diz que existe,
+  mas é private, e a linha da declaração; dentro de uma string diz que é
+  `str` (ou `byte`), com a página do tipo. O diagnóstico do acesso a um
+  nome private traz a declaração como local relacionado (um clique até a
+  lib);
 - **outline** — a classe como um nó, com campos e métodos aninhados dentro;
 - **diagnóstico** — `jinga --check` no arquivo, ao abrir e ao salvar, com linha
   e coluna do erro;

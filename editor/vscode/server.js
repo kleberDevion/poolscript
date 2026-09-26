@@ -1556,12 +1556,25 @@ function diagnostica(doc) {
       const fim = (e.l2 > 0 && e.c2 > 0)
         ? { line: e.l2 - 1, character: e.c2 - 1 }
         : { line: linha, character: col + 1 };
-      diags.unshift({
+      const d = {
         severity: DiagnosticSeverity.Error,
         range: { start: { line: linha, character: col }, end: fim },
         message: `${e.tipo}: ${e.msg}`,
         source: 'jinga',
-      });
+      };
+      /* o erro aponta OUTRO arquivo também (o módulo que não compila, a
+       * declaração `private` que o acesso viola): vira local relacionado —
+       * um clique até lá */
+      if (e.arquivo && e.linha_arquivo > 0) {
+        const la = e.linha_arquivo - 1;
+        const ca = Math.max(0, (e.coluna_arquivo || 1) - 1);
+        d.relatedInformation = [{
+          location: { uri: 'file://' + e.arquivo,
+                      range: { start: { line: la, character: ca }, end: { line: la, character: ca + 1 } } },
+          message: 'declarada aqui',
+        }];
+      }
+      diags.unshift(d);
     });
   }
   conexao.sendDiagnostics({ uri: doc.uri, diagnostics: diags });
@@ -2425,7 +2438,28 @@ conexao.onHover((p) => {
      * candidatos por nome; membro inexistente num tipo conhecido: diz que
      * não existe e o que existe — hover nunca em branco (ele, 2026-09-26) */
     if (!m) {
-      if (alvo && (alvo.tipo === 'entity' || alvo.tipo === 'tipo_motor' || alvo.tipo === 'import' || alvo.tipo === 'enum' || alvo.tipo === 'model')) {
+      /* `lib.x` com `x` declarado `private` na lib (funct, class, model,
+       * enum ou variável): existe, mas não sai pelo import — a frase do
+       * motor, com a linha da declaração */
+      const arqPriv = !alvo ? null
+                    : alvo.tipo === 'arquivo' ? alvo.arquivo
+                    : alvo.tipo === 'import' && alvo.alvo && alvo.alvo.tipo === 'arquivo' ? alvo.alvo.arquivo
+                    : null;
+      if (arqPriv) {
+        const ix = indiceDeArquivo(arqPriv);
+        const b = ix && ix.topo.find((x) => x.privado && x.nome === nome);
+        if (b) {
+          const cab = b.kind === 'funct' ? assinatura(b)
+                    : b.kind === 'class' ? 'class ' + b.nome
+                    : b.kind === 'model' || b.kind === 'enum' ? b.kind + ' ' + b.nome
+                    : (b.tipo ? b.tipo + ' ' : '') + b.nome;
+          return md('```ps\nprivate ' + cab + '\n```\n\n`' + nome + '` existe em `' + partes[partes.length - 1]
+                    + '`, mas é `private`: não sai pelo import (declarada em `' + path.basename(arqPriv)
+                    + '`, linha ' + (b.linha + 1) + ')');
+        }
+      }
+      if (alvo && (alvo.tipo === 'entity' || alvo.tipo === 'tipo_motor' || alvo.tipo === 'import' || alvo.tipo === 'enum'
+                   || alvo.tipo === 'model' || alvo.tipo === 'arquivo' || alvo.tipo === 'modulo')) {
         const dono = alvo.nome || (alvo.alvo && (alvo.alvo.mod || alvo.alvo.membro)) || partes[partes.length - 1];
         const nomes = membros.slice(0, 12).map((x) => '`' + x.nome + '`');
         return md('```ps\n' + partes.join('.') + '.' + nome + '\n```\n\n`' + dono + '` não tem `' + nome + '`'

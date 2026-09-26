@@ -1065,6 +1065,32 @@ Os apelidos **não existem**: `import db`, `import requests`, `import mp`,
 `import qr` e `import dataentity` são `ImportError` — os nomes são `psodbc`,
 `request`, `manpu`, `qrcode` e `datasentity`.
 
+### `private` no módulo — o que não sai pelo import
+
+Qualquer declaração do **topo do arquivo** aceita `private` (e `public`, o
+default): funct, class, model, enum e variável (`private x = 1`, `private int
+n = 1`, `private a, b = 1, 2`). Dentro do arquivo o nome funciona como
+qualquer outro; de fora, `m.x`, `from m import x` e o `*` não o alcançam:
+
+```
+# lib.pr
+private x = 5
+private funct f() { return x }
+pub = 9
+
+# main.pr
+import lib
+post(lib.pub)        # 9
+post(lib.x)          # AttributeError: module 'lib' has no attribute 'x' (existe, mas é private: declarada em lib.pr, linha 1)
+```
+
+O erro sai **antes de rodar** (`--check` e o `jinga` barrado pela tipagem,
+com o quadro da declaração na lib) e rodando (o traceback termina com
+`'x' e private: declarada em lib.pr, linha 1` e a linha do fonte). `private`
+fora do topo do arquivo e do corpo da Entity é erro (`'private' aqui nao tem
+efeito…`), porque ali não esconderia nada. Detalhes em
+[`docs/linguagem/09-imports.md`](linguagem/09-imports.md) §9.2.
+
 Referência completa de cada lib
 
 | Lib | Doc |
