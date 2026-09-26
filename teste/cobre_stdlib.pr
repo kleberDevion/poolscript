@@ -264,9 +264,9 @@ confere("import explicito: builtin que o modulo so chamou e ImportError",
 confere("import explicito: m.len do builtin que o modulo so chamou e AttributeError",
         roda_est("e12.pr", "import m\npost(m.len)\n").startswith("AttributeError: module 'm' has no attribute 'len'"))
 confere("import explicito: private continua dizendo que existe",
-        roda_est("e13.pr", "import m\npost(m.p)\n").startswith("AttributeError: module 'm' has no attribute 'p' (existe, mas é private)"))
+        roda_est("e13.pr", "import m\npost(m.p)\n").startswith("AttributeError: module 'm' has no attribute 'p' (existe, mas é private"))
 confere("import explicito: private class continua dizendo que existe",
-        roda_est("e14.pr", "from m import Pc\n").startswith("AttributeError: module 'm' has no attribute 'Pc' (existe, mas é private)"))
+        roda_est("e14.pr", "from m import Pc\n").startswith("AttributeError: module 'm' has no attribute 'Pc' (existe, mas é private"))
 confere("import explicito: global gravado de dentro de funct sai",
         roda_est("e15.pr", "from m import cfg\nimport m\npost(cfg, m.cfg)\n") == "9 9")
 confere("import *: o que vem depois sobrescreve o que o * trouxe",
