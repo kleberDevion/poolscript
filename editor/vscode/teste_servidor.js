@@ -793,6 +793,27 @@ async function main() {
       ['`base(` oferece os PAIS da Entity',
        ['Entity A {', '}', 'Entity M {', '}', 'Entity B(A, M) {', '    funct __init__(self) {', '        base(', '    }', '}'],
        6, undefined, ['A', 'M'], ['B', 'self', 'post']],
+      /* Variável tipada pela EXPRESSÃO atribuída, qualquer expressão (ele,
+       * 2026-09-26: "usei a lib psodbc e deu type na instancia pra uso do
+       * execute"). Antes só `x = Classe(...)`, `x = mod.f(...)` e literal
+       * tipavam; `cur = con.cursor()` vinha de OUTRA variável e ficava mudo. */
+      ['`cur = con.cursor()` (construído de outra variável) + `cur.` lista execute',
+       ['import psodbc', 'con = psodbc.connect("sqlite://x.db")', 'cur = con.cursor()', 'cur.'],
+       3, undefined, ['execute', 'fetchall', 'fetchone'], ['con', 'post']],
+      ['o mesmo dentro de `static funct` de uma Entity',
+       ['import psodbc', 'public Entity main {', '    public static funct mj1() {',
+        '        con = psodbc.connect("sqlite://x.db")', '        cur = con.cursor()', '        cur.', '    }', '}'],
+       5, undefined, ['execute', 'fetchall'], ['post']],
+      ['`v = jinker.request` (valor de módulo, sem chamada) + `v.`',
+       ['import jinker', 'v = jinker.request', 'v.'], 2, undefined, ['get_json', 'header', 'json'], ['post']],
+      ['`y = x` herda o tipo de `x`',
+       ['x = "a"', 'y = x', 'y.'], 2, undefined, ['upper'], ['post']],
+      ['`x = x.upper()` tipa o `x` da direita pela atribuição anterior',
+       ['x = "a"', 'x = x.upper()', 'x.'], 2, undefined, ['upper'], ['post']],
+      ['`app.route("/").` acha a tabela pelo nome sem o sublinhado (`_RouteRegistrar`)',
+       ['from jinker import Jinker', 'app = Jinker(__name__)', 'app.route("/").'], 2, undefined, ['register'], ['post']],
+      ['`os.PoolFile("a").` — classe do motor (retorno `type`) chamada dá a instância',
+       ['import os', 'f = os.PoolFile("a")', 'f.'], 2, undefined, ['read', 'write', 'close'], ['post']],
     ];
     for (const [nome, linhas, line, ch, espera, nao] of casos) {
       const src = linhas.join('\n') + '\n';

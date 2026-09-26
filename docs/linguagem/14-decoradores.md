@@ -57,7 +57,10 @@ Você pode escrever `self` num método `static` — útil quando o **mesmo** mé
 é chamado dos dois jeitos: na Entity (`C.metodo(x)`) e numa instância
 (`C().metodo(x)`). Na chamada **estática** não existe instância, então o `self`
 é **dropado**: o argumento posicional cai no **primeiro parâmetro real**, não no
-`self`.
+`self`. Isso vale só para **método de Entity**: `static funct f(self)` fora
+de uma Entity é erro na declaração (`funct static f(self, ...) nao recebe
+self: static nao tem instancia, tire o self`), porque ali não há instância
+que possa ligar o `self`.
 
 ```ps
 Entity C {

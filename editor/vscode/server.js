@@ -795,66 +795,31 @@ function tipoDoNome(doc, nome, linha) {
     const bt = (b.tipo && (META.tipos_apelidos || {})[b.tipo]) || b.tipo;
     if (bt && META.tipos[bt]) return { tipo: 'tipo_motor', nome: bt };
     if (b.tipo && achaEntidade(doc, b.tipo)) return { tipo: 'entity', nome: b.tipo, interno: false };
+    if (bt && ESCALARES.has(bt)) return { tipo: 'escalar', nome: bt };
     /* `Rota.` / `Cor.` — model e enum do arquivo: os membros estão no nó */
     if (b.kind === 'model' && b.no) return { tipo: 'model', no: b.no };
     if (b.kind === 'enum' && b.no) return { tipo: 'enum', no: b.no };
     break;
   }
-  /* `c = Conta(...)` / `u = mod.Usuario(...)`: o tipo é o que foi construído */
+  /* Variável sem tipo declarado: o tipo é o da EXPRESSÃO atribuída por
+   * último antes da linha — qualquer expressão, pela regra única de
+   * `tipoDaExpressao`. Antes só `x = Classe(...)`, `x = mod.f(...)` e o
+   * literal eram tipados: `cur = con.cursor()` (construído a partir de
+   * OUTRA variável), `v = jinker.request`, `x = self.campo`, `y = x`
+   * ficavam sem tipo e `cur.` respondia só `type`. `RESOLVENDO` corta o
+   * ciclo de `x = x.proximo()`. */
   const cons = construidoPor(idx, nome, linha);
-  if (cons && cons.literal) {
-    return META.tipos[cons.literal] ? { tipo: 'tipo_motor', nome: cons.literal } : { tipo: 'universal' };
-  }
   if (cons) {
-    if (achaEntidade(doc, cons.nome)) return { tipo: 'entity', nome: cons.nome, interno: false };
-    /* `x = Rota(...)` (model do arquivo) e `v = f()` (action do arquivo: o
-     * tipo declarado do retorno, `str action f()`; sem ele, os universais) */
-    if (!cons.mod) {
-      for (const b of A.visiveisEm(idx, linha)) {
-        if (b.nome !== cons.nome) continue;
-        if (b.kind === 'model' && b.no) return { tipo: 'model', no: b.no };
-        if (b.kind === 'action') {
-          return b.tipo && META.tipos[b.tipo] ? { tipo: 'tipo_motor', nome: b.tipo } : { tipo: 'universal' };
-        }
-        break;
-      }
-    }
-    /* `mapping = Jinker(__name__)` com `from jinker import Jinker`: o nome
-     * construído é um membro de módulo ligado pelo `from`. Este ramo não
-     * existia — só `x = jinker.Jinker(...)` (abaixo) consultava o `retorna`
-     * do motor, e a forma com `from`, que é a da doc, caía no `return null`:
-     * `mapping.` sem sugestão nenhuma, `@mapping.` idem, e o VS Code caía nas
-     * palavras soltas do arquivo. Fontes: o construtor vem do nó Call da
-     * árvore; o vínculo Jinker → jinker, do ImportStmt; o tipo da instância,
-     * de `modulos.jinker[].retorna` do `--metadata`. */
-    if (!cons.mod) {
-      const alvoC = alvoDoImport(doc, cons.nome, linha);
-      if (alvoC && alvoC.tipo === 'membro_modulo') {
-        for (const m of META.modulos[alvoC.mod] || []) {
-          if (m.nome !== alvoC.membro) continue;
-          const a = alvoDoRetorno(m.retorna, { mod: alvoC.mod, membro: alvoC.membro });
-          if (a) return a;
-        }
-      }
-      if (alvoC && alvoC.tipo === 'membro_arquivo' && achaEntidade(doc, alvoC.membro))
-        return { tipo: 'entity', nome: alvoC.membro, interno: false };
-    }
-    if (cons.mod) {
-      const alvoM = alvoDoImport(doc, cons.mod, linha);
-      if (alvoM && alvoM.arquivo) {
-        const ix = indiceDeArquivo(alvoM.arquivo);
-        if (ix && ix.entidades.some((e) => e.nome === cons.nome))
-          return { tipo: 'entity', nome: cons.nome, interno: false };
-      }
-      if (alvoM && alvoM.mod && META.modulos[alvoM.mod]) {
-        for (const m of META.modulos[alvoM.mod]) {
-          if (m.nome !== cons.nome) continue;
-          const via = { mod: alvoM.mod, membro: cons.nome };
-          const a = alvoDoRetorno(m.retorna, via);
-          if (a) return a;
-          const t = tipoEncadeado(m.retorna);
-          if (t) return { tipo: 'tipo_motor', nome: t, via };
-        }
+    const chave = nome + '@' + cons.linha;
+    if (!RESOLVENDO.has(chave)) {
+      RESOLVENDO.add(chave);
+      try {
+        /* os nomes da expressão valem como estavam ANTES desta linha:
+         * `x = x.upper()` tipa o `x` da direita pela atribuição anterior */
+        const t = tipoDaExpressao(doc, cons.no, Math.max(0, cons.linha - 1));
+        if (t) return t;
+      } finally {
+        RESOLVENDO.delete(chave);
       }
     }
   }
@@ -908,7 +873,28 @@ function tipoDaExpressao(doc, no, linha) {
     }
     case 'Name': case 'MemberAccess': case 'Call': case 'BaseCall': {
       const partes = partesDoNo(no);
-      return partes && partes.length ? alvoDaCadeia(doc, partes, linha) : null;
+      const alvo = partes && partes.length ? alvoDaCadeia(doc, partes, linha) : null;
+      /* A cadeia parou num MEMBRO DE MÓDULO (`Jinker` vindo de `from jinker
+       * import Jinker`, `jinker.request`): o valor da expressão é o que o
+       * membro DEVOLVE (chamado) ou VALE (valor de módulo), pela tabela
+       * medida — e não o membro em si. É o que faz o hover de
+       * `app = Jinker(__name__)` dizer `Jinker app`. */
+      if (alvo && alvo.tipo === 'import' && alvo.alvo) {
+        const a = alvo.alvo;
+        if (a.tipo === 'membro_modulo') {
+          const m = (META.modulos[a.mod] || []).find((x) => x.nome === a.membro);
+          if (m && (no.k === 'Call' || m.kind === 'value')) {
+            if (m.retorna === 'type' && tabelaDe(a.membro)) return { tipo: 'tipo_motor', nome: tabelaDe(a.membro) };
+            if (m.retorna === 'module' && META.modulos[a.mod + '.' + a.membro])
+              return { tipo: 'import', alvo: { tipo: 'modulo', mod: a.mod + '.' + a.membro } };
+            const r = alvoDoRetorno(m.retorna, { mod: a.mod, membro: a.membro });
+            if (r) return r;
+          }
+        }
+        if (a.tipo === 'membro_arquivo' && no.k === 'Call' && achaEntidade(doc, a.membro))
+          return { tipo: 'entity', nome: a.membro, interno: false };
+      }
+      return alvo;
     }
     default:
       return null;
@@ -951,38 +937,37 @@ function universais() {
   return (META.tipos.__universal__ || []).map((m) => Object.assign({ kind: 'action', escopo: '__universal__' }, m));
 }
 
-/* O que a atribuição mais recente antes da linha CONSTRUIU: `x = Foo(...)`
- * ou `x = mod.Foo(...)`. Sai da árvore, não do texto. */
+/* A EXPRESSÃO que a atribuição mais recente antes da linha deu ao nome
+ * (`x = <expr>` / `str x = <expr>`), com a linha dela. Sai da árvore, não
+ * do texto; quem tipa a expressão é `tipoDaExpressao`. */
+const RESOLVENDO = new Set();
 function construidoPor(idx, nome, linha) {
   let achado = null;
   const anda = (no) => {
     if (!no || typeof no !== 'object') return;
     const ehAtrib = (no.k === 'Assignment' || no.k === 'VarDecl') && no.texto === nome;
-    if (ehAtrib && no.l - 1 <= linha && no.a) {
-      const v = no.a;
-      if (v.k === 'Call' && v.a) {
-        const callee = v.a;
-        if (callee.k === 'Name') achado = { nome: callee.texto, mod: null };
-        else if (callee.k === 'MemberAccess' && callee.a && callee.a.k === 'Name')
-          achado = { nome: callee.texto, mod: callee.a.texto };
-      }
-      /* LITERAL: `nome = "ana"` é str, `xs = [1]` é list, `d = {}` é dict —
-       * o nó da árvore diz qual. (Número e bool saem como `Literal` sem
-       * texto e não têm tabela de métodos; ficam sem tipo.) */
-      else if (v.k === 'Literal' && typeof v.texto === 'string') {
-        /* `h = b"q"` chega com o mesmo `texto` que `"q"`; o `--ast` marca
-         * `lit: "bytes"` e é isso que separa `decode` de `upper` */
-        achado = { literal: v.lit === 'bytes' ? 'byte' : 'str' };
-      }
-      else if (v.k === 'ListLiteral') achado = { literal: 'list' };
-      else if (v.k === 'DictLiteral') achado = { literal: 'dict' };
-      else if (v.k === 'TupleLiteral') achado = { literal: 'tup' };
-    }
+    if (ehAtrib && no.l - 1 <= linha && no.a) achado = { no: no.a, linha: no.l - 1 };
     A.cada(no, anda);
   };
   anda(idx.arvore || null);
   return achado;
 }
+
+/* A tabela de membros que um nome de tipo MEDIDO designa. O motor publica
+ * alguns nomes internos com sublinhado na frente (`_RouteRegistrar`,
+ * `_SocketRegistrar`: o `type()` diz assim de propósito, ver
+ * docs/builtins/type), e a tabela é a do nome sem ele. */
+function tabelaDe(t) {
+  if (!t || !META.tipos) return null;
+  if (META.tipos[t]) return t;
+  if (t.startsWith('_') && META.tipos[t.slice(1)]) return t.slice(1);
+  return null;
+}
+
+/* `int`, `flo`, `bool`: tipo conhecido SEM tabela de métodos — o completion
+ * oferece só o universal (`type`), mas dizendo de que tipo é, em vez de
+ * fingir que não sabe. */
+const ESCALARES = new Set(['int', 'flo', 'bool']);
 
 /* Resolve a cadeia `a.b.c` e devolve a LISTA DE MEMBROS do que ela designa. */
 function membrosDaCadeia(doc, partes, linha) {
@@ -1056,10 +1041,14 @@ function alvoDaCadeia(doc, partes, linha) {
                 : m.kind === 'action' && m.corpo ? retornoInferido(doc, m) : null;
       if (inf) { alvo = inf; continue; }
     }
+    /* `os.PoolFile(...)`: o membro é uma CLASSE do motor (retorno `type`)
+     * e chamá-la dá a instância — a tabela do próprio nome */
+    if (t === 'type' && tabelaDe(passo)) { alvo = { tipo: 'tipo_motor', nome: tabelaDe(passo), via }; continue; }
     const uniao = !t ? alvoDoRetorno(m.retorna || m.tipo, via) : null;
-    if (t && META.tipos[t]) alvo = { tipo: 'tipo_motor', nome: t, via };
+    if (t && tabelaDe(t)) alvo = { tipo: 'tipo_motor', nome: tabelaDe(t), via };
     else if (uniao) alvo = uniao;
     else if (t && achaEntidade(doc, t)) alvo = { tipo: 'entity', nome: t, interno: false };
+    else if (t && ESCALARES.has(t)) alvo = { tipo: 'escalar', nome: t };
     else if (m.kind === 'class' && achaEntidade(doc, m.nome)) alvo = { tipo: 'entity', nome: m.nome, interno: false };
     /* membro existe, retorno desconhecido (`request.get(...).`): universais */
     else alvo = { tipo: 'universal' };
@@ -1070,6 +1059,8 @@ function alvoDaCadeia(doc, partes, linha) {
 function membrosDe(doc, alvo, linha) {
   if (!alvo) return [];
   if (alvo.tipo === 'universal') return universais();
+  /* escalar: só o universal, dizendo de que tipo é */
+  if (alvo.tipo === 'escalar') return universais().map((m) => Object.assign({}, m, { de: alvo.nome }));
   if (alvo.tipo === 'model') {
     return (alvo.no.lista || []).filter((f) => f && f.k === 'ModelField')
       .map((f) => ({ nome: f.texto, kind: 'campo', tipo: f.texto2 || '', linha: f.l - 1, coluna: f.c - 1 }));
@@ -1166,13 +1157,14 @@ function tipoEncadeado(ret) {
  * oferecia só `type`, e o mesmo valia pra `psodbc.connect(...)`. */
 function tiposDaUniao(ret) {
   if (!ret || ret === '*') return [];
-  return ret.split('|').filter((x) => x !== 'Null' && META.tipos && META.tipos[x]);
+  return ret.split('|').filter((x) => x !== 'Null').map(tabelaDe).filter(Boolean);
 }
 
-/* O alvo de um retorno: um tipo só, uma UNIÃO de tipos, ou nada. */
+/* O alvo de um retorno: um tipo só, uma UNIÃO de tipos, um escalar, ou nada. */
 function alvoDoRetorno(ret, via) {
   const t = tipoEncadeado(ret);
-  if (t && META.tipos[t]) return { tipo: 'tipo_motor', nome: t, via };
+  if (t && tabelaDe(t)) return { tipo: 'tipo_motor', nome: tabelaDe(t), via };
+  if (t && ESCALARES.has(t)) return { tipo: 'escalar', nome: t };
   const lados = tiposDaUniao(ret);
   if (lados.length === 1) return { tipo: 'tipo_motor', nome: lados[0], via };
   if (lados.length > 1) return { tipo: 'uniao', nomes: lados, via };

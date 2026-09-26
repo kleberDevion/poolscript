@@ -6211,6 +6211,20 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
     c->pendente_static  = 0;
     c->pendente_nonnull = 0;
 
+    /* `static funct f(self)` FORA de Entity: não existe instância nunca, o
+     * `self` ali é engano — e a frase tem que dizer isso na DECLARAÇÃO, não
+     * "missing 1 required positional argument: 'self'" em cada chamada
+     * (ele, 2026-09-26: "static não recebe self"). Dentro de Entity o self
+     * num método static é o da doc (14-decoradores): dropado na chamada
+     * pela classe, ligado na chamada pela instância. */
+    if (meu_static && !c->dentro_entity && n->lista.n > 0 && n->lista.itens[0]
+            && n->lista.itens[0]->i2 == 0 && n->lista.itens[0]->texto
+            && strcmp(n->lista.itens[0]->texto, "self") == 0) {
+        terro(c, n->lista.itens[0], "TypeError",
+              "funct static %s(self, ...) nao recebe self: static nao tem instancia, tire o self",
+              n->texto ? n->texto : "?");
+    }
+
     Unidade u;
     memset(&u, 0, sizeof(u));
     u.pai = (pai && !pai->eh_modulo) ? pai : NULL;

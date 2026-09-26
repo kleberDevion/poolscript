@@ -409,6 +409,12 @@ exige(Null)                 # nonnull: parametro 'valor' em 'exige' nao pode ser
 Chamar um `static` pela instância é erro:
 `funct 'soma' e static: chame pela Entity (Tipo.soma(...)), nao pela instancia`.
 
+`static` numa funct **fora de Entity** é aceito, e ela não recebe `self` —
+não há instância nunca. Declarar `static funct f(self)` no módulo é erro na
+declaração: `funct static f(self, ...) nao recebe self: static nao tem
+instancia, tire o self`. (Num método `static` de Entity o `self` é permitido
+e dropado na chamada pela classe — [14-decoradores](14-decoradores.md).)
+
 Os dois valem só para a funct em que estão escritos — uma funct declarada
 **dentro** do corpo não herda a marca.
 

@@ -56,9 +56,14 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   construtor (`private str nome = n`, §7.6.1) e o criado com `self.x = …`.
   Vale também pra Entity de **outro arquivo**, pelo `import`.
 
-  Campo criado com `self.x = …` **sem tipo declarado** ganha o tipo da
-  expressão atribuída (`self.con = psodbc.connect(...)` → `self.con.` lista
-  `cursor/commit/…` e `self.con.cursor().` segue até `execute/fetchall`);
+  Variável e campo (`self.x = …`) **sem tipo declarado** ganham o tipo da
+  expressão atribuída, seja ela qual for: `con = psodbc.connect(...)`,
+  `cur = con.cursor()` (construído de outra variável), `v = jinker.request`
+  (valor de módulo), `y = x`, `x = x.upper()` (o `x` da direita é o de
+  antes). `cur.` lista `execute/fetchall`; `self.con.cursor().` idem. Tipo
+  sem tabela de métodos (`int`, `flo`, `bool`) oferece só `type`, dizendo
+  de que tipo é; retorno que depende do conteúdo (`json.parse`, `list.pop`)
+  oferece só os universais;
   método sem tipo de retorno declarado ganha o tipo dos `return` dele
   quando todos concordam. `base(` oferece os pais da Entity; `base().` /
   `base(Pai).` lista o que o pai tem, com o `__init__` (07-entity §7.5.2);

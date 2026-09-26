@@ -3489,6 +3489,19 @@ const Caso CASOS_LINGUAGEM[] = {
 { "base().__init__ em qualquer metodo com self, nao so no __init__",
   "Entity A {\n    funct __init__(self, x) { self.x = x }\n}\nEntity B(A) {\n    funct __init__(self) { self.x = 0 }\n    funct reinicia(self, x) { base().__init__(x) }\n}\nb = B()\nb.reinicia(7)\npost(b.x)\n",
   "7", NULL, 0 },
+/* `static funct f(self)` fora de Entity (ele, 2026-09-26): a frase é na
+ * declaração e diz a causa — antes cada chamada dizia "missing 1 required
+ * positional argument: 'self'". Dentro de Entity o self num static continua
+ * o da doc (dropado na chamada pela classe). */
+{ "static funct com self fora de Entity acusa na declaracao",
+  "static funct IsRegister(self) {\n    return 1\n}\npost(IsRegister())\n",
+  "", "TypeError: funct static IsRegister(self, ...) nao recebe self: static nao tem instancia, tire o self", 2 },
+{ "static funct sem self fora de Entity roda",
+  "static funct g(a) {\n    return a * 2\n}\npost(g(2))\n",
+  "4", NULL, 0 },
+{ "static com self DENTRO de Entity continua: chamada pela classe dropa o self",
+  "Entity C {\n    static funct f(self, a, b=10) {\n        return a + b\n    }\n}\npost(C.f(5), C().f(5))\n",
+  "15 15", NULL, 0 },
 /* `s[i]` e `s[i:j]` contavam a string inteira do zero a cada acesso: 200 mil
  * índices numa str de 200 mil caracteres com acento não terminavam. A
  * contagem e a última posição ficam guardadas na própria string. */
