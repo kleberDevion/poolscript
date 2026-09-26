@@ -177,7 +177,52 @@ function paginaArquivo(arq) {
     partes.push(t);
   }
   const ex = (exemplo || []).join('\n').trim();
-  return { titulo, resumo: partes.join(' '), exemplo: ex.split('\n').slice(0, 14).join('\n') };
+  return { titulo, resumo: partes.join(' '), exemplo: ex.split('\n').slice(0, 14).join('\n'), arq };
+}
+
+/* Link clicável pra página da doc (o VS Code abre `file://` do markdown). */
+function linkDoc(arq) {
+  const raiz = raizDoc();
+  if (!arq || !raiz) return '';
+  let abs = arq;
+  try { abs = fs.realpathSync(arq); } catch (_) { /* fica o caminho */ }
+  return '[' + path.relative(raiz, arq) + '](file://' + abs + ')';
+}
+
+/* Os membros de um tipo do motor, compactos: `nome(...)` pra método, `nome`
+ * pra campo — os primeiros `max`, e quantos ficaram de fora. */
+function listaMembros(t, max) {
+  const ms = META.tipos[t] || [];
+  const ehCampo = (m) => m.kind === 'property' || m.kind === 'value';
+  const nomes = ms.slice(0, max).map((m) => '`' + m.nome + (ehCampo(m) ? '' : '(...)') + '`');
+  return nomes.join(', ') + (ms.length > max ? ' … e mais ' + (ms.length - max) : '');
+}
+
+/* O resumo de uma página cita outras por link RELATIVO
+ * (`[cursor()](../DbConnection/cursor/cursor.md)`); no hover o link só abre
+ * se for absoluto — reescrito a partir da pasta da página. */
+function linksAbsolutos(texto, arq) {
+  if (!texto || !arq) return texto || '';
+  const dir = path.dirname(arq);
+  let saida = '';
+  let i = 0;
+  for (;;) {
+    const a = texto.indexOf('](', i);
+    if (a < 0) { saida += texto.slice(i); break; }
+    const b = texto.indexOf(')', a + 2);
+    if (b < 0) { saida += texto.slice(i); break; }
+    const alvo = texto.slice(a + 2, b);
+    const ehRel = !alvo.startsWith('http') && !alvo.startsWith('file:') && !alvo.startsWith('#');
+    saida += texto.slice(i, a + 2) + (ehRel ? 'file://' + path.resolve(dir, alvo) : alvo) + ')';
+    i = b + 1;
+  }
+  return saida;
+}
+
+/* A assinatura de um tipo do motor como a doc a apresenta no título da
+ * página (`Jinker(name="main", oauth=None, …)`), sem as crases. */
+function tituloDaPagina(pg) {
+  return pg && pg.titulo ? pg.titulo.split('`').join('') : '';
 }
 
 /* A página de um TIPO: `docs/<mod>/<Tipo>/<Tipo>.md` (tipo de módulo, pela
@@ -216,39 +261,59 @@ function paginaDoTipo(t, via) {
 function apresentaTipo(doc, alvo) {
   if (!alvo) return '';
   if (alvo.tipo === 'entity') {
+    /* Entity do arquivo: a classe inteira como declarada — pais, campos com
+     * tipo, construtor e métodos com assinatura e retorno */
     const e = achaEntidade(doc, alvo.nome);
     if (!e) return '';
-    const membros = e.membros.filter((m) => m.nome !== '__init__').slice(0, 8)
-      .map((m) => '    ' + (m.privado ? 'private ' : '') + (m.estatica ? 'static ' : '')
-                  + (m.kind === 'action' ? 'funct ' : '') + assinatura(m));
+    const linhas = [];
+    for (const m of e.membros) {
+      if (m.nome === '__init__') continue;
+      if (m.kind !== 'campo') continue;
+      linhas.push('    ' + (m.privado ? 'private ' : '') + (m.estatica ? 'static ' : '') + (m.tipo ? m.tipo + ' ' : '') + m.nome);
+    }
     const init = e.membros.find((m) => m.nome === '__init__');
+    if (init) linhas.push('    funct __init__(self' + (init.params || []).map((p) => ', ' + rotuloParam(p)).join('') + ')');
+    for (const m of e.membros) {
+      if (m.kind !== 'action' || m.nome === '__init__') continue;
+      linhas.push('    ' + (m.privado ? 'private ' : '') + (m.estatica ? 'static ' : '') + (m.nonnull ? 'nonnull ' : '')
+                  + (m.retorna ? m.retorna + ' ' : '') + 'funct ' + m.nome + '('
+                  + (m.estatica ? '' : 'self' + ((m.params || []).length ? ', ' : ''))
+                  + (m.params || []).map(rotuloParam).join(', ') + ')');
+    }
     const cab = 'class ' + e.nome + (e.bases.length ? '(' + e.bases.join(', ') + ')' : '') + ' {';
-    const cons = init ? ['    funct __init__(' + (init.params || []).map(rotuloParam).join(', ') + ')'] : [];
-    return '\n\n```ps\n' + cab + '\n' + cons.concat(membros).join('\n') + (e.membros.length > 9 ? '\n    ...' : '')
-         + '\n}\n```\n\nclass do arquivo · ' + e.membros.length + ' membros · declarada na linha ' + (e.linha + 1);
+    return '\n\n---\n\n```ps\n' + cab + '\n' + linhas.slice(0, 16).join('\n') + (linhas.length > 16 ? '\n    ...' : '')
+         + '\n}\n```\n\nclass do arquivo · ' + e.membros.filter((m) => m.kind === 'campo').length + ' campos, '
+         + e.membros.filter((m) => m.kind === 'action').length + ' métodos · declarada na linha ' + (e.linha + 1);
   }
-  /* retorno com mais de um tipo (`os.run` → `int|str|Process`): cada lado
-   * dito, sem exemplo — quem escolhe o lado é o `capture` da chamada */
+  /* retorno com mais de um tipo (`os.run` → `int|str|Process`): cada lado,
+   * compacto — quem escolhe o lado é o argumento da chamada */
   if (alvo.tipo === 'uniao') {
-    return '\n\n' + (alvo.nomes || []).map((t) => {
+    return '\n\n---\n\n' + (alvo.nomes || []).map((t) => {
       const pg = paginaDoTipo(t, alvo.via);
       const n = (META.tipos[t] || []).length;
-      return '`' + t + '` · ' + (n ? n + ' métodos' : 'só `type()`') + (pg && pg.resumo ? ' — ' + pg.resumo : '');
+      return '**' + t + '** · ' + (n ? n + ' membros: ' + listaMembros(t, 8) : 'só `type()`')
+           + (pg && pg.resumo ? '\n\n' + linksAbsolutos(pg.resumo, pg.arq) : '') + (pg && pg.arq ? '\n\n' + linkDoc(pg.arq) : '');
     }).join('\n\n');
   }
   const nome = alvo.tipo === 'tipo_motor' || alvo.tipo === 'escalar' ? alvo.nome : null;
   if (!nome) return '';
   const pg = paginaDoTipo(nome, alvo.via);
   const n = (META.tipos[nome] || []).length;
-  let s = '\n\n`' + nome + '` · tipo' + (n ? ' · ' + n + ' métodos' : ' · só `type()`');
-  if (pg && pg.resumo) s += '\n\n' + pg.resumo;
+  /* a cabeça: a assinatura do construtor como a doc a apresenta
+   * (`Jinker(name="main", …)`), o nome do tipo, ou o tipo básico */
+  const tit = tituloDaPagina(pg);
+  const cab = tit && tit.startsWith(nome + '(') ? 'class ' + tit : (n ? 'class ' + nome : nome + '   # tipo basico');
+  let s = '\n\n---\n\n```ps\n' + cab + '\n```';
+  if (pg && pg.resumo) s += '\n\n' + linksAbsolutos(pg.resumo, pg.arq);
   else {
     /* int/flo/bool não têm pasta na doc: a seção da linguagem que os
      * apresenta (02-tipos-e-valores), pela crase do título */
     const sec = secaoDaLinguagem(nome);
     if (sec) s += '\n\n' + trechoDaSecao(sec);
   }
+  s += '\n\n' + (n ? '**' + n + ' membros** — ' + listaMembros(nome, 12) : '**sem membros** — só o universal `type()`');
   if (pg && pg.exemplo) s += '\n\n```ps\n' + pg.exemplo + '\n```';
+  if (pg && pg.arq) s += '\n\n' + linkDoc(pg.arq);
   return s;
 }
 
@@ -2243,9 +2308,21 @@ function hoverDoImportado(doc, alvo, nome, linha) {
     return md('```ps\n' + (def.tipo ? def.tipo + ' ' : '') + (def.declarado || def.nome) + '\n```\n\n'
               + def.kind + ' · de ' + onde);
   }
-  const n = membrosDe(doc, { tipo: 'import', alvo }, linha).length;
+  const membros = membrosDe(doc, { tipo: 'import', alvo }, linha);
   const de = alvo.arquivo ? `\n\n_de ${alvo.arquivo}_` : '';
-  return md('```ps\nimport ' + (alvo.mod || alvo.arquivo || nome) + '\n```\n\n' + n + ' membros' + de);
+  /* módulo do motor: a página dele (`docs/<mod>/<mod>.md`), os membros e o
+   * link — o hover de `sys`/`psodbc` dizia só "N membros" */
+  let corpo = '';
+  if (alvo.mod && !alvo.arquivo) {
+    const raiz = raizDoc();
+    const pg = raiz ? paginaArquivo(path.join(raiz, alvo.mod.split('.')[0], alvo.mod.split('.')[0] + '.md')) : null;
+    const nomes = membros.slice(0, 14).map((m) => '`' + m.nome + (m.kind === 'campo' || m.kind === 'value' || m.kind === 'property' ? '' : '(...)') + '`');
+    corpo = (pg && pg.resumo ? '\n\n' + linksAbsolutos(pg.resumo, pg.arq) : '')
+          + '\n\n**' + membros.length + ' membros** — ' + nomes.join(', ') + (membros.length > 14 ? ' … e mais ' + (membros.length - 14) : '')
+          + (pg && pg.exemplo ? '\n\n```ps\n' + pg.exemplo + '\n```' : '')
+          + (pg && pg.arq ? '\n\n' + linkDoc(pg.arq) : '');
+  }
+  return md('```ps\nimport ' + (alvo.mod || alvo.arquivo || nome) + '\n```\n\nmódulo' + (corpo || '\n\n' + membros.length + ' membros') + de);
 }
 
 conexao.onHover((p) => {

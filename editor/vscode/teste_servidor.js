@@ -304,17 +304,35 @@ async function main() {
       { jsonrpc: '2.0', id: 16, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 15, character: 6 } } },
     ]);
     const txt = (id) => { const h = resp(m, id); return h && h.result && h.result.contents ? (h.result.contents.value || '') : ''; };
-    conf('hover de `nome = Jinker(...)` apresenta o tipo Jinker com a pagina e o exemplo',
-         txt(12).includes('Jinker nome') && txt(12).includes('`Jinker` · tipo') && txt(12).includes('from jinker import Jinker'),
-         txt(12).slice(0, 200));
-    conf('hover de `n = 1` diz `int n` (escalar: so type())',
-         txt(13).includes('int n') && txt(13).includes('só `type()`'), txt(13).slice(0, 160));
-    conf('hover de instancia de Entity do arquivo mostra a classe e os membros',
-         txt(14).includes('Osx o') && txt(14).includes('class Osx {') && txt(14).includes('funct dobra('), txt(14).slice(0, 200));
-    conf('hover no apelido `String` responde como o tipo str',
-         txt(15).includes('String = str') && txt(15).includes('`str` · tipo'), txt(15).slice(0, 160));
-    conf('hover de retorno com mais de um tipo diz cada lado',
-         txt(16).includes('str|Process') && txt(16).includes('`Process`'), txt(16).slice(0, 200));
+    conf('hover de `nome = Jinker(...)` apresenta a classe: assinatura, resumo, membros, exemplo e link da doc',
+         txt(12).includes('Jinker nome') && txt(12).includes('class Jinker(name=') && txt(12).includes('membros**')
+           && txt(12).includes('`route(...)`') && txt(12).includes('from jinker import Jinker')
+           && txt(12).includes('](file://') && txt(12).includes('Jinker.md)'),
+         txt(12).slice(0, 300));
+    conf('hover de `n = 1` diz `int n` (tipo basico: so type())',
+         txt(13).includes('int n') && txt(13).includes('tipo basico') && txt(13).includes('só o universal `type()`'), txt(13).slice(0, 200));
+    conf('hover de instancia de Entity do arquivo mostra a classe com campos tipados e metodos com assinatura',
+         txt(14).includes('Osx o') && txt(14).includes('class Osx {') && txt(14).includes('int x') && txt(14).includes('funct dobra(self)'),
+         txt(14).slice(0, 300));
+    conf('hover no apelido `String` responde como o tipo str, com os membros',
+         txt(15).includes('String = str') && txt(15).includes('class str') && txt(15).includes('`upper(...)`'), txt(15).slice(0, 200));
+    conf('hover de retorno com mais de um tipo apresenta cada lado com membros e link',
+         txt(16).includes('str|Process') && txt(16).includes('**Process**') && txt(16).includes('`read(...)`') && txt(16).includes('Process.md)'),
+         txt(16).slice(0, 300));
+    /* propriedade sai SEM parenteses na lista (o metadata marca `property`) */
+    const r2 = await conversa('import psodbc\ncon = psodbc.connect("x")\ncur = con.cursor()\npost(cur)\n', [
+      { jsonrpc: '2.0', id: 18, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 3, character: 6 } } },
+      { jsonrpc: '2.0', id: 19, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 0, character: 8 } } },
+    ]);
+    const t18 = (() => { const h = resp(r2, 18); return h && h.result && h.result.contents ? (h.result.contents.value || '') : ''; })();
+    conf('hover de `cur` (DbCursor) lista `execute(...)` e a propriedade `rowcount` sem parenteses, com link absoluto no resumo',
+         t18.includes('DbCursor cur') && t18.includes('`execute(...)`') && t18.includes('`rowcount`') && !t18.includes('rowcount(...)')
+           && t18.includes('](file://') && !t18.includes('](../'),
+         t18.slice(0, 400));
+    const t19 = (() => { const h = resp(r2, 19); return h && h.result && h.result.contents ? (h.result.contents.value || '') : ''; })();
+    conf('hover no modulo (`psodbc`) traz o resumo da pagina, os membros e o link',
+         t19.includes('import psodbc') && t19.includes('membros**') && t19.includes('`connect(...)`') && t19.includes('psodbc.md)'),
+         t19.slice(0, 300));
     /* todos os apelidos que o motor publica, nao dois */
     const apelidos = Object.keys(META_LOCAL.tipos_apelidos || {});
     let ok = 0;

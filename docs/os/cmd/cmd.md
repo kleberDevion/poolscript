@@ -27,7 +27,7 @@ os.cmd("git status")              # a saída vai direto pro terminal
 
 ```
 versao = os.cmd("jinga --version", capture=true)
-post(versao)                      # "Jinga 15.95.3 [PSVM] (2026-09-24) Runtime standalone"
+post(versao)                      # "Jinga 15.95.4 [PSVM] (2026-09-24) Runtime standalone"
 ```
 
 Com `capture=true`, devolve o **stdout** (sem espaços nas pontas). Se o comando
