@@ -936,10 +936,15 @@ function tipoDoNome(doc, nome, linha) {
     const e = A.entidadeEm(idx, linha);
     return e ? { tipo: 'entity', nome: e.nome, interno: true } : null;
   }
-  if (achaEntidade(doc, nome)) return { tipo: 'entity', nome, interno: false };
-
+  /* O nome LIGADO por import vem antes da Entity de mesmo nome achada num
+   * arquivo importado: `import pondy` (a lib cujo topo é `class pondy`)
+   * liga o MÓDULO — `pondy.` lista a classe, `pondy.pondy().` os métodos
+   * dela. Antes a Entity ganhava e `pondy.` listava os estáticos da classe
+   * como se fossem do módulo, o que o motor recusa (`module 'pondy' has no
+   * attribute 'create'`). */
   const alvo = alvoDoImport(doc, nome, linha);
   if (alvo) return { tipo: 'import', alvo };
+  if (achaEntidade(doc, nome)) return { tipo: 'entity', nome, interno: false };
 
   /* variável: o tipo vem da declaração (`str x = …`) ou do que foi atribuído */
   for (const b of A.visiveisEm(idx, linha)) {
@@ -1087,9 +1092,14 @@ function retornoInferido(doc, m) {
   }
 }
 
-/* O que TODO valor da linguagem tem — a tabela `__universal__` do motor. */
-function universais() {
-  return (META.tipos.__universal__ || []).map((m) => Object.assign({ kind: 'action', escopo: '__universal__' }, m));
+/* O universal (`type()`, que todo valor tem) NÃO entra em lista de
+ * completion: colado em toda lista, ele lia como "o editor não sabe o tipo"
+ * (ele, 2026-09-26: "por que diabos tem type?"). Receptor conhecido lista
+ * só o que o tipo tem; desconhecido não sugere nada. O hover em `.type`
+ * continua respondendo (`universalChamado`). */
+function universalChamado(nome) {
+  const u = (META.tipos.__universal__ || []).find((m) => m.nome === nome);
+  return u ? Object.assign({ kind: 'action', escopo: '__universal__' }, u) : null;
 }
 
 /* A EXPRESSÃO que a atribuição mais recente antes da linha deu ao nome
@@ -1213,9 +1223,8 @@ function alvoDaCadeia(doc, partes, linha) {
 
 function membrosDe(doc, alvo, linha) {
   if (!alvo) return [];
-  if (alvo.tipo === 'universal') return universais();
-  /* escalar: só o universal, dizendo de que tipo é */
-  if (alvo.tipo === 'escalar') return universais().map((m) => Object.assign({}, m, { de: alvo.nome }));
+  if (alvo.tipo === 'universal') return [];          /* tipo desconhecido: nada */
+  if (alvo.tipo === 'escalar') return [];            /* int/flo/bool: sem membros */
   if (alvo.tipo === 'model') {
     return (alvo.no.lista || []).filter((f) => f && f.k === 'ModelField')
       .map((f) => ({ nome: f.texto, kind: 'campo', tipo: f.texto2 || '', linha: f.l - 1, coluna: f.c - 1 }));
@@ -1227,8 +1236,7 @@ function membrosDe(doc, alvo, linha) {
   if (alvo.tipo === 'entity') return membrosDaEntidade(doc, alvo.nome, !!alvo.interno, undefined, !!alvo.base);
   if (alvo.tipo === 'uniao') {
     /* Retorno com mais de um tipo (`os.run` devolve int, str ou Process): os
-     * membros dos dois lados, sem repetir, cada um dizendo de qual tipo veio.
-     * O universal entra uma vez só, no fim. */
+     * membros dos dois lados, sem repetir, cada um dizendo de qual tipo veio. */
     const vistos = new Set();
     const juntos = [];
     for (const t of alvo.nomes) {
@@ -1239,11 +1247,6 @@ function membrosDe(doc, alvo, linha) {
         juntos.push(Object.assign({ kind: 'action', escopo, de: t }, m));
       }
     }
-    for (const m of META.tipos.__universal__ || []) {
-      if (vistos.has(m.nome)) continue;
-      vistos.add(m.nome);
-      juntos.push(Object.assign({ kind: 'action', escopo: '__universal__' }, m));
-    }
     return juntos;
   }
   if (alvo.tipo === 'tipo_motor') {
@@ -1252,8 +1255,7 @@ function membrosDe(doc, alvo, linha) {
     const escopo = alvo.via
       ? [`${alvo.via.mod}/${alvo.via.membro}`, alvo.via.mod, alvo.nome]
       : alvo.nome;
-    return (META.tipos[alvo.nome] || []).concat(META.tipos.__universal__ || [])
-      .map((m) => Object.assign({ kind: 'action', escopo }, m));
+    return (META.tipos[alvo.nome] || []).map((m) => Object.assign({ kind: 'action', escopo }, m));
   }
   if (alvo.tipo === 'import') {
     const a = alvo.alvo;
@@ -2393,7 +2395,7 @@ conexao.onHover((p) => {
   if (partes.length) {                       /* `alvo.membro` */
     const alvo = alvoDaCadeia(doc, partes, p.position.line);
     const membros = membrosDe(doc, alvo, p.position.line);
-    const m = membros.find((x) => x.nome === nome);
+    const m = membros.find((x) => x.nome === nome) || universalChamado(nome);
     /* receptor conhecido mas de tipo desconhecido (`head = lines[0]`): os
      * candidatos por nome; membro inexistente numa Entity/módulo: nada */
     if (!m) return alvo && alvo.tipo === 'universal' ? hoverCandidatos(nome) : null;

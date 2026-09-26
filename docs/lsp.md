@@ -60,10 +60,11 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   expressão atribuída, seja ela qual for: `con = psodbc.connect(...)`,
   `cur = con.cursor()` (construído de outra variável), `v = jinker.request`
   (valor de módulo), `y = x`, `x = x.upper()` (o `x` da direita é o de
-  antes). `cur.` lista `execute/fetchall`; `self.con.cursor().` idem. Tipo
-  sem tabela de métodos (`int`, `flo`, `bool`) oferece só `type`, dizendo
-  de que tipo é; retorno que depende do conteúdo (`json.parse`, `list.pop`)
-  oferece só os universais;
+  antes). `cur.` lista `execute/fetchall`; `self.con.cursor().` idem. A
+  lista é só o que o tipo tem: o universal `type()` não é colado nela
+  (colado em toda lista, lia como "não sei o tipo"). Tipo sem métodos
+  (`int`, `flo`, `bool`) e retorno que depende do conteúdo (`json.parse`,
+  `list.pop`) não oferecem nada; o hover diz o tipo;
   método sem tipo de retorno declarado ganha o tipo dos `return` dele
   quando todos concordam. `base(` oferece os pais da Entity; `base().` /
   `base(Pai).` lista o que o pai tem, com o `__init__` (07-entity §7.5.2);

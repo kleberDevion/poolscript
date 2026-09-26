@@ -771,9 +771,9 @@ async function main() {
       ['`Cor.` (enum do arquivo) -> membros',
        ['enum Cor {', '    AZUL', '    VERDE', '}', 'Cor.'], 4, undefined, ['AZUL', 'VERDE'], []],
       ['`for each x in [1, 2]` + `x.` -> ao menos os universais',
-       ['for each x in [1, 2] {', '    x.', '}'], 1, undefined, ['type'], []],
+       ['for each x in [1, 2] {', '    x.', '}'], 1, undefined, [], ['type', 'append', 'post']],
       ['`request.get("x").` (retorno desconhecido) -> universais',
-       ['from jinker import request', 'request.get("x").'], 1, undefined, ['type'], []],
+       ['from jinker import request', 'request.get("x").'], 1, undefined, [], ['type', 'upper', 'post']],
       ['`str funct g()` + `v = g()` + `v.` -> metodos de str',
        ['str funct g() {', '    return "a"', '}', 'v = g()', 'v.'], 4, undefined, ['upper'], []],
       ['`string s = "a"` + `s.` -> metodos de str (apelido de tipo, pela tabela do --metadata)',
@@ -840,7 +840,9 @@ async function main() {
       ['`sys.stdout.` entra no submodulo (write/writeln/flush)',
        ['import sys', 'sys.stdout.'], 1, undefined, ['write', 'writeln', 'flush'], ['argv']],
       ['`sys.argv[0].` e item de tipo desconhecido: universais, nunca os nomes do arquivo',
-       ['import sys', 'minha_var = 1', 'sys.argv[0].'], 2, undefined, ['type'], ['append', 'minha_var', 'sys']],
+       ['import sys', 'minha_var = 1', 'sys.argv[0].'], 2, undefined, [], ['type', 'append', 'minha_var', 'sys']],
+      ['receptor conhecido lista SO o que o tipo tem: sem `type` colado (`c = b` de psodbc.connect)',
+       ['import psodbc', 'b = psodbc.connect("x")', 'c = b', 'c.'], 3, undefined, ['cursor', 'commit', 'close'], ['type', 'post']],
       ['`str(x).upper().` comeca a cadeia no tipo da conversao',
        ['x = 1', 'str(x).upper().'], 1, undefined, ['lower', 'strip'], ['x']],
       /* `base()` / `base(Pai)`, como o super (07-entity §7.5.2) */
@@ -1257,8 +1259,15 @@ async function main() {
       const src = `import ${comClasse}\ninst = ${comClasse}.${classe}()\ninst.\n`;
       const m = await conversa(src, [compl(2, 2, 5)]);
       const L = rotulos(resp(m, 2));
-      conf(`sem teto: \`${comClasse}.${classe}()\` expoe os METODOS da classe`,
-           L.length > 0, L.slice(0, 8));
+      conf(`sem teto: \`${comClasse}.${classe}()\` expoe os METODOS da classe (e nao o universal \`type\`)`,
+           L.length > 0 && !L.includes('type'), L.slice(0, 8));
+      /* `import lib` liga o MODULO: `lib.` lista a classe (o motor recusa
+       * `lib.estatico()`: "module 'lib' has no attribute"); a Entity de mesmo
+       * nome do arquivo importado nao pode ganhar do import */
+      const m2 = await conversa(`import ${comClasse}\n${comClasse}.\n`, [compl(2, 1, comClasse.length + 1)]);
+      const L2 = rotulos(resp(m2, 2));
+      conf(`\`import ${comClasse}\` + \`${comClasse}.\` lista a CLASSE \`${classe}\`, nao os estaticos dela`,
+           L2.includes(classe) && !L2.includes('type'), L2.slice(0, 8));
     }
   }
 
