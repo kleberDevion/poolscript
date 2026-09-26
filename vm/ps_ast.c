@@ -134,7 +134,7 @@ const char *ps_node_nome(PSNodeKind k)
         case N_IF_BRANCH:       return "IfBranch";
         case N_WHILE_STMT:      return "WhileStmt";
         case N_FOR_EACH_STMT:   return "ForEachStmt";
-        case N_ACTION_DECL:     return "ActionDecl";
+        case N_FUNCT_DECL:      return "FunctDecl";
         case N_RETURN_STMT:     return "ReturnStmt";
         case N_BREAK_STMT:      return "BreakStmt";
         case N_CONTINUE_STMT:   return "ContinueStmt";

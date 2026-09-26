@@ -43,7 +43,7 @@ typedef enum {
     N_IF_BRANCH,
     N_WHILE_STMT,
     N_FOR_EACH_STMT,
-    N_ACTION_DECL,
+    N_FUNCT_DECL,
     N_RETURN_STMT,
     /* ── lote 1: statements e expressões simples ── */
     N_BREAK_STMT,
@@ -89,7 +89,7 @@ typedef enum {
     N_INDEX_ASSIGNMENT,
     N_UNPACK_ASSIGNMENT,
     N_UNPACK_TARGET,
-    /* `private str nome = valor` DENTRO de uma action de Entity: campo do
+    /* `private str nome = valor` DENTRO de uma funct de Entity: campo do
      * objeto declarado no construtor, com visibilidade. Não é o
      * `N_ENTITY_FIELD` (que é `nome: tipo` no corpo da classe) nem o
      * `N_VAR_DECL` (que é local). texto = nome, texto2 = tipo, a = valor. */
@@ -115,16 +115,16 @@ struct PSNode {
     uint8_t    kind;        /* PSNodeKind (cabe num byte) */
     uint8_t    lit;         /* PSLitKind, nos literais */
     uint8_t    is_async;
-    /* ACTION_DECL / ENTITY_FIELD: marcado `private` (encapsulamento). NÃO é
+    /* FUNCT_DECL / ENTITY_FIELD: marcado `private` (encapsulamento). NÃO é
      * serializado no diff de AST/bytecode — é metadado de acesso, não código. */
     uint8_t    is_private;
-    /* ACTION_DECL: modificadores COLADOS na cabeça (`static funct m(a)`,
+    /* FUNCT_DECL: modificadores COLADOS na cabeça (`static funct m(a)`,
      * `nonnull funct f(v)`) — a forma da linguagem; os decoradores `@static`
      * e `@NonNull` continuam valendo e chegam ao compilador por outro caminho
      * (pendente_static / pendente_nonnull). */
     uint8_t    is_static;
     uint8_t    is_nonnull;
-    /* ACTION_DECL: método sem `self` que o compilador acusou e ganhou um
+    /* FUNCT_DECL: método sem `self` que o compilador acusou e ganhou um
      * `self` sintetizado na frente dos parâmetros — só durante a compilação
      * (o compilador desfaz no fim). Ver tp_self_dos_metodos. */
     uint8_t    self_faltava;
@@ -132,7 +132,7 @@ struct PSNode {
     int32_t    line;
     int32_t    col;
     /* Onde o nó TERMINA (0 = não registrado). Hoje só o `Block` preenche, que
-     * é o que o editor precisa: sem isto o escopo de uma action acabava no
+     * é o que o editor precisa: sem isto o escopo de uma funct acabava no
      * último comando, e o cursor numa linha em branco antes do `}` caía FORA
      * dele — parâmetro e variável local sumiam da sugestão exatamente onde se
      * está escrevendo. A árvore tinha só onde cada coisa começa. */
@@ -153,12 +153,12 @@ struct PSNode {
     int64_t     i;
     double      d;
 
-    /* texto: nome de variável/action/membro/operador/parâmetro.
+    /* texto: nome de variável/funct/membro/operador/parâmetro.
      * Aponta pra dentro da arena; não precisa de free. */
     const char *texto;
     const char *texto2;
     const char *texto3;
-    /* BLOCK: "brace" ou "colon"; ACTION_DECL: tipo de retorno ou NULL */
+    /* BLOCK: "brace" ou "colon"; FUNCT_DECL: tipo de retorno ou NULL */
     const char *estilo;
 
     /* filhos — o significado depende de `kind`:
@@ -174,7 +174,7 @@ struct PSNode {
      *   IF_BRANCH        a=condição (NULL no else), b=bloco
      *   WHILE_STMT       a=condição, b=bloco
      *   FOR_EACH_STMT    a=iterável, b=bloco (texto=nome do item)
-     *   ACTION_DECL      b=bloco             (lista=parâmetros como NAME)
+     *   FUNCT_DECL      b=bloco             (lista=parâmetros como NAME)
      *   RETURN_STMT      a=valor (pode ser NULL)
      *   DICT_ENTRY       a=chave, b=valor
      */

@@ -226,7 +226,7 @@ static void ix_solta(IdxNomes *ix)
 }
 
 /* ── estado ─────────────────────────────────────────────────────────────── */
-/* Guarda o ÍNDICE do protótipo, não o ponteiro: uma action aninhada chama
+/* Guarda o ÍNDICE do protótipo, não o ponteiro: uma funct aninhada chama
  * `novo_proto`, que faz realloc do array — qualquer PSProto* guardado aqui
  * viraria ponteiro pendurado no meio da compilação. */
 typedef struct Unidade Unidade;
@@ -264,14 +264,14 @@ typedef struct {
 } SimInfo;
 
 struct Unidade {
-    /* Função que ENVOLVE esta. NULL no módulo e nas actions de topo — é o que
+    /* Função que ENVOLVE esta. NULL no módulo e nas functs de topo — é o que
      * limita a captura: nome não achado aqui nem no pai vira global. */
     Unidade *pai;
     /* Os quatro vetores por SLOT abaixo (celula, celula_virgem, certo,
      * tipo_decl) crescem junto com `locais` (ver `idx_local`). Eram fixos em
      * 256: do slot 256 em diante o local perdia o tipo declarado (`int v299 =
      * 1` aceitava "texto"), a via rápida e a captura por closure — calado. */
-    /* Slots que viram CÉLULA porque alguma action aninhada os usa. */
+    /* Slots que viram CÉLULA porque alguma funct aninhada os usa. */
     unsigned char *celula;
     /* Célula criada pelo `marca_celulas` que ainda não recebeu nada: o slot
      * EXISTE mas o nome ainda não vale nada. Sem separar os dois, o `for each`
@@ -308,7 +308,7 @@ struct Unidade {
      * TIPO_* da VM + 1. Toda escrita no slot passa pelo OP_COERCE_DECL, nao so
      * a declaracao. */
     unsigned char *tipo_decl;
-    /* `int action` / `bool action`: 1 = int, 2 = bool, 0 = sem tipo. Faz o
+    /* `int funct` / `bool funct`: 1 = int, 2 = bool, 0 = sem tipo. Faz o
      * RETURN converter Null e faz o corpo inteiro virar um `try` implícito —
      * é o contrato dessas duas declarações: nunca propagam erro. */
     int      tipo_ret;
@@ -375,9 +375,9 @@ typedef struct {
     int32_t     cap_classes;
     int32_t     cap_models;
     int32_t     cap_enums;
-    /* `@NonNull` visto, esperando a action que ele decora. */
+    /* `@NonNull` visto, esperando a funct que ele decora. */
     int         pendente_nonnull;
-    /* `@static` visto, esperando a action que ele decora — vira Proto.eh_static */
+    /* `@static` visto, esperando a funct que ele decora — vira Proto.eh_static */
     int         pendente_static;
     /* profundidade de decorador EMPILHADO em compilação: cada nível guarda o
      * próprio decorador num temporário distinto (`$reg0`, `$reg1`…), senão
@@ -434,7 +434,7 @@ typedef struct {
     int32_t  ngemeos, cap_gemeos;
     /* Tipo declarado dos nomes de MODULO (`str s = ...` no topo do arquivo,
      * dentro ou fora de bloco), colhido numa passada antes de compilar: uma
-     * action compilada ANTES da declaracao ainda precisa saber o tipo pra
+     * funct compilada ANTES da declaracao ainda precisa saber o tipo pra
      * conferir o write-through (`s = 5` de dentro dela escreve no `s` do
      * modulo). 0 = sem tipo, senao TIPO_* + 1. */
     char   **tipos_topo_nomes;
@@ -956,7 +956,7 @@ static void tp_emite_confere(C *c, Unidade *u, const char *rotulo, const char *t
 static void expr(C *c, Unidade *u, PSNode *n);
 static void compila_fstring(C *c, Unidade *u, PSNode *n);
 static void stmt(C *c, Unidade *u, PSNode *n);
-static int32_t compila_action(C *c, PSNode *n, Unidade *pai);
+static int32_t compila_funct(C *c, PSNode *n, Unidade *pai);
 
 /* `__init__` sintetizado a partir dos campos tipados (`nome: str`).
  *
@@ -1030,7 +1030,7 @@ static int eh_global_declarada(Unidade *u, const char *nome)
 }
 
 
-/* `range` é redefinível como qualquer nome (`range = 5`, `action range()`,
+/* `range` é redefinível como qualquer nome (`range = 5`, `funct range()`,
  * `from x import range`). A especialização do `for each` só pode acontecer se
  * o programa NÃO liga esse nome em lugar nenhum — senão a VM rodaria o range
  * embutido no lugar do que o usuário escreveu, calada. */
@@ -1106,7 +1106,7 @@ static int liga_o_nome(C *c, PSNode *n, const char *alvo)
         case N_MATCH_PATTERN:
             if (nome_bate(n, alvo) || (n->texto2 && !strcmp(n->texto2, alvo))) return 1;
             break;
-        case N_ACTION_DECL: case N_LAMBDA_EXPR: case N_UNPACK_TARGET:
+        case N_FUNCT_DECL: case N_LAMBDA_EXPR: case N_UNPACK_TARGET:
             /* parâmetros e alvos de desempacotamento são Name na `lista` */
             if (nome_bate(n, alvo)) return 1;
             for (int32_t i = 0; i < n->lista.n; i++) {
@@ -1156,8 +1156,8 @@ static int liga_o_nome(C *c, PSNode *n, const char *alvo)
  * e um ponteiro pra `vm->locals` ficaria pendurado.
  *
  * Quais slots viram célula é decidido ANTES de compilar o corpo, varrendo as
- * actions aninhadas (`marca_celulas`): sem isso o `a = 1` já teria sido
- * emitido como slot cru quando o `action dentro()` aparecesse depois. */
+ * functs aninhadas (`marca_celulas`): sem isso o `a = 1` já teria sido
+ * emitido como slot cru quando o `funct dentro()` aparecesse depois. */
 
 static int32_t add_upval(C *c, Unidade *u, const char *nome, int32_t em_local, int32_t idx)
 {
@@ -1195,7 +1195,7 @@ static int32_t resolve_upval(C *c, Unidade *u, const char *nome)
     return -1;
 }
 
-/* Junta no vetor os nomes que APARECEM dentro de uma action aninhada. É
+/* Junta no vetor os nomes que APARECEM dentro de uma funct aninhada. É
  * conservador de propósito: se o nome bate com um local de fora, aquele slot
  * vira célula mesmo que a aninhada só use um homônimo dela. Marcar a mais
  * custa uma indireção; marcar a menos quebraria a captura. */
@@ -1229,7 +1229,7 @@ static void varre_nomes(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
         case N_NAME: case N_ASSIGNMENT: case N_VAR_DECL: case N_FOR_EACH_STMT:
             junta_nomes(c, v, cnt, cap, n->texto);
             break;
-        case N_ACTION_DECL:
+        case N_FUNCT_DECL:
             junta_nomes(c, v, cnt, cap, n->texto);
             break;
         default: break;
@@ -1253,7 +1253,7 @@ static void varre_nomes(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
 static void acha_aninhadas(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
 {
     if (!n) return;
-    if (n->kind == N_ACTION_DECL || n->kind == N_LAMBDA_EXPR) { varre_nomes(c, n, v, cnt, cap); return; }
+    if (n->kind == N_FUNCT_DECL || n->kind == N_LAMBDA_EXPR) { varre_nomes(c, n, v, cnt, cap); return; }
     acha_aninhadas(c, n->a, v, cnt, cap);
     acha_aninhadas(c, n->b, v, cnt, cap);
     acha_aninhadas(c, n->c, v, cnt, cap);
@@ -1263,8 +1263,8 @@ static void acha_aninhadas(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *ca
 }
 
 /* Nomes que ESTA função liga: parâmetro, atribuição, declaração tipada,
- * variável de for-each, action aninhada e alvo de desempacotamento. Não entra
- * nas actions aninhadas — o que elas ligam é escopo delas. */
+ * variável de for-each, funct aninhada e alvo de desempacotamento. Não entra
+ * nas functs aninhadas — o que elas ligam é escopo delas. */
 static void binda_nomes(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
 {
     if (!n) return;
@@ -1273,7 +1273,7 @@ static void binda_nomes(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
         case N_UNPACK_TARGET:
             junta_nomes(c, v, cnt, cap, n->texto);
             break;
-        case N_ACTION_DECL:
+        case N_FUNCT_DECL:
             junta_nomes(c, v, cnt, cap, n->texto);
             return;                 /* não desce: o corpo dela é outro escopo */
         case N_LAMBDA_EXPR:
@@ -1289,7 +1289,7 @@ static void binda_nomes(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
 }
 
 /* Reserva o slot e emite a célula das variáveis capturadas: as que ESTA função
- * liga E que alguma action aninhada cita. A interseção é o que evita
+ * liga E que alguma funct aninhada cita. A interseção é o que evita
  * transformar uma GLOBAL lida lá dentro em célula vazia. Roda depois do
  * prólogo dos defaults (que testa o slot cru com JUMP_IF_SET) e antes do
  * corpo — os acessos precisam já saber que o slot virou célula. */
@@ -1319,7 +1319,7 @@ static void marca_celulas(C *c, Unidade *u, PSNode *params, PSNode *corpo)
     free(ligados);
 }
 
-/* MAKE_CLOSURE só quando a action realmente captura algo: sem upvalue ela
+/* MAKE_CLOSURE só quando a funct realmente captura algo: sem upvalue ela
  * continua sendo o valor barato de sempre (só o índice do proto). */
 static void emite_funcao(C *c, Unidade *u, int32_t proto)
 {
@@ -1358,7 +1358,7 @@ static PSNode *estatico_em(C *c, PSNode *e, const char *nome, int prof, PSNode *
     }
     for (int32_t i = 0; i < e->lista.n; i++) {
         PSNode *m = e->lista.itens[i];
-        if (m && m->kind == N_ACTION_DECL && m->texto && strcmp(m->texto, nome) == 0
+        if (m && m->kind == N_FUNCT_DECL && m->texto && strcmp(m->texto, nome) == 0
                 && e->texto && tp_metodo_estatico(c, e->texto, m)) { if (dono) *dono = e; return m; }
     }
     for (int32_t i = 0; i < e->lista2.n; i++) {
@@ -1565,7 +1565,7 @@ static void carrega_nome(C *c, Unidade *u, const char *nome)
 /* O nome já existe no escopo atual? Serve pro `for each`: se existe, a
  * variável do laço tem que SOMBREAR (salvar e devolver depois) em vez de
  * sobrescrever — antes, `i = "x"` seguido de `for each i in [1,2]` deixava o
- * `i` valendo 2 pra sempre, e com uma ACTION de mesmo nome a função sumia. */
+ * `i` valendo 2 pra sempre, e com uma FUNCT de mesmo nome a função sumia. */
 static int nome_ja_existe(Unidade *u, const char *nome)
 {
     if (!nome || !*nome) return 0;
@@ -1583,7 +1583,7 @@ static int nome_ja_existe(Unidade *u, const char *nome)
  * 42` passava — a doc chamava isso de "dinamica". Agora o compilador guarda o
  * tipo de cada nome declarado (slot da funcao, nome do modulo, upvalue) e
  * emite o OP_COERCE_DECL antes de TODA escrita nele: reatribuicao, `for
- * each`, desempacotamento, write-through de dentro de uma action e closure.
+ * each`, desempacotamento, write-through de dentro de uma funct eclosure.
  * Nada muda na VM alem do proprio opcode conferir tambem list/dict/tup/Object.
  *
  * Nome sem tipo declarado continua como sempre: `x = 1` depois `x = "a"`. */
@@ -1698,12 +1698,12 @@ static int tipo_topo_de(C *c, const char *nome)
     return 0;
 }
 
-/* Passada previa: toda declaracao tipada no escopo de MODULO (fora de action,
+/* Passada previa: toda declaracao tipada no escopo de MODULO (fora de funct,
  * dentro ou fora de bloco). A primeira declaracao de cada nome vence. */
 static void coleta_tipos_topo(C *c, PSNode *n)
 {
     if (!n) return;
-    if (n->kind == N_ACTION_DECL) return;       /* o corpo dela e outro escopo */
+    if (n->kind == N_FUNCT_DECL) return;       /* o corpo dela e outro escopo */
     if (n->kind == N_VAR_DECL && n->texto && !tipo_topo_de(c, n->texto))
         tipo_topo_poe(c, n->texto, cod_tipo_decl(n->texto2));
     coleta_tipos_topo(c, n->a);
@@ -2119,7 +2119,7 @@ static SimInfo *tp_sim_de(C *c, Unidade *u, const char *nome)
         if (st) {
             SimInfo *s = &c->sim_estatico;
             memset(s, 0, sizeof(*s));
-            if (st->kind == N_ACTION_DECL) {
+            if (st->kind == N_FUNCT_DECL) {
                 s->estado = 1; s->tipo = "funct"; s->decl = st;
                 s->decorado = (unsigned char)(dono && dono->texto && tp_metodo_decorado(c, dono->texto, st));
             } else if (st->texto2) {
@@ -2229,7 +2229,7 @@ static void tp_junta_ligados(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *
                 if (n->lista.itens[i] && n->lista.itens[i]->kind == N_NAME)
                     junta_nomes(c, v, cnt, cap, n->lista.itens[i]->texto);
             break;
-        case N_ACTION_DECL:
+        case N_FUNCT_DECL:
             junta_nomes(c, v, cnt, cap, n->texto);
             return;                          /* o corpo é outro escopo */
         case N_LAMBDA_EXPR:
@@ -2329,7 +2329,7 @@ static int tp_tem_yield(PSNode *n)
 {
     if (!n) return 0;
     if (n->kind == N_YIELD_STMT) return 1;
-    if (n->kind == N_ACTION_DECL || n->kind == N_LAMBDA_EXPR) return 0;
+    if (n->kind == N_FUNCT_DECL || n->kind == N_LAMBDA_EXPR) return 0;
     if (tp_tem_yield(n->a) || tp_tem_yield(n->b) || tp_tem_yield(n->c) || tp_tem_yield(n->e)) return 1;
     for (int32_t i = 0; i < n->lista.n; i++)  if (tp_tem_yield(n->lista.itens[i])) return 1;
     for (int32_t i = 0; i < n->lista2.n; i++) if (tp_tem_yield(n->lista2.itens[i])) return 1;
@@ -2340,7 +2340,7 @@ static int tp_tem_yield(PSNode *n)
  * gerador devolve o gerador, `async` devolve o future. */
 static const char *tp_ret_decl(PSNode *decl)
 {
-    if (!decl || decl->kind != N_ACTION_DECL || !decl->texto2) return NULL;
+    if (!decl || decl->kind != N_FUNCT_DECL || !decl->texto2) return NULL;
     if (decl->is_async || tp_tem_yield(decl->b)) return NULL;
     return tp_canon(decl->texto2);
 }
@@ -2360,7 +2360,7 @@ static PSNode *tp_metodo(C *c, const char *classe, const char *nome, int prof)
     if (!d || d->kind != N_ENTITY_DECL || prof > 32) return NULL;
     for (int32_t i = 0; i < d->lista.n; i++) {
         PSNode *m = d->lista.itens[i];
-        if (m->kind == N_ACTION_DECL && m->texto && strcmp(m->texto, nome) == 0) return m;
+        if (m->kind == N_FUNCT_DECL && m->texto && strcmp(m->texto, nome) == 0) return m;
     }
     for (int32_t i = 0; i < d->lista2.n; i++) {
         PSNode *r = d->lista2.itens[i]->texto ? tp_metodo(c, d->lista2.itens[i]->texto, nome, prof + 1) : NULL;
@@ -2449,8 +2449,8 @@ static int tp_classe_tem(C *c, const char *classe, const char *nome, int prof)
         if (d->lista2_alias.itens[i]->texto && strcmp(d->lista2_alias.itens[i]->texto, nome) == 0) return 1;
     for (int32_t i = 0; i < d->lista.n; i++) {
         PSNode *m = d->lista.itens[i];
-        if (m->kind == N_ACTION_DECL && m->texto && strcmp(m->texto, nome) == 0) return 1;
-        if (m->kind == N_ACTION_DECL && (tp_self_grava(m->b, nome) || tp_campo_decl_em(m->b, nome))) return 1;
+        if (m->kind == N_FUNCT_DECL && m->texto && strcmp(m->texto, nome) == 0) return 1;
+        if (m->kind == N_FUNCT_DECL && (tp_self_grava(m->b, nome) || tp_campo_decl_em(m->b, nome))) return 1;
     }
     int incerto = 0;
     for (int32_t i = 0; i < d->lista2.n; i++) {
@@ -2536,7 +2536,7 @@ static const char *tp_chamada(C *c, Unidade *u, PSNode *n)
         if (s) {
             if (s->membro_nativo) return tp_nativo(s->mod_nativo, s->membro_nativo);
             if (s->decl && !s->decorado) {
-                if (s->decl->kind == N_ACTION_DECL) return tp_ret_decl(s->decl);
+                if (s->decl->kind == N_FUNCT_DECL) return tp_ret_decl(s->decl);
                 if (s->decl->kind == N_ENTITY_DECL) return s->decl->texto;
             }
             return NULL;
@@ -2553,7 +2553,7 @@ static const char *tp_chamada(C *c, Unidade *u, PSNode *n)
                 int deco = 0;
                 PSNode *d = modulo_decl(sm->mod_pr, f->texto, &deco);
                 if (!d || deco) return NULL;
-                if (d->kind == N_ACTION_DECL) return tp_ret_decl(d);
+                if (d->kind == N_FUNCT_DECL) return tp_ret_decl(d);
                 if (d->kind == N_ENTITY_DECL && tp_classe_importada(c, d)) return d->texto;
                 return NULL;
             }
@@ -2770,7 +2770,7 @@ static const char *tp_de(C *c, Unidade *u, PSNode *n)
                 if (sm) {
                     int deco = 0;
                     PSNode *d = modulo_decl(sm->mod_pr, n->texto, &deco);
-                    return (d && d->kind == N_ACTION_DECL && !deco) ? "funct" : NULL;
+                    return (d && d->kind == N_FUNCT_DECL && !deco) ? "funct" : NULL;
                 }
             }
             const char *t = tp_de(c, u, n->a);
@@ -2799,7 +2799,7 @@ static int tp_tem_break(PSNode *n)
     if (!n) return 0;
     if (n->kind == N_BREAK_STMT) return 1;
     if (n->kind == N_WHILE_STMT || n->kind == N_FOR_EACH_STMT || n->kind == N_COUNT_EACH_STMT
-            || n->kind == N_ACTION_DECL || n->kind == N_LAMBDA_EXPR) return 0;
+            || n->kind == N_FUNCT_DECL || n->kind == N_LAMBDA_EXPR) return 0;
     if (tp_tem_break(n->a) || tp_tem_break(n->b) || tp_tem_break(n->c) || tp_tem_break(n->e)) return 1;
     for (int32_t i = 0; i < n->lista.n; i++)  if (tp_tem_break(n->lista.itens[i])) return 1;
     for (int32_t i = 0; i < n->lista2.n; i++) if (tp_tem_break(n->lista2.itens[i])) return 1;
@@ -2874,14 +2874,14 @@ static PSNode *modulo_decl(const PSModuloAst *ma, const char *nome, int *decorad
     for (int32_t i = 0; i < ma->programa->lista.n; i++) {
         PSNode *s = ma->programa->lista.itens[i];
         if (!s) continue;
-        if ((s->kind == N_ACTION_DECL || s->kind == N_ENTITY_DECL || s->kind == N_MODEL_DECL
+        if ((s->kind == N_FUNCT_DECL || s->kind == N_ENTITY_DECL || s->kind == N_MODEL_DECL
                 || s->kind == N_ENUM_DECL) && s->texto && !strcmp(s->texto, nome))
             return s;
         if (s->kind == N_DECORATOR_STMT && s->b && s->b->kind == N_BLOCK) {
             int deco = s->a && !tp_decorador_embutido(s->a);
             for (int32_t k = 0; k < s->b->lista.n; k++) {
                 PSNode *d = s->b->lista.itens[k];
-                if (d && (d->kind == N_ACTION_DECL || d->kind == N_ENTITY_DECL) && d->texto
+                if (d && (d->kind == N_FUNCT_DECL || d->kind == N_ENTITY_DECL) && d->texto
                         && !strcmp(d->texto, nome)) {
                     if (decorado) *decorado = deco;
                     return d;
@@ -2914,7 +2914,7 @@ static PSNode *modulo_privado_em(PSNode *s, const char *nome)
     }
     if (!s->is_private) return NULL;
     switch (s->kind) {
-        case N_ACTION_DECL: case N_ENTITY_DECL: case N_MODEL_DECL: case N_ENUM_DECL:
+        case N_FUNCT_DECL: case N_ENTITY_DECL: case N_MODEL_DECL: case N_ENUM_DECL:
         case N_ASSIGNMENT: case N_VAR_DECL: case N_FIELD_DECL:
             return (s->texto && !strcmp(s->texto, nome)) ? s : NULL;
         case N_UNPACK_ASSIGNMENT: {
@@ -3099,7 +3099,7 @@ static void tp_grava_import(C *c, PSNode *n, const char *mod, const char *membro
     c->grava.tem_valor = 1;
     c->grava.decl = d;
     c->grava.decorado = (unsigned char)deco;
-    if (d->kind == N_ACTION_DECL) c->grava.tipo = "funct";
+    if (d->kind == N_FUNCT_DECL) c->grava.tipo = "funct";
     else if (d->kind == N_ENTITY_DECL) {
         c->grava.tipo = "Entity";
         if (!tp_classe_importada(c, d)) c->grava.decl = NULL;
@@ -3265,7 +3265,7 @@ static void tp_self_dos_metodos(C *c, PSNode *cls)
             if (dn && !strcmp(dn, "static")) estatico = 1;
             continue;
         }
-        if (m->kind != N_ACTION_DECL) continue;
+        if (m->kind != N_FUNCT_DECL) continue;
         int meu = estatico || m->is_static;
         estatico = 0;
         if (meu || m->self_faltava) continue;
@@ -3312,8 +3312,8 @@ static void tp_junta_membros_classe(C *c, const char *classe, const char **v, in
     for (int32_t i = 0; i < d->lista.n && *cnt < 256; i++) {
         PSNode *m = d->lista.itens[i];
         if (!m) continue;
-        if (m->kind == N_ACTION_DECL && m->texto) v[(*cnt)++] = m->texto;
-        if (m->kind == N_ACTION_DECL) tp_junta_self_gravados(m->b, v, cnt);
+        if (m->kind == N_FUNCT_DECL && m->texto) v[(*cnt)++] = m->texto;
+        if (m->kind == N_FUNCT_DECL) tp_junta_self_gravados(m->b, v, cnt);
     }
     for (int32_t i = 0; i < d->lista2.n; i++)
         if (d->lista2.itens[i] && d->lista2.itens[i]->texto)
@@ -3552,7 +3552,7 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
     if (f->kind == N_NAME && f->texto) {
         SimInfo *s = tp_sim_de(c, u, f->texto);
         if (!s || !s->decl || s->decorado) return;
-        if (s->decl->kind == N_ACTION_DECL) {
+        if (s->decl->kind == N_FUNCT_DECL) {
             tp_confere_args(c, u, n, s->decl->texto ? s->decl->texto : "?", &s->decl->lista, 0, 0, NULL);
             return;
         }
@@ -3616,7 +3616,7 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
             int deco = 0;
             PSNode *d = modulo_decl(sm->mod_pr, f->texto, &deco);
             if (!d || deco) return;
-            if (d->kind == N_ACTION_DECL) {
+            if (d->kind == N_FUNCT_DECL) {
                 tp_confere_args(c, u, n, d->texto ? d->texto : "?", &d->lista, 0, 0, NULL);
                 return;
             }
@@ -4532,9 +4532,9 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
         }
 
         case N_LAMBDA_EXPR: {
-            /* Mesma máquina da action nomeada: um protótipo e um
+            /* Mesma máquina da funct nomeada: um protótipo e um
              * MAKE_FUNCTION. A diferença é só não ter nome pra guardar. */
-            int32_t pi = compila_action(c, n, u);
+            int32_t pi = compila_funct(c, n, u);
             if (CFALHOU(c)) return;
             emite_funcao(c, u, pi);
             return;
@@ -4828,15 +4828,15 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
     if (n->col)  c->coluna_atual = n->col;
 
     switch (n->kind) {
-        case N_ACTION_DECL: {
-            /* O nome nasce ANTES do corpo compilar: sem isto uma action
+        case N_FUNCT_DECL: {
+            /* O nome nasce ANTES do corpo compilar: sem isto uma funct
              * aninhada não conseguiria chamar a si mesma (o nome dela ainda
              * não seria local da função de fora na hora da captura). */
             if (!u->eh_modulo && n->texto) {
                 int32_t si = idx_local(c, u, n->texto);
                 if (si >= 0 && !u->celula[si]) u->certo[si] = 1;
             }
-            int32_t idx = compila_action(c, n, u);
+            int32_t idx = compila_funct(c, n, u);
             if (CFALHOU(c)) return;
             emite_funcao(c, u, idx);
             if (n->is_private) priv_declara(c, u, n, n, n->texto);
@@ -4894,7 +4894,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
         }
 
         case N_FIELD_DECL: {
-            /* `private str name = nome` dentro da action: é CAMPO DO OBJETO,
+            /* `private str name = nome` dentro da funct: é CAMPO DO OBJETO,
              * não local. Escreve em `self` pelo mesmo caminho de
              * `self.name = nome` — um só lugar decide dict×instância e o
              * corte de private. A visibilidade em si é registrada na CLASSE,
@@ -5283,7 +5283,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
 
         case N_DECORATOR_STMT: {
             /* Três decoradores são resolvidos em COMPILAÇÃO (`static`,
-             * `NonNull`, `dataentity`): mudam como a action é gerada. Todo
+             * `NonNull`, `dataentity`): mudam como a funct é gerada. Todo
              * OUTRO decorador é o protocolo geral, em runtime (OP_DECORA):
              * `@obj.metodo(args)`, `@log`, `@log()` — inclusive nome que não
              * existe, que dá NameError na linha do `@` em vez de sumir calado
@@ -5298,7 +5298,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 return;
             }
             /* Decorador GERAL: avalia a expressão -> o decorador (guardado);
-             * roda o bloco (define a action); e entrega a action ao OP_DECORA,
+             * roda o bloco (define a funct); e entrega a funct ao OP_DECORA,
              * que registra (`.register`) ou envolve (chamável). Na funct solta
              * o nome passa a valer o resultado; em cima de classe, o 1º método
              * da classe passa a valer o resultado. */
@@ -5309,21 +5309,21 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 PSNode *corpo = n->b;
                 /* decorador EMPILHADO: o bloco é outro N_DECORATOR_STMT; o de
                  * dentro aplica primeiro e rebinda o nome, e este carrega o
-                 * nome já envolvido — a action fica no fundo da pilha de @ */
+                 * nome já envolvido — a funct fica no fundo da pilha de @ */
                 while (corpo && corpo->kind == N_BLOCK && corpo->lista.n == 1
                        && corpo->lista.itens[0]->kind == N_DECORATOR_STMT)
                     corpo = corpo->lista.itens[0]->b;
                 if (corpo && corpo->kind == N_BLOCK)
                     for (int32_t i = 0; i < corpo->lista.n; i++) {
                         PSNode *bi = corpo->lista.itens[i];
-                        if (bi->kind == N_ACTION_DECL) { act = bi->texto; break; }
-                        /* handler baseado em CLASSE: acha a action DENTRO da
+                        if (bi->kind == N_FUNCT_DECL) { act = bi->texto; break; }
+                        /* handler baseado em CLASSE: acha a funct DENTRO da
                          * classe (a primeira fora de __init__), nome qualquer */
                         if (bi->kind == N_ENTITY_DECL) {
                             cls_nome = bi->texto;
                             for (int32_t j = 0; j < bi->lista.n; j++) {
                                 PSNode *m = bi->lista.itens[j];
-                                if (m->kind == N_ACTION_DECL && m->texto
+                                if (m->kind == N_FUNCT_DECL && m->texto
                                         && strcmp(m->texto, "__init__") != 0) { met_nome = m->texto; break; }
                             }
                             break;
@@ -5341,7 +5341,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 /* 1) avalia a expressão do decorador (chamada se teve
                  * parênteses) — erro do decorador propaga */
                 emite_decorador_expr(c, u, dec);
-                /* 2) guarda o decorador e roda o bloco (define a action; um
+                /* 2) guarda o decorador e roda o bloco (define a funct; um
                  * decorador empilhado ali dentro usa o próprio temporário) */
                 guarda_nome_modo(c, u, reg, 1);
                 c->decor_prof++;
@@ -5379,7 +5379,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             }
             if (!n->b) return;
             if (nome && strcmp(nome, "static") == 0) {
-                /* Marca a action decorada como estática (chamável na Entity
+                /* Marca a funct decorada como estática (chamável na Entity
                  * sem instância). Fora de Entity, a marca é inofensiva: só
                  * vale na resolução de `Classe.metodo`. */
                 c->pendente_static = 1;
@@ -5512,7 +5512,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             def->classe_privada = n->is_private;   /* `private class` = não exportada */
 
             /* nomes de membros `private` — métodos (n->lista) + campos
-             * (n->lista2_alias) + os campos declarados DENTRO das actions
+             * (n->lista2_alias) + os campos declarados DENTRO das functs
              * (`private str name = nome` no __init__). Estes últimos moram no
              * corpo do método, mas a visibilidade é da CLASSE: sem varrer por
              * eles aqui, o `private` compilaria e não barraria nada — pior que
@@ -5526,7 +5526,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 if (!def->priv_nomes) { cerro(c, "sem memoria", n); return; }
                 for (int32_t i = 0; i < n->lista.n; i++) {
                     PSNode *m = n->lista.itens[i];
-                    if (m->kind == N_ACTION_DECL && m->is_private && m->texto)
+                    if (m->kind == N_FUNCT_DECL && m->is_private && m->texto)
                         def->priv_nomes[def->npriv++] = strdup(m->texto);
                 }
                 for (int32_t i = 0; i < n->lista2_alias.n; i++) {
@@ -5562,7 +5562,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
 
             int32_t nm = 0;
             for (int32_t i = 0; i < n->lista.n; i++)
-                if (n->lista.itens[i]->kind == N_ACTION_DECL) nm++;
+                if (n->lista.itens[i]->kind == N_FUNCT_DECL) nm++;
             if (nm > 0) {
                 def->met_nomes = calloc((size_t)nm, sizeof(char *));
                 def->met_protos = calloc((size_t)nm, sizeof(int32_t));
@@ -5576,8 +5576,8 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             c->entity_no = n;   /* nome solto -> campo `static` desta classe */
             tp_self_dos_metodos(c, n);   /* classe que a pré-passada não viu (aninhada) */
             /* Dentro de Entity o decorador é uma entrada SEPARADA do corpo
-             * (dec_sem_captura no parser): ele não embrulha a action. Então o
-             * `@static` visto aqui vale pra PRÓXIMA action da lista — é assim
+             * (dec_sem_captura no parser): ele não embrulha a funct. Então o
+             * `@static` visto aqui vale pra PRÓXIMA funct da lista — é assim
              * que a marca chega no Proto (Proto.eh_static). */
             int static_pendente = 0, nonnull_pendente = 0;
             /* Decorador GERAL (`@mapp.post("/x")`) em cima de um método: era
@@ -5608,7 +5608,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     }
                     continue;
                 }
-                if (m->kind != N_ACTION_DECL) continue;
+                if (m->kind != N_FUNCT_DECL) continue;
                 for (int k = 0; k < ndec_pend && npares < 64; k++) {
                     par_dec[npares] = dec_pend[k];
                     par_met[npares] = m;
@@ -5617,7 +5617,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 ndec_pend = 0;
                 c->pendente_static = static_pendente;
                 c->pendente_nonnull = nonnull_pendente;
-                int32_t pi = compila_action(c, m, NULL);
+                int32_t pi = compila_funct(c, m, NULL);
                 c->pendente_static = 0;
                 c->pendente_nonnull = 0;
                 static_pendente = 0;
@@ -5981,7 +5981,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                  * variáveis do case (`escopo_fecha`) roda ali, pra todos.
                  *
                  * Antes a limpeza só ficava no caminho de sucesso. Numa
-                 * action, `case v if v < 50` com a guarda falsa deixava o
+                 * funct, `case v if v < 50` com a guarda falsa deixava o
                  * slot de `v` preenchido; o slot era devolvido ao pool e o
                  * próximo nome sem declaração (`post`, resolvido por
                  * LOAD_NAME) caía nele — e o 999 do sujeito era "chamado":
@@ -6203,7 +6203,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
     }
 }
 
-/* ── action ─────────────────────────────────────────────────────────────── */
+/* ── funct─────────────────────────────────────────────────────────────── */
 static int32_t novo_proto(C *c, const char *nome)
 {
     if (c->out->nprotos + 1 > c->cap_protos) {
@@ -6307,7 +6307,7 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
         if (pi >= 0) u.certo[pi] = 1;
         if (campos->itens[i]->a) ndef++;
         else if (ndef > 0) {
-            /* Mesma regra da action: com `a, b=2, c` o `ndefaults` (que conta
+            /* Mesma regra da funct: com `a, b=2, c` o `ndefaults` (que conta
              * só o SUFIXO) mentia, e a chamada `P(1)` acusava o parâmetro
              * errado ('b', que tem padrão) em vez do 'c' que faltou. */
             cerro_sx(c, campos->itens[i], "campo '%s' sem valor padrao vem depois de um com padrao", nome);
@@ -6361,7 +6361,7 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
     return idx;
 }
 
-static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
+static int32_t compila_funct(C *c, PSNode *n, Unidade *pai)
 {
     int32_t idx = novo_proto(c, n->texto ? n->texto : "<funct>");
     if (idx < 0) return -1;
@@ -6403,7 +6403,7 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
     else if (n->texto2 && !strcmp(n->texto2, "bool")) u.tipo_ret = 2;
     const char *nome_f = n->texto ? n->texto : "<funct>";
     u.nome_funct = nome_f;
-    if (n->kind == N_ACTION_DECL && n->texto2) {
+    if (n->kind == N_FUNCT_DECL && n->texto2) {
         u.tipo_ret_nome = tp_canon(n->texto2);
         if (!tp_tipo_existe(c, &u, n->texto2))
             terro(c, n, "AttributedValueError", "tipo %s não existe (retorno de %s())", n->texto2, nome_f);
@@ -6528,7 +6528,7 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
         if (pula >= 0) UP(c, (&u))->code[pula + 1] = UP(c, (&u))->ncode;
     }
 
-    /* Células das variáveis que as actions aninhadas capturam. Vem depois do
+    /* Células das variáveis que as functs aninhadas capturam. Vem depois do
      * prólogo (que testa o slot cru com JUMP_IF_SET) e antes do corpo. */
     marca_celulas(c, &u, n, n->b);
 
@@ -6536,7 +6536,7 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
      * Só os fixos: a tup e o dict das estrelas nunca são Null. */
     if (meu_nonnull) emite(c, &u, OP_CHECK_NONNULL, nfix);
 
-    /* `int action` e `bool action` não deixam erro escapar: devolvem 500 e
+    /* `int funct` e `bool funct` não deixam erro escapar: devolvem 500 e
      * False. Sai mais barato emitir o `try` implícito aqui do que ensinar o
      * desenrolamento de erro da VM a olhar o tipo do frame. */
     int32_t rede = -1;
@@ -6551,7 +6551,7 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
               "%s() devolve %s e pode chegar ao fim sem return (o fim devolveria Null)",
               nome_f, u.tipo_ret_nome);
     if (u.tipo_ret) emite(c, &u, OP_POP_TRY, 0);
-    /* action sem return explícito devolve Null */
+    /* funct sem return explícito devolve Null */
     emite(c, &u, OP_LOAD_CONST, idx_const(c, &u, K_NULL, 0, 0, NULL, 0));
     if (u.tipo_ret) emite(c, &u, OP_COERCE_RET, u.tipo_ret);
     emite(c, &u, OP_RETURN, 0);
@@ -6652,7 +6652,7 @@ static void tp_pre_stmt(C *c, Unidade *mod, PSNode *s, int decorado)
             grava_valor(c, mod, s->a);
             tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
             break;
-        case N_ACTION_DECL:
+        case N_FUNCT_DECL:
             if (!s->texto) return;
             memset(&c->grava, 0, sizeof(c->grava));
             c->grava.tem_valor = 1; c->grava.tipo = "funct"; c->grava.no = s;
@@ -6865,7 +6865,7 @@ static void colhe_fatos(C *c, PSNode *n, PSNode *bloco, int *viu_yield)
 {
     if (!n || CFALHOU(c)) return;
     switch (n->kind) {
-        case N_ACTION_DECL: case N_LAMBDA_EXPR:
+        case N_FUNCT_DECL: case N_LAMBDA_EXPR:
             poda_poe(c, bloco, poda_funct(c, n));
             return;
         case N_ENTITY_DECL: case N_MODEL_DECL: case N_ENUM_DECL:
@@ -6949,7 +6949,7 @@ static PSNode *poda_funct(C *c, PSNode *n)
 static PSNode *poda(C *c, PSNode *n)
 {
     if (!n || CFALHOU(c)) return NULL;
-    if (n->kind == N_ACTION_DECL || n->kind == N_LAMBDA_EXPR) return poda_funct(c, n);
+    if (n->kind == N_FUNCT_DECL || n->kind == N_LAMBDA_EXPR) return poda_funct(c, n);
     PSNode *k = copia_raso(c, n);
     if (!k) return NULL;
     if (n->kind == N_ENTITY_DECL || n->kind == N_MODEL_DECL || n->kind == N_ENUM_DECL) gemeo_poe(c, k);
@@ -7053,7 +7053,7 @@ PSPrograma *ps_compila_com(PSNode *programa, const PSResolvedor *resolve)
     int32_t idx = novo_proto(&c, "<module>");
     if (idx < 0) return out;
 
-    /* tipos declarados no topo do arquivo, antes de compilar qualquer action */
+    /* tipos declarados no topo do arquivo, antes de compilar qualquer funct*/
     if (programa)
         for (int32_t i = 0; i < programa->lista.n && out->ok; i++)
             passada1_stmt(&c, programa->lista.itens[i], programa->lista.itens[i]);

@@ -27,9 +27,9 @@
  *
  * O QUE ELE PRODUZ, numa passada só pela árvore:
  *
- *   escopos     cada `action` e cada `Entity` viram um escopo com intervalo de
+ *   escopos     cada `funct` e cada `Entity` viram um escopo com intervalo de
  *               LINHAS e a lista do que ligam (parâmetro, variável, laço,
- *               desempacotamento, import, action e Entity aninhadas)
+ *               desempacotamento, import, funct eEntity aninhadas)
  *   entidades   nome, pais, campos e métodos, com `private` e posição
  *   imports     nome ligado -> módulo do motor ou arquivo .pr
  *   estrelas    os `import *` do topo, na ordem (não ligam o nome do módulo)
@@ -125,7 +125,7 @@ function cada(no, fn) {
  *
  * `l2` é a linha do `}`, que o parser registra no `Block`. Onde ele não
  * existe, o fim é a maior linha alcançada. A diferença importa: o último
- * COMANDO de uma action não é o fim dela — entre ele e o `}` costuma haver a
+ * COMANDO de uma funct não é o fim dela — entre ele e o `}` costuma haver a
  * linha em branco onde o cursor está. */
 function ultimaLinha(no) {
   let m = no && no.l ? no.l : 0;
@@ -156,8 +156,8 @@ function ligacoesDe(no, poe) {
     case 'ForEachStmt':                                  /* for each it in … */
       poe(no.texto, 'variavel do laco', null, no);
       break;
-    case 'ActionDecl':
-      poe(no.texto, 'action', no.texto2, no);
+    case 'FunctDecl':
+      poe(no.texto, 'funct', no.texto2, no);
       break;
     case 'EntityDecl':
       poe(no.texto, 'class', null, no);
@@ -312,8 +312,8 @@ function topoDaArvore(arvore) {
          * motor a exporta (empilhado, o de dentro é outro DecoratorStmt) */
         for (const s of (no.b && no.b.lista) || []) comando(s);
         return;
-      case 'ActionDecl':
-        poe(no.texto, 'action', no.texto2, no, {
+      case 'FunctDecl':
+        poe(no.texto, 'funct', no.texto2, no, {
           privado: !!no.private, async: !!no.async, estatica: !!no.static, nonnull: !!no.nonnull,
           params: (no.lista || []).filter((p) => p && p.texto !== 'self')
                                   .map((p) => ({ nome: nomeParam(p), tipo: p.texto2 || null, default: null })),
@@ -357,7 +357,7 @@ function gravadosComGlobal(arvore, poe) {
     const escritos = [];
     const escreve = (nome, origem) => { if (nome) escritos.push({ nome, origem }); };
     const anda = (no) => {
-      if (!no || typeof no !== 'object' || no.k === 'ActionDecl') return;
+      if (!no || typeof no !== 'object' || no.k === 'FunctDecl') return;
       if (no.k === 'GlobalStmt') for (const x of no.lista || []) { if (x && x.texto) decl.add(x.texto); }
       if (no.k === 'Assignment' || no.k === 'VarDecl' || no.k === 'ForEachStmt') escreve(no.texto, no);
       if (no.k === 'UnpackAssignment') alvosDoUnpack(no.a, (nome) => escreve(nome, no), no);
@@ -368,7 +368,7 @@ function gravadosComGlobal(arvore, poe) {
   };
   const todas = (no) => {
     if (!no || typeof no !== 'object') return;
-    if (no.k === 'ActionDecl') funcao(no);
+    if (no.k === 'FunctDecl') funcao(no);
     cada(no, todas);
   };
   todas(arvore);
@@ -401,13 +401,13 @@ function membrosDaEntity(no) {
       if (dn === 'NonNull') decNonnull = true;
       continue;
     }
-    if (m.k !== 'ActionDecl') continue;                   /* métodos */
+    if (m.k !== 'FunctDecl') continue;                   /* métodos */
     const ps = (m.lista || []).filter((p) => p && p.texto && p.texto !== 'self')
                               .map((p) => ({ nome: nomeParam(p), tipo: p.texto2 || null, default: null }));
     /* `corpo`: o bloco do método, pra quem precisa inferir o retorno de um
      * método SEM tipo declarado pelos `return` dele (`self.f().` só oferecia
      * `type`) */
-    poe({ nome: m.texto, kind: 'action', params: ps, retorna: m.texto2 || null,
+    poe({ nome: m.texto, kind: 'funct', params: ps, retorna: m.texto2 || null,
           privado: !!m.private, estatica: !!m.static || decStatic,
           nonnull: !!m.nonnull || decNonnull,
           linha: m.l - 1, coluna: m.c - 1, corpo: m.b || null });
@@ -455,7 +455,7 @@ function entidadesDaArvore(arvore) {
 
 /* ── escopos ────────────────────────────────────────────────────────────── */
 /*
- * Um escopo por `action` (com os parâmetros) e um pelo módulo. O intervalo é
+ * Um escopo por `funct` (com os parâmetros) e um pelo módulo. O intervalo é
  * em LINHAS, do início do nó até a última linha da subárvore dele.
  */
 function escoposDaArvore(arvore) {
@@ -464,8 +464,8 @@ function escoposDaArvore(arvore) {
   const anda = (no, dono) => {
     if (!no || typeof no !== 'object') return;
 
-    if (no.k === 'ActionDecl') {
-      const esc = { tipo: 'action', nome: no.texto, ini: no.l, fim: ultimaLinha(no), liga: [] };
+    if (no.k === 'FunctDecl') {
+      const esc = { tipo: 'funct', nome: no.texto, ini: no.l, fim: ultimaLinha(no), liga: [] };
       for (const p of no.lista || []) {
         /* o tipo declarado (`byte raw`) vai junto: é ele que faz `raw.` e o
          * hover de `raw.split` responderem pelo tipo — antes era `tipo: null`
@@ -477,7 +477,7 @@ function escoposDaArvore(arvore) {
       /* a funct LIGA O PRÓPRIO NOME no escopo de fora. O nó vai junto (`no`):
        * o hover mostra `static int async funct f(...)` lendo texto2/async e os
        * modificadores colados do nó, em vez de perder o que a árvore já tem. */
-      dono.liga.push({ nome: no.texto, kind: 'action', tipo: no.texto2 || null, async: !!no.async,
+      dono.liga.push({ nome: no.texto, kind: 'funct', tipo: no.texto2 || null, async: !!no.async,
                        estatica: !!no.static, nonnull: !!no.nonnull,
                        linha: no.l - 1, no,
                        params: (no.lista || []).filter((p) => p && p.texto !== 'self')
@@ -492,7 +492,7 @@ function escoposDaArvore(arvore) {
       dono.liga.push({ nome: no.texto, kind: 'class', tipo: null, linha: no.l - 1 });
       /* o corpo da Entity não liga nomes de módulo: os métodos são membros */
       for (const m of no.lista || []) {
-        if (m && m.k === 'ActionDecl') {
+        if (m && m.k === 'FunctDecl') {
           const esc = { tipo: 'metodo', nome: m.texto, entidade: no.texto,
                         ini: m.l, fim: ultimaLinha(m), liga: [] };
           for (const p of m.lista || []) {
@@ -552,7 +552,7 @@ function visiveisEm(idx, linha) {
     for (const b of e.liga) {
       /* só o que foi ligado ANTES do cursor: sugerir variável de baixo é
        * oferecer o que ainda não existe */
-      if (b.linha > linha && b.kind !== 'action' && b.kind !== 'class') continue;
+      if (b.linha > linha && b.kind !== 'funct' && b.kind !== 'class') continue;
       if (jaTem.has(b.nome)) continue;
       jaTem.add(b.nome);
       out.push(b);

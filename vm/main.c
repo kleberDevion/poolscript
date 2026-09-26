@@ -1352,7 +1352,7 @@ static int32_t no_linha_max(const PSNode *n)
 static void escopo_no(const PSNode *n, int linha, char *buf, size_t cap)
 {
     if (!n) return;
-    if ((n->kind == N_ACTION_DECL || n->kind == N_ENTITY_DECL) && n->texto
+    if ((n->kind == N_FUNCT_DECL || n->kind == N_ENTITY_DECL) && n->texto
         && n->line <= linha && linha <= no_linha_max(n)) {
         size_t u = strlen(buf);
         if (u + 1 < cap) snprintf(buf + u, cap - u, "%s%s", u ? "." : "", n->texto);

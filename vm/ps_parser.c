@@ -8,7 +8,7 @@
  *   → posfixo (chamada, .membro, [índice]) → primário
  *
  * Regras herdadas que o teste diferencial cobre:
- *   - Palavra reservada não pode virar nome (variável, parâmetro, action).
+ *   - Palavra reservada não pode virar nome (variável, parâmetro, funct).
  *   - `base` é reservada contextual: não vira nome, mas `base(...)` chama.
  *   - Bloco aceita `{ }` ou `:` + INDENT/DEDENT, e os dois convivem.
  *   - Chave de dict sem aspas (`{nome: 1}`) vira string.
@@ -32,9 +32,9 @@ typedef struct {
     int32_t    pos;
     PSArena   *arena;
     PSParseResult *out;
-    /* Dentro de Entity o decorador NÃO engole a action seguinte: os dois
+    /* Dentro de Entity o decorador NÃO engole a funct seguinte: os dois
      * viram entradas separadas do corpo. Fora de Entity,
-     * `@NonNull action f()` captura. */
+     * `@NonNull funct f()` captura. */
     int        dec_sem_captura;
     /* `for each x in <expr> {` — ali o `{` ABRE BLOCO, não interpola.
      * Sem isto, `for each c in "abc" {` lia `"abc" {` como interpolação e o
@@ -1849,7 +1849,7 @@ static PSNode *bloco_no(P *p)
      *         ...
      *     }
      *
-     * `Entity`/`class`/`action` sempre aceitaram (o cabeçalho deles pula
+     * `Entity`/`class`/`funct` sempre aceitaram (o cabeçalho deles pula
      * separadores antes de procurar o `{`); `if`/`while`/`for` não, e a
      * diferença era acidental — o mesmo arquivo passava numa construção e
      * falhava na outra. Só pula os separadores quando o que vem depois deles
@@ -1894,7 +1894,7 @@ static PSNode *bloco_no(P *p)
         if (checa(p, T_EOF)) { perro(p, "bloco com '{' nao foi fechado com '}'", t); return NULL; }
         /* A LINHA DO `}` — a extensão do bloco.
          *
-         * O editor precisa dela: sem `linha_fim`, o escopo de uma action
+         * O editor precisa dela: sem `linha_fim`, o escopo de uma funct
          * acabava no último comando, e o cursor numa linha em branco antes do
          * fecha-chaves caía FORA dele. Parâmetro e variável local sumiam da
          * sugestão exatamente onde se está escrevendo. */
@@ -2617,14 +2617,14 @@ static PSNode *for_stmt(P *p)
     return n;
 }
 
-static PSNode *action_decl(P *p, int is_async, const char *tipo_retorno)
+static PSNode *funct_decl(P *p, int is_async, const char *tipo_retorno)
 {
     PSToken *t = atual(p);
-    p->pos++;                                  /* funct / action / reaction */
+    p->pos++;                                  /* funct, ou a grafia morta action / reaction */
     const char *nome = exige_nome(p, "funct");
     if (FALHOU(p)) return NULL;
 
-    PSNode *n = ps_node_novo(p->arena, N_ACTION_DECL, t->line, t->col);
+    PSNode *n = ps_node_novo(p->arena, N_FUNCT_DECL, t->line, t->col);
     if (!n) return NULL;
     n->texto = nome;
     n->texto2 = tipo_retorno;
@@ -2997,7 +2997,7 @@ static PSNode *statement_no(P *p)
                                && (strcmp(espia(p, 1)->texto, "private") == 0
                                    || strcmp(espia(p, 1)->texto, "public") == 0)))) {
                 /* `<tipo> <nome> [= valor]` — a MESMA declaração do §7.6 que
-                 * vale dentro da action, escrita no corpo da classe. Equivale
+                 * vale dentro da funct, escrita no corpo da classe. Equivale
                  * a `<nome>: <tipo> [= valor]`, e o `private`/`public` da
                  * frente já foi lido acima. */
                 PSToken *tt = mt;
@@ -3207,7 +3207,7 @@ static PSNode *statement_no(P *p)
         return n;
     }
 
-    /* @decorador[.metodo](args) [bloco | action] */
+    /* @decorador[.metodo](args) [bloco | funct] */
     if (checa(p, T_AT)) {
         p->pos++;
         PSNode *n = ps_node_novo(p->arena, N_DECORATOR_STMT, t->line, t->col);
@@ -3253,22 +3253,22 @@ static PSNode *statement_no(P *p)
             n->b = bloco(p);
             if (FALHOU(p)) return NULL;
         } else if (!p->dec_sem_captura) {
-            /* `@NonNull action f()` — a action vira um bloco de um nó só.
+            /* `@NonNull funct f()` — a funct vira um bloco de um nó só.
              *
-             * A cabeça da action é UMA unidade: `[public|private] {async|tipo}*
-             * action|reaction`, em qualquer ordem dos modificadores — a mesma
-             * que o parser de statement aceita. Aqui havia uma cópia à mão
-             * que conhecia quatro formas (`action`, `tipo action`, `async
-             * action`, `async tipo action`) e NÃO conhecia `tipo async
-             * action`. O resultado era o pior possível: `@app.post(...)` em
-             * cima de `int async action handler()` compilava limpo, a action
+             * A cabeça da funct é UMA unidade: `[public|private] {async|tipo}*
+             * funct`, em qualquer ordem dos modificadores — a mesma que o
+             * parser de statement aceita. Aqui havia uma cópia à mão que
+             * conhecia quatro formas (`funct`, `tipo funct`, `async funct`,
+             * `async tipo funct`) e NÃO conhecia `tipo async funct`. O
+             * resultado era o pior possível: `@app.post(...)` em cima de
+             * `int async funct handler()` compilava limpo, a funct
              * virava um statement solto SEM decorator, a rota nunca era
              * registrada, e o cliente recebia 404 — sem um aviso sequer. */
             PSToken *nt = atual(p);
-            int eh_action = (cabeca_de_funct(p, 0) >= 0);
+            int eh_funct_cabeca = (cabeca_de_funct(p, 0) >= 0);
             /* @app.route(...) class Nome { ... } — handler baseado em classe.
              * O decorador captura a classe (com prefixo private/public opcional)
-             * como bloco; o compilador enxerga a action dentro dela. */
+             * como bloco; o compilador enxerga a funct dentro dela. */
             int eh_classe = (nt->type == T_KW && nt->texto
                              && (strcmp(nt->texto,"Entity")==0 || strcmp(nt->texto,"class")==0
                                  || strcmp(nt->texto,"Class")==0));
@@ -3283,7 +3283,7 @@ static PSNode *statement_no(P *p)
              * bloco deste — antes o de cima ficava sem bloco e o compilador
              * o descartava calado */
             int eh_outro_dec = (nt->type == T_AT);
-            if (eh_action || eh_classe || eh_outro_dec) {
+            if (eh_funct_cabeca || eh_classe || eh_outro_dec) {
                 PSNode *acao = statement(p);
                 if (FALHOU(p)) return NULL;
                 PSNode *b = ps_node_novo(p->arena, N_BLOCK, acao->line, acao->col);
@@ -3730,7 +3730,7 @@ static PSNode *statement_no(P *p)
                 } else break;
                 p->pos++;
             }
-            PSNode *ad = action_decl(p, is_async, tipo);
+            PSNode *ad = funct_decl(p, is_async, tipo);
             if (ad && is_priv >= 0) ad->is_private = is_priv;
             if (ad) { ad->is_static = eh_static; ad->is_nonnull = eh_nonnull; }
             return ad;
@@ -3800,14 +3800,14 @@ static PSNode *statement_no(P *p)
         }
 
         /* `private str name = nome` — CAMPO DO OBJETO declarado dentro da
-         * action, com visibilidade. É a forma que ele pediu: o modificador
+         * funct, com visibilidade. É a forma que ele pediu: o modificador
          * na frente da declaração tipada que a linguagem já tinha
          * (`str x = "a"`), e não a ordem do corpo da classe.
          *
          * O QUE HAVIA ANTES: nada disto era erro. `private` chegava no parser
          * de expressão, virava um NOME comum, e o programa compilava limpo
          * pra estourar `NameError: name 'private' is not defined` em tempo de
-         * execução — dentro de `int action`, engolido pro 500 da seção 6.4,
+         * execução — dentro de `int funct`, engolido pro 500 da seção 6.4,
          * ou seja, calado. Palavra reservada lida como variável é o pior dos
          * dois mundos: não faz o que diz e não avisa. */
         if (off) {
@@ -3815,7 +3815,7 @@ static PSNode *statement_no(P *p)
             PSToken *nmt = espia(p, 2);
 
             /* `private nome: tipo = v` — a ordem do CORPO da Entity, escrita
-             * dentro da action. Era "expressao invalida" apontando pro ':',
+             * dentro da funct. Era "expressao invalida" apontando pro ':',
              * que não diz nada. A mensagem agora diz o conserto. */
             if ((tt->type == T_IDENT || tt->type == T_IDENT_UPPER)
                     && nmt->type == T_COLON) {
@@ -3904,8 +3904,8 @@ static PSNode *statement_no(P *p)
         }
     }
 
-    /* tipo de retorno antes de action: `int action f()`; ou declaracao tipada
-     * `int x = 1`. So entra aqui se o que vem depois do tipo e uma ACTION ou
+    /* tipo de retorno antes de funct: `int funct f()`; ou declaracao tipada
+     * `int x = 1`. So entra aqui se o que vem depois do tipo e uma FUNCT ou
      * um NOME — `list(x)`, `json.parse(s)`, `str(n)` como statement continuam
      * expressao (chamada/modulo), como o ramo de expressao ja tratava. */
     if (eh_tipo_kw_decl(t)
@@ -3919,7 +3919,7 @@ static PSNode *statement_no(P *p)
             }
             const char *tipo = tipo_retorno_dup(p, t);
             p->pos++;
-            return action_decl(p, 0, tipo);
+            return funct_decl(p, 0, tipo);
         }
         /* declaração tipada: `int x = 1` — a árvore guarda o tipo canônico */
         const char *tipo = tipo_retorno_dup(p, t);

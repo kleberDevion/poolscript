@@ -36,7 +36,7 @@ typedef struct {
     int32_t     slen;
 } PSConst;
 
-/* Uma variável capturada por uma action ANINHADA. `em_local` diz de onde ela
+/* Uma variável capturada por uma funct ANINHADA. `em_local` diz de onde ela
  * vem quando o closure é montado: 1 = célula que está num slot local do frame
  * de fora, 0 = célula que o closure de fora já tinha (captura em cadeia,
  * quando o aninhamento tem mais de um nível). */
@@ -80,7 +80,7 @@ typedef struct {
     int32_t  slot_vararg;
     int32_t  slot_kwarg;
     int32_t  eh_gerador;  /* contém `yield` — chamar cria gerador, não frame */
-    int32_t  eh_async;    /* `async action` — chamar cria fibra+future, não roda inline */
+    int32_t  eh_async;    /* `async funct` — chamar cria fibra+future, não roda inline */
     /* `@static`: chamável direto na Entity (`Classe.metodo()`), sem instância.
      * Sem esta marca a VM tinha que ADIVINHAR pelo 1º parâmetro chamar-se
      * `self` — e aí `Classe.metodoNormal()` passava batido, dropava o self em
@@ -93,8 +93,8 @@ typedef struct {
      * NULL na posição = parâmetro sem tipo; NULL no vetor = nenhum tem. É só
      * CHECAGEM em runtime: a linguagem não converte argumento nenhum. */
     char   **param_tipos;
-    /* Variáveis de fora que esta action captura (closure). Vazio na maioria
-     * das actions: só uma action DECLARADA DENTRO de outra tem upvalue. */
+    /* Variáveis de fora que esta funct captura (closure). Vazio na maioria
+     * das functs: só uma funct DECLARADA DENTRO de outra tem upvalue. */
     PSUpval *upvals;
     int32_t  nupvals;
     char   **upval_nomes;   /* nome de cada upvalue — só pra mensagem de erro */

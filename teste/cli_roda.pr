@@ -553,7 +553,7 @@ confere("parentese esquecido: o erro sai no `(`, um só",
         erros_do_check(r["saida"]) == [[3, 8, "parentese '(' aberto nao foi fechado"]])
 r = roda("'" + POOL + "' --ast aberto.pr")
 confere("parentese esquecido: a declaracao de baixo continua na arvore",
-        "ActionDecl:depois" in topo(r["saida"]) and "Assignment:z" in topo(r["saida"]))
+        "FunctDecl:depois" in topo(r["saida"]) and "Assignment:z" in topo(r["saida"]))
 r = roda("'" + POOL + "' --tokens aberto.pr")
 confere("--tokens marca onde o motor fechou o grupo (SINC)", "\"t\":\"SINC\"" in r["saida"])
 r = roda("'" + POOL + "' aberto.pr")
@@ -570,7 +570,7 @@ os.writeFile(PASTA + "/multi.pr",
              "import os\nfunct f( {\npost(1)\nx = = 2\nint funct depois(int a) {\n    return a\n}\n")
 r = roda("'" + POOL + "' --ast multi.pr")
 confere("`funct f( {` nao engole a declaracao que vem depois",
-        "ActionDecl:depois" in topo(r["saida"]))
+        "FunctDecl:depois" in topo(r["saida"]))
 # A linha de baixo que VOLTA a indentacao da linha do `(` fecha o grupo ali:
 # `post(1)` e `x = = 2` nao sao argumentos de `f(`, sao as linhas seguintes.
 # Antes o grupo so fechava na declaracao (linha 5), tudo entre o `(` e ela
@@ -625,7 +625,7 @@ os.writeFile(PASTA + "/corpo.pr",
              "funct a() {\n    x = = 1\n    y = 2\n}\nfunct b() {\n    return 3\n}\n")
 r = roda("'" + POOL + "' --ast corpo.pr")
 confere("statement quebrado dentro da funct: a funct fica, nada vaza pro topo",
-        topo(r["saida"]) == ["ActionDecl:a", "ActionDecl:b"])
+        topo(r["saida"]) == ["FunctDecl:a", "FunctDecl:b"])
 confere("statement quebrado dentro da funct: o resto do corpo continua dentro dela",
         corpo_de(r["saida"], "a") == ["Assignment:y"])
 r = roda("'" + POOL + "' --check corpo.pr")
@@ -636,7 +636,7 @@ os.writeFile(PASTA + "/fecha.pr",
              "funct a() {\n    x = f(\n}\nfunct b() {\n    return 3\n}\n")
 r = roda("'" + POOL + "' --ast fecha.pr")
 confere("`(` aberto fechado pelo `}` da funct: as duas funct ficam",
-        topo(r["saida"]) == ["ActionDecl:a", "ActionDecl:b"])
+        topo(r["saida"]) == ["FunctDecl:a", "FunctDecl:b"])
 r = roda("'" + POOL + "' --check fecha.pr")
 confere("`(` aberto fechado pelo `}` da funct: o erro sai no `(`",
         erros_do_check(r["saida"]) == [[2, 10, "parentese '(' aberto nao foi fechado"]])

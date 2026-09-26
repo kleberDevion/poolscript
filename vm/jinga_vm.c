@@ -119,7 +119,7 @@ typedef enum {
     OBJ_NATIVA,    /* função nativa solta — `json.parse` guardado em variável */
     OBJ_MODEL,     /* `model U { ... }` — esquema que valida dict por `==` */
     OBJ_ENUM,      /* `enum Cor { ... }` — namespace de constantes (Cor.RED) */
-    OBJ_GERADOR,   /* action com `yield` — frame suspenso, retomável */
+    OBJ_GERADOR,   /* funct com`yield` — frame suspenso, retomável */
     OBJ_ARQUIVO,   /* handle de `open()` — fechado pelo `using` */
     OBJ_MODULO_PS, /* `.pr` importado — namespace sobre as globais dele */
     OBJ_BYTES,     /* sequência de bytes crus — `"x".encode()` */
@@ -152,12 +152,12 @@ typedef enum {
     OBJ_QRIMAGE,   /* retorno do make/make_image — save/resize/to_file */
     OBJ_MANPU_FILE,/* mp.open() — arquivo aberto com write/read/save + using */
     OBJ_BIGINT,    /* inteiro de precisão arbitrária (GMP mpz) — promovido no overflow */
-    OBJ_FUTURO,    /* `async action` — resultado pendente de uma fibra */
+    OBJ_FUTURO,    /* `async funct` — resultado pendente de uma fibra */
     OBJ_SOCKET,    /* lib sockets — socket cru (TCP/UDP/UNIX) */
     OBJ_PROCESSO,  /* os.run(..., capture="live") — o processo filho VIVO */
     OBJ_REGEX,     /* regex.compile() — padrao ja compilado (re.Pattern) */
-    OBJ_CELULA,    /* caixa de uma variável capturada por action aninhada */
-    OBJ_CLOSURE,   /* action aninhada + as células que ela capturou */
+    OBJ_CELULA,    /* caixa de uma variável capturada por funct aninhada */
+    OBJ_CLOSURE,   /* funct aninhada + as células que ela capturou */
     OBJ__COUNT     /* sentinela: nº de tipos — tamanho da tabela de GC */
 } ObjType;
 
@@ -419,8 +419,8 @@ typedef struct {
     struct Handler_ *handlers;
     int       nh;
     int       cap_handlers;
-    /* Closure da action geradora, quando ela captura variável de fora — sem
-     * isto o `yield` dentro de action aninhada perderia as células. */
+    /* Closure da funct geradora, quando ela captura variável de fora — sem
+     * isto o `yield` dentro de funct aninhada perderia as células. */
     PSClosure *cl;
 } PSGerador;
 
@@ -428,7 +428,7 @@ typedef struct {
  *
  * Não copia valor nenhum: guarda a FAIXA de globais que o módulo ocupa dentro
  * do array da VM, mais os nomes na mesma ordem. `mod.nome` é uma busca no
- * vetor de nomes e um índice somado — e uma action definida no módulo
+ * vetor de nomes e um índice somado — e uma funct definida no módulo
  * continua vendo as globais dele porque nunca saiu de lá. */
 typedef struct {
     Obj      obj;
@@ -584,7 +584,7 @@ typedef struct {
     char  *path;
     char **metodos; int nmetodos;   /* já em maiúsculas */
     char **auth;    int nauth;      /* origens permitidas; 0 = sem restrição */
-    Value  handler;                 /* a action crua */
+    Value  handler;                 /* a funct crua */
     Value  middleware;              /* V_NULL quando não há */
     Value  model;                   /* valida o corpo antes do handler; V_NULL = não valida */
 } JkRota;
@@ -912,8 +912,8 @@ static int model_campo_aceita(int32_t tipo, const Value *v);
 #define COMO_CLOSURE(v) ((PSClosure*)(v).as.obj)
 #define EH_CELULA(v) ((v).t == V_OBJ && (v).as.obj->type == OBJ_CELULA)
 #define COMO_CELULA(v) ((PSCelula*)(v).as.obj)
-/* "isto é uma action da linguagem?" — V_FUNC (sem captura) ou closure. */
-#define EH_ACTION(v) ((v).t == V_FUNC || EH_CLOSURE(v))
+/* "isto é uma funct da linguagem?" — V_FUNC (sem captura) ou closure. */
+#define EH_FUNCT(v) ((v).t == V_FUNC || EH_CLOSURE(v))
 #define PROTO_DE(v)  ((v).t == V_FUNC ? (v).as.proto : COMO_CLOSURE(v)->proto)
 #define COMO_CLASS(v)  ((PSClass*)(v).as.obj)
 #define COMO_INST(v)   ((PSInstance*)(v).as.obj)
@@ -1031,14 +1031,14 @@ typedef struct {
      * nome). NULL = nenhum parâmetro tem tipo. A conferência por chamada
      * deixa de varrer a tabela com strcmp. */
     int8_t   *param_cod;
-    char     *nome;        /* nome da action — usado na mensagem de erro */
+    char     *nome;        /* nome da funct— usado na mensagem de erro */
     const char *arquivo;   /* arquivo-fonte deste proto — pro traceback (ou NULL);
                             * é da tabela `VM.arquivos`, compartilhado */
     int       eh_gerador;  /* chamar cria gerador em vez de empilhar frame */
-    int       eh_async;    /* `async action` — chamar cria fibra+future */
+    int       eh_async;    /* `async funct` — chamar cria fibra+future */
     int       eh_static;   /* `@static` — chamável na Entity sem instância */
     /* Variáveis de fora capturadas (closure). NULL na quase totalidade dos
-     * protos: só action DECLARADA DENTRO de outra tem. */
+     * protos: só funct DECLARADA DENTRO de outra tem. */
     PSUpval  *upvals;
     int       nupvals;
     char    **upval_nomes;  /* nome de cada upvalue — só pra mensagem de erro */
@@ -1065,8 +1065,8 @@ typedef struct {
      * `__init__` retornar (ele devolve Null). Sem esta marca, o RETURN
      * sobrescrevia o objeto recém-criado com Null. */
     int devolve_self;
-    /* Closure em execução, se a action captura algo. É por aqui que o
-     * LOAD_UPVAL acha as células. NULL numa action comum. */
+    /* Closure em execução, se a funct captura algo. É por aqui que o
+     * LOAD_UPVAL acha as células. NULL numa funct comum. */
     PSClosure *cl;
 } Frame;
 
@@ -1282,7 +1282,7 @@ struct VM_ {
     /* Transporte da retomada de gerador. Não é estado durável: vale só entre
      * `ger_retoma` e o YIELD/RETURN que devolve o controle. */
     int      ger_ativo;
-    int      ger_cedeu;    /* 1 = parou num yield; 0 = a action terminou */
+    int      ger_cedeu;    /* 1 = parou num yield; 0 = a funct terminou */
     int32_t  ger_ip;
     int32_t  ger_npilha;
     Value   *ger_locais;
@@ -1798,11 +1798,11 @@ typedef struct { GcKind kind; size_t off; void (*fn)(VM *, Obj *);
                  size_t tam; void (*fin)(VM *, Obj *); } GcInfo;
 
 /* Caixa de uma variável capturada. Quem declara e quem captura apontam pra
- * MESMA célula, então uma escrita de dentro da action aninhada é vista de fora
+ * MESMA célula, então uma escrita de dentro da funct aninhada é vista de fora
  * (e vice-versa) — é o que separa closure de cópia. */
 typedef struct { Obj obj; Value v; } PSCelula;
 
-/* Uma action que captura: o proto mais o vetor de células. Continua sendo
+/* Uma funct que captura: o proto mais o vetor de células. Continua sendo
  * "uma função" pra todo o resto da VM — os pontos de chamada aceitam os dois. */
 struct PSClosure_ {
     Obj        obj;
@@ -1811,14 +1811,14 @@ struct PSClosure_ {
     PSCelula **ups;
 };
 
-/* `async action` — resultado pendente. A fibra que o produz vive no pool de
+/* `async funct` — resultado pendente. A fibra que o produz vive no pool de
  * fibras (marcada por fib_marca_gc enquanto `usada`); aqui marcamos só o valor
  * final. */
 typedef struct PSFuturo {
     Obj    obj;
-    struct Fiber *fib;      /* fibra que roda a action (NULL após concluir) */
+    struct Fiber *fib;      /* fibra que roda a funct(NULL após concluir) */
     int    done;
-    int    erro;           /* 1 = a action levantou */
+    int    erro;           /* 1 = a funct levantou */
     /* 1 = alguém já LEU esse erro (`await`, `gather`, `post`). Erro que ninguém
      * leu é anunciado no stderr no fim do programa: erro é erro, e sumir com
      * ele calado escondia falha de tarefa. */
@@ -10991,7 +10991,7 @@ static const MembroMod MOD_DATE[] = {
  * função nativa pode ceder o controle (fib_offload) e todo `await` roda o
  * escalonador — se outra fibra importar nesse meio, o `p` desta fibra vira
  * ponteiro pendurado e a próxima instrução SEGFAULTA (era o crash do
- * `import` dentro de `async action`). Guardar o ÍNDICE e reancorar depois
+ * `import` dentro de `async funct`). Guardar o ÍNDICE e reancorar depois
  * custa nada e fecha a classe inteira. */
 #define REANCORA(expr) do { \
     int _idx_p = (int)(p - vm->protos); \
@@ -11400,7 +11400,7 @@ static const MembroMod MOD_HASH[] = {
 
 /* Nome do tipo — o MESMO que `type()` devolve. Esta era uma segunda tabela,
  * e divergia da oficial em três pontos: tuple saía "tuple" (a linguagem
- * chama de "tup"), dict saía "json" e todo o resto (action, module, Entity,
+ * chama de "tup"), dict saía "json" e todo o resto (funct, module, Entity,
  * FileHandle…) caía num "objeto" em português. */
 static const char *by_nome(Value v)
 {
@@ -21311,7 +21311,7 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
  * poll loop (o escalonador) via swapcontext; outra requisição é atendida
  * enquanto isso; a fibra é retomada quando a condição fica pronta. A VM é
  * thread ÚNICA (o offload roda em thread, mas a fibra só volta quando ele
- * terminou): sem corrida, sem GC concorrente. `async action`/`await` também
+ * terminou): sem corrida, sem GC concorrente. `async funct`/`await` também
  * rodam aqui, em fibra FIB_ASYNC com future. Pool cheio ENFILEIRA a conexão
  * (back-pressure, drenado por http_drena_fila) — nunca serve inline. */
 /* Pool de fibras DINÂMICO: cresce sob demanda (não trava num teto). Cada fibra
@@ -21390,7 +21390,7 @@ typedef struct Fiber {
     Value      jk_req;
     FibStatus  status;
     int        usada;             /* slot do pool ocupado */
-    int        kind;              /* FIB_HTTP (handler) | FIB_ASYNC (async action) */
+    int        kind;              /* FIB_HTTP (handler) | FIB_ASYNC (async funct) */
     /* async: o alvo e os argumentos a rodar, e o future a resolver. Os
      * argumentos vão crus (a fibra liga quando roda; a chamada já validou), em
      * tups próprias: a fibra guardava só um proto e 32 posicionais, e por isso
@@ -21531,7 +21531,7 @@ static void fib_trampolim(void)
     Fiber *f = vm->fib_atual;
     ps_pilha_le(&f->pilha_base, &f->pilha_tam);   /* pras retomadas seguintes */
     if (f->kind == FIB_ASYNC) {
-        /* roda a async action no corpo da fibra; ao ceder num sleep/DB, o
+        /* roda a async funct nocorpo da fibra; ao ceder num sleep/DB, o
          * escalonador atende outras; ao terminar, resolve o future. Vai
          * direto ao frame: redespachar pelo valor veria `eh_async` de novo e
          * criaria outra fibra. */
@@ -22960,7 +22960,7 @@ static int fixa_raiz(VM *vm, Value v)
     return 0;
 }
 
-/* map/filter recebem uma action da Jinga e a chamam item a item — são
+/* map/filter recebem uma funct da Jinga e a chamam item a item — são
  * os primeiros builtins que voltam pra dentro da VM. */
 static int nativa_map(VM *vm, Value *args, int n, Value *out)
 {
@@ -23170,7 +23170,7 @@ static Builtin BUILTINS[] = {
 /* ── o laço de execução ─────────────────────────────────────────────────── */
 /* Roda `proto_inicial` a partir de uma BASE de frame/pilha/locais, em vez de
  * sempre do zero. É o que permite reentrar na VM: um builtin em C (`map`,
- * `filter`) chama uma action da Jinga sem pisar no frame de quem o
+ * `filter`) chama uma funct da Jinga sem pisar no frame de quem o
  * chamou — o laço aninhado trabalha acima da marca d'água publicada.
  *
  * `args`/`nargs_in` preenchem os primeiros locais; o resto nasce UNSET, igual
@@ -23199,7 +23199,7 @@ static int vm_executa(VM *vm, int proto_inicial, Value *resultado)
  * abaixo da marca e continua visível pro GC. */
 /* Teto de aridade do método nativo, lido do PRÓPRIO `params` da tabela.
  *
- * A linguagem já recusa `f(1,2,3)` numa action de zero parâmetros e
+ * A linguagem já recusa `f(1,2,3)` numa funct dezero parâmetros e
  * `"abc".upper(1)` — mas 95 métodos nativos não conferiam nada e engoliam
  * argumento a mais em silêncio (quase todo o socket,
  * mail, Jinker). Argumento sobrando é quase sempre erro de digitação ou de
@@ -24430,7 +24430,7 @@ static void dbg_passo(VM *vm, Proto *p, int ip, int fp, int sp, int locals_top)
  * vivo. Publicar no VM antes de coletar é o que torna as raízes visíveis
  * pro coletor. O closure do frame em execução não está em lugar nenhum da
  * pilha (o CALL já o consumiu): publicar `gc_fp`+`gc_cl` é o que impede o
- * coletor de liberar as células debaixo da action.
+ * coletor de liberar as células debaixo da funct.
  *
  * ONDE ele fica: rodava antes de TODA instrução (uma comparação por
  * instrução, no caminho mais quente que existe). Alocar nunca coleta —
@@ -25264,7 +25264,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         PS_CASE(CELL_SET_NAME) {
             /* Sempre grava na CÉLULA (e não na global, como o STORE_NAME):
              * o compilador só cria célula pra nome que ESTA função liga, então
-             * ele é local daqui — e a action aninhada tem que enxergar. */
+             * ele é local daqui — e a funct aninhada tem que enxergar. */
             Value li = stack[--sp];
             Value val = stack[--sp];
             Value c0 = vm->locals[lbase + li.as.i];
@@ -25421,7 +25421,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 goto chama_nomeada;
             }
             /* `P(nome="k")` instancia por nome: cria a instância aqui e
-             * segue pro `__init__` como se fosse uma action nomeada. Sem
+             * segue pro `__init__` como se fosse uma funct nomeada. Sem
              * isto, Entity com campos tipados (que ganha um `__init__`
              * gerado) só aceitava argumento posicional. Instanciação IGNORA
              * nome desconhecido — `P(z=1)` deixa o campo em Null e segue. */
@@ -25900,7 +25900,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             /* `return` de dentro de um `try` abandona o handler dele. Sem
              * esta limpeza o handler continuava registrado depois do frame
              * morrer, e o próximo erro — em qualquer lugar do programa —
-             * caía no `catch` de uma action que já tinha retornado. */
+             * caía no `catch` de uma funct que já tinha retornado. */
             while (nh > 0 && handlers[nh - 1].fp >= fp) nh--;
             if (fp == fp0) {
                 /* O frame de base nunca é de instanciação: a instância que
@@ -26859,7 +26859,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     goto erro_runtime;
                 }
                 r = funct;                      /* registrar não troca a funct */
-            } else if (EH_ACTION(dec) || EH_BOUND(dec) || dec.t == V_NATIVE
+            } else if (EH_FUNCT(dec) || EH_BOUND(dec) || dec.t == V_NATIVE
                        || EH_NATIVA(dec) || EH_METNAT(dec)) {
                 /* 2) chamável: envolve — o resultado passa a valer como a funct
                  * (na funct solta, o nome; no método, a entrada da tabela da
@@ -27105,7 +27105,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * aceitava QUALQUER método aqui e dropava o `self` calada: o
                  * erro saía no parâmetro seguinte ("faltando argumento:
                  * 'var'") e escondia a causa real, que é a falta da instância.
-                 * `@static action f(self, a)` continua valendo — quem manda é
+                 * `@static funct f(self, a)` continua valendo — quem manda é
                  * a marca do decorador, não o nome do 1º parâmetro. */
                 if (!vm->protos[mp].eh_static)
                     ERRO_TF(vm, "RuntimeError",
@@ -27560,7 +27560,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         }
 
         PS_CASE(YIELD) {
-            /* Só o frame BASE cede: um `yield` dentro de uma action chamada
+            /* Só o frame BASE cede: um `yield` dentro de uma funct chamada
              * pelo gerador não é do gerador. */
             if (fp != fp0 || !vm->ger_ativo) ERRO(vm, "yield fora de gerador");
             *resultado = stack[--sp];
@@ -28580,7 +28580,7 @@ static void reloca_codigo(int32_t *code, int ncode,
                 code[i + 1] += base_global;
                 break;
             /* MAKE_CLOSURE carrega índice de PROTO, igual ao MAKE_FUNCTION —
-             * a diferença é só ter upvalue. Ficar de fora daqui fazia a action
+             * a diferença é só ter upvalue. Ficar de fora daqui fazia a funct
              * aninhada de um módulo importado apontar pro protótipo de outra
              * função qualquer: o `poe()` de dentro de `um()` virava `um()`, e
              * o programa entrava em recursão infinita. */
@@ -29533,7 +29533,7 @@ static int estrela_modulo_de(void *vctx, const char *mod, const PSModuloAst **ou
 }
 
 /* Compila e RODA o módulo, e devolve o namespace sobre as globais dele.
- * Rodar é necessário: as `action` do módulo só existem depois que o corpo
+ * Rodar é necessário: as `funct` do módulo só existem depois que o corpo
  * dele executou. */
 static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
 {
@@ -29776,7 +29776,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     if (barra) *barra = '\0'; else snprintf(moddir, sizeof(moddir), "%s", ".");
     snprintf(vm->dir_modulo, sizeof(vm->dir_modulo), "%.511s", moddir);
 
-    /* roda o corpo: é o que faz as `action` e Entity dele existirem */
+    /* roda o corpo: é o que faz as `funct` e Entity dele existirem */
     Value ignora;
     int sp_salvo = vm->sp, lt_salvo = vm->locals_top, ft_salvo = vm->frame_topo;
     if (fixa_raiz(vm, MK_OBJ(m)) != 0) {
@@ -30208,7 +30208,7 @@ void ps_metadata_json(FILE *saida)
     }
     /* Builtins e palavras-chave: as MESMAS tabelas que a VM e o lexer usam.
      * O editor sugeria só o que estava no arquivo e nos imports — `post`,
-     * `len`, `action`, `if` nunca apareciam sem receptor, porque não havia
+     * `len`, `funct`, `if` nunca apareciam sem receptor, porque não havia
      * de onde tirá-los sem digitar uma lista. */
     fprintf(f, "\n },\n \"builtins\": [");
     for (size_t i = 0; i < sizeof(BUILTINS) / sizeof(BUILTINS[0]); i++) {

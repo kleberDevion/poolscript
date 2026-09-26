@@ -274,7 +274,7 @@ function apresentaTipo(doc, alvo) {
     const init = e.membros.find((m) => m.nome === '__init__');
     if (init) linhas.push('    funct __init__(self' + (init.params || []).map((p) => ', ' + rotuloParam(p)).join('') + ')');
     for (const m of e.membros) {
-      if (m.kind !== 'action' || m.nome === '__init__') continue;
+      if (m.kind !== 'funct' || m.nome === '__init__') continue;
       linhas.push('    ' + (m.privado ? 'private ' : '') + (m.estatica ? 'static ' : '') + (m.nonnull ? 'nonnull ' : '')
                   + (m.retorna ? m.retorna + ' ' : '') + 'funct ' + m.nome + '('
                   + (m.estatica ? '' : 'self' + ((m.params || []).length ? ', ' : ''))
@@ -283,7 +283,7 @@ function apresentaTipo(doc, alvo) {
     const cab = 'class ' + e.nome + (e.bases.length ? '(' + e.bases.join(', ') + ')' : '') + ' {';
     return '\n\n---\n\n```ps\n' + cab + '\n' + linhas.slice(0, 16).join('\n') + (linhas.length > 16 ? '\n    ...' : '')
          + '\n}\n```\n\nclass do arquivo · ' + e.membros.filter((m) => m.kind === 'campo').length + ' campos, '
-         + e.membros.filter((m) => m.kind === 'action').length + ' métodos · declarada na linha ' + (e.linha + 1);
+         + e.membros.filter((m) => m.kind === 'funct').length + ' métodos · declarada na linha ' + (e.linha + 1);
   }
   /* retorno com mais de um tipo (`os.run` → `int|str|Process`): cada lado,
    * compacto — quem escolhe o lado é o argumento da chamada */
@@ -722,7 +722,7 @@ function exportadosDe(ref, dirModulo, dirScript, pilha) {
   const nativo = nativoDe(mod, ref.aspas, pontos);
   if (nativo) {
     return META.modulos[nativo].map((m) => Object.assign(
-      { kind: m.kind === 'value' ? 'campo' : 'action', escopo: nativo, tipo: retornoVisivel(m.retorna) },
+      { kind: m.kind === 'value' ? 'campo' : 'funct', escopo: nativo, tipo: retornoVisivel(m.retorna) },
       m, { mod: nativo, membro: m.nome }));
   }
   const arq = arquivoDoImport(mod, dirModulo, ref.aspas, pontos, dirScript);
@@ -1074,7 +1074,7 @@ function retornoInferido(doc, m) {
     let achado = null, bate = true;
     const anda = (no) => {
       if (!no || typeof no !== 'object' || !bate) return;
-      if (no.k === 'ActionDecl' || no.k === 'LambdaExpr') return;   /* retorno de outra funct */
+      if (no.k === 'FunctDecl' || no.k === 'LambdaExpr') return;   /* retorno de outra funct */
       if (no.k === 'ReturnStmt') {
         const t = no.a ? tipoDaExpressao(doc, no.a, no.l - 1) : null;
         if (!t || t.tipo === 'universal') { bate = false; return; }
@@ -1099,7 +1099,7 @@ function retornoInferido(doc, m) {
  * continua respondendo (`universalChamado`). */
 function universalChamado(nome) {
   const u = (META.tipos.__universal__ || []).find((m) => m.nome === nome);
-  return u ? Object.assign({ kind: 'action', escopo: '__universal__' }, u) : null;
+  return u ? Object.assign({ kind: 'funct', escopo: '__universal__' }, u) : null;
 }
 
 /* A EXPRESSÃO que a atribuição mais recente antes da linha deu ao nome
@@ -1203,7 +1203,7 @@ function alvoDaCadeia(doc, partes, linha) {
      * ponto (`self.con.cursor().`) que só respondia `type` */
     if (!t && !(m.retorna || m.tipo)) {
       const inf = m.kind === 'campo' && m.valor ? tipoDaExpressao(doc, m.valor, m.linha)
-                : m.kind === 'action' && m.corpo ? retornoInferido(doc, m) : null;
+                : m.kind === 'funct' && m.corpo ? retornoInferido(doc, m) : null;
       if (inf) { alvo = inf; continue; }
     }
     /* `os.PoolFile(...)`: o membro é uma CLASSE do motor (retorno `type`)
@@ -1247,7 +1247,7 @@ function membrosDe(doc, alvo, linha) {
       for (const m of META.tipos[t] || []) {
         if (vistos.has(m.nome)) continue;
         vistos.add(m.nome);
-        juntos.push(Object.assign({ kind: 'action', escopo, de: t }, m));
+        juntos.push(Object.assign({ kind: 'funct', escopo, de: t }, m));
       }
     }
     return juntos;
@@ -1258,7 +1258,7 @@ function membrosDe(doc, alvo, linha) {
     const escopo = alvo.via
       ? [`${alvo.via.mod}/${alvo.via.membro}`, alvo.via.mod, alvo.nome]
       : alvo.nome;
-    return (META.tipos[alvo.nome] || []).map((m) => Object.assign({ kind: 'action', escopo }, m));
+    return (META.tipos[alvo.nome] || []).map((m) => Object.assign({ kind: 'funct', escopo }, m));
   }
   if (alvo.tipo === 'import') {
     const a = alvo.alvo;
@@ -1274,7 +1274,7 @@ function membrosDe(doc, alvo, linha) {
         const t = tipoEncadeado(m.retorna);
         if (t && META.tipos[t])
           return (META.tipos[t] || [])
-            .map((x) => Object.assign({ kind: 'action', escopo: [`${a.mod}/${a.membro}`, a.mod, t] }, x));
+            .map((x) => Object.assign({ kind: 'funct', escopo: [`${a.mod}/${a.membro}`, a.mod, t] }, x));
       }
       return [];
     }
@@ -2001,14 +2001,14 @@ function completa(doc, p) {
     parametro: CompletionItemKind.Variable,
     variavel: CompletionItemKind.Variable,
     'variavel do laco': CompletionItemKind.Variable,
-    action: CompletionItemKind.Function,
+    funct: CompletionItemKind.Function,
     class: CompletionItemKind.Class,
     model: CompletionItemKind.Struct,
     enum: CompletionItemKind.Enum,
   };
 
   for (const b of A.visiveisEm(idx, p.position.line)) {
-    const det = b.kind === 'action' ? assinatura({ nome: b.nome, params: b.params })
+    const det = b.kind === 'funct' ? assinatura({ nome: b.nome, params: b.params })
               : b.tipo ? `${b.tipo} ${b.nome}` : b.kind;
     poe(b.nome, KIND[b.kind] || CompletionItemKind.Variable, det,
         (b.kind === 'parametro' || b.kind === 'variavel' || b.kind === 'variavel do laco') ? '0' : '1');
@@ -2023,10 +2023,10 @@ function completa(doc, p) {
   if (ent) {
     for (const m of membrosDaEntidade(doc, ent.nome, true)) {
       if (!m.estatica) continue;
-      const det = m.kind === 'action'
+      const det = m.kind === 'funct'
         ? 'static ' + assinatura(m) + ' — de ' + m.de
         : 'static ' + (m.tipo ? m.tipo + ' ' : '') + m.nome + ' — de ' + m.de;
-      poe(m.nome, m.kind === 'action' ? CompletionItemKind.Method : CompletionItemKind.Field, det, '0');
+      poe(m.nome, m.kind === 'funct' ? CompletionItemKind.Method : CompletionItemKind.Field, det, '0');
     }
   }
 
@@ -2057,14 +2057,14 @@ function completa(doc, p) {
   for (let i = (idx.estrelas || []).length - 1; i >= 0; i--) {
     const est = idx.estrelas[i];
     for (const x of exportadosDe(est, dirDoc, dirDoc, new Set())) {
-      const funcao = x.kind === 'action' || x.kind === 'function';
+      const funcao = x.kind === 'funct' || x.kind === 'function';
       poe(x.nome, KIND_EXP[x.kind] || CompletionItemKind.Variable,
           (funcao ? assinatura({ nome: x.nome, params: x.params }) : x.kind) + ` · de ${est.mod} (*)`, '2');
     }
   }
   /* builtins e palavras-chave: as tabelas do motor (`--metadata` publica a
    * `BUILTINS[]` da VM e a `KEYWORDS[]` do lexer). Não apareciam — `post`,
-   * `len`, `action`, `if` nunca eram sugeridos sem receptor. */
+   * `len`, `funct`, `if` nunca eram sugeridos sem receptor. */
   for (const b of META.builtins || []) {
     poe(b.nome, CompletionItemKind.Function, 'builtin · ' + assinatura({ nome: b.nome, params: b.params }), '3');
   }
@@ -2148,8 +2148,8 @@ function nomeSob(doc, pos) {
  *                         ou a página do builtin (docs/builtins/post/post.md)
  *   variável           -> tipo do que foi declarado/construído (árvore +
  *                         `--metadata`) e a linha da declaração (árvore)
- *   parâmetro          -> a action dona, do índice de escopos (árvore)
- *   action do arquivo  -> `int async action f(...)` do nó ActionDecl, e o
+ *   parâmetro          -> a funct dona, do índice de escopos (árvore)
+ *   funct do arquivo -> `int async funct f(...)` do nó FunctDecl, e o
  *                         decorador em cima (DecoratorStmt), da árvore
  *   model do arquivo   -> os campos do ModelDecl, da árvore
  *   nome vindo de from -> assinatura do membro no `--metadata` e a página
@@ -2186,6 +2186,7 @@ function ehCabecaDeFunct(doc, tok) {
   const passa = ['public', 'private', 'async', 'str', 'int', 'flo', 'bool'];
   for (const t of toks) {
     if (t === tok) continue;
+    /* `funct`, e as grafias mortas que o lexer ainda reconhece pra acusar */
     if (t.t === 'KW' && ['funct', 'action', 'reaction'].includes(t.v)) return true;
     if (MODIFICADORES.includes(t.v) || (t.t === 'KW' && passa.includes(t.v))) continue;
     return false;
@@ -2291,14 +2292,14 @@ function hoverDeKeyword(doc, tok) {
   return null;
 }
 
-/* `@app.post(...)` em cima da action `nome` declarada na linha `linha`, ou "".
- * O DecoratorStmt embrulha a action num Block (`.b.lista[0]`). */
+/* `@app.post(...)` em cima da funct`nome` declarada na linha `linha`, ou "".
+ * O DecoratorStmt embrulha a funct num Block (`.b.lista[0]`). */
 function decoradorDe(idx, nome, linha) {
   let achado = '';
   const anda = (no) => {
     if (!no || typeof no !== 'object' || achado) return;
     if (no.k === 'DecoratorStmt' && no.a && no.b) {
-      const dentro = (no.b.lista || []).some((x) => x && x.k === 'ActionDecl' && x.texto === nome && x.l - 1 === linha);
+      const dentro = (no.b.lista || []).some((x) => x && x.k === 'FunctDecl' && x.texto === nome && x.l - 1 === linha);
       if (dentro) { achado = '@' + (no.a.lista || []).map((x) => x && x.texto).filter(Boolean).join('.'); return; }
     }
     A.cada(no, anda);
@@ -2329,7 +2330,7 @@ function hoverDoImportado(doc, alvo, nome, linha) {
   }
   if (def && def.arquivo) {
     const onde = '`' + path.basename(def.arquivo) + '` · linha ' + (def.linha + 1);
-    if (def.kind === 'action') {
+    if (def.kind === 'funct') {
       const cab = (def.estatica ? 'static ' : '') + (def.nonnull ? 'nonnull ' : '')
                 + (def.tipo ? def.tipo + ' ' : '') + (def.async ? 'async ' : '') + 'funct '
                 + assinatura({ nome: def.declarado || def.nome, params: def.params });
@@ -2478,7 +2479,7 @@ conexao.onHover((p) => {
     const mm = Object.assign({}, m);
     const nomeDe = (inf) => inf ? (inf.nome || (inf.nomes || []).join('|') || '') : '';
     if (mm.kind === 'campo' && !mm.tipo && mm.valor) mm.tipo = nomeDe(tipoDaExpressao(doc, mm.valor, mm.linha));
-    if (mm.kind === 'action' && !mm.retorna && mm.corpo) mm.retorna = nomeDe(retornoInferido(doc, mm)) || null;
+    if (mm.kind === 'funct' && !mm.retorna && mm.corpo) mm.retorna = nomeDe(retornoInferido(doc, mm)) || null;
     /* membro de enum: o valor escrito, e de qual enum é */
     const val = mm.kind === 'campo' && mm.valorTxt ? ' = ' + mm.valorTxt : '';
     const deEnum = alvo && alvo.tipo === 'enum' ? '\n\nmembro do enum `' + dono + '` · declarado na linha ' + (m.linha + 1) : '';
@@ -2512,11 +2513,11 @@ conexao.onHover((p) => {
     const st = ent && !ligacaoLocal(idx, nome, p.position.line) ? estaticoSolto(doc, ent, nome) : null;
     if (st) {
       const herd = st.de !== ent.nome ? `\n\nherdado de \`${st.de}\`` : '';
-      const cab = st.kind === 'action'
+      const cab = st.kind === 'funct'
         ? 'static ' + (st.nonnull ? 'nonnull ' : '') + (st.retorna ? st.retorna + ' ' : '') + 'funct ' + assinatura(st)
         : 'static ' + (st.tipo ? st.tipo + ' ' : '') + st.nome;
-      return md('```ps\n' + cab + '\n```\n\n' + (st.kind === 'action' ? 'método' : 'campo')
-                + ' static de `' + st.de + '` · declarad' + (st.kind === 'action' ? 'o' : 'o')
+      return md('```ps\n' + cab + '\n```\n\n' + (st.kind === 'funct' ? 'método' : 'campo')
+                + ' static de `' + st.de + '` · declarad' + (st.kind === 'funct' ? 'o' : 'o')
                 + ' na linha ' + (st.linha + 1) + ' — pelo nome solto ou `' + st.de + '.' + st.nome + '`' + herd);
     }
   }
@@ -2524,7 +2525,7 @@ conexao.onHover((p) => {
     if (b.nome !== nome) continue;
     const no = b.no || {};
     const onde = 'linha ' + (b.linha + 1);
-    if (b.kind === 'action') {
+    if (b.kind === 'funct') {
       /* a ordem dos modificadores é livre na linguagem; aqui sai a canônica
        * da doc (6.4): visibilidade, static/nonnull, tipo, async, funct */
       const cab = (b.estatica ? 'static ' : '') + (b.nonnull ? 'nonnull ' : '')
@@ -2726,7 +2727,7 @@ conexao.onDocumentSymbol((p) => {
       selectionRange: faixa(e.linha, e.coluna, e.nome.length),
       children: e.membros.map((m) => ({
         name: m.nome,
-        kind: m.kind === 'action' ? SymbolKind.Method : SymbolKind.Field,
+        kind: m.kind === 'funct' ? SymbolKind.Method : SymbolKind.Field,
         detail: (m.privado ? 'private ' : '') + (m.estatica ? 'static ' : '')
                 + (m.nonnull ? 'nonnull ' : '') + assinatura(m),
         range: faixa(m.linha, 0, m.coluna + m.nome.length),
@@ -2736,7 +2737,7 @@ conexao.onDocumentSymbol((p) => {
   }
   const mod = idx.escopos.find((s) => s.tipo === 'modulo');
   for (const b of (mod ? mod.liga : [])) {
-    if (b.kind !== 'action') continue;
+    if (b.kind !== 'funct') continue;
     out.push({
       name: b.nome,
       kind: SymbolKind.Function,
