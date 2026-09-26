@@ -1103,6 +1103,14 @@ typedef struct {
     int      passo_prof;      /* profundidade de frame de referência do passo */
     int      ult_linha;
     int      ult_proto;
+    int      ult_fp;
+    /* Linha em que cada slot de frame estava da última vez. Voltar de uma
+     * chamada cai de novo na linha do chamador, e isso não é CHEGAR nela:
+     * breakpoint e `next` só contam a próxima passagem de verdade (senão o
+     * `continue` parava duas vezes na mesma linha). Zerado quando o slot
+     * ganha um frame novo, porque a segunda chamada da mesma funct herdaria
+     * a linha da primeira e o breakpoint dela sumiria. */
+    int     *linha_fp, *proto_fp;
     int      seq;             /* numeração das mensagens que o motor envia */
     struct { char *arquivo; int32_t linha; } *bps;
     int      nbps;
@@ -23777,6 +23785,8 @@ static void dbg_fecha(VM *vm)
     for (int i = 0; i < vm->dbg.nbps; i++) free(vm->dbg.bps[i].arquivo);
     free(vm->dbg.bps);
     free(vm->dbg.arestas);
+    free(vm->dbg.linha_fp); free(vm->dbg.proto_fp);
+    vm->dbg.linha_fp = vm->dbg.proto_fp = NULL;
     vm->dbg.bps = NULL; vm->dbg.nbps = 0;
     vm->dbg.arestas = NULL; vm->dbg.narestas = vm->dbg.cap_arestas = 0;
     vm->dbg.ativo = 0;
@@ -24244,21 +24254,36 @@ static void dbg_passo(VM *vm, Proto *p, int ip, int fp, int sp, int locals_top)
     if (linha <= 0) return;
 
     int proto_id = (int)(p - vm->protos);
-    if (proto_id == g->ult_proto && linha == g->ult_linha) return;  /* mesma linha */
+    if (proto_id == g->ult_proto && linha == g->ult_linha && fp == g->ult_fp) return;  /* mesma linha */
 
     if (g->ult_linha > 0)
         dbg_aresta(vm, g->ult_proto, g->ult_linha, proto_id, linha);
+
+    /* `chegou`: esta linha é nova PRA ESTE FRAME. Depois de `r = soma(x, y)`
+     * chamar, o retorno executa o resto da linha 17 no frame do chamador — a
+     * mesma linha em que ele já estava, não uma passagem nova. Slot que ganhou
+     * frame novo (fp subiu) começa do zero. */
+    int chegou = 1;
+    if (g->linha_fp && fp >= 0 && fp < MAX_FRAMES) {
+        for (int i = g->ult_fp + 1; i <= fp; i++) { g->linha_fp[i] = 0; g->proto_fp[i] = -1; }
+        chegou = (g->linha_fp[fp] != linha || g->proto_fp[fp] != proto_id);
+        g->linha_fp[fp] = linha;
+        g->proto_fp[fp] = proto_id;
+    }
+    g->ult_proto = proto_id;
+    g->ult_linha = linha;
+    g->ult_fp    = fp;
 
     int parar = 0;
     const char *motivo = "step";
     if (g->modo == DBG_PAUSAR) { parar = 1; motivo = "pause"; }
     else if (g->modo == DBG_PASSO_DENTRO) parar = 1;
-    else if (g->modo == DBG_PASSO_SOBRE && fp <= g->passo_prof) parar = 1;
+    /* `next`: próxima linha do MESMO frame, ou o chamador quando este frame
+     * acabou (aí é a linha da chamada mesmo, como o `stepOut`). */
+    else if (g->modo == DBG_PASSO_SOBRE
+             && (fp < g->passo_prof || (fp == g->passo_prof && chegou))) parar = 1;
     else if (g->modo == DBG_PASSO_FORA  && fp <  g->passo_prof) parar = 1;
-    if (!parar && dbg_bate_bp(vm, dbg_arquivo(p), linha)) { parar = 1; motivo = "breakpoint"; }
-
-    g->ult_proto = proto_id;
-    g->ult_linha = linha;
+    if (!parar && chegou && dbg_bate_bp(vm, dbg_arquivo(p), linha)) { parar = 1; motivo = "breakpoint"; }
     if (!parar) return;
 
     /* Publica o estado antes de ceder: o atendimento cria objetos (o pedido
@@ -30604,6 +30629,12 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         vm.dbg.quebrou_proto = vm.dbg.quebrou_linha = -1;
         if (dbg_conecta(&vm, g_debug_porta) == 0) {
             vm.dbg.ativo = 1;
+            vm.dbg.linha_fp = calloc(MAX_FRAMES, sizeof(int));
+            vm.dbg.proto_fp = calloc(MAX_FRAMES, sizeof(int));
+            if (!vm.dbg.linha_fp || !vm.dbg.proto_fp) {   /* sem memória: sem a memória por frame */
+                free(vm.dbg.linha_fp); free(vm.dbg.proto_fp);
+                vm.dbg.linha_fp = vm.dbg.proto_fp = NULL;
+            }
             vm.frames[0].proto = 0;
             vm.frames[0].ip    = 2;
             dbg_serve(&vm, 0);                 /* até o `configurationDone` */

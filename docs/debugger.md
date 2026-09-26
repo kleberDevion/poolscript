@@ -57,7 +57,10 @@ Só `127.0.0.1`: a porta aceita comandos que controlam a execução de código.
   comando; exigir igualdade literal fazia todo ponto ser ignorado em silêncio.
 - **Passo a passo**: `next` (por cima), `stepIn` (entrando), `stepOut` (até
   voltar), `continue`, `pause`. O passo anda de **linha em linha**, não de
-  instrução em instrução.
+  instrução em instrução. Uma linha que chama funct (`r = soma(x, y)`) para
+  **uma vez** por passagem: voltar da chamada cai de novo nela, e nem o
+  breakpoint nem o `next` contam isso como passagem nova — o `next` segue
+  pra linha seguinte; só o `stepOut` para ali, que é o que ele promete.
 - **Pilha de chamadas** com nome da função e linha de cada quadro.
 - **Variáveis**: os locais **vivos naquele ponto** e os globais.
 - **Parada automática na exceção não capturada**, em cima da linha que quebrou

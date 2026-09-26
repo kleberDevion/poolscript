@@ -1,0 +1,14 @@
+# Programa-alvo do teste do depurador (teste/depurador.pr), sessão do laço.
+#
+# Como o alvo_debug.pr, cada linha é referenciada por NÚMERO no teste: o
+# breakpoint numa linha que CHAMA funct (linha 12) para uma vez por passagem,
+# não de novo quando a chamada volta; e a funct chamada três vezes para três
+# vezes no breakpoint dela (linha 8).
+funct f(n) {
+    return n + 1        # linha 8
+}
+i = 0
+while i < 3 {
+    i = f(i)            # linha 12
+}
+post("fim:", i)

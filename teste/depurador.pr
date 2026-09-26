@@ -115,6 +115,47 @@ funct espera_evento(sock, nome) {
     }
 }
 
+# Como `espera_evento`, mas aceita qualquer um de uma lista de nomes: depois
+# de um `continue` o que chega pode ser `stopped` OU `terminated`, e esperar
+# só por `stopped` quando o programa acabou travaria o teste.
+funct espera_um_de(sock, nomes) {
+    for each e in eventos {
+        if e["event"] in nomes {
+            return e
+        }
+    }
+    while True {
+        m = le_mensagem(sock)
+        if m == Null {
+            return Null
+        }
+        if m["type"] == "event" {
+            if m["event"] in nomes {
+                return m
+            }
+            addEnd(eventos, m)
+        }
+    }
+}
+
+funct conecta(porta) {
+    s = Null
+    tentativa = 0
+    while tentativa < 50 and s == Null {
+        try {
+            s = sockets.create_connection(("127.0.0.1", porta), 1)
+        } catch (e) {
+            sleep(0.1)
+            tentativa = tentativa + 1
+        }
+    }
+    if s == Null {
+        post("FALHOU: nao consegui conectar no depurador na porta", porta)
+        sys.exit(1)
+    }
+    return s
+}
+
 proximo_seq = 0
 
 funct pede(sock, comando, argumentos) {
@@ -384,6 +425,98 @@ if marcado == 1 {
     addEnd(falhas, "o grafico marcou " + str(marcado) + " no(s) como quebrado, esperava 1")
 }
 
+pede(sock, "disconnect", {})
+sock.close()
+
+# ── terceira sessão: linha com chamada para UMA vez ─────────────────────────
+# `r = soma(x, y)` (17) e `d = dobra(r)` (18) chamam funct. Voltar da chamada
+# cai de novo na linha do chamador, e isso não é chegar nela: o breakpoint e o
+# `next` só param na próxima passagem de verdade. Antes, parava duas vezes na
+# mesma linha e o editor mostrava o "Continuar" como se não tivesse funcionado.
+PORTA3 = 47123
+eventos = []
+proximo_seq = 0
+post("")
+post("terceira sessao: breakpoint e next em linha com chamada")
+os.run("'" + sys.executable + "' --debug " + str(PORTA3) + " " + ALVO)
+sock = conecta(PORTA3)
+pede(sock, "initialize", { "adapterID": "jinga" })
+pede(sock, "setBreakpoints", { "source": { "path": ALVO },
+                               "breakpoints": [ { "line": 17 }, { "line": 18 } ] })
+pede(sock, "configurationDone", {})
+
+ev = espera_evento(sock, "stopped")
+r = pede(sock, "stackTrace", { "threadId": 1 })
+if ev != Null and ev["body"]["reason"] == "breakpoint" and r["body"]["stackFrames"][0]["line"] == 17 {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "terceira sessao: nao parou no breakpoint da linha 17")
+}
+
+# `next` na 17 entra em soma(), volta pra 17 e tem que seguir até a 18
+eventos = []
+pede(sock, "next", { "threadId": 1 })
+ev = espera_evento(sock, "stopped")
+r = pede(sock, "stackTrace", { "threadId": 1 })
+if r["body"]["stackFrames"][0]["line"] == 18 {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "o `next` na linha 17 parou na linha "
+                   + str(r["body"]["stackFrames"][0]["line"]) + ", esperava 18")
+}
+
+# `continue` na 18: dobra() volta pra 18 e o breakpoint NAO para de novo
+eventos = []
+pede(sock, "continue", { "threadId": 1 })
+ev = espera_um_de(sock, ["stopped", "terminated"])
+if ev != Null and ev["event"] == "terminated" {
+    passou = passou + 1
+} else {
+    linha_de_novo = "?"
+    if ev != Null {
+        r = pede(sock, "stackTrace", { "threadId": 1 })
+        linha_de_novo = str(r["body"]["stackFrames"][0]["line"])
+    }
+    addEnd(falhas, "depois do `continue` na linha 18 parou de novo (linha "
+                   + linha_de_novo + "), esperava `terminated`")
+}
+pede(sock, "disconnect", {})
+sock.close()
+
+# ── quarta sessão: laço chamando a mesma funct três vezes ───────────────────
+# O slot de frame é reaproveitado a cada chamada. A memória de linha por frame
+# tem que ser zerada na entrada da chamada, senão a segunda chamada de f()
+# herdaria a linha da primeira e o breakpoint dela não pararia.
+PORTA4 = 47125
+ALVO4 = "teste/alvo_debug_laco.pr"
+eventos = []
+proximo_seq = 0
+post("")
+post("quarta sessao: laco chamando funct tres vezes")
+os.run("'" + sys.executable + "' --debug " + str(PORTA4) + " " + ALVO4)
+sock = conecta(PORTA4)
+pede(sock, "initialize", { "adapterID": "jinga" })
+pede(sock, "setBreakpoints", { "source": { "path": ALVO4 },
+                               "breakpoints": [ { "line": 8 }, { "line": 12 } ] })
+pede(sock, "configurationDone", {})
+paradas = []
+vez = 0
+while vez < 20 {
+    vez = vez + 1
+    ev = espera_um_de(sock, ["stopped", "terminated"])
+    if ev == Null or ev["event"] == "terminated" {
+        break
+    }
+    r = pede(sock, "stackTrace", { "threadId": 1 })
+    addEnd(paradas, r["body"]["stackFrames"][0]["line"])
+    eventos = []
+    pede(sock, "continue", { "threadId": 1 })
+}
+if paradas == [12, 8, 12, 8, 12, 8] {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "laco: paradas em " + str(paradas) + ", esperava [12, 8, 12, 8, 12, 8]")
+}
 pede(sock, "disconnect", {})
 sock.close()
 

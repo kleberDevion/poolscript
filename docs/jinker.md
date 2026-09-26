@@ -304,7 +304,7 @@ funct verificar() {
             "msg": "Sem permissão"
         }), 401
     }
-    continue   # libera pra entrar na rota
+    pass   # libera pra entrar na rota
 }
 ```
 
@@ -691,7 +691,7 @@ funct auth() {
     if (not payload) {
         return jsonify({"msg": "token inválido"}), 401
     }
-    continue
+    pass   # libera pra entrar na rota
 }
 
 # Página principal

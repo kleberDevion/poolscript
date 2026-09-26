@@ -53,7 +53,7 @@ funct auth() {
     if (dados is Null) {
         return jsonify({"erro": "não autorizado"}), 401
     }
-    continue    # token válido → libera a rota
+    pass    # token válido → libera a rota
 }
 ```
 
