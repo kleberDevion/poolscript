@@ -369,6 +369,10 @@ faz — são detalhadas na parte de bibliotecas.)
   e `if true { pass }` roda. Bloco **vazio** (`{ }`) também é aceito, em `if`,
   `while`, `for each` e no corpo de uma `funct`; a funct de corpo vazio devolve
   `Null`. O `pass` serve para deixar o lugar marcado à vista.
+- Nome lido que não existe é `NameError` **antes de rodar**, e a frase sugere
+  o nome parecido que existe no escopo, no arquivo ou entre os que a
+  linguagem liga sozinha: `valor = 1` e depois `vlaor` dá
+  `NameError: name 'vlaor' is not defined. Did you mean: 'valor'?`.
 - Nomes seguem as regras léxicas da seção 1.4. A caixa MAIÚSCULA é
   **convenção** para libs/classes/tipos de erro, mas não é reserva: um nome
   maiúsculo pode ser variável comum (`MAX = 100`, `str NOME = "ana"`).

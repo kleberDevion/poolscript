@@ -2312,7 +2312,32 @@ static void tp_confere_nome(C *c, Unidade *u, const char *nome, PSNode *onde)
     if (c->entity_no && campo_estatico_da_classe(c, nome)) return;
     if (ps_nome_pre_ligado(nome) || ps_tipo_info(nome)) return;
     if (c->usa_jinker && (!strcmp(nome, "request") || !strcmp(nome, "channel"))) return;
-    terro(c, onde, "NameError", "name '%s' is not defined", nome);
+    /* O nome parecido que EXISTE aqui — do escopo, do arquivo ou dos que a VM
+     * liga sozinha (`__name` -> `__name__`, `vlaor` -> `valor`). Sem isto a
+     * frase so dizia que nao existe, e o erro de digitacao ficava por conta de
+     * quem le. */
+    const char *dica = NULL;
+    {
+        int32_t tot = c->nligados_mod + 1;
+        for (Unidade *q = u; q; q = q->pai) tot += q->nligados;
+        const char **cands = malloc(sizeof(char *) * (size_t)tot);
+        if (cands) {
+            int n = 0;
+            for (Unidade *q = u; q; q = q->pai)
+                for (int32_t i = 0; i < q->nligados; i++) cands[n++] = q->ligados[i];
+            for (int32_t i = 0; i < c->nligados_mod; i++) cands[n++] = c->ligados_mod[i];
+            const char *pre = ps_sugere_pre_ligado(nome);
+            if (pre) cands[n++] = pre;
+            dica = ps_sugere_nome(nome, cands, n);
+            /* a dica aponta pra memoria de quem vive ate o fim da compilacao
+             * (listas de nomes / tabela da VM); o vetor em si morre aqui */
+            free(cands);
+        }
+    }
+    if (dica)
+        terro(c, onde, "NameError", "name '%s' is not defined. Did you mean: '%s'?", nome, dica);
+    else
+        terro(c, onde, "NameError", "name '%s' is not defined", nome);
 }
 
 /* O programa liga `nome` a alguma coisa? Slot reservado só pela leitura

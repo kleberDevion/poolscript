@@ -30034,6 +30034,21 @@ const char *ps_sugere_nome(const char *alvo, const char **nomes, int n)
     return (alvo && nomes && n > 0) ? sugere_nome(alvo, nomes, n) : NULL;
 }
 
+/* O nome que a VM liga sozinha (builtin, `__name__`, `PoolFile`, `byte`)
+ * mais parecido com `nome` — o "Did you mean" do NameError do checador.
+ * NULL quando nenhum chega perto. */
+const char *ps_sugere_pre_ligado(const char *nome)
+{
+    if (!nome) return NULL;
+    const char *cands[NBUILTINS + 3];
+    int n = 0;
+    for (int b = 0; b < NBUILTINS; b++) cands[n++] = BUILTINS[b].nome;
+    cands[n++] = "__name__";
+    cands[n++] = "PoolFile";
+    cands[n++] = "byte";
+    return sugere_nome(nome, cands, n);
+}
+
 int ps_nome_pre_ligado(const char *nome)
 {
     if (!nome) return 0;

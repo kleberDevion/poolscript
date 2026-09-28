@@ -47,5 +47,6 @@ const char *ps_nativo_sugestao(const char *mod, const char *membro);
  * ou NULL — a régua única do "Did you mean", pro checador aplicar aos
  * membros de uma classe do arquivo. */
 const char *ps_sugere_nome(const char *alvo, const char **nomes, int n);
+const char *ps_sugere_pre_ligado(const char *nome);
 
 #endif

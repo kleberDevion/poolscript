@@ -4168,6 +4168,13 @@ const Caso CASOS_LINGUAGEM[] = {
   "Entity A {\n    funct __init__(self) {\n        private str x = \"a\"\n    }\n    funct le(self) {\n        return self.x\n    }\n}\npost(A().le())\n",
   "a", NULL, 0 },
 
+/* ── NameError com "Did you mean" antes de rodar (2026-09-28) ─────────────
+ * O checador so dizia que o nome nao existe; agora sugere o nome parecido
+ * que existe no escopo, no arquivo ou entre os que a VM liga sozinha — a
+ * mesma regra de distancia do "Did you mean" do AttributeError. */
+{ "NameError antes de rodar sugere o nome parecido que existe",
+  "valor = 1\nif vlaor == 1 {\n    post(1)\n}\n", "", "NameError: name 'vlaor' is not defined. Did you mean: 'valor'?", 2 },
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },
