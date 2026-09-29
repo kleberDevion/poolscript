@@ -265,11 +265,11 @@ static const char *confere(const Caso *c, Resultado *r)
         return motivo;
     }
     if (r->sinal) {
+        /* o nome pelo próprio sistema: o número muda de um pro outro (10 é
+         * SIGUSR1 no Linux e SIGBUS no macOS) */
+        const char *nome = strsignal(r->sinal);
         snprintf(motivo, sizeof motivo,
-                 "a VM MORREU com sinal %d (%s)", r->sinal,
-                 r->sinal == SIGSEGV ? "segfault" :
-                 r->sinal == SIGFPE  ? "erro aritmético" :
-                 r->sinal == SIGABRT ? "abort" : "?");
+                 "a VM MORREU com sinal %d (%s)", r->sinal, nome ? nome : "?");
         return motivo;
     }
     sem_fim_de_linha(r->saida);

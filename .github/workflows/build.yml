@@ -65,7 +65,10 @@ jobs:
       - name: versao
         run: scripts/ci_anota.sh sh -c "./pool --version && ./pool -e 'import sys; post(sys.platform())'"
       - name: suite
-        run: scripts/ci_anota.sh sh -c "./testar && JINGA_JIT=0 ./testar"
+        run: scripts/ci_anota.sh ./testar
+      - name: suite sem o codigo de maquina
+        if: always()
+        run: JINGA_JIT=0 scripts/ci_anota.sh ./testar
       - name: portao inteiro
         run: |
           (cd editor/vscode && npm install --omit=dev --no-audit --no-fund)

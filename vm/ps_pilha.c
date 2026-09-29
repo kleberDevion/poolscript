@@ -16,6 +16,15 @@
 __thread const char *ps_pilha_base = NULL;
 __thread size_t ps_pilha_tam = 0;
 
+/* O MAIOR degrau já visto entre duas conferências seguidas (o quanto a pilha
+ * desceu de uma pra outra) e onde foi a última. A margem fixa foi medida com o
+ * gcc, que põe 12 KB no quadro do laço da VM; o clang põe 23 KB (medido com
+ * `-fstack-usage`) e o clang da Apple estourava a página de guarda da fibra
+ * antes do RecursionError. A folga passa a ser pelo menos DOIS degraus reais
+ * deste binário, seja qual for o compilador. */
+__thread const char *ps_pilha_ultimo = NULL;
+__thread size_t ps_pilha_passo = 0;
+
 /* Margem: o que tem que sobrar embaixo, PROPORCIONAL ao tamanho da pilha.
  *
  * Margem fixa não serve, e custou uma rodada aqui: com 24 KB fixos a recursão
@@ -47,6 +56,7 @@ void ps_pilha_marca(size_t tam)
      * compilava, não avisava nada em execução, e simplesmente NÃO PROTEGIA. */
     ps_pilha_base = (const char *)__builtin_frame_address(0);
     ps_pilha_tam = tam;
+    ps_pilha_ultimo = NULL;          /* outra pilha: o degrau recomeça dela */
 }
 
 /* Entrada do processo: a pilha é a do sistema. `getrlimit` dá o tamanho real
@@ -67,9 +77,19 @@ void ps_pilha_marca_processo(void)
 int ps_pilha_apertada(void)
 {
     if (!ps_pilha_base || ps_pilha_tam == 0) return 0;
-    ptrdiff_t usado = ps_pilha_base - (const char *)__builtin_frame_address(0);
+    const char *aqui = (const char *)__builtin_frame_address(0);
+    /* degrau: só descida, e só dentro da mesma pilha (a troca de fibra pula
+     * pra outro mapeamento — distância que não é quadro nenhum) */
+    if (ps_pilha_ultimo && aqui < ps_pilha_ultimo) {
+        size_t d = (size_t)(ps_pilha_ultimo - aqui);
+        if (d > ps_pilha_passo && d < ps_pilha_tam / 2) ps_pilha_passo = d;
+    }
+    ps_pilha_ultimo = aqui;
+    ptrdiff_t usado = ps_pilha_base - aqui;
     if (usado < 0) usado = -usado;          /* pilha que cresce pra cima */
-    return (size_t)usado + ps_pilha_margem(ps_pilha_tam) >= ps_pilha_tam;
+    size_t margem = ps_pilha_margem(ps_pilha_tam);
+    if (margem < 2 * ps_pilha_passo) margem = 2 * ps_pilha_passo;
+    return (size_t)usado + margem >= ps_pilha_tam;
 }
 
 void ps_pilha_le(const char **base, size_t *tam)
@@ -82,4 +102,5 @@ void ps_pilha_repoe(const char *base, size_t tam)
 {
     ps_pilha_base = base;
     ps_pilha_tam  = tam;
+    ps_pilha_ultimo = NULL;
 }

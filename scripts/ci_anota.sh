@@ -15,8 +15,11 @@ rc=${PIPESTATUS[0]}
 if [ "$rc" -ne 0 ]; then
     # uma anotação só, com as linhas separadas por %0A (a quebra que o
     # GitHub entende dentro de um comando de workflow)
-    corpo=$( { echo "\$ $*"; tail -n 80 "$LOG"; } | sed -e 's/%/%25/g' -e 's/\r//g' \
-             | awk '{printf "%s%%0A", $0}')
+    # todas as falhas da suíte (cada uma com o contexto) e o fim da saída
+    corpo=$( { echo "\$ $*";
+               grep -E -A5 "FALHOU|MORREU|TRAVOU|JA FUNCIONA|error:|Error [0-9]" "$LOG" | head -n 400;
+               echo "---- fim da saida ----"; tail -n 25 "$LOG"; } \
+             | sed -e 's/%/%25/g' -e 's/\r//g' | awk '{printf "%s%%0A", $0}')
     echo "::error title=passo falhou::$corpo"
 fi
 rm -f "$LOG"
