@@ -25,7 +25,7 @@ TMP = "/tmp/ps_gera_robustez"
 # ordem dos casos no arquivo gerado, e tem que ser estável entre rodadas.
 ALVO = [
     ["str", "\"abc\""], ["list", "[1, 2]"], ["dict", "{\"a\": 1}"], ["tup", "(1, 2)"],
-    ["bytes", "\"oi\".encode()"], ["Pattern", "regex.compile(\"a\")"],
+    ["byte", "\"oi\".encode()"], ["Pattern", "regex.compile(\"a\")"],
     ["MailMessage", "mail.MailMessage()"], ["MailServer", "mail.MailServer()"],
     ["MailReader", "mail.MailReader()"], ["Jinker", "jinker.Jinker(name=\"r\")"],
     ["JinkerResponse", "jinker.JinkerResponse()"], ["QRImage", "qrcode.make(\"x\")"],
@@ -38,13 +38,42 @@ IMPORTS = "import os\nimport regex\nimport mail\nimport jinker\nimport qrcode\ni
 # "texto" como caminho salvou um PNG na raiz do repo. Cada tipo roda numa pasta
 # própria e VAZIA — se sobrar arquivo de uma rodada anterior, um
 # `attach("texto")` que antes errava passa a achar o arquivo e o caso vira
-# intermitente.
+# intermitente. A pasta é RELATIVA e criada SEM `exist_ok`: nasce vazia por
+# construção, dentro da pasta nova que o runner dá a cada caso (e que este
+# gerador também dá a cada programa que roda). Antes era uma pasta fixa em
+# /tmp esvaziada por `rm -rf` pelo shell, que no Windows nem apontava pra ela.
 funct prologo(tipo) {
-    d = "/tmp/ps_robustez_" + tipo
-    p = "os.cmd(\"rm -rf " + d + "\")\n"
-    p = p + "os.mkdir(\"" + d + "\", exist_ok=true)\n"
+    d = "ps_robustez_" + tipo
+    p = "os.mkdir(\"" + d + "\")\n"
     p = p + "os.chdir(\"" + d + "\")\n"
     return p
+}
+
+# Roda `fonte` numa pasta NOVA (a mesma garantia que o runner dá a cada caso)
+# e devolve [rc, stdout, stderr]. Sem shell: `os.run` com lista.
+funct roda_em_pasta_nova(fonte, pasta) {
+    if os.exists(pasta) {
+        os.rmdir(pasta, force=true)
+    }
+    os.mkdir(pasta)
+    volta = os.cwd()
+    os.chdir(pasta)
+    p = os.run([sys.executable, fonte], capture="live")
+    saida = ""
+    pedaco = p.read(65536)
+    while pedaco != "" {
+        saida = saida + pedaco
+        pedaco = p.read(65536)
+    }
+    erro = ""
+    pedaco = p.read_err(65536)
+    while pedaco != "" {
+        erro = erro + pedaco
+        pedaco = p.read_err(65536)
+    }
+    rc = p.wait()
+    os.chdir(volta)
+    return [rc, saida, erro]
 }
 
 
@@ -175,8 +204,7 @@ funct cstr(s) {
 
 if __name__ == "main" {
     os.mkdir(TMP, exist_ok=true)
-    os.cmd("./pool --metadata > " + TMP + "/meta.json")
-    meta = json.parse(open(TMP + "/meta.json").read())
+    meta = json.parse(os.run([sys.executable, "--metadata"], capture=true))
 
     out = ["/*",
            " * GERADO por teste/geradores/robustez.pr — nao edite na mao.",
@@ -199,8 +227,11 @@ if __name__ == "main" {
         recv = par[1]
         fora = chamadas(meta, tipo, recv)
         if len(fora) == 0 {
-            post("  ", tipo, "sem metodo — pulado")
-            continue
+            # Tipo sem método no --metadata não pode sumir calado da suíte:
+            # regerar apagaria o caso dele (aconteceu com `bytes`, que o
+            # motor passou a chamar de `byte`).
+            post("ERRO:", tipo, "sem metodo no --metadata (o nome do tipo mudou?)")
+            sys.exit(1)
         }
         # 1ª passada: SONDA. Roda com a dívida vazia só pra colher quem aceita
         # calado hoje — é essa lista que vira a dívida embutida no caso.
@@ -209,12 +240,12 @@ if __name__ == "main" {
         using open(fonte, "w") as f {
             f.write(sonda)
         }
-        os.cmd("./pool " + fonte + " > " + TMP + "/out 2> " + TMP + "/err; echo $? > " + TMP + "/rc")
-        saida = open(TMP + "/out").read().strip()
-        rc = int(open(TMP + "/rc").read().strip())
+        r = roda_em_pasta_nova(fonte, TMP + "/pasta_" + tipo)
+        rc = r[0]
+        saida = r[1].strip()
         if rc != 0 {
             post("ERRO gerando", tipo, "rc =", rc)
-            post(open(TMP + "/err").read()[0:600])
+            post(r[2][0:600])
             sys.exit(1)
         }
         divida = []
@@ -235,8 +266,7 @@ if __name__ == "main" {
         using open(fonte, "w") as f {
             f.write(src)
         }
-        os.cmd("./pool " + fonte + " > " + TMP + "/out2 2> " + TMP + "/err2; echo $? > " + TMP + "/rc2")
-        conf = open(TMP + "/out2").read().strip()
+        conf = roda_em_pasta_nova(fonte, TMP + "/pasta_" + tipo)[1].strip()
         if conf != "ok" {
             post("ERRO: o caso de", tipo, "nao ficou verde com a propria divida:", conf)
             sys.exit(1)

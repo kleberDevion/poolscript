@@ -53,7 +53,14 @@ const Caso CASOS_LIBS[] = {
   "os.writeFile(\"ps93.bin\", \"ORIGINAL\")\n"
   "try { request.get(\"http://127.0.0.1:1/x\", save=\"ps93.bin\") } catch (e) { pass }\n"
   "post(os.readFile(\"ps93.bin\"))\n"
-  "post(os.cmd(\"ls -a | grep -c ps_resposta_\", true))\n",
+  /* conta pelo os.ls, que ve arquivo oculto, sem depender de ls e grep */
+  "sobras = 0\n"
+  "for each item in os.ls(\".\") {\n"
+  "    if \"ps_resposta_\" in item[\"name\"] {\n"
+  "        sobras = sobras + 1\n"
+  "    }\n"
+  "}\n"
+  "post(sobras)\n",
   "ORIGINAL\n0", NULL, 0 },
 { "save= com conexao recusada devolve NetworkError, sem crash",
   "import request\nimport os\n"
@@ -72,7 +79,13 @@ const Caso CASOS_LIBS[] = {
 { "sem save=, conexao recusada nao deixa arquivo do motor na pasta",
   "import os\nimport request\n"
   "try { request.get(\"http://127.0.0.1:1/x\") } catch (e) { pass }\n"
-  "post(os.cmd(\"ls -a . | grep -c ps_resposta_\", true).strip())\n",
+  "sobras = 0\n"
+  "for each item in os.ls(\".\") {\n"
+  "    if \"ps_resposta_\" in item[\"name\"] {\n"
+  "        sobras = sobras + 1\n"
+  "    }\n"
+  "}\n"
+  "post(sobras)\n",
   "0", NULL, 0 },
 
 
@@ -200,7 +213,8 @@ const Caso CASOS_LIBS[] = {
 { "pool --check sai != 0 quando o arquivo nao compila",
   /* I16: saía 0 SEMPRE, então `pool --check f.pr || exit 1` nunca disparava —
    * e o --check roda no editor a cada tecla e no `psl install` de pacote de
-   * terceiro. */
+   * terceiro. Sem shell: o código vem do `wait()`, e a saída é drenada e
+   * descartada (o `> /dev/null` de antes, que o cmd.exe não conhece). */
   "import os\n"
   "import sys\n"
   "using open(\"quebrado.pr\", \"w\") as f {\n"
@@ -209,9 +223,19 @@ const Caso CASOS_LIBS[] = {
   "using open(\"bom.pr\", \"w\") as f {\n"
   "    f.write(\"post(1)\\n\")\n"
   "}\n"
-  "os.cmd(\"'\" + sys.executable + \"' --check quebrado.pr > /dev/null 2>&1; echo $? > rq\")\n"
-  "os.cmd(\"'\" + sys.executable + \"' --check bom.pr > /dev/null 2>&1; echo $? > rb\")\n"
-  "post(int(open(\"rq\").read().strip()) != 0, int(open(\"rb\").read().strip()) == 0)\n",
+  "funct codigo_do_check(arq) {\n"
+  "    p = os.run([sys.executable, \"--check\", arq], capture=\"live\")\n"
+  "    pedaco = p.read(65536)\n"
+  "    while pedaco != \"\" {\n"
+  "        pedaco = p.read(65536)\n"
+  "    }\n"
+  "    pedaco = p.read_err(65536)\n"
+  "    while pedaco != \"\" {\n"
+  "        pedaco = p.read_err(65536)\n"
+  "    }\n"
+  "    return p.wait()\n"
+  "}\n"
+  "post(codigo_do_check(\"quebrado.pr\") != 0, codigo_do_check(\"bom.pr\") == 0)\n",
   "True True", NULL, 0 },
 
 /* ── bytes: os 42 métodos do VALOR, conferidos contra o CPython ───────────
@@ -545,14 +569,14 @@ const Caso CASOS_LIBS[] = {
   "     \"abcd\".encode().len())\n",
   "2 3 1 2 4", NULL, 0 },
 { "bytes.len() de um arquivo lido em binario",
-  /* PoolFile/loadFile é outra origem de bytes, por caminho diferente */
-  "import os\n"
-  "using open(\"/tmp/ps_blen.bin\", \"wb\") as f {\n"
+  /* PoolFile/loadFile é outra origem de bytes, por caminho diferente. O
+   * arquivo fica na pasta do caso, que o runner apaga no fim (antes era
+   * /tmp, limpo por um `rm` pelo shell). */
+  "using open(\"ps_blen.bin\", \"wb\") as f {\n"
   "    f.write(\"abcde\".encode())\n"
   "}\n"
-  "b = open(\"/tmp/ps_blen.bin\", \"rb\").read()\n"
-  "post(b.len(), len(b), b.len() == len(b))\n"
-  "os.cmd(\"rm -f /tmp/ps_blen.bin\")\n",
+  "b = open(\"ps_blen.bin\", \"rb\").read()\n"
+  "post(b.len(), len(b), b.len() == len(b))\n",
   "5 5 True", NULL, 0 },
 
 { "bytes base64 ida e volta",
@@ -575,9 +599,16 @@ const Caso CASOS_LIBS[] = {
   "cur.close()\n"
   "c.close()\n",
   "[{'a': 1, 'b': 'um'}, {'a': 2, 'b': 'dois'}]", NULL, 0 },
-/* URL de sqlite: `sqlite:///rel.db` e relativo, `sqlite:////abs/x.db` e
- * absoluto. O parser comia TODAS as barras, e o absoluto virava relativo ao cwd
- * ("unable to open database file") — caminho absoluto por URL nunca funcionou. */
+/* URL de sqlite: `sqlite:///rel.db` e relativo; com caminho ABSOLUTO depois do
+ * `sqlite:///` ele continua absoluto: `sqlite:////abs/x.db` no Linux e no
+ * macOS, `sqlite:///C:/abs/x.db` no Windows (o parser tira UMA barra so). O
+ * parser comia TODAS as barras, e o absoluto virava relativo ao cwd ("unable to
+ * open database file") — caminho absoluto por URL nunca funcionou. A forma de
+ * quatro barras (e essa regressao) so existe no Linux e no macOS. O caso abre
+ * a URL de dentro de `sub/`: se o caminho virasse relativo, o arquivo nasceria
+ * (ou falharia) debaixo de `sub/`. `sub/` vazia + a linha lida de volta na
+ * pasta de cima = nasceu no caminho absoluto, sem depender de como o sistema
+ * escreve um caminho absoluto. */
 { "psodbc sqlite url: tres barras e relativo ao cwd",
   "import psodbc\nimport os\n"
   "c = psodbc.connect(url=\"sqlite:///rel.db\")\n"
@@ -585,18 +616,21 @@ const Caso CASOS_LIBS[] = {
   "c.commit()\nc.close()\n"
   "post(os.exists(\"rel.db\"))\n",
   "True", NULL, 0 },
-{ "psodbc sqlite url: quatro barras e caminho absoluto",
+{ "psodbc sqlite url: caminho absoluto continua absoluto",
   "import psodbc\nimport os\n"
   "caminho = os.cwd() + \"/abs.db\"\n"
+  "os.mkdir(\"sub\")\nos.chdir(\"sub\")\n"
   "c = psodbc.connect(url=\"sqlite:///\" + caminho)\n"
   "cur = c.cursor()\n"
   "cur.execute(\"create table t (a int)\")\n"
   "cur.execute(\"insert into t values (?)\", (7,))\n"
   "c.commit()\nc.close()\n"
-  "d = psodbc.connect(driver=\"sqlite\", base=caminho)\n"
+  "fora = os.ls(\".\")\n"
+  "os.chdir(\"..\")\n"
+  "d = psodbc.connect(driver=\"sqlite\", base=\"abs.db\")\n"
   "k = d.cursor()\nk.execute(\"select a from t\")\n"
-  "post(caminho.startswith(\"/\"), k.fetchall())\nd.close()\n",
-  "True [{'a': 7}]", NULL, 0 },
+  "post(fora, k.fetchall())\nd.close()\n",
+  "[] [{'a': 7}]", NULL, 0 },
 /* O cursor mandava todo parametro como TEXTO: `true` virava 'True', e
  * `WHERE ativo = ?` nao casava com linha nenhuma. O atalho `psodbc.query` ja
  * ligava com tipo; o cursor passou a ligar igual. */
@@ -814,7 +848,7 @@ const Caso CASOS_LIBS[] = {
   "try {\n"
   "    post(x.nao_existe_mesmo())\n"
   "} catch (AttributeError e) {\n"
-  "    post(\"'str' object has no attribute 'nao_existe_mesmo'\" in str(e))\n"
+  "    post(\"'str' object has no method 'nao_existe_mesmo'\" in str(e))\n"
   "}\n",
   "True", NULL, 0 },
 
@@ -1068,18 +1102,48 @@ const Caso CASOS_LIBS[] = {
   "post(p.pid > 0)\n"
   "post(p.wait())\n", "True\n0", NULL, 0 },
 /* Com `pty=true` o filho acha que esta num terminal: `input()`, cor e
- * programa interativo passam a funcionar — e o que o terminal integrado pede. */
+ * programa interativo passam a funcionar — e o que o terminal integrado pede.
+ * O canal do terminal nao e so o texto do filho: no Windows o pseudoconsole
+ * abre a sessao com os pedidos dele ao terminal (modo de teclado, foco) e
+ * repinta a tela com sequencias de cursor em volta do texto. Por isso os
+ * casos leem ATE O FIM ("" = o terminal fechou) e procuram uma marca que so o
+ * filho escreve. Sem terminal, o `test -t 0` falha, a marca nao sai e o
+ * codigo e 1; sem o canal unico, a marca do stderr nao chega no `read`. */
 { "run live com pty: o filho ve um terminal",
   "import os\n"
-  "p = os.run([\"sh\", \"-c\", \"test -t 0 && echo tty\"], capture=\"live\", pty=true)\n"
-  "post(p.read(100).strip())\n"
-  "post(p.wait())\n", "tty\n0", NULL, 0 },
+  "p = os.run([\"sh\", \"-c\", \"test -t 0 && echo tem-terminal\"], capture=\"live\", pty=true)\n"
+  "s = \"\"\n"
+  "parte = p.read(100)\n"
+  "while parte != \"\" {\n"
+  "    s = s + parte\n"
+  "    parte = p.read(100)\n"
+  "}\n"
+  "post(\"tem-terminal\" in s)\n"
+  "post(p.wait())\n", "True\n0", NULL, 0 },
 { "run live com pty: o stderr chega junto, como num terminal",
   "import os\n"
-  "p = os.run([\"sh\", \"-c\", \"echo err 1>&2\"], capture=\"live\", pty=true)\n"
-  "post(p.read(100).strip())\n"
-  "post(p.read_err(10))\n"
-  "p.wait()\n", "err", NULL, 0 },
+  "p = os.run([\"sh\", \"-c\", \"echo pelo-stderr 1>&2\"], capture=\"live\", pty=true)\n"
+  "s = \"\"\n"
+  "parte = p.read(100)\n"
+  "while parte != \"\" {\n"
+  "    s = s + parte\n"
+  "    parte = p.read(100)\n"
+  "}\n"
+  "post(\"pelo-stderr\" in s)\n"
+  "post(p.read_err(10) == \"\")\n"
+  "p.wait()\n", "True\nTrue", NULL, 0 },
+/* O `os.cmd` passa a linha pro shell do sistema (`/bin/sh -c` ou `cmd.exe /d
+ * /s /c`). A linha usa o que os DOIS entendem: aspas duplas e `>`/`2>&1`. A
+ * saída do `echo` do cmd.exe traz `\r\n`, que o `strip` tira. */
+{ "os.cmd roda a linha no shell do sistema: aspas duplas e redirecionamento",
+  "import os\n"
+  "import sys\n"
+  "os.cmd(\"echo oi> o.txt\")\n"
+  "post(os.readFile(\"o.txt\").strip())\n"
+  "post(os.cmd(\"\\\"\" + sys.executable + \"\\\" -e \\\"post(1+1)\\\"\", true))\n"
+  "os.cmd(\"\\\"\" + sys.executable + \"\\\" -e \\\"post(3)\\\" > r.txt 2>&1\")\n"
+  "post(os.readFile(\"r.txt\").strip())\n",
+  "oi\n2\n3", NULL, 0 },
 { "run com pty exige capture live ou true",
   "import os\nos.run([\"echo\", \"oi\"], capture=false, pty=true)\n", "",
   "ValueError: run(): pty=true precisa de capture=\"live\" ou capture=true (ninguem leria o terminal)", 1 },

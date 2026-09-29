@@ -710,6 +710,20 @@ int ps_w_cano(int fds[2])
     return _pipe(fds, 65536, _O_BINARY | _O_NOINHERIT);
 }
 
+/* O link no Windows é um "ponto de nova análise" (reparse point): o link
+ * simbólico e a junção de pasta. O atributo é do próprio link. */
+int ps_e_link(const char *caminho, int *e_pasta)
+{
+    *e_pasta = 0;
+    wchar_t *w = w_largo(caminho);
+    if (!w) return 0;
+    DWORD a = GetFileAttributesW(w);
+    free(w);
+    if (a == INVALID_FILE_ATTRIBUTES || !(a & FILE_ATTRIBUTE_REPARSE_POINT)) return 0;
+    *e_pasta = (a & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    return 1;
+}
+
 /* ── o começo do processo ──────────────────────────────────────────────── */
 
 /* Os recados do jinker pro processo filho chegam em variáveis de ambiente e
@@ -927,6 +941,7 @@ int ps_meu_executavel(char *buf, size_t cap)
 
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -1158,6 +1173,15 @@ void *ps_mem_zerada(size_t n)
 {
     void *p = mmap(NULL, n, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
     return p == MAP_FAILED ? NULL : p;
+}
+
+/* ── links ─────────────────────────────────────────────────────────────── */
+
+int ps_e_link(const char *caminho, int *e_pasta)
+{
+    struct stat st;
+    *e_pasta = 0;                    /* no POSIX todo link sai com unlink */
+    return lstat(caminho, &st) == 0 && S_ISLNK(st.st_mode);
 }
 
 void ps_mem_zerada_solta(void *p, size_t n)

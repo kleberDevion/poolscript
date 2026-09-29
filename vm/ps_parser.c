@@ -84,7 +84,11 @@ typedef struct {
  * marcar deixaria a descida sem freio nenhum. O contador é o cinto de
  * segurança do freio — nunca é ele que dispara em uso real.
  *
- * É o mesmo freio que o SQLite usa no parser dele. */
+ * É o mesmo freio que o SQLite usa no parser dele.
+ *
+ * O caso "parser: 100 mil parenteses aninhados (acima do teto)" de
+ * teste/casos_crash.c usa PS_PARSE_PROF_MAX + 1 pra valer em qualquer
+ * `ulimit -s`: mudou o teto aqui, muda o `fundo` lá. */
 #define PS_PARSE_PROF_MAX 100000
 
 /* ── reservadas que também não podem virar nome ─────────────────────────── */

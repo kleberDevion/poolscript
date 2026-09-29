@@ -7117,6 +7117,26 @@ static int met_a_close(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static int cria_pais(const char *caminho);   /* definido mais abaixo */
 
+/* A cópia que falhou no meio não fica pra trás fingindo que serve. Mas só sai
+ * a ENTRADA que é o próprio arquivo comum que a cópia abriu: um link (pra
+ * /dev/full, pra um arquivo de outro lugar) ou um dispositivo ficam como
+ * estavam. O `unlink` cego sumia com o link, e, como root, com o próprio
+ * /dev/full. `destino_aberto` guarda o que foi aberto; `apaga_meia_copia`
+ * confere que a entrada ainda é ele. */
+typedef struct { int ok; struct stat st; } DestinoAberto;
+static void destino_aberto(FILE *f, DestinoAberto *d)
+{
+    d->ok = fstat(fileno(f), &d->st) == 0 && S_ISREG(d->st.st_mode);
+}
+static void apaga_meia_copia(const char *caminho, const DestinoAberto *d)
+{
+    int link_pasta;
+    struct stat sp;
+    if (d->ok && !ps_e_link(caminho, &link_pasta) && stat(caminho, &sp) == 0
+            && S_ISREG(sp.st_mode) && sp.st_dev == d->st.st_dev && sp.st_ino == d->st.st_ino)
+        unlink(caminho);
+}
+
 /* Salva o conteúdo do arquivo num caminho (mesmo contrato dos outros .save():
  * pasta -> deriva o nome do próprio arquivo). Devolve o caminho final. */
 static int met_a_save(VM *vm, Value alvo, Value *args, int n, Value *out)
@@ -7152,6 +7172,8 @@ static int met_a_save(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (!src) return erro_sistema(vm, errno, a->caminho, NULL);
         FILE *dst = fopen(caminho, "wb");
         if (!dst) { int e = errno; fclose(src); return erro_sistema(vm, e, caminho, NULL); }
+        DestinoAberto aberto;
+        destino_aberto(dst, &aberto);
         /* Os TRÊS pontos são conferidos, e cada um pega uma falha diferente:
          * o `fwrite` curto (disco cheio na hora), o `ferror(src)` (leitura que
          * parou por erro e não por fim de arquivo — indistinguíveis pelo
@@ -7166,7 +7188,7 @@ static int met_a_save(VM *vm, Value alvo, Value *args, int n, Value *out)
         errno = 0;
         if (fclose(dst) != 0 && !e) e = errno ? errno : EIO;
         if (e) {
-            remove(caminho);   /* não deixa meia cópia no lugar do arquivo bom */
+            apaga_meia_copia(caminho, &aberto);   /* não deixa meia cópia fingindo que serve */
             return erro_sistema(vm, e, NULL, NULL);
         }
     }
@@ -8633,6 +8655,8 @@ static int copia_arquivo(const char *de, const char *para, const char **culpa)
     if (culpa) *culpa = para;
     FILE *b = fopen(para, "wb");
     if (!b) { int e = errno; fclose(a); errno = e; return -1; }
+    DestinoAberto aberto;
+    destino_aberto(b, &aberto);
     /* A GRAVACAO E CONFERIDA. Sem isto o `fwrite` que falha era ignorado, a
      * funcao devolvia 0 ("copiou") e o `os.move` seguia em frente e dava
      * `unlink` na ORIGEM: perda de dado em silencio, sem erro nenhum.
@@ -8658,8 +8682,7 @@ static int copia_arquivo(const char *de, const char *para, const char **culpa)
     fclose(a);
     if (fclose(b) != 0 && !falhou) { falhou = 1; err = errno ? errno : EIO; }
     if (falhou) {
-        /* destino incompleto nao fica pra tras fingindo que serve */
-        unlink(para);
+        apaga_meia_copia(para, &aberto);   /* destino incompleto não fica fingindo que serve */
         errno = err;
         return -1;
     }
@@ -8705,7 +8728,8 @@ static int met_pf_move(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (rename(orig, dst) != 0) {
             const char *culpa = orig;
             if (copia_arquivo(orig, dst, &culpa) != 0) return erro_sistema(vm, errno, culpa, NULL);
-            remove(orig);
+            /* origem que não sai é erro (ver os.move) */
+            if (remove(orig) != 0) return erro_sistema(vm, errno, orig, NULL);
         }
         snprintf(COMO_ARQ(alvo)->caminho, sizeof(COMO_ARQ(alvo)->caminho), "%s", dst);
         *out = alvo;
@@ -8719,7 +8743,8 @@ static int met_pf_move(VM *vm, Value alvo, Value *args, int n, Value *out)
         const char *culpa = f->caminho;
         if (copia_arquivo(f->caminho, dest, &culpa) != 0)
             return erro_sistema(vm, errno, culpa, NULL);
-        unlink(f->caminho);
+        /* origem que não sai é erro (ver os.move) */
+        if (unlink(f->caminho) != 0) return erro_sistema(vm, errno, f->caminho, NULL);
     }
     PSPoolFile *novo = novo_poolfile(vm, dest);
     if (!novo) return erro_sistema(vm, errno, dest, NULL);
@@ -12191,7 +12216,7 @@ static const MembroMod MOD_STDERR[] = {
 static int g_term_raw = 0;
 static int stdin_em_poll(void)
 {
-    return g_term_raw && _isatty(0);
+    return g_term_raw && ps_e_terminal(0);
 }
 /* A próxima tecla que já está na fila do console, sem esperar; -1 = nenhuma.
  * Evento que não é tecla com caractere (soltar tecla, foco, mouse) é
@@ -12220,7 +12245,7 @@ static int term_tecla_win(void)
 static int stdin_em_poll(void)
 {
     struct termios t;
-    if (!isatty(0)) return 0;
+    if (!ps_e_terminal(0)) return 0;
     if (tcgetattr(0, &t) != 0) return 0;
     return !(t.c_lflag & ICANON) && t.c_cc[VMIN] == 0;
 }
@@ -12323,7 +12348,9 @@ static int mod_in_raw(VM *vm, Value *a, int n, Value *o)
 {
     EXIGE_ARGS(vm, "raw", 1);
     if (a[0].t != V_BOOL) BERRO(vm, "TypeError", "raw() espera bool (true liga, false desliga)");
-    if (!_isatty(0)) { *o = MK_BOOL(0); return 0; }
+    /* Sem console (pipe, arquivo, NUL) não há modo cru: devolve false pra o
+     * script saber, em vez de estourar. */
+    if (!ps_e_terminal(0)) { *o = MK_BOOL(0); return 0; }
     HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
     if (a[0].as.b) {
         if (!g_term_salvo) {
@@ -12368,7 +12395,7 @@ static int mod_in_raw(VM *vm, Value *a, int n, Value *o)
     if (a[0].t != V_BOOL) BERRO(vm, "TypeError", "raw() espera bool (true liga, false desliga)");
     /* Sem terminal (entrada por pipe/arquivo) não há modo cru: devolve false
      * pra o script saber, em vez de estourar. */
-    if (!isatty(0)) { *o = MK_BOOL(0); return 0; }
+    if (!ps_e_terminal(0)) { *o = MK_BOOL(0); return 0; }
     if (a[0].as.b) {
         if (!g_term_salvo) {
             if (tcgetattr(0, &g_term_orig) != 0) { *o = MK_BOOL(0); return 0; }
@@ -13128,9 +13155,23 @@ static int mod_os_mkdir(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
+/* Tira um link sem tocar no destino (no Windows o link de pasta sai com
+ * rmdir). */
+static int remove_link(const char *caminho, int e_pasta)
+{
+    return e_pasta ? rmdir(caminho) : unlink(caminho);
+}
+
+/* Apaga `caminho` e o que houver dentro. Um LINK (simbólico, ou a junção do
+ * Windows) sai como link, sem descer: o `stat`/`opendir` seguem o link, e
+ * descer apagava o conteúdo do DESTINO — medido: com `arvore/link ->
+ * ../alvo`, o `os.rmdir("arvore", force=true)` apagava alvo/precioso.txt. O
+ * `rm -rf` também só tira o link. */
 static int apaga_arvore(const char *caminho, int prof)
 {
     if (prof > 32) return -1;
+    int link_pasta = 0;
+    if (ps_e_link(caminho, &link_pasta)) return remove_link(caminho, link_pasta);
     DIR *d = opendir(caminho);
     if (!d) return unlink(caminho);
     struct dirent *e;
@@ -13139,7 +13180,8 @@ static int apaga_arvore(const char *caminho, int prof)
         char sub[2048];
         snprintf(sub, sizeof(sub), "%s/%s", caminho, e->d_name);
         struct stat st;
-        if (stat(sub, &st) == 0 && S_ISDIR(st.st_mode)) apaga_arvore(sub, prof + 1);
+        if (ps_e_link(sub, &link_pasta)) remove_link(sub, link_pasta);
+        else if (stat(sub, &st) == 0 && S_ISDIR(st.st_mode)) apaga_arvore(sub, prof + 1);
         else unlink(sub);
     }
     closedir(d);
@@ -13257,7 +13299,11 @@ static int mod_os_move(VM *vm, Value *args, int n, Value *out)
         const char *culpa = a->chars;
         if (copia_arquivo(a->chars, b->chars, &culpa) != 0)
             return erro_sistema(vm, errno, culpa, NULL);
-        unlink(a->chars);
+        /* Mover é copiar E apagar a origem. Origem que não sai (pasta sem
+         * escrita; no Windows, arquivo aberto em outro lugar) é erro: o
+         * retorno era ignorado, o move dizia "ok" e o arquivo ficava nos dois
+         * lugares. */
+        if (unlink(a->chars) != 0) return erro_sistema(vm, errno, a->chars, NULL);
     }
     *out = MK_NULL();
     return 0;
@@ -23775,8 +23821,27 @@ static int dist_edicao(const char *a, const char *b, int teto)
     return ant[lb];
 }
 
+/* `alvo` é a PRIMEIRA PALAVRA de `nome`: `nome` começa com ele e a palavra
+ * seguinte começa ali — depois de `_` (`send` -> `send_linux`) ou numa
+ * maiúscula depois de minúscula (`get` -> `getValue`). */
+static int primeira_palavra_de(const char *alvo, const char *nome)
+{
+    size_t la = strlen(alvo);
+    if (la < 2 || strncmp(nome, alvo, la) != 0) return 0;
+    unsigned char prox = (unsigned char)nome[la];
+    unsigned char ult = (unsigned char)alvo[la - 1];
+    return prox == '_' || (isupper(prox) && islower(ult));
+}
+
 /* Acha o nome mais parecido numa lista, pra sugerir no erro. Devolve NULL se
- * nada chega perto — sugestão errada atrapalha mais que a falta dela. */
+ * nada chega perto — sugestão errada atrapalha mais que a falta dela.
+ *
+ * Duas réguas, nesta ordem: a distância de edição (o erro de digitação:
+ * `raplace` -> `replace`) e, sem nenhum perto, o nome escrito ser a primeira
+ * palavra de UM membro só (`send` -> `send_linux`). Pela distância, `send`
+ * ficava a 6 de `send_linux` e o erro saía sem dica nenhuma; dois membros
+ * começando com a mesma palavra (`send_linux`, `send_mac`) = não se sabe
+ * qual, e não sugere. */
 static const char *sugere_nome(const char *alvo, const char **nomes, int n)
 {
     const char *melhor = NULL;
@@ -23794,7 +23859,15 @@ static const char *sugere_nome(const char *alvo, const char **nomes, int n)
         int d = dist_edicao(alvo, nomes[i], teto);
         if (d <= teto && (!melhor || d < md)) { melhor = nomes[i]; md = d; }
     }
-    return melhor;
+    if (melhor) return melhor;
+    const char *unico = NULL;
+    for (int i = 0; i < n; i++) {
+        if (!nomes[i] || !primeira_palavra_de(alvo, nomes[i])) continue;
+        /* o mesmo nome pode vir duas vezes (o método da filha e o do pai) */
+        if (unico && strcmp(unico, nomes[i]) != 0) return NULL;
+        unico = nomes[i];
+    }
+    return unico;
 }
 
 const char *ps_nativo_sugestao(const char *mod, const char *membro);
@@ -27560,7 +27633,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
              * no outro. */
             int de_import = (o == OP_IMPORT_FROM);
             Value alvo = stack[sp - 1];
-            Value nomev = p->consts[arg];
+            /* PS_ARG_CHAMADO: o membro vai ser chamado (`x.m(...)`) — só
+             * muda a frase do membro ausente ("method" em vez de "attribute") */
+            const char *rotulo = (!de_import && (arg & PS_ARG_CHAMADO)) ? "method" : "attribute";
+            Value nomev = p->consts[de_import ? arg : (arg & ~PS_ARG_CHAMADO)];
             if (!EH_STRING(nomev)) ERRO(vm, "nome de membro invalido");
             const char *nome = COMO_STRING(nomev)->chars;
 
@@ -27604,8 +27680,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     }
                     {
                         char dica[160];
-                        ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'%s",
-                                nome_do_tipo_valor(alvo), nome, dica_membro(alvo, nome, dica, sizeof(dica)));
+                        ERRO_TF(vm, "AttributeError", "'%s' object has no %s '%s'%s",
+                                nome_do_tipo_valor(alvo), rotulo, nome, dica_membro(alvo, nome, dica, sizeof(dica)));
                     }
                 }
                 vm->sp = sp; vm->locals_top = locals_top;
@@ -27638,8 +27714,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                                 "Entity '%s' não tem campo estático '%s' — instancie primeiro",
                                 COMO_CLASS(alvo)->nome ? COMO_CLASS(alvo)->nome : "?", nome);
                     char dica[160];
-                    ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'%s",
-                            COMO_CLASS(alvo)->nome ? COMO_CLASS(alvo)->nome : "?",
+                    ERRO_TF(vm, "AttributeError", "'%s' object has no %s '%s'%s",
+                            COMO_CLASS(alvo)->nome ? COMO_CLASS(alvo)->nome : "?", rotulo,
                             nome, dica_membro(alvo, nome, dica, sizeof(dica)));
                 }
                 /* Sem instância, só `@static` vale — é a regra do
@@ -27667,8 +27743,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * Qualquer outro nome é membro inexistente do enum. */
                 if (strcmp(nome, "type") != 0)
                     ERRO_TF(vm, "AttributeError",
-                            "type object '%s' has no attribute '%s'",
-                            e->nome ? e->nome : "?", nome);
+                            "type object '%s' has no %s '%s'",
+                            e->nome ? e->nome : "?", rotulo, nome);
             }
             if (EH_MODPS(alvo) || EH_MODULO(alvo)) {
                 /* a regra de o que sai do módulo mora em `membro_de_modulo` */
@@ -27980,8 +28056,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     }
                     {
                         char dica[160];
-                        ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'%s",
-                                nome_do_tipo_valor(alvo), nome, dica_membro(alvo, nome, dica, sizeof(dica)));
+                        ERRO_TF(vm, "AttributeError", "'%s' object has no %s '%s'%s",
+                                nome_do_tipo_valor(alvo), rotulo, nome, dica_membro(alvo, nome, dica, sizeof(dica)));
                     }
                 }
                 vm->sp = sp; vm->locals_top = locals_top;
@@ -28493,7 +28569,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (!EH_CLASS(paiv)) ERRO(vm, "base() exige uma Entity pai");
             PSClass *pai = COMO_CLASS(paiv);
             const char *pnome = pai->nome ? pai->nome : "?";
-            Value nomev = p->consts[arg];
+            /* PS_ARG_CHAMADO: `base(Pai).m(...)`, só muda a frase do ausente */
+            const char *rotulo = (arg & PS_ARG_CHAMADO) ? "method" : "attribute";
+            Value nomev = p->consts[arg & ~PS_ARG_CHAMADO];
             if (!EH_STRING(nomev)) ERRO(vm, "nome de membro invalido");
             const char *nome = COMO_STRING(nomev)->chars;
             Value selfv = lbase >= 0 ? vm->locals[lbase] : MK_NULL();
@@ -28532,8 +28610,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             }
             {
                 char dica[160];
-                ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'%s",
-                        pnome, nome, dica_membro(paiv, nome, dica, sizeof(dica)));
+                ERRO_TF(vm, "AttributeError", "'%s' object has no %s '%s'%s",
+                        pnome, rotulo, nome, dica_membro(paiv, nome, dica, sizeof(dica)));
             }
         }
 
@@ -31068,15 +31146,40 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
     if (!toks->ok || !r->ok) {
         /* A lista DEFINITIVA de erros de sintaxe é a das duas passadas do
          * lexer (grupo sem par liga a sincronia por declaração); a
-         * compilação fez só a primeira. Só código quebrado chega aqui. */
+         * compilação fez só a primeira. Só código quebrado chega aqui.
+         *
+         * Os erros de sintaxe desta passada ficam guardados: a segunda só
+         * ACRESCENTA, nunca apaga. O freio de aninhamento é pela folga da
+         * pilha, e a segunda passada parte de um ponto mais RASO — na borda
+         * ela aceitava o que a primeira recusou, e o erro de sintaxe sumia:
+         * sem prog e sem erro, saía "MemoryError: sem memoria" na linha 0
+         * (medido: 16 profundidades logo abaixo do limite). */
+        PSAviso *erros_1 = NULL;
+        int32_t nerros_1 = 0, linha_1 = r->erro_linha, col_1 = r->erro_col;
+        char erro_1[sizeof(r->erro)];
+        snprintf(erro_1, sizeof(erro_1), "%s", r->erro);
+        int sintaxe_1 = !r->ok;
+        if (sintaxe_1) {
+            erros_1 = r->erros; nerros_1 = r->nerros;   /* passa a ser daqui */
+            r->erros = NULL; r->nerros = 0; r->cap_erros = 0;
+        }
         ps_parse_free(r); ps_lexer_free(toks);
         ps_compila_free(prog); prog = NULL;
         toks = NULL;
         r = ps_parse_fonte(fonte, len, 1, &toks);
         if (!r || !toks) {
-            ps_parse_free(r); ps_lexer_free(toks);
+            ps_parse_free(r); ps_lexer_free(toks); free(erros_1);
             e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1;
         }
+        if (sintaxe_1 && r->ok && toks->nerros == 0) {
+            free(r->erros);
+            r->erros = erros_1; r->nerros = nerros_1; r->cap_erros = nerros_1;
+            snprintf(r->erro, sizeof(r->erro), "%s", erro_1);
+            r->erro_linha = linha_1; r->erro_col = col_1;
+            r->ok = 0;
+            erros_1 = NULL;
+        }
+        free(erros_1);
     }
     /* Os erros do LEXER não param mais a conferência: o parser roda mesmo
      * assim e os dois entram na mesma lista. Parar aqui escondia o resto — um

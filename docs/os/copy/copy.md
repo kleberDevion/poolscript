@@ -24,6 +24,10 @@ os.copy("config.json", "config.bak.json")  # cópia de segurança
 
 Depois de copiar, os **dois** arquivos existem.
 
+Se a cópia falha no meio (disco cheio, erro de leitura), levanta o erro com o
+motivo, e o destino pela metade é apagado — só se ele é o arquivo comum que
+a cópia escreveu. Destino que é link ou dispositivo fica como estava.
+
 ---
 
 ## `os.copy` vs `PoolFile.copy`

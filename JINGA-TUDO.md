@@ -2846,6 +2846,8 @@ Itens da trilha já fechados: 2 (Pyrite) foi superado pelo rename pra Jinga; 4 (
 | 09-28 | - | b180807 | `examples/notify.pr` (3 linhas a mais) |
 | 09-28 | 16.1.9 | 3c245e7 | Windows (base) e macOS: sockets, TLS e bibliotecas pela camada de sistema; `vm/ps_win.h`; casos só do Linux (campo `so`) |
 | 09-28 | 16.2.0 | ver `git log` | Windows nativo completo no código (processos, ConPTY, fibras, JIT Win64, jinker sem fork, gmp int64, pacote, `instalar.ps1`, job `windows`); vetores da fibra sob demanda (923 MB -> 243 MB); este md versionado (repositório privado) |
+| 09-29 | 16.2.1 | dd368eb | Windows compila no CI (gcc 16 e cabeçalhos novos do UCRT64: `strndup`, `__USE_MINGW_ANSI_STDIO`) |
+| 09-29 | 16.2.2 | ver `git log` | As 20 falhas do 1º run do Windows (8516/8536): `_isatty` do NUL, casos com sintaxe de `sh` no `os.cmd`, `/dev/full`, url do sqlite, pty; bugs achados no caminho: `os.rmdir(force)` seguia link e apagava o destino, `os.copy` apagava link, `os.move` dizia ok sem apagar a origem, `rename` do Windows não substituía, `--check` dava MemoryError na borda do aninhamento; membro ausente numa chamada diz "method" e sugere a primeira palavra (`send` -> `send_linux`) |
 | 09-28 | 16.1.8 | ec711c7 | Folga da pilha medida rodando (o clang põe o dobro de pilha no laço da VM); nome do sinal pelo `strsignal` no runner |
 | 09-28 | 16.1.7 | c669a78 | macOS: resolução de nomes do módulo `sockets` pela camada de sistema |
 | 09-28 | 16.1.6 | 6980c40 | Pacote macOS, `instalar.sh` com ramo Darwin, `build.yml` (Linux + macOS Intel) |
@@ -3825,7 +3827,7 @@ O plano é o `~/.claude/plans/steady-weaving-pine.md`, com um motor só (o mesmo
 | 2. macOS | feito: pacote, instalador e workflow (`6980c40`), sockets pela camada (`c669a78`), pilha do clang (`ec711c7`), casos só do Linux e TLS pelo Keychain (`3c245e7`) |
 | 3. `scripts/compila.pr` | feito (`89e32d7`) |
 | 4. Este md | `JINGA-TUDO.md`, raiz; no `.gitignore` em `4aedf8b`, versionado desde que o repositório é privado |
-| 5. Windows nativo | código completo no commit do 16.2.0 (abaixo), compilado cruzado com MinGW; a suíte no Windows de verdade roda no job `windows` do CI, ainda não lido |
+| 5. Windows nativo | código completo (16.2.0); no 1º run do CI de verdade (16.2.1) a suíte deu 8516/8536, e o 16.2.2 trata as 20; conferir o CI do 16.2.2 |
 | 6. Release com os três pacotes | o `build.yml` já publica os três numa tag `v*`; nenhuma tag criada |
 
 **macOS**
@@ -3865,7 +3867,9 @@ O plano é o `~/.claude/plans/steady-weaving-pine.md`, com um motor só (o mesmo
   - Makefile com ramo MSYS2 (`-static`: o `jinga.exe` só pede DLL do Windows); `teste/ps_teste.c` com `CreateProcess`, threads nos canos e tempo máximo por `WaitForSingleObject`; job `windows` no `build.yml` (MSYS2 UCRT64: compila, suíte com e sem JIT, `make check`, pacote e o `instalar.ps1` de verdade numa pasta temporária); `build_bundle.sh` gera `jinga-windows-x86_64.zip` (com as DLLs dos bancos e os `.cmd`); `instalar.ps1` (em `%LOCALAPPDATA%\Programs\Jinga`, sem administrador, põe o `bin` no PATH do usuário); `compila.pr` roda tudo pelo `sh` do MSYS2;
   - editor: `server.js` acha o motor sem `sh` e monta URI de arquivo pelo `pathToFileURL`; `extension.js` acha o `jinga-lsp.cmd` e sobe o `server.js` instalado ao lado dele; o terminal do "Rodar" no Windows é o PowerShell; o plugin do IntelliJ procura `.cmd`/`.exe` em `%LOCALAPPDATA%\Programs\Jinga\bin`. A extensão subiu pra 8.6.9; a `.vsix` se gera com Node 22 (`make vsix`), que o Homebrew do Mac tem;
   - doc: `jinga.md` (instalação no macOS e no Windows, o que muda no Windows), `docs/lsp.md`, e as páginas de `os.cmd`, `os.run`, `Process`, `sockets` e `Jinker`.
-- **Falta**: ler o resultado dos jobs `mac` e `windows` do CI desse commit (com o repositório privado, só com o `gh` logado) e tratar cada falha do Windows: bug do porte se corrige; diferença real do sistema ganha a expectativa do Windows (campo `so` do caso), nunca pulada.
+- **CI de verdade (16.2.1, run 36516748809):** Windows compilou e rodou; suíte 8516/8536. As 20 falhas foram diagnosticadas por um workflow (6 grupos, cada um com verificador adversário) e tratadas no 16.2.2: 1 bug do porte (`_isatty` diz "terminal" pro NUL; agora `ps_e_terminal` pergunta ao console), e casos que dependiam de detalhe acidental reescritos testando a mesma propriedade (aspas simples do `sh` no `os.cmd` -> `os.run` com lista; `/dev/full` -> só Linux + irmãos portáveis "pai que é arquivo"; `startswith("/")` -> medir que o caminho não depende do cwd; pty -> ler até `""`). Mac: suíte verde com e sem JIT; o `make check` caía no caso dos 30 mil parênteses porque o make 3.81 da Apple sobe a pilha dos filhos (64 MB) e 30 mil níveis cabem — o caso usa agora PS_PARSE_PROF_MAX + 1.
+- **Conferir aqui sem Windows:** `scratchpad/win_check.sh` (sintaxe com os cabeçalhos do UCRT64 extraídos do repo.msys2.org, `-std=gnu2x`) e `scratchpad/win_liga.sh` (liga o `jinga.exe` estático). Os pacotes ficam em `scratchpad/ucrt/` (some com a sessão; baixar de novo pelo `ucrt64.db`).
+- **Falta**: ler o CI do 16.2.2 e tratar o que sobrar; o passo "portão inteiro" (`make check`) do Windows ainda não rodou — os harnesses `.pr` (cli_roda, jinker_roda, e2e...) usam `os.cmd` com sintaxe de `sh` e vão reprovar lá; é a próxima leva.
 - **Portão do Windows, pelo plano:**
   - a suíte inteira no job `windows-latest`/MSYS2;
   - cada falha separada em bug do porte (corrige) ou diferença real do sistema (`cmd.exe` no lugar de `sh`, `\r\n`), que ganha a expectativa do Windows;

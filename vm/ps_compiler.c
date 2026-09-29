@@ -94,10 +94,16 @@ void ps_desmonta(const PSPrograma *prog, FILE *f)
             int32_t op = p->code[ip], arg = p->code[ip + 1];
             fprintf(f, "%6d  %-16s %-8d", ip, ps_op_nome(op), arg);
             switch (op) {
-                case OP_LOAD_CONST: case OP_GET_MEMBER: case OP_SET_MEMBER:
+                case OP_GET_MEMBER: case OP_LOAD_BASE_MEMBRO: {
+                    /* o bit de "vai ser chamado" (PS_ARG_CHAMADO) */
+                    int32_t k = arg & ~PS_ARG_CHAMADO;
+                    if (k >= 0 && k < p->nconsts) { fputs("; ", f); desmonta_const(&p->consts[k], f); }
+                    if (arg & PS_ARG_CHAMADO) fputs(" (chamado)", f);
+                    break;
+                }
+                case OP_LOAD_CONST: case OP_SET_MEMBER:
                 case OP_IMPORT_MOD: case OP_IMPORT_FROM: case OP_LOAD_METODO:
                 case OP_SET_METODO: case OP_IMPORT_FROM_ESTRELA: case OP_CONFERE_TIPO:
-                case OP_LOAD_BASE_MEMBRO:
                     if (arg >= 0 && arg < p->nconsts) { fputs("; ", f); desmonta_const(&p->consts[arg], f); }
                     break;
                 case OP_COERCE_DECL:
@@ -506,7 +512,19 @@ typedef struct {
     const char *saida_tipo;
     int         saida_indice;       /* -2 = todos os posicionais */
     char        saida_rotulo[300];
+    /* O `x.m` que a chamada em curso vai chamar (o N_MEMBER_ACCESS do
+     * N_CALL): o erro de membro ausente diz "method" nele e "attribute" numa
+     * leitura, e o GET_MEMBER dele leva PS_ARG_CHAMADO pro runtime dizer o
+     * mesmo. Por ponteiro: um valor que sobrou de outra chamada nunca é o nó
+     * de uma leitura. */
+    PSNode     *membro_chamado;
 } C;
+
+/* "method" se `n` é o membro que uma chamada chama; "attribute" se é leitura */
+static const char *tp_rotulo_membro(const C *c, const PSNode *n)
+{
+    return n && n == c->membro_chamado ? "method" : "attribute";
+}
 
 /* Resolve o protótipo da unidade AGORA — nunca cacheia o ponteiro. */
 #define UP(c, u) (&(c)->out->protos[(u)->idx])
@@ -3407,7 +3425,8 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
         if (s && s->decl && s->decl->kind == N_ENTITY_DECL && !s->decorado) {
             if (tp_classe_tem(c, s->decl->texto, n->texto, 0) == 0) {
                 char dica[160];
-                terro(c, n, "AttributeError", "'%s' object has no attribute '%s'%s", s->decl->texto, n->texto,
+                terro(c, n, "AttributeError", "'%s' object has no %s '%s'%s", s->decl->texto,
+                      tp_rotulo_membro(c, n), n->texto,
                       tp_dica_membro(c, s->decl->texto, n->texto, dica, sizeof(dica)));
                 return;
             }
@@ -3452,7 +3471,7 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
     }
     if (lados > 0) {
         char dica[160];
-        terro(c, n, "AttributeError", "'%s' object has no attribute '%s'%s", t, n->texto,
+        terro(c, n, "AttributeError", "'%s' object has no %s '%s'%s", t, tp_rotulo_membro(c, n), n->texto,
               tp_dica_membro(c, t, n->texto, dica, sizeof(dica)));
     }
 }
@@ -3622,7 +3641,8 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
         if (!m) {
             if (tp_classe_tem(c, pai, f->texto, 0) == 0) {
                 char dica[160];
-                terro(c, f, "AttributeError", "'%s' object has no attribute '%s'%s", pai, f->texto,
+                /* aqui é sempre `base(Pai).m(...)`: uma chamada */
+                terro(c, f, "AttributeError", "'%s' object has no method '%s'%s", pai, f->texto,
                       tp_dica_membro(c, pai, f->texto, dica, sizeof(dica)));
             }
             return;
@@ -4332,6 +4352,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             return;
 
         case N_CALL:
+            if (n->a && n->a->kind == N_MEMBER_ACCESS) c->membro_chamado = n->a;
             tp_confere_chamada(c, u, n);
             if (n->a && n->a->kind == N_MEMBER_ACCESS && n->a->a
                     && n->a->a->kind == N_BASE_CALL_NODE) {
@@ -4357,7 +4378,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                 }
                 emite(c, u, OP_LOAD_BASE_MEMBRO,
                       idx_const(c, u, K_STR, 0, 0, f->texto ? f->texto : "",
-                                f->texto ? (int32_t)strlen(f->texto) : 0));
+                                f->texto ? (int32_t)strlen(f->texto) : 0) | PS_ARG_CHAMADO);
                 tp_confere_saida(c, u, n);
                 emite_args_e_chama(c, u, n, &n->lista);
                 return;
@@ -4586,8 +4607,11 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             return;
         }
 
-        case N_MEMBER_ACCESS:
+        case N_MEMBER_ACCESS: {
             tp_confere_membro(c, u, n);
+            /* lido ANTES de descer: uma chamada dentro do alvo (`f().m()`)
+             * troca o `membro_chamado` */
+            int32_t chamado = n == c->membro_chamado ? PS_ARG_CHAMADO : 0;
             if (n->a && n->a->kind == N_BASE_CALL_NODE) {
                 /* `base(Pai).campo` / `base(Pai).metodo` (sem chamar) */
                 const char *pai = base_pai(c, u, n->a);
@@ -4595,14 +4619,15 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                 carrega_nome(c, u, pai);
                 emite(c, u, OP_LOAD_BASE_MEMBRO,
                       idx_const(c, u, K_STR, 0, 0, n->texto ? n->texto : "",
-                                n->texto ? (int32_t)strlen(n->texto) : 0));
+                                n->texto ? (int32_t)strlen(n->texto) : 0) | chamado);
                 return;
             }
             expr(c, u, n->a);
             emite(c, u, OP_GET_MEMBER,
                   idx_const(c, u, K_STR, 0, 0, n->texto ? n->texto : "",
-                            n->texto ? (int32_t)strlen(n->texto) : 0));
+                            n->texto ? (int32_t)strlen(n->texto) : 0) | chamado);
             return;
+        }
 
         case N_AWAIT_EXPR:
             /* `await expr` — avalia a expr (que dá um future) e resolve. */

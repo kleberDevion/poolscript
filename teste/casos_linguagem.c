@@ -464,13 +464,13 @@ const Caso CASOS_LINGUAGEM[] = {
   "d = { \"a\": 1, \"b\": 2 }\npost(d.value() == d.values())\n", "True", NULL, 0 },
 { "tupla é imutável: append",
   "t = (1, 2, 3)\nt.append(9)\n",
-  "", "AttributeError: 'tup' object has no attribute 'append'", 2 },
+  "", "AttributeError: 'tup' object has no method 'append'", 2 },
 { "tupla é imutável: sort",
   "t = (1, 2, 3)\nt.sort()\n",
-  "", "AttributeError: 'tup' object has no attribute 'sort'", 2 },
+  "", "AttributeError: 'tup' object has no method 'sort'", 2 },
 { "tupla é imutável: copy",
   "t = (1, 2, 3)\nt.copy()\n",
-  "", "AttributeError: 'tup' object has no attribute 'copy'", 2 },
+  "", "AttributeError: 'tup' object has no method 'copy'", 2 },
 { "tupla lê normal",
   "t = (1, 2, 3)\npost(t.len(), t.count(1), t.index(2), t.contains(2))\n", "3 1 1 True", NULL, 0 },
 { "lista continua com tudo",
@@ -1800,7 +1800,8 @@ const Caso CASOS_LINGUAGEM[] = {
  * começa acabada. Sem o `null`, `while true: input()` giraria pra sempre
  * quando o outro lado fechasse o cano — foi o que travou o servidor LSP. */
 /* ── sys.stdin.raw() — modo cru do terminal, 2026-09-09 ────────────────────
- * A suíte roda com stdin em /dev/null (não é terminal), então aqui `raw` só
+ * A suíte roda com stdin em /dev/null (NUL no Windows: não é terminal, embora
+ * o `_isatty` do CRT diga que é), então aqui `raw` só
  * pode ser CONFERIDO no caminho não-tty: devolve false e não estoura, e a
  * leitura segue devolvendo Null no fim (o polling em tty tem prova própria em
  * examples/cobrinha.pr, que precisa de pty). */
@@ -2026,8 +2027,10 @@ const Caso CASOS_LINGUAGEM[] = {
   "addEnd(linhas, \"}\")\n"
   "addEnd(linhas, \"f()\")\n"
   "os.writeFile(\"s300.pr\", \"\\n\".join(linhas) + \"\\n\")\n"
-  "os.cmd(\"'\" + sys.executable + \"' s300.pr > o.txt 2>&1\")\n"
-  "post(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
+  /* sem shell: a aspa simples era sintaxe do sh, e o cmd.exe a toma como
+   * parte do nome do programa. `capture=true` devolve o stdout, ou o stderr
+   * se nao houve stdout (so um dos dois tem conteudo aqui). */
+  "post(os.run([sys.executable, \"s300.pr\"], capture=true).split(\"\\n\")[0])\n",
   "AttributedValueError: variável v299 esperava int, recebeu str", NULL, 0 },
 /* Uma tabela de tipos so (vm/ps_tipos.def): `JSON` e `Long` eram apelido num
  * lugar e nome solto noutro — `JSON j = {}` dava NameError e `count JSON` dava
@@ -3252,31 +3255,48 @@ const Caso CASOS_LINGUAGEM[] = {
 /* Membro com o nome errado: a frase APONTA o nome incorreto sugerindo o
  * parecido (o "Did you mean" que a frase de modulo ja tinha), antes de rodar
  * e rodando, em tipo nativo e em Entity. Um `raplace` num str do painel
- * dele passou por "o replace sumiu" — a frase so dizia "'str' object". */
+ * dele passou por "o replace sumiu" — a frase so dizia "'str' object".
+ * Numa CHAMADA (`x.m()`) a frase diz "method"; numa leitura (`x.m`),
+ * "attribute": dizer "attribute" num `.send()` mandava procurar um campo. */
 { "membro errado em str: sugere o certo, antes de rodar",
   "s = \"abc\"\npost(s.raplace(\"a\", \"b\"))\n", "",
-  "AttributeError: 'str' object has no attribute 'raplace'. Did you mean: 'replace'?", 2 },
+  "AttributeError: 'str' object has no method 'raplace'. Did you mean: 'replace'?", 2 },
 { "membro errado em str: a mesma frase rodando (tipo so se sabe na chamada)",
   "funct f(s) {\n    return s.raplace(\"a\", \"b\")\n}\npost(f(\"abc\"))\n", "",
-  "AttributeError: 'str' object has no attribute 'raplace'. Did you mean: 'replace'?", 1 },
+  "AttributeError: 'str' object has no method 'raplace'. Did you mean: 'replace'?", 1 },
 { "membro errado em list sugere o metodo de list",
-  "xs = [1]\nxs.apend(2)\n", "", "'list' object has no attribute 'apend'. Did you mean: 'append'?", 2 },
+  "xs = [1]\nxs.apend(2)\n", "", "'list' object has no method 'apend'. Did you mean: 'append'?", 2 },
 { "membro errado numa Entity: sugere o metodo, antes de rodar",
   "class Conta {\n    funct __init__(self) { self.saldo = 1 }\n    funct extrato(self) { return self.saldo }\n}\n"
   "c = Conta()\npost(c.extrat())\n", "",
-  "AttributeError: 'Conta' object has no attribute 'extrat'. Did you mean: 'extrato'?", 2 },
+  "AttributeError: 'Conta' object has no method 'extrat'. Did you mean: 'extrato'?", 2 },
 { "membro errado numa Entity vindo de parametro sem tipo: a mesma frase rodando",
   "class Conta {\n    funct __init__(self) { self.saldo = 1 }\n    funct extrato(self) { return self.saldo }\n}\n"
   "funct f(c) {\n    return c.extrat()\n}\npost(f(Conta()))\n", "",
-  "AttributeError: 'Conta' object has no attribute 'extrat'. Did you mean: 'extrato'?", 1 },
+  "AttributeError: 'Conta' object has no method 'extrat'. Did you mean: 'extrato'?", 1 },
 { "campo errado numa Entity: sugere o campo gravado em self",
   "class Conta {\n    funct __init__(self) { self.saldo = 1 }\n}\nc = Conta()\npost(c.sald)\n", "",
   "'Conta' object has no attribute 'sald'. Did you mean: 'saldo'?", 2 },
 { "metodo static errado pela classe: sugere",
   "class K {\n    static funct dobro(n) { return n * 2 }\n}\npost(K.dobr(2))\n", "",
-  "'K' object has no attribute 'dobr'. Did you mean: 'dobro'?", 2 },
+  "'K' object has no method 'dobr'. Did you mean: 'dobro'?", 2 },
 { "nome sem parecido nenhum: a frase fica como era",
-  "s = \"abc\"\npost(s.zzzz())\n", "", "AttributeError: 'str' object has no attribute 'zzzz'", 2 },
+  "s = \"abc\"\npost(s.zzzz())\n", "", "AttributeError: 'str' object has no method 'zzzz'", 2 },
+/* O nome escrito e a PRIMEIRA PALAVRA de um membro (`send` -> `send_linux`):
+ * pela distancia de edicao ficava longe demais e o erro saia sem dica. Dois
+ * membros com a mesma primeira palavra = nao se sabe qual, e nao sugere. */
+{ "metodo chamado pela primeira palavra do nome sugere o membro, antes de rodar",
+  "class N {\n    funct send_linux(self) { return 1 }\n}\nN().send()\n", "",
+  "AttributeError: 'N' object has no method 'send'. Did you mean: 'send_linux'?", 2 },
+{ "metodo chamado pela primeira palavra: a mesma frase rodando",
+  "class N {\n    funct send_linux(self) { return 1 }\n}\nfunct f(n) {\n    return n.send()\n}\nf(N())\n", "",
+  "AttributeError: 'N' object has no method 'send'. Did you mean: 'send_linux'?", 1 },
+{ "primeira palavra de dois membros: nao sugere",
+  "class N {\n    funct send_linux(self) { return 1 }\n    funct send_mac(self) { return 2 }\n}\nN().send()\n", "",
+  "AttributeError: 'N' object has no method 'send'\n", 2 },
+{ "leitura sem chamar continua attribute, com a mesma sugestao",
+  "class N {\n    funct send_linux(self) { return 1 }\n}\nx = N().send\n", "",
+  "AttributeError: 'N' object has no attribute 'send'. Did you mean: 'send_linux'?", 2 },
 
 /* ── L3 DO PLANO DAS CONTRADICOES: regex (2026-09-12) — strings medidas ──── */
 /* `a{1}?` era recusado com "multiple repeat": a guarda do preguicoso olhava
@@ -3961,22 +3981,22 @@ const Caso CASOS_LINGUAGEM[] = {
 { "parametros: lambda com 257 parametros e recusada na declaracao",
   "import os\nimport sys\nps = []\nfor each i in range(257) {\n    addEnd(ps, \"p\" + str(i))\n}\n"
   "os.writeFile(\"j.pr\", \"g = funct(\" + \", \".join(ps) + \") {\\n    return 1\\n}\\n\")\n"
-  "os.cmd(\"'\" + sys.executable + \"' j.pr > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
+  "post(os.run([sys.executable, \"j.pr\"], capture=true).split(\"\\n\")[0])\n",
   "SyntaxError: <funct>() tem parametros demais (maximo 256)", NULL, 0 },
 { "parametros: metodo com self + 256 parametros e recusado na declaracao",
   "import os\nimport sys\nps = []\nfor each i in range(256) {\n    addEnd(ps, \"p\" + str(i))\n}\n"
   "os.writeFile(\"j.pr\", \"Entity E {\\n    funct m(self, \" + \", \".join(ps) + \") {\\n        return 1\\n    }\\n}\\n\")\n"
-  "os.cmd(\"'\" + sys.executable + \"' j.pr > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
+  "post(os.run([sys.executable, \"j.pr\"], capture=true).split(\"\\n\")[0])\n",
   "SyntaxError: m() tem parametros demais (maximo 256)", NULL, 0 },
 { "parametros: Entity com 256 campos e recusada na declaracao",
   "import os\nimport sys\ncs = \"\"\nfor each i in range(256) {\n    cs = cs + \"    c\" + str(i) + \": int\\n\"\n}\n"
   "os.writeFile(\"j.pr\", \"Entity E {\\n\" + cs + \"}\\n\")\n"
-  "os.cmd(\"'\" + sys.executable + \"' j.pr > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
+  "post(os.run([sys.executable, \"j.pr\"], capture=true).split(\"\\n\")[0])\n",
   "SyntaxError: Entity E: o __init__ gerado dos campos tem parametros demais (maximo 256: self + 255 campos)", NULL, 0 },
 { "parametros: funct com exatamente 256 parametros roda",
   "import os\nimport sys\nps = []\nfor each i in range(256) {\n    addEnd(ps, \"p\" + str(i))\n}\n"
   "os.writeFile(\"j.pr\", \"funct f(\" + \", \".join(ps) + \") {\\n    return p0\\n}\\npost(f(*list(range(256))))\\n\")\n"
-  "os.cmd(\"'\" + sys.executable + \"' j.pr > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
+  "post(os.run([sys.executable, \"j.pr\"], capture=true).split(\"\\n\")[0])\n",
   "0", NULL, 0 },
 
 /* ── tipo escrito junto da estrela: a mesma frase nas duas ordens ─────────── */

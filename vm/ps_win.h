@@ -69,6 +69,32 @@ static inline int setenv(const char *n, const char *v, int sobrescreve)
 }
 static inline int unsetenv(const char *n) { return _putenv_s(n, "") == 0 ? 0 : -1; }
 
+/* `rename` com a regra do POSIX: SUBSTITUI o destino que já existe. O do CRT
+ * (MoveFileEx sem REPLACE_EXISTING) recusava, e o mesmo `os.rename` que no
+ * Linux e no macOS troca o arquivo levantava erro aqui. Pasta não pode ser
+ * substituída pelo MoveFileEx: com origem pasta vai sem a flag. Os nomes vão
+ * em UTF-8 pelas funções -A (o manifesto põe a página de código em UTF-8).
+ * Entre discos diferentes falha com EXDEV, como no POSIX, e quem move copia. */
+static inline int ps_w_rename(const char *de, const char *para)
+{
+    DWORD a = GetFileAttributesA(de);
+    DWORD fl = (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY)) ? 0 : MOVEFILE_REPLACE_EXISTING;
+    if (MoveFileExA(de, para, fl)) return 0;
+    switch (GetLastError()) {
+        case ERROR_FILE_NOT_FOUND: case ERROR_PATH_NOT_FOUND:
+        case ERROR_INVALID_NAME:                       errno = ENOENT; break;
+        case ERROR_ACCESS_DENIED: case ERROR_SHARING_VIOLATION:
+        case ERROR_LOCK_VIOLATION:                     errno = EACCES; break;
+        case ERROR_NOT_SAME_DEVICE:                    errno = EXDEV; break;
+        case ERROR_ALREADY_EXISTS: case ERROR_FILE_EXISTS: errno = EEXIST; break;
+        case ERROR_DIR_NOT_EMPTY:                      errno = ENOTEMPTY; break;
+        case ERROR_DISK_FULL:                          errno = ENOSPC; break;
+        default:                                       errno = EIO; break;
+    }
+    return -1;
+}
+#define rename(de, para) ps_w_rename((de), (para))
+
 #ifndef S_ISLNK
 #define S_ISLNK(m) 0                  /* o `stat` do CRT não vê link simbólico */
 #endif

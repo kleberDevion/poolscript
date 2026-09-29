@@ -48,7 +48,7 @@ aí é shell, e vale a advertência de injeção lá embaixo.
 
 ```
 versao = os.run(["jinga", "--version"], capture=true)
-post(versao)                        # "Jinga 16.2.1 [PSVM] (2026-09-24) Runtime standalone"
+post(versao)                        # "Jinga 16.2.2 [PSVM] (2026-09-24) Runtime standalone"
 ```
 
 Com `capture=true` o `run` **espera** o processo terminar: colher a saída exige
@@ -91,9 +91,18 @@ cor, o `input()` não aparece, a barra de progresso vira lixo. Com `pty=true` o
 filho ganha um terminal de verdade:
 
 ```
-p = os.run(["sh", "-c", "test -t 0 && echo tem terminal"], capture="live", pty=true)
-post(p.read().strip())           # "tem terminal"
+p = os.run(["sh", "-c", "test -t 0 && echo tem-terminal"], capture="live", pty=true)
+s = ""
+parte = p.read()
+while parte != "" {
+    s = s + parte
+    parte = p.read()
+}
+post("tem-terminal" in s)        # True
 ```
+
+Lê até `read()` devolver `""` (o terminal fechou): um `read()` devolve o que
+chegou até ali, e o terminal pode mandar coisa antes do texto do programa.
 
 Um terminal tem **um canal só**: com `pty=true`, o stderr do filho chega junto
 no `read`, e `read_err` devolve `""`. O tamanho começa em 80x24 e muda com
@@ -104,7 +113,10 @@ filho travaria com o buffer cheio.
 
 No Windows o terminal é um pseudoconsole (ConPTY): a saída vem com as
 sequências de controle que o console do Windows escreve (posição do cursor,
-limpar a linha) além do texto do programa.
+limpar a linha) além do texto do programa. Ele abre a sessão com os pedidos
+dele ao terminal (modo de teclado, eventos de foco) antes de qualquer texto
+do programa: o primeiro `read()` pode não trazer nada do filho, e o texto
+inteiro vem lendo até `""`.
 
 ---
 

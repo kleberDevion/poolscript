@@ -30,6 +30,10 @@ Com `force=false` (padrão), remover uma pasta que **tem arquivos** dá erro —
 uma proteção. Com `force=true`, a pasta e **todo o conteúdo** são apagados
 recursivamente, sem confirmação e **sem volta**.
 
+Um **link** dentro da pasta (link simbólico; no Windows também a junção de
+pasta) sai como link: o `force` não entra nele e não apaga o que está do
+outro lado — como o `rm -rf`. Se o próprio `path` é um link, sai só o link.
+
 Confirme o caminho antes de usar `force=true`:
 
 ```

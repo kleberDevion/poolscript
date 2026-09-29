@@ -1,4 +1,4 @@
-# Jinga v16.2.1
+# Jinga v16.2.2
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 jinga --version
-# Jinga 16.2.1 [PSVM] (2026-09-24) Runtime standalone
+# Jinga 16.2.2 [PSVM] (2026-09-24) Runtime standalone
 #                       ^ a data da compilação DESTE binário: duas
 #                         cópias da mesma versão se distinguem por ela
 ```
@@ -455,7 +455,7 @@ Tipos disponíveis:
 | `ValueError` | o tipo está certo e o **valor** não serve: `int("abc")`, `max([])` |
 | `ZeroDivisionError` | divisão ou resto por zero |
 | `NameError` | nome que não existe no escopo (`post(x)`) |
-| `AttributeError` | membro que o objeto não tem (`"abc".m`, `json.naoexiste`); nome parecido é apontado: `'str' object has no attribute 'raplace'. Did you mean: 'replace'?` |
+| `AttributeError` | membro que o objeto não tem (`"abc".m`, `json.naoexiste`); numa chamada a frase diz `method`, numa leitura `attribute`; nome parecido é apontado: `'str' object has no method 'raplace'. Did you mean: 'replace'?` |
 | `OverflowError` | número que não cabe no destino (`int(flo("inf"))`) |
 | `AttributedValueError` | valor incompatível em variável **tipada** (`str x = 10`) — não cobre o `+` |
 | `KeyError` | chave não existe no dict. A mensagem é só a chave: `'z'` |

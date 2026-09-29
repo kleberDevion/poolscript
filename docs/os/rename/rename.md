@@ -22,6 +22,9 @@ os.rename("rascunho.txt", "final.txt")       # troca o nome
 os.rename("fotos", "imagens")                # renomeia a pasta
 ```
 
+Se já existe um **arquivo** com o novo nome, ele é substituído, nos três
+sistemas (no Windows também: o `rename` do sistema lá recusava).
+
 ---
 
 ## Relacionados

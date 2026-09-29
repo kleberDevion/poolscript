@@ -148,8 +148,11 @@ O que muda no Windows é o que o sistema muda:
 - `Process.kill(sinal)` encerra o processo (o Windows não tem sinal); o
   `wait()` devolve `-sinal`, como no Linux.
 - Com `pty=true` o processo roda num pseudoconsole (ConPTY): a saída vem com
-  as sequências de terminal do console, e o fim da entrada (`close()`) é
-  Ctrl+Z e Enter, o do teclado do Windows.
+  as sequências de terminal do console (a sessão abre com os pedidos dele ao
+  terminal, antes do texto do programa: leia até `read()` devolver `""`), e o
+  fim da entrada (`close()`) é Ctrl+Z e Enter, o do teclado do Windows.
+- `os.rename` e `os.move` substituem o destino que já existe, como no Linux
+  e no macOS (o `rename` do sistema recusava).
 - `create_server(..., reuse_port=true)` é `ValueError` (não existe
   `SO_REUSEPORT`).
 - O jinker com `workers>1` roda o programa de novo em cada worker (não há
@@ -272,5 +275,5 @@ minhalib`, onde quer que as libs estejam (`JINGA_HOME` incluso).
 
 ## Versionamento
 
-Versão mais recente — **16.2.1** (a fonte é `vm/ps_versao.h`; `jinga --version`
+Versão mais recente — **16.2.2** (a fonte é `vm/ps_versao.h`; `jinga --version`
 mostra a do binário).

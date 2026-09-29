@@ -39,7 +39,7 @@ Todo arquivo na linguagem é `PoolFile`: o que sai do `open()` e o que sai do
 | `.size` | `int` | o tamanho em bytes — campo |
 
 > **`.write()` devolve `int`, não o arquivo.** Encadear (`f.write(x).save(p)`)
-> dá `'int' object has no attribute 'save'`. Chame no arquivo: `f.write(x)` e
+> dá `'int' object has no method 'save'`. Chame no arquivo: `f.write(x)` e
 > depois `f.save(p)`.
 
 `move` e `delete` num arquivo ainda **aberto** são recusados com

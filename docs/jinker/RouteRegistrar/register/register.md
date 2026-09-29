@@ -47,7 +47,7 @@ post(vol)           # Null
 ```
 
 Por isso **não encadeia**: `app.get("/x").register(f).register(g)` é
-`'Null' object has no attribute 'register'`. Pra registrar duas rotas, são
+`'Null' object has no method 'register'`. Pra registrar duas rotas, são
 dois registradores.
 
 ## O que ele grava, por feitio

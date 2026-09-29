@@ -60,7 +60,8 @@ post(len(texto.split("\n")), "linhas")
 Por padrão o terminal só entrega a linha quando você aperta Enter, e ecoa o que
 você digita. `sys.stdin.raw(true)` põe o terminal em **modo cru** — a tecla
 chega na hora, sem eco — e `raw(false)` volta ao normal. É do próprio motor
-(termios), sem `stty` externo.
+(termios no Linux e no macOS, o modo do console no Windows), sem `stty`
+externo.
 
 ```ps
 import sys
@@ -71,8 +72,9 @@ sys.stdin.raw(false)
 post("apertou:", tecla)
 ```
 
-- Devolve `true` se ligou, `false` quando **não há terminal** (entrada por `|`
-  ou arquivo) — aí não há modo cru pra ligar.
+- Devolve `true` se ligou, `false` quando **não há terminal** (entrada por `|`,
+  arquivo ou o dispositivo nulo, `/dev/null` / `NUL`) — aí não há modo cru pra
+  ligar.
 - O motor **restaura o terminal sozinho** ao fim do programa e num `Ctrl+C`,
   mesmo que o script esqueça o `raw(false)` ou quebre no meio. Ainda assim,
   ponha o `raw(false)` num `finally` — é o certo.

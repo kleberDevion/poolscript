@@ -245,8 +245,18 @@ funct casos_de(arq) {
                 for each b in des_c(t[1]) { addEnd(fonte, b) }
             }
         }
+        # 8o campo: o sistema em que o caso vale (NULL = todos). Sem levar
+        # adiante, regerar apagava o "linux" dos casos do /dev/full.
+        so = ""
+        if len(campos) > 7 {
+            for each t in campos[7] {
+                if t[0] == "lit" {
+                    so = so + t[1]
+                }
+            }
+        }
         if len(fonte) > 0 {
-            addEnd(casos, [nome, fonte])
+            addEnd(casos, [nome, fonte, so])
         }
     }
     return casos
@@ -341,6 +351,11 @@ funct principal() {
         for each caso in casos_de(arq) {
             lidos = lidos + 1
             fonte = caso[1]
+            so = caso[2]
+            # caso de OUTRO sistema: a saída gravada aqui seria a deste
+            if so != "" and so != sys.platform() {
+                continue
+            }
             texto = ""
             try {
                 texto = texto_de(fonte)
@@ -377,7 +392,11 @@ funct principal() {
             if r1[2] != "" {
                 err_c = "\"" + esc_bytes(r1[2].encode()) + "\""
             }
-            addEnd(linhas, "  \"" + esc_bytes(r1[1]) + "\", " + err_c + ", " + str(r1[0]) + " },")
+            fim = " },"
+            if so != "" {
+                fim = ", NULL, 0, \"" + so + "\" },"
+            }
+            addEnd(linhas, "  \"" + esc_bytes(r1[1]) + "\", " + err_c + ", " + str(r1[0]) + fim)
             n = n + 1
         }
     }

@@ -25,6 +25,13 @@
  * da DECLARAÇÃO: o compilador recusa ali, e a chamada nunca vê mais que isso. */
 #define PS_MAX_PARAMS 256
 
+/* No argumento do GET_MEMBER e do LOAD_BASE_MEMBRO: o membro vai ser CHAMADO
+ * (`x.m(...)`). O resto do argumento é o índice da constante com o nome. É o
+ * que deixa o erro de membro ausente dizer "method" numa chamada e "attribute"
+ * numa leitura — a mesma frase pras duas mandava procurar um campo quando o
+ * código chama um método. */
+#define PS_ARG_CHAMADO 0x40000000
+
 /* Constante numa forma que não depende do runtime. */
 typedef enum { K_NULL = 0, K_BOOL, K_INT, K_FLO, K_STR, K_BIGINT, K_BYTES } PSConstKind;
 

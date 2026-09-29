@@ -13,15 +13,23 @@ const Caso CASOS_CRASH[] = {
  * Os três eram descida recursiva sem limite. O detector de CICLO existia e não
  * bastava: ele pega `l.append(l)`, e não pega profundidade sem ciclo nem ciclo
  * que fecha acima do vetor de 256 níveis que ele registra. */
-{ "parser: 30 mil parenteses aninhados é erro, nao SIGSEGV",
-  /* O gerador do caso é o próprio motor: 30 mil `(` na mão não cabe aqui. Sem
-   * shell (`os.run` com lista), pra valer igual nos três sistemas. Quando
-   * falha, a saída do caso diz o código e o que o `--check` respondeu: no
-   * macOS ele falhou uma vez dentro do `make check` e passou na suíte avulsa,
-   * e um `False` sozinho não diz se foi erro de outra coisa ou morte. */
+{ "parser: 100 mil parenteses aninhados (acima do teto) é erro, nao SIGSEGV",
+  /* O gerador do caso é o próprio motor: 100 mil `(` na mão não cabe aqui.
+   * Sem shell (`os.run` com lista), pra valer igual nos três sistemas.
+   *
+   * A PROFUNDIDADE é PS_PARSE_PROF_MAX + 1 (vm/ps_parser.c), e não "um número
+   * que estoura a pilha". O parser para pela FOLGA MEDIDA da pilha, que segue
+   * o `ulimit -s`. Com 30 mil o caso supunha 8 MB: o make 3.81 da Apple sobe o
+   * limite da pilha até o teto (64 MB) e não o devolve aos filhos, e dentro do
+   * `make check` do macOS 30 mil níveis CABIAM — o `--check` respondia
+   * {"ok":true}, o que está certo. Um nível acima do teto de contagem é erro
+   * em QUALQUER pilha: se ela não comporta tudo, dispara a folga (o freio
+   * contra o SIGSEGV que originou o caso); se comporta, dispara o contador.
+   * Subiu o PS_PARSE_PROF_MAX, sobe o `fundo` junto. O código 1 também é
+   * conferido: imprimir a mensagem e morrer depois não passa. */
   "import os\n"
   "import sys\n"
-  "fundo = 30000\n"
+  "fundo = 100001\n"
   "src = \"post(\" + (\"(\" * fundo) + \"1\" + (\")\" * fundo) + \")\"\n"
   "using open(\"p.pr\", \"w\") as f { f.write(src) }\n"
   "p = os.run([sys.executable, \"--check\", \"p.pr\"], capture=\"live\")\n"
@@ -33,12 +41,46 @@ const Caso CASOS_CRASH[] = {
   "}\n"
   "t = t + p.read_err(65536)\n"
   "rc = p.wait()\n"
-  "if \"aninhada demais\" in t {\n"
+  "if rc == 1 and \"aninhada demais\" in t {\n"
   "    post(True)\n"
   "} else {\n"
   "    post(\"rc \" + str(rc) + \": \" + t[0:300])\n"
   "}\n",
   "True", NULL, 0 },
+{ "parser: na BORDA do aninhamento o --check da SyntaxError, nunca MemoryError",
+  /* O freio de aninhamento é pela folga da pilha, e o `--check` parseia duas
+   * vezes: a compilação e a conferência, que parte de um ponto mais RASO. Na
+   * borda a segunda aceitava o que a primeira recusou, o erro de sintaxe
+   * sumia e saía "MemoryError: sem memoria" na linha 0 (medido: 16
+   * profundidades logo abaixo do limite). O caso ACHA a borda por busca
+   * binária (aceitar ou não é monotônico na profundidade), então vale em
+   * qualquer pilha e sistema, e confere a borda e as profundidades logo
+   * depois dela. */
+  "import os\n"
+  "import sys\n"
+  "funct checa(n) {\n"
+  "    using open(\"b.pr\", \"w\") as f { f.write(\"post(\" + (\"(\" * n) + \"1\" + (\")\" * n) + \")\") }\n"
+  "    return os.run([sys.executable, \"--check\", \"b.pr\"], capture=true)\n"
+  "}\n"
+  "baixo = 1\n"
+  "alto = 100001\n"
+  "while alto - baixo > 1 {\n"
+  "    meio = (baixo + alto) // 2\n"
+  "    if \"\\\"ok\\\":true\" in checa(meio) {\n"
+  "        baixo = meio\n"
+  "    } else {\n"
+  "        alto = meio\n"
+  "    }\n"
+  "}\n"
+  "ruins = []\n"
+  "for each k in [0, 1, 8, 15, 16] {\n"
+  "    t = checa(alto + k)\n"
+  "    if not (\"SyntaxError\" in t and \"aninhada demais\" in t) {\n"
+  "        addEnd(ruins, str(alto + k) + \": \" + t[0:150])\n"
+  "    }\n"
+  "}\n"
+  "post(ruins)\n",
+  "[]", NULL, 0 },
 { "str() de estrutura profunda trunca, nao mata",
   "x = []\n"
   "i = 0\n"
@@ -222,7 +264,16 @@ const Caso CASOS_CRASH[] = {
  * recusa a escrita, entao ele e o caso.
  *
  * O `fclose` importa tanto quanto o `fwrite`: o buffer da libc so vai pro disco
- * no flush, entao ENOSPC costuma aparecer AO FECHAR. */
+ * no flush, entao ENOSPC costuma aparecer AO FECHAR.
+ *
+ * Aceitar o `fopen` e recusar a gravacao, sem privilegio, so o /dev/full do
+ * Linux faz: no Windows "/dev/full" e um caminho comum (\dev\full no drive
+ * atual, que o writeFile cria e grava) e no macOS o /dev recusa o arquivo ja
+ * no `fopen`. Os do /dev/full valem so no Linux, e sao a unica guarda do ramo
+ * `fwrite`/`fclose`. Os irmaos com "pai que e arquivo" valem nos tres
+ * sistemas: a gravacao falha no `fopen` (ENOTDIR no Linux e no macOS, ENOENT
+ * no Windows), o mesmo contrato ("gravacao que falha levanta") pelo ramo do
+ * `fopen`. */
 { "os.writeFile que falha levanta",
   "import os\n"
   "try {\n"
@@ -230,11 +281,30 @@ const Caso CASOS_CRASH[] = {
   "    post(\"nao levantou\")\n"
   "} catch (e) {\n"
   "    post(\"levantou\")\n"
-  "}\n", "levantou", NULL, 0 },
+  "}\n", "levantou", NULL, 0, NULL, 0, "linux" },
 { "qrcode.save que falha levanta",
   "import qrcode\n"
   "try {\n"
   "    qrcode.make(\"x\").save(\"/dev/full\")\n"
+  "    post(\"nao levantou\")\n"
+  "} catch (e) {\n"
+  "    post(\"levantou\")\n"
+  "}\n", "levantou", NULL, 0, NULL, 0, "linux" },
+{ "os.writeFile com pai que e arquivo levanta",
+  "import os\n"
+  "os.writeFile(\"pai\", \"sou arquivo\")\n"
+  "try {\n"
+  "    os.writeFile(\"pai/filho.txt\", \"x\" * 200000)\n"
+  "    post(\"nao levantou\")\n"
+  "} catch (e) {\n"
+  "    post(\"levantou\")\n"
+  "}\n", "levantou", NULL, 0 },
+{ "qrcode.save com pai que e arquivo levanta",
+  "import os\n"
+  "import qrcode\n"
+  "os.writeFile(\"pai\", \"sou arquivo\")\n"
+  "try {\n"
+  "    qrcode.make(\"x\").save(\"pai/q.png\")\n"
   "    post(\"nao levantou\")\n"
   "} catch (e) {\n"
   "    post(\"levantou\")\n"
@@ -264,27 +334,106 @@ const Caso CASOS_CRASH[] = {
  * `copia_arquivo` nao conferia `fwrite` nem `fclose`: gravacao que falhava era
  * ignorada, a funcao dizia "copiou" e o `os.move` dava unlink na ORIGEM.
  * Perda de dado em silencio, sem erro nenhum. /dev/full sempre aceita o
- * `fopen` e sempre recusa a escrita, entao ele e o caso. */
+ * `fopen` e sempre recusa a escrita, entao ele e o caso — so no Linux (ver
+ * acima). Os irmaos com "pai que e arquivo" valem nos tres sistemas: o rename
+ * e a copia de reserva falham, e a origem fica. */
 { "os.move que falha mantem a origem",
   "import os\n"
   "using open(\"o.txt\", \"w\") as f { f.write(\"dado\") }\n"
   "houve_erro = false\n"
   "try { os.move(\"o.txt\", \"/dev/full\") } catch (e) { houve_erro = true }\n"
-  "post(houve_erro, os.exists(\"o.txt\"))\n", "True True", NULL, 0 },
+  "post(houve_erro, os.exists(\"o.txt\"))\n", "True True", NULL, 0, NULL, 0, "linux" },
 { "os.copy que falha nao deixa destino pela metade",
   "import os\n"
   "using open(\"o2.txt\", \"w\") as f { f.write(\"dado\") }\n"
   "houve_erro = false\n"
   "try { os.copy(\"o2.txt\", \"/dev/full\") } catch (e) { houve_erro = true }\n"
-  "post(houve_erro, os.exists(\"o2.txt\"))\n", "True True", NULL, 0 },
+  "post(houve_erro, os.exists(\"o2.txt\"))\n", "True True", NULL, 0, NULL, 0, "linux" },
+{ "os.move pra pai que e arquivo mantem a origem",
+  "import os\n"
+  "using open(\"o.txt\", \"w\") as f { f.write(\"dado\") }\n"
+  "os.writeFile(\"pai\", \"sou arquivo\")\n"
+  "houve_erro = false\n"
+  "try { os.move(\"o.txt\", \"pai/o.txt\") } catch (e) { houve_erro = true }\n"
+  "post(houve_erro, os.exists(\"o.txt\"))\n", "True True", NULL, 0 },
+{ "os.copy pra pai que e arquivo nao cria destino",
+  "import os\n"
+  "using open(\"o2.txt\", \"w\") as f { f.write(\"dado\") }\n"
+  "os.writeFile(\"pai\", \"sou arquivo\")\n"
+  "houve_erro = false\n"
+  "try { os.copy(\"o2.txt\", \"pai/o2.txt\") } catch (e) { houve_erro = true }\n"
+  "post(houve_erro, os.exists(\"o2.txt\"), os.exists(\"pai/o2.txt\"))\n", "True True False", NULL, 0 },
+/* A copia que falhou apagava a ENTRADA do destino sem olhar o que era: um
+ * link pra /dev/full sumia (e, como root, o proprio /dev/full). So sai a
+ * entrada que e o arquivo comum que a copia escreveu. */
+{ "copy que falha nao apaga destino que nao e arquivo comum",
+  "import os\n"
+  "os.run([\"ln\", \"-s\", \"/dev/full\", \"cheio\"], capture=true)\n"
+  "using open(\"o3.txt\", \"w\") as f { f.write(\"dado\") }\n"
+  "try { os.copy(\"o3.txt\", \"cheio\") } catch (e) { post(\"levantou\") }\n"
+  "post(os.exists(\"cheio\"))\n", "levantou\nTrue", NULL, 0, NULL, 0, "linux" },
+/* Mover e copiar E apagar a origem. Origem que nao sai era ignorada: o move
+ * dizia "ok" e o arquivo ficava nos dois lugares. Cada sistema segura a
+ * origem do seu jeito: pasta sem escrita no Linux e no macOS (o rename e o
+ * unlink falham); no Windows, a origem aberta (o rename e o apagar recusam o
+ * arquivo em uso). O ramo por sistema e so o MEIO de segurar a origem; a
+ * propriedade conferida e a mesma. */
+{ "os.move que nao consegue apagar a origem levanta",
+  "import os\n"
+  "import sys\n"
+  "os.mkdir(\"ro\")\n"
+  "os.writeFile(\"ro/f.txt\", \"dado\")\n"
+  "aberto = Null\n"
+  "if sys.platform() == \"windows\" {\n"
+  "    aberto = open(\"ro/f.txt\")\n"
+  "} else {\n"
+  "    os.run([\"chmod\", \"555\", \"ro\"], capture=true)\n"
+  "}\n"
+  "houve_erro = false\n"
+  "try { os.move(\"ro/f.txt\", \"dest.txt\") } catch (e) { houve_erro = true }\n"
+  "if sys.platform() == \"windows\" {\n"
+  "    aberto.close()\n"
+  "} else {\n"
+  "    os.run([\"chmod\", \"755\", \"ro\"], capture=true)\n"
+  "}\n"
+  "post(houve_erro, os.exists(\"ro/f.txt\"))\n", "True True", NULL, 0 },
+/* O rename do Windows (o do CRT) nao substituia um destino que ja existe, e o
+ * mesmo `os.rename` que no Linux e no macOS troca o arquivo levantava erro. */
+{ "os.rename por cima de um arquivo que existe substitui",
+  "import os\n"
+  "os.writeFile(\"n.txt\", \"novo\")\n"
+  "os.writeFile(\"v.txt\", \"velho\")\n"
+  "os.rename(\"n.txt\", \"v.txt\")\n"
+  "post(os.readFile(\"v.txt\"), os.exists(\"n.txt\"))\n", "novo False", NULL, 0 },
+/* `os.rmdir(force=true)` seguia link: o stat/opendir olhavam o destino, e
+ * descer apagava o conteudo DELE — com `arvore/link -> ../alvo`, sumia
+ * alvo/precioso.txt. Link (simbolico; no Windows a juncao de pasta) sai como
+ * link, sem descer, como no `rm -rf`. O ramo por sistema e so o jeito de
+ * criar o link. */
+{ "os.rmdir force nao segue link e nao apaga o destino",
+  "import os\n"
+  "import sys\n"
+  "os.mkdir(\"alvo\")\n"
+  "os.writeFile(\"alvo/precioso.txt\", \"dado\")\n"
+  "os.mkdir(\"arvore\")\n"
+  "if sys.platform() == \"windows\" {\n"
+  "    os.cmd(\"mklink /J \\\"\" + os.cwd() + \"\\\\arvore\\\\link\\\" \\\"\" + os.cwd() + \"\\\\alvo\\\"\", true)\n"
+  "} else {\n"
+  "    os.run([\"ln\", \"-s\", \"../alvo\", \"arvore/link\"], capture=true)\n"
+  "}\n"
+  "post(len(os.ls(\"arvore\")))\n"
+  "os.rmdir(\"arvore\", force=true)\n"
+  "post(os.exists(\"arvore\"), os.readFile(\"alvo/precioso.txt\"))\n", "1\nFalse dado", NULL, 0 },
 
 { "500 parenteses aninhados sao LEGITIMOS",
+  /* Sem shell (`os.run` com lista), como o dos 100 mil: a aspa simples era
+   * sintaxe do sh, e o cmd.exe a toma como parte do nome do programa.
+   * `capture=true` devolve o stdout, ou o stderr se nao houve stdout. */
   "import os\n"
   "import sys\n"
   "src = \"post(\" + (\"(\" * 500) + \"1\" + (\")\" * 500) + \")\"\n"
   "using open(\"leg.pr\", \"w\") as f { f.write(src) }\n"
-  "os.cmd(\"'\" + sys.executable + \"' leg.pr > o.txt 2>&1\")\n"
-  "post(open(\"o.txt\").read().strip())\n", "1", NULL, 0 },
+  "post(os.run([sys.executable, \"leg.pr\"], capture=true))\n", "1", NULL, 0 },
 { "estrutura 200 niveis funda imprime inteira",
   "x = [\"fundo\"]\n"
   "i = 0\n"

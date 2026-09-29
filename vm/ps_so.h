@@ -271,6 +271,32 @@ static inline int ps_sock_espera_leitura(int fd, int ms)
 }
 #endif
 
+/* ── terminal ──────────────────────────────────────────────────────────────
+ * 1 = o descritor `fd` é um terminal de verdade, onde o modo cru
+ * (`sys.stdin.raw`) e a leitura tecla a tecla fazem sentido. No Linux e no
+ * macOS é o `isatty`. No Windows o `_isatty` do CRT responde 1 pra QUALQUER
+ * dispositivo de caractere, o NUL inclusive (é nele que fica o stdin de quem
+ * roda sem terminal: serviço, CI, `< NUL`), e também pra descritor sem handle
+ * padrão. Lá a pergunta vai ao console: só um handle de console (o do
+ * pseudoconsole do `pty=true` também) responde ao `GetConsoleMode`. */
+#if defined(PS_SO_WINDOWS)
+static inline int ps_e_terminal(int fd)
+{
+    HANDLE h = (HANDLE)_get_osfhandle(fd);
+    DWORD modo;
+    return h != NULL && h != INVALID_HANDLE_VALUE && GetConsoleMode(h, &modo) != 0;
+}
+#else
+static inline int ps_e_terminal(int fd) { return isatty(fd); }
+#endif
+
+/* ── links ────────────────────────────────────────────────────────────────
+ * 1 = `caminho` é um LINK (simbólico; no Windows também a junção de pasta),
+ * olhando o próprio link e não o destino. Quem apaga uma árvore remove o link
+ * e NÃO desce nele: descer apagaria o conteúdo do destino. `*e_pasta` = o
+ * link é de pasta (no Windows ele sai com rmdir, não com unlink). */
+int ps_e_link(const char *caminho, int *e_pasta);
+
 /* A variável da pasta do usuário: HOME no Linux e no macOS, USERPROFILE no
  * Windows (o HOME lá só existe dentro do MSYS2, e aponta pra outra pasta).
  * O motor (as libs do `import`) e o `jpkg` (onde elas são instaladas) leem a

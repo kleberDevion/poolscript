@@ -24,7 +24,16 @@ os.move("rascunhos", "arquivados")           # move a pasta inteira
 ```
 
 Também serve como "renomear + mudar de lugar" ao mesmo tempo (é só o destino
-ter nome/pasta diferente).
+ter nome/pasta diferente). Destino que já existe é substituído, nos três
+sistemas.
+
+## Quando falha
+
+Entre discos diferentes o `move` copia e depois apaga a origem. Se a cópia
+falha, a origem fica e o erro diz o motivo. Se a origem não pode ser apagada
+(pasta sem permissão de escrita; no Windows, arquivo aberto em outro
+programa), é erro também: o arquivo ficou nos dois lugares, e o `move` diz
+isso em vez de fingir que moveu.
 
 ---
 
