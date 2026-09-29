@@ -94,10 +94,12 @@ O timeout estourado dá erro com **"timed out"** na mensagem — capturável com
 
 ## Constantes
 
-São **63**, e o valor de cada uma é o do sistema — a lista abaixo é a tabela
-`sockets` do motor, inteira. (Antes esta seção era um parágrafo com "…" e
-"etc.": nomeava umas e escondia as outras, e quem procurava `IP_TTL` não
-achava.)
+A lista abaixo é a tabela `sockets` do motor, inteira, e o valor de cada uma
+é o do sistema. A que só existe em alguns sistemas diz em quais: onde o
+sistema não tem, ela não existe no módulo (usá-la é `AttributeError`), como
+em toda linguagem que expõe os sockets do sistema. (Antes esta seção era um
+parágrafo com "…" e "etc.": nomeava umas e escondia as outras, e quem
+procurava `IP_TTL` não achava.)
 
 **Família do endereço** — 1º argumento de `socket()`:
 
@@ -107,7 +109,7 @@ achava.)
 | `AF_INET6` | IPv6 |
 | `AF_UNIX` | soquete local por caminho de arquivo |
 | `AF_UNSPEC` | "tanto faz" — só em `getaddrinfo` |
-| `AF_PACKET` | quadro cru da camada de enlace (precisa de privilégio) |
+| `AF_PACKET` | quadro cru da camada de enlace (precisa de privilégio) — só no Linux |
 
 **Tipo do soquete** — 2º argumento:
 
@@ -124,7 +126,7 @@ achava.)
 |---|---|
 | `SOL_SOCKET` | o NÍVEL das opções `SO_*` abaixo |
 | `SO_REUSEADDR` | reusar o endereço em `TIME_WAIT` — o que evita "Address already in use" ao reiniciar |
-| `SO_REUSEPORT` | vários processos escutando a MESMA porta |
+| `SO_REUSEPORT` | vários processos escutando a MESMA porta — Linux e macOS |
 | `SO_KEEPALIVE` | sondar a conexão ociosa pra detectar queda |
 | `SO_BROADCAST` | permitir envio pra endereço de difusão |
 | `SO_LINGER` | quanto o `close()` espera pelo que falta enviar |
@@ -135,7 +137,8 @@ achava.)
 | `SO_DONTROUTE` | não usar a tabela de rotas |
 | `SO_TYPE` | só leitura: o tipo com que o soquete nasceu |
 | `TCP_NODELAY` | desliga o Nagle — manda o pacote pequeno na hora |
-| `TCP_KEEPIDLE` | ocioso antes da primeira sonda |
+| `TCP_KEEPIDLE` | ocioso antes da primeira sonda — Linux e Windows |
+| `TCP_KEEPALIVE` | ocioso antes da primeira sonda (o nome do macOS pro `TCP_KEEPIDLE`) — macOS e Windows |
 | `TCP_KEEPINTVL` | intervalo entre sondas |
 | `TCP_KEEPCNT` | quantas sondas sem resposta derrubam |
 | `IP_TTL` | tempo de vida do pacote (saltos) |
@@ -166,10 +169,10 @@ achava.)
 |---|---|
 | `MSG_PEEK` | lê SEM tirar da fila |
 | `MSG_WAITALL` | só volta com tudo o que se pediu |
-| `MSG_DONTWAIT` | não bloqueia nesta chamada |
+| `MSG_DONTWAIT` | não bloqueia nesta chamada — Linux e macOS |
 | `MSG_OOB` | dado urgente (fora de banda) |
 | `MSG_DONTROUTE` | ignora a tabela de rotas |
-| `MSG_TRUNC` | (em `recv`) informa o tamanho REAL, mesmo truncado |
+| `MSG_TRUNC` | (em `recv`) informa o tamanho REAL, mesmo truncado — Linux e macOS |
 
 **`getaddrinfo` (`AI_*`) e `getnameinfo` (`NI_*`)**:
 

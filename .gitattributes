@@ -1,0 +1,10 @@
+# Fim de linha LF em todo sistema, inclusive no checkout do Windows.
+#
+# O git do runner Windows do CI vem com `core.autocrlf=true`, e sem este
+# arquivo os fontes chegavam lá com \r\n: os portões que leem os casos
+# `teste/casos_*.c`, a doc e os `.pr` viam um byte a mais em cada linha e
+# mediam outra coisa (o `confere_assercoes` deu 484 mensagens contra 486 no
+# Linux). O motor lê e escreve em modo binário nos três sistemas, então o
+# arquivo tem que ser o MESMO byte a byte em todos. Binário (imagem, fonte,
+# .zip) o git detecta sozinho e não toca.
+* text=auto eol=lf

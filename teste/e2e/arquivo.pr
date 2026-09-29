@@ -2,9 +2,21 @@
 # de ponta a ponta sem rede nem banco. Cada metodo e chamado de verdade e o
 # efeito e conferido lendo de volta.
 import os
+import sys
 import qrcode
 
+# A pasta de trabalho é /tmp no Linux e no macOS. No Windows o motor é nativo
+# e "/tmp/ps_e2e" é "<disco>:\tmp\ps_e2e", na raiz do disco corrente — não o
+# /tmp do MSYS2 —, e o `os.mkdir`, que cria a cadeia inteira, deixaria a pasta
+# \tmp na raiz do disco depois do teste. Então lá ela é uma subpasta da pasta
+# corrente, criada aqui e apagada no fim como a de /tmp. Relativa, e não
+# `os.cwd()` + nome: o `os.loadFile` só trata como absoluto o caminho que
+# começa com "/", e um "<disco>:\..." cai na busca pelo nome e volta
+# FileNotFoundError.
 dir = "/tmp/ps_e2e"
+if sys.platform() == "windows" {
+    dir = "ps_e2e_arquivo"
+}
 if not os.exists(dir) {
     os.mkdir(dir)
 }
@@ -80,10 +92,15 @@ post("delete ->", os.exists(dir + "/movido.png"))
 # rmdir só remove diretório VAZIO: apaga o conteúdo antes.
 # `os.ls` devolve dicts {name, type, size}, não strings.
 for each ent in os.ls(dir) {
-    # `capture=true` pra ESPERAR: sem capture o `run` dispara em segundo plano,
-    # e o `rmdir` logo abaixo corria antes de os arquivos sumirem
-    # ("Directory not empty").
-    _r = os.run(["rm", "-f", dir + "/" + ent["name"]], true)
+    # Apaga pelo próprio motor, na hora: o `rmdir` logo abaixo já acha a
+    # pasta vazia. Era `os.run(["rm", "-f", ...], true)`, e o `rm` não é do
+    # Windows (só o do MSYS2, e só com ele no PATH); o do MSYS2 lê "/tmp/..."
+    # como o /tmp DELE, não o do motor — o `-f` calava o "não existe" e o
+    # `rmdir` caía em "Directory not empty". `mode="rb"` devolve PoolFile pra
+    # QUALQUER arquivo, texto também, e o PoolFile tem `delete()`. O
+    # `delete()` não levanta quando o arquivo não sai: quem acusa é o `rmdir`
+    # SEM `force`, logo abaixo.
+    os.loadFile(dir + "/" + ent["name"], mode="rb").delete()
 }
 os.rmdir(dir)
 post("fim")

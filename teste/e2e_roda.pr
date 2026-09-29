@@ -9,9 +9,9 @@
 #
 # Papel não se adivinha por nome de arquivo, então está declarado aqui:
 #
-#   PARES      servidor + cliente. Sobe o servidor destacado, ESPERA a porta
-#              aceitar conexão (não `sleep` no escuro), roda o cliente, e mata
-#              o servidor aconteça o que acontecer.
+#   PARES      servidor + cliente. Sobe o servidor como processo filho, ESPERA
+#              a porta aceitar conexão (não `sleep` no escuro), roda o cliente,
+#              e mata o servidor aconteça o que acontecer.
 #   SOZINHOS   fluxo único, roda direto.
 #   SEM_PAR    servidor que não tem cliente: bloquearia até o timeout. É
 #              RELATADO, não rodado — e relatado em voz alta, porque pular
@@ -22,8 +22,14 @@
 #
 #     ./pool teste/e2e_roda.pr               # tudo
 #     ./pool teste/e2e_roda.pr jinker        # só o que casa com o filtro
+#
+# Nada aqui passa por shell nem por arquivo em /tmp, pra valer igual no Linux,
+# no macOS e no Windows: os processos são `Process` (ver `sobe`), e a espera
+# da porta é o socket do próprio motor (ver `espera_porta`).
 import os
 import sys
+import date
+import sockets
 
 PASTA = "teste/e2e"
 TEMPO = 120        # segundos por script
@@ -42,76 +48,140 @@ SEM_PAR = {
 }
 
 
-# Espera a porta aceitar conexão. Devolve 1 se subiu, 0 se estourou o prazo.
+# Espera a porta ACEITAR conexão. Devolve 1 se abriu, 0 se estourou o prazo.
 # Melhor que `sleep 2`: numa máquina carregada 2s não bastam, e numa rápida
 # são 2s jogados fora por execução.
-# Espera a porta ACEITAR conexão. O código de saída vem por ARQUIVO.
 #
-# A versão anterior fazia `r = os.cmd(...)` e testava `r == 0`. Duas coisas
-# erradas na mesma linha, e elas se cancelavam:
+# A tentativa é o socket do PRÓPRIO motor. Antes era `timeout 1 bash -c
+# '</dev/tcp/...'` pelo `os.cmd`, que só existe inteiro no Linux: no macOS o
+# `timeout` do GNU se chama `gtimeout` (vem do coreutils do Homebrew), e no
+# Windows o `os.cmd` roda no cmd.exe, que não tem `/dev/tcp`, aspas simples
+# nem `$?`. Sem o `timeout`, a tentativa falhava SEMPRE, e o par reprovava
+# dizendo que a porta não abriu.
 #
-#   1. `os.cmd` devolve a SAÍDA (ou Null), nunca o código de saída;
-#   2. `Null == 0` era True neste motor.
+# O `connect_ex` não levanta: devolve 0 (conectou) ou o código do erro, e é
+# esse número que se confere. A versão com `os.cmd` já tinha errado nisso: ela
+# testava o que o `os.cmd` devolve — a SAÍDA, nunca o código de saída — e com
+# `Null == 0` valendo True a função voltava 1 na PRIMEIRA volta, sempre. A
+# "espera de 20 s" era decorativa; quando `Null == 0` virou False (I1/I2/I3),
+# ela passou a nunca dar certo.
 #
-# Resultado: a função voltava 1 na PRIMEIRA volta, sempre — nunca esperou porta
-# nenhuma. O que fazia o e2e funcionar era o servidor ser rápido o bastante, e
-# a "espera de 20 s" era decorativa. Quando `Null == 0` virou False (I1/I2/I3),
-# ela passou a nunca dar certo e o jinker reprovou dizendo que a porta não
-# abriu — com o log do servidor logo abaixo dizendo que abriu.
+# O prazo é de RELÓGIO, não de contagem de voltas: cada tentativa pode levar
+# até 1 s (o `settimeout`), e contar voltas deixava o prazo real depender de
+# quanto o sistema demora pra recusar a conexão.
 funct espera_porta(porta, prazo) {
-    i = 0
-    while i < prazo * 10 {
-        os.cmd("timeout 1 bash -c '</dev/tcp/127.0.0.1/" + str(porta)
-               + "' 2>/dev/null; echo $? > /tmp/ps_e2e_porta")
-        if int(open("/tmp/ps_e2e_porta").read().strip()) == 0 {
+    fim = date.monotonic() + prazo
+    while date.monotonic() < fim {
+        sk = sockets.socket()
+        sk.settimeout(1)
+        rc = sk.connect_ex(("127.0.0.1", porta))
+        sk.close()
+        if rc == 0 {
             return 1
         }
-        os.cmd("sleep 0.1")
-        i = i + 1
+        sleep(0.1)
     }
     return 0
 }
 
 
-# Scripts que PRECISAM de janela de verdade.
+# ── processos: sem shell, nos três sistemas ─────────────────────────────────
 #
+# Servidor e scripts rodam pelo `os.run([...], capture="live")`: o `Process`
+# que volta É o processo do pool — o pid exato, `kill()`, e `wait()` com o
+# código de saída —, sem shell no meio e sem arquivo temporário. A versão
+# anterior montava tudo em sh (`sh -c 'exec ...' &`, `$!` e `$?` gravados em
+# /tmp, `kill`, `timeout`), e isso só existe inteiro no Linux: no macOS falta
+# o `timeout`; no Windows o `os.cmd` é o cmd.exe (sem `exec`, `&`, `$!`, `$?`
+# nem `/dev/null`), não há `kill`, e o "/tmp" do motor nativo é a raiz do
+# disco, não o /tmp do MSYS2.
 
 
-PIDFILE = "/tmp/ps_e2e_srv.pid"
+# Um pedaço do stdout (ou do stderr) do processo; "" quando o canal fechou.
+funct le_canal(proc, do_erro) {
+    if do_erro {
+        return proc.read_err()
+    }
+    return proc.read()
+}
 
 
-# Sobe o servidor e devolve o PID EXATO dele (0 = não consegui).
+# Lê um canal até o fim, numa TAREFA.
 #
-# Duas coisas que parecem detalhe e não são:
+# Os dois canais do filho têm que andar JUNTOS: cano que ninguém lê enche, e o
+# filho trava na escrita. Ler o stdout até o fim e só depois o stderr pendura
+# quando o stderr enche primeiro — o filho espera o driver, o driver espera o
+# filho. Como tarefa, cada leitura cede: as duas (e a `vigia`) andam enquanto
+# o principal espera.
+async funct drena(proc, do_erro) {
+    texto = ""
+    parte = le_canal(proc, do_erro)
+    while parte != "" {
+        texto = texto + parte
+        parte = le_canal(proc, do_erro)
+    }
+    return texto
+}
+
+
+# Mata `proc` se ele passar de `prazo` segundos — o `timeout` de antes, agora
+# dentro do driver. Primeiro o SIGTERM (ver `derruba`: é o que deixa o jinker
+# sair limpo); se em 6 s ele não saiu, SIGKILL. Termina sozinha quando
+# `estado["acabou"]` vira verdadeiro, e liga `estado["estourou"]` quando o
+# prazo venceu.
+async funct vigia(proc, prazo, estado) {
+    fim = date.monotonic() + prazo
+    while not estado["acabou"] and date.monotonic() < fim {
+        sleep(0.1)
+    }
+    if estado["acabou"] {
+        return
+    }
+    estado["estourou"] = true
+    proc.kill()
+    fim = date.monotonic() + 6
+    while not estado["acabou"] and date.monotonic() < fim {
+        sleep(0.1)
+    }
+    if not estado["acabou"] {
+        proc.kill(9)
+    }
+}
+
+
+# Espera `proc` terminar e devolve [código, estourou]. A `vigia` corre durante
+# o `wait()`: a espera do principal é o ponto em que as tarefas andam.
+funct espera_sair(proc, prazo) {
+    estado = {"acabou": false, "estourou": false}
+    guarda = vigia(proc, prazo, estado)
+    rc = proc.wait()
+    estado["acabou"] = true
+    await guarda
+    return [rc, estado["estourou"]]
+}
+
+
+# Sobe o servidor e devolve [processo, canais]: `canais` são as duas `drena`
+# lendo o que ele escreve enquanto serve — o log, que o `derruba` devolve.
 #
-# `exec` no `sh -c` faz o shell VIRAR o pool, então o `$!` é o pid do pool. Sem
-# ele o pid guardado é de um shell que sai logo em seguida.
+# O que se guarda é o processo do POOL, e isso já custou caro duas vezes: com
+# `sh -c` sem `exec`, o pid guardado era o de um shell que saía logo em
+# seguida; com `setsid` (que forka e o pai sai), era o de quem já tinha
+# morrido — o sinal não chegava em ninguém e o servidor ficava órfão. O
+# `setsid` estava ali pra proteger de `pkill -f`, que matava o próprio script;
+# matando pelo processo exato o problema não existe.
 #
-# E NADA de `setsid`: ele forka e o pai sai, então o `$!` vira o pid do setsid,
-# que já morreu — o sinal não chega em ninguém e o servidor fica órfão. Ele
-# estava aqui pra proteger de `pkill -f`, que matava o próprio script; matando
-# por pid exato o problema não existe.
+# A entrada fecha na hora: é o `< /dev/null` de antes. O servidor não lê
+# nada, e se lesse veria fim de arquivo em vez de esperar um teclado.
 funct sobe(srv) {
-    os.cmd("rm -f " + PIDFILE)
-    os.cmd("sh -c 'exec \"" + sys.executable + "\" "
-           + PASTA + "/" + srv + " > /tmp/ps_e2e_srv.log 2>&1 < /dev/null' &"
-           + " echo $! > " + PIDFILE)
-    i = 0
-    while i < 50 {
-        if os.exists(PIDFILE) {
-            t = open(PIDFILE).read().strip()
-            if t != "" {
-                return int(t)
-            }
-        }
-        os.cmd("sleep 0.05")
-        i = i + 1
-    }
-    return 0
+    proc = os.run([sys.executable, PASTA + "/" + srv], capture="live")
+    proc.close()
+    return [proc, [drena(proc, false), drena(proc, true)]]
 }
 
 
-# Derruba o servidor pelo PID, SEM shell e SEM padrão.
+# Derruba o servidor pelo PROCESSO, SEM shell e SEM padrão, e devolve o que ele
+# escreveu enquanto rodou.
 #
 # POR QUE NÃO `pkill -f <nome>`: o padrão casa a LINHA DE COMANDO, e a linha de
 # comando de quem está rodando o `pkill` também contém o nome — o script se
@@ -122,34 +192,44 @@ funct sobe(srv) {
 # gracioso (SIGTERM -> `g_jk_parar` -> o laço sai e o processo RETORNA). Matar
 # com SIGKILL pula a saída limpa, e processo morto por sinal **não grava o
 # `.gcda`** — foi por isso que 24 casos novos de HTTP cru não mexeram um ponto
-# na cobertura de `ps_jinker.c`. O KILL fica só como último recurso.
-funct derruba(pid) {
-    if pid <= 0 {
-        return
-    }
-    os.run(["kill", "-TERM", str(pid)])
-    i = 0
-    while i < 60 {
-        os.cmd("kill -0 " + str(pid) + " 2>/dev/null; echo $? > /tmp/ps_e2e_vivo")
-        if int(open("/tmp/ps_e2e_vivo").read().strip()) != 0 {
-            return
-        }
-        os.cmd("sleep 0.1")
-        i = i + 1
-    }
-    os.run(["kill", "-KILL", str(pid)])
+# na cobertura de `ps_jinker.c`. O KILL fica só como último recurso: é a
+# `vigia` com prazo 0 — SIGTERM agora, SIGKILL se em 6 s ele não saiu.
+#
+# No Windows não existe sinal: lá o `kill()` do `Process` encerra o processo na
+# hora, sem a saída graciosa (e sem `.gcda`). O servidor morre do mesmo jeito,
+# que é o que o teste precisa.
+funct derruba(servidor) {
+    espera_sair(servidor[0], 0)
+    textos = await servidor[1]
+    return textos[0] + "\n" + textos[1]
 }
 
 
-# Roda um script e devolve [rc, saida_junta].
+# Roda um script e devolve [rc, saida_junta, estourou].
+#
+# Havia aqui uma lista `COM_JANELA` e um `GUZER_HEADLESS=1` no ambiente: o
+# guzer abria janela no fim do script e travava esperando o usuário fechar. O
+# guzer saiu da linguagem; nenhum script do e2e abre janela.
+#
+# `saida_junta` é o stdout seguido do stderr. Eram um arquivo só
+# (`> arq 2>&1`); agora são dois canos, e a ordem ENTRE uma linha de um e uma
+# do outro não é mais a da escrita. O resumo não depende dela: o PULOU sai no
+# stdout, e o texto inteiro é conferido.
+#
+# `estourou` é o que o código 124 do `timeout` dizia: passou de TEMPO e foi
+# encerrado. Conta como FALHA mesmo com código 0 — um script que trata o
+# SIGTERM e sai limpo (o jinker faz isso) passaria como se tivesse terminado.
 funct roda(caminho) {
-    # Havia aqui uma lista `COM_JANELA` e um `GUZER_HEADLESS=1` no ambiente: o
-    # guzer abria janela no fim do script e travava esperando o usuário fechar.
-    # O guzer saiu da linguagem; nenhum script do e2e abre janela.
-    os.cmd("timeout " + str(TEMPO) + " '" + sys.executable + "' " +
-           caminho + " > /tmp/ps_e2e_out.txt 2>&1 < /dev/null; echo $? > /tmp/ps_e2e_rc.txt")
-    rc = int(open("/tmp/ps_e2e_rc.txt").read().strip())
-    return [rc, open("/tmp/ps_e2e_out.txt").read()]
+    proc = os.run([sys.executable, caminho], capture="live")
+    proc.close()
+    canais = [drena(proc, false), drena(proc, true)]
+    fim = espera_sair(proc, TEMPO)
+    textos = await canais
+    saida = textos[0] + "\n" + textos[1]
+    if fim[1] {
+        saida = saida + "\npassou de " + str(TEMPO) + " s: encerrado pelo e2e_roda"
+    }
+    return [fim[0], saida, fim[1]]
 }
 
 
@@ -201,35 +281,42 @@ if __name__ == "main" {
         }
         post("── " + srv + " + " + (", ").join(clientes))
 
-        # `setsid` destaca o servidor do grupo de processos deste script: sem
-        # isso, matá-lo depois derruba junto quem o iniciou.
-        pid_srv = sobe(srv)
+        servidor = sobe(srv)
 
-        if espera_porta(porta, 20) == 0 {
+        # O servidor morre no `finally`, sempre — com a porta que não abriu,
+        # com cliente falhando, e mesmo se o driver estourar no meio. Deixar
+        # servidor vivo faz a próxima execução falhar por porta ocupada, que é
+        # a mesma família de não-hermético do E1. E morre com SIGTERM,
+        # esperando ele sair sozinho: ver o comentário de `derruba`.
+        abriu = 0
+        resultados = []
+        log_srv = ""
+        try {
+            abriu = espera_porta(porta, 20)
+            if abriu == 1 {
+                for each cl in clientes {
+                    resultados.append([cl, roda(PASTA + "/" + cl)])
+                }
+            }
+        }
+        finally {
+            # o log só está inteiro depois que ele morre
+            log_srv = derruba(servidor)
+        }
+
+        if abriu == 0 {
             post("      servidor nao abriu a porta", str(porta), "em 20s")
-            mostra(open("/tmp/ps_e2e_srv.log").read())
-            derruba(pid_srv)
+            mostra(log_srv)
             falhou.append(srv)
             continue
         }
-
-        resultados = []
-        for each cl in clientes {
-            resultados.append([cl, roda(PASTA + "/" + cl)])
-        }
-
-        # O servidor morre AQUI, sempre — mesmo com cliente falhando. Deixar
-        # servidor vivo faz a próxima execução falhar por porta ocupada, que é
-        # a mesma família de não-hermético do E1. E morre com SIGTERM, esperando
-        # ele sair sozinho: ver o comentário de `derruba`.
-        derruba(pid_srv)
 
         for each par in resultados {
             cl = par[0]
             r = par[1]
             post("   · " + cl)
             mostra(r[1])
-            if r[0] != 0 {
+            if r[0] != 0 or r[2] {
                 falhou.append(cl + " (rc " + str(r[0]) + ")")
             }
             elif "PULOU" in r[1] {
@@ -258,7 +345,7 @@ if __name__ == "main" {
         post("── " + n)
         r = roda(PASTA + "/" + n)
         mostra(r[1])
-        if r[0] != 0 {
+        if r[0] != 0 or r[2] {
             falhou.append(n + " (rc " + str(r[0]) + ")")
         }
         elif "PULOU" in r[1] {

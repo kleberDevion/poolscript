@@ -102,10 +102,23 @@ funct literais(L) {
 # A "impressão digital" de um caso: todos os literais do bloco MENOS o nome.
 # Comentário de C sai fora — ele cita o programa entre aspas e envenenaria a
 # comparação (foi o que aconteceu no `fortalece_casos.pr`).
+#
+# O `\r` do fim da linha também sai: não é do fonte (o gcc lê `\r\n` como
+# `\n`, inclusive na continuação com `\`). O checkout do Windows entrega
+# `\r\n` (o git de lá converte, e o repositório não tem .gitattributes), e o
+# que o motor grava lá sai só com `\n`: um gerador rodado lá deixa arquivo
+# `\n` ao lado de arquivo `\r\n`. Um literal continuado com `\` no fim da
+# linha levava o `\r` pra digital, e o mesmo caso nos dois arquivos passava
+# como dois — medido, o portão dizia "nenhum caso repete". No Linux e no
+# macOS os casos não têm `\r`. As linhas do bloco ficam como estão: o
+# `--remove` regrava o arquivo com o fim de linha dele.
 funct digital(nome, corpo) {
     tudo = ""
     em_com = false
     for each L in corpo {
+        if L.endswith("\r") {
+            L = L[:len(L) - 1]
+        }
         limpa = ""
         z = 0
         while z < len(L) {
@@ -152,12 +165,21 @@ if __name__ == "main" {
         }
     }
     # arquivo que existe e não está na ORDEM entra no fim, pra nunca ficar
-    # fora da conferência por esquecimento
+    # fora da conferência por esquecimento — e entra em ordem de NOME. A do
+    # `os.ls` é a do sistema de arquivos (no ext4 daqui sai `casos_libs.c`
+    # antes de `casos_cobertura.c`), e com um caso repetido entre dois
+    # arquivos fora da ORDEM, o acusado — e o que o `--remove` regrava —
+    # dependia do sistema de arquivos em que o repositório está.
+    novos = []
     for each e in os.ls(PASTA) {
         n = e["name"]
         if n.startswith("casos_") and n.endswith(".c") and not n in presentes and not n in GERADOS_DE_OUTROS {
-            presentes.append(n)
+            novos.append(n)
         }
+    }
+    novos.sort()
+    for each n in novos {
+        presentes.append(n)
     }
 
     vistos = {}

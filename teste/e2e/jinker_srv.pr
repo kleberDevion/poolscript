@@ -5,18 +5,35 @@ import jinker
 import os
 from jinker import cors
 
-# static_folder/static_url: pasta de front servida junto com as rotas
-PASTA = "/tmp/ps_e2e_static"
-# `exist_ok` porque o teste tem que ser RE-EXECUTÁVEL: a pasta sobra da rodada
-# anterior e um `os.mkdir` cru falhava já na primeira linha. É a mesma classe
-# do E1 (teste não hermético) que a suíte principal fechou com mkdtemp+chdir e
-# que não tinha alcançado os e2e.
-os.mkdir(PASTA, exist_ok=true)
-using open(PASTA + "/pagina.txt", "w") as f {
+# Pasta de trabalho do par, RELATIVA ao diretório de onde se roda: o
+# `teste/e2e_roda.pr` sobe o servidor e os clientes da raiz do repositório, e
+# o jinker_cli.pr abre os arquivos daqui pelo MESMO nome. Era tudo em /tmp, e
+# no Windows o motor é nativo: "/tmp/x" é "<disco>:\tmp\x", na raiz do disco
+# corrente, fora do checkout — o `os.mkdir` (que cria a cadeia inteira) criava
+# essa pasta de carona, e ninguém a apagava.
+PASTA = "ps_e2e_jinker"
+# static_folder/static_url: pasta de front servida junto com as rotas. É uma
+# subpasta, pra servir só o que o teste pôs nela. Relativa, o jinker a procura
+# na pasta do script e, não achando lá, na corrente — que é onde ela está.
+ESTATICA = PASTA + "/static"
+
+# A rodada começa do ZERO: o que sobrou da anterior sai antes. É isso que deixa
+# o teste RE-EXECUTÁVEL (um `os.mkdir` cru em cima da sobra falhava já na
+# primeira linha — a classe do E1, teste não hermético, que a suíte principal
+# fechou com mkdtemp+chdir e que não tinha alcançado os e2e) e que impede
+# arquivo velho de passar por novo: o cliente lê o que o upload e os handlers
+# de WebSocket gravam NESTA rodada, e um da rodada anterior esconderia um
+# handler que não rodou. Sobra existe: no Windows o `kill()` do e2e_roda é
+# TerminateProcess, e a limpeza do fim (lá embaixo) não chega a rodar.
+if os.exists(PASTA) {
+    os.rmdir(PASTA, force=true)
+}
+os.mkdir(ESTATICA)
+using open(ESTATICA + "/pagina.txt", "w") as f {
     f.write("sou estatico")
 }
 
-app = jinker.Jinker(name="e2e", static_folder=PASTA, static_url="/")
+app = jinker.Jinker(name="e2e", static_folder=ESTATICA, static_url="/")
 
 # CORS global: só estes métodos, só estas origens
 cors(app, options=["GET", "POST", "PUT", "DELETE"], origins=["http://permitido.test"])

@@ -1,5 +1,13 @@
-# Portão da COBERTURA da doc: quantos membros do motor estão documentados, e o
-# número não pode cair.
+# Portão da COBERTURA da doc: quantos membros do motor estão SEM doc, e o
+# número não pode subir.
+#
+# POR QUE CONTA OS QUE FALTAM. A base guardava quantos estavam documentados
+# (535 no Linux), e o número mudava de sistema pra sistema sem nenhuma doc
+# sumir: o módulo `sockets` expõe as constantes que o sistema tem, e o macOS
+# tem uma a menos que o Linux (sem `AF_PACKET` nem `TCP_KEEPIDLE`, com
+# `TCP_KEEPALIVE`). O CI do Mac reprovava com "eram 535, agora são 533".
+# Contar os que FALTAM vale em qualquer sistema: todo membro que o motor dali
+# expõe tem que ter doc, e a doc que some faz o número subir.
 #
 # POR QUE ISTO EXISTE. O `scripts/audita_doc.pr` confere se a página QUE EXISTE
 # bate com o motor, e passa dizendo "nenhuma divergência de nome/ordem entre
@@ -20,7 +28,7 @@
 # Vale a página própria, a linha de tabela e o título de seção — o que não vale
 # é menção solta no meio da prosa, que não ensina nada a quem procura.
 #
-#     ./pool teste/confere_cobertura_doc.pr           # reprova se cair
+#     ./pool teste/confere_cobertura_doc.pr           # reprova se faltar mais
 #     ./pool teste/confere_cobertura_doc.pr --lista   # mostra o que falta
 #     ./pool teste/confere_cobertura_doc.pr --grava   # regrava a base
 import os
@@ -145,11 +153,10 @@ funct documenta(linha, nome) {
 
 
 if __name__ == "main" {
-    # `os.cmd` ECOA a saída além de devolvê-la: sem o redirecionamento, o
-    # `--metadata` inteiro sai no terminal antes do relatório.
-    tmp = "/tmp/ps_cobdoc_meta.json"
-    os.cmd(sys.executable + " --metadata > " + tmp)
-    meta = json.parse(os.readFile(tmp))
+    # Sem shell (`os.run` com lista, capture=true devolve o stdout): o
+    # `os.cmd` com `> /tmp/...` era sintaxe do sh, e no Windows o cmd.exe não
+    # tem /tmp.
+    meta = json.parse(os.run([sys.executable, "--metadata"], capture=true))
 
     # Um nome pode ser módulo E tipo (`socket` é o tipo, `sockets` o módulo;
     # `bytes` já foi os dois). Somar as listas em vez de sobrescrever: com
@@ -233,38 +240,39 @@ if __name__ == "main" {
         post("escopos SEM nenhuma página: " + ", ".join(sem_doc_nenhuma))
     }
 
-    if "--lista" in sys.argv {
+    faltam = total - com
+    if "--lista" in sys.argv or faltam > 0 {
         post("")
         for each escopo in sorted(falta.keys()) {
-            post("  " + escopo + " (" + str(len(falta[escopo])) + "): "
+            post("  sem doc em " + escopo + " (" + str(len(falta[escopo])) + "): "
                  + ", ".join(falta[escopo]))
         }
     }
 
     if "--grava" in sys.argv {
-        os.writeFile(BASE, str(com) + "\n")
+        os.writeFile(BASE, str(faltam) + "\n")
         post("base regravada em " + BASE)
         sys.exit(0)
     }
 
     if not os.isfile(BASE) {
-        os.writeFile(BASE, str(com) + "\n")
-        post("base criada em " + BASE + " com " + str(com))
+        os.writeFile(BASE, str(faltam) + "\n")
+        post("base criada em " + BASE + " com " + str(faltam))
         sys.exit(0)
     }
 
     gravado = int(os.readFile(BASE).strip())
-    if com < gravado {
+    if faltam > gravado {
         post("")
-        post("REPROVADO: eram " + str(gravado) + " membros documentados, agora são "
-             + str(com) + ".")
-        post("Doc não se apaga sem motivo — se o membro sumiu do motor,")
-        post("rode com --grava pra baixar a base de propósito.")
+        post("REPROVADO: faltava doc em " + str(gravado) + " membros do motor, agora faltam "
+             + str(faltam) + " (a lista acima).")
+        post("Todo membro que o motor expõe NESTE sistema tem doc. Se o membro saiu")
+        post("do motor de propósito, a doc sai junto; se ele é novo, ganha doc.")
         sys.exit(1)
     }
-    if com > gravado {
-        os.writeFile(BASE, str(com) + "\n")
-        post("base subiu: " + str(gravado) + " -> " + str(com))
+    if faltam < gravado {
+        os.writeFile(BASE, str(faltam) + "\n")
+        post("base desceu: faltavam " + str(gravado) + " -> " + str(faltam))
     }
-    post("cobertura da doc: não caiu (base " + str(gravado) + ")")
+    post("cobertura da doc: nenhum membro a mais sem doc (base " + str(gravado) + ")")
 }

@@ -33,8 +33,13 @@
 # lei pra achar a culpada — morte também é achado, e dos bons.
 import os
 import sys
+import date
 
-TMP = "/tmp/ps_leis"
+# Pasta dos programas gerados, RELATIVA à pasta de onde se roda (a raiz do
+# repositório, no `make leis`): nasce vazia no começo e é apagada no fim. Era
+# "/tmp/ps_leis", que no Windows o motor nativo lê como `\tmp` na raiz do
+# drive — nem é o /tmp do MSYS2, nem existe numa máquina limpa.
+TMP = "ps_leis_tmp"
 
 # Contraexemplo achado com semente VARIÁVEL (o noturno usa a do dia) some quando
 # a execução acaba: amanhã a semente é outra e o mesmo defeito só reaparece por
@@ -531,8 +536,107 @@ funct instancia(dominio, forma) {
 }
 
 
-# Monta um programa com várias leis e devolve a saída. Cada lei que falha
-# imprime o índice; o resto fica calado.
+# ── rodar um programa gerado, com PRAZO ─────────────────────────────────────
+#
+# Era uma linha de shell pelo `os.cmd` (`cd /tmp/ps_leis && timeout 30 pool
+# x.pr > o.txt 2> e.txt < /dev/null; echo $? > rc.txt`), e ela só valia no
+# Linux: no macOS o `timeout` do coreutils do Homebrew se chama `gtimeout`, e
+# no Windows o `os.cmd` passa pelo cmd.exe, onde `timeout 30` é o comando do
+# sistema que ESPERA 30 segundos, aspas simples não são aspas e `;`, `$?` e
+# `/dev/null` não existem. Agora o filho roda sem shell (`os.run` com lista),
+# os canais e o código de saída vêm do próprio processo, e o prazo é deste
+# script.
+#
+# Travar continua sendo morte: passado o PRAZO, o filho é morto com o sinal 15
+# (o mesmo do `timeout`) e o código vira 124, o que o `timeout` devolvia. Morte
+# por sinal sai como o shell contava, 128 + sinal (139 é SIGSEGV), no Linux e
+# no macOS; o Windows não tem sinal, e lá o código é o que o sistema deu ao
+# processo.
+PRAZO = 30
+
+
+# Os dois canais são lidos JUNTOS, cada um numa tarefa: lendo o stdout até o
+# fim antes do stderr, um filho que enche o cano do stderr fica parado
+# esperando alguém ler, e o prazo o daria como travado sem ele ter travado.
+async funct junta_saida(p) {
+    texto = ""
+    parte = p.read()
+    while parte != "" {
+        texto = texto + parte
+        parte = p.read()
+    }
+    return texto
+}
+
+
+async funct junta_erro(p) {
+    texto = ""
+    parte = p.read_err()
+    while parte != "" {
+        texto = texto + parte
+        parte = p.read_err()
+    }
+    return texto
+}
+
+
+# O VIGIA de uma execução: acorda a cada 10 ms e, passado o prazo com o filho
+# ainda rodando, mata o filho — a leitura dos canais chega ao fim e o `wait`
+# volta.
+#
+# Ninguém espera por ele: esperar custaria a fatia de sono inteira em cada
+# execução, mais do que o próprio lote leva pra rodar. Terminada a execução,
+# ele vê `acabou` na próxima vez que acorda e termina sozinho; o motor não
+# espera tarefa pendente no fim do programa, e sair com uma dormindo não
+# imprime nada nem muda o código de saída.
+async funct vigia(p, estado) {
+    fim = date.monotonic() + PRAZO
+    while not estado["acabou"] {
+        if date.monotonic() >= fim {
+            estado["estourou"] = true
+            p.kill()
+            return
+        }
+        sleep(0.01)
+    }
+}
+
+
+# Roda `arquivo` com o motor que roda este script, a entrada fechada (o
+# `< /dev/null` de antes) e o PRAZO, e devolve [rc, stdout, stderr]. O `using`
+# fecha os canais no fim da execução, sem esperar o coletor: são centenas de
+# execuções, e descritor esquecido aberto soma contra o limite do sistema.
+funct executa(arquivo) {
+    using os.run([sys.executable, arquivo], capture="live") as p {
+        p.close()
+        estado = {"acabou": false, "estourou": false}
+        vigia(p, estado)
+        canais = gather(junta_saida(p), junta_erro(p))
+        rc = p.wait()
+        estado["acabou"] = true
+    }
+    if estado["estourou"] {
+        rc = 124
+    }
+    elif rc < 0 and sys.platform() != "windows" {
+        rc = 128 - rc
+    }
+    return [rc, canais[0], canais[1]]
+}
+
+
+# Sai apagando a pasta dos programas gerados: ela é só desta execução, e mora
+# na pasta de onde se roda.
+funct encerra(codigo) {
+    if os.exists(TMP) {
+        os.rmdir(TMP, force=true)
+    }
+    sys.exit(codigo)
+}
+
+
+# Monta um programa com várias leis, roda e devolve [rc, stdout, stderr]. Cada
+# lei que falha imprime o índice; o resto fica calado.
 funct roda_lote(itens, tag) {
     corpo = PREAMBULO
     i = 0
@@ -548,11 +652,7 @@ funct roda_lote(itens, tag) {
     using open(alvo, "w") as f {
         f.write(corpo)
     }
-    os.cmd("cd " + TMP + " && timeout 30 '" + sys.executable + "' " + tag
-           + ".pr > o.txt 2> e.txt < /dev/null; echo $? > rc.txt")
-    return [int(open(TMP + "/rc.txt").read().strip()),
-            open(TMP + "/o.txt").read(),
-            open(TMP + "/e.txt").read()]
+    return executa(alvo)
 }
 
 
@@ -674,7 +774,9 @@ if __name__ == "main" {
         sys.exit(0)
     }
 
-    os.cmd("rm -rf " + TMP)
+    if os.exists(TMP) {
+        os.rmdir(TMP, force=true)
+    }
     os.mkdir(TMP, exist_ok=true)
 
     rodadas = 300
@@ -698,10 +800,10 @@ if __name__ == "main" {
             if not n.endswith(".pr") {
                 continue
             }
-            os.cmd("cd " + ACHADOS + " && timeout 30 '" + sys.executable + "' " + n
-                   + " > /tmp/ps_leis_rep.txt 2>&1; echo $? > /tmp/ps_leis_rep_rc")
-            rc = int(open("/tmp/ps_leis_rep_rc").read().strip())
-            saida = open("/tmp/ps_leis_rep.txt").read()
+            # stdout e stderr num texto só, como o `2>&1` de antes
+            rep = executa(ACHADOS + "/" + n)
+            rc = rep[0]
+            saida = rep[1] + rep[2]
             if rc != 0 or "AINDA FALHA" in saida or not "FIM" in saida {
                 addEnd(replay_falhou, [n, "rc=" + str(rc) + " " + saida.split("\n")[0]])
             }
@@ -716,7 +818,7 @@ if __name__ == "main" {
         post("")
         post("Estes ja falharam uma vez e foram guardados em " + ACHADOS + "/.")
         post("Voltar a falhar e regressao, nao achado novo.")
-        sys.exit(1)
+        encerra(1)
     }
 
     achados = []
@@ -772,7 +874,7 @@ if __name__ == "main" {
         post("")
         post("nenhum contraexemplo. Isso NAO prova que as leis valem —")
         post("prova que", str(checagens), "sorteios nao acharam onde elas quebram.")
-        sys.exit(0)
+        encerra(0)
     }
 
     # Uma lei que falha costuma falhar muitas vezes; agrupa pra o relatório
@@ -845,5 +947,5 @@ if __name__ == "main" {
     }
     post("")
     post("repita com:  ./pool teste/leis.pr", str(rodadas), str(semente_inicial))
-    sys.exit(1)
+    encerra(1)
 }

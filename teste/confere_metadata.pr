@@ -23,12 +23,16 @@ falhas = 0
 # Acha o binário do REPOSITÓRIO onde quer que o script rode (raiz, teste/).
 # O `pool` do PATH pode ser um build antigo — conferir metadata contra ele
 # mediria a versão errada.
-POOL = "./pool"
-if not os.exists(POOL) {
-    POOL = "../pool"
-}
-if not os.exists(POOL) {
-    POOL = "pool"
+#
+# No Windows o Makefile gera `pool.exe`, e o `os.exists` não completa
+# extensão: procurando só `./pool` e `../pool`, lá o script nunca achava o
+# binário do repositório e caía no `pool` do PATH (ou em nenhum).
+POOL = "pool"
+for each candidato in ["./pool", "./pool.exe", "../pool", "../pool.exe"] {
+    if os.exists(candidato) {
+        POOL = candidato
+        break
+    }
 }
 
 # valor de amostra por tipo: só os que dá pra construir numa expressão
@@ -178,9 +182,18 @@ import qrcode
 import manpu
 import sockets
 
+# Pasta de trabalho RELATIVA à corrente, criada aqui e apagada no fim da
+# checagem de campos. Era /tmp: no Windows o motor é nativo, "/tmp/x" vira
+# "<unidade>:\tmp\x" (não é o /tmp do MSYS2), e sem essa pasta o `save` do PNG
+# estoura antes de conferir campo nenhum. Relativa também porque o caminho vai
+# DENTRO do fonte do `pool -e` filho, e o absoluto do Windows traz `\`, que no
+# literal vira escape.
+TMP = "ps_cm_tmp"
+os.mkdir(TMP, exist_ok=true)
+
 # PNG de verdade pra construir o PoolFile — o motor só o cria a partir de
 # arquivo com extensão binária.
-PNG = "/tmp/ps_cm_amostra.png"
+PNG = TMP + "/amostra.png"
 qrcode.make("x").save(PNG)
 
 # a EXPRESSÃO que constrói cada amostra — o campo é acessado num `pool`
@@ -193,7 +206,7 @@ amostras_fonte["Pattern"] = "regex.compile(\"a\")"
 amostras_fonte["Jinker"] = "jinker.Jinker(name=\"conf\")"
 amostras_fonte["JinkerResponse"] = "jinker.JinkerResponse()"
 amostras_fonte["QRImage"] = "qrcode.make(\"x\")"
-amostras_fonte["ManpuFile"] = "manpu.open(target=\"/tmp/ps_cm.txt\")"
+amostras_fonte["ManpuFile"] = "manpu.open(target=\"" + TMP + "/ps_cm.txt\")"
 amostras_fonte["PoolQRCode"] = "qrcode.QRCode()"
 # PoolFile só nasce de arquivo com extensão binária (`ext_binaria` no motor),
 # e o próprio qrcode da linguagem gera um PNG de verdade — sem isso as 3
@@ -201,7 +214,14 @@ amostras_fonte["PoolQRCode"] = "qrcode.QRCode()"
 amostras_fonte["PoolFile"] = ("os.loadFile(\"" + PNG + "\", \"rb\")")
 amostras_fonte["QRPoolFile"] = "qrcode.gen(\"x\")"
 amostras_fonte["socket"] = "sockets.socket()"
-amostras_fonte["Process"] = "os.run([\"cat\"], capture=\"live\")"
+amostras_fonte["Process"] = "os.run([sys.executable, \"-e\", \"input()\"], capture=\"live\")"
+
+# Os módulos que essas expressões usam. O filho é outro programa e não herda
+# os `import` daqui: faltavam `os` e `manpu`, e as amostras de PoolFile e
+# Process morriam em NameError no filho — que não diz "has no attribute", e os
+# campos delas passavam sem nunca terem sido lidos.
+CABECA_FILHO = ("import os\nimport sys\nimport mail\nimport regex\nimport jinker\n"
+                + "import qrcode\nimport manpu\nimport sockets\n")
 
 amostras_campo = {}
 amostras_campo["MailMessage"] = mail.MailMessage()
@@ -211,14 +231,17 @@ amostras_campo["Pattern"] = regex.compile("a")
 amostras_campo["Jinker"] = jinker.Jinker(name="conf")
 amostras_campo["JinkerResponse"] = jinker.JinkerResponse()
 amostras_campo["QRImage"] = qrcode.make("x")
-amostras_campo["ManpuFile"] = manpu.open(target="/tmp/ps_cm.txt")
+amostras_campo["ManpuFile"] = manpu.open(target=TMP + "/ps_cm.txt")
 amostras_campo["PoolQRCode"] = qrcode.QRCode()
 amostras_campo["PoolFile"] = os.loadFile(PNG, "rb")
 amostras_campo["QRPoolFile"] = qrcode.gen("x")
 amostras_campo["socket"] = sockets.socket()
-# `cat` fica esperando a entrada, então o processo está VIVO enquanto os campos
-# (`pid`, `returncode`) são lidos — que é o estado em que eles interessam.
-amostras_campo["Process"] = os.run(["cat"], capture="live")
+# O filho fica esperando a entrada (`input()`), então o processo está VIVO
+# enquanto os campos (`pid`, `returncode`) são lidos — que é o estado em que
+# eles interessam. Era `cat`, que no Windows só existe se o PATH trouxer as
+# ferramentas do MSYS2; o próprio motor faz o mesmo papel nos três sistemas.
+PROC = os.run([sys.executable, "-e", "input()"], capture="live")
+amostras_campo["Process"] = PROC
 
 # Tipo que NÃO dá pra construir aqui, e o porquê. Ele existe pra que o
 # `continue` de baixo deixe de ser silencioso: sem esta lista, tipo novo com
@@ -235,6 +258,7 @@ SEM_AMOSTRA["ChannelManager"] = "só existe com o servidor do jinker de pé"
 
 nao_conferidos = []
 fantasmas = []
+amostras_quebradas = []
 campos_conferidos = 0
 for each tipo in tipos.keys() {
     if not amostras_campo.has(tipo) {
@@ -253,6 +277,12 @@ for each tipo in tipos.keys() {
         continue
     }
     alvo = amostras_campo[tipo]
+    # A amostra tem que NASCER no `pool` filho antes de um campo dela contar
+    # como conferido: erro que não seja "has no attribute" (um `import` que
+    # falta no filho, um caminho que o sistema não tem) passava como campo
+    # presente. Construída uma vez por tipo, na primeira propriedade dele.
+    provada = false
+    nasceu = false
     for each m in tipos[tipo] {
         # método comum não traz a chave "kind"; só propriedade traz
         if not m.has("kind") {
@@ -261,9 +291,21 @@ for each tipo in tipos.keys() {
         if m["kind"] != "property" {
             continue
         }
+        if not provada {
+            provada = true
+            fonte_prova = CABECA_FILHO + "_v = " + amostras_fonte[tipo]
+            fonte_prova = fonte_prova + "\npost(\"amostra construida\")"
+            prova = os.run([POOL, "-e", fonte_prova], true)
+            nasceu = prova.contains("amostra construida")
+            if not nasceu {
+                addEnd(amostras_quebradas, tipo + " -> " + prova.split("\n")[0])
+            }
+        }
+        if not nasceu {
+            break
+        }
         campos_conferidos = campos_conferidos + 1
-        fonte = "import mail\nimport regex\nimport jinker\nimport qrcode\nimport sockets\n"
-        fonte = fonte + "_v = " + amostras_fonte[tipo] + "\npost(_v." + m["nome"] + ")"
+        fonte = CABECA_FILHO + "_v = " + amostras_fonte[tipo] + "\npost(_v." + m["nome"] + ")"
         saida = os.run([POOL, "-e", fonte], true)
         # O motor diz "'T' object has no attribute 'x'" (AttributeError) — a
         # frase antiga era "membro inexistente". Enquanto casou a antiga, esta
@@ -280,13 +322,24 @@ post("campos conferidos:", campos_conferidos)
 for each t in SEM_AMOSTRA.keys() {
     post("   (nao conferido:", t, "—", SEM_AMOSTRA[t] + ")")
 }
-if len(fantasmas) == 0 {
+if len(fantasmas) == 0 and len(amostras_quebradas) == 0 {
     post("OK — todo campo declarado existe no motor")
 }
-else {
+if len(fantasmas) > 0 {
     post("FALHA —", len(fantasmas), "campo(s) fantasma:")
     for each f in fantasmas {
         post("  ", f)
+    }
+    falhas = falhas + 1
+}
+
+# Amostra que não nasceu no filho não conferiu campo nenhum dela: o "OK" de
+# cima não sai, os campos ficam fora da conta de conferidos e o tipo reprova
+# com o erro que o filho deu.
+if len(amostras_quebradas) > 0 {
+    post("FALHA —", len(amostras_quebradas), "amostra(s) que nao nasceram no pool filho:")
+    for each a in amostras_quebradas {
+        post("  ", a)
     }
     falhas = falhas + 1
 }
@@ -301,6 +354,13 @@ if len(nao_conferidos) > 0 {
     }
     falhas = falhas + 1
 }
+
+# O processo de amostra e a pasta de trabalho saem aqui: nada abaixo usa os
+# dois. `kill` + `wait` valem nos três sistemas (no Windows o `kill` encerra,
+# sem sinal), e o filho não sobra rodando depois do portão.
+PROC.kill()
+PROC.wait()
+os.rmdir(TMP, force=true)
 
 # ── exceções: cada nome publicado É um valor no motor, e todo pai existe ──
 # A chave "excecoes" alimenta completion/hover/realce do editor; nome que o

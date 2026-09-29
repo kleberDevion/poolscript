@@ -4,10 +4,21 @@
 import sqlite3
 import os
 
-arq = "/tmp/ps_e2e.db"
-if os.exists(arq) {
-    _r = os.run(["rm", "-f", arq], true)      # capture=true = espera terminar
+# O banco fica numa pasta RELATIVA à corrente, criada aqui e apagada no fim
+# pelo próprio motor. Era "/tmp/ps_e2e.db", apagado com `os.run(["rm", "-f",
+# ...])`, e isso só vale inteiro no Linux e no macOS. No Windows o motor é
+# nativo: "/tmp/ps_e2e.db" é "<disco>:\tmp\ps_e2e.db", na raiz do disco
+# corrente, e sem essa pasta o `connect` cai em "unable to open database
+# file". E `rm` não é programa do Windows: o que o `os.run` acha no PATH do CI
+# é o do MSYS2, que lê "/tmp/..." como o /tmp DELE — o `-f` calava o "não
+# existe", o banco da rodada anterior ficava, e o `CREATE TABLE` da seguinte
+# caía em "table t already exists".
+pasta = "ps_e2e_sqlite"
+if os.exists(pasta) {
+    os.rmdir(pasta, force=true)       # sobra de uma rodada que caiu no meio
 }
+os.mkdir(pasta)
+arq = pasta + "/ps_e2e.db"
 
 con = sqlite3.connect(arq)
 post("connect ->", type(con))
@@ -49,5 +60,9 @@ cur.close()
 con.close()
 post("fechou ->", "ok")
 
-_r = os.run(["rm", "-f", arq])
+# A pasta sai com o banco dentro, pelo motor e na hora. O `rm` de antes ia
+# sem `capture`, em segundo plano, e ninguém esperava ele terminar. Vem
+# DEPOIS dos dois `close()`: no Windows o arquivo que a sqlite mantém aberto
+# não se apaga.
+os.rmdir(pasta, force=true)
 post("fim")

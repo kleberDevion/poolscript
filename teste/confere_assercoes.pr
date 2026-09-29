@@ -60,6 +60,17 @@ funct literais(L) {
 }
 
 
+# As linhas de um `.c` como o compilador as lê: a linha termina em `\n` OU em
+# `\r\n`. O checkout do Windows entrega `\r\n` (o git de lá converte o fim de
+# linha de fábrica, e o repositório não tem .gitattributes), e o `\r` colado
+# no fim de cada linha deslocava a cauda de 24 caracteres da segunda
+# conferência — com o checkout simulado, mensagem entrava e saía da conta
+# conforme o sistema. No Linux e no macOS os casos não têm `\r`: nada muda.
+funct linhas_de(caminho) {
+    return open(caminho).read().replace("\r\n", "\n").split("\n")
+}
+
+
 if __name__ == "main" {
     fracos = []
     for each e in os.ls(PASTA) {
@@ -68,7 +79,7 @@ if __name__ == "main" {
             continue
         }
         caminho = PASTA + "/" + n
-        linhas = open(caminho).read().split("\n")
+        linhas = linhas_de(caminho)
         i = 0
         while i < len(linhas) {
             L = linhas[i]
@@ -101,7 +112,7 @@ if __name__ == "main" {
         if not n.startswith("casos_") or not n.endswith(".c") {
             continue
         }
-        for each L in open(PASTA + "/" + n).read().split("\n") {
+        for each L in linhas_de(PASTA + "/" + n) {
             # o rabo da linha é curto: aqui o regex não tem como explodir
             # Só o campo `erro`, que é o comparado por SUBSTRING. O campo
             # `saida` é comparado EXATO, então prefixo ali não engana ninguém —

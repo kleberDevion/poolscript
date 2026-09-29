@@ -290,10 +290,13 @@ if __name__ == "main" {
         }
     }
 
-    # `os.cmd` devolve o código de saída, não a saída — daí o arquivo no meio.
-    tmp = "/tmp/ps_meta.json"
-    os.cmd("'" + sys.executable + "' --metadata > " + tmp)
-    meta = json.parse(open(tmp).read())
+    # O texto do `--metadata` vem pelo `os.run` com lista: sem shell e sem
+    # arquivo no meio, igual nos três sistemas. Era `os.cmd` com o caminho
+    # entre aspas simples e `> /tmp/ps_meta.json`, e no Windows o `os.cmd` é o
+    # cmd.exe: aspa simples lá não é aspa (o programa procurado virava
+    # `'C:\...\pool.exe'`, com as aspas no nome) e o "/tmp" do motor nativo é
+    # "<unidade>:\tmp", não o /tmp do MSYS2.
+    meta = json.parse(os.run([sys.executable, "--metadata"], capture=true))
 
     # índice: "modulo.funcao" -> lista de nomes de parâmetro
     real = {}

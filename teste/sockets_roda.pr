@@ -62,7 +62,21 @@ sockets.setdefaulttimeout(null)
 # ── interfaces de rede ──────────────────────────────────────────────────────
 ifs = sockets.if_nameindex()
 confere("if_nameindex lista interfaces", ifs.len() > 0)
-confere("if_nametoindex/if_indextoname (lo)", sockets.if_indextoname(sockets.if_nametoindex("lo")) == "lo")
+# A ida e volta nome -> índice -> nome é no loopback, que todo sistema tem sem
+# rede nenhuma; o nome é o que o sistema dá a ele: "lo" no Linux, "lo0" no
+# macOS (o BSD numera a interface) e "loopback_0" no Windows (o iphlpapi monta
+# o nome com o tipo da interface e o índice dela no LUID).
+loopback = "lo"
+if sys.platform() == "darwin"
+{
+    loopback = "lo0"
+}
+elif sys.platform() == "windows"
+{
+    loopback = "loopback_0"
+}
+confere("if_nametoindex/if_indextoname (" + loopback + ")",
+        sockets.if_indextoname(sockets.if_nametoindex(loopback)) == loopback)
 
 # ── socketpair: dois descritores ligados, sem porta ─────────────────────────
 par = sockets.socketpair()

@@ -53,9 +53,12 @@ const Caso CASOS_CRASH[] = {
    * borda a segunda aceitava o que a primeira recusou, o erro de sintaxe
    * sumia e saía "MemoryError: sem memoria" na linha 0 (medido: 16
    * profundidades logo abaixo do limite). O caso ACHA a borda por busca
-   * binária (aceitar ou não é monotônico na profundidade), então vale em
-   * qualquer pilha e sistema, e confere a borda e as profundidades logo
-   * depois dela. */
+   * binária, então vale em qualquer pilha e sistema, e confere uma JANELA em
+   * volta dela: cada resposta tem que ser `ok` ou o erro de sintaxe, nunca
+   * outra coisa. A borda não é exata entre processos (no Windows ela variou
+   * de um `--check` pro outro: a busca parou em 5335 e o 5335 seguinte deu
+   * ok), então o caso não exige que o mesmo número dê sempre o mesmo lado —
+   * só que o lado recusado seja o erro de sintaxe. */
   "import os\n"
   "import sys\n"
   "funct checa(n) {\n"
@@ -73,11 +76,13 @@ const Caso CASOS_CRASH[] = {
   "    }\n"
   "}\n"
   "ruins = []\n"
-  "for each k in [0, 1, 8, 15, 16] {\n"
-  "    t = checa(alto + k)\n"
-  "    if not (\"SyntaxError\" in t and \"aninhada demais\" in t) {\n"
-  "        addEnd(ruins, str(alto + k) + \": \" + t[0:150])\n"
+  "k = alto - 20\n"
+  "while k <= alto + 20 {\n"
+  "    t = checa(k)\n"
+  "    if not (\"\\\"ok\\\":true\" in t) and not (\"SyntaxError\" in t and \"aninhada demais\" in t) {\n"
+  "        addEnd(ruins, str(k) + \": \" + t[0:150])\n"
   "    }\n"
+  "    k = k + 1\n"
   "}\n"
   "post(ruins)\n",
   "[]", NULL, 0 },
