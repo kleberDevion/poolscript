@@ -26,6 +26,11 @@ vira um binário só, o `jinga` (no repositório, `make pool` o gera como
 | parser (recursive-descent, produz AST) | `vm/ps_parser.c` |
 | compilador pra bytecode | `vm/ps_compiler.c` |
 | máquina virtual + stdlib | `vm/jinga_vm.c` e `vm/ps_*.c` |
+| camada de sistema (laço de eventos, aviso entre threads, pilha de fibra, memória do JIT, o próprio executável) | `vm/ps_so.h`, `vm/ps_so.c` |
+
+O motor é o mesmo C em todo sistema; o que muda de um sistema pro outro mora
+na camada de sistema: `epoll`/`eventfd`/`/proc` no Linux, `kqueue`/pipe/
+`_NSGetExecutablePath` no macOS.
 
 A suíte de testes também é em C (`teste/`): cada caso roda o `jinga` de VERDADE
 num subprocesso, então caso que mata a VM (segfault, SIGFPE) vira falha
@@ -198,5 +203,5 @@ minhalib`, onde quer que as libs estejam (`JINGA_HOME` incluso).
 
 ## Versionamento
 
-Versão mais recente — **16.1.4** (a fonte é `vm/ps_versao.h`; `jinga --version`
+Versão mais recente — **16.1.5** (a fonte é `vm/ps_versao.h`; `jinga --version`
 mostra a do binário).

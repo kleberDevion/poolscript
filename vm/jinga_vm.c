@@ -58,10 +58,8 @@
 #include "ps_retornos.h"
 #include "ps_gmp_min.h"
 #include <poll.h>
-#include <sys/epoll.h>
-#include <sys/eventfd.h>
+#include "ps_so.h"
 #include <pthread.h>
-#include <ucontext.h>
 /* lib sockets */
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -81,8 +79,12 @@
 #include <termios.h>
 /* `os.run(..., pty=true)`: o filho num terminal de verdade. Na glibc >= 2.34
  * (a distribuicao pede 2.38) o `forkpty` mora na propria libc — nao precisa de
- * -lutil. O ioctl e pra `resize`. */
+ * -lutil. No macOS ele e declarado em <util.h>. O ioctl e pra `resize`. */
+#if defined(PS_SO_MAC)
+#include <util.h>
+#else
 #include <pty.h>
+#endif
 #include <sys/ioctl.h>
 #include <string.h>
 
@@ -1159,15 +1161,28 @@ typedef struct {
 
 /* Troca de contexto de fibra em ASSEMBLY (x86-64): salva só os registradores
  * callee-saved + rsp, ZERO syscall — ao contrário do swapcontext do glibc, que
- * faz sigprocmask a cada troca. Outras arquiteturas usam ucontext. */
-#if defined(__x86_64__)
+ * faz sigprocmask a cada troca. Outras arquiteturas usam ucontext.
+ *
+ * As instruções são as mesmas no Linux e no macOS (a mesma ABI, System V);
+ * muda só a forma do arquivo-objeto: o Mach-O põe `_` na frente do nome C e
+ * não tem as diretivas `.type`/`.size` do ELF. */
+#if defined(PS_SO_MAC)
+#  define PS_FCTX_NOME   "_ps_fctx_swap"
+#  define PS_FCTX_TIPO   ""
+#  define PS_FCTX_TAM    ""
+#else
+#  define PS_FCTX_NOME   "ps_fctx_swap"
+#  define PS_FCTX_TIPO   ".type ps_fctx_swap,@function\n"
+#  define PS_FCTX_TAM    ".size ps_fctx_swap, .-ps_fctx_swap\n"
+#endif
+#if defined(__x86_64__) && !defined(PS_SO_WINDOWS)
 typedef void *PS_CTX;
 extern void ps_fctx_swap(PS_CTX *from, PS_CTX *to);
 __asm__(
 ".text\n"
-".globl ps_fctx_swap\n"
-".type ps_fctx_swap,@function\n"
-"ps_fctx_swap:\n"
+".globl " PS_FCTX_NOME "\n"
+PS_FCTX_TIPO
+PS_FCTX_NOME ":\n"
 "    pushq %rbp\n    pushq %rbx\n    pushq %r12\n"
 "    pushq %r13\n    pushq %r14\n    pushq %r15\n"
 "    movq %rsp, (%rdi)\n"
@@ -1175,7 +1190,7 @@ __asm__(
 "    popq %r15\n    popq %r14\n    popq %r13\n"
 "    popq %r12\n    popq %rbx\n    popq %rbp\n"
 "    ret\n"
-".size ps_fctx_swap, .-ps_fctx_swap\n"
+PS_FCTX_TAM
 );
 static inline void ps_ctx_swap(PS_CTX *from, PS_CTX *to) { ps_fctx_swap(from, to); }
 static inline void ps_ctx_make(PS_CTX *ctx, void *stack, size_t size, void (*entry)(void)) {
@@ -1186,6 +1201,7 @@ static inline void ps_ctx_make(PS_CTX *ctx, void *stack, size_t size, void (*ent
     *ctx = (void *)sp;
 }
 #else
+#include <ucontext.h>
 typedef ucontext_t PS_CTX;
 static inline void ps_ctx_swap(PS_CTX *from, PS_CTX *to) { swapcontext(from, to); }
 static inline void ps_ctx_make(PS_CTX *ctx, void *stack, size_t size, void (*entry)(void)) {
@@ -12011,13 +12027,10 @@ static int mod_sys_executable(VM *vm, Value *args, int n, Value *out)
     (void)args;
     EXIGE_ARGS(vm, "executable", 0);
     char cam[4096];
-    ssize_t k = readlink("/proc/self/exe", cam, sizeof(cam) - 1);
-    if (k > 0) {
-        cam[k] = '\0';
-        return devolve_texto(vm, out, cam, (int)k);
-    }
-    /* sem /proc (não-Linux): devolve o nome, que o PATH resolve */
-    return devolve_texto(vm, out, "pool", 4);
+    if (ps_meu_executavel(cam, sizeof(cam)) == 0)
+        return devolve_texto(vm, out, cam, (int)strlen(cam));
+    /* o sistema não disse: devolve o nome, que o PATH resolve */
+    return devolve_texto(vm, out, "jinga", 5);
 }
 
 static int mod_sys_platform(VM *vm, Value *args, int n, Value *out)
@@ -13555,7 +13568,14 @@ static void proc_filho_limpa(int canal)
 {
     if (canal != 3) { dup2(canal, 3); }
     fcntl(3, F_SETFD, FD_CLOEXEC);
+#if defined(PS_SO_MAC)
+    /* a libc do macOS não tem `closefrom`: fecha um por um até o teto */
+    long teto = sysconf(_SC_OPEN_MAX);
+    if (teto < 0 || teto > 65536) teto = 65536;
+    for (int d = 4; d < (int)teto; d++) close(d);
+#else
     closefrom(4);
+#endif
     signal(SIGPIPE, SIG_DFL);
 }
 
@@ -15730,13 +15750,24 @@ static int mod_sk_if_indextoname(VM *vm, Value *args, int n, Value *out)
 static int mod_sk_c_##nome(VM *vm, Value *args, int n, Value *out) \
 { (void)vm; (void)args; (void)n; *out = MK_INT((int64_t)(nome)); return 0; }
 SK_CONST(AF_INET)      SK_CONST(AF_INET6)    SK_CONST(AF_UNIX)     SK_CONST(AF_UNSPEC)
+/* Constante que so um sistema tem entra so nele, como em toda linguagem: o
+ * modulo `sockets` expoe o que o sistema oferece (AF_PACKET e do Linux; o
+ * macOS chama o ocioso do keepalive de TCP_KEEPALIVE). */
+#ifdef AF_PACKET
 SK_CONST(AF_PACKET)
+#endif
+#ifdef TCP_KEEPIDLE
+SK_CONST(TCP_KEEPIDLE)
+#endif
+#if defined(TCP_KEEPALIVE) && !defined(PS_SO_LINUX)
+SK_CONST(TCP_KEEPALIVE)
+#endif
 SK_CONST(SOCK_STREAM)  SK_CONST(SOCK_DGRAM)  SK_CONST(SOCK_RAW)    SK_CONST(SOCK_SEQPACKET)
 SK_CONST(SOL_SOCKET)   SK_CONST(SO_REUSEADDR) SK_CONST(SO_REUSEPORT) SK_CONST(SO_KEEPALIVE)
 SK_CONST(SO_BROADCAST) SK_CONST(SO_LINGER)   SK_CONST(SO_RCVBUF)   SK_CONST(SO_SNDBUF)
 SK_CONST(SO_ERROR)     SK_CONST(SO_RCVTIMEO) SK_CONST(SO_SNDTIMEO) SK_CONST(SO_OOBINLINE)
 SK_CONST(SO_DONTROUTE) SK_CONST(SO_TYPE)
-SK_CONST(TCP_NODELAY)  SK_CONST(TCP_KEEPIDLE) SK_CONST(TCP_KEEPINTVL) SK_CONST(TCP_KEEPCNT)
+SK_CONST(TCP_NODELAY)  SK_CONST(TCP_KEEPINTVL) SK_CONST(TCP_KEEPCNT)
 SK_CONST(IPPROTO_IP)   SK_CONST(IPPROTO_TCP) SK_CONST(IPPROTO_UDP) SK_CONST(IPPROTO_ICMP)
 SK_CONST(IPPROTO_RAW)
 SK_CONST(SHUT_RD)      SK_CONST(SHUT_WR)     SK_CONST(SHUT_RDWR)
@@ -15778,13 +15809,23 @@ static const MembroMod MOD_SOCKETS[] = {
     { "if_nameindex", mod_sk_if_nameindex, 0, NULL },
     { "if_nametoindex", mod_sk_if_nametoindex, 0, "if_name" },
     { "if_indextoname", mod_sk_if_indextoname, 0, "if_index" },
-    SK_C(AF_INET), SK_C(AF_INET6), SK_C(AF_UNIX), SK_C(AF_UNSPEC), SK_C(AF_PACKET),
+    SK_C(AF_INET), SK_C(AF_INET6), SK_C(AF_UNIX), SK_C(AF_UNSPEC),
+#ifdef AF_PACKET
+    SK_C(AF_PACKET),
+#endif
     SK_C(SOCK_STREAM), SK_C(SOCK_DGRAM), SK_C(SOCK_RAW), SK_C(SOCK_SEQPACKET),
     SK_C(SOL_SOCKET), SK_C(SO_REUSEADDR), SK_C(SO_REUSEPORT), SK_C(SO_KEEPALIVE),
     SK_C(SO_BROADCAST), SK_C(SO_LINGER), SK_C(SO_RCVBUF), SK_C(SO_SNDBUF),
     SK_C(SO_ERROR), SK_C(SO_RCVTIMEO), SK_C(SO_SNDTIMEO), SK_C(SO_OOBINLINE),
     SK_C(SO_DONTROUTE), SK_C(SO_TYPE),
-    SK_C(TCP_NODELAY), SK_C(TCP_KEEPIDLE), SK_C(TCP_KEEPINTVL), SK_C(TCP_KEEPCNT),
+    SK_C(TCP_NODELAY),
+#ifdef TCP_KEEPIDLE
+    SK_C(TCP_KEEPIDLE),
+#endif
+#if defined(TCP_KEEPALIVE) && !defined(PS_SO_LINUX)
+    SK_C(TCP_KEEPALIVE),
+#endif
+    SK_C(TCP_KEEPINTVL), SK_C(TCP_KEEPCNT),
     SK_C(IPPROTO_IP), SK_C(IPPROTO_TCP), SK_C(IPPROTO_UDP), SK_C(IPPROTO_ICMP),
     SK_C(IPPROTO_RAW),
     SK_C(SHUT_RD), SK_C(SHUT_WR), SK_C(SHUT_RDWR),
@@ -20692,10 +20733,7 @@ static void jk_ws_add(VM *vm, PSJinker *j, struct PSJkConn *conn, int idx_sock,
     j->ws[k].fib = NULL; j->ws[k].morrendo = 0;
     if (w) {
         w->tipo = EPW_WS; w->conn = conn;
-        if (g_jk_epfd >= 0) {
-            struct epoll_event ev; ev.events = EPOLLIN; ev.data.ptr = w;
-            epoll_ctl(g_jk_epfd, EPOLL_CTL_ADD, ps_jk_fd(conn), &ev);
-        }
+        if (g_jk_epfd >= 0) ps_ev_poe(g_jk_epfd, ps_jk_fd(conn), w, 1);
     }
     j->nws++;
     (void)vm;
@@ -20705,7 +20743,7 @@ static void jk_ws_del(PSJinker *j, int i)
     /* Fibra atendendo esta conexão agora: fechar aqui deixaria ela acordar com
      * o `PSJkConn` liberado. Marca e sai — quem fecha é o fim da fibra. */
     if (j->ws[i].fib) { j->ws[i].morrendo = 1; return; }
-    if (g_jk_epfd >= 0) epoll_ctl(g_jk_epfd, EPOLL_CTL_DEL, ps_jk_fd(j->ws[i].conn), NULL);
+    if (g_jk_epfd >= 0) ps_ev_tira(g_jk_epfd, ps_jk_fd(j->ws[i].conn));
     /* marca e adia: o lote de eventos desta volta ainda pode apontar pra cá */
     if (j->ws[i].epw) { ((EpWs *)j->ws[i].epw)->tipo = EPW_MORTO; ep_morre(j->ws[i].epw); }
     ps_jk_close(j->ws[i].conn);
@@ -20729,10 +20767,7 @@ static int jk_ws_idx(PSJinker *j, struct PSJkConn *c)
 static void jk_ws_arma(PSJinker *j, int i, int on)
 {
     if (g_jk_epfd < 0 || i < 0 || i >= j->nws || !j->ws[i].epw) return;
-    struct epoll_event ev;
-    ev.events = on ? EPOLLIN : 0;
-    ev.data.ptr = j->ws[i].epw;
-    epoll_ctl(g_jk_epfd, EPOLL_CTL_MOD, ps_jk_fd(j->ws[i].conn), &ev);
+    ps_ev_arma(g_jk_epfd, ps_jk_fd(j->ws[i].conn), j->ws[i].epw, on);
 }
 
 /* Aceita uma conexão WS: handshake, casa a rota, calcula a sala e registra.
@@ -21343,26 +21378,15 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
  * Boost.Context, o runtime do Go e a libmill fazem, e pela mesma razão.
  *
  * Custa uma página de endereçamento por fibra — sem RSS, porque `PROT_NONE`
- * nunca é tocada. */
+ * nunca é tocada. O mapeamento em si é da camada de sistema (ps_so.c). */
 static void *fib_pilha_nova(void)
 {
-    long pg = sysconf(_SC_PAGESIZE);
-    if (pg <= 0) pg = 4096;
-    size_t total = FIB_CSTACK + (size_t)pg;          /* guarda + pilha */
-    void *base = mmap(NULL, total, PROT_READ | PROT_WRITE,
-                      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (base == MAP_FAILED) return NULL;
-    /* a guarda vai no começo do mapeamento: é pra lá que a pilha desce */
-    if (mprotect(base, (size_t)pg, PROT_NONE) != 0) { munmap(base, total); return NULL; }
-    return (char *)base + pg;                        /* o utilizável começa depois */
+    return ps_pilha_fibra_nova(FIB_CSTACK);
 }
 
 static void fib_pilha_solta(void *p)
 {
-    if (!p) return;
-    long pg = sysconf(_SC_PAGESIZE);
-    if (pg <= 0) pg = 4096;
-    munmap((char *)p - pg, FIB_CSTACK + (size_t)pg);
+    ps_pilha_fibra_solta(p, FIB_CSTACK);
 }
 
 typedef enum { FIB_LIVRE = 0, FIB_SUSPENSA, FIB_PRONTA } FibStatus;
@@ -21700,7 +21724,7 @@ static PSFuturo *fib_pega_async(VM *vm, const Alvo *a, const Value *pos, int npo
      * inline, e a tarefa que começa na chamada não cedia no `request`, no banco
      * nem no `os.run` — travava o principal até terminar, ao contrário do que a
      * linguagem promete (o corpo roda até o primeiro ponto em que CEDE). */
-    if (g_jk_epfd < 0) g_jk_epfd = epoll_create1(EPOLL_CLOEXEC);
+    if (g_jk_epfd < 0) g_jk_epfd = ps_ev_cria();
     f->usada = 1; f->status = FIB_SUSPENSA; f->kind = FIB_ASYNC;
     /* A fibra nasce com a requisição de quem a criou: `await helper()` dentro
      * de um handler roda o helper noutra fibra, e o `request` lá dentro é o
@@ -21752,13 +21776,14 @@ static void fib_resume(VM *vm, Fiber *f)
  * O driver de banco (libpq/mysql/mongo) faz `recv` BLOQUEANTE dentro do código
  * compilado — não dá pra ceder de dentro dele. Solução: a fibra entrega a
  * chamada bloqueante a uma thread do pool e CEDE; a thread roda, avisa o loop
- * por um eventfd; o loop retoma a fibra com o resultado pronto. A thread só toca
+ * por um aviso (`PsAviso`: eventfd no Linux, pipe no macOS); o loop retoma a
+ * fibra com o resultado pronto. A thread só toca
  * o handle do driver e um buffer C (PSDbRes) — NUNCA o heap da VM — então não há
  * corrida com o GC (que roda só na thread principal). */
 typedef struct PoolJob {
     void (*fn)(void *);
     void *arg;
-    int   efd;
+    PsAviso aviso;
     struct PoolJob *next;
 } PoolJob;
 static pthread_mutex_t g_pool_mx = PTHREAD_MUTEX_INITIALIZER;
@@ -21778,9 +21803,7 @@ static void *pool_worker(void *ign)
         if (!g_pool_head) g_pool_tail = NULL;
         pthread_mutex_unlock(&g_pool_mx);
         j->fn(j->arg);                       /* roda a chamada bloqueante */
-        uint64_t um = 1;
-        ssize_t w = write(j->efd, &um, sizeof(um));   /* acorda o poll loop */
-        (void)w;
+        ps_aviso_sinaliza(j->aviso);         /* acorda o laço de eventos */
         free(j);
     }
     return NULL;
@@ -21794,11 +21817,11 @@ static void pool_garante(void)
         if (pthread_create(&t, NULL, pool_worker, NULL) == 0) pthread_detach(t);
     }
 }
-static void pool_submete(void (*fn)(void *), void *arg, int efd)
+static void pool_submete(void (*fn)(void *), void *arg, PsAviso aviso)
 {
     PoolJob *j = malloc(sizeof(PoolJob));
-    if (!j) { fn(arg); uint64_t um = 1; ssize_t w = write(efd, &um, sizeof(um)); (void)w; return; }
-    j->fn = fn; j->arg = arg; j->efd = efd; j->next = NULL;
+    if (!j) { fn(arg); ps_aviso_sinaliza(aviso); return; }
+    j->fn = fn; j->arg = arg; j->aviso = aviso; j->next = NULL;
     pthread_mutex_lock(&g_pool_mx);
     if (g_pool_tail) g_pool_tail->next = j; else g_pool_head = j;
     g_pool_tail = j;
@@ -21860,33 +21883,32 @@ static void fib_offload(VM *vm, void (*fn)(void *), void *arg)
      * `os.run` no principal congelava toda tarefa pendente até terminar. Sem
      * tarefa viva, inline como sempre — nada muda pra quem não usa async. */
     if (!vm->fib_atual && fib_async_vivas()) {
-        int efd = eventfd(0, EFD_CLOEXEC);
-        if (efd >= 0) {
+        PsAviso av;
+        if (ps_aviso_cria(&av) == 0) {
             pool_garante();
-            pool_submete(fn, arg, efd);
-            sched_roda(vm, NULL, 0, NULL, efd);
+            pool_submete(fn, arg, av);
+            sched_roda(vm, NULL, 0, NULL, av.le);
             /* a leitura bloqueia até o pool terminar — já terminou se o
              * escalonador viu o aviso; se não pôde registrar, espera aqui */
-            uint64_t drena; ssize_t r = read(efd, &drena, sizeof(drena)); (void)r;
-            close(efd);
+            ps_aviso_espera(av);
+            ps_aviso_fecha(av);
             return;
         }
     }
     if (!vm->fib_atual || g_jk_epfd < 0) { fn(arg); return; }   /* fora de handler: inline */
-    int efd = eventfd(0, EFD_CLOEXEC);
-    if (efd < 0) { fn(arg); return; }                           /* sem eventfd: inline */
+    PsAviso av;
+    if (ps_aviso_cria(&av) != 0) { fn(arg); return; }           /* sem aviso: inline */
     pool_garante();
     Fiber *f = vm->fib_atual;
     f->fibw.tipo = EPW_FIBWAIT; f->fibw.f = f;
-    struct epoll_event ev; ev.events = EPOLLIN; ev.data.ptr = &f->fibw;
-    if (epoll_ctl(g_jk_epfd, EPOLL_CTL_ADD, efd, &ev) != 0) { close(efd); fn(arg); return; }
-    f->wait_fd = efd;
+    if (ps_ev_poe(g_jk_epfd, av.le, &f->fibw, 1) != 0) { ps_aviso_fecha(av); fn(arg); return; }
+    f->wait_fd = av.le;
     f->status = FIB_SUSPENSA;
-    pool_submete(fn, arg, efd);
-    ps_ctx_swap(&f->ctx, &vm->sched_ctx);      /* cede; retoma quando o efd dispara */
-    epoll_ctl(g_jk_epfd, EPOLL_CTL_DEL, efd, NULL);
-    uint64_t drena; ssize_t r = read(efd, &drena, sizeof(drena)); (void)r;
-    close(efd);
+    pool_submete(fn, arg, av);
+    ps_ctx_swap(&f->ctx, &vm->sched_ctx);      /* cede; retoma quando o aviso dispara */
+    ps_ev_tira(g_jk_epfd, av.le);
+    ps_aviso_espera(av);
+    ps_aviso_fecha(av);
     f->wait_fd = -1;
 }
 
@@ -21938,15 +21960,14 @@ static void sched_roda(VM *vm, PSFuturo **alvos, int nalvos,
      * pra sempre: `gather(pega(1), pega(2), pega(3))` com `request.get`
      * pendurava em metade das rodadas (medido com strace: `close(3)` logo
      * apos o primeiro future, e os writes em 5 e 6 chegando ao epoll morto). */
-    if (g_jk_epfd < 0) g_jk_epfd = epoll_create1(EPOLL_CLOEXEC);
+    if (g_jk_epfd < 0) g_jk_epfd = ps_ev_cria();
     int efd_pronto = 0;
     if (efd >= 0) {
-        struct epoll_event ev; ev.events = EPOLLIN; ev.data.ptr = &g_ep_principal;
-        /* sem registrar não há como ser avisado: quem chamou espera o efd
+        /* sem registrar não há como ser avisado: quem chamou espera o aviso
          * bloqueando, como antes */
-        if (g_jk_epfd < 0 || epoll_ctl(g_jk_epfd, EPOLL_CTL_ADD, efd, &ev) != 0) return;
+        if (g_jk_epfd < 0 || ps_ev_poe(g_jk_epfd, efd, &g_ep_principal, 1) != 0) return;
     }
-    struct epoll_event evs[64];
+    PsEvento evs[64];
     for (;;) {
         int falta = nalvos > 0 ? 0 : 1;
         for (int i = 0; i < nalvos; i++) if (alvos[i] && !alvos[i]->done) { falta = 1; break; }
@@ -21998,18 +22019,18 @@ static void sched_roda(VM *vm, PSFuturo **alvos, int nalvos,
         /* nada pra esperar (nenhuma tarefa com timer ou I/O, sem prazo e sem
          * I/O do principal): alvos abertos não vão fechar — evita travar */
         if (!tem_fd && !tem_timer && !prazo && efd < 0) break;
-        int nr = epoll_wait(g_jk_epfd, evs, 64, timeout);
+        int nr = ps_ev_espera(g_jk_epfd, evs, 64, timeout);
         for (int e = 0; e < nr; e++) {
-            int tipo = *(int *)evs[e].data.ptr;
+            int tipo = *(int *)evs[e].ptr;
             if (tipo == EPW_PRINCIPAL) { efd_pronto = 1; continue; }
             if (tipo != EPW_FIBWAIT) continue;
-            Fiber *f = ((EpFibW *)evs[e].data.ptr)->f;
+            Fiber *f = ((EpFibW *)evs[e].ptr)->f;
             fib_resume(vm, f);
             if (f->status == FIB_PRONTA) fib_libera(f);
         }
         /* timers vencidos são pegos no passo (1) da próxima volta */
     }
-    if (efd >= 0) epoll_ctl(g_jk_epfd, EPOLL_CTL_DEL, efd, NULL);
+    if (efd >= 0) ps_ev_tira(g_jk_epfd, efd);
 }
 
 static void async_roda_ate(VM *vm, PSFuturo **alvos, int nalvos)
@@ -22144,15 +22165,14 @@ typedef struct {
 
 static void http_arma(SrvLoop *s, HttpConn *h, int on)
 {
-    struct epoll_event ev; ev.events = on ? EPOLLIN : 0; ev.data.ptr = h;
-    epoll_ctl(s->epfd, EPOLL_CTL_MOD, ps_jk_fd(h->c), &ev);
+    ps_ev_arma(s->epfd, ps_jk_fd(h->c), h, on);
     h->armado = on;
 }
 
 static void http_remove(SrvLoop *s, HttpConn *h)
 {
     if (h->tipo == EPW_MORTO) return;          /* já enterrado nesta volta */
-    epoll_ctl(s->epfd, EPOLL_CTL_DEL, ps_jk_fd(h->c), NULL);
+    ps_ev_tira(s->epfd, ps_jk_fd(h->c));
     ps_jk_close(h->c);
     int i = h->idx;
     s->conns[i] = s->conns[--s->nconns];
@@ -22443,18 +22463,18 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
      * dela. Trocar por um epoll novo largava esses registros, e a tarefa
      * esperava pra sempre. Reaproveita; só fecha no fim o que criou aqui. */
     int epfd_meu = g_jk_epfd < 0;
-    int epfd = epfd_meu ? epoll_create1(EPOLL_CLOEXEC) : g_jk_epfd;
+    int epfd = epfd_meu ? ps_ev_cria() : g_jk_epfd;
     if (epfd < 0) {
         close(fd); if (fd_ws >= 0) close(fd_ws); if (ssl_ctx) ps_jk_tls_ctx_solta(ssl_ctx);
-        BERRO(vm, "NetworkError", "epoll_create1: %s", strerror(errno));
+        BERRO(vm, "NetworkError", "laco de eventos: %s", strerror(errno));
     }
     g_jk_epfd = epfd;
     SrvLoop S; memset(&S, 0, sizeof(S));
     S.epfd = epfd; S.j = j; S.ssl_ctx = ssl_ctx; S.fd = fd; S.fd_ws = fd_ws;
-    { struct epoll_event ev; ev.events = EPOLLIN; ev.data.ptr = &g_ep_lhttp; epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev); }
-    if (fd_ws >= 0) { struct epoll_event ev; ev.events = EPOLLIN; ev.data.ptr = &g_ep_lws; epoll_ctl(epfd, EPOLL_CTL_ADD, fd_ws, &ev); }
+    ps_ev_poe(epfd, fd, &g_ep_lhttp, 1);
+    if (fd_ws >= 0) ps_ev_poe(epfd, fd_ws, &g_ep_lws, 1);
 
-    struct epoll_event evs[256];
+    PsEvento evs[256];
     time_t ultimo_sweep = time(NULL);
     while (!g_jk_parar) {
         struct timespec agora_m;
@@ -22494,13 +22514,13 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
             if (ms < 0) ms = 0;
             if (ms < timeout) timeout = (int)ms;
         }
-        int nready = epoll_wait(epfd, evs, 256, timeout);
+        int nready = ps_ev_espera(epfd, evs, 256, timeout);
         time_t agora = time(NULL);
         clock_gettime(CLOCK_MONOTONIC, &agora_m);
 
-        /* (2) fds prontos: cada data.ptr começa com `int tipo` */
+        /* (2) fds prontos: cada ptr começa com `int tipo` */
         for (int e = 0; e < nready; e++) {
-            int tipo = *(int *)evs[e].data.ptr;
+            int tipo = *(int *)evs[e].ptr;
             /* a conexão morreu atendendo um evento ANTERIOR deste mesmo lote:
              * o objeto continua vivo só pra esta leitura (ver `ep_morre`) */
             if (tipo == EPW_MORTO) continue;
@@ -22524,8 +22544,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
                         S.conns = nn; S.cap_conns = nc;
                     }
                     h->idx = S.nconns; S.conns[S.nconns++] = h;
-                    struct epoll_event ev; ev.events = EPOLLIN; ev.data.ptr = h;
-                    if (epoll_ctl(epfd, EPOLL_CTL_ADD, ps_jk_fd(c), &ev) == 0) h->armado = 1;
+                    if (ps_ev_poe(epfd, ps_jk_fd(c), h, 1) == 0) h->armado = 1;
                     else http_remove(&S, h);
                 }
             } else if (tipo == EPW_LWS) {
@@ -22535,22 +22554,22 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
                  * cliente lento não segura o servidor */
                 if (c) ws_serve(vm, j, c, 0);
             } else if (tipo == EPW_WS) {
-                EpWs *w = (EpWs *)evs[e].data.ptr;
+                EpWs *w = (EpWs *)evs[e].ptr;
                 ws_serve(vm, j, w->conn, 1);
             } else if (tipo == EPW_FIBWAIT) {
                 /* uma thread do pool terminou a I/O bloqueante -> retoma a fibra
                  * (pode ser handler HTTP ou fibra async — trata por kind) */
-                Fiber *f = ((EpFibW *)evs[e].data.ptr)->f;
+                Fiber *f = ((EpFibW *)evs[e].ptr)->f;
                 HttpConn *h = (f->kind == FIB_HTTP) ? (HttpConn *)f->dono : NULL;
                 fib_resume(vm, f);
                 if (f->kind == FIB_HTTP) http_pos_fibra(&S, h, f);
                 else if (f->kind == FIB_WS) ws_pos_fibra(vm, j, f);
                 else if (f->status == FIB_PRONTA) fib_libera(f);
             } else {   /* EPW_HTTP */
-                HttpConn *h = (HttpConn *)evs[e].data.ptr;
+                HttpConn *h = (HttpConn *)evs[e].ptr;
                 if (h->fib) { /* ocupada: não deveria disparar (fd desarmada) */ }
-                else if (evs[e].events & EPOLLIN) http_serve(vm, &S, h);
-                else if (evs[e].events & (EPOLLHUP | EPOLLERR)) http_remove(&S, h);
+                else if (evs[e].leu) http_serve(vm, &S, h);
+                else if (evs[e].hup) http_remove(&S, h);
             }
         }
 
@@ -22573,10 +22592,9 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
             if (stat(vm->nome_script, &st) == 0 && src_mtime && st.st_mtime != src_mtime) {
                 printf("\n[jinker] %s alterado — recarregando...\n", vm->nome_script); fflush(stdout);
                 for (int i = 0; i < S.nconns; i++) ps_jk_close(S.conns[i]->c);
-                close(epfd); if (fd >= 0) close(fd); if (fd_ws >= 0) close(fd_ws);
-                char exe[1024]; ssize_t rl = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
-                if (rl > 0) {
-                    exe[rl] = '\0';
+                ps_ev_fecha(epfd); if (fd >= 0) close(fd); if (fd_ws >= 0) close(fd_ws);
+                char exe[1024];
+                if (ps_meu_executavel(exe, sizeof(exe)) == 0) {
                     char **av = malloc(sizeof(char *) * (size_t)(3 + vm->argc_user));
                     if (av) {
                         int k = 0; av[k++] = exe; av[k++] = vm->nome_script;
@@ -22596,7 +22614,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
         ep_enterra();
     }
     for (int i = 0; i < S.nconns; i++) {
-        epoll_ctl(epfd, EPOLL_CTL_DEL, ps_jk_fd(S.conns[i]->c), NULL);
+        ps_ev_tira(epfd, ps_jk_fd(S.conns[i]->c));
         ps_jk_close(S.conns[i]->c); free(S.conns[i]);
     }
     free(S.conns); free(S.fila);
@@ -22606,7 +22624,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     while (j->nws > 0) { j->ws[j->nws - 1].fib = NULL; jk_ws_del(j, j->nws - 1); }
     ep_enterra();
     /* os fds de escuta saem do epoll sozinhos no `close` logo abaixo */
-    if (epfd_meu) { close(epfd); g_jk_epfd = -1; }
+    if (epfd_meu) { ps_ev_fecha(epfd); g_jk_epfd = -1; }
 
     close(fd);
     if (fd_ws >= 0) close(fd_ws);

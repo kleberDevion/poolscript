@@ -218,7 +218,13 @@ static void ensure_bin_no_path(const char *home)
              "\n# Jinga — comandos instalados via `jpkg install`\nexport PATH=\"%s:$PATH\"\n",
              bindir);
     int add = 0;
+    /* No macOS o shell padrão é o zsh: ele lê `.zshrc` (terminal) e
+     * `.zprofile` (login), não o `.bashrc`. */
+#if defined(__APPLE__)
+    const char *rcs[2] = { ".zshrc", ".zprofile" };
+#else
     const char *rcs[2] = { ".bashrc", ".profile" };
+#endif
     for (int i = 0; i < 2; i++) {
         char rc[1100];
         snprintf(rc, sizeof(rc), "%s/%s", h, rcs[i]);

@@ -638,7 +638,8 @@ módulo de saída entra como `import request as web` e você usa `web.get(...)`.
 
 ### Muitas conexões ao mesmo tempo
 
-O servidor usa `epoll`: uma conexão **parada** (keep-alive esperando a próxima
+O servidor usa o laço de prontidão do sistema (`epoll` no Linux, `kqueue` no
+macOS): uma conexão **parada** (keep-alive esperando a próxima
 requisição) praticamente **não custa** — nem CPU (só as conexões com dados são
 processadas) nem memória (o buffer de leitura de 16 KB é liberado enquanto a
 conexão está ociosa, ~275 bytes cada). Medido: **16 mil conexões ociosas

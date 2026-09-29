@@ -24,6 +24,12 @@
 #include <netdb.h>
 #include <poll.h>
 
+/* O macOS não tem MSG_NOSIGNAL; o SIGPIPE já é ignorado pelo processo
+ * inteiro (jinga_vm.c), então sem a flag o `send` num cano fechado continua
+ * só devolvendo erro. */
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0
+#endif
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/sha.h>

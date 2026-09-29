@@ -23,8 +23,28 @@ CC      ?= gcc
 # CFLAGS vinha DEPOIS: o gcc obedece o último, então a medição inteira rodava
 # otimizada. Instrumentação em -O2 embaralha atribuição de linha e ramo — o
 # número saía, mas não era o que o alvo dizia estar medindo.
+#
+# O SISTEMA escolhe o ramo: Linux (o padrão de sempre) ou macOS (Darwin: o
+# clang da Apple e as bibliotecas do Homebrew). O motor é o mesmo C nos dois;
+# muda onde os cabeçalhos e as bibliotecas moram e como se liga.
+SO := $(shell uname -s 2>/dev/null)
+# clang ou gcc pelo que o próprio compilador diz: no macOS o `gcc` É o clang
+E_CLANG := $(shell $(CC) --version 2>/dev/null | grep -c -i clang)
+ifeq ($(SO),Darwin)
+# Homebrew: o prefixo geral (/usr/local no Mac Intel) e os pacotes "keg-only",
+# que ficam fora dele (openssl@3, libpq, o cliente Mongo 1.x)
+BREW     := $(shell brew --prefix 2>/dev/null)
+BREW_SSL := $(shell brew --prefix openssl@3 2>/dev/null)
+BREW_PQ  := $(shell brew --prefix libpq 2>/dev/null)
+BREW_MY  := $(shell brew --prefix mariadb-connector-c 2>/dev/null)
+BREW_MG  := $(shell brew --prefix mongo-c-driver@1 2>/dev/null)
+CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter \
+           -I$(BREW)/include -I$(BREW_SSL)/include -I$(BREW_PQ)/include -I$(BREW_MY)/include/mariadb \
+           -I$(BREW_MG)/include/libmongoc-1.0 -I$(BREW_MG)/include/libbson-1.0
+else
 CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter -Wduplicated-branches \
            -I/usr/include/postgresql -I/usr/include/mariadb -DUTF8PROC_EXPORTS -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0
+endif
 # O laço da VM despacha por goto calculado. O GCC junta todos os gotos num
 # salto indireto só e depois os duplica de volta em cada tratador — mas só
 # quando a cauda de despacho cabe em `max-goto-duplication-insns` (8 de
@@ -32,7 +52,7 @@ CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter -Wduplicated-branches \
 # 52 sítios viraram 2 e o interpretador ficou 16% mais lento em instruções
 # (medido com perf stat). O clang não tem o parâmetro (e o fuzz usa flags
 # próprias).
-ifeq ($(findstring clang,$(CC)),)
+ifeq ($(E_CLANG),0)
 CFLAGS_BASE += --param=max-goto-duplication-insns=64
 endif
 CFLAGS  ?= -O2 $(CFLAGS_BASE)
@@ -48,13 +68,31 @@ CFLAGS  ?= -O2 $(CFLAGS_BASE)
 # O sqlite, o TLS, o PNG, o XML e o zlib entram ESTÁTICOS no `pool`: o binário
 # roda em máquina sem as .so deles, e estático não custa nada na partida. O
 # gmp (inteiro grande) é da linguagem, não de um módulo.
+ifeq ($(SO),Darwin)
+# macOS: o ligador da Apple não tem -Bstatic; o estático é o próprio arquivo
+# `.a` do Homebrew (TLS e PNG). sqlite, expat e zlib vêm do próprio macOS.
+LIBS_SISTEMA   := -lpthread -lm -L$(BREW)/lib -lgmp
+LIBS_POOL      := $(BREW_SSL)/lib/libssl.a $(BREW_SSL)/lib/libcrypto.a $(BREW)/lib/libpng.a \
+                  -lsqlite3 -lexpat -lz $(LIBS_SISTEMA)
+LIBS_TESTE     := -L$(BREW_SSL)/lib -lssl -lcrypto -L$(BREW)/lib -lpng -lsqlite3 -lexpat -lz $(LIBS_SISTEMA)
+else
 LIBS_SISTEMA   := -lrt -lpthread -ldl -lm -l:libgmp.so.10
 LIBS_POOL      := -Wl,-Bstatic -lsqlite3 -lssl -lcrypto -lpng -lexpat -lz -Wl,-Bdynamic $(LIBS_SISTEMA)
 # as variantes de teste (asan, debug, fuzz, oom, cobertura) ligam dinâmico
 LIBS_TESTE     := -lsqlite3 -lssl -lcrypto -lpng -lexpat -lz $(LIBS_SISTEMA)
+endif
+# O analisador (-fanalyzer) e os avisos extra são do gcc de verdade: no macOS
+# é o do Homebrew (`brew install gcc`), já que ali o `gcc` é o clang.
+ifeq ($(SO),Darwin)
+GCC_GNU := $(firstword $(wildcard $(BREW)/bin/gcc-[0-9]*))
+else
+GCC_GNU := $(CC)
+endif
+# `timeout` é do coreutils do GNU; no macOS o do Homebrew se chama gtimeout
+TIMEOUT := $(shell command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null)
 VM      := vm
 FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
-           $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_pkg.c $(VM)/ps_debug.c $(VM)/ps_retornos.c $(VM)/jinga_vm.c $(VM)/main.c
+           $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_pkg.c $(VM)/ps_debug.c $(VM)/ps_retornos.c $(VM)/ps_so.c $(VM)/jinga_vm.c $(VM)/main.c
 
 # A sqlite entra ESTÁTICA (libsqlite3.a): o binário continua rodando em
 # máquina que não tem libsqlite3.so. Ela é domínio público, sem custo de
@@ -262,8 +300,10 @@ install: pool
 	# `docs/<escopo>/<nome>/<nome>.md`. Sem ela instalada, o servidor funciona
 	# mas responde sem explicação nenhuma — que é justamente o que o completion
 	# não pode voltar a ser. Só as páginas, não o resto do repositório.
-	@cd docs && find . -name '*.md' -exec install -Dm644 {} \
-	        $(PREFIXO)/share/jinga/docs/{} \;
+	@cd docs && find . -name '*.md' | while read -r f; do \
+	    mkdir -p "$(PREFIXO)/share/jinga/docs/$$(dirname "$$f")"; \
+	    install -m644 "$$f" "$(PREFIXO)/share/jinga/docs/$$f"; \
+	  done
 	printf '#!/bin/sh\n# Servidor LSP da Jinga. Ver docs/lsp.md.\nif ! command -v node >/dev/null 2>&1; then\n  echo "jinga-lsp precisa do node (o servidor usa vscode-languageserver)" >&2\n  exit 1\nfi\nexec node %s/share/jinga/lsp/server.js "$${@:---stdio}"\n' \
 	        '$(PREFIXO)' > $(PREFIXO)/bin/jinga-lsp
 	chmod 755 $(PREFIXO)/bin/jinga-lsp
@@ -278,9 +318,11 @@ install: pool
 	# usuário, onde o GTK olha primeiro. O que fica faltando aí é só o registro
 	# do TIPO (`$(DADOS)/mime`), que é o que precisa de root de verdade; se ele
 	# já foi feito uma vez, o desktop continua inteiro.
+ifneq ($(SO),Darwin)
 	@$(MAKE) --no-print-directory install-mime PREFIXO=$(PREFIXO) 2>/dev/null \
 	  || { $(MAKE) --no-print-directory install-icone; \
 	       echo "  (o TIPO MIME em $(DADOS)/mime pede root: sudo make install-mime)"; }
+endif
 	@echo "instalado em $(PREFIXO): jinga, jpkg, jinga-lsp (e os nomes antigos pool, psl, poolscript-lsp)"
 
 # Tipo MIME + ícone do `.pr` pro desktop (GNOME/KDE/XFCE/…). Fica separado
@@ -403,9 +445,11 @@ ANALISA_ALVO := $(if $(ANALISA_TUDO),$(FONTES),$(filter-out $(ANALISA_FORA),$(FO
 
 analisa:
 	@set -f; achou=0; faltou=""; \
+	if [ -z "$(GCC_GNU)" ]; then \
+	  echo "  analisa: o -fanalyzer e do gcc; no macOS: brew install gcc"; exit 1; fi; \
 	for f in $(ANALISA_ALVO); do \
 	  saida=$$( (ulimit -v $$(($(ANALISA_MB) * 1024)); \
-	             nice -n 19 $(CC) $(CFLAGS) -I$(VM) -fanalyzer -c -o /dev/null $$f) 2>&1 ); \
+	             nice -n 19 $(GCC_GNU) $(CFLAGS) -I$(VM) -fanalyzer -c -o /dev/null $$f) 2>&1 ); \
 	  rc=$$?; \
 	  aviso=$$(printf '%s\n' "$$saida" | grep -E "warning:|error:" | grep -v "^cc1"); \
 	  for ac in $(ANALISA_ACEITOS); do \
@@ -477,8 +521,10 @@ bench: pool
 
 AVISOS_NIVEL ?= 1
 avisos:
-	@saida=$$(for f in $(FONTES); do \
-	    nice -n 19 $(CC) $(CFLAGS) -Wlogical-op -Wshadow \
+	@if [ -z "$(GCC_GNU)" ]; then \
+	  echo "  avisos: -Wlogical-op e -Wformat-truncation sao do gcc; no macOS: brew install gcc"; exit 1; fi; \
+	saida=$$(for f in $(FONTES); do \
+	    nice -n 19 $(GCC_GNU) $(CFLAGS) -Wlogical-op -Wshadow \
 	      -Wformat-truncation=$(AVISOS_NIVEL) \
 	      -I$(VM) -c -o /dev/null $$f 2>&1; \
 	  done | grep -E "warning:" | sort -u); \
@@ -650,7 +696,7 @@ E2E_TIMEOUT ?= 180
 check-e2e-local: pool
 	@caidos=""; \
 	for alvo in $(E2E_SEM_SERVICO); do \
-	  timeout $(E2E_TIMEOUT) ./pool teste/e2e_roda.pr $$alvo || caidos="$$caidos $$alvo"; \
+	  $(TIMEOUT) $(E2E_TIMEOUT) ./pool teste/e2e_roda.pr $$alvo || caidos="$$caidos $$alvo"; \
 	done; \
 	if [ -n "$$caidos" ]; then \
 	  echo "e2e local: FALHARAM ->$$caidos"; \

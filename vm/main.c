@@ -16,6 +16,7 @@
 #include <unistd.h>   /* getcwd — encurta o caminho do traceback pro relativo */
 
 #include "ps_vm.h"
+#include "ps_so.h"      /* o proprio executavel, pro `-o` */
 #include "ps_lexer.h"   /* --contexto: o editor pergunta pro lexer, nao pro regex */
 #include "ps_parser.h"  /* --ast: e pra ARVORE que ele pergunta, pelo mesmo motivo */
 #include "ps_pkg.h"
@@ -340,13 +341,11 @@ static int reporta(PSErroExec *e, const char *origem)
 #define PS_DIG_TAM     16
 #define PS_RODAPE_TAM  (PS_DIG_TAM + PS_MAGIA_TAM)
 
-/* Caminho do executavel em execucao. */
+/* Caminho do executavel em execucao (a camada de sistema sabe como cada
+ * sistema responde: /proc no Linux, _NSGetExecutablePath no macOS). */
 static int ps_meu_caminho(char *out, size_t cap)
 {
-    ssize_t n = readlink("/proc/self/exe", out, cap - 1);
-    if (n <= 0) return -1;
-    out[n] = '\0';
-    return 0;
+    return ps_meu_executavel(out, cap);
 }
 
 /* O payload embutido neste binario, ou NULL. `base` recebe o tamanho do

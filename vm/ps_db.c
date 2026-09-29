@@ -45,9 +45,30 @@ OD_FUNCS(PS_DL_PONTEIRO)
 
 static int  g_pg_estado, g_my_estado, g_od_estado;
 static char g_pg_motivo[320], g_my_motivo[320], g_od_motivo[320];
+#if defined(__APPLE__)
+/* macOS: o nome da biblioteca é `.dylib`, e o Homebrew instala o libpq e o
+ * cliente MariaDB fora do caminho padrão (keg-only / subpasta), então o
+ * caminho inteiro entra na lista. /usr/local é o Homebrew do Mac Intel,
+ * /opt/homebrew o do Apple Silicon. */
+static const char *const PG_NOMES[] = {
+    "libpq.5.dylib",
+    "/usr/local/opt/libpq/lib/libpq.5.dylib",
+    "/opt/homebrew/opt/libpq/lib/libpq.5.dylib", NULL };
+static const char *const MY_NOMES[] = {
+    "libmariadb.3.dylib",
+    "/usr/local/lib/mariadb/libmariadb.3.dylib",
+    "/opt/homebrew/lib/mariadb/libmariadb.3.dylib",
+    "/usr/local/opt/mariadb-connector-c/lib/mariadb/libmariadb.3.dylib",
+    "/opt/homebrew/opt/mariadb-connector-c/lib/mariadb/libmariadb.3.dylib", NULL };
+static const char *const OD_NOMES[] = {
+    "libodbc.2.dylib",
+    "/usr/local/lib/libodbc.2.dylib",
+    "/opt/homebrew/lib/libodbc.2.dylib", NULL };
+#else
 static const char *const PG_NOMES[] = { "libpq.so.5", "libpq.so", NULL };
 static const char *const MY_NOMES[] = { "libmariadb.so.3", "libmysqlclient.so.21", "libmariadb.so", NULL };
 static const char *const OD_NOMES[] = { "libodbc.so.2", "libodbc.so", NULL };
+#endif
 
 /* Daqui pra baixo, o nome da função é o ponteiro. */
 #define PQclear dl_PQclear

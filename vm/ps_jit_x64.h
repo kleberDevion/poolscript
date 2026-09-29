@@ -33,8 +33,8 @@
 #ifndef PS_JIT_X64_H
 #define PS_JIT_X64_H
 
-#include <sys/mman.h>
 #include <stddef.h>
+#include "ps_so.h"      /* memória executável: a camada de sistema */
 
 /* O estado do frame corrente, que o interpretador entrega ao nativo e
  * recebe de volta — inclusive quando o nativo chamou outra funct direto
@@ -608,15 +608,13 @@ static int jit_compila_proto(VM *vm, Proto *p)
     free(g.fx);
     if (j->falhou) { free(j->b); free(g.pos); return -1; }
 
-    /* pra memória executável: RW, copia, RX. Recusa = segue interpretado. */
-    size_t tam = (j->n + 4095) & ~(size_t)4095;
-    void *mem = g_jit_falha ? MAP_FAILED
-              : mmap(NULL, tam, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (mem == MAP_FAILED) { free(j->b); free(g.pos); return -1; }
-    memcpy(mem, j->b, j->n);
-    if (mprotect(mem, tam, PROT_READ | PROT_EXEC) != 0) { munmap(mem, tam); free(j->b); free(g.pos); return -1; }
+    /* pra memória executável: RW, copia, RX (a camada de sistema faz; nunca
+     * escrita e execução juntas). Recusa = segue interpretado. */
+    size_t tam = 0;
+    void *mem = g_jit_falha ? NULL : ps_mem_exec_nova(j->b, j->n, &tam);
+    if (!mem) { free(j->b); free(g.pos); return -1; }
     JitTrecho *t = malloc(sizeof(*t));
-    if (!t) { munmap(mem, tam); free(j->b); free(g.pos); return -1; }
+    if (!t) { ps_mem_exec_solta(mem, tam); free(j->b); free(g.pos); return -1; }
     t->mem = mem; t->tam = tam; t->prox = vm->jit_trechos; vm->jit_trechos = t;
     if (g_jit_log)
         fprintf(stderr, "[jit] %s: %d instrucoes, %zu bytes\n",
@@ -700,7 +698,7 @@ static int jit_chama(VM *vm, JitCtx *cx, int n)
 static void jit_solta(VM *vm)
 {
     JitTrecho *t = vm->jit_trechos;
-    while (t) { JitTrecho *px = t->prox; munmap(t->mem, t->tam); free(t); t = px; }
+    while (t) { JitTrecho *px = t->prox; ps_mem_exec_solta(t->mem, t->tam); free(t); t = px; }
     vm->jit_trechos = NULL;
 }
 

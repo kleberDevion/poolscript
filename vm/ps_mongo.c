@@ -35,7 +35,16 @@ MG_FUNCS(PS_DL_PONTEIRO)
 
 static int  g_mg_estado;
 static char g_mg_motivo[320];
+#if defined(__APPLE__)
+static const char *const MG_NOMES[] = {
+    "libmongoc-1.0.0.dylib",
+    "/usr/local/lib/libmongoc-1.0.0.dylib",
+    "/opt/homebrew/lib/libmongoc-1.0.0.dylib",
+    "/usr/local/opt/mongo-c-driver@1/lib/libmongoc-1.0.0.dylib",
+    "/opt/homebrew/opt/mongo-c-driver@1/lib/libmongoc-1.0.0.dylib", NULL };
+#else
 static const char *const MG_NOMES[] = { "libmongoc-1.0.so.0", "libmongoc-1.0.so", NULL };
+#endif
 
 #define bson_append_document dl_bson_append_document
 #define bson_append_int64 dl_bson_append_int64
