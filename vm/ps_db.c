@@ -52,16 +52,19 @@ static char g_pg_motivo[320], g_my_motivo[320], g_od_motivo[320];
  * /opt/homebrew o do Apple Silicon. */
 static const char *const PG_NOMES[] = {
     "libpq.5.dylib",
+    "@executable_path/../lib/jinga/libpq.5.dylib",      /* o pacote (build_bundle.sh) */
     "/usr/local/opt/libpq/lib/libpq.5.dylib",
     "/opt/homebrew/opt/libpq/lib/libpq.5.dylib", NULL };
 static const char *const MY_NOMES[] = {
     "libmariadb.3.dylib",
+    "@executable_path/../lib/jinga/libmariadb.3.dylib",
     "/usr/local/lib/mariadb/libmariadb.3.dylib",
     "/opt/homebrew/lib/mariadb/libmariadb.3.dylib",
     "/usr/local/opt/mariadb-connector-c/lib/mariadb/libmariadb.3.dylib",
     "/opt/homebrew/opt/mariadb-connector-c/lib/mariadb/libmariadb.3.dylib", NULL };
 static const char *const OD_NOMES[] = {
     "libodbc.2.dylib",
+    "@executable_path/../lib/jinga/libodbc.2.dylib",
     "/usr/local/lib/libodbc.2.dylib",
     "/opt/homebrew/lib/libodbc.2.dylib", NULL };
 #else

@@ -38,6 +38,7 @@ static char g_mg_motivo[320];
 #if defined(__APPLE__)
 static const char *const MG_NOMES[] = {
     "libmongoc-1.0.0.dylib",
+    "@executable_path/../lib/jinga/libmongoc-1.0.0.dylib",   /* o pacote (build_bundle.sh) */
     "/usr/local/lib/libmongoc-1.0.0.dylib",
     "/opt/homebrew/lib/libmongoc-1.0.0.dylib",
     "/usr/local/opt/mongo-c-driver@1/lib/libmongoc-1.0.0.dylib",

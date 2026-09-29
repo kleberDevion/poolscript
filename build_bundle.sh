@@ -12,6 +12,84 @@ cd "$(dirname "$0")"
 
 [ -f pool ] || { echo "compile antes: make pool" >&2; exit 1; }
 
+# ── macOS ────────────────────────────────────────────────────────────────
+# O mesmo pacote, no formato do macOS: `bin/jinga` + as .dylib que não são do
+# sistema em `lib/jinga/`, com os caminhos reescritos pra serem RELATIVOS ao
+# executável (`@executable_path/../lib/jinga/...`). Assim ele roda da pasta
+# do pacote e, instalado, de /usr/local (bin/ e lib/jinga/ lado a lado) —
+# sem Homebrew na máquina de destino. Os clientes de banco (abertos só no
+# primeiro `connect`, ver vm/ps_dl.h) vão junto, com o que eles arrastam.
+if [ "$(uname -s)" = "Darwin" ]; then
+    SAIDA=dist/jinga-macos-x86_64
+    rm -rf "$SAIDA"
+    mkdir -p "$SAIDA/bin" "$SAIDA/lib/jinga" "$SAIDA/share/jinga/lsp"
+    cp pool "$SAIDA/bin/jinga"
+    DEST="$SAIDA/lib/jinga"
+
+    # dependências de um arquivo Mach-O que NÃO são do sistema
+    deps_de() {
+        otool -L "$1" | tail -n +2 | awk '{print $1}' \
+          | grep -Ev '^(/usr/lib/|/System/|@)' || true
+    }
+    # copia `$1` e tudo que ele arrasta (recursivo, sem repetir)
+    junta() {
+        local so="$1" nome
+        nome=$(basename "$so")
+        [ -f "$DEST/$nome" ] && return 0
+        cp -L "$so" "$DEST/$nome"
+        chmod u+w "$DEST/$nome"
+        for d in $(deps_de "$so"); do junta "$d"; done
+    }
+    for d in $(deps_de pool); do junta "$d"; done
+    BREW=$(brew --prefix)
+    for so in \
+        "$(brew --prefix libpq)/lib/libpq.5.dylib" \
+        "$(brew --prefix mariadb-connector-c)/lib/mariadb/libmariadb.3.dylib" \
+        "$BREW/lib/libodbc.2.dylib" \
+        "$(brew --prefix mongo-c-driver@1)/lib/libmongoc-1.0.0.dylib"; do
+        [ -f "$so" ] || { echo "falta $so nesta maquina: o pacote sairia sem esse driver" >&2; exit 1; }
+        junta "$so"
+    done
+    # reescreve: o binário acha as libs em ../lib/jinga; cada lib acha as
+    # outras na própria pasta
+    for d in $(deps_de pool); do
+        install_name_tool -change "$d" "@executable_path/../lib/jinga/$(basename "$d")" "$SAIDA/bin/jinga"
+    done
+    for f in "$DEST"/*.dylib; do
+        install_name_tool -id "@loader_path/$(basename "$f")" "$f"
+        for d in $(otool -L "$f" | tail -n +2 | awk '{print $1}' | grep -Ev '^(/usr/lib/|/System/|@)' || true); do
+            install_name_tool -change "$d" "@loader_path/$(basename "$d")" "$f"
+        done
+    done
+    # mexer nos comandos de carga invalida a assinatura: assina de novo (ad hoc)
+    for f in "$SAIDA/bin/jinga" "$DEST"/*.dylib; do codesign -s - -f "$f" >/dev/null 2>&1; done
+    ln -sf jinga "$SAIDA/bin/jpkg"
+    for j in editor/vscode/*.js; do
+        case "$(basename "$j")" in
+            extension.js|teste_servidor.js) continue ;;
+        esac
+        cp "$j" "$SAIDA/share/jinga/lsp/"
+    done
+    cp -R editor/vscode/node_modules "$SAIDA/share/jinga/lsp/" 2>/dev/null || true
+    cp -R docs "$SAIDA/share/jinga/docs"
+    cp instalar.sh "$SAIDA/"
+    chmod +x "$SAIDA/instalar.sh"
+    cat > "$SAIDA/LEIAME.txt" <<'TXT'
+Jinga — pacote para macOS (Intel, x86-64)
+
+    ./bin/jinga programa.pr      roda sem instalar nada
+    sudo ./instalar.sh           instala em /usr/local (jinga, jpkg, jinga-lsp)
+    sudo ./instalar.sh --remover
+
+O servidor do editor (jinga-lsp) usa o node: instale-o pelo instalador
+oficial (nodejs.org) ou pelo Homebrew.
+TXT
+    tar czf dist/jinga-macos-x86_64.tar.gz -C dist jinga-macos-x86_64
+    echo "dist/jinga-macos-x86_64/  ($(du -sh "$SAIDA" | cut -f1))"
+    echo "dist/jinga-macos-x86_64.tar.gz  ($(du -h dist/jinga-macos-x86_64.tar.gz | cut -f1))"
+    exit 0
+fi
+
 SAIDA=dist/jinga-portable
 rm -rf "$SAIDA"
 mkdir -p "$SAIDA/lib" "$SAIDA/lsp" "$SAIDA/dados/icones"

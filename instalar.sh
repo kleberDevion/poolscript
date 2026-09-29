@@ -55,6 +55,69 @@ if [ "$(id -u)" != "0" ]; then
     exit 1
 fi
 
+# ── macOS ────────────────────────────────────────────────────────────────
+# O pacote do Mac (build_bundle.sh no macOS) já vem no layout da instalação:
+# bin/jinga, lib/jinga/*.dylib (o binário acha as libs por caminho relativo)
+# e share/jinga (LSP + doc). Instalar é copiar as três pastas pro prefixo.
+# Sem pacote ao lado, baixa o do release; dentro do repositório com ./pool
+# compilado nesta máquina, instala ele (ligado às libs do Homebrew daqui).
+if [ "$(uname -s)" = "Darwin" ]; then
+    PACOTE_MAC="${PACOTE_MAC:-$REPO/releases/latest/download/jinga-macos-x86_64.tar.gz}"
+    if [ "$REMOVER" = 1 ]; then
+        rm -f "$PREFIXO/bin/jinga" "$PREFIXO/bin/jpkg" "$PREFIXO/bin/pool" "$PREFIXO/bin/psl" \
+              "$PREFIXO/bin/jinga-lsp" "$PREFIXO/bin/poolscript-lsp"
+        rm -rf "$PREFIXO/lib/jinga" "$PREFIXO/share/jinga"
+        echo "removido."
+        exit 0
+    fi
+    if [ ! -f bin/jinga ] && [ ! -f pool ]; then
+        TMP=$(mktemp -d)
+        trap 'rm -rf "$TMP"' EXIT
+        echo "== baixando o pacote do macOS"
+        if ! curl -fsSL --retry 3 -o "$TMP/jinga-macos.tar.gz" "$PACOTE_MAC"; then
+            echo "não há pacote do macOS publicado. Compile do fonte:" >&2
+            echo "  git clone $REPO && cd poolscript && jinga scripts/compila.pr mac --instala" >&2
+            echo "  (sem a jinga ainda: brew install openssl@3 libpng gmp libpq mariadb-connector-c" >&2
+            echo "   unixodbc mongo-c-driver@1 && make pool && sudo make install)" >&2
+            exit 1
+        fi
+        tar xzf "$TMP/jinga-macos.tar.gz" -C "$TMP"
+        cd "$TMP/jinga-macos-x86_64"
+    fi
+    mkdir -p "$PREFIXO/bin" "$PREFIXO/share/jinga"
+    if [ -f bin/jinga ]; then
+        echo "== binário e bibliotecas"
+        install -m755 bin/jinga "$PREFIXO/bin/jinga"
+        rm -rf "$PREFIXO/lib/jinga"
+        mkdir -p "$PREFIXO/lib/jinga"
+        cp -R lib/jinga/. "$PREFIXO/lib/jinga/"
+        echo "== servidor LSP e doc"
+        rm -rf "$PREFIXO/share/jinga/lsp" "$PREFIXO/share/jinga/docs"
+        cp -R share/jinga/lsp "$PREFIXO/share/jinga/lsp"
+        cp -R share/jinga/docs "$PREFIXO/share/jinga/docs"
+    else
+        echo "== binário compilado nesta máquina"
+        install -m755 pool "$PREFIXO/bin/jinga"
+        mkdir -p "$PREFIXO/share/jinga/lsp"
+        for j in editor/vscode/*.js; do
+            case "$(basename "$j")" in extension.js|teste_servidor.js) continue ;; esac
+            install -m644 "$j" "$PREFIXO/share/jinga/lsp/"
+        done
+        [ -d editor/vscode/node_modules ] && cp -R editor/vscode/node_modules "$PREFIXO/share/jinga/lsp/"
+        rm -rf "$PREFIXO/share/jinga/docs"
+        cp -R docs "$PREFIXO/share/jinga/docs"
+    fi
+    for atalho in jpkg pool psl; do ln -sf "$PREFIXO/bin/jinga" "$PREFIXO/bin/$atalho"; done
+    printf '#!/bin/sh\n# Servidor LSP da Jinga. Ver docs/lsp.md.\nif ! command -v node >/dev/null 2>&1; then\n  echo "jinga-lsp precisa do node" >&2\n  exit 1\nfi\nexec node %s/share/jinga/lsp/server.js "${@:---stdio}"\n' \
+            "$PREFIXO" > "$PREFIXO/bin/jinga-lsp"
+    chmod 755 "$PREFIXO/bin/jinga-lsp"
+    cp "$PREFIXO/bin/jinga-lsp" "$PREFIXO/bin/poolscript-lsp"
+    command -v node >/dev/null 2>&1 \
+        || echo "   o servidor do editor precisa do node: instale pelo nodejs.org (pacote macOS x64)"
+    echo "pronto: $("$PREFIXO/bin/jinga" --version)"
+    exit 0
+fi
+
 # Os nomes de antes do rename saem junto: `pool`, `psl`, `poolscript-lsp`,
 # `share/poolscript`, `lib/poolscript`, `zz-poolscript.xml`.
 if [ "$REMOVER" = 1 ]; then

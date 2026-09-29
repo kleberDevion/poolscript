@@ -1,0 +1,97 @@
+# Compila e testa a Jinga em cada sistema e guarda o pacote pronto.
+#
+# Roda em push na main e nas branches `porte-*`, em tag `v*` (que também
+# publica o release com os pacotes) e sob pedido — é o que
+# `jinga scripts/compila.pr mac|windows|todos` dispara com
+# `gh workflow run build.yml -f alvo=<sistema>`.
+name: build
+
+on:
+  push:
+    branches: [main, 'porte-*']
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      alvo:
+        description: 'linux | mac | windows | todos'
+        default: 'todos'
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+
+jobs:
+  linux:
+    if: github.event_name != 'workflow_dispatch' || inputs.alvo == 'linux' || inputs.alvo == 'todos'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: dependencias
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc libsqlite3-dev libpq-dev \
+            libmariadb-dev libmariadb-dev-compat unixodbc-dev libssl-dev libpng-dev \
+            libexpat1-dev zlib1g-dev libgmp-dev libmongoc-dev libbson-dev \
+            libpq5 libmariadb3 unixodbc libmongoc-1.0-0
+      - name: compila
+        run: make pool testar
+      - name: suite
+        run: ./testar && JINGA_JIT=0 ./testar
+      - name: empacota
+        run: |
+          (cd editor/vscode && npm install --omit=dev --no-audit --no-fund)
+          ./build_bundle.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jinga-linux-x86_64
+          path: dist/jinga-portable.tar.gz
+
+  mac:
+    if: github.event_name != 'workflow_dispatch' || inputs.alvo == 'mac' || inputs.alvo == 'todos'
+    # Mac Intel (o do seu MacBook Pro 2019, i9): mesma arquitetura, mesmo JIT
+    runs-on: macos-15-intel
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - name: dependencias (Homebrew)
+        # O Homebrew não tem mais pacote pronto pro Mac Intel: o que não vem
+        # na imagem do runner é compilado do fonte aqui.
+        run: |
+          brew install openssl@3 libpng gmp libpq mariadb-connector-c unixodbc \
+            mongo-c-driver@1 coreutils
+      - name: compila
+        run: make pool testar
+      - name: versao
+        run: ./pool --version && ./pool -e 'post(sys.platform)'
+      - name: suite
+        run: ./testar && JINGA_JIT=0 ./testar
+      - name: portao inteiro
+        run: |
+          (cd editor/vscode && npm install --omit=dev --no-audit --no-fund)
+          make check
+      - name: empacota
+        run: ./build_bundle.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jinga-macos-x86_64
+          path: dist/jinga-macos-x86_64.tar.gz
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, mac]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: pacotes
+          merge-multiple: true
+      - name: publica o release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" pacotes/* \
+            --repo "${GITHUB_REPOSITORY}" --title "Jinga ${GITHUB_REF_NAME}" \
+            --notes "Pacotes: Linux x86-64 (jinga-portable.tar.gz), macOS Intel (jinga-macos-x86_64.tar.gz)."
