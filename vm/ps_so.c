@@ -21,6 +21,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
 
 #if defined(PS_SO_LINUX)
 #  include <sys/epoll.h>
@@ -254,6 +257,40 @@ void *ps_mem_exec_nova(const void *codigo, size_t n, size_t *tam)
 void ps_mem_exec_solta(void *p, size_t tam)
 {
     if (p) munmap(p, tam);
+}
+
+/* ── resolução de nomes ────────────────────────────────────────────────── */
+
+struct hostent *ps_host_por_nome(const char *host, struct hostent *he,
+                                 char *buf, size_t cap, int *herr)
+{
+    *herr = 0;
+#if defined(PS_SO_LINUX)
+    struct hostent *r = NULL;
+    if (gethostbyname_r(host, he, buf, cap, &r, herr) != 0) return NULL;
+    return r;
+#else
+    (void)he; (void)buf; (void)cap;
+    struct hostent *r = gethostbyname(host);
+    if (!r) *herr = h_errno;
+    return r;
+#endif
+}
+
+struct hostent *ps_host_por_ip4(const void *v4, struct hostent *he,
+                                char *buf, size_t cap, int *herr)
+{
+    *herr = 0;
+#if defined(PS_SO_LINUX)
+    struct hostent *r = NULL;
+    if (gethostbyaddr_r(v4, sizeof(struct in_addr), AF_INET, he, buf, cap, &r, herr) != 0) return NULL;
+    return r;
+#else
+    (void)he; (void)buf; (void)cap;
+    struct hostent *r = gethostbyaddr(v4, (socklen_t)sizeof(struct in_addr), AF_INET);
+    if (!r) *herr = h_errno;
+    return r;
+#endif
 }
 
 /* ── caminhos ──────────────────────────────────────────────────────────── */

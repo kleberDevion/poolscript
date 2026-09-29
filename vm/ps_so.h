@@ -73,6 +73,18 @@ void  ps_pilha_fibra_solta(void *p, size_t util);
 void *ps_mem_exec_nova(const void *codigo, size_t n, size_t *tam);
 void  ps_mem_exec_solta(void *p, size_t tam);
 
+/* ── resolução de nomes (o `gethostbyname_ex` e o `gethostbyaddr` do módulo
+ * sockets) ────────────────────────────────────────────────────────────────
+ * No Linux, as versões reentrantes da glibc (`_r`), que escrevem em `he` e
+ * `buf`; no macOS elas não existem, e as comuns guardam o resultado POR THREAD
+ * (o que as torna seguras). NULL = não resolveu, com o código em `*herr`
+ * (HOST_NOT_FOUND, TRY_AGAIN, NO_RECOVERY). */
+struct hostent;
+struct hostent *ps_host_por_nome(const char *host, struct hostent *he,
+                                 char *buf, size_t cap, int *herr);
+struct hostent *ps_host_por_ip4(const void *v4, struct hostent *he,
+                                char *buf, size_t cap, int *herr);
+
 /* ── caminhos ─────────────────────────────────────────────────────────────
  * O caminho absoluto do executável que está rodando (o `-o`, o
  * `sys.executable`, o reload do jinker). 0 = ok. */

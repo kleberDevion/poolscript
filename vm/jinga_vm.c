@@ -15422,10 +15422,11 @@ static int mod_sk_getfqdn(VM *vm, Value *args, int n, Value *out)
 
 static int sk_host_ex(VM *vm, const char *nome_of, const char *host, Value *out)
 {
-    /* (nome, [aliases], [ips]) — gethostbyname_r/gethostbyaddr já resolvido */
+    /* (nome, [aliases], [ips]) — a resolução é da camada de sistema */
     struct hostent he, *rhe = NULL; char aux[4096]; int herr = 0;
     (void)nome_of;
-    if (gethostbyname_r(host, &he, aux, sizeof(aux), &rhe, &herr) != 0 || !rhe) {
+    rhe = ps_host_por_nome(host, &he, aux, sizeof(aux), &herr);
+    if (!rhe) {
         int g = (herr == TRY_AGAIN) ? EAI_AGAIN
               : (herr == NO_RECOVERY) ? EAI_FAIL : EAI_NONAME;
         BERRO(vm, "RuntimeError", "[Errno %d] %s", g, gai_strerror(g));
@@ -15475,7 +15476,8 @@ static int mod_sk_gethostbyaddr(VM *vm, Value *args, int n, Value *out)
     if (inet_pton(AF_INET, ip, &v4) != 1)
         BERRO(vm, "TypeError", "gethostbyaddr: endereco invalido: %s", ip);
     struct hostent he, *rhe = NULL; char aux[4096]; int herr = 0;
-    if (gethostbyaddr_r(&v4, sizeof(v4), AF_INET, &he, aux, sizeof(aux), &rhe, &herr) != 0 || !rhe)
+    rhe = ps_host_por_ip4(&v4, &he, aux, sizeof(aux), &herr);
+    if (!rhe)
         BERRO(vm, "RuntimeError", "[Errno %d] %s", herr, hstrerror(herr));
     return sk_host_ex(vm, "gethostbyaddr", rhe->h_name, out);
 }
