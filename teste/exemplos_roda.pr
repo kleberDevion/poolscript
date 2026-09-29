@@ -60,6 +60,10 @@ if __name__ == "main" {
     falhou = []
     pulou = []
     so_sintaxe = []
+    # `examples/swagger.pr` gera a doc em `path/docs` a partir da pasta onde
+    # roda (a raiz do repo). O que a rodada criou, a rodada apaga: a sobra
+    # entrava no próximo commit.
+    tinha_path = os.isdir("path")
 
     nomes = []
     for each e in os.ls(PASTA) {
@@ -115,6 +119,9 @@ if __name__ == "main" {
         addEnd(falhou, n)
     }
 
+    if not tinha_path and os.isdir("path") {
+        os.rmdir("path", force=true)
+    }
     post("")
     post("exemplos:", str(len(nomes)), " rodaram:", str(len(okey)),
          " so sintaxe:", str(len(so_sintaxe)), " pularam:", str(len(pulou)))
