@@ -78,7 +78,13 @@ static inline int unsetenv(const char *n) { return _putenv_s(n, "") == 0 ? 0 : -
 
 /* ── texto ────────────────────────────────────────────────────────────── */
 
-static inline char *strndup(const char *s, size_t n)
+/* Com nome próprio e o nome POSIX por macro: o UCRT novo (mingw-w64 12+) já
+ * declara `strndup` no string.h, e uma versão `static` com o mesmo nome não
+ * compila lá; num mingw antigo ela não existe. Assim vale nos dois. */
+#define strndup    ps_w_strndup
+#define memmem     ps_w_memmem
+#define strcasestr ps_w_strcasestr
+static inline char *ps_w_strndup(const char *s, size_t n)
 {
     size_t l = 0;
     while (l < n && s[l]) l++;
@@ -89,7 +95,7 @@ static inline char *strndup(const char *s, size_t n)
     return r;
 }
 
-static inline void *memmem(const void *h, size_t hl, const void *n, size_t nl)
+static inline void *ps_w_memmem(const void *h, size_t hl, const void *n, size_t nl)
 {
     if (nl == 0) return (void *)h;
     if (nl > hl) return NULL;
@@ -99,7 +105,7 @@ static inline void *memmem(const void *h, size_t hl, const void *n, size_t nl)
     return NULL;
 }
 
-static inline char *strcasestr(const char *h, const char *n)
+static inline char *ps_w_strcasestr(const char *h, const char *n)
 {
     size_t nl = strlen(n);
     if (nl == 0) return (char *)h;

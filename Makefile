@@ -40,8 +40,10 @@ PREF_W  := $(or $(MSYSTEM_PREFIX),/ucrt64)
 RECURSOS := vm/jinga_rc.o
 endif
 ifeq ($(E_WIN),1)
+# `__USE_MINGW_ANSI_STDIO`: o printf do C99 (o `%zu`, o `%lld`) — o cliente
+# do Mongo (bson) recusa compilar sem ele
 CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter -Wduplicated-branches \
-           -I$(PREF_W)/include/mariadb
+           -D__USE_MINGW_ANSI_STDIO=1 -I$(PREF_W)/include/mariadb
 else ifeq ($(SO),Darwin)
 # Homebrew: o prefixo geral (/usr/local no Mac Intel) e os pacotes "keg-only",
 # que ficam fora dele (openssl@3, libpq, o cliente Mongo 1.x)

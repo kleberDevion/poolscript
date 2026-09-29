@@ -14,14 +14,30 @@ const Caso CASOS_CRASH[] = {
  * bastava: ele pega `l.append(l)`, e não pega profundidade sem ciclo nem ciclo
  * que fecha acima do vetor de 256 níveis que ele registra. */
 { "parser: 30 mil parenteses aninhados é erro, nao SIGSEGV",
-  /* o gerador do caso é o próprio motor: 30 mil `(` na mão não cabe aqui */
+  /* O gerador do caso é o próprio motor: 30 mil `(` na mão não cabe aqui. Sem
+   * shell (`os.run` com lista), pra valer igual nos três sistemas. Quando
+   * falha, a saída do caso diz o código e o que o `--check` respondeu: no
+   * macOS ele falhou uma vez dentro do `make check` e passou na suíte avulsa,
+   * e um `False` sozinho não diz se foi erro de outra coisa ou morte. */
   "import os\n"
   "import sys\n"
   "fundo = 30000\n"
   "src = \"post(\" + (\"(\" * fundo) + \"1\" + (\")\" * fundo) + \")\"\n"
   "using open(\"p.pr\", \"w\") as f { f.write(src) }\n"
-  "os.cmd(\"'\" + sys.executable + \"' --check p.pr > o.txt 2>&1\")\n"
-  "post(\"aninhada demais\" in open(\"o.txt\").read())\n",
+  "p = os.run([sys.executable, \"--check\", \"p.pr\"], capture=\"live\")\n"
+  "t = \"\"\n"
+  "pedaco = p.read(65536)\n"
+  "while pedaco != \"\" {\n"
+  "    t = t + pedaco\n"
+  "    pedaco = p.read(65536)\n"
+  "}\n"
+  "t = t + p.read_err(65536)\n"
+  "rc = p.wait()\n"
+  "if \"aninhada demais\" in t {\n"
+  "    post(True)\n"
+  "} else {\n"
+  "    post(\"rc \" + str(rc) + \": \" + t[0:300])\n"
+  "}\n",
   "True", NULL, 0 },
 { "str() de estrutura profunda trunca, nao mata",
   "x = []\n"

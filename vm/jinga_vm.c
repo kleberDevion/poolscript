@@ -2063,11 +2063,9 @@ static void fin_socket(VM *vm, Obj *o) {   /* fecha o que o usuário esqueceu */
  * na tabela de processos até o motor terminar. Não matamos ninguém: quem
  * disparou pode querer que continue — só o status é recolhido, e só depois que
  * o filho morreu por conta própria. */
-#if defined(PS_SO_WINDOWS)
 /* No Windows não há zumbi: o processo largado só segura o handle, e o
- * finalizador o fecha. */
-static void proc_recolhe_largados(void) { }
-#else
+ * finalizador o fecha (fin_processo). */
+#if !defined(PS_SO_WINDOWS)
 static int *g_proc_largados = NULL;
 static int  g_proc_nlargados = 0, g_proc_caplargados = 0;
 
@@ -13295,7 +13293,9 @@ static int mod_os_chdir(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
-extern char **environ;
+#if !defined(PS_SO_WINDOWS)
+extern char **environ;              /* no Windows o stdlib.h já o declara */
+#endif
 
 static int mod_os_environ(VM *vm, Value *args, int n, Value *out)
 {
