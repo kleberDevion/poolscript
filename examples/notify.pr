@@ -1,0 +1,3 @@
+import sunotify
+
+sunotify.SunotiFy(title='JINGA - UM ARQUIVO DE TESTE', body='Esta msg, e apenas um teste...').send()
