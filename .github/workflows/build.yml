@@ -61,17 +61,17 @@ jobs:
           brew install openssl@3 libpng gmp libpq mariadb-connector-c unixodbc \
             mongo-c-driver@1 coreutils
       - name: compila
-        run: make pool testar
+        run: scripts/ci_anota.sh make pool testar
       - name: versao
-        run: ./pool --version && ./pool -e 'post(sys.platform)'
+        run: scripts/ci_anota.sh sh -c "./pool --version && ./pool -e 'import sys; post(sys.platform())'"
       - name: suite
-        run: ./testar && JINGA_JIT=0 ./testar
+        run: scripts/ci_anota.sh sh -c "./testar && JINGA_JIT=0 ./testar"
       - name: portao inteiro
         run: |
           (cd editor/vscode && npm install --omit=dev --no-audit --no-fund)
-          make check
+          scripts/ci_anota.sh make check
       - name: empacota
-        run: ./build_bundle.sh
+        run: scripts/ci_anota.sh ./build_bundle.sh
       - uses: actions/upload-artifact@v4
         with:
           name: jinga-macos-x86_64

@@ -1,0 +1,208 @@
+# Compila a Jinga pra Linux, macOS e Windows — um motor só, o mesmo C.
+#
+#     jinga scripts/compila.pr                 # o sistema desta máquina
+#     jinga scripts/compila.pr mac             # macOS (Intel, x86-64)
+#     jinga scripts/compila.pr windows         # Windows (x86-64)
+#     jinga scripts/compila.pr linux
+#     jinga scripts/compila.pr todos           # os três
+#     jinga scripts/compila.pr mac --instala   # e instala (só no próprio sistema)
+#     jinga scripts/compila.pr mac --portao    # roda o `make check` inteiro
+#
+# NO PRÓPRIO SISTEMA: confere as dependências (e instala as que faltam: brew no
+# macOS, pacman no MSYS2 do Windows; no Linux diz a linha do apt), compila com
+# `make pool`, roda a suíte (JIT ligado e desligado) e monta o pacote em dist/.
+#
+# PRA OUTRO SISTEMA: não dá pra compilar o binário de um sistema no outro com
+# as bibliotecas certas, então quem compila é o próprio sistema, no GitHub: a
+# ferramenta dispara o workflow `build.yml` (`gh workflow run`), acompanha e
+# baixa o pacote pronto pra dist/. Precisa do `gh` logado (`gh auth login`).
+import os
+import sys
+
+ALVOS = ["linux", "mac", "windows"]
+ARTEFATO = {"linux": "jinga-linux-x86_64", "mac": "jinga-macos-x86_64", "windows": "jinga-windows-x86_64"}
+
+# Dependências de compilação de cada sistema (os clientes de banco entram só
+# pelos cabeçalhos: o motor abre a biblioteca no primeiro `connect`).
+BREW = ["openssl@3", "libpng", "gmp", "libpq", "mariadb-connector-c", "unixodbc",
+        "mongo-c-driver@1", "coreutils"]
+APT = "sudo apt-get install -y gcc make libsqlite3-dev libpq-dev libmariadb-dev unixodbc-dev libssl-dev libpng-dev libexpat1-dev zlib1g-dev libgmp-dev libmongoc-dev libbson-dev"
+PACMAN = ["mingw-w64-ucrt-x86_64-gcc", "mingw-w64-ucrt-x86_64-openssl", "mingw-w64-ucrt-x86_64-sqlite3",
+          "mingw-w64-ucrt-x86_64-libpng", "mingw-w64-ucrt-x86_64-expat", "mingw-w64-ucrt-x86_64-zlib",
+          "mingw-w64-ucrt-x86_64-gmp", "mingw-w64-ucrt-x86_64-postgresql", "mingw-w64-ucrt-x86_64-libmariadbclient",
+          "mingw-w64-ucrt-x86_64-mongo-c-driver", "make"]
+
+
+# O sistema desta máquina, no nome que a ferramenta usa.
+funct sistema_daqui() {
+    p = sys.platform()
+    if p == "darwin" {
+        return "mac"
+    }
+    if p == "windows" {
+        return "windows"
+    }
+    return "linux"
+}
+
+
+# Roda uma linha de comando mostrando a saída (stdout e stderr) enquanto ela
+# sai, e devolve o código de saída.
+funct roda(linha) {
+    post("$ " + linha)
+    args = ["sh", "-c", linha + " 2>&1"]
+    if sys.platform() == "windows" {
+        args = ["cmd", "/c", linha + " 2>&1"]
+    }
+    p = os.run(args, capture="live")
+    l = p.readline()
+    while l != "" {
+        post(l.rstrip("\n"))
+        l = p.readline()
+    }
+    return p.wait()
+}
+
+
+# Para com a mensagem e o código 1.
+funct falha(msg) {
+    post("ERRO: " + msg)
+    sys.exit(1)
+}
+
+
+funct deps_mac() {
+    faltam = []
+    for each f in BREW {
+        if roda("brew list --versions " + f + " >/dev/null") != 0 {
+            addEnd(faltam, f)
+        }
+    }
+    if faltam.len() == 0 {
+        post("dependencias do Homebrew: todas instaladas")
+        return
+    }
+    # No Mac Intel o Homebrew não tem mais pacote pronto: cada um destes é
+    # compilado do fonte (a primeira vez demora).
+    post("instalando pelo Homebrew (no Mac Intel compila do fonte): " + " ".join(faltam))
+    if roda("brew install " + " ".join(faltam)) != 0 {
+        falha("brew install falhou")
+    }
+}
+
+
+funct deps_windows() {
+    if roda("pacman -S --needed --noconfirm " + " ".join(PACMAN)) != 0 {
+        falha("pacman falhou — rode dentro do terminal MSYS2 UCRT64")
+    }
+}
+
+
+# Compila, testa e empacota neste sistema.
+funct local(alvo, instala, portao) {
+    post("== " + alvo + ": compilando nesta maquina")
+    if alvo == "mac" {
+        deps_mac()
+    }
+    if alvo == "windows" {
+        deps_windows()
+    }
+    if roda("make pool testar") != 0 {
+        if alvo == "linux" {
+            post("se faltou biblioteca: " + APT)
+        }
+        falha("a compilacao falhou")
+    }
+    post(os.cmd("./pool --version", capture=true))
+    if portao {
+        if roda("make check") != 0 {
+            falha("o make check reprovou")
+        }
+    } else {
+        if roda("./testar") != 0 {
+            falha("a suite reprovou")
+        }
+        if roda("JINGA_JIT=0 ./testar") != 0 {
+            falha("a suite sem o codigo de maquina reprovou")
+        }
+    }
+    if roda("./build_bundle.sh") != 0 {
+        falha("o pacote nao saiu")
+    }
+    if instala {
+        if alvo == "mac" {
+            dir = "dist/jinga-macos-x86_64"
+            if roda("cd " + dir + " && sudo ./instalar.sh") != 0 {
+                falha("a instalacao falhou")
+            }
+        } else {
+            if roda("sudo make install") != 0 {
+                falha("a instalacao falhou")
+            }
+        }
+        post(os.cmd("jinga --version", capture=true))
+    }
+}
+
+
+# Compila no GitHub e baixa o pacote.
+funct remoto(alvo) {
+    post("== " + alvo + ": compilando no GitHub (workflow build.yml)")
+    if roda("gh auth status >/dev/null") != 0 {
+        falha("o gh nao esta logado: gh auth login")
+    }
+    ramo = os.cmd("git rev-parse --abbrev-ref HEAD", capture=true).strip()
+    if roda("gh workflow run build.yml --ref " + ramo + " -f alvo=" + alvo) != 0 {
+        falha("nao consegui disparar o workflow (o ramo " + ramo + " esta no GitHub? git push)")
+    }
+    # o disparo leva uns segundos pra virar uma execucao listada
+    os.cmd("sleep 8")
+    id = os.cmd("gh run list --workflow build.yml --branch " + ramo + " --limit 1 --json databaseId --jq '.[0].databaseId'", capture=true).strip()
+    if id == "" {
+        falha("a execucao nao apareceu na lista do GitHub")
+    }
+    post("execucao " + id + " (acompanhe tambem em https://github.com/kleberDevion/poolscript/actions)")
+    if roda("gh run watch " + id + " --exit-status") != 0 {
+        falha("o build do " + alvo + " reprovou — gh run view " + id + " --log-failed")
+    }
+    os.mkdir("dist", exist_ok=true)
+    if roda("gh run download " + id + " -n " + ARTEFATO[alvo] + " -D dist") != 0 {
+        falha("nao consegui baixar o pacote")
+    }
+    post("pacote do " + alvo + " em dist/")
+}
+
+
+if __name__ == "main" {
+    args = sys.argv[1:]
+    instala = "--instala" in args
+    portao = "--portao" in args
+    pedidos = []
+    for each a in args {
+        if not a.startswith("--") {
+            addEnd(pedidos, a)
+        }
+    }
+    if pedidos.len() == 0 {
+        pedidos = [sistema_daqui()]
+    }
+    if "todos" in pedidos {
+        pedidos = ALVOS
+    }
+    for each p in pedidos {
+        if not p in ALVOS {
+            falha("sistema desconhecido: " + p + " (use linux, mac, windows ou todos)")
+        }
+    }
+    aqui = sistema_daqui()
+    for each alvo in pedidos {
+        if alvo == aqui {
+            local(alvo, instala, portao)
+        } else {
+            if instala {
+                post("(--instala vale so no proprio sistema; o pacote do " + alvo + " fica em dist/)")
+            }
+            remoto(alvo)
+        }
+    }
+}
