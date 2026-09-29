@@ -71,7 +71,7 @@ CFLAGS  ?= -O2 $(CFLAGS_BASE)
 ifeq ($(SO),Darwin)
 # macOS: o ligador da Apple não tem -Bstatic; o estático é o próprio arquivo
 # `.a` do Homebrew (TLS e PNG). sqlite, expat e zlib vêm do próprio macOS.
-LIBS_SISTEMA   := -lpthread -lm -L$(BREW)/lib -lgmp
+LIBS_SISTEMA   := -lpthread -lm -L$(BREW)/lib -lgmp -framework Security -framework CoreFoundation
 LIBS_POOL      := $(BREW_SSL)/lib/libssl.a $(BREW_SSL)/lib/libcrypto.a $(BREW)/lib/libpng.a \
                   -lsqlite3 -lexpat -lz $(LIBS_SISTEMA)
 LIBS_TESTE     := -L$(BREW_SSL)/lib -lssl -lcrypto -L$(BREW)/lib -lpng -lsqlite3 -lexpat -lz $(LIBS_SISTEMA)

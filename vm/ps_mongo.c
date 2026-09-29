@@ -35,7 +35,11 @@ MG_FUNCS(PS_DL_PONTEIRO)
 
 static int  g_mg_estado;
 static char g_mg_motivo[320];
-#if defined(__APPLE__)
+#if defined(_WIN32)
+/* o driver 2.x (o que o MSYS2 tem) chama a DLL de libmongoc2; a API que o
+ * motor usa é a mesma do 1.x */
+static const char *const MG_NOMES[] = { "libmongoc2.dll", "libmongoc-1.0.dll", NULL };
+#elif defined(__APPLE__)
 static const char *const MG_NOMES[] = {
     "libmongoc-1.0.0.dylib",
     "@executable_path/../lib/jinga/libmongoc-1.0.0.dylib",   /* o pacote (build_bundle.sh) */

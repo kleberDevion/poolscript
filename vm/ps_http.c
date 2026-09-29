@@ -12,13 +12,16 @@
 
 #include <ctype.h>
 #include <errno.h>
-#include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "ps_so.h"      /* socket de cada sistema (no Windows, Winsock) */
+#if !defined(_WIN32)
+#include <netdb.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
+#endif
 
 #include <openssl/err.h>
 #include <openssl/ssl.h>
@@ -39,7 +42,7 @@ static void conn_fecha(Conn *c)
 {
     if (c->ssl) SSL_free(c->ssl);
     if (c->ctx) SSL_CTX_free(c->ctx);
-    if (c->fd >= 0) close(c->fd);
+    if (c->fd >= 0) ps_sock_fecha(c->fd);
     c->ssl = NULL; c->ctx = NULL; c->fd = -1; c->nbuf = 0;
 }
 
@@ -87,13 +90,10 @@ static int tcp_conecta(const char *host, int porta, int timeout, PSHttpResp *r)
     for (struct addrinfo *a = res; a; a = a->ai_next) {
         fd = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
         if (fd < 0) continue;
-        if (timeout > 0) {
-            struct timeval tv = { timeout, 0 };
-            setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-            setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-        }
-        if (connect(fd, a->ai_addr, a->ai_addrlen) == 0) break;
-        close(fd);
+        if (timeout > 0) ps_sock_timeout(fd, timeout * 1000, timeout * 1000);
+        if (connect(fd, a->ai_addr, (int)a->ai_addrlen) == 0) break;
+        ps_sock_errno();
+        ps_sock_fecha(fd);
         fd = -1;
     }
     freeaddrinfo(res);
@@ -106,8 +106,9 @@ static int liga_tls(Conn *c, const char *host, PSHttpResp *r)
 {
     c->ctx = SSL_CTX_new(TLS_client_method());
     if (!c->ctx) REDE(r, "NetworkError", "falha de conexão: sem contexto TLS");
-    /* verifica o certificado — usa as CAs do sistema */
-    SSL_CTX_set_default_verify_paths(c->ctx);
+    /* verifica o certificado — usa as CAs do sistema (ps_so.c sabe onde
+     * cada sistema guarda as suas) */
+    ps_so_tls_cas(c->ctx);
     SSL_CTX_set_verify(c->ctx, SSL_VERIFY_PEER, NULL);
     c->ssl = SSL_new(c->ctx);
     if (!c->ssl) REDE(r, "NetworkError", "falha de conexão: sem TLS");
@@ -133,7 +134,7 @@ static int liga_tls(Conn *c, const char *host, PSHttpResp *r)
 static int cru_le(Conn *c, char *out, int cap)
 {
     errno = 0;
-    int k = c->ssl ? SSL_read(c->ssl, out, cap) : (int)read(c->fd, out, (size_t)cap);
+    int k = c->ssl ? SSL_read(c->ssl, out, cap) : (int)ps_sock_le(c->fd, out, (size_t)cap);
     /* SO_RCVTIMEO estourado sai como EAGAIN — marca pra virar TimeoutError,
      * como no interp (no TLS o SSL_read propaga o errno do fd por baixo).
      *
@@ -153,7 +154,7 @@ static int cru_escreve(Conn *c, const char *d, int n)
     int feito = 0;
     while (feito < n) {
         int k = c->ssl ? SSL_write(c->ssl, d + feito, n - feito)
-                       : (int)write(c->fd, d + feito, (size_t)(n - feito));
+                       : (int)ps_sock_escreve(c->fd, d + feito, (size_t)(n - feito), 0);
         if (k <= 0) return -1;
         feito += k;
     }

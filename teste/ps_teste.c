@@ -314,7 +314,15 @@ int main(int argc, char **argv)
         return 2;
     }
 
-    int total = 0, passou = 0, falhou = 0;
+#if defined(_WIN32)
+    const char *so_aqui = "windows";
+#elif defined(__APPLE__)
+    const char *so_aqui = "darwin";
+#else
+    const char *so_aqui = "linux";
+#endif
+    int total = 0, passou = 0, falhou = 0, outro_so = 0;
+    const char *nomes_outro[64];
     for (int g = 0; g < (int)(sizeof(GRUPOS) / sizeof(GRUPOS[0])); g++) {
         const char *nome_g = GRUPOS[g].grupo;
         int n = tamanho_do_grupo(nome_g);
@@ -322,6 +330,12 @@ int main(int argc, char **argv)
         for (int i = 0; i < n; i++) {
             const Caso *c = &GRUPOS[g].casos[i];
             if (filtro && !strstr(nome_g, filtro) && !strstr(c->nome, filtro)) continue;
+            if (c->so && strcmp(c->so, so_aqui) != 0) {
+                /* recurso que este sistema não tem: não roda, e é dito no fim */
+                if (outro_so < 64) nomes_outro[outro_so] = c->nome;
+                outro_so++;
+                continue;
+            }
             if (!cabecalho) { printf("\n── %s ──\n", nome_g); cabecalho = 1; }
             total++;
             Resultado r;
@@ -369,6 +383,10 @@ int main(int argc, char **argv)
         }
     }
 
+    if (outro_so > 0) {
+        printf("\n%d caso(s) valem so em outro sistema (este e %s) e nao rodaram:\n", outro_so, so_aqui);
+        for (int i = 0; i < outro_so && i < 64; i++) printf("  - %s\n", nomes_outro[i]);
+    }
     printf("\n%d casos: %d passaram, %d falharam\n", total, passou, falhou);
     if (total == 0) {
         printf("nenhum caso casou com o filtro — isso é falha, não sucesso\n");

@@ -18,9 +18,22 @@
 #ifndef PS_DL_H
 #define PS_DL_H
 
-#include <dlfcn.h>
 #include <pthread.h>
 #include <stdio.h>
+#if defined(_WIN32)
+/* Windows: `LoadLibrary`/`GetProcAddress` fazem o papel do `dlopen`/`dlsym`.
+ * O carregador procura a DLL na pasta do executável primeiro — é onde o
+ * pacote do Windows põe as dos clientes de banco. */
+#include "ps_win.h"
+static inline void *ps_dl_sim(void *h, const char *nome)
+{
+    return (void *)GetProcAddress((HMODULE)h, nome);
+}
+#define PS_DL_SIM(h, nome) ps_dl_sim((h), (nome))
+#else
+#include <dlfcn.h>
+#define PS_DL_SIM(h, nome) dlsym((h), (nome))
+#endif
 
 /* Um ponteiro por função da lista, com o tipo da declaração do cabeçalho da
  * biblioteca (o cabeçalho continua incluído; só a LIGAÇÃO sai). */
@@ -28,7 +41,7 @@
 
 /* Resolve uma função da lista; a primeira que faltar interrompe (`faltou`). */
 #define PS_DL_RESOLVE(f)                                                      \
-    if (!faltou && !(dl_##f = (__typeof__(dl_##f))dlsym(h_, #f))) faltou = #f;
+    if (!faltou && !(dl_##f = (__typeof__(dl_##f))PS_DL_SIM(h_, #f))) faltou = #f;
 
 /* Abre a primeira biblioteca da lista (terminada em NULL) que o sistema achar.
  * NULL = nenhuma; o motivo do carregador vai em `erro`. */
@@ -38,10 +51,17 @@ static inline void *ps_dl_abre(const char *const *nomes, char *erro, size_t cap)
      * são só alternativas de outras distribuições */
     erro[0] = '\0';
     for (int i = 0; nomes[i]; i++) {
+#if defined(_WIN32)
+        HMODULE h = LoadLibraryA(nomes[i]);
+        if (h) return (void *)h;
+        if (i == 0) snprintf(erro, cap, "%s: erro %lu do LoadLibrary", nomes[i],
+                             (unsigned long)GetLastError());
+#else
         void *h = dlopen(nomes[i], RTLD_NOW | RTLD_LOCAL);
         if (h) return h;
         const char *e = dlerror();
         if (i == 0) snprintf(erro, cap, "%s", e ? e : "biblioteca nao encontrada");
+#endif
     }
     return NULL;
 }

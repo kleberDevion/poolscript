@@ -6,7 +6,11 @@
  */
 #include <stddef.h>
 #include <stdint.h>
+#if defined(_WIN32)
+#include "ps_win.h"
+#else
 #include <sys/resource.h>
+#endif
 
 #include "ps_pilha.h"
 
@@ -64,11 +68,21 @@ void ps_pilha_marca(size_t tam)
  * não uma constante). */
 void ps_pilha_marca_processo(void)
 {
-    struct rlimit rl;
     size_t tam = 8u * 1024 * 1024;
+#if defined(_WIN32)
+    /* Windows: a pilha da thread é reservada no executável (-Wl,--stack); os
+     * limites dela o próprio sistema diz. O `usado` é medido do quadro atual,
+     * então o tamanho é o que resta daqui até o limite baixo. */
+    ULONG_PTR baixo = 0, alto = 0;
+    GetCurrentThreadStackLimits(&baixo, &alto);
+    const char *aqui = (const char *)__builtin_frame_address(0);
+    if (baixo && (ULONG_PTR)aqui > baixo) tam = (size_t)((ULONG_PTR)aqui - baixo);
+#else
+    struct rlimit rl;
     if (getrlimit(RLIMIT_STACK, &rl) == 0 && rl.rlim_cur != RLIM_INFINITY
             && rl.rlim_cur > 64u * 1024)
         tam = (size_t)rl.rlim_cur;
+#endif
     ps_pilha_marca(tam);
 }
 

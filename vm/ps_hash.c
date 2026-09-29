@@ -1,5 +1,9 @@
 #include <string.h>
 #include <stdio.h>
+#if defined(_WIN32)
+#include "ps_win.h"
+#include <bcrypt.h>
+#endif
 
 #include "ps_hash.h"
 
@@ -450,6 +454,10 @@ int ps_iguais_constante(const unsigned char *a, const unsigned char *b, size_t n
 
 int ps_random_bytes(unsigned char *saida, size_t n)
 {
+#if defined(_WIN32)
+    /* Windows: o gerador do sistema (o mesmo que o `/dev/urandom` é nos outros) */
+    return BCryptGenRandom(NULL, saida, (ULONG)n, BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0 ? 0 : -1;
+#endif
     /* `/dev/urandom` em vez de `getrandom()` por portabilidade: o mesmo
      * código serve em BSD e macOS sem #ifdef de sistema. */
     FILE *f = fopen("/dev/urandom", "rb");

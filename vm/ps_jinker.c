@@ -13,16 +13,19 @@
 #include <ctype.h>
 #include <errno.h>
 #include <time.h>
-#include <unistd.h>
 #include <fcntl.h>
 #include <sys/types.h>
-#include <sys/socket.h>
 #include <sys/stat.h>
+#include "ps_so.h"      /* socket de cada sistema (no Windows, Winsock) */
+#if !defined(_WIN32)
+#include <unistd.h>
+#include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <poll.h>
+#endif
 
 /* O macOS não tem MSG_NOSIGNAL; o SIGPIPE já é ignorado pelo processo
  * inteiro (jinga_vm.c), então sem a flag o `send` num cano fechado continua
@@ -65,7 +68,7 @@ static long conn_le(PSJkConn *c, char *dst, size_t cap)
         return r > 0 ? r : -1;
     }
     long r;
-    do { r = recv(c->fd, dst, cap, 0); } while (r < 0 && errno == EINTR);
+    do { r = ps_sock_le(c->fd, dst, cap); } while (r < 0 && errno == EINTR);
     return r > 0 ? r : -1;
 }
 
@@ -78,7 +81,7 @@ static int conn_escreve(PSJkConn *c, const char *src, size_t n)
             int w = SSL_write(c->ssl, src + feito, (int)(n - feito));
             r = w > 0 ? w : -1;
         } else {
-            do { r = send(c->fd, src + feito, n - feito, MSG_NOSIGNAL); }
+            do { r = ps_sock_escreve(c->fd, src + feito, n - feito, MSG_NOSIGNAL); }
             while (r < 0 && errno == EINTR);
         }
         if (r <= 0) return -1;
@@ -136,10 +139,10 @@ static int jk_resolve_ipv4(const char *host, struct in_addr *out, char *erro, si
 
 int ps_jk_listen(const char *host, int porta, char *erro, size_t ecap)
 {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) { snprintf(erro, ecap, "socket: %s", strerror(errno)); return -1; }
+    int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) { snprintf(erro, ecap, "socket: %s", strerror(ps_sock_errno())); return -1; }
     int um = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &um, sizeof(um));
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&um, sizeof(um));
 
     struct sockaddr_in a;
     memset(&a, 0, sizeof(a));
@@ -148,23 +151,22 @@ int ps_jk_listen(const char *host, int porta, char *erro, size_t ecap)
     if (!host || !host[0] || strcmp(host, "0.0.0.0") == 0)
         a.sin_addr.s_addr = INADDR_ANY;
     else if (jk_resolve_ipv4(host, &a.sin_addr, erro, ecap) != 0) {
-        close(fd); return -1;
+        ps_sock_fecha(fd); return -1;
     }
     if (bind(fd, (struct sockaddr *)&a, sizeof(a)) != 0) {
-        snprintf(erro, ecap, "bind %s:%d: %s", host ? host : "", porta, strerror(errno));
-        close(fd); return -1;
+        snprintf(erro, ecap, "bind %s:%d: %s", host ? host : "", porta, strerror(ps_sock_errno()));
+        ps_sock_fecha(fd); return -1;
     }
     if (listen(fd, 64) != 0) {
-        snprintf(erro, ecap, "listen: %s", strerror(errno));
-        close(fd); return -1;
+        snprintf(erro, ecap, "listen: %s", strerror(ps_sock_errno()));
+        ps_sock_fecha(fd); return -1;
     }
     /* fd de escuta NÃO-BLOQUEANTE: com multi-processo (prefork) vários workers
      * acordam no mesmo `poll` (thundering herd) e chamam accept(); um pega, os
      * outros recebem EAGAIN -> ps_jk_accept devolve NULL e o worker segue, em
      * vez de travar bloqueado no accept(). A conexão aceita continua bloqueante
      * (com o SO_RCVTIMEO dela), só o socket de escuta muda. */
-    int fl = fcntl(fd, F_GETFL, 0);
-    if (fl != -1) fcntl(fd, F_SETFL, fl | O_NONBLOCK);
+    ps_sock_nao_bloqueia(fd, 1);
     return fd;
 }
 
@@ -172,9 +174,14 @@ PSJkConn *ps_jk_accept(int fd_escuta, void *ssl_ctx, char *ip, size_t ipcap)
 {
     struct sockaddr_in a; socklen_t al = sizeof(a);
     int fd;
-    do { fd = accept(fd_escuta, (struct sockaddr *)&a, &al); }
+    do { fd = (int)accept(fd_escuta, (struct sockaddr *)&a, &al); if (fd < 0) ps_sock_errno(); }
     while (fd < 0 && errno == EINTR);
     if (fd < 0) return NULL;
+#if defined(_WIN32)
+    /* no Windows o socket aceito herda o não-bloqueante da escuta; aqui a
+     * conexão é bloqueante (com timeout), como no Linux */
+    ps_sock_nao_bloqueia(fd, 0);
+#endif
 
     if (ip && ipcap) {
         ip[0] = '\0';
@@ -182,20 +189,19 @@ PSJkConn *ps_jk_accept(int fd_escuta, void *ssl_ctx, char *ip, size_t ipcap)
     }
     /* Nagle desligado — o análogo do disable_nagle_algorithm do wrapper */
     int um = 1;
-    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &um, sizeof(um));
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (const char *)&um, sizeof(um));
     /* timeout de leitura: keep-alive ocioso não segura o loop pra sempre */
-    struct timeval tv = { 30, 0 };
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    ps_sock_timeout(fd, 30000, -1);
 
     PSJkConn *c = calloc(1, sizeof(PSJkConn));
-    if (!c) { close(fd); return NULL; }
+    if (!c) { ps_sock_fecha(fd); return NULL; }
     c->fd = fd;
 
     if (ssl_ctx) {
         c->ssl = SSL_new((SSL_CTX *)ssl_ctx);
         if (!c->ssl || SSL_set_fd(c->ssl, fd) != 1 || SSL_accept(c->ssl) != 1) {
             if (c->ssl) SSL_free(c->ssl);
-            close(fd); free(c);
+            ps_sock_fecha(fd); free(c);
             return NULL;
         }
     }
@@ -208,7 +214,7 @@ void ps_jk_close(PSJkConn *c)
 {
     if (!c) return;
     if (c->ssl) { SSL_shutdown(c->ssl); SSL_free(c->ssl); }
-    close(c->fd);
+    ps_sock_fecha(c->fd);
     free(c->buf);
     free(c);
 }
@@ -676,33 +682,32 @@ int ps_jk_ws_le_frame(PSJkConn *c, char **msg, size_t *n)
 PSJkConn *ps_jk_ws_conecta(const char *host, int porta, const char *path,
                            char *erro, size_t ecap)
 {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) { snprintf(erro, ecap, "socket: %s", strerror(errno)); return NULL; }
+    int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) { snprintf(erro, ecap, "socket: %s", strerror(ps_sock_errno())); return NULL; }
     struct sockaddr_in a;
     memset(&a, 0, sizeof(a));
     a.sin_family = AF_INET;
     a.sin_port = htons((unsigned short)porta);
     if (jk_resolve_ipv4(host && host[0] ? host : "127.0.0.1", &a.sin_addr, erro, ecap) != 0) {
-        close(fd); return NULL;
+        ps_sock_fecha(fd); return NULL;
     }
-    struct timeval tv = { 10, 0 };
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    ps_sock_timeout(fd, 10000, -1);
     int um = 1;
-    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &um, sizeof(um));
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (const char *)&um, sizeof(um));
     if (connect(fd, (struct sockaddr *)&a, sizeof(a)) != 0) {
-        snprintf(erro, ecap, "falha de conexão: %s", strerror(errno));
-        close(fd); return NULL;
+        snprintf(erro, ecap, "falha de conexão: %s", strerror(ps_sock_errno()));
+        ps_sock_fecha(fd); return NULL;
     }
     PSJkConn *c = calloc(1, sizeof(PSJkConn));
-    if (!c) { close(fd); snprintf(erro, ecap, "sem memoria"); return NULL; }
+    if (!c) { ps_sock_fecha(fd); snprintf(erro, ecap, "sem memoria"); return NULL; }
     c->fd = fd;
 
     /* chave aleatória de 16 bytes em base64 */
     /* Mesma razão da máscara: sem entropia, não sobe a conexão. */
     unsigned char cru[16];
     if (ps_random_bytes(cru, sizeof(cru)) != 0) {
-        snprintf(erro, ecap, "sem fonte de entropia (/dev/urandom)");
-        close(fd); free(c); return NULL;
+        snprintf(erro, ecap, "sem fonte de entropia do sistema");
+        ps_sock_fecha(fd); free(c); return NULL;
     }
     char chave[32];
     size_t nk = ps_base64_encode(cru, sizeof(cru), chave);
@@ -805,8 +810,7 @@ int ps_jk_conn_pendente(const PSJkConn *c) { return c && c->n > 0; }
 int ps_jk_ws_tem_dados(PSJkConn *c, int timeout_ms)
 {
     if (c->n > 0) return 1;
-    struct pollfd p = { c->fd, POLLIN, 0 };
-    return poll(&p, 1, timeout_ms) > 0 && (p.revents & (POLLIN | POLLHUP));
+    return ps_sock_espera_leitura(c->fd, timeout_ms);
 }
 
 /* ── multipart/form-data ────────────────────────────────────────────────── */

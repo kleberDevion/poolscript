@@ -9,6 +9,7 @@
 #include <errno.h>
 
 #include <sqlite3.h>
+#include "ps_win.h"     /* no Windows os tipos do ODBC (sqltypes.h) vêm do windows.h */
 #include <libpq-fe.h>
 #include <mysql.h>
 #include <sql.h>
@@ -45,7 +46,13 @@ OD_FUNCS(PS_DL_PONTEIRO)
 
 static int  g_pg_estado, g_my_estado, g_od_estado;
 static char g_pg_motivo[320], g_my_motivo[320], g_od_motivo[320];
-#if defined(__APPLE__)
+#if defined(_WIN32)
+/* Windows: DLLs. O pacote do Windows leva as do MSYS2 (libpq, libmariadb) na
+ * pasta do executável; o ODBC é o do próprio Windows. */
+static const char *const PG_NOMES[] = { "libpq.dll", NULL };
+static const char *const MY_NOMES[] = { "libmariadb.dll", NULL };
+static const char *const OD_NOMES[] = { "odbc32.dll", NULL };
+#elif defined(__APPLE__)
 /* macOS: o nome da biblioteca é `.dylib`, e o Homebrew instala o libpq e o
  * cliente MariaDB fora do caminho padrão (keg-only / subpasta), então o
  * caminho inteiro entra na lista. /usr/local é o Homebrew do Mac Intel,

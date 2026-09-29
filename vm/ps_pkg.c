@@ -15,8 +15,18 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <unistd.h>
+#include "ps_win.h"     /* só no Windows: mkdir de um argumento, setenv */
 
 #include "ps_pkg.h"
+
+/* A pasta do usuário e o separador do PATH mudam no Windows. */
+#if defined(_WIN32)
+#  define PKG_HOME_VAR  "USERPROFILE"
+#  define PKG_PATH_SEP  ';'
+#else
+#  define PKG_HOME_VAR  "HOME"
+#  define PKG_PATH_SEP  ':'
+#endif
 #include "ps_http.h"
 #include "ps_ext.h"
 #include "ps_hash.h"
@@ -33,7 +43,7 @@ static int pkg_home(char *out, size_t cap)
     const char *over = getenv("JINGA_HOME");
     if (!over || !*over) over = getenv("POOLSCRIPT_HOME");
     if (over && *over) { snprintf(out, cap, "%s", over); return 0; }
-    const char *h = getenv("HOME");
+    const char *h = getenv(PKG_HOME_VAR);
     if (!h || !*h) return -1;
     snprintf(out, cap, "%s/.jinga", h);
     char velha[1024];
@@ -62,7 +72,7 @@ static void mkdirp(const char *caminho)
 static int pkg_dirs(char *home, size_t cap)
 {
     if (pkg_home(home, cap) != 0) {
-        fprintf(stderr, "Erro: nao consegui achar o HOME (defina HOME ou JINGA_HOME)\n");
+        fprintf(stderr, "Erro: nao consegui achar a pasta do usuario (defina %s ou JINGA_HOME)\n", PKG_HOME_VAR);
         return -1;
     }
     char d[1200];
@@ -201,7 +211,7 @@ static void ensure_bin_no_path(const char *home)
         const char *p = path;
         size_t bl = strlen(bindir);
         while (p) {
-            const char *sep = strchr(p, ':');
+            const char *sep = strchr(p, PKG_PATH_SEP);
             size_t seg = sep ? (size_t)(sep - p) : strlen(p);
             if (seg == bl && !strncmp(p, bindir, bl)) return;
             p = sep ? sep + 1 : NULL;
@@ -211,7 +221,29 @@ static void ensure_bin_no_path(const char *home)
         printf("  (adicione %s ao seu PATH para usar os comandos)\n", bindir);
         return;
     }
-    const char *h = getenv("HOME");
+#if defined(_WIN32)
+    /* Windows: o PATH do USUÁRIO fica no registro; `setx` grava lá (vale pros
+     * terminais novos). O PATH da sessão inteira não entra no `setx` — ele
+     * truncaria o valor em 1024 caracteres —, só o que o usuário já tinha. */
+    {
+        char atual[8192] = "";
+        HKEY k;
+        if (RegOpenKeyExA(HKEY_CURRENT_USER, "Environment", 0, KEY_READ, &k) == ERROR_SUCCESS) {
+            DWORD tam = sizeof(atual) - 1, tipo = 0;
+            if (RegQueryValueExA(k, "Path", NULL, &tipo, (BYTE *)atual, &tam) != ERROR_SUCCESS) atual[0] = '\0';
+            RegCloseKey(k);
+        }
+        char cmd[9400];
+        snprintf(cmd, sizeof(cmd), "setx PATH \"%s%s%s\" >NUL",
+                 bindir, atual[0] ? ";" : "", atual);
+        if (system(cmd) == 0)
+            printf("  %s adicionado ao PATH — abra um novo terminal para usar os comandos\n", bindir);
+        else
+            printf("  adicione %s ao seu PATH para usar os comandos instalados\n", bindir);
+        return;
+    }
+#endif
+    const char *h = getenv(PKG_HOME_VAR);
     if (!h) return;
     char linha[1400];
     snprintf(linha, sizeof(linha),
@@ -249,7 +281,12 @@ static void write_shim(const char *home, const char *name, const char *ps_path)
      * buffer — e o shim gravado apontaria pra um caminho cortado, que é um
      * comando quebrado em silêncio. Os dois são recusados. */
     char shim[1200];
+#if defined(_WIN32)
+    /* no Windows o atalho é um `.cmd` (o terminal acha `nome` por ele) */
+    int ns = snprintf(shim, sizeof(shim), "%s/bin/%s.cmd", home, name);
+#else
     int ns = snprintf(shim, sizeof(shim), "%s/bin/%s", home, name);
+#endif
     if (ns < 0 || (size_t)ns >= sizeof(shim)) {
         fprintf(stderr, "caminho do comando '%s' longo demais — nao instalei\n", name);
         return;
@@ -257,9 +294,15 @@ static void write_shim(const char *home, const char *name, const char *ps_path)
     /* O atalho chama `jinga`; numa máquina que só tem o nome de antes do
      * rename instalado (`pool`), cai nele — os dois são o mesmo binário. */
     char corpo[1400];
+#if defined(_WIN32)
+    int n = snprintf(corpo, sizeof(corpo),
+                     "@echo off\r\nwhere jinga >NUL 2>&1 && (jinga \"%s\" %%* & exit /b)\r\n"
+                     "pool \"%s\" %%*\r\n", ps_path, ps_path);
+#else
     int n = snprintf(corpo, sizeof(corpo),
                      "#!/bin/sh\nif command -v jinga >/dev/null 2>&1; then exec jinga \"%s\" \"$@\"; fi\n"
                      "exec pool \"%s\" \"$@\"\n", ps_path, ps_path);
+#endif
     if (n < 0 || (size_t)n >= sizeof(corpo)) {
         fprintf(stderr, "caminho '%s' longo demais para o comando '%s' — nao instalei\n",
                 ps_path, name);
@@ -501,7 +544,11 @@ static int remove_categoria(const char *home, const char *nome, int lib)
     if (existe(ps)) { unlink(ps); achou = 1; }
     if (!lib) {
         char shim[1300];
+#if defined(_WIN32)
+        snprintf(shim, sizeof(shim), "%s/bin/%s.cmd", home, nome);
+#else
         snprintf(shim, sizeof(shim), "%s/bin/%s", home, nome);
+#endif
         if (existe(shim) || access(shim, F_OK) == 0) { unlink(shim); achou = 1; }
     }
     return achou;

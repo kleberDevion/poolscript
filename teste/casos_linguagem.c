@@ -2723,18 +2723,20 @@ const Caso CASOS_LINGUAGEM[] = {
  * `/dev/full` é o disco cheio do Linux: aceita o open e recusa toda gravação
  * com ENOSPC. Antes disso, os três casos abaixo terminavam com sucesso e o
  * dado sumia — o `fwrite` só enche o buffer da libc, e o erro só aparece no
- * flush, que é o `fclose`. */
+ * flush, que é o `fclose`. Só o Linux tem esse dispositivo (o macOS e o
+ * Windows não têm como simular disco cheio sem privilégio), então os três
+ * valem só lá — o `testar` dos outros sistemas diz que não os rodou. */
 { "close() acusa o que nao conseguiu gravar",
   "f = open(\"/dev/full\", \"w\")\n"
   "f.write(\"abc\")\n"
   "f.close()\n"
-  "post(\"NAO DEVIA CHEGAR\")\n", "", "OSError: [Errno 28] No space left on device", 1 },
+  "post(\"NAO DEVIA CHEGAR\")\n", "", "OSError: [Errno 28] No space left on device", 1, NULL, 0, "linux" },
 { "write() grande acusa gravacao incompleta",
   "f = open(\"/dev/full\", \"w\")\n"
-  "f.write(\"x\" * 200000)\n", "", "[Errno 28]", 1 },
+  "f.write(\"x\" * 200000)\n", "", "[Errno 28]", 1, NULL, 0, "linux" },
 { "writelines() acusa e diz qual linha",
   "f = open(\"/dev/full\", \"w\")\n"
-  "f.writelines([\"x\" * 200000])\n", "", "OSError: [Errno 28] No space left on device", 1 },
+  "f.writelines([\"x\" * 200000])\n", "", "OSError: [Errno 28] No space left on device", 1, NULL, 0, "linux" },
 { "write() continua devolvendo quantos bytes gravou",
   "using open(\"/tmp/ps_t_w.txt\", \"w\") as f {\n"
   "    post(f.write(\"abcde\"), f.write(\"xy\"))\n"

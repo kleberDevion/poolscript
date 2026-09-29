@@ -1108,17 +1108,21 @@ const Caso CASOS_LIBS[] = {
  * direita pra esquerda da mascara `SigIgn`. A mascara INTEIRA nao serve de
  * afirmacao: quem rodou a suite pode ter ignorado outro sinal (o `nohup`
  * ignora o SIGHUP), e isso desce por heranca sem ter nada a ver com o motor. */
+/* Observados pelo que o filho FAZ, e não pelo /proc (que só o Linux tem): com
+ * o SIGPIPE de volta ao padrão, o `yes` morre pelo sinal quando o `head`
+ * fecha o cano (código 141 = 128 + 13); herdando o "ignorar", ele sai com
+ * erro (1). E `/dev/fd` lista os descritores do `ls` (0, 1, 2 e o da própria
+ * pasta) no Linux e no macOS. */
 { "processo filho nao herda o SIGPIPE ignorado do motor",
   "import os\n"
-  "r = os.run([\"cat\", \"/proc/self/status\"], capture=true)\n"
-  "sig = \"\"\n"
-  "for each l in r.split(\"\\n\") { if l.startswith(\"SigIgn\") { sig = l.split(\"\\t\")[1].strip() } }\n"
-  "post(sig[len(sig) - 4] in \"02468ace\")\n", "True", NULL, 0 },
+  "p = os.run([\"sh\", \"-c\", \"(yes; echo $? >&2) | head -n 1 > /dev/null\"], capture=\"live\")\n"
+  "p.wait()\n"
+  "post(p.read_err().strip())\n", "141", NULL, 0 },
 { "processo filho nao herda os descritores abertos do motor",
   "import os\n"
   "import sockets\n"
   "s = sockets.socket()\n"
-  "post(os.run([\"sh\", \"-c\", \"ls /proc/self/fd | wc -l\"], capture=true).strip())\n"
+  "post(os.run([\"sh\", \"-c\", \"ls /dev/fd | wc -l\"], capture=true).strip())\n"
   "s.close()\n", "4", NULL, 0 },
 
 /* ── L4c DO PLANO DAS CONTRADICOES: servicos, tabelas, metadata ──────────

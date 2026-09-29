@@ -11,12 +11,15 @@
 #define _GNU_SOURCE 1
 
 #include <errno.h>
-#include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "ps_so.h"      /* socket de cada sistema (no Windows, Winsock) */
+#if !defined(_WIN32)
+#include <netdb.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 #include <openssl/err.h>
 #include <openssl/ssl.h>
@@ -60,8 +63,9 @@ static int tcp_conecta(const char *host, int porta, char *erro, size_t cap)
     for (struct addrinfo *a = res; a; a = a->ai_next) {
         fd = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
         if (fd < 0) continue;
-        if (connect(fd, a->ai_addr, a->ai_addrlen) == 0) break;
-        close(fd);
+        if (connect(fd, a->ai_addr, (int)a->ai_addrlen) == 0) break;
+        ps_sock_errno();
+        ps_sock_fecha(fd);
         fd = -1;
     }
     freeaddrinfo(res);
@@ -75,7 +79,7 @@ static int tcp_conecta(const char *host, int porta, char *erro, size_t cap)
 static int cru_le(PSMailConn *c, char *out, int cap)
 {
     if (c->ssl) return SSL_read(c->ssl, out, cap);
-    return (int)read(c->fd, out, (size_t)cap);
+    return (int)ps_sock_le(c->fd, out, (size_t)cap);
 }
 
 static int cru_escreve(PSMailConn *c, const char *dados, int n)
@@ -83,7 +87,7 @@ static int cru_escreve(PSMailConn *c, const char *dados, int n)
     int feito = 0;
     while (feito < n) {
         int k = c->ssl ? SSL_write(c->ssl, dados + feito, n - feito)
-                       : (int)write(c->fd, dados + feito, (size_t)(n - feito));
+                       : (int)ps_sock_escreve(c->fd, dados + feito, (size_t)(n - feito), 0);
         if (k <= 0) return -1;
         feito += k;
     }
@@ -161,7 +165,7 @@ static int liga_tls(PSMailConn *c, const char *host, char *erro, size_t cap)
     if (mail_tls_inseguro()) {
         SSL_CTX_set_verify(c->ctx, SSL_VERIFY_NONE, NULL);
     } else {
-        SSL_CTX_set_default_verify_paths(c->ctx);      /* CAs do sistema */
+        ps_so_tls_cas(c->ctx);                          /* CAs do sistema */
         SSL_CTX_set_verify(c->ctx, SSL_VERIFY_PEER, NULL);
     }
 
@@ -193,7 +197,7 @@ static int liga_tls(PSMailConn *c, const char *host, char *erro, size_t cap)
 static PSMailConn *conn_nova(int fd)
 {
     PSMailConn *c = calloc(1, sizeof(PSMailConn));
-    if (!c) { close(fd); return NULL; }
+    if (!c) { ps_sock_fecha(fd); return NULL; }
     c->fd = fd;
     return c;
 }
@@ -203,7 +207,7 @@ void ps_mail_solta(PSMailConn *c)
     if (!c) return;
     if (c->ssl) SSL_free(c->ssl);
     if (c->ctx) SSL_CTX_free(c->ctx);
-    if (c->fd >= 0) close(c->fd);
+    if (c->fd >= 0) ps_sock_fecha(c->fd);
     free(c);
 }
 
