@@ -102,3 +102,10 @@ __DOCS__/
 # IntelliJ: saida de compilacao do plugin (gerada por editor/intellij/build.sh)
 editor/intellij/plugin/out/
 editor/intellij/plugin/dist/
+
+# O md com tudo do projeto pra mudanca de laptop: tem credenciais, nunca vai
+# pro repositorio (que e publico).
+/JINGA-TUDO.md
+
+# Sobra do examples/swagger.pr rodado na raiz (teste/exemplos_roda.pr apaga)
+/path/
