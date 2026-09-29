@@ -28,9 +28,12 @@ vira um binário só, o `jinga` (no repositório, `make pool` o gera como
 | máquina virtual + stdlib | `vm/jinga_vm.c` e `vm/ps_*.c` |
 | camada de sistema (laço de eventos, aviso entre threads, pilha de fibra, memória do JIT, o próprio executável) | `vm/ps_so.h`, `vm/ps_so.c` |
 
-O motor é o mesmo C em todo sistema; o que muda de um sistema pro outro mora
-na camada de sistema: `epoll`/`eventfd`/`/proc` no Linux, `kqueue`/pipe/
-`_NSGetExecutablePath` no macOS.
+O motor é o mesmo C em todo sistema (Linux, macOS Intel e Windows x64: o JIT
+gera x86-64 nos três); o que muda de um sistema pro outro mora na camada de
+sistema: `epoll`/`eventfd`/`/proc` no Linux, `kqueue`/pipe/
+`_NSGetExecutablePath` no macOS, e no Windows `WSAPoll`, Fibers,
+`CreateProcess`/pseudoconsole (ConPTY) e o repositório de certificados do
+sistema.
 
 A suíte de testes também é em C (`teste/`): cada caso roda o `jinga` de VERDADE
 num subprocesso, então caso que mata a VM (segfault, SIGFPE) vira falha
@@ -100,6 +103,72 @@ de execução. Nos dois caminhos não sobra passo manual.
 Depois disso o `.pr` é **`text/jinga`** e aparece com a logo da linguagem
 no gerenciador de arquivos. (A extensão já foi `.ps`, e aí era preciso tomá-la
 do PostScript. Com `.pr` não há disputa: o PostScript fica com o `.ps` dele.)
+
+### macOS (Intel)
+
+O pacote do Mac (`jinga-macos-x86_64.tar.gz`) já traz as bibliotecas ao lado
+do binário e roda sem Homebrew:
+
+```bash
+tar xzf jinga-macos-x86_64.tar.gz && cd jinga-macos-x86_64
+sudo ./instalar.sh              # /usr/local: jinga, jpkg, jinga-lsp
+```
+
+Compilando no próprio Mac (Homebrew; no Mac Intel ele compila as
+dependências do fonte na primeira vez):
+
+```bash
+./pool scripts/compila.pr mac --instala   # dependências, make, suíte, pacote e instalação
+```
+
+### Windows (x64)
+
+O pacote do Windows (`jinga-windows-x86_64.zip`) traz o `jinga.exe`, as DLLs
+dos clientes de banco, o servidor do editor e a doc. Instala na pasta do
+usuário, sem administrador, e põe o `bin` no PATH:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File instalar.ps1            # %LOCALAPPDATA%\Programs\Jinga
+powershell -ExecutionPolicy Bypass -File instalar.ps1 -Remover
+```
+
+`jpkg`, `pool`, `psl` e `jinga-lsp` são `.cmd` ao lado do `jinga.exe`. As
+libs instaladas pelo `jpkg` ficam em `%USERPROFILE%\.jinga`. Compilar é pelo
+MSYS2 (ambiente UCRT64, com gcc: o laço da VM usa goto calculado, que o MSVC
+não tem):
+
+```bash
+./pool scripts/compila.pr windows --instala   # dentro do terminal MSYS2 UCRT64
+```
+
+O que muda no Windows é o que o sistema muda:
+
+- `os.cmd` roda pelo `cmd.exe` (não pelo `sh`), e `os.run` acha programas
+  `.exe` (um `.cmd`, como o `npm`, só pelo `os.cmd`).
+- `Process.kill(sinal)` encerra o processo (o Windows não tem sinal); o
+  `wait()` devolve `-sinal`, como no Linux.
+- Com `pty=true` o processo roda num pseudoconsole (ConPTY): a saída vem com
+  as sequências de terminal do console, e o fim da entrada (`close()`) é
+  Ctrl+Z e Enter, o do teclado do Windows.
+- `create_server(..., reuse_port=true)` é `ValueError` (não existe
+  `SO_REUSEPORT`).
+- O jinker com `workers>1` roda o programa de novo em cada worker (não há
+  `fork`), que recebe o socket da porta já aberto: o que o programa faz antes
+  do `run()` roda também em cada worker. Com `reload=true`, o processo que o
+  terminal esperou supervisiona e roda o programa de novo a cada mudança.
+
+### Compilar pros três sistemas
+
+```bash
+./pool scripts/compila.pr               # o sistema desta máquina
+./pool scripts/compila.pr todos         # os três: os outros dois compilam no GitHub
+```
+
+Pro sistema desta máquina ela confere as dependências, compila, roda a suíte
+(com e sem o código de máquina) e monta o pacote em `dist/`. Pros outros, quem
+compila é o próprio sistema, no GitHub Actions (`build.yml`): a ferramenta
+dispara, acompanha e baixa o pacote. Precisa do `gh` logado
+(`gh auth login`). Uma tag `v*` publica o release com os três pacotes.
 
 ### Compilando do fonte
 
@@ -203,5 +272,5 @@ minhalib`, onde quer que as libs estejam (`JINGA_HOME` incluso).
 
 ## Versionamento
 
-Versão mais recente — **16.1.9** (a fonte é `vm/ps_versao.h`; `jinga --version`
+Versão mais recente — **16.2.0** (a fonte é `vm/ps_versao.h`; `jinga --version`
 mostra a do binário).

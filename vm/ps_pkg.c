@@ -19,12 +19,13 @@
 
 #include "ps_pkg.h"
 
-/* A pasta do usuário e o separador do PATH mudam no Windows. */
+/* A pasta do usuário (a MESMA variável que o motor lê pro `import`, em
+ * ps_so.h) e o separador do PATH mudam no Windows. */
+#include "ps_so.h"
+#define PKG_HOME_VAR  PS_HOME_VAR
 #if defined(_WIN32)
-#  define PKG_HOME_VAR  "USERPROFILE"
 #  define PKG_PATH_SEP  ';'
 #else
-#  define PKG_HOME_VAR  "HOME"
 #  define PKG_PATH_SEP  ':'
 #endif
 #include "ps_http.h"

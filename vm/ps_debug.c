@@ -8,18 +8,22 @@
  * de dezenas de mensagens por interação humana, não de um laço quente.
  */
 #include "ps_debug.h"
+#include "ps_so.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <errno.h>
+
+/* O canal com o editor é um socket (dbg_conecta): no Windows ele não é um
+ * descritor de arquivo, então a leitura e a escrita passam pela camada de
+ * sistema (no Linux e no macOS é o `read`/`write` de sempre). */
 
 /* Um byte, retomando em EINTR. 1 = leu, 0 = fim, -1 = erro. */
 static int le_byte(int fd, char *c)
 {
     for (;;) {
-        ssize_t r = read(fd, c, 1);
+        long r = ps_sock_le(fd, c, 1);
         if (r == 1) return 1;
         if (r == 0) return 0;
         if (errno == EINTR) continue;
@@ -87,7 +91,7 @@ int psdbg_escreve(int fd, const char *json, size_t tam)
     for (int k = 0; k < 2; k++) {
         size_t escrito = 0;
         while (escrito < tams[k]) {
-            ssize_t w = write(fd, partes[k] + escrito, tams[k] - escrito);
+            long w = ps_sock_escreve(fd, partes[k] + escrito, tams[k] - escrito, 0);
             if (w > 0) { escrito += (size_t)w; continue; }
             if (w < 0 && errno == EINTR) continue;
             return -1;

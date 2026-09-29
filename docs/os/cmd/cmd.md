@@ -14,6 +14,11 @@ os.cmd(command: str, capture: bool = false) -> str | Null
 | `command` | — | a linha de comando a executar (ex: `"jinga --version"`) |
 | `capture` | `false` | `true` = devolve a saída; `false` = só roda e devolve `Null` |
 
+O shell é o do sistema: `/bin/sh -c` no Linux e no macOS, `cmd.exe /d /s /c`
+no Windows. A linha tem que ser na sintaxe daquele shell (no Windows, `dir` e
+`%VAR%`, não `ls` e `$VAR`). Um comando inexistente sai com 127 no `sh` e 9009
+no `cmd.exe`.
+
 ---
 
 ## Rodar sem capturar
@@ -27,7 +32,7 @@ os.cmd("git status")              # a saída vai direto pro terminal
 
 ```
 versao = os.cmd("jinga --version", capture=true)
-post(versao)                      # "Jinga 16.1.9 [PSVM] (2026-09-24) Runtime standalone"
+post(versao)                      # "Jinga 16.2.0 [PSVM] (2026-09-24) Runtime standalone"
 ```
 
 Com `capture=true`, devolve o **stdout** (sem espaços nas pontas). Se o comando

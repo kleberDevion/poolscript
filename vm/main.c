@@ -483,6 +483,15 @@ static int cmd_compila(const char *fonte_arq, const char *saida)
         fprintf(stderr, "jinga: nao consegui achar o proprio executavel\n");
         ps_embutidos_solta(deps, ndeps); free(fonte); return 70;
     }
+#if defined(PS_SO_WINDOWS)
+    /* no Windows só é programa o que termina em `.exe` */
+    char saida_exe[4096];
+    size_t ls = strlen(saida);
+    if (ls < 4 || _stricmp(saida + ls - 4, ".exe") != 0) {
+        snprintf(saida_exe, sizeof(saida_exe), "%s.exe", saida);
+        saida = saida_exe;
+    }
+#endif
     long base = 0;
     char *velho = ps_payload(meu, NULL, &base, NULL);   /* corta payload anterior */
     free(velho);
@@ -1554,6 +1563,9 @@ int main(int argc, char **argv)
      * que impede a recursão de estourar (ver `ps_pilha_apertada`). Feito no
      * main porque aqui a pilha ainda está praticamente intocada. */
     ps_pilha_marca_processo();
+    /* o que o sistema pede antes de tudo (no Windows: Winsock, console em
+     * UTF-8 com cores; no Linux e no macOS, nada) */
+    ps_so_inicia();
     /* o quadro do traceback é o MESMO pro erro que para o programa e pro que
      * só é avisado (o do `int funct` que devolveu 500) */
     ps_gancho_quadro = imprime_quadro;

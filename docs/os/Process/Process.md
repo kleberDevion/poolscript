@@ -64,7 +64,8 @@ using os.run(["sort"], capture="live") as p {
 ```
 
 `close()` é o que diz "acabou a entrada". Com `pty=true` ele manda o caractere
-de fim (o mesmo `Ctrl+D` do teclado) e o canal continua aberto pra leitura.
+de fim (o mesmo `Ctrl+D` do teclado; no Windows, `Ctrl+Z` e Enter, o fim do
+teclado de lá) e o canal continua aberto pra leitura.
 
 ## Esperar, matar e o código
 
@@ -79,6 +80,10 @@ O código de saída é o número que o programa devolveu (`0` é sucesso). Quand
 ele morre por um **sinal**, o código é `-sinal` — `p.kill()` dá `-15`, e
 `p.kill(9)` dá `-9`.
 
+O Windows não tem sinal: lá todo `kill(sinal)` encerra o processo, e o código
+continua sendo `-sinal` (`p.kill()` dá `-15` do mesmo jeito). `kill(0)` só
+pergunta se ele ainda existe.
+
 `wait()` cede enquanto espera: numa rota do jinker, as outras requisições
 continuam sendo atendidas.
 
@@ -90,7 +95,8 @@ p.resize(120, 40)
 ```
 
 `resize` só existe com terminal; sem `pty` ele levanta `RuntimeError`. Depois
-de mudar o tamanho, o filho recebe o aviso e se redesenha.
+de mudar o tamanho, o filho recebe o aviso e se redesenha (no Windows, é o
+pseudoconsole que avisa).
 
 ---
 
@@ -99,6 +105,8 @@ de mudar o tamanho, o filho recebe o aviso e se redesenha.
 Os canais fecham sozinhos quando o objeto é coletado, e o `using` os fecha no
 fim do bloco. O filho **não** é morto junto: se ele ainda estiver rodando, seu
 código de saída é recolhido pelo motor quando ele terminar, sem virar zumbi.
+Com `pty=true`, fechar é fechar o terminal, e o filho perde a sessão (o mesmo
+nos três sistemas).
 
 ---
 

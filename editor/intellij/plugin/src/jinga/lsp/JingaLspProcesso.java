@@ -42,9 +42,13 @@ public class JingaLspProcesso extends ProcessStreamConnectionProvider {
   public void start() throws CannotStartProcessException {
     List<String> c = getCommands();
     if (c == null || c.isEmpty() || !Paths.get(c.get(0)).isAbsolute())
-      throw new CannotStartProcessException("Jinga: nao achei `jinga-lsp` (nem `poolscript-lsp`) no PATH do IDEA ("
-          + System.getenv("PATH") + ") nem em /usr/local/bin, ~/.local/bin, ~/.jinga/bin ou ~/.poolscript/bin — rode "
-          + "`sudo make install` no repositorio da linguagem e reinicie o servidor.");
+      throw new CannotStartProcessException(JingaLspFactory.WIN
+          ? "Jinga: nao achei `jinga-lsp.cmd` no PATH do IDEA (" + System.getenv("PATH")
+            + ") nem em %LOCALAPPDATA%\\Programs\\Jinga\\bin — rode o instalar.ps1 do pacote do Windows "
+            + "e reinicie o servidor."
+          : "Jinga: nao achei `jinga-lsp` (nem `poolscript-lsp`) no PATH do IDEA ("
+            + System.getenv("PATH") + ") nem em /usr/local/bin, ~/.local/bin, ~/.jinga/bin ou ~/.poolscript/bin — rode "
+            + "`sudo make install` no repositorio da linguagem e reinicie o servidor.");
     super.start();
   }
 }

@@ -67,6 +67,13 @@ void ps_aviso_fecha(PsAviso a);
 void *ps_pilha_fibra_nova(size_t util);
 void  ps_pilha_fibra_solta(void *p, size_t util);
 
+/* Memória zerada que só vira RAM quando é TOCADA (mmap anônimo /
+ * VirtualAlloc). Pra bloco grande do qual se usa só o começo, como os vetores
+ * de uma fibra: o `calloc` zera o bloco inteiro e ele fica residente na hora.
+ * NULL = sem memória. */
+void *ps_mem_zerada(size_t n);
+void  ps_mem_zerada_solta(void *p, size_t n);
+
 /* Memória executável do JIT: copia `n` bytes de código pra uma região nova
  * que termina só LEITURA+EXECUÇÃO (nunca escrita e execução ao mesmo tempo).
  * `*tam` recebe o tamanho reservado, que `ps_mem_exec_solta` devolve. */
@@ -94,47 +101,28 @@ struct hostent *ps_host_por_ip4(const void *v4, struct hostent *he,
  * mudar). Inline: no Linux isto é a própria chamada, sem custo. */
 #if defined(PS_SO_WINDOWS)
 #include "ps_win.h"
-/* o erro do Winsock no `errno` de sempre (EAGAIN, EINTR, ECONNRESET...) */
-static inline int ps_sock_errno(void)
-{
-    int w = WSAGetLastError();
-    switch (w) {
-        case WSAEWOULDBLOCK: case WSAETIMEDOUT: errno = EAGAIN; break;
-        case WSAEINTR:       errno = EINTR; break;
-        case WSAEINPROGRESS: case WSAEALREADY: errno = EINPROGRESS; break;
-        case WSAECONNRESET:  errno = ECONNRESET; break;
-        case WSAECONNREFUSED: errno = ECONNREFUSED; break;
-        case WSAECONNABORTED: errno = ECONNABORTED; break;
-        case WSAENOTCONN:    errno = ENOTCONN; break;
-        case WSAEADDRINUSE:  errno = EADDRINUSE; break;
-        case WSAEADDRNOTAVAIL: errno = EADDRNOTAVAIL; break;
-        case WSAENETUNREACH: errno = ENETUNREACH; break;
-        case WSAEHOSTUNREACH: errno = EHOSTUNREACH; break;
-        case WSAEACCES:      errno = EACCES; break;
-        case WSAEINVAL:      errno = EINVAL; break;
-        case WSAEMSGSIZE:    errno = EMSGSIZE; break;
-        case WSAESHUTDOWN:   errno = EPIPE; break;
-        default:             errno = EIO; break;
-    }
-    return errno;
-}
-static inline void ps_so_inicia(void)
-{
-    WSADATA w;
-    WSAStartup(MAKEWORD(2, 2), &w);
-}
+/* o erro do Winsock no `errno` de sempre (EAGAIN, EINTR, ECONNRESET...) —
+ * a tradução é a do ps_win.h */
+static inline int ps_sock_errno(void) { return ps_w_errno(); }
+/* o começo do processo: Winsock, console em UTF-8 com as cores VT, saída
+ * sem a troca de `\n` por `\r\n` (o mesmo byte que o programa escreveu, como
+ * no Linux) e os recados do jinker pro processo filho (ps_so.c) */
+void ps_w_inicia(void);
+static inline void ps_so_inicia(void) { ps_w_inicia(); }
 static inline int  ps_sock_fecha(int fd) { return closesocket((SOCKET)fd); }
-static inline long ps_sock_le(int fd, void *b, size_t n)
+/* cópia do socket no mesmo processo (o `dup` do CRT não conhece SOCKET) */
+static inline int ps_sock_dup(int fd)
 {
-    int r = recv((SOCKET)fd, (char *)b, (int)n, 0);
-    if (r < 0) ps_sock_errno();
-    return r;
+    WSAPROTOCOL_INFOW info;
+    if (WSADuplicateSocketW((SOCKET)fd, GetCurrentProcessId(), &info) != 0) { ps_w_errno(); return -1; }
+    SOCKET s = WSASocketW(FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO, &info, 0, 0);
+    if (s == INVALID_SOCKET) { ps_w_errno(); return -1; }
+    return (int)s;
 }
+static inline long ps_sock_le(int fd, void *b, size_t n) { return recv(fd, b, n, 0); }
 static inline long ps_sock_escreve(int fd, const void *b, size_t n, int flags)
 {
-    int r = send((SOCKET)fd, (const char *)b, (int)n, flags);
-    if (r < 0) ps_sock_errno();
-    return r;
+    return send(fd, b, n, flags);
 }
 static inline int ps_sock_nao_bloqueia(int fd, int sim)
 {
@@ -147,14 +135,19 @@ static inline int ps_sock_timeout(int fd, int ms_le, int ms_escreve)
     int rc = 0;
     if (ms_le >= 0) {
         DWORD t = (DWORD)ms_le;
-        rc |= setsockopt((SOCKET)fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&t, sizeof(t));
+        rc |= setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &t, sizeof(t));
     }
     if (ms_escreve >= 0) {
         DWORD t = (DWORD)ms_escreve;
-        rc |= setsockopt((SOCKET)fd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&t, sizeof(t));
+        rc |= setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &t, sizeof(t));
     }
     return rc;
 }
+/* O `SO_REUSEADDR` do Windows NÃO é o do POSIX: lá ele deixa um segundo
+ * servidor escutar na MESMA porta de um que está no ar (e roubar as conexões).
+ * O que o POSIX pede com ele (reusar a porta logo depois de fechar) o Windows
+ * já faz sem pedir; então aqui não se liga nada. */
+static inline void ps_sock_reusa_endereco(int fd) { (void)fd; }
 /* 1 = há o que ler (ou o outro lado fechou) em até `ms` */
 static inline int ps_sock_espera_leitura(int fd, int ms)
 {
@@ -162,6 +155,70 @@ static inline int ps_sock_espera_leitura(int fd, int ms)
     p.fd = (SOCKET)fd; p.events = POLLRDNORM; p.revents = 0;
     return WSAPoll(&p, 1, ms) > 0 && (p.revents & (POLLRDNORM | POLLHUP | POLLERR));
 }
+/* par de sockets conectados: o Windows não tem socketpair; como em outras
+ * linguagens no Windows, é um par TCP no loopback (ps_so.c) */
+int ps_socketpair(int par[2]);
+
+/* ── processos (Windows) ──────────────────────────────────────────────────
+ * No Linux e no macOS o motor dispara processo com fork+exec direto (o código
+ * de sempre, em jinga_vm.c). O Windows não tem fork: o processo nasce inteiro
+ * do CreateProcess, com a linha de comando em texto e os canais escolhidos na
+ * criação. Os canais do lado do motor são descritores do CRT, então `read`,
+ * `write` e `close` seguem iguais.
+ *
+ * O código de saída de quem foi morto por `ps_w_proc_mata(p, sinal)` é
+ * `-sinal`, como o `-15` do Linux depois de um `kill()`. */
+typedef struct PsWPty PsWPty;
+typedef struct {
+    void   *h;      /* HANDLE do processo; NULL depois de solto */
+    PsWPty *pty;    /* o pseudoconsole (pty=true), senão NULL */
+    int     pid;
+} PsWProc;
+
+/* `cmd_sh` != NULL: roda pelo `cmd.exe /d /s /c`; senão `argv` (terminado em
+ * NULL) vira a linha de comando com as aspas do Windows. `fd_in/out/err`:
+ * descritores do CRT pros canais do filho, -1 = os do motor. `solto`: segundo
+ * plano, num grupo de processos próprio (o Ctrl+C do terminal não o mata).
+ * 0 = ok; -1 = não disparou, com o motivo no `errno` (ENOENT...). */
+int  ps_w_proc_cria(const char *cmd_sh, char *const *argv,
+                    int fd_in, int fd_out, int fd_err, int solto, PsWProc *p);
+/* num pseudoconsole (ConPTY) de `cols`x`rows`: `*fd_escreve` é a entrada do
+ * terminal, `*fd_le` a saída (que chega ao fim quando o filho termina) */
+int  ps_w_proc_cria_pty(char *const *argv, int cols, int rows,
+                        int *fd_escreve, int *fd_le, PsWProc *p);
+int  ps_w_proc_espera(PsWProc *p, int *codigo);      /* bloqueia; 0 = ok */
+int  ps_w_proc_terminou(PsWProc *p);                 /* 1 = já saiu */
+int  ps_w_proc_mata(PsWProc *p, int sinal);          /* 0 = ok */
+int  ps_w_proc_redimensiona(PsWProc *p, int cols, int rows);
+/* fecha o pseudoconsole: o filho perde o terminal, como no fechar do mestre
+ * do pty no Linux */
+void ps_w_proc_fecha_terminal(PsWProc *p);
+/* fecha os handles; sem pty não mata (o processo segue), com pty fecha o
+ * terminal junto */
+void ps_w_proc_solta(PsWProc *p);
+/* cano anônimo com as duas pontas do CRT, binário e não herdável */
+int  ps_w_cano(int fds[2]);
+
+/* ── jinker sem fork (Windows) ────────────────────────────────────────────
+ * Workers: cada worker é o MESMO programa rodado de novo (a mesma linha de
+ * comando); ao chegar no `run()`, em vez de abrir a porta ele recebe do pai o
+ * socket de escuta já aberto (WSADuplicateSocket). */
+#include <signal.h>
+int  ps_w_jk_worker(int fd_escuta, int indice, PsWProc *p);
+/* no worker: o socket recebido e o índice dele. -1 = este processo não é
+ * worker; -2 = é worker e o socket não chegou (errno). */
+int  ps_w_jk_socket_herdado(int *indice);
+/* O pai: espera até todos saírem ou `*parar` ligar (o Ctrl+C, que chega a
+ * todos do mesmo console); quem não sair em 5 s é encerrado (código -15, o
+ * SIGTERM do Linux). Solta os handles. */
+void ps_w_jk_espera_workers(PsWProc *kids, int nk, volatile sig_atomic_t *parar);
+/* Reload: sem `execv`, o processo que o terminal espera vira supervisor e
+ * roda o programa de novo a cada reload pedido pelo filho. `pede_recarga`
+ * (no filho): 1 = pediu, e o filho sai; 0 = este não é filho do supervisor.
+ * `supervisiona`: devolve o código de saída do último filho, -1 = não
+ * conseguiu rodar. */
+int  ps_w_jk_pede_recarga(void);
+int  ps_w_jk_supervisiona(void);
 #else
 #include <errno.h>
 #include <fcntl.h>
@@ -171,6 +228,7 @@ static inline int ps_sock_espera_leitura(int fd, int ms)
 static inline int  ps_sock_errno(void) { return errno; }
 static inline void ps_so_inicia(void) { }
 static inline int  ps_sock_fecha(int fd) { return close(fd); }
+static inline int  ps_sock_dup(int fd) { return dup(fd); }
 static inline long ps_sock_le(int fd, void *b, size_t n) { return (long)read(fd, b, n); }
 static inline long ps_sock_escreve(int fd, const void *b, size_t n, int flags)
 {
@@ -199,12 +257,28 @@ static inline int ps_sock_timeout(int fd, int ms_le, int ms_escreve)
     }
     return rc;
 }
+/* reusar a porta logo depois de fechar (sem esperar o TIME_WAIT) */
+static inline void ps_sock_reusa_endereco(int fd)
+{
+    int um = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &um, sizeof(um));
+}
 #include <poll.h>
 static inline int ps_sock_espera_leitura(int fd, int ms)
 {
     struct pollfd p = { fd, POLLIN, 0 };
     return poll(&p, 1, ms) > 0 && (p.revents & (POLLIN | POLLHUP));
 }
+#endif
+
+/* A variável da pasta do usuário: HOME no Linux e no macOS, USERPROFILE no
+ * Windows (o HOME lá só existe dentro do MSYS2, e aponta pra outra pasta).
+ * O motor (as libs do `import`) e o `jpkg` (onde elas são instaladas) leem a
+ * MESMA. */
+#if defined(PS_SO_WINDOWS)
+#  define PS_HOME_VAR "USERPROFILE"
+#else
+#  define PS_HOME_VAR "HOME"
 #endif
 
 /* ── certificados TLS ──────────────────────────────────────────────────────

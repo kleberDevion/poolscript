@@ -660,6 +660,11 @@ com a sua VM e as suas fibras — sem corrida, sem estado compartilhado. Regra
 prática: `workers` ≈ número de núcleos; cada worker soma a sua concorrência de
 fibras. (WebSocket com salas/broadcast roda só no worker 0.)
 
+No Windows não existe `fork`: cada worker é o programa rodado de novo, que ao
+chegar no `run()` recebe do pai o socket da porta já aberto
+(`WSADuplicateSocket`). O que o programa faz ANTES do `run()` (um `post`,
+abrir um banco) roda uma vez em cada worker, e não uma só como no Linux.
+
 ---
 
 ## Exemplo completo com WebSocket e rotas

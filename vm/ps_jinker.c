@@ -141,8 +141,7 @@ int ps_jk_listen(const char *host, int porta, char *erro, size_t ecap)
 {
     int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) { snprintf(erro, ecap, "socket: %s", strerror(ps_sock_errno())); return -1; }
-    int um = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&um, sizeof(um));
+    ps_sock_reusa_endereco(fd);
 
     struct sockaddr_in a;
     memset(&a, 0, sizeof(a));

@@ -21,6 +21,10 @@ instalador busca sozinho o que faltar:
 curl -fsSL https://raw.githubusercontent.com/kleberDevion/poolscript/main/instalar.sh | sudo bash
 ```
 
+macOS (Intel) e Windows (x64) têm pacote próprio, com `instalar.sh` e
+`instalar.ps1`; os três se compilam com `./pool scripts/compila.pr
+linux|mac|windows|todos` — ver [`jinga.md`](jinga.md#instalação).
+
 Compilando do fonte (gcc + libs de dev: postgresql, mariadb, mongoc, openssl):
 
 ```bash

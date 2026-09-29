@@ -73,8 +73,8 @@ O timeout estourado dá erro com **"timed out"** na mensagem — capturável com
 |---|---|
 | `socket(family, type, proto)` | cria um socket |
 | `create_connection(endereco, timeout, source_address)` | TCP já conectado (atalho) |
-| `create_server(endereco, backlog, reuse_port)` | TCP já em listen com `SO_REUSEADDR` |
-| `socketpair()` | par conectado (AF_UNIX) → `(a, b)` |
+| `create_server(endereco, backlog, reuse_port)` | TCP já em listen com `SO_REUSEADDR` (no Windows sem ele: lá ele deixaria outro servidor escutar na mesma porta; `reuse_port=true` é `ValueError`, não existe `SO_REUSEPORT`) |
+| `socketpair()` | par conectado (AF_UNIX; no Windows, um par TCP no loopback, `AF_INET`) → `(a, b)` |
 | `gethostname()` | nome desta máquina |
 | `getfqdn(nome)` | nome totalmente qualificado |
 | `gethostbyname(nome)` | nome → IP (str) |

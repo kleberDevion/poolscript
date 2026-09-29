@@ -12,7 +12,10 @@
 #define PS_MONGO_H
 
 #include <stddef.h>
+#include <stdint.h>
 
+/* Os números (skip, limit, count) são int64, como o int da Jinga e o do
+ * driver: `long` tem 32 bits no Windows. */
 typedef struct PSMongo PSMongo;
 
 PSMongo *ps_mongo_conecta(const char *uri, const char *dbname, char *erro, size_t ecap);
@@ -23,7 +26,7 @@ void     ps_mongo_fecha(PSMongo *m);
  * do driver, então quem pula e corta é o SERVIDOR — sem eles, paginar era
  * trazer a coleção inteira. `um_so` (find_one) pede limit 1 ao servidor. */
 int ps_mongo_find(PSMongo *m, const char *col, const char *query_json,
-                  int um_so, long skip, long limit, const char *sort_json,
+                  int um_so, int64_t skip, int64_t limit, const char *sort_json,
                   char **json, char *erro, size_t ecap);
 /* insert/insert_many/update/remove: 0/-1. `doc_json` é objeto (insert) ou
  * array (insert_many). update usa {$set: set_json}. */
@@ -33,7 +36,7 @@ int ps_mongo_update(PSMongo *m, const char *col, const char *query_json,
                     const char *set_json, char *erro, size_t ecap);
 int ps_mongo_remove(PSMongo *m, const char *col, const char *query_json,
                     char *erro, size_t ecap);
-long ps_mongo_count(PSMongo *m, const char *col, const char *query_json,
-                    char *erro, size_t ecap);
+int64_t ps_mongo_count(PSMongo *m, const char *col, const char *query_json,
+                       char *erro, size_t ecap);
 
 #endif /* PS_MONGO_H */

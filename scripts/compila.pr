@@ -47,20 +47,24 @@ funct sistema_daqui() {
 
 
 # Roda uma linha de comando mostrando a saída (stdout e stderr) enquanto ela
-# sai, e devolve o código de saída.
+# sai, e devolve o código de saída. Sempre pelo `sh`: no Windows a ferramenta
+# roda dentro do MSYS2 (é de lá que vêm o make e o gcc), e as linhas daqui são
+# de sh (`./pool`, `VAR=x cmd`, aspas simples), que o cmd.exe não entende.
 funct roda(linha) {
     post("$ " + linha)
-    args = ["sh", "-c", linha + " 2>&1"]
-    if sys.platform() == "windows" {
-        args = ["cmd", "/c", linha + " 2>&1"]
-    }
-    p = os.run(args, capture="live")
+    p = os.run(["sh", "-c", linha + " 2>&1"], capture="live")
     l = p.readline()
     while l != "" {
         post(l.rstrip("\n"))
         l = p.readline()
     }
     return p.wait()
+}
+
+
+# A saída de uma linha de sh, sem as quebras das pontas.
+funct sai(linha) {
+    return os.run(["sh", "-c", linha], capture=true)
 }
 
 
@@ -92,6 +96,9 @@ funct deps_mac() {
 
 
 funct deps_windows() {
+    if os.getenv("MSYSTEM") == Null {
+        falha("rode dentro do terminal MSYS2 UCRT64 (o make, o gcc e o sh vem dele)")
+    }
     if roda("pacman -S --needed --noconfirm " + " ".join(PACMAN)) != 0 {
         falha("pacman falhou — rode dentro do terminal MSYS2 UCRT64")
     }
@@ -113,7 +120,7 @@ funct local(alvo, instala, portao) {
         }
         falha("a compilacao falhou")
     }
-    post(os.cmd("./pool --version", capture=true))
+    post(sai("./pool --version"))
     if portao {
         if roda("make check") != 0 {
             falha("o make check reprovou")
@@ -135,12 +142,19 @@ funct local(alvo, instala, portao) {
             if roda("cd " + dir + " && sudo ./instalar.sh") != 0 {
                 falha("a instalacao falhou")
             }
+        } elif alvo == "windows" {
+            # na pasta do usuario, sem administrador; o instalar.ps1 mostra o
+            # --version do jinga.exe instalado
+            if roda("powershell -ExecutionPolicy Bypass -File dist/jinga-windows-x86_64/instalar.ps1") != 0 {
+                falha("a instalacao falhou")
+            }
+            return
         } else {
             if roda("sudo make install") != 0 {
                 falha("a instalacao falhou")
             }
         }
-        post(os.cmd("jinga --version", capture=true))
+        post(sai("jinga --version"))
     }
 }
 
@@ -151,13 +165,13 @@ funct remoto(alvo) {
     if roda("gh auth status >/dev/null") != 0 {
         falha("o gh nao esta logado: gh auth login")
     }
-    ramo = os.cmd("git rev-parse --abbrev-ref HEAD", capture=true).strip()
+    ramo = sai("git rev-parse --abbrev-ref HEAD").strip()
     if roda("gh workflow run build.yml --ref " + ramo + " -f alvo=" + alvo) != 0 {
         falha("nao consegui disparar o workflow (o ramo " + ramo + " esta no GitHub? git push)")
     }
     # o disparo leva uns segundos pra virar uma execucao listada
-    os.cmd("sleep 8")
-    id = os.cmd("gh run list --workflow build.yml --branch " + ramo + " --limit 1 --json databaseId --jq '.[0].databaseId'", capture=true).strip()
+    sai("sleep 8")
+    id = sai("gh run list --workflow build.yml --branch " + ramo + " --limit 1 --json databaseId --jq '.[0].databaseId'").strip()
     if id == "" {
         falha("a execucao nao apareceu na lista do GitHub")
     }

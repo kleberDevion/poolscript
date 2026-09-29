@@ -35,6 +35,10 @@
 #define _GNU_SOURCE 1
 #endif
 #define PY_SSIZE_T_CLEAN
+/* No Windows os cabeçalhos do sistema vêm ANTES de tudo (o winsock2.h tem que
+ * preceder qualquer windows.h que outra biblioteca puxe); nos outros este
+ * include não faz nada. */
+#include "ps_win.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
@@ -57,9 +61,15 @@
 #include "ps_debug.h"
 #include "ps_retornos.h"
 #include "ps_gmp_min.h"
-#include <poll.h>
 #include "ps_so.h"
 #include <pthread.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#if !defined(_WIN32)
+#include <poll.h>
 /* lib sockets */
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -69,13 +79,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <net/if.h>
-#include <fcntl.h>
-#include <signal.h>
-#include <dirent.h>
 #include <sys/wait.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <termios.h>
 /* `os.run(..., pty=true)`: o filho num terminal de verdade. Na glibc >= 2.34
  * (a distribuicao pede 2.38) o `forkpty` mora na propria libc — nao precisa de
@@ -86,6 +90,7 @@
 #include <pty.h>
 #endif
 #include <sys/ioctl.h>
+#endif /* !_WIN32 */
 #include <string.h>
 
 #include "ps_lexer.h"
@@ -315,6 +320,12 @@ typedef struct {
      * leituras fica aqui até completar — sair pela metade viraria lixo. */
     char  *buf;    int nbuf, capbuf;
     char  *buferr; int nbuferr, capbuferr;
+#if defined(PS_SO_WINDOWS)
+    /* o handle do processo (e do pseudoconsole): no Windows é por ele que se
+     * espera e mata, não pelo pid. Com pty, `fd_in` e `fd_out` são dois canos
+     * (a entrada e a saída do console), não o mestre único do Linux. */
+    PsWProc w;
+#endif
 } PSProcesso;
 /* `regex.compile(padrao)`: o padrao COMPILADO uma vez e reusado — o mesmo
  * PSRegex que as funcoes do modulo compilam e jogam fora a cada chamada. */
@@ -692,7 +703,7 @@ typedef struct {
     char  *static_folder, *static_url;
     char  *route_prefix;    /* prefixo de TODAS as rotas: "/api" ou NULL */
     /* oauth */
-    int    poolip_on; long ip_rate, ip_bloq;
+    int    poolip_on; int64_t ip_rate, ip_bloq;   /* int64: o `long` do Windows tem 32 bits */
     int    usa_tls; char *cert; char *key;   /* key= separado (Let's Encrypt: privkey.pem) */
     /* runtime */
     JkWsAtiva *ws; int nws, cap_ws;
@@ -1200,6 +1211,31 @@ static inline void ps_ctx_make(PS_CTX *ctx, void *stack, size_t size, void (*ent
     sp[6] = (void *)entry;                    /* alvo do `ret`: rsp fica em top-8 */
     *ctx = (void *)sp;
 }
+static inline void ps_ctx_solta(PS_CTX *ctx) { (void)ctx; }
+#elif defined(PS_SO_WINDOWS)
+/* Windows: as fibras do próprio sistema. A ABI do Windows guarda mais
+ * registradores (rdi, rsi, xmm6-15) e a pilha fica registrada no bloco da
+ * thread (o que a sondagem de pilha dos quadros grandes confere), então a
+ * troca é a do sistema, `SwitchToFiber`, e não um asm próprio. A pilha da
+ * fibra é reservada pelo `CreateFiberEx` (o dobro do utilizável, pra folga
+ * da medição); o `stack` do motor não é usado. A thread vira fibra na
+ * primeira troca. */
+typedef void *PS_CTX;
+static VOID CALLBACK ps_fibra_entra(LPVOID p) { ((void (*)(void))p)(); }
+static inline void ps_ctx_swap(PS_CTX *from, PS_CTX *to) {
+    if (!IsThreadAFiber()) ConvertThreadToFiberEx(NULL, FIBER_FLAG_FLOAT_SWITCH);
+    *from = GetCurrentFiber();
+    SwitchToFiber(*to);
+}
+static inline void ps_ctx_make(PS_CTX *ctx, void *stack, size_t size, void (*entry)(void)) {
+    (void)stack;
+    /* o slot volta a ser usado: a fibra de antes terminou (voltou pro
+     * escalonador e nunca mais é retomada) */
+    if (*ctx) DeleteFiber(*ctx);
+    *ctx = CreateFiberEx(64 * 1024, size * 2, FIBER_FLAG_FLOAT_SWITCH,
+                         ps_fibra_entra, (LPVOID)entry);
+}
+static inline void ps_ctx_solta(PS_CTX *ctx) { if (*ctx) { DeleteFiber(*ctx); *ctx = NULL; } }
 #else
 #include <ucontext.h>
 typedef ucontext_t PS_CTX;
@@ -1208,6 +1244,7 @@ static inline void ps_ctx_make(PS_CTX *ctx, void *stack, size_t size, void (*ent
     getcontext(ctx); ctx->uc_stack.ss_sp = stack; ctx->uc_stack.ss_size = size;
     ctx->uc_link = NULL; makecontext(ctx, entry, 0);
 }
+static inline void ps_ctx_solta(PS_CTX *ctx) { (void)ctx; }
 #endif
 
 struct VM_ {
@@ -1484,7 +1521,7 @@ static PSBigInt *novo_bigint(VM *vm)
  * senão embrulha num bignum. */
 static Value mk_from_mpz(VM *vm, mpz_srcptr z)
 {
-    if (mpz_fits_slong_p(z)) return MK_INT((int64_t)mpz_get_si(z));
+    if (ps_mpz_cabe_i64(z)) return MK_INT(ps_mpz_get_i64(z));
     PSBigInt *b = novo_bigint(vm);
     if (!b) return MK_NULL();
     mpz_set(b->v, z);
@@ -1495,7 +1532,7 @@ static Value mk_from_mpz(VM *vm, mpz_srcptr z)
 static void mpz_de_val(mpz_t z, Value v)
 {
     if (EH_BIGINT(v)) mpz_set(z, COMO_BIGINT(v)->v);
-    else              mpz_set_si(z, (long)v.as.i);   /* V_INT (bool já virou int) */
+    else              ps_mpz_set_i64(z, v.as.i);     /* V_INT (bool já virou int) */
 }
 
 /* v é inteiro (int64 ou bignum)? / inteiro como double (pra misturar com float) */
@@ -2019,13 +2056,18 @@ static void fin_poolfile(VM *vm, Obj *o) {
 static void fin_socket(VM *vm, Obj *o) {   /* fecha o que o usuário esqueceu */
     (void)vm;
     PSSocket *s = (PSSocket *)o;
-    if (s->fd >= 0) close(s->fd);
+    if (s->fd >= 0) ps_sock_fecha(s->fd);
 }
 
 /* Filhos que o programa largou sem esperar. Sem recolher, cada um vira ZUMBI
  * na tabela de processos até o motor terminar. Não matamos ninguém: quem
  * disparou pode querer que continue — só o status é recolhido, e só depois que
  * o filho morreu por conta própria. */
+#if defined(PS_SO_WINDOWS)
+/* No Windows não há zumbi: o processo largado só segura o handle, e o
+ * finalizador o fecha. */
+static void proc_recolhe_largados(void) { }
+#else
 static int *g_proc_largados = NULL;
 static int  g_proc_nlargados = 0, g_proc_caplargados = 0;
 
@@ -2051,15 +2093,22 @@ static void proc_larga(int pid)
     }
     g_proc_largados[g_proc_nlargados++] = pid;
 }
+#endif
 
 static void fin_processo(VM *vm, Obj *o) {
     (void)vm;
     PSProcesso *p = (PSProcesso *)o;
-    if (p->fd_in  >= 0) close(p->fd_in);
+    /* com pty (Linux/macOS) a entrada e a saída são o MESMO mestre: fechar
+     * duas vezes fecharia o descritor que outra thread acabou de abrir */
+    if (p->fd_in  >= 0 && p->fd_in != p->fd_out) close(p->fd_in);
     if (p->fd_out >= 0) close(p->fd_out);
     if (p->fd_err >= 0) close(p->fd_err);
     free(p->buf); free(p->buferr);
+#if defined(PS_SO_WINDOWS)
+    ps_w_proc_solta(&p->w);                    /* os canos já fecharam: não trava */
+#else
     if (!p->terminou && p->pid > 0) proc_larga(p->pid);
+#endif
 }
 
 static void fin_regex(VM *vm, Obj *o) {
@@ -4095,7 +4144,7 @@ static int nativa_abs(VM *vm, Value *args, int n, Value *out)
      * MESMO número negativo. Vai pro bignum, como o interpretador. */
     if (v.t == V_INT && v.as.i == INT64_MIN) {
         mpz_t z; mpz_init(z);
-        mpz_set_si(z, (long)v.as.i);
+        ps_mpz_set_i64(z, v.as.i);
         mpz_neg(z, z);
         *out = mk_from_mpz(vm, z);
         mpz_clear(z);
@@ -4742,7 +4791,7 @@ static int nativa_sum(VM *vm, Value *args, int n, Value *out)
     mpz_t si; mpz_init(si);
     if (n == 2) {
         Value s = args[1];
-        if (s.t == V_INT)        mpz_set_si(si, (long)s.as.i);
+        if (s.t == V_INT)        ps_mpz_set_i64(si, s.as.i);
         else if (s.t == V_BOOL)  mpz_set_si(si, s.as.b ? 1 : 0);
         else if (EH_BIGINT(s))   mpz_set(si, COMO_BIGINT(s)->v);
         else if (s.t == V_FLOAT) { sd = s.as.d; flutuou = 1; }
@@ -6897,11 +6946,11 @@ static int met_a_read(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n > 1) return erro_aridade(vm, "read", 0, 1, n);
     PSArquivo *a;
     if (arq_exige(vm, alvo, "read", &a) != 0) return -1;
-    long limite = -1;
+    int64_t limite = -1;                /* int64: o `long` do Windows tem 32 bits */
     if (n == 1) {
         if (args[0].t != V_INT) MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
                                      nome_do_tipo_valor(args[0]));
-        limite = (long)args[0].as.i;
+        limite = args[0].as.i;
     }
     SBUF_AUTO b = {0};
     char pedaco[4096];
@@ -6912,7 +6961,7 @@ static int met_a_read(VM *vm, Value alvo, Value *args, int n, Value *out)
     for (;;) {
         size_t quero = sizeof(pedaco);
         if (limite >= 0) {
-            long falta = limite - b.n;
+            int64_t falta = limite - b.n;
             if (falta <= 0) break;
             if ((size_t)falta < quero) quero = (size_t)falta;
         }
@@ -8437,10 +8486,13 @@ static const MetodoNat METODOS_BYTES[] = {
 };
 
 
+
 /* ── os ─────────────────────────────────────────────────────────────────── */
+#if !defined(_WIN32)
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#endif
 
 /* O arquivo é binário? Pergunta ao CONTEÚDO, não a uma lista de extensões.
  *
@@ -12136,6 +12188,37 @@ static const MembroMod MOD_STDERR[] = {
  * entrada, é "tente de novo". Sem distinguir isso, `read(1)` num jogo de
  * terminal devolvia `Null` pra tudo (o `fgetc` reporta o mesmo EOF pros dois
  * casos, e a flag de EOF ainda grudava e engolia as teclas seguintes). */
+#if defined(PS_SO_WINDOWS)
+/* Windows: o modo "poll" é o modo cru que o próprio motor liga (`raw`). */
+static int g_term_raw = 0;
+static int stdin_em_poll(void)
+{
+    return g_term_raw && _isatty(0);
+}
+/* A próxima tecla que já está na fila do console, sem esperar; -1 = nenhuma.
+ * Evento que não é tecla com caractere (soltar tecla, foco, mouse) é
+ * descartado. Com o console em modo VT (ver `raw`), a seta chega como a
+ * mesma sequência de escape do Linux (ESC [ A). */
+static int term_tecla_win(void)
+{
+    HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
+    for (;;) {
+        DWORD n = 0;
+        if (!GetNumberOfConsoleInputEvents(h, &n) || n == 0) return -1;
+        INPUT_RECORD r;
+        DWORD lidos = 0;
+        if (!PeekConsoleInputW(h, &r, 1, &lidos) || lidos == 0) return -1;
+        if (r.EventType == KEY_EVENT && r.Event.KeyEvent.bKeyDown
+                && r.Event.KeyEvent.uChar.UnicodeChar != 0) {
+            char c;
+            DWORD li = 0;
+            if (ReadFile(h, &c, 1, &li, NULL) && li == 1) return (unsigned char)c;
+            return -1;
+        }
+        ReadConsoleInputW(h, &r, 1, &lidos);
+    }
+}
+#else
 static int stdin_em_poll(void)
 {
     struct termios t;
@@ -12143,6 +12226,7 @@ static int stdin_em_poll(void)
     if (tcgetattr(0, &t) != 0) return 0;
     return !(t.c_lflag & ICANON) && t.c_cc[VMIN] == 0;
 }
+#endif
 
 /* `sys.stdin.read(n)` — lê EXATAMENTE n bytes (ou até o fim da entrada).
  * `input()` só lê linha, e isso não serve pra protocolo enquadrado por
@@ -12154,20 +12238,26 @@ static int stdin_em_poll(void)
  * assim um laço de jogo distingue "sem tecla" de "fim". */
 static int mod_in_read(VM *vm, Value *a, int n, Value *o)
 {
-    long quer = -1;
+    int64_t quer = -1;                  /* int64: o `long` do Windows tem 32 bits */
     if (n > 1) return erro_aridade(vm, "read", 0, 1, n);
     if (n == 1) {
         if (a[0].t != V_INT)
         BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
               nome_do_tipo_valor(a[0]));
-        quer = (long)a[0].as.i;
+        quer = a[0].as.i;
         if (quer < 0) BERRO(vm, "TypeError", "read() nao aceita tamanho negativo");
     }
     int poll = stdin_em_poll();
     SBUF_AUTO b = {0};
-    long lidos = 0;
+    int64_t lidos = 0;
     while (quer < 0 || lidos < quer) {
+#if defined(PS_SO_WINDOWS)
+        /* no console do Windows o `fgetc` espera a tecla mesmo em modo cru */
+        int c = poll ? term_tecla_win() : fgetc(stdin);
+        if (poll && c < 0) break;
+#else
         int c = fgetc(stdin);
+#endif
         if (c == EOF) {
             /* Em modo poll, o EOF é "nada agora": limpa a flag pra próxima
              * leitura tentar de novo, e para de ler sem tratar como fim. */
@@ -12208,6 +12298,53 @@ static int mod_in_readline(VM *vm, Value *a, int n, Value *o)
  *
  * É "cbreak", não raw total: ICANON e ECHO saem, mas ISIG fica — Ctrl+C
  * continua matando o programa, que é o que se espera de um jogo de terminal. */
+#if defined(PS_SO_WINDOWS)
+/* Windows: o modo do console (sem linha e sem eco; com entrada VT, pra seta
+ * chegar como no Linux; o Ctrl+C continua processado). O modo de antes volta
+ * no `raw(false)`, na saída e no Ctrl+C — o console guarda o modo depois que
+ * o programa sai. */
+static DWORD g_term_modo_orig = 0;
+static int g_term_salvo = 0;
+
+static void term_restaura(void)
+{
+    if (g_term_salvo && g_term_raw) {
+        SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), g_term_modo_orig);
+        g_term_raw = 0;
+    }
+}
+
+static BOOL WINAPI term_ctrl(DWORD ev)
+{
+    (void)ev;
+    term_restaura();
+    return FALSE;                      /* segue o tratamento de sempre */
+}
+
+static int mod_in_raw(VM *vm, Value *a, int n, Value *o)
+{
+    EXIGE_ARGS(vm, "raw", 1);
+    if (a[0].t != V_BOOL) BERRO(vm, "TypeError", "raw() espera bool (true liga, false desliga)");
+    if (!_isatty(0)) { *o = MK_BOOL(0); return 0; }
+    HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
+    if (a[0].as.b) {
+        if (!g_term_salvo) {
+            if (!GetConsoleMode(h, &g_term_modo_orig)) { *o = MK_BOOL(0); return 0; }
+            g_term_salvo = 1;
+            atexit(term_restaura);
+            SetConsoleCtrlHandler(term_ctrl, TRUE);
+        }
+        DWORD m = (g_term_modo_orig & ~(DWORD)(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT))
+                | ENABLE_VIRTUAL_TERMINAL_INPUT | ENABLE_PROCESSED_INPUT;
+        SetConsoleMode(h, m);
+        g_term_raw = 1;
+    } else {
+        term_restaura();
+    }
+    *o = MK_BOOL(1);
+    return 0;
+}
+#else
 static struct termios g_term_orig;
 static int g_term_salvo = 0, g_term_raw = 0;
 
@@ -12256,6 +12393,7 @@ static int mod_in_raw(VM *vm, Value *a, int n, Value *o)
     *o = MK_BOOL(1);
     return 0;
 }
+#endif
 
 static const MembroMod MOD_STDIN[] = {
     { "read", mod_in_read, 0, "tamanho" },
@@ -13245,13 +13383,43 @@ static int mod_os_ipmach(VM *vm, Value *args, int n, Value *out)
             if (getsockname(s2, (struct sockaddr *)&meu, &tam) == 0)
                 snprintf(ip, sizeof(ip), "%s", inet_ntoa(meu.sin_addr));
         }
-        close(s2);
+        ps_sock_fecha(s2);
     }
     printf("\033[94m[info] IP da sua máquina: %s\033[0m\n", ip);
     fflush(stdout);
     return devolve_texto(vm, out, ip, (int)strlen(ip));
 }
 
+/* O programa não pôde ser disparado (não existe, sem permissão): o erro sai
+ * como o `[Errno N] ...` padrão, com o TIPO `IOError` porque
+ * docs/os/run/run.md:73 fixa ("`os.run` **levanta `IOError`**") e o exemplo
+ * de lá é um `catch (IOError e)`. */
+static int proc_nao_disparou(VM *vm, int err, const char *prog)
+{
+    erro_sistema(vm, err, prog ? prog : "", NULL);
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "IOError");
+    return -1;
+}
+
+/* O texto do `capture=true`: sem as quebras e espaços das pontas, e
+ * `stdout` vazio cai pro `stderr` — comando que falhou tem a mensagem lá, e
+ * devolver vazio esconderia o motivo. */
+static int devolve_saida(VM *vm, SBuf *so, SBuf *se, Value *out)
+{
+    SBuf *escolhido = so;
+    int fim = so->n;
+    while (fim > 0 && (so->b[fim-1] == '\n' || so->b[fim-1] == ' ' || so->b[fim-1] == '\t' || so->b[fim-1] == '\r')) fim--;
+    if (fim == 0) {
+        escolhido = se;
+        fim = se->n;
+        while (fim > 0 && (se->b[fim-1] == '\n' || se->b[fim-1] == ' ' || se->b[fim-1] == '\t' || se->b[fim-1] == '\r')) fim--;
+    }
+    int ini = 0;
+    while (ini < fim && (escolhido->b[ini] == '\n' || escolhido->b[ini] == ' ')) ini++;
+    return devolve_texto(vm, out, escolhido->b ? escolhido->b + ini : "", fim - ini);
+}
+
+#if !defined(PS_SO_WINDOWS)
 /* Se o `execvp` falhar (programa inexistente), o filho manda o errno pelo
  * exec-error pipe (FD_CLOEXEC: exec bem-sucedido fecha o cano e o pai lê 0
  * bytes). Espelha o FileNotFoundError que o subprocess do os_lib levanta —
@@ -13261,14 +13429,7 @@ static int checa_exec_erro(VM *vm, int rfd, const char *prog)
     int err = 0;
     ssize_t r = read(rfd, &err, sizeof(err));
     close(rfd);
-    if (r == (ssize_t)sizeof(err) && err != 0) {
-        /* o texto vira o `[Errno N] ...` padrao; o TIPO fica `IOError` porque
-         * docs/os/run/run.md:73 fixa ("`os.run` **levanta `IOError`**") e o
-         * exemplo de la e um `catch (IOError e)` */
-        erro_sistema(vm, err, prog ? prog : "", NULL);
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "IOError");
-        return -1;
-    }
+    if (r == (ssize_t)sizeof(err) && err != 0) return proc_nao_disparou(vm, err, prog);
     return 0;
 }
 
@@ -13426,19 +13587,109 @@ static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
      * fila atrás de um `os.cmd`. */
     fib_offload(vm, drena_proc_off, &dp);
     if (dp.estourou) BERRO(vm, "MemoryError", "sem memoria");
-
-    SBuf *escolhido = &so;
-    int fim = so.n;
-    while (fim > 0 && (so.b[fim-1] == '\n' || so.b[fim-1] == ' ' || so.b[fim-1] == '\t' || so.b[fim-1] == '\r')) fim--;
-    if (fim == 0) {
-        escolhido = &se;
-        fim = se.n;
-        while (fim > 0 && (se.b[fim-1] == '\n' || se.b[fim-1] == ' ' || se.b[fim-1] == '\t' || se.b[fim-1] == '\r')) fim--;
-    }
-    int ini = 0;
-    while (ini < fim && (escolhido->b[ini] == '\n' || escolhido->b[ini] == ' ')) ini++;
-    return devolve_texto(vm, out, escolhido->b ? escolhido->b + ini : "", fim - ini);
+    return devolve_saida(vm, &so, &se, out);
 }
+
+#else /* PS_SO_WINDOWS */
+
+static void fib_offload(VM *vm, void (*fn)(void *), void *arg);
+
+/* Windows: o mesmo contrato, pelo CreateProcess. Programa que não existe
+ * falha já no disparo (o CreateProcess devolve o erro), sem o cano do erro de
+ * exec do Linux. */
+typedef struct {
+    int      fds[2];
+    SBuf    *destino[2];
+    PsWProc *w;
+    int      st;
+    int      estourou;
+} DrenaProc;
+
+/* Um cano até o fim. Passando do teto continua LENDO e jogando fora: o filho
+ * travado na escrita nunca terminaria. */
+typedef struct { int fd; SBuf *destino; int estourou; } DrenaUm;
+static void *drena_um(void *v)
+{
+    DrenaUm *d = (DrenaUm *)v;
+    char buf[65536];
+    for (;;) {
+        int r = read(d->fd, buf, sizeof(buf));
+        if (r > 0) {
+            if (!d->estourou && sb_bytes(d->destino, buf, r) != 0) d->estourou = 1;
+            continue;
+        }
+        if (r < 0 && errno == EINTR) continue;
+        break;
+    }
+    close(d->fd);
+    return NULL;
+}
+
+/* Os DOIS canos ao mesmo tempo (o impasse do stderr cheio está explicado no
+ * ramo do Linux): o Windows não espera dois canos anônimos numa chamada só,
+ * então o stderr é drenado numa thread e o stdout nesta. */
+static void drena_proc_off(void *v)
+{
+    DrenaProc *d = (DrenaProc *)v;
+    DrenaUm err = { d->fds[1], d->destino[1], 0 };
+    DrenaUm sai = { d->fds[0], d->destino[0], 0 };
+    pthread_t th;
+    int com_thread = pthread_create(&th, NULL, drena_um, &err) == 0;
+    if (!com_thread) {
+        /* sem thread (falta de memória): drenar um cano de cada vez pode
+         * travar; o comando é encerrado e o erro é o de memória */
+        ps_w_proc_mata(d->w, 9);
+        err.estourou = 1;
+    }
+    drena_um(&sai);
+    if (com_thread) pthread_join(th, NULL);
+    else drena_um(&err);
+    d->estourou = sai.estourou || err.estourou;
+    ps_w_proc_espera(d->w, &d->st);
+}
+
+typedef struct { PsWProc *w; int st; } EsperaProc;
+static void espera_proc_off(void *v)
+{
+    EsperaProc *e = (EsperaProc *)v;
+    ps_w_proc_espera(e->w, &e->st);
+}
+
+static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
+                         int capturar, Value *out)
+{
+    PsWProc w;
+    if (!capturar) {
+        if (ps_w_proc_cria(cmd_sh, argv_, -1, -1, -1, 0, &w) != 0)
+            return proc_nao_disparou(vm, errno, cmd_sh ? NULL : argv_[0]);
+        EsperaProc e; e.w = &w; e.st = 0;
+        fib_offload(vm, espera_proc_off, &e);   /* não trava as outras fibras */
+        ps_w_proc_solta(&w);
+        *out = MK_NULL();
+        return 0;
+    }
+    int po[2], pe[2];
+    if (ps_w_cano(po) != 0) BERRO(vm, "RuntimeError", "sem pipe");
+    if (ps_w_cano(pe) != 0) { close(po[0]); close(po[1]); BERRO(vm, "RuntimeError", "sem pipe"); }
+    int rc = ps_w_proc_cria(cmd_sh, argv_, -1, po[1], pe[1], 0, &w);
+    int e = errno;
+    close(po[1]); close(pe[1]);
+    if (rc != 0) {
+        close(po[0]); close(pe[0]);
+        return proc_nao_disparou(vm, e, cmd_sh ? NULL : argv_[0]);
+    }
+    SBUF_AUTO so = {0};
+    SBUF_AUTO se = {0};
+    DrenaProc dp;
+    dp.fds[0] = po[0]; dp.fds[1] = pe[0];
+    dp.destino[0] = &so; dp.destino[1] = &se;
+    dp.w = &w; dp.st = 0; dp.estourou = 0;
+    fib_offload(vm, drena_proc_off, &dp);
+    ps_w_proc_solta(&w);
+    if (dp.estourou) BERRO(vm, "MemoryError", "sem memoria");
+    return devolve_saida(vm, &so, &se, out);
+}
+#endif /* PS_SO_WINDOWS */
 
 static int mod_os_cmd(VM *vm, Value *args, int n, Value *out)
 {
@@ -13481,6 +13732,21 @@ static int os_run_dispara(VM *vm, char **vetor, int capturar, Value *out)
      * COM `capture=true` continua esperando: colher a saida exige o fim do
      * processo, e devolver texto vazio "porque e bg" seria mentira.
      */
+#if defined(PS_SO_WINDOWS)
+    /* No Windows o processo nasce solto (grupo próprio, sem zumbi pra
+     * recolher) e o erro de disparo volta do próprio CreateProcess. */
+    if (!capturar) {
+        PsWProc w;
+        if (ps_w_proc_cria(NULL, vetor, -1, -1, -1, 1, &w) != 0) {
+            int e = errno;
+            BERRO(vm, "IOError", "run(): %s: %s", vetor[0], strerror(e));
+        }
+        int pid = w.pid;
+        ps_w_proc_solta(&w);
+        *out = MK_INT((int64_t)pid);
+        return 0;
+    }
+#else
     if (!capturar) {
         /* Dois canos. O primeiro traz o PID do neto. O segundo existe so pra
          * dizer se o `execvp` deu certo: a ponta de escrita e CLOEXEC, entao o
@@ -13535,6 +13801,7 @@ static int os_run_dispara(VM *vm, char **vetor, int capturar, Value *out)
         *out = MK_INT((int64_t)neto);
         return 0;
     }
+#endif
     return roda_processo(vm, NULL, vetor, capturar, out);
 }
 
@@ -13563,7 +13830,9 @@ static void fib_offload(VM *vm, void (*fn)(void *), void *arg);   /* def. junto 
  *
  * `canal` é o cano do erro de exec, o único que precisa sobreviver; ele vai
  * pro descritor 3 e é marcado CLOEXEC, então o exec bem-sucedido o fecha
- * sozinho e o pai lê EOF. */
+ * sozinho e o pai lê EOF. (No Windows não há fork: o que atravessa pro filho
+ * é a lista de handles do CreateProcess, na camada de sistema.) */
+#if !defined(PS_SO_WINDOWS)
 static void proc_filho_limpa(int canal)
 {
     if (canal != 3) { dup2(canal, 3); }
@@ -13578,6 +13847,7 @@ static void proc_filho_limpa(int canal)
 #endif
     signal(SIGPIPE, SIG_DFL);
 }
+#endif
 
 /* Cresce `*buf` e acrescenta `n` bytes. 0 ok, -1 sem memória. */
 static int proc_buf_poe(char **buf, int *nbuf, int *cap, const char *dados, int n)
@@ -13615,12 +13885,29 @@ static void proc_ler_off(void *v)
     o->lidos = read(o->fd, o->pedaco, sizeof(o->pedaco));
     o->err = errno;
 }
-typedef struct { int pid; int st; int rc; } ProcEsperaOff;
+/* Espera do processo vivo. `PROC_CODIGO` tira do status o código de saída
+ * (ou `-sinal`); no Windows o status já é o código. */
+#if defined(PS_SO_WINDOWS)
+typedef struct { PsWProc *w; int st; int rc; int err; } ProcEsperaOff;
+static void proc_espera_off(void *v)
+{
+    ProcEsperaOff *o = (ProcEsperaOff *)v;
+    o->rc = ps_w_proc_espera(o->w, &o->st);
+    o->err = errno;
+}
+#define PROC_ESPERA_DE(o, p) ((o).w = &(p)->w, (o).st = 0, (o).rc = 0, (o).err = 0)
+#define PROC_CODIGO(st)      (st)
+#else
+typedef struct { int pid; int st; int rc; int err; } ProcEsperaOff;
 static void proc_espera_off(void *v)
 {
     ProcEsperaOff *o = (ProcEsperaOff *)v;
     o->rc = (int)waitpid(o->pid, &o->st, 0);
+    o->err = errno;
 }
+#define PROC_ESPERA_DE(o, p) ((o).pid = (p)->pid, (o).st = 0, (o).rc = 0, (o).err = 0)
+#define PROC_CODIGO(st)      (WIFEXITED(st) ? WEXITSTATUS(st) : WIFSIGNALED(st) ? -WTERMSIG(st) : 0)
+#endif
 
 static PSProcesso *novo_processo(VM *vm, int pid, int fd_in, int fd_out, int fd_err, int eh_pty)
 {
@@ -13635,6 +13922,47 @@ static PSProcesso *novo_processo(VM *vm, int pid, int fd_in, int fd_out, int fd_
 }
 
 /* Dispara `vetor` com canos (ou um pty) e devolve o objeto do processo. */
+#if defined(PS_SO_WINDOWS)
+/* Windows: canos do CRT, ou um pseudoconsole (ConPTY) de 80x24 como o pty do
+ * Linux. */
+static int os_run_vivo(VM *vm, char **vetor, int pty, Value *out)
+{
+    PsWProc w;
+    int ent = -1, sai = -1, err = -1;
+    if (pty) {
+        if (ps_w_proc_cria_pty(vetor, 80, 24, &ent, &sai, &w) != 0) {
+            int e = errno;
+            BERRO(vm, "IOError", "run(): %s: %s", vetor[0], strerror(e));
+        }
+    } else {
+        int c_ent[2] = {-1,-1}, c_sai[2] = {-1,-1}, c_err[2] = {-1,-1};
+        if (ps_w_cano(c_ent) != 0 || ps_w_cano(c_sai) != 0 || ps_w_cano(c_err) != 0) {
+            int e = errno;
+            for (int i = 0; i < 2; i++) { if (c_ent[i] >= 0) close(c_ent[i]); if (c_sai[i] >= 0) close(c_sai[i]); if (c_err[i] >= 0) close(c_err[i]); }
+            BERRO(vm, "IOError", "run(): nao consegui criar o cano (%s)", strerror(e));
+        }
+        int rc = ps_w_proc_cria(NULL, vetor, c_ent[0], c_sai[1], c_err[1], 0, &w);
+        int e = errno;
+        close(c_ent[0]); close(c_sai[1]); close(c_err[1]);
+        if (rc != 0) {
+            close(c_ent[1]); close(c_sai[0]); close(c_err[0]);
+            BERRO(vm, "IOError", "run(): %s: %s", vetor[0], strerror(e));
+        }
+        ent = c_ent[1]; sai = c_sai[0]; err = c_err[0];
+    }
+    PSProcesso *p = novo_processo(vm, w.pid, ent, sai, err, pty);
+    if (!p) {
+        if (ent >= 0) close(ent);
+        if (sai >= 0) close(sai);
+        if (err >= 0) close(err);
+        ps_w_proc_solta(&w);
+        BERRO(vm, "MemoryError", "sem memoria em run()");
+    }
+    p->w = w;
+    *out = MK_OBJ(p);
+    return 0;
+}
+#else
 static int os_run_vivo(VM *vm, char **vetor, int pty, Value *out)
 {
     proc_recolhe_largados();
@@ -13695,6 +14023,7 @@ static int os_run_vivo(VM *vm, char **vetor, int pty, Value *out)
     *out = MK_OBJ(p);
     return 0;
 }
+#endif
 
 /* Lê uma vez do canal e guarda no buffer do lado certo. Devolve 1 quando
  * chegou algo, 0 no fim do canal e -1 em erro (já com o erro levantado). */
@@ -13827,8 +14156,13 @@ static int met_pr_close(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSProcesso *p = COMO_PROCESSO(alvo);
     if (p->eh_pty) {
         /* Terminal: fechar o mestre mataria a sessão e a saída que falta ler.
-         * O fim de entrada é o caractere de EOF (Ctrl+D), como no teclado. */
+         * O fim de entrada é o do teclado daquele sistema: Ctrl+D no Linux e
+         * no macOS, Ctrl+Z e Enter no console do Windows. */
+#if defined(PS_SO_WINDOWS)
+        if (p->fd_in >= 0) { ssize_t ig = write(p->fd_in, "\x1a\r", 2); (void)ig; }
+#else
         if (p->fd_in >= 0) { char eof = 4; ssize_t ig = write(p->fd_in, &eof, 1); (void)ig; }
+#endif
     } else if (p->fd_in >= 0) {
         close(p->fd_in);
         p->fd_in = -1;
@@ -13843,14 +14177,15 @@ static int met_pr_wait(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n != 0) return erro_aridade(vm, "wait", 0, 0, n);
     PSProcesso *p = COMO_PROCESSO(alvo);
     if (p->terminou) { *out = MK_INT(p->codigo); return 0; }
-    ProcEsperaOff o; o.pid = p->pid; o.st = 0; o.rc = 0;
+    ProcEsperaOff o;
+    PROC_ESPERA_DE(o, p);
     fib_offload(vm, proc_espera_off, &o);
-    if (o.rc < 0) MERRO(vm, "IOError", "wait(): %s", strerror(errno));
+    /* o errno é o da thread que esperou, não o desta */
+    if (o.rc < 0) MERRO(vm, "IOError", "wait(): %s", strerror(o.err));
     p->terminou = 1;
     /* Morto por sinal vira `-sinal`: `p.kill()` dá -15, e quem só olha "== 0"
      * continua vendo que não terminou bem. */
-    p->codigo = WIFEXITED(o.st) ? WEXITSTATUS(o.st)
-              : WIFSIGNALED(o.st) ? -WTERMSIG(o.st) : 0;
+    p->codigo = PROC_CODIGO(o.st);
     *out = MK_INT(p->codigo);
     return 0;
 }
@@ -13866,7 +14201,11 @@ static int met_pr_kill(VM *vm, Value alvo, Value *args, int n, Value *out)
     }
     PSProcesso *p = COMO_PROCESSO(alvo);
     if (p->terminou) { *out = MK_BOOL(0); return 0; }
+#if defined(PS_SO_WINDOWS)
+    *out = MK_BOOL(ps_w_proc_mata(&p->w, sinal) == 0);
+#else
     *out = MK_BOOL(kill((pid_t)p->pid, sinal) == 0);
+#endif
     return 0;
 }
 
@@ -13879,6 +14218,13 @@ static int met_pr_resize(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSProcesso *p = COMO_PROCESSO(alvo);
     if (!p->eh_pty)
         MERRO(vm, "RuntimeError", "erro de execução: resize() so vale com pty=true (sem terminal nao ha tamanho)");
+#if defined(PS_SO_WINDOWS)
+    /* o pseudoconsole avisa o filho sozinho (o SIGWINCH do Linux) */
+    if (ps_w_proc_redimensiona(&p->w, (int)args[0].as.i, (int)args[1].as.i) != 0)
+        MERRO(vm, "IOError", "resize(): %s", strerror(errno));
+    *out = MK_BOOL(1);
+    return 0;
+#else
     struct winsize ws;
     ws.ws_col = (unsigned short)args[0].as.i;
     ws.ws_row = (unsigned short)args[1].as.i;
@@ -13887,6 +14233,7 @@ static int met_pr_resize(VM *vm, Value alvo, Value *args, int n, Value *out)
     kill((pid_t)p->pid, SIGWINCH);             /* o filho redesenha */
     *out = MK_BOOL(1);
     return 0;
+#endif
 }
 
 /* `capture=true, pty=true`: roda no terminal e devolve o texto no fim. Serve
@@ -13906,11 +14253,15 @@ static int os_run_captura_pty(VM *vm, char **vetor, Value *out)
         if (r < 0) { vm->sp--; return -1; }
         if (r == 0) break;
     }
-    ProcEsperaOff o; o.pid = p->pid; o.st = 0; o.rc = 0;
+    ProcEsperaOff o;
+    PROC_ESPERA_DE(o, p);
     fib_offload(vm, proc_espera_off, &o);
     p->terminou = 1;
-    p->codigo = WIFEXITED(o.st) ? WEXITSTATUS(o.st) : WIFSIGNALED(o.st) ? -WTERMSIG(o.st) : 0;
-    if (p->fd_out >= 0) { close(p->fd_out); p->fd_out = -1; p->fd_in = -1; }
+    p->codigo = PROC_CODIGO(o.st);
+    /* no Windows a entrada do console é um cano à parte */
+    if (p->fd_in >= 0 && p->fd_in != p->fd_out) close(p->fd_in);
+    if (p->fd_out >= 0) close(p->fd_out);
+    p->fd_out = -1; p->fd_in = -1;
     /* mesma aparação do `capture=true` de sempre */
     int fim = p->nbuf;
     while (fim > 0 && (p->buf[fim-1] == '\n' || p->buf[fim-1] == ' '
@@ -14000,6 +14351,38 @@ static int mod_os_code(VM *vm, Value *args, int n, Value *out)
     }
     static const char *EDITORES[] = {"code","cursor","zed","nano","vim"};
     const char *caminho_env = getenv("PATH");
+#if defined(PS_SO_WINDOWS)
+    /* No Windows o PATH separa com `;`, o programa tem extensão (o `code` é
+     * `code.cmd`) e um `.cmd` só roda pelo cmd.exe. Sai solto, como o fork
+     * duplo do Linux. */
+    static const char *EXTS[] = {".exe", ".cmd", ".bat"};
+    for (size_t i = 0; i < sizeof(EDITORES)/sizeof(EDITORES[0]); i++) {
+        if (!caminho_env) break;
+        char copia[4096];
+        snprintf(copia, sizeof(copia), "%s", caminho_env);
+        for (char *dir = strtok(copia, ";"); dir; dir = strtok(NULL, ";")) {
+            for (size_t e = 0; e < sizeof(EXTS)/sizeof(EXTS[0]); e++) {
+                char bin[2048];
+                snprintf(bin, sizeof(bin), "%s\\%s%s", dir, EDITORES[i], EXTS[e]);
+                if (_access(bin, 0) != 0) continue;
+                PsWProc w;
+                int rc;
+                if (e == 0) {
+                    char *vetor[] = { bin, (char *)alvo, NULL };
+                    rc = ps_w_proc_cria(NULL, vetor, -1, -1, -1, 1, &w);
+                } else {
+                    char linha[4200];
+                    snprintf(linha, sizeof(linha), "\"%s\" \"%s\"", bin, alvo);
+                    rc = ps_w_proc_cria(linha, NULL, -1, -1, -1, 1, &w);
+                }
+                if (rc == 0) ps_w_proc_solta(&w);
+                char msg[64];
+                int k = snprintf(msg, sizeof(msg), "Abrindo %s...", EDITORES[i]);
+                return devolve_texto(vm, out, msg, k);
+            }
+        }
+    }
+#else
     for (size_t i = 0; i < sizeof(EDITORES)/sizeof(EDITORES[0]); i++) {
         if (!caminho_env) break;
         char copia[4096];
@@ -14028,6 +14411,7 @@ static int mod_os_code(VM *vm, Value *args, int n, Value *out)
             return devolve_texto(vm, out, msg, k);
         }
     }
+#endif
     return devolve_texto(vm, out, "Nenhum editor encontrado", 24);
 }
 
@@ -14760,16 +15144,12 @@ static int sk_exige(VM *vm, Value alvo, const char *quem, PSSocket **out)
  * >0 = SO_RCVTIMEO/SO_SNDTIMEO (recv/send/accept honram no Linux). */
 static void sk_aplica_timeout(PSSocket *s)
 {
-    int fl = fcntl(s->fd, F_GETFL, 0);
-    if (s->timeout == 0.0) { fcntl(s->fd, F_SETFL, fl | O_NONBLOCK); return; }
-    fcntl(s->fd, F_SETFL, fl & ~O_NONBLOCK);
-    struct timeval tv = {0, 0};
-    if (s->timeout > 0) {
-        tv.tv_sec = (time_t)s->timeout;
-        tv.tv_usec = (suseconds_t)((s->timeout - (double)tv.tv_sec) * 1e6);
-    }
-    setsockopt(s->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(s->fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    if (s->timeout == 0.0) { ps_sock_nao_bloqueia(s->fd, 1); return; }
+    ps_sock_nao_bloqueia(s->fd, 0);
+    /* 0 ms = sem prazo (bloqueia) nos dois sistemas */
+    int ms = s->timeout > 0 ? (int)(s->timeout * 1000.0 + 0.5) : 0;
+    if (s->timeout > 0 && ms == 0) ms = 1;
+    ps_sock_timeout(s->fd, ms, ms);
 }
 
 /* erro de socket: timeout vira "timed out", o resto `[Errno N] strerror` */
@@ -14892,19 +15272,19 @@ static void sk_conn_off(void *p)
     SkConnOff *o = (SkConnOff *)p;
     if (o->timeout >= 0) {
         /* com prazo: não-bloqueante + poll + SO_ERROR */
-        int fl = fcntl(o->fd, F_GETFL, 0);
-        fcntl(o->fd, F_SETFL, fl | O_NONBLOCK);
+        ps_sock_nao_bloqueia(o->fd, 1);
         int rc = connect(o->fd, o->sa, o->sl);
         if (rc != 0 && errno == EINPROGRESS) {
             struct pollfd pf = { o->fd, POLLOUT, 0 };
             int pr = poll(&pf, 1, o->timeout > 0 ? (int)(o->timeout * 1000) : 0);
-            if (pr <= 0) { o->rc = -1; o->err = ETIMEDOUT; fcntl(o->fd, F_SETFL, fl); return; }
+            if (pr <= 0) { o->rc = -1; o->err = ETIMEDOUT; ps_sock_nao_bloqueia(o->fd, o->timeout == 0); return; }
             int soerr = 0; socklen_t sn = sizeof(soerr);
             getsockopt(o->fd, SOL_SOCKET, SO_ERROR, &soerr, &sn);
             rc = soerr ? -1 : 0; errno = soerr;
         }
         o->rc = rc; o->err = rc ? errno : 0;
-        fcntl(o->fd, F_SETFL, fl);   /* volta ao modo de antes */
+        /* volta ao modo do socket: não-bloqueante só com timeout 0 */
+        ps_sock_nao_bloqueia(o->fd, o->timeout == 0);
         return;
     }
     int rc;
@@ -14996,7 +15376,7 @@ static int met_sk_accept(VM *vm, Value alvo, Value *args, int n, Value *out)
     fib_offload(vm, sk_acc_off, &o);
     if (o.novofd < 0) SK_ERRNO(vm, "accept", o.err);
     PSSocket *ns = novo_socket(vm, o.novofd, s->familia, s->tipo, s->proto);
-    if (!ns) { close(o.novofd); MERRO(vm, "MemoryError", "sem memoria"); }
+    if (!ns) { ps_sock_fecha(o.novofd); MERRO(vm, "MemoryError", "sem memoria"); }
     ns->timeout = s->timeout;
     if (ns->timeout >= 0) sk_aplica_timeout(ns);
     Value av;
@@ -15126,7 +15506,7 @@ static int met_sk_close(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)vm; (void)args; (void)n;
     PSSocket *s = COMO_SOCKET(alvo);
-    if (s->fd >= 0) { close(s->fd); s->fd = -1; }
+    if (s->fd >= 0) { ps_sock_fecha(s->fd); s->fd = -1; }
     *out = MK_NULL();
     return 0;
 }
@@ -15271,10 +15651,10 @@ static int met_sk_dup(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args; (void)n;
     PSSocket *s = NULL; if (sk_exige(vm, alvo, "dup", &s) != 0) return -1;
-    int nf = dup(s->fd);
+    int nf = ps_sock_dup(s->fd);
     if (nf < 0) SK_ERRNO(vm, "dup", errno);
     PSSocket *ns = novo_socket(vm, nf, s->familia, s->tipo, s->proto);
-    if (!ns) { close(nf); MERRO(vm, "MemoryError", "sem memoria"); }
+    if (!ns) { ps_sock_fecha(nf); MERRO(vm, "MemoryError", "sem memoria"); }
     ns->timeout = s->timeout;
     *out = MK_OBJ(ns);
     return 0;
@@ -15290,7 +15670,7 @@ static int mod_sk_socket(VM *vm, Value *args, int n, Value *out)
     int fd = socket(familia, tipo, proto);
     if (fd < 0) BERRO(vm, "RuntimeError", "socket: %s", strerror(errno));
     PSSocket *s = novo_socket(vm, fd, familia, tipo, proto);
-    if (!s) { close(fd); BERRO(vm, "MemoryError", "sem memoria"); }
+    if (!s) { ps_sock_fecha(fd); BERRO(vm, "MemoryError", "sem memoria"); }
     if (g_sk_def_timeout >= 0) { s->timeout = g_sk_def_timeout; sk_aplica_timeout(s); }
     *out = MK_OBJ(s);
     return 0;
@@ -15302,7 +15682,7 @@ static int mod_sk_create_connection(VM *vm, Value *args, int n, Value *out)
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) BERRO(vm, "RuntimeError", "create_connection: %s", strerror(errno));
     PSSocket *s = novo_socket(vm, fd, AF_INET, SOCK_STREAM, 0);
-    if (!s) { close(fd); BERRO(vm, "MemoryError", "sem memoria"); }
+    if (!s) { ps_sock_fecha(fd); BERRO(vm, "MemoryError", "sem memoria"); }
     if (n >= 2 && args[1].t != V_NULL && args[1].t != V_UNSET) {
         s->timeout = args[1].t == V_FLOAT ? args[1].as.d : (double)args[1].as.i;
         sk_aplica_timeout(s);
@@ -15314,7 +15694,7 @@ static int mod_sk_create_connection(VM *vm, Value *args, int n, Value *out)
     }
     int err;
     if (sk_connect_nucleo(vm, MK_OBJ(s), args[0], "create_connection", &err) != 0) return -1;
-    if (err) { close(s->fd); s->fd = -1; SK_ERRNO(vm, "create_connection", err); }
+    if (err) { ps_sock_fecha(s->fd); s->fd = -1; SK_ERRNO(vm, "create_connection", err); }
     *out = MK_OBJ(s);
     return 0;
 }
@@ -15325,10 +15705,16 @@ static int mod_sk_create_server(VM *vm, Value *args, int n, Value *out)
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) BERRO(vm, "RuntimeError", "create_server: %s", strerror(errno));
     PSSocket *s = novo_socket(vm, fd, AF_INET, SOCK_STREAM, 0);
-    if (!s) { close(fd); BERRO(vm, "MemoryError", "sem memoria"); }
+    if (!s) { ps_sock_fecha(fd); BERRO(vm, "MemoryError", "sem memoria"); }
+    ps_sock_reusa_endereco(fd);
+#ifdef SO_REUSEPORT
     int um = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &um, sizeof(um));
     if (n >= 3 && val_truthy(&args[2])) setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &um, sizeof(um));
+#else
+    /* o Windows não tem SO_REUSEPORT: pedir e não ter é erro, não silêncio */
+    if (n >= 3 && val_truthy(&args[2]))
+        BERRO(vm, "ValueError", "create_server: reuse_port nao existe neste sistema (SO_REUSEPORT)");
+#endif
     struct sockaddr_storage sa; socklen_t sl;
     if (sk_monta_addr(vm, AF_INET, SOCK_STREAM, args[0], "create_server", &sa, &sl, 1) != 0) return -1;
     if (bind(fd, (struct sockaddr *)&sa, sl) != 0) BERRO(vm, "RuntimeError", "create_server: %s", strerror(errno));
@@ -15343,12 +15729,19 @@ static int mod_sk_socketpair(VM *vm, Value *args, int n, Value *out)
     (void)args;
     if (n != 0) return erro_aridade(vm, "socketpair", 0, 0, n);
     int par[2];
+#if defined(PS_SO_WINDOWS)
+    /* o Windows não tem socketpair: um par TCP no loopback (família AF_INET) */
+    const int fam_par = AF_INET;
+    if (ps_socketpair(par) != 0)
+#else
+    const int fam_par = AF_UNIX;
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, par) != 0)
+#endif
         BERRO(vm, "RuntimeError", "socketpair: %s", strerror(errno));
-    PSSocket *a = novo_socket(vm, par[0], AF_UNIX, SOCK_STREAM, 0);
-    if (!a) { close(par[0]); close(par[1]); BERRO(vm, "MemoryError", "sem memoria"); }
-    PSSocket *b = novo_socket(vm, par[1], AF_UNIX, SOCK_STREAM, 0);
-    if (!b) { close(par[1]); BERRO(vm, "MemoryError", "sem memoria"); }
+    PSSocket *a = novo_socket(vm, par[0], fam_par, SOCK_STREAM, 0);
+    if (!a) { ps_sock_fecha(par[0]); ps_sock_fecha(par[1]); BERRO(vm, "MemoryError", "sem memoria"); }
+    PSSocket *b = novo_socket(vm, par[1], fam_par, SOCK_STREAM, 0);
+    if (!b) { ps_sock_fecha(par[1]); BERRO(vm, "MemoryError", "sem memoria"); }
     PSList *t = lista_com_cap(vm, 2, OBJ_TUPLE);
     if (!t) BERRO(vm, "MemoryError", "sem memoria");
     t->itens[0] = MK_OBJ(a); t->itens[1] = MK_OBJ(b); t->len = 2;
@@ -15695,7 +16088,7 @@ static int mod_sk_has_dualstack_ipv6(VM *vm, Value *args, int n, Value *out)
     if (fd < 0) { *out = MK_BOOL(0); return 0; }
     int zero = 0;
     int ok = setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &zero, sizeof(zero)) == 0;
-    close(fd);
+    ps_sock_fecha(fd);
     *out = MK_BOOL(ok);
     return 0;
 }
@@ -15765,16 +16158,31 @@ SK_CONST(TCP_KEEPIDLE)
 SK_CONST(TCP_KEEPALIVE)
 #endif
 SK_CONST(SOCK_STREAM)  SK_CONST(SOCK_DGRAM)  SK_CONST(SOCK_RAW)    SK_CONST(SOCK_SEQPACKET)
-SK_CONST(SOL_SOCKET)   SK_CONST(SO_REUSEADDR) SK_CONST(SO_REUSEPORT) SK_CONST(SO_KEEPALIVE)
+SK_CONST(SOL_SOCKET)   SK_CONST(SO_REUSEADDR) SK_CONST(SO_KEEPALIVE)
+#ifdef SO_REUSEPORT
+SK_CONST(SO_REUSEPORT)
+#endif
 SK_CONST(SO_BROADCAST) SK_CONST(SO_LINGER)   SK_CONST(SO_RCVBUF)   SK_CONST(SO_SNDBUF)
 SK_CONST(SO_ERROR)     SK_CONST(SO_RCVTIMEO) SK_CONST(SO_SNDTIMEO) SK_CONST(SO_OOBINLINE)
 SK_CONST(SO_DONTROUTE) SK_CONST(SO_TYPE)
-SK_CONST(TCP_NODELAY)  SK_CONST(TCP_KEEPINTVL) SK_CONST(TCP_KEEPCNT)
+SK_CONST(TCP_NODELAY)
+#ifdef TCP_KEEPINTVL
+SK_CONST(TCP_KEEPINTVL)
+#endif
+#ifdef TCP_KEEPCNT
+SK_CONST(TCP_KEEPCNT)
+#endif
 SK_CONST(IPPROTO_IP)   SK_CONST(IPPROTO_TCP) SK_CONST(IPPROTO_UDP) SK_CONST(IPPROTO_ICMP)
 SK_CONST(IPPROTO_RAW)
 SK_CONST(SHUT_RD)      SK_CONST(SHUT_WR)     SK_CONST(SHUT_RDWR)
-SK_CONST(MSG_PEEK)     SK_CONST(MSG_WAITALL) SK_CONST(MSG_DONTWAIT) SK_CONST(MSG_OOB)
-SK_CONST(MSG_DONTROUTE) SK_CONST(MSG_TRUNC)
+SK_CONST(MSG_PEEK)     SK_CONST(MSG_WAITALL) SK_CONST(MSG_OOB)
+SK_CONST(MSG_DONTROUTE)
+#ifdef MSG_DONTWAIT
+SK_CONST(MSG_DONTWAIT)
+#endif
+#ifdef MSG_TRUNC
+SK_CONST(MSG_TRUNC)
+#endif
 SK_CONST(AI_PASSIVE)   SK_CONST(AI_CANONNAME) SK_CONST(AI_NUMERICHOST) SK_CONST(AI_NUMERICSERV)
 SK_CONST(AI_ADDRCONFIG) SK_CONST(AI_V4MAPPED) SK_CONST(AI_ALL)
 SK_CONST(NI_NUMERICHOST) SK_CONST(NI_NUMERICSERV) SK_CONST(NI_NOFQDN) SK_CONST(NI_NAMEREQD)
@@ -15816,7 +16224,10 @@ static const MembroMod MOD_SOCKETS[] = {
     SK_C(AF_PACKET),
 #endif
     SK_C(SOCK_STREAM), SK_C(SOCK_DGRAM), SK_C(SOCK_RAW), SK_C(SOCK_SEQPACKET),
-    SK_C(SOL_SOCKET), SK_C(SO_REUSEADDR), SK_C(SO_REUSEPORT), SK_C(SO_KEEPALIVE),
+    SK_C(SOL_SOCKET), SK_C(SO_REUSEADDR), SK_C(SO_KEEPALIVE),
+#ifdef SO_REUSEPORT
+    SK_C(SO_REUSEPORT),
+#endif
     SK_C(SO_BROADCAST), SK_C(SO_LINGER), SK_C(SO_RCVBUF), SK_C(SO_SNDBUF),
     SK_C(SO_ERROR), SK_C(SO_RCVTIMEO), SK_C(SO_SNDTIMEO), SK_C(SO_OOBINLINE),
     SK_C(SO_DONTROUTE), SK_C(SO_TYPE),
@@ -15827,12 +16238,23 @@ static const MembroMod MOD_SOCKETS[] = {
 #if defined(TCP_KEEPALIVE) && !defined(PS_SO_LINUX)
     SK_C(TCP_KEEPALIVE),
 #endif
-    SK_C(TCP_KEEPINTVL), SK_C(TCP_KEEPCNT),
+#ifdef TCP_KEEPINTVL
+    SK_C(TCP_KEEPINTVL),
+#endif
+#ifdef TCP_KEEPCNT
+    SK_C(TCP_KEEPCNT),
+#endif
     SK_C(IPPROTO_IP), SK_C(IPPROTO_TCP), SK_C(IPPROTO_UDP), SK_C(IPPROTO_ICMP),
     SK_C(IPPROTO_RAW),
     SK_C(SHUT_RD), SK_C(SHUT_WR), SK_C(SHUT_RDWR),
-    SK_C(MSG_PEEK), SK_C(MSG_WAITALL), SK_C(MSG_DONTWAIT), SK_C(MSG_OOB),
-    SK_C(MSG_DONTROUTE), SK_C(MSG_TRUNC),
+    SK_C(MSG_PEEK), SK_C(MSG_WAITALL), SK_C(MSG_OOB),
+    SK_C(MSG_DONTROUTE),
+#ifdef MSG_DONTWAIT
+    SK_C(MSG_DONTWAIT),
+#endif
+#ifdef MSG_TRUNC
+    SK_C(MSG_TRUNC),
+#endif
     SK_C(AI_PASSIVE), SK_C(AI_CANONNAME), SK_C(AI_NUMERICHOST), SK_C(AI_NUMERICSERV),
     SK_C(AI_ADDRCONFIG), SK_C(AI_V4MAPPED), SK_C(AI_ALL),
     SK_C(NI_NUMERICHOST), SK_C(NI_NUMERICSERV), SK_C(NI_NOFQDN), SK_C(NI_NAMEREQD),
@@ -18772,7 +19194,7 @@ static int met_mcol_find(VM *vm, Value alvo, Value *args, int n, Value *out);   
 /* mongo offloadado: as ops de rede (find/insert/update/remove/count/connect)
  * rodam numa thread do pool e a fibra cede — igual postgres/mysql, pra `await`
  * no mongo não travar o worker. Só dados C (PSMongo + JSON) viajam pra thread. */
-typedef struct { PSMongo *m; const char *col, *q; int umso; long skip, limit; const char *sort;
+typedef struct { PSMongo *m; const char *col, *q; int umso; int64_t skip, limit; const char *sort;
                  char **rj; char *erro; size_t cap; int rc; } MgFindOff;
 static void mg_find_off(void *p){ MgFindOff *o = (MgFindOff *)p;
     o->rc = ps_mongo_find(o->m, o->col, o->q, o->umso, o->skip, o->limit, o->sort,
@@ -18786,7 +19208,7 @@ static void mg_upd_off(void *p){ MgUpdOff *o = (MgUpdOff *)p;
 typedef struct { PSMongo *m; const char *col, *q; char *erro; size_t cap; int rc; } MgRmOff;
 static void mg_rm_off(void *p){ MgRmOff *o = (MgRmOff *)p;
     o->rc = ps_mongo_remove(o->m, o->col, o->q, o->erro, o->cap); }
-typedef struct { PSMongo *m; const char *col, *q; char *erro; size_t cap; long rc; } MgCntOff;
+typedef struct { PSMongo *m; const char *col, *q; char *erro; size_t cap; int64_t rc; } MgCntOff;
 static void mg_cnt_off(void *p){ MgCntOff *o = (MgCntOff *)p;
     o->rc = ps_mongo_count(o->m, o->col, o->q, o->erro, o->cap); }
 typedef struct { const char *uri, *db; char *erro; size_t cap; PSMongo *m; } MgConnOff;
@@ -18795,7 +19217,7 @@ static void mg_conn_off(void *p){ MgConnOff *o = (MgConnOff *)p;
 
 /* `skip`/`limit` do find: Null (o buraco de um nomeado pulado) é o padrão 0;
  * fora isso, só int >= 0. 0/-1 com o erro posto. */
-static int mongo_inteiro_opcional(VM *vm, Value v, const char *nome, long *out)
+static int mongo_inteiro_opcional(VM *vm, Value v, const char *nome, int64_t *out)
 {
     *out = 0;
     if (v.t == V_NULL || v.t == V_UNSET) return 0;
@@ -18803,7 +19225,7 @@ static int mongo_inteiro_opcional(VM *vm, Value v, const char *nome, long *out)
         MERRO(vm, "TypeError", "find(): '%s' tem que ser int, nao %s", nome, nome_do_tipo_valor(v));
     if (v.as.i < 0)
         MERRO(vm, "ValueError", "find(): '%s' nao pode ser negativo (%lld)", nome, (long long)v.as.i);
-    *out = (long)v.as.i;
+    *out = v.as.i;
     return 0;
 }
 
@@ -18817,7 +19239,7 @@ static int mongo_faz_find(VM *vm, Value alvo, Value *args, int n, int um_so, Val
     PSMongoCol *mc = COMO_MONGOCOL(alvo);
     PSMongoConn *cn = COMO_MONGOCONN(mc->conexao);
     if (cn->fechado) MERRO(vm, "TypeError", "conexao fechada");
-    long skip = 0, limit = 0;
+    int64_t skip = 0, limit = 0;
     if (n >= 2 && mongo_inteiro_opcional(vm, args[1], "skip", &skip) != 0) return -1;
     if (n >= 3 && mongo_inteiro_opcional(vm, args[2], "limit", &limit) != 0) return -1;
     char *sj = NULL;
@@ -18929,7 +19351,7 @@ static int met_mcol_count(VM *vm, Value alvo, Value *args, int n, Value *out)
     char erro[512];
     MgCntOff no = { cn->m, mc->nome, qj, erro, sizeof(erro), 0 };
     fib_offload(vm, mg_cnt_off, &no);
-    long r = no.rc;
+    int64_t r = no.rc;
     free(qj);
     if (r < 0) { snprintf(vm->erro,sizeof(vm->erro),"%.200s",erro); snprintf(vm->erro_tipo,sizeof(vm->erro_tipo),"DatabaseError"); return -1; }
     *out = MK_INT(r);
@@ -19371,8 +19793,8 @@ static int met_jresp_cookie(VM *vm, Value alvo, Value *args, int n, Value *out)
         MERRO(vm, "ValueError", "cookie() nao aceita quebra de linha no nome nem no valor");
 
     const char *path = (n > 2 && EH_STRING(args[2])) ? COMO_STRING(args[2])->chars : "/";
-    long max_age = -1;
-    if (n > 3 && args[3].t == V_INT) max_age = (long)args[3].as.i;
+    int64_t max_age = -1;               /* int64: o `long` do Windows tem 32 bits */
+    if (n > 3 && args[3].t == V_INT) max_age = args[3].as.i;
     /* "não veio" tem que ser distinguido de "veio falso": a chamada por NOME
      * preenche os slots pulados com UNSET (`pos[k] = MK_UNSET()` no OP_CALL_KW),
      * e `val_truthy(UNSET)` é falso. Sem esta distinção, nomear `secure`,
@@ -19396,7 +19818,7 @@ static int met_jresp_cookie(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (w > 0 && (size_t)w < sizeof(linha) && path && *path)
         w += snprintf(linha + w, sizeof(linha) - (size_t)w, "; Path=%s", path);
     if (w > 0 && (size_t)w < sizeof(linha) && max_age >= 0)
-        w += snprintf(linha + w, sizeof(linha) - (size_t)w, "; Max-Age=%ld", max_age);
+        w += snprintf(linha + w, sizeof(linha) - (size_t)w, "; Max-Age=%lld", (long long)max_age);
     if (w > 0 && (size_t)w < sizeof(linha) && domain && *domain)
         w += snprintf(linha + w, sizeof(linha) - (size_t)w, "; Domain=%s", domain);
     if (w > 0 && (size_t)w < sizeof(linha) && samesite && *samesite)
@@ -20220,7 +20642,7 @@ static int jk_poolip_check(PSJinker *j, const char *ip, char *motivo, size_t mca
             j->nbans++;
         }
         h->n = 0;
-        snprintf(motivo, mcap, "Rate limit excedido — IP banido por %ld dia(s)", j->ip_bloq);
+        snprintf(motivo, mcap, "Rate limit excedido — IP banido por %lld dia(s)", (long long)j->ip_bloq);
         return 0;
     }
     return 1;
@@ -20945,7 +21367,7 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
             if (nc < 0) nc = 0;
             if ((size_t)nc >= sizeof(corpo)) nc = (int)sizeof(corpo) - 1;
             char extra[64];
-            snprintf(extra, sizeof(extra), "Retry-After: %ld\r\n", j->ip_bloq * 86400);
+            snprintf(extra, sizeof(extra), "Retry-After: %lld\r\n", (long long)j->ip_bloq * 86400);
             ps_jk_responde(c, 429, "application/json; charset=utf-8", corpo, (size_t)nc, extra, hr->keep_alive);
             return hr->keep_alive;
         }
@@ -21478,6 +21900,51 @@ static void fut_guarda_erro(PSFuturo *fu)
     g_futs_erro[g_nfuts_erro++] = fu;
 }
 
+/* Os três vetores da fibra (pilha de valores, locais e quadros: ~128 KB) num
+ * mapeamento só, que vira RAM página a página conforme é TOCADO. Com `calloc`
+ * cada fibra ficava com os 128 KB residentes (o calloc zera o bloco inteiro)
+ * mesmo usando só o começo: 9000 tarefas suspensas davam 923 MB de RSS
+ * (medido), e no runner do macOS o caso do pool cheio passava de 20 s. Sob o
+ * ASan continua `calloc`, pro sanitizer vigiar o estouro de cada vetor. */
+#define FIB_VET_TAM ((FIB_STACK + FIB_LOCALS) * sizeof(Value) + FIB_FRAMES * sizeof(Frame))
+#if defined(__SANITIZE_ADDRESS__)
+#  define FIB_VET_CALLOC 1
+#elif defined(__has_feature)
+#  if __has_feature(address_sanitizer)
+#    define FIB_VET_CALLOC 1
+#  endif
+#endif
+static int fib_vetores(Fiber *f)
+{
+    if (f->stack) return 0;
+#if defined(FIB_VET_CALLOC)
+    f->stack  = calloc(FIB_STACK,  sizeof(Value));
+    f->locals = calloc(FIB_LOCALS, sizeof(Value));
+    f->frames = calloc(FIB_FRAMES, sizeof(Frame));
+    if (!f->stack || !f->locals || !f->frames) {
+        free(f->stack); free(f->locals); free(f->frames);
+        f->stack = NULL; f->locals = NULL; f->frames = NULL;
+        return -1;
+    }
+#else
+    char *m = ps_mem_zerada(FIB_VET_TAM);
+    if (!m) return -1;
+    f->stack  = (Value *)m;
+    f->locals = (Value *)(m + FIB_STACK * sizeof(Value));
+    f->frames = (Frame *)(m + (FIB_STACK + FIB_LOCALS) * sizeof(Value));
+#endif
+    return 0;
+}
+static void fib_vetores_solta(Fiber *f)
+{
+#if defined(FIB_VET_CALLOC)
+    free(f->stack); free(f->locals); free(f->frames);
+#else
+    ps_mem_zerada_solta(f->stack, FIB_VET_TAM);
+#endif
+    f->stack = NULL; f->locals = NULL; f->frames = NULL;
+}
+
 /* Devolve o pool inteiro ao sistema. O pool nunca era desmontado — as pilhas
  * viviam até o processo morrer, o que "funcionava" porque `malloc` some junto.
  * Com `mmap` isso vira mapeamento pendurado, e o valgrind/ASan passam a
@@ -21487,8 +21954,9 @@ static void fib_pool_solta(void)
     for (int i = 0; i < g_nfibs; i++) {
         Fiber *f = g_fibs[i];
         if (!f) continue;
+        ps_ctx_solta(&f->ctx);
         fib_pilha_solta(f->cstack);
-        free(f->stack); free(f->locals); free(f->frames);
+        fib_vetores_solta(f);
         free(f);
     }
     free(g_fibs);
@@ -21650,11 +22118,9 @@ static Fiber *fib_pega(VM *vm, PSJinker *j, struct PSJkConn *c, const char *ip)
 {
     Fiber *f = fib_slot();
     if (!f) return NULL;
-    if (!f->stack)  f->stack  = calloc(FIB_STACK,  sizeof(Value));
-    if (!f->locals) f->locals = calloc(FIB_LOCALS, sizeof(Value));
-    if (!f->frames) f->frames = calloc(FIB_FRAMES, sizeof(Frame));
+    if (fib_vetores(f) != 0) return NULL;
     if (!f->cstack) f->cstack = fib_pilha_nova();
-    if (!f->stack || !f->locals || !f->frames || !f->cstack) return NULL;
+    if (!f->cstack) return NULL;
     f->pilha_base = NULL; f->pilha_tam = 0;   /* o trampolim remarca */
     f->usada = 1; f->status = FIB_SUSPENSA; f->kind = FIB_HTTP;
     f->sp = 0; f->locals_top = 0; f->frame_topo = 0; f->jk_req = MK_NULL();
@@ -21709,11 +22175,9 @@ static PSFuturo *fib_pega_async(VM *vm, const Alvo *a, const Value *pos, int npo
 {
     Fiber *f = fib_slot();
     if (!f) return NULL;
-    if (!f->stack)  f->stack  = calloc(FIB_STACK,  sizeof(Value));
-    if (!f->locals) f->locals = calloc(FIB_LOCALS, sizeof(Value));
-    if (!f->frames) f->frames = calloc(FIB_FRAMES, sizeof(Frame));
+    if (fib_vetores(f) != 0) return NULL;
     if (!f->cstack) f->cstack = fib_pilha_nova();
-    if (!f->stack || !f->locals || !f->frames || !f->cstack) return NULL;
+    if (!f->cstack) return NULL;
     /* As tups nascem ANTES de a fibra ficar `usada`: sem memória no meio, o
      * slot continua livre e nenhuma raiz aponta pra lixo. */
     Value tpos, tkwn = MK_NULL(), tkwv = MK_NULL();
@@ -22366,7 +22830,19 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     }
 
     char erro[256];
+#if defined(PS_SO_WINDOWS)
+    /* worker no Windows: o socket de escuta vem do pai (não há fork) */
+    int w_indice = -1;
+    int fd = ps_w_jk_socket_herdado(&w_indice);
+    if (fd == -2) {
+        int e = errno;
+        if (ssl_ctx) ps_jk_tls_ctx_solta(ssl_ctx);
+        BERRO(vm, "NetworkError", "worker do jinker: o socket de escuta nao chegou (%s)", strerror(e));
+    }
+    if (fd < 0) fd = ps_jk_listen(host, porta, erro, sizeof(erro));
+#else
     int fd = ps_jk_listen(host, porta, erro, sizeof(erro));
+#endif
     if (fd < 0) { if (ssl_ctx) ps_jk_tls_ctx_solta(ssl_ctx); BERRO(vm, "NetworkError", "%s", erro); }
     /* Multi-processo (prefork): workers>1 forka N processos que dividem o
      * socket HTTP (o kernel balanceia o accept()). Cada worker tem a PRÓPRIA
@@ -22378,6 +22854,30 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (workers > 256) workers = 256;
     int sirvo_ws = 1;
 
+#if defined(PS_SO_WINDOWS)
+    /* Sem fork: cada worker é o programa rodado de novo, que chega até aqui e
+     * recebe o socket (acima). O pai só supervisiona. */
+    if (workers > 1 && w_indice >= 0) {
+        sirvo_ws = (w_indice == 0);           /* worker: cai pro laço de servir */
+    } else if (workers > 1) {
+        printf("[jinker] multi-processo: %d workers em %s://%s:%d\n", workers, proto, host, porta);
+        fflush(stdout);
+        PsWProc kids[256];
+        int nk = 0;
+        for (int w = 0; w < workers; w++) {
+            if (ps_w_jk_worker(fd, w, &kids[nk]) != 0) break;
+            nk++;
+        }
+        signal(SIGINT, jk_sigint);
+        signal(SIGBREAK, jk_sigint);
+        g_jk_parar = 0;
+        ps_w_jk_espera_workers(kids, nk, &g_jk_parar);
+        ps_sock_fecha(fd);
+        if (ssl_ctx) ps_jk_tls_ctx_solta(ssl_ctx);
+        *out = MK_NULL();
+        return 0;
+    }
+#else
     if (workers > 1) {
         printf("[jinker] multi-processo: %d workers em %s://%s:%d\n", workers, proto, host, porta);
         fflush(stdout);
@@ -22410,6 +22910,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
         }
         /* FILHO: cai pro loop de servir abaixo. */
     }
+#endif
 
     /* WebSocket num socket separado em port+1 — só quem serve WS abre. */
     int fd_ws = -1;
@@ -22435,13 +22936,20 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
 
     if (workers == 1) {
         printf("[jinker] servidor rodando em %s://%s:%d\n", proto, host, porta);
-        if (j->poolip_on) printf("[jinker] PoolIp ativo — rate: %ld req/min, ban: %ld dia(s)\n", j->ip_rate, j->ip_bloq);
+        if (j->poolip_on) printf("[jinker] PoolIp ativo — rate: %lld req/min, ban: %lld dia(s)\n",
+                                 (long long)j->ip_rate, (long long)j->ip_bloq);
         if (j->debug) printf("[jinker] modo debug ativado\n");
     }
     fflush(stdout);
 
+#if defined(PS_SO_WINDOWS)
+    /* o Ctrl+C e o Ctrl+Break do console (o Windows não manda SIGTERM) */
+    signal(SIGINT, jk_sigint);
+    signal(SIGBREAK, jk_sigint);
+#else
     struct sigaction sa; memset(&sa, 0, sizeof(sa));
     sa.sa_handler = jk_sigint; sigaction(SIGINT, &sa, NULL); sigaction(SIGTERM, &sa, NULL);
+#endif
     g_jk_parar = 0;
 
     /* auto-reload (dev): vigia o mtime do .pr de entrada e RE-EXECUTA o processo
@@ -22467,7 +22975,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     int epfd_meu = g_jk_epfd < 0;
     int epfd = epfd_meu ? ps_ev_cria() : g_jk_epfd;
     if (epfd < 0) {
-        close(fd); if (fd_ws >= 0) close(fd_ws); if (ssl_ctx) ps_jk_tls_ctx_solta(ssl_ctx);
+        ps_sock_fecha(fd); if (fd_ws >= 0) ps_sock_fecha(fd_ws); if (ssl_ctx) ps_jk_tls_ctx_solta(ssl_ctx);
         BERRO(vm, "NetworkError", "laco de eventos: %s", strerror(errno));
     }
     g_jk_epfd = epfd;
@@ -22594,7 +23102,17 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
             if (stat(vm->nome_script, &st) == 0 && src_mtime && st.st_mtime != src_mtime) {
                 printf("\n[jinker] %s alterado — recarregando...\n", vm->nome_script); fflush(stdout);
                 for (int i = 0; i < S.nconns; i++) ps_jk_close(S.conns[i]->c);
-                ps_ev_fecha(epfd); if (fd >= 0) close(fd); if (fd_ws >= 0) close(fd_ws);
+                ps_ev_fecha(epfd); if (fd >= 0) ps_sock_fecha(fd); if (fd_ws >= 0) ps_sock_fecha(fd_ws);
+#if defined(PS_SO_WINDOWS)
+                /* Sem `execv`: o filho do supervisor pede o reload e sai; o
+                 * primeiro processo (o que o terminal espera) vira o supervisor
+                 * e roda o programa de novo a cada pedido. Sai como o `execv`
+                 * troca o processo: sem rodar o fim do programa atual. */
+                fflush(NULL);
+                if (ps_w_jk_pede_recarga()) _exit(0);
+                int codigo = ps_w_jk_supervisiona();
+                if (codigo >= 0) { fflush(NULL); _exit(codigo); }
+#else
                 char exe[1024];
                 if (ps_meu_executavel(exe, sizeof(exe)) == 0) {
                     char **av = malloc(sizeof(char *) * (size_t)(3 + vm->argc_user));
@@ -22605,6 +23123,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
                         execv(exe, av);   /* só retorna se falhar */
                     }
                 }
+#endif
                 fprintf(stderr, "[jinker] falha no re-exec do reload\n");
                 src_mtime = st.st_mtime;   /* evita loop de tentativa */
             }
@@ -22625,11 +23144,15 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
      * com uma conexão de WebSocket sendo atendida. */
     while (j->nws > 0) { j->ws[j->nws - 1].fib = NULL; jk_ws_del(j, j->nws - 1); }
     ep_enterra();
-    /* os fds de escuta saem do epoll sozinhos no `close` logo abaixo */
+    /* Os fds de escuta saem do laço antes do close. O epoll esqueceria
+     * sozinho; a tabela do WSAPoll (Windows) guardaria o número, e um socket
+     * novo com o mesmo número viraria "escuta do jinker". */
+    ps_ev_tira(epfd, fd);
+    if (fd_ws >= 0) ps_ev_tira(epfd, fd_ws);
     if (epfd_meu) { ps_ev_fecha(epfd); g_jk_epfd = -1; }
 
-    close(fd);
-    if (fd_ws >= 0) close(fd_ws);
+    ps_sock_fecha(fd);
+    if (fd_ws >= 0) ps_sock_fecha(fd_ws);
     if (ssl_ctx) ps_jk_tls_ctx_solta(ssl_ctx);
     vm->jk_app = MK_NULL();
     *out = MK_NULL();
@@ -23862,20 +24385,19 @@ static int dbg_conecta(VM *vm, int porta)
 {
     int srv = socket(AF_INET, SOCK_STREAM, 0);
     if (srv < 0) return -1;
-    int um = 1;
-    setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &um, sizeof um);
+    ps_sock_reusa_endereco(srv);
     struct sockaddr_in ad;
     memset(&ad, 0, sizeof ad);
     ad.sin_family = AF_INET;
     ad.sin_port   = htons((uint16_t)porta);
     ad.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     if (bind(srv, (struct sockaddr *)&ad, sizeof ad) != 0 || listen(srv, 1) != 0) {
-        close(srv);
+        ps_sock_fecha(srv);
         fprintf(stderr, "pool --debug: nao consegui escutar na porta %d\n", porta);
         return -1;
     }
     int c = accept(srv, NULL, NULL);
-    close(srv);
+    ps_sock_fecha(srv);
     if (c < 0) return -1;
     vm->dbg.fd_in = vm->dbg.fd_out = c;
     return 0;
@@ -23883,7 +24405,7 @@ static int dbg_conecta(VM *vm, int porta)
 
 static void dbg_fecha(VM *vm)
 {
-    if (vm->dbg.fd_in >= 0) close(vm->dbg.fd_in);
+    if (vm->dbg.fd_in >= 0) ps_sock_fecha(vm->dbg.fd_in);
     vm->dbg.fd_in = vm->dbg.fd_out = -1;
     for (int i = 0; i < vm->dbg.nbps; i++) free(vm->dbg.bps[i].arquivo);
     free(vm->dbg.bps);
@@ -27541,12 +28063,17 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             Value v = stack[--sp];
             if (EH_SOCKET(v)) {
                 PSSocket *sk = COMO_SOCKET(v);
-                if (sk->fd >= 0) { close(sk->fd); sk->fd = -1; }
+                if (sk->fd >= 0) { ps_sock_fecha(sk->fd); sk->fd = -1; }
             }
             if (EH_PROCESSO(v)) {
                 /* fecha os canais; o filho segue vivo se quiser — quem quer
                  * esperar chama `wait()` dentro do bloco */
                 PSProcesso *pr = COMO_PROCESSO(v);
+#if defined(PS_SO_WINDOWS)
+                /* com pty, o fechar do mestre no Linux derruba o terminal;
+                 * aqui é o pseudoconsole que fecha */
+                if (pr->eh_pty) ps_w_proc_fecha_terminal(&pr->w);
+#endif
                 if (pr->fd_in >= 0 && pr->fd_in != pr->fd_out) close(pr->fd_in);
                 if (pr->fd_out >= 0) close(pr->fd_out);
                 if (pr->fd_err >= 0) close(pr->fd_err);
@@ -28945,7 +29472,7 @@ static void pasta_libs(char *out, size_t cap)
     const char *over = getenv("JINGA_HOME");
     if (!over || !*over) over = getenv("POOLSCRIPT_HOME");
     if (over && *over) { snprintf(out, cap, "%s/libs", over); return; }
-    const char *h = getenv("HOME");
+    const char *h = getenv(PS_HOME_VAR);     /* a mesma pasta em que o jpkg instala */
     if (!h || !*h) { out[0] = '\0'; return; }
     snprintf(out, cap, "%s/.jinga/libs", h);
     if (access(out, F_OK) != 0) {
@@ -30625,8 +31152,11 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
      * (TLS) escreve no fd SEM essa flag — um cliente que fecha a conexão no
      * meio (browser abre várias em paralelo e fecha algumas) faria o write num
      * pipe quebrado matar o processo com SIGPIPE, silenciosamente. Sem isto o
-     * servidor jinker HTTPS "parava do nada" ao ser acessado no navegador. */
+     * servidor jinker HTTPS "parava do nada" ao ser acessado no navegador.
+     * (O Windows não tem SIGPIPE: o cano quebrado lá é só um erro de escrita.) */
+#ifdef SIGPIPE
     signal(SIGPIPE, SIG_IGN);
+#endif
 
     /* Semente do hash de dict, uma vez por processo — ver `ps_hash_semeia`.
      * Aqui, antes de qualquer string nascer: a string guarda o hash calculado

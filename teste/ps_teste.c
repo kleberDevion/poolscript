@@ -14,15 +14,29 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <sys/wait.h>
-#include <poll.h>
 #include <dirent.h>
 #include <limits.h>
+#if defined(_WIN32)
+/* Windows: o caso roda pelo CreateProcess, com os canos lidos por threads e
+ * o tempo máximo pelo WaitForSingleObject (não há fork, alarm nem poll de
+ * cano). */
+#include <windows.h>
+#include <process.h>
+#include <io.h>
+#include <direct.h>
+#else
+#include <sys/wait.h>
+#include <poll.h>
+#endif
 
 #include "ps_teste.h"
 #include "ps_ext.h"
 
+#if defined(_WIN32)
+#define POOL "./pool.exe"
+#else
 #define POOL "./pool"
+#endif
 
 /* Caminho ABSOLUTO do binário, resolvido uma vez. O filho faz `chdir` pra um
  * diretório próprio antes do exec (ver `roda`), e daí `./pool` não existe
@@ -37,7 +51,70 @@ static void resolve_pool(void)
      * cobertura, que foi o buraco apontado pela auditoria de testes. */
     const char *alt = getenv("PS_POOL");
     const char *bin = (alt && alt[0]) ? alt : POOL;
+#if defined(_WIN32)
+    if (!_fullpath(POOL_ABS, bin, sizeof POOL_ABS)) snprintf(POOL_ABS, sizeof POOL_ABS, "%s", bin);
+#else
     if (!realpath(bin, POOL_ABS)) snprintf(POOL_ABS, sizeof POOL_ABS, "%s", bin);
+#endif
+}
+
+/* A pasta temporária do sistema: `/tmp` no Linux e no macOS; no Windows a do
+ * usuário (`%TEMP%`), sem a barra do fim. */
+static const char *pasta_temp(void)
+{
+#if defined(_WIN32)
+    static char t[MAX_PATH + 1];
+    if (!t[0]) {
+        DWORD n = GetTempPathA(sizeof t, t);
+        if (n == 0 || n > sizeof t) snprintf(t, sizeof t, ".");
+        else while (n > 0 && (t[n-1] == '\\' || t[n-1] == '/')) t[--n] = '\0';
+    }
+    return t;
+#else
+    return "/tmp";
+#endif
+}
+
+#if defined(_WIN32)
+#define O_BINARY_TESTE O_BINARY   /* o fonte vai byte a byte, sem virar \r\n */
+#else
+#define O_BINARY_TESTE 0
+#endif
+
+/* Arquivo temporário novo (criado exclusivo) na pasta temporária: o fd, ou -1. */
+static int temp_novo(char *out, size_t cap, const char *prefixo)
+{
+#if defined(_WIN32)
+    static unsigned seq = 0;
+    for (int tent = 0; tent < 1000; tent++) {
+        snprintf(out, cap, "%s\\%s%lu_%u", pasta_temp(), prefixo,
+                 (unsigned long)GetCurrentProcessId(), seq++);
+        int fd = open(out, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, 0600);
+        if (fd >= 0 || errno != EEXIST) return fd;
+    }
+    return -1;
+#else
+    snprintf(out, cap, "%s/%sXXXXXX", pasta_temp(), prefixo);
+    return mkstemp(out);
+#endif
+}
+
+/* Diretório temporário novo; NULL se não deu. */
+static const char *dir_novo(char *out, size_t cap)
+{
+#if defined(_WIN32)
+    static unsigned seq = 0;
+    for (int tent = 0; tent < 1000; tent++) {
+        snprintf(out, cap, "%s\\ps_caso_%lu_%u", pasta_temp(),
+                 (unsigned long)GetCurrentProcessId(), seq++);
+        if (_mkdir(out) == 0) return out;
+        if (errno != EEXIST) return NULL;
+    }
+    return NULL;
+#else
+    snprintf(out, cap, "%s/ps_caso_XXXXXX", pasta_temp());
+    return mkdtemp(out);
+#endif
 }
 
 /* Apaga o diretório do caso. Um nível de recursão basta: caso que cria
@@ -108,7 +185,8 @@ typedef struct {
  * que não existia. Com `poll` nos dois, nenhum dos lados espera o outro. */
 typedef struct { char *b; size_t n, cap; int aberto; } Cano;
 
-static int cano_le(Cano *c, int fd)
+/* garante 4096 bytes livres (e o do NUL) no fim */
+static int cano_cresce(Cano *c)
 {
     if (c->n + 4096 > c->cap) {
         size_t nc = c->cap ? c->cap * 2 : 8192;
@@ -117,6 +195,22 @@ static int cano_le(Cano *c, int fd)
         if (!nb) return -1;
         c->b = nb; c->cap = nc;
     }
+    return 0;
+}
+
+/* termina o texto lido; cano vazio vira "" */
+static int cano_fecha(Cano *c)
+{
+    if (!c->b) { c->b = malloc(1); c->cap = 1; }
+    if (!c->b) return -1;
+    c->b[c->n] = '\0';
+    return 0;
+}
+
+#if !defined(_WIN32)
+static int cano_le(Cano *c, int fd)
+{
+    if (cano_cresce(c) != 0) return -1;
     ssize_t r = read(fd, c->b + c->n, c->cap - c->n - 1);
     if (r <= 0) { c->aberto = 0; return 0; }
     c->n += (size_t)r;
@@ -137,13 +231,133 @@ static int le_os_dois(int fo, int fe, char **saida, char **erro)
         if (io >= 0 && (pf[io].revents & (POLLIN | POLLHUP)) && cano_le(&so, fo) != 0) break;
         if (ie >= 0 && (pf[ie].revents & (POLLIN | POLLHUP)) && cano_le(&se, fe) != 0) break;
     }
-    if (!so.b) { so.b = malloc(1); so.cap = 1; }
-    if (!se.b) { se.b = malloc(1); se.cap = 1; }
-    if (!so.b || !se.b) { free(so.b); free(se.b); return -1; }
-    so.b[so.n] = '\0'; se.b[se.n] = '\0';
+    if (cano_fecha(&so) != 0 || cano_fecha(&se) != 0) { free(so.b); free(se.b); return -1; }
     *saida = so.b; *erro = se.b;
     return 0;
 }
+
+/* Roda o `pool` no diretório do caso, com o stdin fechado, e espera. */
+static int roda_filho(const char *dir, const char *arquivo, Resultado *out)
+{
+    int po[2], pe[2];
+    if (pipe(po) != 0) return -1;
+    if (pipe(pe) != 0) { close(po[0]); close(po[1]); return -1; }
+    pid_t pid = fork();
+    if (pid < 0) { close(po[0]); close(po[1]); close(pe[0]); close(pe[1]); return -1; }
+    if (pid == 0) {
+        if (dir) { if (chdir(dir) != 0) _exit(126); }
+        dup2(po[1], STDOUT_FILENO); dup2(pe[1], STDERR_FILENO);
+        close(po[0]); close(po[1]); close(pe[0]); close(pe[1]);
+        /* stdin fechado (= /dev/null): caso nenhum pode ler o terminal. Sem
+         * isso um `input()` num caso trava esperando quem roda a suíte. */
+        int nulo = open("/dev/null", O_RDONLY);
+        if (nulo >= 0) { dup2(nulo, STDIN_FILENO); if (nulo > 2) close(nulo); }
+        alarm(TEMPO_MAX);                       /* trava = SIGALRM, não espera eterna */
+        execl(POOL_ABS, POOL_ABS, arquivo, (char *)NULL);
+        _exit(127);
+    }
+    close(po[1]); close(pe[1]);
+    if (le_os_dois(po[0], pe[0], &out->saida, &out->erro) != 0) {
+        close(po[0]); close(pe[0]); waitpid(pid, NULL, 0);
+        return -1;
+    }
+    close(po[0]); close(pe[0]);
+
+    int st = 0;
+    waitpid(pid, &st, 0);
+    if (WIFSIGNALED(st)) {
+        out->sinal = WTERMSIG(st);
+        out->estourou = (out->sinal == SIGALRM);
+        out->rc = -1;
+    } else {
+        out->rc = WEXITSTATUS(st);
+    }
+    return 0;
+}
+
+#else /* _WIN32 */
+
+/* Um cano lido até o fim numa thread própria: o Windows não espera dois canos
+ * anônimos de uma vez, e ler um e depois o outro é o impasse descrito acima. */
+typedef struct { Cano c; HANDLE h; } Leitor;
+
+static unsigned __stdcall leitor(void *v)
+{
+    Leitor *l = (Leitor *)v;
+    for (;;) {
+        if (cano_cresce(&l->c) != 0) break;
+        DWORD lidos = 0;
+        if (!ReadFile(l->h, l->c.b + l->c.n, (DWORD)(l->c.cap - l->c.n - 1), &lidos, NULL) || lidos == 0) break;
+        l->c.n += lidos;
+    }
+    return 0;
+}
+
+/* Roda o `pool` no diretório do caso, com o stdin no NUL, e espera até o
+ * TEMPO_MAX. O que passa disso é encerrado e conta como TRAVOU. Morte por
+ * exceção (acesso inválido, estouro de pilha) é o código NTSTATUS
+ * 0xC0000000+, e conta como a VM MORREU. */
+static int roda_filho(const char *dir, const char *arquivo, Resultado *out)
+{
+    SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
+    HANDLE so_l = NULL, so_e = NULL, se_l = NULL, se_e = NULL;
+    if (!CreatePipe(&so_l, &so_e, &sa, 0)) return -1;
+    if (!CreatePipe(&se_l, &se_e, &sa, 0)) { CloseHandle(so_l); CloseHandle(so_e); return -1; }
+    SetHandleInformation(so_l, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(se_l, HANDLE_FLAG_INHERIT, 0);
+    HANDLE nulo = CreateFileA("NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa,
+                              OPEN_EXISTING, 0, NULL);
+    STARTUPINFOA si;
+    memset(&si, 0, sizeof(si));
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdInput = nulo;
+    si.hStdOutput = so_e;
+    si.hStdError = se_e;
+    char linha[8400];
+    snprintf(linha, sizeof linha, "\"%s\" \"%s\"", POOL_ABS, arquivo);
+    PROCESS_INFORMATION pi;
+    memset(&pi, 0, sizeof(pi));
+    BOOL ok = CreateProcessA(NULL, linha, NULL, NULL, TRUE, 0, NULL, dir, &si, &pi);
+    CloseHandle(so_e); CloseHandle(se_e);
+    if (nulo != INVALID_HANDLE_VALUE) CloseHandle(nulo);
+    if (!ok) { CloseHandle(so_l); CloseHandle(se_l); return -1; }
+    CloseHandle(pi.hThread);
+
+    Leitor ls[2];
+    memset(ls, 0, sizeof(ls));
+    ls[0].h = so_l; ls[1].h = se_l;
+    HANDLE th[2];
+    for (int k = 0; k < 2; k++) th[k] = (HANDLE)_beginthreadex(NULL, 0, leitor, &ls[k], 0, NULL);
+
+    if (WaitForSingleObject(pi.hProcess, TEMPO_MAX * 1000) == WAIT_TIMEOUT) {
+        TerminateProcess(pi.hProcess, 1);
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        out->estourou = 1;
+    }
+    /* Um neto que herdou a saída (o `os.run` em segundo plano) segura o cano
+     * aberto depois do fim do `pool`: a leitura dele é cortada em 5 s. */
+    for (int k = 0; k < 2; k++) {
+        if (!th[k]) continue;
+        if (WaitForSingleObject(th[k], 5000) == WAIT_TIMEOUT) {
+            CancelSynchronousIo(th[k]);
+            WaitForSingleObject(th[k], INFINITE);
+        }
+        CloseHandle(th[k]);
+    }
+    CloseHandle(so_l); CloseHandle(se_l);
+    DWORD cod = 0;
+    GetExitCodeProcess(pi.hProcess, &cod);
+    CloseHandle(pi.hProcess);
+    if (cano_fecha(&ls[0].c) != 0 || cano_fecha(&ls[1].c) != 0) { free(ls[0].c.b); free(ls[1].c.b); return -1; }
+    out->saida = ls[0].c.b;
+    out->erro = ls[1].c.b;
+    if (out->estourou) out->rc = -1;
+    else if (cod >= 0xC0000000u) { out->sinal = (int)cod; out->rc = -1; }
+    else out->rc = (int)cod;
+    return 0;
+}
+#endif
 
 static void solta(Resultado *r) { free(r->saida); free(r->erro); r->saida = r->erro = NULL; }
 
@@ -166,7 +380,7 @@ static int roda(const Caso *c, Resultado *out)
         if (ponto) *ponto = '\0';
         char unico[192];
         snprintf(unico, sizeof(unico), "%s_%d", base, (int)getpid());
-        snprintf(arquivo, sizeof(arquivo), "/tmp/%s" PS_EXT, unico);
+        snprintf(arquivo, sizeof(arquivo), "%s/%s" PS_EXT, pasta_temp(), unico);
         /* troca cada ocorrência do nome base pelo nome único, no fonte */
         /* Se o fonte não couber, o caso roda um programa PELA METADE e a
          * comparação vale nada — falha calada, do pior tipo. Melhor recusar. */
@@ -188,18 +402,14 @@ static int roda(const Caso *c, Resultado *out)
         }
         fonte_ajustada[j] = '\0';
         fonte = fonte_ajustada;
-        fd = open(arquivo, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        fd = open(arquivo, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY_TESTE, 0600);
         if (fd < 0) { perror("open"); return -1; }
     } else {
-        snprintf(arquivo, sizeof(arquivo), "/tmp/ps_teste_XXXXXX");
-        fd = mkstemp(arquivo);
-        if (fd < 0) { perror("mkstemp"); return -1; }
+        fd = temp_novo(arquivo, sizeof(arquivo), "ps_teste_");
+        if (fd < 0) { perror("arquivo temporario"); return -1; }
     }
     if (write(fd, fonte, strlen(fonte)) < 0) { close(fd); unlink(arquivo); return -1; }
     close(fd);
-
-    int po[2], pe[2];
-    if (pipe(po) != 0 || pipe(pe) != 0) { unlink(arquivo); return -1; }
 
     /* Cada caso roda num diretório SÓ DELE. Sem isso, um caso com caminho
      * relativo (`os.writeFile("__DIR__/sub/nota.txt")`) grava na pasta de onde
@@ -207,43 +417,13 @@ static int roda(const Caso *c, Resultado *out)
      * versionado. Aconteceu: `__DIR__/` e `__DOCS__/` estavam no git.
      * Com o `chdir`, a classe inteira fica impossível, não só os dois casos. */
     resolve_pool();
-    char dir_caso[] = "/tmp/ps_caso_XXXXXX";
-    const char *dir_ok = mkdtemp(dir_caso);
+    char dir_caso[4096];
+    const char *dir_ok = dir_novo(dir_caso, sizeof(dir_caso));
 
-    pid_t pid = fork();
-    if (pid < 0) { unlink(arquivo); if (dir_ok) apaga_arvore(dir_caso); return -1; }
-    if (pid == 0) {
-        if (dir_ok) { if (chdir(dir_caso) != 0) _exit(126); }
-        dup2(po[1], STDOUT_FILENO); dup2(pe[1], STDERR_FILENO);
-        close(po[0]); close(po[1]); close(pe[0]); close(pe[1]);
-        /* stdin fechado (= /dev/null): caso nenhum pode ler o terminal. Sem
-         * isso um `input()` num caso trava esperando quem roda a suíte. */
-        int nulo = open("/dev/null", O_RDONLY);
-        if (nulo >= 0) { dup2(nulo, STDIN_FILENO); if (nulo > 2) close(nulo); }
-        alarm(TEMPO_MAX);                       /* trava = SIGALRM, não espera eterna */
-        execl(POOL_ABS, POOL_ABS, arquivo, (char *)NULL);
-        _exit(127);
-    }
-    close(po[1]); close(pe[1]);
-    if (le_os_dois(po[0], pe[0], &out->saida, &out->erro) != 0) {
-        close(po[0]); close(pe[0]); waitpid(pid, NULL, 0);
-        unlink(arquivo); if (dir_ok) apaga_arvore(dir_caso);
-        return -1;
-    }
-    close(po[0]); close(pe[0]);
-
-    int st = 0;
-    waitpid(pid, &st, 0);
+    int rc = roda_filho(dir_ok, arquivo, out);
     unlink(arquivo);
     if (dir_ok) apaga_arvore(dir_caso);
-    if (WIFSIGNALED(st)) {
-        out->sinal = WTERMSIG(st);
-        out->estourou = (out->sinal == SIGALRM);
-        out->rc = -1;
-    } else {
-        out->rc = WEXITSTATUS(st);
-    }
-    return 0;
+    return rc;
 }
 
 /* ── comparação ──────────────────────────────────────────────────────────── */
@@ -265,11 +445,18 @@ static const char *confere(const Caso *c, Resultado *r)
         return motivo;
     }
     if (r->sinal) {
+#if defined(_WIN32)
+        /* no Windows a morte é uma exceção: 0xC0000005 acesso inválido,
+         * 0xC00000FD estouro de pilha */
+        snprintf(motivo, sizeof motivo,
+                 "a VM MORREU com a excecao 0x%08X", (unsigned)r->sinal);
+#else
         /* o nome pelo próprio sistema: o número muda de um pro outro (10 é
          * SIGUSR1 no Linux e SIGBUS no macOS) */
         const char *nome = strsignal(r->sinal);
         snprintf(motivo, sizeof motivo,
                  "a VM MORREU com sinal %d (%s)", r->sinal, nome ? nome : "?");
+#endif
         return motivo;
     }
     sem_fim_de_linha(r->saida);
@@ -309,7 +496,12 @@ int main(int argc, char **argv)
         else filtro = argv[i];
     }
 
+#if defined(_WIN32)
+    /* o `access` do Windows não tem X_OK: basta existir */
+    if (access(POOL, F_OK) != 0) {
+#else
     if (access(POOL, X_OK) != 0) {
+#endif
         fprintf(stderr, "teste: `%s` não existe ou não é executável — rode `make pool`\n", POOL);
         return 2;
     }

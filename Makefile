@@ -30,7 +30,19 @@ CC      ?= gcc
 SO := $(shell uname -s 2>/dev/null)
 # clang ou gcc pelo que o próprio compilador diz: no macOS o `gcc` É o clang
 E_CLANG := $(shell $(CC) --version 2>/dev/null | grep -c -i clang)
-ifeq ($(SO),Darwin)
+# Windows: o MSYS2 (ambiente UCRT64 ou MINGW64), cujo `uname -s` responde
+# `UCRT64_NT-10.0-...`, `MINGW64_NT-...` ou `MSYS_NT-...`. O executável ganha
+# `.exe`, e as bibliotecas vêm do prefixo do ambiente (`$MSYSTEM_PREFIX`).
+E_WIN := $(if $(findstring _NT,$(SO)),1,0)
+ifeq ($(E_WIN),1)
+EXE     := .exe
+PREF_W  := $(or $(MSYSTEM_PREFIX),/ucrt64)
+RECURSOS := vm/jinga_rc.o
+endif
+ifeq ($(E_WIN),1)
+CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter -Wduplicated-branches \
+           -I$(PREF_W)/include/mariadb
+else ifeq ($(SO),Darwin)
 # Homebrew: o prefixo geral (/usr/local no Mac Intel) e os pacotes "keg-only",
 # que ficam fora dele (openssl@3, libpq, o cliente Mongo 1.x)
 BREW     := $(shell brew --prefix 2>/dev/null)
@@ -68,7 +80,17 @@ CFLAGS  ?= -O2 $(CFLAGS_BASE)
 # O sqlite, o TLS, o PNG, o XML e o zlib entram ESTÁTICOS no `pool`: o binário
 # roda em máquina sem as .so deles, e estático não custa nada na partida. O
 # gmp (inteiro grande) é da linguagem, não de um módulo.
-ifeq ($(SO),Darwin)
+ifeq ($(E_WIN),1)
+# Windows: `-static` liga TUDO que tem `.a` (sqlite, TLS, PNG, XML, zlib, gmp,
+# as threads e o runtime do gcc); o que sobra são as DLLs do próprio Windows.
+# Sockets (ws2_32), interfaces de rede (iphlpapi), aleatório (bcrypt) e o
+# repositório de certificados (crypt32). A pilha da thread principal é de 8 MB,
+# a mesma do Linux (a do Windows é 1 MB de fábrica).
+LIBS_SISTEMA   := -lws2_32 -liphlpapi -lbcrypt -lcrypt32 -luser32 -ladvapi32
+LIBS_POOL      := -static -Wl,--stack,8388608 -lsqlite3 -lssl -lcrypto -lpng16 -lexpat -lz -lgmp \
+                  -lpthread $(LIBS_SISTEMA)
+LIBS_TESTE     := $(LIBS_POOL)
+else ifeq ($(SO),Darwin)
 # macOS: o ligador da Apple não tem -Bstatic; o estático é o próprio arquivo
 # `.a` do Homebrew (TLS e PNG). sqlite, expat e zlib vêm do próprio macOS.
 LIBS_SISTEMA   := -lpthread -lm -L$(BREW)/lib -lgmp -framework Security -framework CoreFoundation
@@ -127,8 +149,17 @@ $(VM)/ps_build.h: FORCE
 # seguia com o comportamento velho.
 CABECALHOS := $(wildcard $(VM)/*.h)
 
-pool: $(FONTES) $(CABECALHOS) $(VM)/ps_versao.h $(VM)/ps_build.h $(VM)/retornos_medidos.inc $(MK)
-	$(CC) $(CFLAGS) -I$(VM) -o $@ $(FONTES) $(LIBS_POOL)
+pool$(EXE): $(FONTES) $(CABECALHOS) $(VM)/ps_versao.h $(VM)/ps_build.h $(VM)/retornos_medidos.inc $(RECURSOS) $(MK)
+	$(CC) $(CFLAGS) -I$(VM) -o $@ $(FONTES) $(RECURSOS) $(LIBS_POOL)
+ifeq ($(E_WIN),1)
+# no Windows o arquivo é `pool.exe`; `make pool` continua sendo o nome
+.PHONY: pool testar
+pool: pool.exe
+testar: testar.exe
+# o manifesto (UTF-8 em argv, ambiente e nomes de arquivo): vm/jinga.manifest
+$(VM)/jinga_rc.o: $(VM)/jinga.rc $(VM)/jinga.manifest
+	windres $(VM)/jinga.rc -O coff -o $@
+endif
 
 # Bundle PORTÁTIL: o binário + todas as .so numa pasta lib/, com wrapper. Roda
 # em qualquer VPS x86-64 (glibc compatível) SEM apt install — mongo, gnutls,
@@ -389,8 +420,8 @@ TESTE_FONTES := teste/ps_teste.c teste/casos_crash.c teste/casos_inteiros.c \
                 teste/casos_libs.c
 
 # o binário se chama `testar` porque `teste` é a PASTA dos casos
-testar: $(TESTE_FONTES) teste/ps_teste.h $(VM)/ps_ext.h
-	$(CC) -O2 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Iteste -I$(VM) -o $@ $(TESTE_FONTES)
+testar$(EXE): $(TESTE_FONTES) teste/ps_teste.h $(VM)/ps_ext.h $(RECURSOS)
+	$(CC) -O2 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Iteste -I$(VM) -o $@ $(TESTE_FONTES) $(RECURSOS)
 
 # `make check` = compila os dois e roda a suíte
 # ── ferramentas prontas: sanitizers e analisador estático ───────────────────

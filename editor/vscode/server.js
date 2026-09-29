@@ -49,15 +49,40 @@ const docs = new TextDocuments(TextDocument);
  * pra outro faria o completion descrever um motor que não é o dele. */
 let POOL = 'jinga';
 
+/* Onde o programa `nome` está ('' = não achou), sem shell: o `sh` não existe
+ * no Windows. Lá o PATH separa com `;` e o programa tem extensão; só `.exe` e
+ * `.com` servem, porque é o que o `execFileSync` roda sem shell. Caminho com
+ * pasta é conferido direto. */
+function achaPrograma(nome) {
+  const win = process.platform === 'win32';
+  const exts = (win && !path.extname(nome)) ? ['.exe', '.com'] : [''];
+  const ok = (c) => {
+    try {
+      if (!fs.statSync(c).isFile()) return false;
+      if (!win) fs.accessSync(c, fs.constants.X_OK);
+      return true;
+    } catch (_) { return false; }
+  };
+  if (nome.includes('/') || nome.includes('\\')) {
+    for (const ext of exts) if (ok(nome + ext)) return nome + ext;
+    return '';
+  }
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      const c = path.join(dir, nome + ext);
+      if (ok(c)) return c;
+    }
+  }
+  return '';
+}
+
 /* O binário do PATH: `jinga`, e `pool` quando só a instalação antiga existe —
  * o `make install` de antes do rename punha `pool` e nada mais, e um editor
  * nessa máquina ficaria sem completion por causa de um nome. */
 function binarioDoPath() {
   for (const nome of ['jinga', 'pool']) {
-    try {
-      const onde = execFileSync('sh', ['-c', 'command -v ' + nome], { encoding: 'utf8' }).trim();
-      if (onde) return nome;
-    } catch (_) { /* segue pro próximo nome */ }
+    if (achaPrograma(nome)) return nome;
   }
   return 'jinga';
 }
@@ -108,7 +133,7 @@ function raizDoc() {
   if (RAIZ_DOC !== null) return RAIZ_DOC;
   let base = '.';
   try {
-    const onde = execFileSync('sh', ['-c', `command -v ${POOL}`], { encoding: 'utf8' }).trim();
+    const onde = achaPrograma(POOL);
     if (onde) base = path.dirname(fs.realpathSync(onde));
   } catch (_) { /* usa o cwd */ }
   const cands = [
@@ -213,7 +238,7 @@ function linksAbsolutos(texto, arq) {
     if (b < 0) { saida += texto.slice(i); break; }
     const alvo = texto.slice(a + 2, b);
     const ehRel = !alvo.startsWith('http') && !alvo.startsWith('file:') && !alvo.startsWith('#');
-    saida += texto.slice(i, a + 2) + (ehRel ? 'file://' + path.resolve(dir, alvo) : alvo) + ')';
+    saida += texto.slice(i, a + 2) + (ehRel ? uriDe(path.resolve(dir, alvo)) : alvo) + ')';
     i = b + 1;
   }
   return saida;
@@ -565,7 +590,8 @@ function dentroDeTextoLivre(doc, pos) {
 function pastaLibs() {
   const over = process.env.JINGA_HOME || process.env.POOLSCRIPT_HOME;
   if (over) return path.join(over, 'libs');
-  const h = process.env.HOME;
+  /* a mesma variável do motor: USERPROFILE no Windows, HOME no resto */
+  const h = process.platform === 'win32' ? process.env.USERPROFILE : process.env.HOME;
   if (!h) return '';
   const nova = path.join(h, '.jinga', 'libs');
   try { if (fs.statSync(nova).isDirectory()) return nova; } catch (_) { /* segue */ }
@@ -1569,7 +1595,7 @@ function diagnostica(doc) {
         const la = e.linha_arquivo - 1;
         const ca = Math.max(0, (e.coluna_arquivo || 1) - 1);
         d.relatedInformation = [{
-          location: { uri: 'file://' + e.arquivo,
+          location: { uri: uriDe(e.arquivo),
                       range: { start: { line: la, character: ca }, end: { line: la, character: ca + 1 } } },
           message: 'declarada aqui',
         }];

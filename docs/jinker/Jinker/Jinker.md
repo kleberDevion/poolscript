@@ -36,8 +36,8 @@ if __name__ == "main" {
 | `debug` | `false` | imprime logs de requisição e erros detalhados no terminal |
 | `host` | `"0.0.0.0"` | interface de rede (`"0.0.0.0"` = aceita de qualquer IP; `"127.0.0.1"` = só local) |
 | `port` | `2000` | porta HTTP |
-| `reload` | `false` | reinicia sozinho quando o arquivo `.pr` muda (dev) |
-| `workers` | `1` | nº de processos (prefork). `>1` usa vários núcleos: forka N processos que dividem o socket HTTP. |
+| `reload` | `false` | reinicia sozinho quando o arquivo `.pr` muda (dev). No Windows o processo que o terminal esperou supervisiona e roda o programa de novo a cada mudança |
+| `workers` | `1` | nº de processos (prefork). `>1` usa vários núcleos: forka N processos que dividem o socket HTTP. No Windows (sem `fork`) cada worker roda o programa de novo e recebe a porta já aberta: o que vem antes do `run()` roda em cada um |
 
 Se houver algum `@app.socket(...)`, o servidor WebSocket sobe automaticamente
 na porta **HTTP + 1**. Com `workers>1`, o WebSocket roda **só no worker 0**

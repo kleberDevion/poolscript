@@ -44,6 +44,10 @@ public class JingaLspFactory implements LanguageServerFactory {
 
   private static boolean avisou = false;
 
+  /** No Windows o programa tem extensão (`jinga.exe`, `jinga-lsp.cmd`) e o
+   *  instalador (instalar.ps1) põe tudo em %LOCALAPPDATA%\Programs\Jinga\bin. */
+  static final boolean WIN = System.getProperty("os.name", "").toLowerCase().startsWith("windows");
+
   @Override
   public StreamConnectionProvider createConnectionProvider(Project projeto) {
     avisaSeDuplicado(projeto);
@@ -58,18 +62,26 @@ public class JingaLspFactory implements LanguageServerFactory {
       for (String p : path.split(File.pathSeparator)) if (!p.isEmpty() && !pastas.contains(p)) pastas.add(p);
     }
     String home = System.getProperty("user.home");
-    String[] extras = { "/usr/local/bin", "/usr/bin",
-                        home + "/.local/bin", home + "/bin",
-                        home + "/.jinga/bin", home + "/.poolscript/bin" };
+    String local = System.getenv("LOCALAPPDATA");
+    if (local == null || local.isEmpty()) local = home + "\\AppData\\Local";
+    String[] extras = WIN
+        ? new String[] { local + "\\Programs\\Jinga\\bin", home + "\\.jinga\\bin" }
+        : new String[] { "/usr/local/bin", "/usr/bin",
+                         home + "/.local/bin", home + "/bin",
+                         home + "/.jinga/bin", home + "/.poolscript/bin" };
     for (String p : extras) if (!pastas.contains(p)) pastas.add(p);
     return pastas;
   }
 
-  /** O primeiro `nome` executável nas pastas de busca, absoluto; null se não há. */
+  /** O primeiro `nome` executável nas pastas de busca, absoluto; null se não há.
+   *  No Windows vale o nome com `.cmd` ou `.exe`. */
   static String acha(String nome, String path) {
+    String[] exts = WIN ? new String[] { ".cmd", ".exe", "" } : new String[] { "" };
     for (String pasta : pastasDeBusca(path)) {
-      Path p = Paths.get(pasta, nome);
-      if (Files.isRegularFile(p) && Files.isExecutable(p)) return p.toAbsolutePath().toString();
+      for (String ext : exts) {
+        Path p = Paths.get(pasta, nome + ext);
+        if (Files.isRegularFile(p) && Files.isExecutable(p)) return p.toAbsolutePath().toString();
+      }
     }
     return null;
   }

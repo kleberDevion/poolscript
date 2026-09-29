@@ -38,24 +38,36 @@ function jingaBin() {
 // fora dele. `poolscript-lsp` é o nome de antes do rename: uma instalação
 // antiga ainda vale, e ela entra depois do nome de hoje em CADA pasta.
 // `null` quando não há nenhum executável.
+// No Windows o `jinga-lsp` é um `.cmd` (instalar.ps1), na pasta que o
+// instalador põe no PATH do usuário (%LOCALAPPDATA%\Programs\Jinga\bin).
+const WIN = process.platform === 'win32';
 function jingaLsp() {
   const casa = os.homedir();
-  const pastas = (process.env.PATH || '').split(path.delimiter).filter(Boolean)
-    .concat(['/usr/local/bin', '/usr/bin', path.join(casa, '.local', 'bin'),
-             path.join(casa, 'bin'), path.join(casa, '.jinga', 'bin'),
-             path.join(casa, '.poolscript', 'bin')]);
+  const fixas = WIN
+    ? [path.join(process.env.LOCALAPPDATA || path.join(casa, 'AppData', 'Local'), 'Programs', 'Jinga', 'bin'),
+       path.join(casa, '.jinga', 'bin')]
+    : ['/usr/local/bin', '/usr/bin', path.join(casa, '.local', 'bin'),
+       path.join(casa, 'bin'), path.join(casa, '.jinga', 'bin'),
+       path.join(casa, '.poolscript', 'bin')];
+  const pastas = (process.env.PATH || '').split(path.delimiter).filter(Boolean).concat(fixas);
+  const nomes = WIN ? ['jinga-lsp.cmd', 'poolscript-lsp.cmd'] : ['jinga-lsp', 'poolscript-lsp'];
   for (const p of pastas) {
-    for (const nome of ['jinga-lsp', 'poolscript-lsp']) {
+    for (const nome of nomes) {
       const c = path.join(p, nome);
-      try { fs.accessSync(c, fs.constants.X_OK); if (fs.statSync(c).isFile()) return c; } catch (_) { /* segue */ }
+      try {
+        if (!WIN) fs.accessSync(c, fs.constants.X_OK);
+        if (fs.statSync(c).isFile()) return c;
+      } catch (_) { /* segue */ }
     }
   }
   return null;
 }
 
 /* Aspas simples ao redor, e aspas simples de dentro escapadas: o caminho vai
- * pro shell, e uma pasta com espaço ou apóstrofo viraria dois argumentos. */
+ * pro shell, e uma pasta com espaço ou apóstrofo viraria dois argumentos. No
+ * Windows o terminal é o PowerShell, onde a aspa simples de dentro dobra. */
 function pro_shell(s) {
+  if (WIN) return "'" + String(s).split("'").join("''") + "'";
   return "'" + String(s).split("'").join("'\\''") + "'";
 }
 
@@ -85,7 +97,9 @@ async function rodarArquivo() {
   if (doc.isDirty) await doc.save();
 
   if (!terminal || terminal.exitStatus !== undefined) {
-    terminal = window.createTerminal({ name: 'Jinga' });
+    /* no Windows, o PowerShell sempre: o terminal padrão pode ser o cmd, que
+     * não entende a aspa simples */
+    terminal = window.createTerminal(WIN ? { name: 'Jinga', shellPath: 'powershell.exe' } : { name: 'Jinga' });
   }
   terminal.show(true);
   const arq = doc.uri.fsPath;
@@ -93,7 +107,8 @@ async function rodarArquivo() {
    * `import` por caminho) sai do diretório atual, então rodar da raiz do
    * projeto acharia arquivo diferente do que o programa espera. */
   terminal.sendText('cd ' + pro_shell(path.dirname(arq)));
-  terminal.sendText(pro_shell(jingaBin()) + ' ' + pro_shell(path.basename(arq)));
+  /* o `&` do PowerShell: sem ele, um caminho entre aspas é texto, não comando */
+  terminal.sendText((WIN ? '& ' : '') + pro_shell(jingaBin()) + ' ' + pro_shell(path.basename(arq)));
 }
 
 /* Começa uma sessão de depuração no arquivo do editor.
@@ -437,11 +452,19 @@ function activate(context) {
   // falhavam nele). O embutido fica de reserva, pra máquina sem `make install`.
   const lsp = jingaLsp();
   const embutido = path.join(__dirname, 'server.js');
-  const servidor = lsp
+  /* No Windows o `jinga-lsp` é um `.cmd`, que o node não sobe sem shell: o
+   * cliente roda o `server.js` INSTALADO ao lado dele (bin\..\share\jinga\lsp)
+   * como módulo — o mesmo servidor, com o node do próprio editor. */
+  let instalado = null;
+  if (lsp && WIN) {
+    const srv = path.join(path.dirname(lsp), '..', 'share', 'jinga', 'lsp', 'server.js');
+    try { if (fs.statSync(srv).isFile()) instalado = srv; } catch (_) { /* fica o embutido */ }
+  }
+  const servidor = (lsp && !WIN)
     ? { run:   { command: lsp, transport: TransportKind.stdio },
         debug: { command: lsp, transport: TransportKind.stdio } }
-    : { run:   { module: embutido, transport: TransportKind.stdio },
-        debug: { module: embutido, transport: TransportKind.stdio,
+    : { run:   { module: instalado || embutido, transport: TransportKind.stdio },
+        debug: { module: instalado || embutido, transport: TransportKind.stdio,
                  options: { execArgv: ['--nolazy', '--inspect=6009'] } } };
 
   const cliente_opts = {
@@ -455,7 +478,8 @@ function activate(context) {
 
   cliente = new LanguageClient('jinga', 'Jinga', servidor, cliente_opts);
   // qual servidor subiu, no painel de saída "Jinga"
-  cliente.outputChannel.appendLine('servidor: ' + (lsp || `embutido (${embutido}) — jinga-lsp não achado`));
+  cliente.outputChannel.appendLine('servidor: ' + ((lsp && !WIN) ? lsp : instalado
+    || `embutido (${embutido}) — jinga-lsp não achado`));
 
   cliente.start().catch((e) => {
     // Falhar calado deixaria o usuário sem completion sem saber por quê.

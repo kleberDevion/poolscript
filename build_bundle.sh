@@ -10,6 +10,63 @@
 set -e
 cd "$(dirname "$0")"
 
+# ── Windows (MSYS2) ──────────────────────────────────────────────────────
+# `bin\jinga.exe` já é estático (só pede DLL do próprio Windows). Os clientes
+# de banco são abertos no primeiro `connect` (vm/ps_dl.h) pelo LoadLibrary, que
+# procura primeiro na pasta do executável: as DLLs deles e o que elas arrastam
+# vão pra `bin\` ao lado. O jpkg e os nomes antigos são `.cmd` que chamam o
+# jinga.exe (o jpkg é o mesmo binário, pelos subcomandos). Sai um .zip, que o
+# instalar.ps1 instala.
+case "$(uname -s)" in *_NT*)
+    [ -f pool.exe ] || { echo "compile antes: make pool" >&2; exit 1; }
+    SAIDA=dist/jinga-windows-x86_64
+    rm -rf "$SAIDA"
+    mkdir -p "$SAIDA/bin" "$SAIDA/share/jinga/lsp"
+    cp pool.exe "$SAIDA/bin/jinga.exe"
+    PREF="${MSYSTEM_PREFIX:-/ucrt64}"
+    # dependências de uma DLL que NÃO são do Windows
+    deps_de() { ldd "$1" 2>/dev/null | awk '{print $3}' | grep -iv '^/c/windows' | grep -i '\.dll$' || true; }
+    junta() {
+        local dll="$1" nome
+        nome=$(basename "$dll")
+        [ -f "$SAIDA/bin/$nome" ] && return 0
+        cp "$dll" "$SAIDA/bin/$nome"
+        for d in $(deps_de "$dll"); do junta "$d"; done
+    }
+    # o jinga.exe não pode depender de nada fora do Windows
+    fora=$(deps_de pool.exe)
+    [ -z "$fora" ] || { echo "pool.exe depende de DLL fora do Windows: $fora" >&2; exit 1; }
+    for dll in "$PREF/bin/libpq.dll" "$PREF/bin/libmariadb.dll" "$PREF/bin/libmongoc2.dll"; do
+        [ -f "$dll" ] || { echo "falta $dll nesta maquina: o pacote sairia sem esse driver" >&2; exit 1; }
+        junta "$dll"
+    done
+    # os comandos, com o fim de linha do Windows
+    for c in jpkg pool psl; do
+        printf '@"%%~dp0jinga.exe" %%*\r\n' > "$SAIDA/bin/$c.cmd"
+    done
+    for c in jinga-lsp poolscript-lsp; do
+        printf '@echo off\r\nrem Servidor LSP da Jinga. Ver docs/lsp.md.\r\nwhere node >nul 2>nul || (echo jinga-lsp precisa do node 1>&2 & exit /b 1)\r\nif "%%~1"=="" (node "%%~dp0..\\share\\jinga\\lsp\\server.js" --stdio) else (node "%%~dp0..\\share\\jinga\\lsp\\server.js" %%*)\r\n' \
+            > "$SAIDA/bin/$c.cmd"
+    done
+    for j in editor/vscode/*.js; do
+        case "$(basename "$j")" in
+            extension.js|teste_servidor.js) continue ;;
+        esac
+        cp "$j" "$SAIDA/share/jinga/lsp/"
+    done
+    cp -r editor/vscode/node_modules "$SAIDA/share/jinga/lsp/" 2>/dev/null || true
+    cp -r docs "$SAIDA/share/jinga/docs"
+    cp instalar.ps1 "$SAIDA/"
+    printf 'Jinga - pacote para Windows (x86-64)\r\n\r\n    bin\\jinga.exe programa.pr     roda sem instalar nada\r\n    powershell -ExecutionPolicy Bypass -File instalar.ps1\r\n                                   instala em %%LOCALAPPDATA%%\\Programs\\Jinga e poe no PATH\r\n    powershell -ExecutionPolicy Bypass -File instalar.ps1 -Remover\r\n\r\nO servidor do editor (jinga-lsp) usa o node: nodejs.org ou `winget install OpenJS.NodeJS`.\r\n' \
+        > "$SAIDA/LEIAME.txt"
+    rm -f dist/jinga-windows-x86_64.zip
+    (cd dist && zip -qr jinga-windows-x86_64.zip jinga-windows-x86_64)
+    echo "dist/jinga-windows-x86_64/  ($(du -sh "$SAIDA" | cut -f1))"
+    echo "dist/jinga-windows-x86_64.zip  ($(du -h dist/jinga-windows-x86_64.zip | cut -f1))"
+    exit 0
+    ;;
+esac
+
 [ -f pool ] || { echo "compile antes: make pool" >&2; exit 1; }
 
 # ── macOS ────────────────────────────────────────────────────────────────

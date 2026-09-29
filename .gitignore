@@ -48,8 +48,12 @@ Thumbs.db
 # PID de servidor subido por teste/auditoria — nunca e conteudo do repositorio
 *.pid
 
-# config local do Claude Code — nunca vai pro repo
-.claude/
+# `.claude/settings.json` (as permissões do Claude Code deste repo) é
+# versionado desde que o repositório é privado: vai junto pra outra máquina.
+# O `settings.local.json` é o pessoal por convenção do próprio Claude Code, e
+# o daqui guarda ~250 permissões da época do interpretador antigo, com nome de
+# biblioteca de outra linguagem (que não entra no repositório).
+.claude/settings.local.json
 .codex/
 
 # artefato empacotado da extensao (gera com build_vsix.py)
@@ -64,7 +68,6 @@ teste/static/
 # binarios de teste (gerados por make; nao versionar)
 testar
 pool-asan
-.vscode/
 
 # artefatos de teste que não são fonte
 cob/
@@ -102,10 +105,6 @@ __DOCS__/
 # IntelliJ: saida de compilacao do plugin (gerada por editor/intellij/build.sh)
 editor/intellij/plugin/out/
 editor/intellij/plugin/dist/
-
-# O md com tudo do projeto pra mudanca de laptop: tem credenciais, nunca vai
-# pro repositorio (que e publico).
-/JINGA-TUDO.md
 
 # Sobra do examples/swagger.pr rodado na raiz (teste/exemplos_roda.pr apaga)
 /path/

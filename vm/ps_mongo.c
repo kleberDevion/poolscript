@@ -132,7 +132,7 @@ static bson_t *bson_de_json(const char *json, bson_error_t *be)
 }
 
 int ps_mongo_find(PSMongo *m, const char *col, const char *query_json,
-                  int um_so, long skip, long limit, const char *sort_json,
+                  int um_so, int64_t skip, int64_t limit, const char *sort_json,
                   char **json, char *erro, size_t ecap)
 {
     bson_error_t be;
@@ -141,9 +141,9 @@ int ps_mongo_find(PSMongo *m, const char *col, const char *query_json,
     /* skip/limit/sort vão pro servidor: ele pula e corta antes de mandar.
      * Sem opts, o cursor trazia a coleção inteira pela rede. */
     bson_t *opts = bson_new();
-    if (skip > 0) BSON_APPEND_INT64(opts, "skip", (int64_t)skip);
-    long lim = um_so ? 1 : limit;
-    if (lim > 0) BSON_APPEND_INT64(opts, "limit", (int64_t)lim);
+    if (skip > 0) BSON_APPEND_INT64(opts, "skip", skip);
+    int64_t lim = um_so ? 1 : limit;
+    if (lim > 0) BSON_APPEND_INT64(opts, "limit", lim);
     if (sort_json) {
         bson_t *s = bson_de_json(sort_json, &be);
         if (!s) {
@@ -273,8 +273,8 @@ int ps_mongo_remove(PSMongo *m, const char *col, const char *query_json,
     return rc;
 }
 
-long ps_mongo_count(PSMongo *m, const char *col, const char *query_json,
-                    char *erro, size_t ecap)
+int64_t ps_mongo_count(PSMongo *m, const char *col, const char *query_json,
+                       char *erro, size_t ecap)
 {
     bson_error_t be;
     bson_t *q = bson_de_json(query_json, &be);
@@ -284,5 +284,5 @@ long ps_mongo_count(PSMongo *m, const char *col, const char *query_json,
     mongoc_collection_destroy(c);
     bson_destroy(q);
     if (n < 0) { snprintf(erro, ecap, "erro de banco de dados: %s", be.message); return -1; }
-    return (long)n;
+    return n;
 }

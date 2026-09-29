@@ -1111,8 +1111,13 @@ const Caso CASOS_LIBS[] = {
 /* Observados pelo que o filho FAZ, e não pelo /proc (que só o Linux tem): com
  * o SIGPIPE de volta ao padrão, o `yes` morre pelo sinal quando o `head`
  * fecha o cano (código 141 = 128 + 13); herdando o "ignorar", ele sai com
- * erro (1). E `/dev/fd` lista os descritores do `ls` (0, 1, 2 e o da própria
- * pasta) no Linux e no macOS. */
+ * erro (1).
+ * Os descritores: uma TESTEMUNHA, o número de um socket aberto no motor, não
+ * pode existir no filho, e o 2 (herdado de propósito) tem que existir — é o
+ * que prova que o `test -e /dev/fd/N` enxerga herança naquele sistema. Contar
+ * as linhas do `ls /dev/fd` media o `ls`: no macOS ele abre um descritor a
+ * mais (o da pasta de volta) e dava 5 com o motor limpo. O socket é o
+ * terceiro aberto, pra não cair no 3, que o filho reusa pro cano do exec. */
 { "processo filho nao herda o SIGPIPE ignorado do motor",
   "import os\n"
   "p = os.run([\"sh\", \"-c\", \"(yes; echo $? >&2) | head -n 1 > /dev/null\"], capture=\"live\")\n"
@@ -1121,9 +1126,14 @@ const Caso CASOS_LIBS[] = {
 { "processo filho nao herda os descritores abertos do motor",
   "import os\n"
   "import sockets\n"
+  "a = sockets.socket()\n"
+  "b = sockets.socket()\n"
   "s = sockets.socket()\n"
-  "post(os.run([\"sh\", \"-c\", \"ls /dev/fd | wc -l\"], capture=true).strip())\n"
-  "s.close()\n", "4", NULL, 0 },
+  "n = str(s.fileno())\n"
+  "post(os.run([\"sh\", \"-c\", \"test -e /dev/fd/2 && echo 2:herdou; test -e /dev/fd/\" + n + \" && echo socket:herdou || echo socket:limpo\"], capture=true).strip())\n"
+  "a.close()\n"
+  "b.close()\n"
+  "s.close()\n", "2:herdou\nsocket:limpo", NULL, 0 },
 
 /* ── L4c DO PLANO DAS CONTRADICOES: servicos, tabelas, metadata ──────────
  * (2026-09-12) Strings medidas no binario. */

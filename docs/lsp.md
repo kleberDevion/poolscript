@@ -11,6 +11,15 @@ jinga-lsp               # instalado por `make install`; precisa de node
 Ele fala **Language Server Protocol** por stdin/stdout, então serve qualquer
 editor que seja cliente LSP — VS Code, Neovim, Helix, Emacs, JetBrains.
 
+**No Windows** o `instalar.ps1` põe o `jinga-lsp.cmd` em
+`%LOCALAPPDATA%\Programs\Jinga\bin` (no PATH do usuário) e o servidor em
+`...\Jinga\share\jinga\lsp\server.js`. A extensão do VS Code acha o `.cmd` e
+sobe esse `server.js` instalado com o node do próprio editor (o node não roda
+um `.cmd` sem shell); o IntelliJ acha o `.cmd` pelo mesmo caminho e o roda
+direto. Nos outros editores, aponte o comando pro `jinga-lsp.cmd` (ou
+`node <...>\server.js --stdio`). O servidor acha o `jinga.exe` pelo PATH, sem
+shell.
+
 Os nomes de antes do rename continuam valendo: `poolscript-lsp`, `pool` e
 `psl` seguem instalados como atalhos do mesmo binário, `POOLSCRIPT_HOME` ainda
 é lida, `import poolscript.libs.X` ainda importa, e uma `~/.poolscript`

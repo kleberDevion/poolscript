@@ -13,8 +13,15 @@
 #define PS_GMP_MIN_H
 
 #include <stddef.h>
+#include <stdint.h>
 
+/* O limb é a palavra de 64 bits da máquina. No Windows o `long` tem 32 bits
+ * e a GMP de 64 bits usa `unsigned long long`. */
+#if defined(_WIN32)
+typedef unsigned long long mp_limb_t;
+#else
 typedef unsigned long mp_limb_t;
+#endif
 
 /* Layout da ABI (64-bit): alloc/size int, ponteiro pros limbs. */
 typedef struct {
@@ -93,5 +100,46 @@ extern unsigned long __gmpz_get_ui(mpz_srcptr);
 #define mpz_get_ui       __gmpz_get_ui
 /* sgn é macro no gmp.h de verdade: olha o campo _mp_size direto */
 #define mpz_sgn(z)       ((z)->_mp_size < 0 ? -1 : (z)->_mp_size > 0)
+
+/* int64 <-> mpz. O `int` da Jinga é int64, e as funções `_si` da GMP recebem
+ * `long`: no Linux e no macOS o `long` tem 64 bits e elas servem direto; no
+ * Windows ele tem 32, e um int acima de 2^31 seria cortado. Lá o valor passa
+ * pela magnitude em 64 bits (import/export) e o sinal à parte. */
+#if defined(_WIN32)
+extern void  __gmpz_import(mpz_ptr, size_t, int, size_t, int, size_t, const void *);
+extern void *__gmpz_export(void *, size_t *, int, size_t, int, size_t, mpz_srcptr);
+
+static inline void ps_mpz_set_i64(mpz_ptr z, int64_t v)
+{
+    uint64_t m = v < 0 ? (uint64_t)0 - (uint64_t)v : (uint64_t)v;
+    __gmpz_import(z, 1, -1, sizeof(m), 0, 0, &m);
+    if (v < 0) __gmpz_neg(z, z);
+}
+/* a magnitude, quando cabe em 64 bits (o 0 não escreve nada) */
+static inline int ps_mpz_mag64(mpz_srcptr z, uint64_t *m)
+{
+    *m = 0;
+    if (__gmpz_sizeinbase(z, 2) > 64) return 0;
+    size_t n = 0;
+    __gmpz_export(m, &n, -1, sizeof(*m), 0, 0, z);
+    return 1;
+}
+static inline int ps_mpz_cabe_i64(mpz_srcptr z)
+{
+    uint64_t m;
+    if (!ps_mpz_mag64(z, &m)) return 0;
+    return mpz_sgn(z) < 0 ? m <= (uint64_t)1 << 63 : m <= (uint64_t)INT64_MAX;
+}
+static inline int64_t ps_mpz_get_i64(mpz_srcptr z)
+{
+    uint64_t m;
+    ps_mpz_mag64(z, &m);
+    return mpz_sgn(z) < 0 ? (int64_t)((uint64_t)0 - m) : (int64_t)m;
+}
+#else
+static inline void    ps_mpz_set_i64(mpz_ptr z, int64_t v) { __gmpz_set_si(z, (long)v); }
+static inline int     ps_mpz_cabe_i64(mpz_srcptr z)        { return __gmpz_fits_slong_p(z); }
+static inline int64_t ps_mpz_get_i64(mpz_srcptr z)         { return (int64_t)__gmpz_get_si(z); }
+#endif
 
 #endif /* PS_GMP_MIN_H */

@@ -80,9 +80,59 @@ jobs:
           name: jinga-macos-x86_64
           path: dist/jinga-macos-x86_64.tar.gz
 
+  windows:
+    if: github.event_name != 'workflow_dispatch' || inputs.alvo == 'windows' || inputs.alvo == 'todos'
+    # Windows x64 nativo: o MSYS2 UCRT64 dá o gcc (o goto calculado do laço da
+    # VM não existe no MSVC) e as bibliotecas; o jinga.exe sai estático
+    runs-on: windows-latest
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make zip
+          pacboy: >-
+            gcc:p openssl:p libpng:p gmp:p sqlite3:p expat:p zlib:p
+            postgresql:p libmariadbclient:p mongo-c-driver:p nodejs:p
+      - name: compila
+        run: scripts/ci_anota.sh make pool testar
+      - name: versao
+        run: scripts/ci_anota.sh sh -c "./pool --version && ./pool -e 'import sys; post(sys.platform())'"
+      - name: suite
+        run: scripts/ci_anota.sh ./testar
+      - name: suite sem o codigo de maquina
+        if: always()
+        run: JINGA_JIT=0 scripts/ci_anota.sh ./testar
+      - name: portao inteiro
+        run: |
+          (cd editor/vscode && npm install --omit=dev --no-audit --no-fund)
+          scripts/ci_anota.sh make check
+      - name: empacota
+        run: scripts/ci_anota.sh ./build_bundle.sh
+      - name: instalador
+        # o instalar.ps1 de verdade: instala do pacote numa pasta temporária,
+        # roda o jinga.exe instalado e remove
+        shell: pwsh
+        run: |
+          Expand-Archive dist/jinga-windows-x86_64.zip -DestinationPath "$env:RUNNER_TEMP/pac"
+          & "$env:RUNNER_TEMP/pac/jinga-windows-x86_64/instalar.ps1" -Prefixo "$env:RUNNER_TEMP/jinga"
+          & "$env:RUNNER_TEMP/jinga/bin/jinga.exe" --version
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          & "$env:RUNNER_TEMP/pac/jinga-windows-x86_64/instalar.ps1" -Prefixo "$env:RUNNER_TEMP/jinga" -Remover
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jinga-windows-x86_64
+          path: dist/jinga-windows-x86_64.zip
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [linux, mac]
+    needs: [linux, mac, windows]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -97,4 +147,4 @@ jobs:
         run: |
           gh release create "${GITHUB_REF_NAME}" pacotes/* \
             --repo "${GITHUB_REPOSITORY}" --title "Jinga ${GITHUB_REF_NAME}" \
-            --notes "Pacotes: Linux x86-64 (jinga-portable.tar.gz), macOS Intel (jinga-macos-x86_64.tar.gz)."
+            --notes "Pacotes: Linux x86-64 (jinga-portable.tar.gz), macOS Intel (jinga-macos-x86_64.tar.gz), Windows x64 (jinga-windows-x86_64.zip)."

@@ -75,6 +75,18 @@ static int jit_ligado(void)
 
 /* ── codificador x86-64 mínimo ──────────────────────────────────────────── */
 enum { RAX = 0, RCX, RDX, RBX, RSP, RBP, RSI, RDI, R8, R9, R10, R11, R12, R13, R14, R15 };
+/* A convenção de chamada do C do sistema, nos dois lugares em que o código
+ * gerado conversa com C (a entrada e a chamada do `jit_chama`). SysV (Linux,
+ * macOS): argumentos em rdi, rsi, rdx, e rsi/rdi são livres. Win64: rcx, rdx,
+ * r8; rsi e rdi são de quem chamou (o prólogo os salva), e toda chamada deixa
+ * 32 bytes de "sombra" na pilha pro chamado. */
+#if defined(_WIN32)
+enum { ARG0 = RCX, ARG1 = RDX, ARG2 = R8 };
+#define JIT_WIN64 1
+#else
+enum { ARG0 = RDI, ARG1 = RSI, ARG2 = RDX };
+#define JIT_WIN64 0
+#endif
 enum { CC_O = 0, CC_NO = 1, CC_B = 2, CC_AE = 3, CC_E = 4, CC_NE = 5, CC_BE = 6, CC_A = 7,
        CC_L = 0xC, CC_GE = 0xD, CC_LE = 0xE, CC_G = 0xF };
 
@@ -425,9 +437,9 @@ static void jg_instr(JitGen *g, const Proto *p, int32_t i)
             x_sub_r64_r64(j, RAX, R13);
             x_shr_r64(j, RAX, 4);
             x_mov_mem_r32(j, R15, (int32_t)offsetof(JitCtx, sp), RAX);
-            x_mov_r64_r64(j, RDI, R12);
-            x_mov_r64_r64(j, RSI, R15);
-            x_mov_r32_imm32(j, RDX, arg);
+            x_mov_r64_r64(j, ARG0, R12);
+            x_mov_r64_r64(j, ARG1, R15);
+            x_mov_r32_imm32(j, ARG2, arg);
             x_mov_r64_imm64(j, RAX, (uint64_t)(uintptr_t)jit_chama);
             x_call_r64(j, RAX);
             x_test_r32_r32(j, RAX, RAX);
@@ -501,12 +513,15 @@ static int jit_compila_proto(VM *vm, Proto *p)
     if (!g.pos || !g.ilha) { free(g.pos); free(g.ilha); return -1; }
     JitBuf *j = &g.j;
 
-    /* prólogo: salva os preservados, carrega o estado do frame. O `sub rsp, 8`
-     * alinha a pilha C em 16 pro `call` do jit_chama. */
+    /* prólogo: salva os preservados, carrega o estado do frame. O `sub rsp`
+     * alinha a pilha C em 16 pro `call` do jit_chama: 6 pushes + o retorno =
+     * 56, mais 8. No Win64 são 8 pushes (rsi e rdi também) + o retorno = 72,
+     * mais 8 de alinhamento e os 32 da sombra. */
     x_push(j, RBX); x_push(j, RBP); x_push(j, R12); x_push(j, R13); x_push(j, R14); x_push(j, R15);
-    x_sub_r64_imm8(j, RSP, 8);
-    x_mov_r64_r64(j, R12, RDI);
-    x_mov_r64_r64(j, R15, RSI);
+    if (JIT_WIN64) { x_push(j, RSI); x_push(j, RDI); }
+    x_sub_r64_imm8(j, RSP, JIT_WIN64 ? 40 : 8);
+    x_mov_r64_r64(j, R12, ARG0);
+    x_mov_r64_r64(j, R15, ARG1);
     x_mov_r64_mem(j, R13, R12, (int32_t)offsetof(VM, stack));
     x_mov_r64_mem(j, R14, R12, (int32_t)offsetof(VM, locals));
     x_mov_r32_mem(j, RAX, R15, (int32_t)offsetof(JitCtx, lbase));
@@ -516,7 +531,7 @@ static int jit_compila_proto(VM *vm, Proto *p)
     x_shl_r64(j, RAX, 4);
     x_mov_r64_r64(j, RBX, R13);
     x_add_r64_r64(j, RBX, RAX);
-    x_jmp_r64(j, RDX);                                  /* retoma onde o interpretador mandou */
+    x_jmp_r64(j, ARG2);                                 /* retoma onde o interpretador mandou */
 
     for (int32_t i = 0; i < g.ninstr && !j->falhou; i++) jg_instr(&g, p, i);
     x_ud2(j);                                           /* cair do fim é impossível: RETURN/HALT são ilhas */
@@ -558,7 +573,8 @@ static int jit_compila_proto(VM *vm, Proto *p)
     x_mov_mem_r32(j, R15, (int32_t)offsetof(JitCtx, sp), RAX);
     x_mov_r32_imm32(j, RAX, JIT_ILHA);
     size_t epilogo = j->n;
-    x_add_r64_imm8(j, RSP, 8);
+    x_add_r64_imm8(j, RSP, JIT_WIN64 ? 40 : 8);
+    if (JIT_WIN64) { x_pop(j, RDI); x_pop(j, RSI); }
     x_pop(j, R15); x_pop(j, R14); x_pop(j, R13); x_pop(j, R12); x_pop(j, RBP); x_pop(j, RBX);
     x_ret(j);
     size_t sai_ret = j->n;
