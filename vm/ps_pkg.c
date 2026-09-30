@@ -65,7 +65,7 @@ static void mkdirp(const char *caminho)
     char tmp[1024];
     snprintf(tmp, sizeof(tmp), "%s", caminho);
     for (char *p = tmp + 1; *p; p++) {
-        if (*p == '/') { *p = '\0'; mkdir(tmp, 0755); *p = '/'; }
+        if (ps_eh_sep(*p)) { char s = *p; *p = '\0'; mkdir(tmp, 0755); *p = s; }
     }
     mkdir(tmp, 0755);
 }
@@ -118,7 +118,7 @@ static int existe(const char *caminho)
 /* nome base sem diretório e sem a extensão da linguagem */
 static void derive_name(const char *target, char *out, size_t cap)
 {
-    const char *base = strrchr(target, '/');
+    const char *base = ps_ultimo_sep(target);   /* `jpkg install C:\x\f.pr` no Windows */
     base = base ? base + 1 : target;
     snprintf(out, cap, "%s", base);
     ps_tira_ext(out);
@@ -591,6 +591,15 @@ int ps_pkg_uninstall(const char *nome, int categoria)
 
 /* ── list ───────────────────────────────────────────────────────────────── */
 
+/* Ordem dos nomes na listagem. O `qsort` troca as linhas inteiras; a troca à
+ * mão copiava de uma linha do vetor pra outra com `snprintf`, e o gcc sem
+ * otimização acusava sobreposição (-Wrestrict) sem provar que as linhas eram
+ * outras. */
+static int compara_nome(const void *a, const void *b)
+{
+    return strcmp((const char *)a, (const char *)b);
+}
+
 static void lista_dir(const char *home, const char *sub, const char *rotulo)
 {
     char dir[1200];
@@ -609,13 +618,7 @@ static void lista_dir(const char *home, const char *sub, const char *rotulo)
         }
         closedir(d);
     }
-    for (int i = 0; i < n; i++)
-        for (int j = i + 1; j < n; j++)
-            if (strcmp(nomes[i], nomes[j]) > 0) {
-                char t[256]; snprintf(t, sizeof(t), "%s", nomes[i]);
-                snprintf(nomes[i], sizeof(nomes[i]), "%s", nomes[j]);
-                snprintf(nomes[j], sizeof(nomes[j]), "%s", t);
-            }
+    qsort(nomes, (size_t)n, sizeof(nomes[0]), compara_nome);
     if (n == 0) printf("  (nenhum)\n");
     else for (int i = 0; i < n; i++) printf("  %s\n", nomes[i]);
 }

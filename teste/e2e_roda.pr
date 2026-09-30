@@ -60,11 +60,11 @@ SEM_PAR = {
 # dizendo que a porta não abriu.
 #
 # O `connect_ex` não levanta: devolve 0 (conectou) ou o código do erro, e é
-# esse número que se confere. A versão com `os.cmd` já tinha errado nisso: ela
-# testava o que o `os.cmd` devolve — a SAÍDA, nunca o código de saída — e com
-# `Null == 0` valendo True a função voltava 1 na PRIMEIRA volta, sempre. A
-# "espera de 20 s" era decorativa; quando `Null == 0` virou False (I1/I2/I3),
-# ela passou a nunca dar certo.
+# esse número que se confere. Uma versão mais antiga, também pelo `os.cmd`,
+# errou nisso: testava o que o `os.cmd` devolve — a SAÍDA, nunca o código de
+# saída —, e com `Null == 0` valendo True a função voltava 1 na PRIMEIRA
+# volta, sempre. A "espera de 20 s" era decorativa; quando `Null == 0` virou
+# False (I1/I2/I3), ela passou a nunca dar certo.
 #
 # O prazo é de RELÓGIO, não de contagem de voltas: cada tentativa pode levar
 # até 1 s (o `settimeout`), e contar voltas deixava o prazo real depender de
@@ -92,9 +92,9 @@ funct espera_porta(porta, prazo) {
 # código de saída —, sem shell no meio e sem arquivo temporário. A versão
 # anterior montava tudo em sh (`sh -c 'exec ...' &`, `$!` e `$?` gravados em
 # /tmp, `kill`, `timeout`), e isso só existe inteiro no Linux: no macOS falta
-# o `timeout`; no Windows o `os.cmd` é o cmd.exe (sem `exec`, `&`, `$!`, `$?`
-# nem `/dev/null`), não há `kill`, e o "/tmp" do motor nativo é a raiz do
-# disco, não o /tmp do MSYS2.
+# o `timeout`; no Windows o `os.cmd` é o cmd.exe (sem `exec`, `&` no fim,
+# `$!`, `$?` nem `/dev/null`), sinal não existe, e o "/tmp" do motor nativo
+# fica na raiz do disco, não é o /tmp do MSYS2.
 
 
 # Um pedaço do stdout (ou do stderr) do processo; "" quando o canal fechou.
@@ -320,7 +320,12 @@ if __name__ == "main" {
                 falhou.append(cl + " (rc " + str(r[0]) + ")")
             }
             elif "PULOU" in r[1] {
-                pulou.append(cl)
+                # Cliente de PAR não pula: a porta ABRIU antes de ele rodar
+                # (`espera_porta` deu 1). Se ele diz PULOU ("nada escutando"),
+                # o servidor caiu no meio, depois do cliente anterior — e
+                # contar isso como pulado deixava o portão verde sem as
+                # checagens dele.
+                falhou.append(cl + " (disse PULOU com o servidor ja de pe: o servidor caiu)")
             }
             else {
                 okey.append(srv + "+" + cl)
@@ -387,6 +392,15 @@ if __name__ == "main" {
             post("   ", x)
         }
         sys.exit(1)
+    }
+    # Filtro que não casa NADA não é "tudo passou": o `check-e2e-local` chama
+    # cada alvo pelo nome (`c.pr`, `mail_local`...), e um script renomeado ou
+    # apagado virava "passaram: 0 / e2e: ok" calado. Sai 2, como o runner da
+    # suíte e a unidade quando o filtro não acha caso.
+    if filtro != "" and len(okey) + len(pulou) + len(naorodou) == 0 {
+        post("")
+        post("NENHUM script casou com o filtro '" + filtro + "' em " + PASTA + " — nada rodou")
+        sys.exit(2)
     }
     post("")
     post("e2e: ok")

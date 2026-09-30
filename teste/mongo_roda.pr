@@ -5,7 +5,7 @@
 # (`teste/e2e/mongo.pr`) supõe um `mongod` já rodando numa porta fixa e diz
 # PULOU quando não acha: na prática, nunca rodava.
 #
-# Aqui o teste sobe o próprio `mongod` num diretório efêmero de `/tmp`, numa
+# Aqui o teste sobe o próprio `mongod` numa pasta efêmera (ver RAIZ), numa
 # porta escolhida por ele, e derruba no fim. Não toca em serviço do sistema, não
 # usa o banco de ninguém, e roda em qualquer máquina que tenha o binário — sem
 # ele, PULOU, nunca falso verde.
@@ -14,16 +14,44 @@
 # porta fechada, coleção que não existe, filtro que não casa, update do que não
 # está lá. É onde mora metade dos ramos.
 #
+# Nada aqui passa por shell, pra valer igual no Linux, no macOS e no Windows:
+# o `mongod` é um `Process` do motor (ver `sobe` e `derruba`), a espera da
+# porta é o socket do próprio motor, e a pasta é criada e apagada pelo motor.
+# A versão anterior era sh de ponta a ponta (`command -v`, `$?` gravado em
+# /tmp, `timeout 1 bash -c '</dev/tcp/...'`, `rm -rf`), com o mongod subindo
+# por `--fork` e caindo por `--shutdown`, e isso só existe inteiro no Linux
+# (o porquê está em cada função).
+#
 #     ./pool teste/mongo_roda.pr
 import os
 import sys
+import date
+import sockets
 import psodbc
 
+# A pasta do banco: /tmp no Linux e no macOS. No Windows o motor é nativo e
+# "/tmp/x" é "<disco>:\tmp\x", na raiz do disco corrente — não o /tmp do
+# MSYS2 —, e o `os.mkdir`, que cria a cadeia inteira, deixaria a pasta \tmp lá
+# depois do teste. Então lá ela é uma subpasta da corrente, criada e apagada
+# do mesmo jeito.
 RAIZ = "/tmp/ps_mongo_teste"
+if sys.platform() == "windows" {
+    RAIZ = "ps_mongo_teste"
+}
 PORTA = 28961
+
+# Quantas checagens a rodada inteira faz. Onde o `mongod` não está (ou não
+# sobe), o PULOU diz que foram essas que deixaram de rodar; onde ele roda, o
+# fim confere que rodaram todas: checagem nova sem atualizar este número
+# reprova lá, em vez de o PULOU passar a contar errado.
+CHECAGENS = 28
 
 ok = 0
 falhas = []
+
+# O `mongod` que este teste subiu: o `Process` do `os.run`. É por ele que o
+# `derruba` encerra o servidor.
+servidor = Null
 
 
 funct confere(nome, cond) {
@@ -36,47 +64,94 @@ funct confere(nome, cond) {
 }
 
 
+# Se o programa existe. O `os.run` levanta IOError quando não acha o que
+# rodar, nos três sistemas; no Windows ele procura como o próprio Windows,
+# completando o `.exe`. Era `command -v` com o `$?` gravado num arquivo de
+# /tmp pelo `os.cmd`, e no Windows o `os.cmd` é o cmd.exe, que não tem
+# `command`, `;`, `$?` nem `/dev/null`: o arquivo nunca era escrito, o `open`
+# dele levantava, e o teste caía antes de dizer PULOU.
 funct tem(cmd) {
-    os.cmd("command -v " + cmd + " > /dev/null 2>&1; echo $? > /tmp/ps_m_tem")
-    return int(open("/tmp/ps_m_tem").read().strip()) == 0
+    try {
+        os.run([cmd, "--version"], capture=true)
+        return true
+    }
+    catch (IOError e) {
+        return false
+    }
 }
 
 
 # Sobe o mongod e espera a porta ACEITAR conexão — não `sleep` no escuro.
+#
+# Ele roda como processo filho, pelo `os.run(..., capture="live")`: era
+# `--fork`, e o mongod do Windows não tem `--fork`. A entrada fecha na hora
+# (ele não lê nada dela), e o que ele escreve vai pro `--logpath`, não pros
+# canos do `Process`.
+#
+# A tentativa de conexão é o socket do próprio motor. Era `timeout 1 bash -c
+# '</dev/tcp/...'` pelo `os.cmd`: no macOS o `timeout` do GNU se chama
+# `gtimeout` (vem do coreutils do Homebrew), a tentativa falhava sempre, e o
+# teste dizia que o mongod não subiu com ele no ar; no Windows o cmd.exe não
+# tem aspas simples, `/dev/tcp`, `/dev/null` nem `$?`. O prazo é de RELÓGIO,
+# não de voltas: no Windows a porta fechada demora a recusar (ele insiste no
+# SYN), e cada tentativa pode gastar o 1 s inteiro do `settimeout`.
 funct sobe() {
-    os.cmd("rm -rf " + RAIZ + "; mkdir -p " + RAIZ + "/db")
-    os.cmd("mongod --dbpath " + RAIZ + "/db --port " + str(PORTA)
-           + " --bind_ip 127.0.0.1 --logpath " + RAIZ + "/mongod.log --fork"
-           + " > " + RAIZ + "/subida.log 2>&1")
-    i = 0
-    while i < 100 {
-        os.cmd("timeout 1 bash -c '</dev/tcp/127.0.0.1/" + str(PORTA)
-               + "' 2>/dev/null; echo $? > /tmp/ps_m_porta")
-        if int(open("/tmp/ps_m_porta").read().strip()) == 0 {
+    if os.exists(RAIZ) {
+        os.rmdir(RAIZ, force=true)
+    }
+    os.mkdir(RAIZ + "/db")
+    servidor = os.run(["mongod", "--dbpath", RAIZ + "/db", "--port", str(PORTA),
+                       "--bind_ip", "127.0.0.1", "--logpath", RAIZ + "/mongod.log"],
+                      capture="live")
+    servidor.close()
+    fim = date.monotonic() + 20
+    while date.monotonic() < fim {
+        sk = sockets.socket()
+        sk.settimeout(1)
+        rc = sk.connect_ex(("127.0.0.1", PORTA))
+        sk.close()
+        if rc == 0 {
             return true
         }
-        os.cmd("sleep 0.1")
-        i = i + 1
+        sleep(0.1)
     }
     return false
 }
 
 
+# Derruba o mongod pelo PROCESSO e apaga a pasta pelo motor.
+#
+# Era `mongod --shutdown` e `rm -rf` pelo `os.cmd`. O `--shutdown` só existe no
+# mongod do Linux (no fonte dele a opção é condicionada a `__linux__`): no
+# macOS e no Windows ele não derrubava nada, o servidor seguia no ar — a
+# checagem da porta fechada reprovava, e o mongod ficava rodando depois do
+# teste. O `kill()` manda o SIGTERM, que no mongod é o desligamento limpo, e o
+# `wait()` espera ele sair DE VERDADE antes de a pasta sumir e de a porta
+# fechada ser conferida. O Windows não tem sinal: lá o `kill()` encerra o
+# processo na hora, e o banco não importa — a pasta é apagada logo depois.
 funct derruba() {
-    os.cmd("mongod --dbpath " + RAIZ + "/db --shutdown > /dev/null 2>&1")
-    os.cmd("rm -rf " + RAIZ)
+    servidor.kill()
+    servidor.wait()
+    if os.exists(RAIZ) {
+        os.rmdir(RAIZ, force=true)
+    }
 }
 
 
 if __name__ == "main" {
     if not tem("mongod") {
-        post("PULOU mongo — `mongod` nao esta instalado")
+        post("PULOU mongo — `mongod` nao esta no PATH: as " + str(CHECAGENS)
+             + " checagens do driver nao rodaram")
         sys.exit(0)
     }
     if not sobe() {
-        post("PULOU mongo — o mongod nao subiu:")
+        post("PULOU mongo — o mongod nao subiu (as " + str(CHECAGENS)
+             + " checagens do driver nao rodaram):")
+        # `os.readFile` fecha o arquivo na hora. O `open(...).read()` o deixava
+        # aberto até o coletor passar, e o Windows não apaga arquivo aberto: o
+        # `os.rmdir` do `derruba` levantava.
         if os.exists(RAIZ + "/mongod.log") {
-            post(open(RAIZ + "/mongod.log").read()[-400:])
+            post(os.readFile(RAIZ + "/mongod.log")[-400:])
         }
         derruba()
         sys.exit(0)
@@ -161,6 +236,12 @@ if __name__ == "main" {
 
     post("")
     post("mongo:", str(ok), "checagens passaram")
+    # O PULOU diz CHECAGENS como o que deixou de rodar: aqui se confere que é
+    # mesmo o que roda.
+    if ok + len(falhas) != CHECAGENS {
+        addEnd(falhas, "rodaram " + str(ok + len(falhas)) + " checagens e CHECAGENS diz "
+               + str(CHECAGENS) + ": atualize a constante")
+    }
     if len(falhas) > 0 {
         post("FALHARAM:", str(len(falhas)))
         for each f in falhas {

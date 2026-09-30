@@ -105,8 +105,18 @@ LIBS_POOL      := -Wl,-Bstatic -lsqlite3 -lssl -lcrypto -lpng -lexpat -lz -Wl,-B
 # as variantes de teste (asan, debug, fuzz, oom, cobertura) ligam dinâmico
 LIBS_TESTE     := -lsqlite3 -lssl -lcrypto -lpng -lexpat -lz $(LIBS_SISTEMA)
 endif
+# A UNIDADE (teste/unidade.c) liga só os módulos puros: zlib e expat (o xlsx)
+# e, no Windows, a bcrypt — lá o aleatório do ps_hash.c é o BCryptGenRandom,
+# e sem ela o link para em `undefined reference to BCryptGenRandom`.
+LIBS_UNIDADE := -lz -lexpat -lm
+ifeq ($(E_WIN),1)
+LIBS_UNIDADE += -lbcrypt
+endif
 # O analisador (-fanalyzer) e os avisos extra são do gcc de verdade: no macOS
-# é o do Homebrew (`brew install gcc`), já que ali o `gcc` é o clang.
+# é o do Homebrew (`brew install gcc`), já que ali o `gcc` é o clang. A imagem
+# do `macos-15-intel` do CI (20260824) já traz o gcc-13, o gcc-14 e o gcc-15 do
+# Homebrew; o `wildcard` sai ordenado (make 3.81 da Apple e 4.3+), então o
+# escolhido é o gcc-13, a série do gcc do Ubuntu 24.04 (o do CI do Linux).
 ifeq ($(SO),Darwin)
 GCC_GNU := $(firstword $(wildcard $(BREW)/bin/gcc-[0-9]*))
 else
@@ -135,15 +145,20 @@ MK := $(lastword $(MAKEFILE_LIST))
 # `ps_build.h` é GERADO: a DATA da compilação, pra o `--version` distinguir
 # dois binários da mesma versão (um instalado e um recém-compilado respondiam
 # igual, e quem perguntava "o que tem nesta máquina" não tinha como saber).
-# Escreve num temporário e só troca quando MUDA (`cmp -s`): trocar sempre
-# relinkaria o binário a cada `make`. Um `-D` no CFLAGS não serve — o make não
+# Escreve num temporário e só troca quando MUDA: trocar sempre relinkaria o
+# binário a cada `make`. Um `-D` no CFLAGS não serve — o make não
 # rastreia mudança de receita, e o valor ficaria preso no da compilação
 # anterior, que é o mesmo defeito que este alvo existe pra evitar.
+# A comparação é o `cat` do coreutils, não o `cmp`: o `cmp` é do diffutils,
+# que o MSYS2 do Windows não traz na base. Sem ele a comparação falhava
+# sempre, o .h era trocado a cada `make` e o `pool.exe` relinkava em cada
+# sub-make do `check` que depende dele (`leis`, `check-e2e-local`) — e no
+# Windows o relink não grava por cima de um `pool.exe` que ainda esteja rodando.
 FORCE:
 $(VM)/ps_build.h: FORCE
 	@printf '/* GERADO pelo Makefile — a data desta compilacao. */\n#define PS_BUILD_DATA "%s"\n' \
 	    "$$(date +%Y-%m-%d)" > $@.novo
-	@cmp -s $@.novo $@ 2>/dev/null || mv $@.novo $@
+	@[ -f $@ ] && [ "$$(cat $@.novo)" = "$$(cat $@)" ] || mv $@.novo $@
 	@rm -f $@.novo
 
 # Os CABEÇALHOS da VM também: mudar só um `.h` (uma macro, um campo de struct)
@@ -469,19 +484,39 @@ ANALISA_FORA := $(VM)/jinga_vm.c
 #                                 por quem monta o ZIP (free(zip.b))
 #   ps_db.c    leak of `strdup` — `res->cols[i]` (res_col_nome); liberado em
 #                                 ps_db_res_libera
+#   ps_win.h   leak of file descriptor (só no Windows) — o `socket()` do Winsock
+#                                 devolve SOCKET e o `ps_w_socket` o entrega
+#                                 como `int`: o analisador perde o fd na
+#                                 conversão. Quem abre (ps_jk_ws_conecta, os
+#                                 sockets do motor) guarda em `c->fd` e fecha em
+#                                 todo caminho de erro
 # Cada entrada e um padrao de `grep` (regex basica, sem espaco: `.` casa o
 # espaco e as aspas do gcc) casando ARQUIVO + MENSAGEM, nao arquivo:linha —
 # a linha anda a cada edicao e o portao reprovava o mesmo falso positivo de
 # antes, ja conferido, so porque o codigo acima dele cresceu (345 -> 357).
-ANALISA_ACEITOS := ps_xlsx.c:[0-9]*:[0-9]*:.*leak.of..nb. ps_db.c:[0-9]*:[0-9]*:.*leak.of..strdup
+ANALISA_ACEITOS := ps_xlsx.c:[0-9]*:[0-9]*:.*leak.of..nb. ps_db.c:[0-9]*:[0-9]*:.*leak.of..strdup \
+                   ps_win.h:[0-9]*:[0-9]*:.*leak.of.file.descriptor
 ANALISA_ALVO := $(if $(ANALISA_TUDO),$(FONTES),$(filter-out $(ANALISA_FORA),$(FONTES)))
 
+# O TETO não vale em todo sistema, e isso tem que aparecer. No macOS o kernel
+# recusa um `ulimit -v` menor que o espaço de endereços que o processo já
+# ocupa (xnu, `vm_map_set_size_limit`); no MSYS2 do Windows ele vira um job
+# object com limite de memória por processo (Cygwin, `__set_rlimit_as`), que
+# também pode ser recusado. A recusa ia calada pra saída do gcc — que só é lida
+# por `warning:|error:` — e o gcc rodava SEM teto sem ninguém saber. Agora o
+# teto é testado antes: recusado, o alvo diz que roda sem ele.
 analisa:
 	@set -f; achou=0; faltou=""; \
 	if [ -z "$(GCC_GNU)" ]; then \
 	  echo "  analisa: o -fanalyzer e do gcc; no macOS: brew install gcc"; exit 1; fi; \
+	teto=1; \
+	if ! (ulimit -v $$(($(ANALISA_MB) * 1024))) 2>/dev/null; then \
+	  teto=0; \
+	  echo "  analisa: SEM o teto de $(ANALISA_MB) MB — este sistema ($$(uname -s)) recusou o ulimit -v;"; \
+	  echo "  o gcc roda com o limite que ja valia (ulimit -v: $$(ulimit -v)), e o que sair com erro sem achado vai pra NAO TERMINARAM"; \
+	fi; \
 	for f in $(ANALISA_ALVO); do \
-	  saida=$$( (ulimit -v $$(($(ANALISA_MB) * 1024)); \
+	  saida=$$( (if [ $$teto -eq 1 ]; then ulimit -v $$(($(ANALISA_MB) * 1024)); fi; \
 	             nice -n 19 $(GCC_GNU) $(CFLAGS) -I$(VM) -fanalyzer -c -o /dev/null $$f) 2>&1 ); \
 	  rc=$$?; \
 	  aviso=$$(printf '%s\n' "$$saida" | grep -E "warning:|error:" | grep -v "^cc1"); \
@@ -494,7 +529,8 @@ analisa:
 	done; \
 	if [ $$achou -eq 0 ]; then echo "  -fanalyzer: nada nos analisados"; fi; \
 	if [ -n "$$faltou" ]; then \
-	  echo "  NAO TERMINARAM (teto de $(ANALISA_MB) MB):$$faltou"; fi; \
+	  if [ $$teto -eq 1 ]; then echo "  NAO TERMINARAM (teto de $(ANALISA_MB) MB):$$faltou"; \
+	  else echo "  NAO TERMINARAM (sem o teto de $(ANALISA_MB) MB: o gcc saiu com erro sem achado):$$faltou"; fi; fi; \
 	$(if $(ANALISA_TUDO),,echo "  FORA por padrao (grande demais p/ esta maquina): $(ANALISA_FORA)"); \
 	if [ $$achou -ne 0 ]; then \
 	  echo; \
@@ -552,21 +588,38 @@ BENCH ?=
 bench: pool
 	@nice -n 19 ./pool teste/bench.pr $(BENCH)
 
+# No `avisos`, FONTE QUE NÃO COMPILA também reprova. O alvo só lia as linhas
+# `warning:` e ignorava o código de saída do gcc: um fonte que o gcc desta
+# máquina não compila (no macOS é o gcc do Homebrew contra os cabeçalhos da
+# Apple, não o clang do build) não dava aviso nenhum, e o alvo dizia "nenhum"
+# sobre um arquivo que ele não conferiu. Cada falha agora sai com o nome do
+# fonte e as linhas de erro do gcc.
 AVISOS_NIVEL ?= 1
 avisos:
 	@if [ -z "$(GCC_GNU)" ]; then \
 	  echo "  avisos: -Wlogical-op e -Wformat-truncation sao do gcc; no macOS: brew install gcc"; exit 1; fi; \
-	saida=$$(for f in $(FONTES); do \
+	tudo=$$(for f in $(FONTES); do \
 	    nice -n 19 $(GCC_GNU) $(CFLAGS) -Wlogical-op -Wshadow \
 	      -Wformat-truncation=$(AVISOS_NIVEL) \
-	      -I$(VM) -c -o /dev/null $$f 2>&1; \
-	  done | grep -E "warning:" | sort -u); \
+	      -I$(VM) -c -o /dev/null $$f 2>&1 || echo "NAO COMPILOU: $$f"; \
+	  done); \
+	saida=$$(printf '%s\n' "$$tudo" | grep -E "warning:" | sort -u); \
+	naocomp=$$(printf '%s\n' "$$tudo" | grep "^NAO COMPILOU: "); \
+	falha=0; \
 	if [ -n "$$saida" ]; then \
 	  printf '%s\n' "$$saida"; \
 	  echo; \
 	  echo "avisos: $$(printf '%s\n' "$$saida" | wc -l) achado(s) — reprovando."; \
-	  exit 1; \
+	  falha=1; \
 	fi; \
+	if [ -n "$$naocomp" ]; then \
+	  printf '%s\n' "$$tudo" | grep -E "^[^ ].*error: "; \
+	  printf '%s\n' "$$naocomp"; \
+	  echo; \
+	  echo "avisos: $$(printf '%s\n' "$$naocomp" | wc -l) fonte(s) nao compilaram com $(GCC_GNU) e nao foram conferidos — reprovando."; \
+	  falha=1; \
+	fi; \
+	if [ $$falha -ne 0 ]; then exit 1; fi; \
 	echo "  avisos extra (nivel $(AVISOS_NIVEL)): nenhum"
 
 .PHONY: avisos
@@ -645,7 +698,9 @@ check: pool testar
 	@echo
 	@./pool teste/jinker_roda.pr
 	@echo
-	# Mongo: sobe o proprio mongod em /tmp e derruba. PULA se nao houver binario.
+	# Mongo: sobe o proprio mongod numa pasta efemera (em /tmp no Linux e no
+	# macOS; no Windows, dentro da pasta corrente) e derruba. PULA se nao
+	# houver binario.
 	@./pool teste/mongo_roda.pr
 	@echo
 	# LSP: o servidor agora e `editor/vscode/server.js`, sobre
@@ -716,7 +771,12 @@ check-e2e: pool
 # `ps_jinker.c` e `ps_db.c` dos 0% de cobertura — eles estão em
 # zero não por serem código morto, mas porque só o e2e os toca e o e2e não
 # entrava em portão nenhum.
-E2E_SEM_SERVICO := arquivo sqlite socket pkg mail_local jinker manpu qrcode c d f
+#
+# Os três de uma letra vão COM o `.pr`: o `e2e_roda.pr` escolhe pelo PEDAÇO do
+# nome, e `c` sozinho casava também `jinker_cli` (o par jinker inteiro de
+# novo), `mail_local`, `socket` e `qrcode`; `d` casava o `db.pr`, que precisa
+# de banco, e o `qrcode`. Com o `.pr` cada um casa só o próprio arquivo.
+E2E_SEM_SERVICO := arquivo sqlite socket pkg mail_local jinker manpu qrcode c.pr d.pr f.pr
 # DIZ QUAL alvo caiu. Antes o laço só levantava uma flag e o fim imprimia
 # "e2e local: FALHOU" — treze alvos rodados, nenhum nome. Portão que reprova
 # sem dizer o quê obriga a rodar tudo de novo à mão pra descobrir, que é o
@@ -724,10 +784,22 @@ E2E_SEM_SERVICO := arquivo sqlite socket pkg mail_local jinker manpu qrcode c d 
 #
 # Cada alvo com TIMEOUT próprio: um servidor que não sobe pendurava o alvo
 # inteiro, e o que se via era a máquina travando, não um teste falhando.
-E2E_TIMEOUT ?= 180
+#
+# Esse TIMEOUT de fora é a rede pro DRIVER travar; o prazo de cada script é do
+# próprio `e2e_roda.pr` (120 s por script, 20 s pra porta abrir, 6 s pra sair
+# depois do SIGTERM). O pior caso do par jinker é 20 + 2 x (120 + 6) + 6 =
+# 278 s, e com 180 o `timeout` de fora matava no meio um par lento e vivo. No
+# Windows é pior: o `timeout` do MSYS2 encerra só o `pool.exe` do driver, os
+# filhos dele ficam órfãos segurando a porta 28840 e derrubam o alvo seguinte.
+# Por isso o de fora fica ACIMA do pior caso do driver.
+E2E_TIMEOUT ?= 300
 
 check-e2e-local: pool
-	@caidos=""; \
+	@if [ -z "$(TIMEOUT)" ]; then \
+	  echo "e2e local: falta o comando timeout (no macOS ele vem do coreutils: brew install coreutils, que traz o gtimeout)"; \
+	  exit 1; \
+	fi; \
+	caidos=""; \
 	for alvo in $(E2E_SEM_SERVICO); do \
 	  $(TIMEOUT) $(E2E_TIMEOUT) ./pool teste/e2e_roda.pr $$alvo || caidos="$$caidos $$alvo"; \
 	done; \
@@ -752,10 +824,20 @@ check-e2e-local: pool
 # as funções direto. É o que fura o teto de ~60% de ramo da suíte `.pr`, que
 # por construção não alcança tratamento de erro — não existe programa Jinga
 # que faça um `malloc` falhar ou passe um buffer curto pro base64.
+# No Windows o binário é `unidade.exe`, e as bibliotecas estão em LIBS_UNIDADE.
+#
+# `.PHONY`: compila e RODA a cada chamada, nos três sistemas. Como alvo de
+# arquivo, o binário nascia na mesma receita que o roda: uma rodada que
+# reprovava deixava o binário mais novo que os fontes, e o `make unidade`
+# seguinte (o do `check`) dizia "is up to date" e saía 0 sem rodar caso
+# nenhum. Compilar toda vez também tira o binário velho de quando só um
+# cabeçalho da VM mudou, que esta regra não lista.
 unidade: teste/unidade.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(MK)
-	$(CC) $(CFLAGS) -g -I$(VM) -o $@ teste/unidade.c \
-	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c -lz -lexpat -lm
-	@./$@
+	$(CC) $(CFLAGS) -g -I$(VM) -o $@$(EXE) teste/unidade.c \
+	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(LIBS_UNIDADE)
+	@./$@$(EXE)
+
+.PHONY: unidade
 
 pool-oom: $(FONTES) $(CABECALHOS) teste/ps_oom.c $(VM)/ps_versao.h $(MK)
 	$(CC) $(CFLAGS) -g -I$(VM) -o $@ $(FONTES) teste/ps_oom.c \
@@ -849,8 +931,14 @@ check-asan: pool-asan testar
 # Roda a suíte inteira contra o binário com `-DPS_DEBUG`. Invariante quebrada
 # vira `abort()`, e o runner (subprocesso por caso) reporta como morte por
 # sinal em vez de derrubar a bateria.
-pool-debug: $(FONTES) $(CABECALHOS) $(VM)/ps_versao.h $(MK)
-	$(CC) -O1 -g -DPS_DEBUG $(CFLAGS_BASE) -I$(VM) -o $@ $(FONTES) $(LIBS_TESTE)
+#
+# O MESMO ambiente do `pool`, senão a suíte mede outro programa. No Windows
+# isso é o manifesto de RECURSOS (UTF-8 em argv, ambiente e nomes de arquivo:
+# sem ele um caminho com acento chega na página de código antiga) e a pilha de
+# 8 MB, que vem no LIBS_TESTE (lá igual ao LIBS_POOL). O arquivo é
+# `pool-debug.exe`; o `testar` completa o `.exe` do PS_POOL.
+pool-debug: $(FONTES) $(CABECALHOS) $(VM)/ps_versao.h $(RECURSOS) $(MK)
+	$(CC) -O1 -g -DPS_DEBUG $(CFLAGS_BASE) -I$(VM) -o $@ $(FONTES) $(RECURSOS) $(LIBS_TESTE)
 
 check-debug: pool-debug testar
 	@echo "suite inteira com as invariantes do motor ligadas…"
@@ -877,12 +965,12 @@ cobertura: pool testar
 	# do portão manda corrigir o que já está coberto.
 	# A unidade em C tem que entrar na MEDIÇÃO, senão os ramos que só ela
 	# alcança continuam contando como descobertos.
-	# O MESMO link do alvo `unidade` (com ps_xlsx.c -lz -lexpat): sem o xlsx o
+	# O MESMO link do alvo `unidade` (com ps_xlsx.c e LIBS_UNIDADE): sem o xlsx o
 	# link falhava, o `2>/dev/null` escondia e o `|| true` seguia — a unidade
 	# nunca entrou na medição. Falha de link ou de teste agora derruba o alvo.
 	@echo "rodando os testes de unidade instrumentados…"
 	@$(CC) -O0 -g --coverage $(CFLAGS_BASE) -I$(VM) -o cob/unidade teste/unidade.c \
-	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c -lz -lexpat -lm
+	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(LIBS_UNIDADE)
 	@./cob/unidade > /dev/null
 	@echo "rodando os drivers .pr e o e2e local contra o mesmo binario…"
 	@for d in teste/confere_metadata.pr scripts/audita_doc.pr \
@@ -901,13 +989,23 @@ cobertura: pool testar
 	@for alvo in $(E2E_SEM_SERVICO) db mongo mail ws; do \
 	  nice -n 19 ./cob/pool teste/e2e_roda.pr $$alvo >/dev/null 2>&1 || true; \
 	done
+	# A saida de cada lcov vai pra um arquivo em cob/, nao pro /dev/null: la a
+	# mensagem de erro sumia, e o log do CI mostrava so o "Error 1" do make.
+	# Se o lcov falha, o fim do arquivo dele sai aqui antes de o alvo cair.
 	@lcov --capture --directory . --output-file cob/bruto.info \
-	  --rc branch_coverage=1 --ignore-errors mismatch,source,empty >/dev/null 2>&1
+	  --rc branch_coverage=1 --ignore-errors mismatch,source,empty >cob/lcov_captura.txt 2>&1 \
+	  || { echo "cobertura: o lcov --capture falhou; o fim de cob/lcov_captura.txt:"; \
+	       tail -n 40 cob/lcov_captura.txt; exit 1; }
 	@lcov --extract cob/bruto.info "*/vm/*" --output-file cob/vm.info \
-	  --rc branch_coverage=1 --ignore-errors empty >/dev/null 2>&1
+	  --rc branch_coverage=1 --ignore-errors empty >cob/lcov_extrai.txt 2>&1 \
+	  || { echo "cobertura: o lcov --extract falhou; o fim de cob/lcov_extrai.txt:"; \
+	       tail -n 40 cob/lcov_extrai.txt; exit 1; }
 	@genhtml cob/vm.info --output-directory cob/html --branch-coverage \
 	  >/dev/null 2>&1 || true
-	@echo; lcov --summary cob/vm.info --rc branch_coverage=1 2>/dev/null | tail -6
+	@echo; lcov --summary cob/vm.info --rc branch_coverage=1 >cob/lcov_resumo.txt 2>&1 \
+	  || { echo "cobertura: o lcov --summary falhou; o fim de cob/lcov_resumo.txt:"; \
+	       tail -n 40 cob/lcov_resumo.txt; exit 1; }; \
+	  tail -6 cob/lcov_resumo.txt
 	@echo; echo "detalhe por arquivo:  cob/html/index.html"
 	@echo
 	# PORTÃO: compara ARQUIVO POR ARQUIVO com o baseline versionado. Percentual

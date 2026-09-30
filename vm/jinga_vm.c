@@ -3302,7 +3302,7 @@ static void escreve_valor(const Value *v, int dentro)
                 printf("<QRImage '%s'>", ((PSQRImage *)v->as.obj)->nome);
             } else if (v->as.obj->type == OBJ_MANPU_FILE) {
                 const char *cam = ((PSManpuFile *)v->as.obj)->caminho;
-                const char *barra = strrchr(cam, '/');
+                const char *barra = ps_ultimo_sep(cam);
                 printf("<ManpuFile %s>", barra ? barra + 1 : cam);
             } else if (v->as.obj->type == OBJ_DBCONN) {
                 static const char *DN[]={"sqlite","postgres","mysql","mssql"};
@@ -7154,9 +7154,9 @@ static int met_a_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     const char *destino = (n == 1 && EH_STRING(args[0])) ? COMO_STRING(args[0])->chars : ".";
     struct stat st;
     int eh_pasta = (strcmp(destino, ".") == 0 || strcmp(destino, "..") == 0
-                    || (destino[0] && destino[strlen(destino) - 1] == '/')
+                    || ps_termina_em_sep(destino)
                     || (stat(destino, &st) == 0 && S_ISDIR(st.st_mode)));
-    const char *base = strrchr(a->caminho, '/');
+    const char *base = ps_ultimo_sep(a->caminho);
     base = base ? base + 1 : a->caminho;
     char caminho[1024];
     if (eh_pasta) snprintf(caminho, sizeof(caminho), "%.500s/%.400s", destino, base);
@@ -8586,7 +8586,7 @@ static PSPoolFile *novo_poolfile(VM *vm, const char *caminho)
     char abs[2048];
     caminho_abs(caminho, abs, sizeof(abs));
     pf->caminho = strdup(abs);
-    const char *barra = strrchr(abs, '/');
+    const char *barra = ps_ultimo_sep(abs);
     pf->nome = strdup(barra ? barra + 1 : abs);
     const char *ponto = strrchr(pf->nome ? pf->nome : "", '.');
     char e[64] = "";
@@ -8603,14 +8603,15 @@ static int cria_pais(const char *caminho)
 {
     char tmp[2048];
     snprintf(tmp, sizeof(tmp), "%s", caminho);
-    char *barra = strrchr(tmp, '/');
+    char *barra = ps_ultimo_sep(tmp);
     if (!barra || barra == tmp) return 0;
     *barra = '\0';
     for (char *p = tmp + 1; *p; p++) {
-        if (*p != '/') continue;
+        if (!ps_eh_sep(*p)) continue;
+        char s = *p;
         *p = '\0';
         mkdir(tmp, 0755);
-        *p = '/';
+        *p = s;
     }
     mkdir(tmp, 0755);
     return 0;
@@ -8779,7 +8780,12 @@ static int met_pf_delete(VM *vm, Value alvo, Value *args, int n, Value *out)
     (void)args;
     if (n != 0) return erro_aridade(vm, "delete", 0, 0, n);
     if (pf_exige_fechado(vm, alvo, "delete") != 0) return -1;
-    unlink(pf_caminho(alvo));            /* já apagado não é erro */
+    /* Já apagado não é erro. Qualquer outra falha é: pasta sem escrita, e no
+     * Windows o arquivo aberto em outro lugar. O retorno do unlink era
+     * ignorado e o delete devolvia True com o arquivo no lugar — o mesmo
+     * defeito do `os.move` que dizia "ok" sem apagar a origem. */
+    const char *cam = pf_caminho(alvo);
+    if (unlink(cam) != 0 && errno != ENOENT) return erro_sistema(vm, errno, cam, NULL);
     *out = MK_BOOL(1);
     return 0;
 }
@@ -10891,7 +10897,7 @@ static int rx_obj_str(VM *vm, Value alvo, Value *args, int n, const char *quem,
 
 static int met_rx_match(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    PSRegex *r; PSString *s;
+    PSRegex *r = NULL; PSString *s = NULL;
     if (rx_obj_str(vm, alvo, args, n, "match", &r, &s) != 0) return -1;
     RxCaptura cap;
     int v = ps_regex_casa_tudo(r, s->chars, s->len, &cap);
@@ -10902,7 +10908,7 @@ static int met_rx_match(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static int met_rx_search(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    PSRegex *r; PSString *s;
+    PSRegex *r = NULL; PSString *s = NULL;
     if (rx_obj_str(vm, alvo, args, n, "search", &r, &s) != 0) return -1;
     RxCaptura cap;
     int v = ps_regex_busca(r, s->chars, s->len, 0, &cap);
@@ -10913,14 +10919,14 @@ static int met_rx_search(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static int met_rx_findall(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    PSRegex *r; PSString *s;
+    PSRegex *r = NULL; PSString *s = NULL;
     if (rx_obj_str(vm, alvo, args, n, "findall", &r, &s) != 0) return -1;
     return rx_findall(vm, r, s->chars, s->len, out);
 }
 
 static int met_rx_split(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    PSRegex *r; PSString *s;
+    PSRegex *r = NULL; PSString *s = NULL;
     /* `n < 1` FALTAVA, e nao era so mensagem: sem ele, `p.split()` caia no
      * `rx_obj_str(..., 1, ...)` logo abaixo — que recebe o literal 1 no lugar
      * do `n` real, entao a guarda `n != 1` de la nunca disparava — e lia
@@ -12478,7 +12484,7 @@ static int mod_dotenv_load(VM *vm, Value *args, int n, Value *out)
             snprintf(caminho, sizeof(caminho), "%s/.env", dir);
             struct stat st;
             if (stat(caminho, &st) == 0 && S_ISREG(st.st_mode)) break;
-            char *barra = strrchr(dir, '/');
+            char *barra = ps_ultimo_sep(dir);        /* o getcwd do Windows dá `\` */
             if (!barra || barra == dir) { caminho[0] = '\0'; break; }
             *barra = '\0';
         }
@@ -12943,8 +12949,9 @@ static int os_procura(VM *vm, Value *args, int n, Value *out, int quer_dir, cons
     char achado[2048];
     /* Caminho ABSOLUTO resolve direto — no interpretador `root / "/abs"` do
      * pathlib devolve o absoluto, então a busca por raízes nem entra. Sem
-     * este atalho, "/tmp/x.png" virava "raiz//tmp/x.png" e não achava. */
-    if (nome->chars[0] == '/') {
+     * este atalho, "/tmp/x.png" virava "raiz//tmp/x.png" e não achava — e no
+     * Windows o mesmo com "C:\...", até a regra passar a ser a do sistema. */
+    if (ps_caminho_absoluto(nome->chars)) {
         struct stat st;
         int tem = (stat(nome->chars, &st) == 0);
         if (tem && (quer_dir ? S_ISDIR(st.st_mode) : S_ISREG(st.st_mode)))
@@ -13124,7 +13131,7 @@ static int mod_os_writefile(VM *vm, Value *args, int n, Value *out)
     }
     /* cria a pasta pai (como makedirs) */
     char tmp[2048]; snprintf(tmp, sizeof(tmp), "%s", p->chars);
-    for (char *q = tmp + 1; *q; q++) { if (*q == '/') { *q = '\0'; mkdir(tmp, 0755); *q = '/'; } }
+    for (char *q = tmp + 1; *q; q++) { if (ps_eh_sep(*q)) { char s = *q; *q = '\0'; mkdir(tmp, 0755); *q = s; } }
     FILE *f = fopen(p->chars, "wb");
     if (!f) { int e = errno; if (fixado) vm->sp--; return erro_sistema(vm, e, p->chars, NULL); }
     if (grava_e_fecha(f, dados, (size_t)ndados) != 0)
@@ -13146,8 +13153,9 @@ static int mod_os_mkdir(VM *vm, Value *args, int n, Value *out)
     char tmp[2048];
     snprintf(tmp, sizeof(tmp), "%s", p->chars);
     for (char *q = tmp + 1; *q; q++) {
-        if (*q != '/') continue;
-        *q = '\0'; mkdir(tmp, 0755); *q = '/';
+        if (!ps_eh_sep(*q)) continue;
+        char s = *q;
+        *q = '\0'; mkdir(tmp, 0755); *q = s;
     }
     if (mkdir(tmp, 0755) != 0 && !(errno == EEXIST && ok_existir))
         return erro_sistema(vm, errno, p->chars, NULL);
@@ -15109,6 +15117,13 @@ static int met_mm_attach(VM *vm, Value alvo, Value *args, int n, Value *out)
     }
     if (EH_STRING(args[0])) {
         const char *caminho = COMO_STRING(args[0])->chars;
+        /* Pasta é recusada ANTES de abrir, como no `open()` e no `os.readFile`:
+         * no Linux e no macOS o fopen de pasta sucede e quem falha é o fread
+         * (EISDIR), e no Windows o próprio abrir recusa com EACCES — o mesmo
+         * anexo dava dois erros conforme o sistema. */
+        struct stat st_anexo;
+        if (stat(caminho, &st_anexo) == 0 && S_ISDIR(st_anexo.st_mode))
+            BERRO(vm, "IOError", "[Errno %d] %s: '%.190s'", EISDIR, strerror(EISDIR), caminho);
         FILE *f = fopen(caminho, "rb");
         if (!f) BERRO(vm, "IOError", "[Errno %d] %s: '%.190s'", errno, strerror(errno), caminho);
         SBUF_AUTO b = {0};
@@ -15124,7 +15139,7 @@ static int met_mm_attach(VM *vm, Value alvo, Value *args, int n, Value *out)
             BERRO(vm, "IOError", "[Errno %d] %s: '%.190s'", er, strerror(er), caminho);
         }
         fclose(f);
-        const char *base = strrchr(caminho, '/');
+        const char *base = ps_ultimo_sep(caminho);
         base = base ? base + 1 : caminho;
         int rc = mailmsg_add_parte(vm, m, 1, base, b.b ? b.b : "", (size_t)b.n);
         if (rc != 0) return -1;
@@ -15326,6 +15341,12 @@ static void sk_conn_off(void *p)
             if (pr <= 0) { o->rc = -1; o->err = ETIMEDOUT; ps_sock_nao_bloqueia(o->fd, o->timeout == 0); return; }
             int soerr = 0; socklen_t sn = sizeof(soerr);
             getsockopt(o->fd, SOL_SOCKET, SO_ERROR, &soerr, &sn);
+#if defined(_WIN32)
+            /* O SO_ERROR do Winsock é o código WSA (10061), não um errno.
+             * O prazo do TCP esgotado é ETIMEDOUT aqui, como no connect do
+             * POSIX (a tradução geral o faz EAGAIN, que é o do recv). */
+            if (soerr) soerr = (soerr == WSAETIMEDOUT) ? ETIMEDOUT : ps_w_errno_de(soerr);
+#endif
             rc = soerr ? -1 : 0; errno = soerr;
         }
         o->rc = rc; o->err = rc ? errno : 0;
@@ -16904,7 +16925,7 @@ static int met_resp_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     /* pasta ('.', '..', termina em barra, ou é diretório) → deriva o nome */
     struct stat st;
     int eh_pasta = (strcmp(destino, ".") == 0 || strcmp(destino, "..") == 0
-                    || destino[strlen(destino)-1] == '/'
+                    || ps_termina_em_sep(destino)
                     || (stat(destino, &st) == 0 && S_ISDIR(st.st_mode)));
     if (eh_pasta) {
         char nome[512];
@@ -17207,7 +17228,7 @@ static int request_comum(VM *vm, const char *nome, const char *metodo, Value *ar
                 /* arquivo de ONDE o usuário quiser: absoluto | pasta do script | cwd */
                 char cam[1024]; cam[0] = '\0';
                 struct stat st;
-                if (caminho[0] == '/') {
+                if (ps_caminho_absoluto(caminho)) {
                     if (stat(caminho, &st) == 0 && S_ISREG(st.st_mode))
                         snprintf(cam, sizeof(cam), "%s", caminho);
                 } else {
@@ -17222,7 +17243,7 @@ static int request_comum(VM *vm, const char *nome, const char *metodo, Value *ar
                     free(mp.b);
                     return erro_sistema(vm, ENOENT, caminho, NULL);
                 }
-                const char *nome_arq = strrchr(cam, '/');
+                const char *nome_arq = ps_ultimo_sep(cam);
                 nome_arq = nome_arq ? nome_arq + 1 : cam;
                 FILE *f = fopen(cam, "rb");
                 if (!f) { int e = errno; free(mp.b); return erro_sistema(vm, e, caminho, NULL); }
@@ -17286,7 +17307,7 @@ static int request_comum(VM *vm, const char *nome, const char *metodo, Value *ar
         char pasta[1024];
         if (save_cam) {
             final = save_cam;
-            const char *barra = strrchr(save_cam, '/');
+            const char *barra = ps_ultimo_sep(save_cam);
             if (barra && barra != save_cam) {
                 size_t l = (size_t)(barra - save_cam);
                 if (l >= sizeof pasta) l = sizeof pasta - 1;
@@ -17621,7 +17642,7 @@ static int qr_salva_em(VM *vm, const char *destino, const char *nome,
 {
     struct stat st;
     int pasta = (strcmp(destino, ".") == 0 || strcmp(destino, "..") == 0
-                 || destino[strlen(destino)-1] == '/'
+                 || ps_termina_em_sep(destino)
                  || (stat(destino, &st) == 0 && S_ISDIR(st.st_mode)));
     if (pasta) snprintf(caminho, cap, "%s/%s", destino, nome);
     else snprintf(caminho, cap, "%s", destino);
@@ -20574,7 +20595,7 @@ static int met_jup_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     const char *dest = COMO_STRING(args[0])->chars;
     /* cria pastas pai */
     char tmp[1024]; snprintf(tmp, sizeof(tmp), "%s", dest);
-    for (char *p = tmp + 1; *p; p++) if (*p == '/') { *p = '\0'; mkdir(tmp, 0777); *p = '/'; }
+    for (char *p = tmp + 1; *p; p++) if (ps_eh_sep(*p)) { char s = *p; *p = '\0'; mkdir(tmp, 0777); *p = s; }
     FILE *f = fopen(dest, "wb");
     if (!f) MERRO(vm, "TypeError", "save: nao criou %s", dest);
     if (EH_BYTES(u->dados)) fwrite(COMO_BYTES(u->dados)->chars, 1, (size_t)COMO_BYTES(u->dados)->len, f);
@@ -21576,7 +21597,7 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
             /* caminho ABSOLUTO vale como está: `acha_em` sempre junta com uma
              * raiz, e "/dir/x" + "/tmp/front" nunca existe — antes um
              * static_folder absoluto caía calado no 404. */
-            if (rel && j->static_folder[0] == '/') {
+            if (rel && ps_caminho_absoluto(j->static_folder)) {
                 struct stat sb;
                 if (stat(j->static_folder, &sb) == 0 && S_ISDIR(sb.st_mode)) {
                     snprintf(base, sizeof(base), "%s", j->static_folder);
@@ -21832,8 +21853,25 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
  * `chama_valor_modo`: com 128 KB e a margem de folga, a fibra aceitava 8
  * níveis aninhados e o 9º virava RecursionError — no programa principal são
  * 601. Teto de aninhamento não pode virar limite de uso; com 256 KB são 17.
- * O mapeamento é reservado, não residente: só as páginas tocadas viram RAM. */
-#define FIB_CSTACK  (256 * 1024)
+ * O mapeamento é reservado, não residente: só as páginas tocadas viram RAM.
+ *
+ * SOB O ASan a pilha é 4x. O sanitizer põe zona vermelha em volta de cada vetor
+ * local, e o quadro de `vm_executa_base` cresce junto: medido, a fibra de
+ * 256 KB aceitava 7 níveis sob o ASan (17 no binário normal) e o caso dos oito
+ * callbacks aninhados reprovava só no job noturno. O binário instrumentado tem
+ * que medir o MESMO programa com a mesma folga, não um com teto menor. */
+#if defined(__SANITIZE_ADDRESS__)
+#  define FIB_SOB_ASAN 1
+#elif defined(__has_feature)
+#  if __has_feature(address_sanitizer)
+#    define FIB_SOB_ASAN 1
+#  endif
+#endif
+#if defined(FIB_SOB_ASAN)
+#  define FIB_CSTACK  (4 * 256 * 1024)
+#else
+#  define FIB_CSTACK  (256 * 1024)
+#endif
 
 /* PILHA DE FIBRA COM PÁGINA DE GUARDA.
  *
@@ -21953,12 +21991,8 @@ static void fut_guarda_erro(PSFuturo *fu)
  * (medido), e no runner do macOS o caso do pool cheio passava de 20 s. Sob o
  * ASan continua `calloc`, pro sanitizer vigiar o estouro de cada vetor. */
 #define FIB_VET_TAM ((FIB_STACK + FIB_LOCALS) * sizeof(Value) + FIB_FRAMES * sizeof(Frame))
-#if defined(__SANITIZE_ADDRESS__)
+#if defined(FIB_SOB_ASAN)
 #  define FIB_VET_CALLOC 1
-#elif defined(__has_feature)
-#  if __has_feature(address_sanitizer)
-#    define FIB_VET_CALLOC 1
-#  endif
 #endif
 static int fib_vetores(Fiber *f)
 {
@@ -22063,7 +22097,7 @@ static void fib_troca_sai(VM *vm, Fiber *f)
  * não aqui. */
 static void fib_trampolim(void)
 {
-    /* A fibra tem pilha PRÓPRIA e pequena (FIB_CSTACK, 128 KB) — 64x menor que
+    /* A fibra tem pilha PRÓPRIA e pequena (FIB_CSTACK, 256 KB) — 32x menor que
      * os 8 MB do processo. A base tem que ser remarcada aqui, senão a medição
      * de folga compara com a pilha do processo e não protege nada. */
     ps_pilha_marca(FIB_CSTACK);
@@ -22851,7 +22885,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
                  * interpretador); se não achar, assume cert+chave no MESMO PEM. */
                 snprintf(key, sizeof(key), "%s", j->cert);
                 const char *ponto = strrchr(j->cert, '.');
-                const char *barra = strrchr(j->cert, '/');
+                const char *barra = ps_ultimo_sep(j->cert);
                 if (ponto && (!barra || ponto > barra)) {
                     char cand[1024];
                     int base = (int)(ponto - j->cert);
@@ -24469,7 +24503,24 @@ static int dbg_conecta(VM *vm, int porta)
         fprintf(stderr, "pool --debug: nao consegui escutar na porta %d\n", porta);
         return -1;
     }
-    int c = accept(srv, NULL, NULL);
+    /* A conexão que fecha sem mandar nada não é o cliente: é quem só olhou se
+     * a porta abriu (a extensão do VS Code conecta e fecha antes de abrir a
+     * sessão de verdade). Aceitar UMA conexão e fechar a escuta fazia essa
+     * sonda gastar a vez: o motor lia fim de conexão e rodava o programa sem
+     * parar em nada, e a conexão do editor era recusada — o F5 não depurava.
+     * O cliente do DAP fala primeiro (o `initialize`), então olhar o primeiro
+     * byte sem consumi-lo separa os dois: sem dado, a conexão sai e a escuta
+     * continua. */
+    int c;
+    for (;;) {
+        c = accept(srv, NULL, NULL);
+        if (c < 0) break;
+        char b;
+        int r;
+        do { r = (int)recv(c, &b, 1, MSG_PEEK); } while (r < 0 && errno == EINTR);
+        if (r > 0) break;                 /* mandou dado: é o cliente */
+        ps_sock_fecha(c);                 /* fechou sem falar: a sonda */
+    }
     ps_sock_fecha(srv);
     if (c < 0) return -1;
     vm->dbg.fd_in = vm->dbg.fd_out = c;
@@ -24628,6 +24679,28 @@ static void dbg_aresta(VM *vm, int32_t dp, int32_t dl, int32_t pp, int32_t pl)
     g->narestas++;
 }
 
+/* Um caractere de caminho igual ao outro: separador casa com separador (no
+ * Windows o editor manda `C:\proj\x.pr` e a linha de comando pode ter
+ * `teste/x.pr`), e no Windows sem diferença de maiúscula, que o sistema de
+ * arquivos de lá não faz. */
+static int dbg_mesmo_char(char x, char y)
+{
+    if (ps_eh_sep(x) && ps_eh_sep(y)) return 1;
+#if defined(_WIN32)
+    return tolower((unsigned char)x) == tolower((unsigned char)y);
+#else
+    return x == y;
+#endif
+}
+
+/* `b` (de `lb` bytes) é o fim de `a` (de `la` bytes)? */
+static int dbg_fim_igual(const char *a, size_t la, const char *b, size_t lb)
+{
+    for (size_t k = 0; k < lb; k++)
+        if (!dbg_mesmo_char(a[la - lb + k], b[k])) return 0;
+    return 1;
+}
+
 static int dbg_bate_bp(VM *vm, const char *arquivo, int linha)
 {
     for (int i = 0; i < vm->dbg.nbps; i++) {
@@ -24638,9 +24711,9 @@ static int dbg_bate_bp(VM *vm, const char *arquivo, int linha)
          * o caminho como veio na linha de comando. Exigir igualdade literal
          * fazia todo breakpoint ser ignorado em silêncio. */
         size_t la = strlen(a), lb = strlen(arquivo);
-        if (la == lb && strcmp(a, arquivo) == 0) return 1;
-        if (lb < la && strcmp(a + (la - lb), arquivo) == 0 && a[la - lb - 1] == '/') return 1;
-        if (la < lb && strcmp(arquivo + (lb - la), a) == 0 && arquivo[lb - la - 1] == '/') return 1;
+        if (la == lb && dbg_fim_igual(a, la, arquivo, lb)) return 1;
+        if (lb < la && dbg_fim_igual(a, la, arquivo, lb) && ps_eh_sep(a[la - lb - 1])) return 1;
+        if (la < lb && dbg_fim_igual(arquivo, lb, a, la) && ps_eh_sep(arquivo[lb - la - 1])) return 1;
     }
     return 0;
 }
@@ -27887,7 +27960,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     /* derivados do caminho; o tamanho vem do disco, depois de
                      * escoar o que ainda estiver no buffer de escrita */
                     PSArquivo *ah = COMO_ARQ(alvo);
-                    const char *base = strrchr(ah->caminho, '/');
+                    const char *base = ps_ultimo_sep(ah->caminho);
                     base = base ? base + 1 : ah->caminho;
                     if (strcmp(nome, "name") == 0) {
                         snprintf(nbuf, sizeof(nbuf), "%s", base);
@@ -29438,7 +29511,7 @@ static void nome_visivel_modulo(const char *nome, char *out, size_t cap)
     if (nome[0] != '\x01') { snprintf(out, cap, "%s", nome); return; }
     const char *spec = nome + 1;
     if (!spec_eh_caminho(spec)) { snprintf(out, cap, "%s", spec); return; }
-    const char *b = strrchr(spec, '/'); b = b ? b + 1 : spec;
+    const char *b = ps_ultimo_sep(spec); b = b ? b + 1 : spec;
     snprintf(out, cap, "%s", b);
     ps_tira_ext(out);
 }
@@ -29583,7 +29656,7 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
             /* como escrito, e depois com a extensão da linguagem */
             static const char *EXTS_C[] = { "", PS_EXT };
             char base[1024];
-            if (spec[0] == '/') snprintf(base, sizeof(base), "%s", spec);
+            if (ps_caminho_absoluto(spec)) snprintf(base, sizeof(base), "%s", spec);
             else snprintf(base, sizeof(base), "%s/%s", dir_modulo[0] ? dir_modulo : ".", spec);
             for (size_t e = 0; e < sizeof(EXTS_C) / sizeof(EXTS_C[0]); e++) {
                 /* caminho longo demais pro buffer: o que sobrou não é o
@@ -29614,7 +29687,7 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
         char base[512];
         snprintf(base, sizeof(base), "%s", dir_modulo[0] ? dir_modulo : ".");
         for (int i = 0; i < nivel - 1; i++) {   /* cada ponto extra sobe uma pasta */
-            char *barra = strrchr(base, '/');
+            char *barra = ps_ultimo_sep(base);
             if (barra) *barra = '\0';
             else { snprintf(base, sizeof(base), "%s", ".."); }
         }
@@ -29695,7 +29768,9 @@ static void dir_do_script(const char *caminho, char *out, size_t cap)
 {
     out[0] = '\0';
     if (!caminho) return;
-    const char *barra = strrchr(caminho, '/');
+    /* O editor passa `--check --path C:\...\a.pr` no Windows: só por `/` a
+     * pasta virava a corrente e o módulo vizinho não era achado. */
+    const char *barra = ps_ultimo_sep(caminho);
     if (barra) {
         size_t n = (size_t)(barra - caminho);
         if (n >= cap) n = cap - 1;
@@ -29766,7 +29841,7 @@ int ps_embute_deps(const char *caminho_main, PSEmbutido **lista, int32_t *n,
 
     /* [0] = o principal, com caminho absoluto (a pasta já é a real) */
     {
-        const char *b = strrchr(caminho_main, '/'); b = b ? b + 1 : caminho_main;
+        const char *b = ps_ultimo_sep(caminho_main); b = b ? b + 1 : caminho_main;
         const char *d = dir_script[0] ? dir_script : ".";
         size_t ld = strlen(d), lb = strlen(b);
         if (ld + 1 + lb >= sizeof(l[0].textual)) {
@@ -29807,7 +29882,7 @@ int ps_embute_deps(const char *caminho_main, PSEmbutido **lista, int32_t *n,
         /* a pasta DESTE arquivo, pro import relativo e pro vizinho */
         char dir_mod[1024];
         snprintf(dir_mod, sizeof(dir_mod), "%s", l[i].textual);
-        { char *b = strrchr(dir_mod, '/'); if (b) *b = '\0'; else snprintf(dir_mod, sizeof(dir_mod), "."); }
+        { char *b = ps_ultimo_sep(dir_mod); if (b) *b = '\0'; else snprintf(dir_mod, sizeof(dir_mod), "."); }
 
         PSNode **imps = NULL; int32_t nimps = 0, cap_imps = 0;
         coleta_imports(r->programa, &imps, &nimps, &cap_imps);
@@ -29981,7 +30056,7 @@ static int estrela_nomes_de(void *vctx, const char *mod, char ***nomes, int32_t 
 
     char moddir[1024];
     snprintf(moddir, sizeof(moddir), "%s", abspath);
-    char *barra = strrchr(moddir, '/');
+    char *barra = ps_ultimo_sep(moddir);
     if (barra) *barra = '\0'; else snprintf(moddir, sizeof(moddir), "%s", ".");
     EstrelaVisita aqui = { abspath, ctx->pilha };
     int cortou_aqui = 0;
@@ -30093,7 +30168,7 @@ static int estrela_modulo_de(void *vctx, const char *mod, const PSModuloAst **ou
                   snprintf(a->info.erro_msg, sizeof(a->info.erro_msg), "nao consegui abrir %.200s", caminho); return 2; }
     char moddir[1024];
     snprintf(moddir, sizeof(moddir), "%s", abspath);
-    { char *barra = strrchr(moddir, '/'); if (barra) *barra = '\0'; else snprintf(moddir, sizeof(moddir), "%s", "."); }
+    { char *barra = ps_ultimo_sep(moddir); if (barra) *barra = '\0'; else snprintf(moddir, sizeof(moddir), "%s", "."); }
     EstrelaVisita aqui = { abspath, ctx->pilha };
     int cortou_aqui = 0;
     EstrelaCtx filho = { moddir, ctx->dir_script, &aqui, &cortou_aqui, ctx->so_checa };
@@ -30225,7 +30300,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     char dir_do_mod[1024];
     snprintf(dir_do_mod, sizeof(dir_do_mod), "%s", abspath);
     {
-        char *b = strrchr(dir_do_mod, '/');
+        char *b = ps_ultimo_sep(dir_do_mod);
         if (b) *b = '\0'; else snprintf(dir_do_mod, sizeof(dir_do_mod), "%s", ".");
     }
     EstrelaVisita vis_mod = { abspath, NULL };
@@ -30397,7 +30472,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     snprintf(dir_prev, sizeof(dir_prev), "%s", vm->dir_modulo);
     char moddir[1024];
     snprintf(moddir, sizeof(moddir), "%s", abspath);
-    char *barra = strrchr(moddir, '/');
+    char *barra = ps_ultimo_sep(moddir);
     if (barra) *barra = '\0'; else snprintf(moddir, sizeof(moddir), "%s", ".");
     snprintf(vm->dir_modulo, sizeof(vm->dir_modulo), "%.511s", moddir);
 

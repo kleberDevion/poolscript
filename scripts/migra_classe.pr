@@ -200,15 +200,18 @@ funct converte_base(texto) {
         # `base()` vazio só é CHAMADA quando termina o comando: fim de linha
         # (ou o `\n` escapado de string C), `}` ou `;`. Seguido de `:` ou de
         # palavra é a frase de uma mensagem de erro ("base() precisa do
-        # self", "base(): a Entity pai…"), que fica como está.
+        # self", "base(): a Entity pai…"), que fica como está. O fim de linha
+        # do Windows é `\r\n` (o que os editores de lá gravam): o `\r` também
+        # é fim de linha, cru ou escapado — sem ele, o `base()` de um arquivo
+        # CRLF ficava sem converter e o `--check` reprovava.
         if dentro == "" {
             k = pula_espacos(texto, fecha + 1)
             resto = ""
             if k < n {
                 resto = texto[k]
             }
-            eh_escape = k + 1 < n and texto[k] == "\\" and (texto[k + 1] == "n" or texto[k + 1] == "\"")
-            if not (resto == "" or resto == "\n" or resto == "}" or resto == ";" or eh_escape) {
+            eh_escape = k + 1 < n and texto[k] == "\\" and (texto[k + 1] == "n" or texto[k + 1] == "r" or texto[k + 1] == "\"")
+            if not (resto == "" or resto == "\n" or resto == "\r" or resto == "}" or resto == ";" or eh_escape) {
                 i = fecha + 1
                 continue
             }
@@ -231,6 +234,44 @@ funct converte(texto) {
     r1 = tira_parenteses_vazios(texto)
     r2 = converte_base(r1[0])
     return [r2[0], r1[1], r2[1]]
+}
+
+
+# Os dois canais do filho, lidos JUNTOS, cada um numa tarefa: lendo o stdout
+# até o fim antes do stderr, um filho que enche o cano do stderr fica parado
+# esperando alguém ler.
+async funct le_saida(p) {
+    texto = ""
+    parte = p.read()
+    while parte != "" {
+        texto = texto + parte
+        parte = p.read()
+    }
+    return texto
+}
+
+
+async funct le_erro(p) {
+    texto = ""
+    parte = p.read_err()
+    while parte != "" {
+        texto = texto + parte
+        parte = p.read_err()
+    }
+    return texto
+}
+
+
+# Roda um programa SEM shell e devolve [stdout, stderr, código de saída].
+# Programa que não existe levanta IOError, como o próprio `os.run`.
+funct roda(args) {
+    p = os.run(args, capture="live")
+    using p as filho {
+        filho.close()
+        canais = gather(le_saida(filho), le_erro(filho))
+        rc = filho.wait()
+    }
+    return [canais[0], canais[1], rc]
 }
 
 
@@ -296,14 +337,39 @@ funct migra(arquivos, aplica, confere) {
         if aplica {
             os.writeFile(caminho, r[0])
             if confere and caminho.endswith(".pr") {
-                saida = os.cmd("'" + sys.executable + "' --check '" + caminho + "' 2>&1", capture=true)
-                if saida == Null or not saida.startswith("{\"ok\":true") {
-                    post("    --check REPROVOU:", saida)
+                # Sem shell. Era `'<jinga>' --check '<arquivo>' 2>&1` pelo
+                # `os.cmd`, e no Windows o cmd.exe não tem aspa simples: o
+                # programa procurado virava `'C:\...\jinga.exe'`, com as aspas
+                # no nome, e todo arquivo saía REPROVOU. O `2>&1` punha o
+                # stderr na frente do JSON (o stderr não tem buffer), então
+                # qualquer coisa nele reprovava — e continua reprovando.
+                saida = ""
+                erro = ""
+                try {
+                    checado = roda([sys.executable, "--check", caminho])
+                    saida = checado[0]
+                    erro = checado[1]
+                } catch (IOError e) {
+                    erro = str(e)
+                }
+                if erro != "" or not saida.startswith("{\"ok\":true") {
+                    post("    --check REPROVOU:", (erro + saida).strip())
                 }
             }
         }
     }
     return [tocados, cab, bas]
+}
+
+
+# A pasta do usuário, a MESMA do motor (`PS_HOME_VAR` em vm/ps_so.h): HOME no
+# Linux e no macOS, USERPROFILE no Windows — o HOME de lá só existe dentro do
+# MSYS2, e aponta pra outra pasta.
+funct pasta_usuario() {
+    if sys.platform() == "windows" {
+        return os.getenv("USERPROFILE", "")
+    }
+    return os.getenv("HOME", "")
 }
 
 
@@ -315,8 +381,9 @@ funct pasta_libs() {
         home = os.getenv("POOLSCRIPT_HOME", "")
     }
     if home == "" {
-        home = os.getenv("HOME", "") + "/.jinga"
-        velha = os.getenv("HOME", "") + "/.poolscript"
+        casa = pasta_usuario()
+        home = casa + "/.jinga"
+        velha = casa + "/.poolscript"
         if not os.exists(home) and os.exists(velha) {
             home = velha
         }

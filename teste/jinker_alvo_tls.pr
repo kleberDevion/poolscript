@@ -31,7 +31,8 @@ import os
 PASTA = "/tmp/ps_jinker_tls"
 os.mkdir(PASTA, exist_ok=true)
 # O cert autogerado nasce no diretório de trabalho: rodar aqui deixa o lixo
-# num lugar só, e o driver apaga a pasta inteira no fim.
+# num lugar só, e o driver apaga a pasta inteira no COMEÇO da seção TLS, pro
+# certificado ser gerado de novo a cada rodada.
 os.chdir(PASTA)
 
 app = jinker.Jinker("alvo_tls", {"tls": true})

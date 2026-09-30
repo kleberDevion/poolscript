@@ -61,11 +61,11 @@ funct literais(L) {
 
 
 # As linhas de um `.c` como o compilador as lê: a linha termina em `\n` OU em
-# `\r\n`. O checkout do Windows entrega `\r\n` (o git de lá converte o fim de
-# linha de fábrica, e o repositório não tem .gitattributes), e o `\r` colado
-# no fim de cada linha deslocava a cauda de 24 caracteres da segunda
-# conferência — com o checkout simulado, mensagem entrava e saía da conta
-# conforme o sistema. No Linux e no macOS os casos não têm `\r`: nada muda.
+# `\r\n`. O checkout sai com `\n` nos três sistemas (o `.gitattributes` fixa
+# `eol=lf`), mas um caso salvo no Windows por editor que grava `\r\n` chega
+# com o `\r` colado no fim de cada linha, e ele deslocava a cauda de 24
+# caracteres da segunda conferência — com os casos em `\r\n`, mensagem
+# entrava e saía da conta conforme o sistema. Com `\n` puro nada muda.
 funct linhas_de(caminho) {
     return open(caminho).read().replace("\r\n", "\n").split("\n")
 }

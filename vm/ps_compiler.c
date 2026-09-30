@@ -18,6 +18,7 @@
 #include "ps_tipos.h"
 #include "ps_regex.h"        /* `regex=` do campo de model: compilado aqui só pra validar */
 #include "ps_retornos.h"
+#include "ps_caminho.h"      /* nome do módulo a partir do caminho: `/` e, no Windows, `\` */
 
 #include <stdarg.h>
 
@@ -1062,7 +1063,7 @@ static void import_nome_do_arquivo(const PSNode *n, char *out, size_t cap)
     out[0] = '\0';
     if (n->i2 == -1) {
         const char *spec = (n->lista.n > 0 && n->lista.itens[0]->texto) ? n->lista.itens[0]->texto : "";
-        const char *b = strrchr(spec, '/'); b = b ? b + 1 : spec;
+        const char *b = ps_ultimo_sep(spec); b = b ? b + 1 : spec;
         snprintf(out, cap, "%s", b);
         ps_tira_ext(out);
     } else if (n->lista.n > 0 && n->lista.itens[n->lista.n - 1]->texto) {
@@ -2896,7 +2897,7 @@ static void tp_mod_visivel(const char *enc, char *buf, size_t cap)
 {
     if (enc[0] == '\x01') {
         const char *spec = enc + 1;
-        const char *b = strrchr(spec, '/');
+        const char *b = ps_ultimo_sep(spec);
         snprintf(buf, cap, "%s", b ? b + 1 : spec);
         size_t l = strlen(buf);
         if (l > 3 && !strcmp(buf + l - 3, ".pr")) buf[l - 3] = '\0';
@@ -2992,7 +2993,7 @@ static PSNode *modulo_privado(const PSModuloAst *ma, const char *nome)
  * arquivo do modulo, a linha e o nome — o cursor vai em cima do nome). */
 static const char *base_do_caminho(const char *p)
 {
-    const char *b = p ? strrchr(p, '/') : NULL;
+    const char *b = p ? ps_ultimo_sep(p) : NULL;
     return b ? b + 1 : (p ? p : "?");
 }
 

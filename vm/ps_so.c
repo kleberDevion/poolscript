@@ -348,7 +348,11 @@ typedef struct { char *b; size_t n, cap; } WLinha;
 
 static int wl_poe(WLinha *l, const char *s, size_t n)
 {
-    if (l->n + n + 1 > l->cap) {
+    /* A soma que dá a volta (n perto de SIZE_MAX) deixaria o bloco sem
+     * crescer e o memcpy escrevendo em NULL: recusada aqui, e o `!l->b` deixa
+     * óbvio pro -fanalyzer que o memcpy nunca recebe o bloco vazio. */
+    if (n > (size_t)-1 - l->n - 1) return -1;
+    if (!l->b || l->n + n + 1 > l->cap) {
         size_t nc = l->cap ? l->cap : 256;
         while (nc < l->n + n + 1) nc *= 2;
         char *nb = realloc(l->b, nc);
@@ -372,10 +376,19 @@ static int wl_barras(WLinha *l, size_t n)
 /* Um argumento com as aspas que o programa do outro lado desfaz. O Windows
  * entrega ao filho UMA linha de texto, e é o CRT dele que a parte em argv: a
  * `\` só é especial antes de `"`, então as barras antes de uma aspa (e antes
- * da aspa que fecha) vão dobradas. Sem espaço nem aspa, vai cru. */
+ * da aspa que fecha) vão dobradas. Sem espaço, aspa nem metacaractere do
+ * cmd.exe, vai cru.
+ *
+ * Os metacaracteres do cmd.exe (`& | < > ^ ( ) , ; =`) também pedem aspas:
+ * quando o programa é o próprio cmd.exe (`os.run(["cmd.exe", "/c", "dir",
+ * caminho])`), ele relê a linha com as regras DELE, e `C:\P&D` sem aspas
+ * virava `dir C:\P` seguido do comando `D` — um nome de arquivo executava
+ * comando. Entre aspas o cmd.exe os lê como texto, e pro programa comum nada
+ * muda: o CRT tira as aspas e o argv chega igual. O `%VAR%` o cmd.exe expande
+ * até entre aspas; esse fica com quem monta a linha. */
 static int wl_argumento(WLinha *l, const char *a)
 {
-    if (*a && !strpbrk(a, " \t\n\v\"")) return wl_texto(l, a);
+    if (*a && !strpbrk(a, " \t\n\v\"&|<>^(),;=")) return wl_texto(l, a);
     if (wl_texto(l, "\"") != 0) return -1;
     for (const char *c = a; ; c++) {
         size_t barras = 0;

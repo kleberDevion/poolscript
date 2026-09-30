@@ -2059,7 +2059,7 @@ editor/intellij/plugin/build.sh      # precisa de um JDK (javac)
 # IDEA: Settings > Plugins > engrenagem > Install Plugin from Disk > editor/intellij/plugin/dist/jinga-icons.jar
 ```
 
-O `teste_intellij.sh` procura `$IDEA_HOME/jbr/bin/java`, `/opt/idea*` ou o Toolbox em `~/.local/share/JetBrains/Toolbox`, e o LSP4IJ em `~/.local/share/JetBrains/*/lsp4ij/lib` (ou `LSP4IJ_LIB`). Fora disso ele PULA e diz que pulou.
+O `teste_intellij.sh` procura o IDEA em `$IDEA_HOME` e, sem ele, onde cada sistema o instala: no Linux `/opt/idea*` ou o Toolbox; no macOS o `.app` (`/Applications`, `~/Applications` ou o Toolbox antigo), com o java em `jbr/Contents/Home/bin`; no Windows (MSYS2) `C:\Program Files\JetBrains` ou o Toolbox em `%LOCALAPPDATA%`. O LSP4IJ vem da pasta de plugins do sistema (`~/.local/share/JetBrains/*/`, `~/Library/Application Support/JetBrains/*/plugins/`, `%APPDATA%\JetBrains\*\plugins\`) ou de `LSP4IJ_LIB`. Fora disso ele PULA e diz quantas checagens não rodaram. No Windows o `jinga-lsp` esperado segue a regra do próprio sistema (a ordem da `PATHEXT`, e a pasta que o `instalar.ps1` põe no PATH do usuário).
 
 ### 4.6 Helix
 
@@ -2188,14 +2188,14 @@ make pool                 # o binário ./pool (o alvo continua se chamando pool)
 | `limpa` | apaga `./pool` |
 | `testar` | compila o runner `./testar` (`teste/ps_teste.c` + `teste/casos_*.c`) |
 | `pool-asan` | binário com `-fsanitize=address,undefined` |
-| `analisa` | `gcc -fanalyzer` arquivo por arquivo, com `ulimit -v` de `ANALISA_MB` (padrão 2000); `vm/jinga_vm.c` fica fora salvo com `ANALISA_TUDO=1`; os falsos positivos conferidos ficam em `ANALISA_ACEITOS` (o `nb` de `ps_xlsx.c` e o `strdup` de `ps_db.c`) |
+| `analisa` | `gcc -fanalyzer` arquivo por arquivo, com `ulimit -v` de `ANALISA_MB` (padrão 2000); `vm/jinga_vm.c` fica fora salvo com `ANALISA_TUDO=1`; os falsos positivos conferidos ficam em `ANALISA_ACEITOS` (o `nb` de `ps_xlsx.c`, o `strdup` de `ps_db.c` e, no Windows, o descritor do `ps_w_socket` em `ps_win.h`); onde o sistema recusa o teto (o macOS recusa o `ulimit -v`) a saída diz e mostra o limite que vale |
 | `memcheck` | `valgrind --leak-check=full ... ./pool $(PS)` num script só (`make memcheck PS=teste/e2e/ws.pr`) |
 | `bench` | `nice -n 19 ./pool teste/bench.pr $(BENCH)`; `BENCH=--grava` adota a referência, `BENCH=--portao` reprova se piorou |
-| `avisos` | recompila com `-Wlogical-op -Wshadow -Wformat-truncation=$(AVISOS_NIVEL)` (padrão 1) e reprova se houver aviso |
+| `avisos` | recompila com `-Wlogical-op -Wshadow -Wformat-truncation=$(AVISOS_NIVEL)` (padrão 1) e reprova se houver aviso — e também se algum fonte não compilar com o gcc usado (`NAO COMPILOU`), que antes passava como "nenhum aviso" |
 | `check` | o portão inteiro (5.6) |
 | `check-e2e` | `./pool teste/e2e_roda.pr $(E2E)`: todos os e2e, inclusive os que precisam de serviço |
-| `check-e2e-local` | os e2e sem serviço externo (`arquivo sqlite socket pkg mail_local jinker manpu qrcode c d f`), cada um com `E2E_TIMEOUT` (padrão 180 s), dizendo quais caíram |
-| `unidade` | compila e roda `teste/unidade.c` (os módulos puros chamados direto em C) |
+| `check-e2e-local` | os e2e sem serviço externo (`arquivo sqlite socket pkg mail_local jinker manpu qrcode c.pr d.pr f.pr` — o driver filtra por pedaço do nome, e `c` sozinho pegava também o par jinker, o socket e o qrcode), cada um com `E2E_TIMEOUT` (padrão 300 s, acima do pior caso do par jinker dentro do driver), dizendo quais caíram; filtro que não casa nenhum script sai 2 (um script renomeado não vira "e2e: ok" calado) |
+| `unidade` | compila e roda `teste/unidade.c` (os módulos puros chamados direto em C) a CADA chamada (`.PHONY`): o binário que sobrava de uma rodada que falhou dava "is up to date" e o `make check` passava sem rodar nada; no Windows liga também `-lbcrypt` e sai `unidade.exe` |
 | `pool-oom` | binário com `--wrap=malloc,calloc,realloc,strdup` (`teste/ps_oom.c`) |
 | `oom` | `./pool teste/oom_varre.pr`: falha a i-ésima alocação de cada programa |
 | `pool-fuzz` | binário do fuzzer do clang (`-fsanitize=fuzzer,address,undefined`) sobre o front-end; o alvo traz os caminhos de cabeçalho do Linux |
@@ -2206,7 +2206,7 @@ make pool                 # o binário ./pool (o alvo continua se chamando pool)
 | `check-asan` | `PS_POOL=pool-asan ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 ./testar` |
 | `pool-debug` | binário `-O1 -g -DPS_DEBUG` (invariantes da VM ligadas) |
 | `check-debug` | `PS_POOL=pool-debug ./testar` |
-| `cobertura` | compila `cob/pool` com `--coverage -O0`, roda suíte, unidade, drivers e e2e (inclusive `db mongo mail ws` quando os serviços existem), gera `cob/html/index.html` e termina no portão `teste/cobertura_portao.pr` |
+| `cobertura` | compila `cob/pool` com `--coverage -O0`, roda suíte, unidade, drivers e e2e (inclusive `db mongo mail ws` quando os serviços existem), gera `cob/html/index.html` e termina no portão `teste/cobertura_portao.pr`; a saída de cada `lcov` fica em `cob/lcov_*.txt`, e o fim dela aparece quando ele falha (antes ia pra `/dev/null` e o CI só mostrava "Error 1") |
 
 Variáveis que se passam na linha de comando: `CC`, `CFLAGS`, `PREFIXO`, `DADOS`, `DADOS_USUARIO`, `NVIM_CFG`, `IJ_HOME`, `ANALISA_MB`, `ANALISA_TUDO`, `PS`, `BENCH`, `AVISOS_NIVEL`, `E2E`, `E2E_TIMEOUT`, `FUZZ_T`, `PROP_N`, `PROP_SEMENTE`, `LEIS_N`, `LEIS_SEMENTE`.
 
@@ -2290,8 +2290,8 @@ timeout 900 nice -n 19 ./testar
 timeout 900 env JINGA_JIT=0 nice -n 19 ./testar
 timeout 600 nice -n 19 ./pool teste/confere_metadata.pr
 # ... um .pr do portão por comando ...
-for a in arquivo sqlite socket pkg mail_local jinker; do timeout 180 nice -n 19 ./pool teste/e2e_roda.pr $a; done
-for a in manpu qrcode c d f;                          do timeout 180 nice -n 19 ./pool teste/e2e_roda.pr $a; done
+for a in arquivo sqlite socket pkg mail_local jinker; do timeout 300 nice -n 19 ./pool teste/e2e_roda.pr $a; done
+for a in manpu qrcode c.pr d.pr f.pr;                 do timeout 300 nice -n 19 ./pool teste/e2e_roda.pr $a; done
 ```
 
 O `make check` inteiro, o `check-asan`, o `oom` e o e2e completo rodam na VPS (5.11).
@@ -2319,7 +2319,7 @@ Serviços do e2e (credenciais de teste, as mesmas do CI):
 |---|---|
 | PostgreSQL | `127.0.0.1:5432`, usuário `ps_teste`, senha `ps_teste`, banco `ps_teste` (`teste/e2e/db.pr`) |
 | MySQL/MariaDB | `127.0.0.1:3306`, usuário `ps_teste`, senha `ps_teste`, banco `ps_teste`; no CI a senha de root é `ps_teste_raiz` |
-| MongoDB | `mongod --dbpath /tmp/ps_mongo_db --port 27099 --bind_ip 127.0.0.1`, banco `ps_teste` (`teste/e2e/mongo.pr`); o `teste/mongo_roda.pr` sobe o próprio `mongod` em `/tmp` |
+| MongoDB | `mongod --dbpath /tmp/ps_mongo_db --port 27099 --bind_ip 127.0.0.1`, banco `ps_teste` (`teste/e2e/mongo.pr`); o `teste/mongo_roda.pr` sobe o próprio `mongod` em `/tmp` (no Windows, na pasta `ps_mongo_teste` da pasta corrente) |
 | mail real | `MAIL_SMTP`, `MAIL_IMAP`, `MAIL_USER` e `MAIL_PASS` no ambiente (`teste/e2e/mail.pr`); sem eles, PULOU |
 | mail local | `teste/e2e/mail_local.pr` sobe `teste/smtp_falso.py` e `teste/imap_falso.py`; precisa de `openssl` e `python3`, senão PULOU |
 
@@ -2687,8 +2687,7 @@ Com o repositório privado, o `git clone` por HTTPS pede login: faça `gh auth l
 
 O que o código e o CI já mostram do macOS:
 - **`/dev/full` não existe no macOS.** Ocorrências nos casos: `teste/casos_crash.c` (7 linhas), `teste/casos_diferencial.c` (7) e `teste/casos_linguagem.c` (4), além de `teste/ps_oom.c`. Em `4aedf8b` pelo menos "close() acusa o que nao conseguiu gravar" falhou por isso. Desde `3c245e7` os 6 casos que dependem dele valem só no Linux; no Mac o `testar` lista os 6 e não os conta como passou.
-- **O comando `setsid` não vem no macOS.** Ele é chamado por `teste/e2e_roda.pr`, `teste/e2e/mail_local.pr`, `teste/jinker_roda.pr` e `scripts/mede_retornos.pr`.
-- **O comando `timeout` é chamado direto** por `teste/e2e_roda.pr`, `fuzz_replay.pr`, `exemplos_roda.pr`, `mongo_roda.pr`, `leis.pr`, `propriedade.pr`, `oom_varre.pr`, `teste/e2e/mail_local.pr`, `editor/nvim/teste_nvim.sh`, `scripts/mede_retornos.pr`, `converte_tudo.pr`, `fortalece_casos.pr` e `regrava_dif.pr`. No Mac ele vem do `gnubin` do coreutils (5.2). O job `mac` do `build.yml` instala o coreutils mas não põe o `gnubin` no PATH.
+- **`setsid` e `timeout` saíram do `make check` no 16.2.3.** Os drivers do portão sobem e derrubam processo pelo `Process` do `os.run(..., capture="live")` e contam o prazo no relógio, sem shell (o `os.cmd` do Windows é o cmd.exe). Continuam chamando, fora do `make check`: `scripts/mede_retornos.pr` (os dois), `teste/propriedade.pr` e `teste/oom_varre.pr` (`timeout`; rodam só no Linux, pelo `ci.yml`), `teste/geradores/diferencial.pr`, `scripts/converte_tudo.pr`, `fortalece_casos.pr` e `regrava_dif.pr` (`timeout`). O `editor/nvim/teste_nvim.sh` usa `timeout` ou `gtimeout` (o nome do coreutils do Homebrew) e diz quando não acha nenhum.
 - **SIGBUS na recursão dentro de fibra:** corrigido em `ec711c7` (16.1.8). Nos CIs seguintes (`ec711c7`, `3c245e7`, `b180807`) esse caso não aparece mais entre as falhas do Mac (5.12 e 9.10).
 - **`make analisa` e `make avisos`** pedem o gcc do Homebrew (`gcc-<N>` em `$(brew --prefix)/bin`).
 - **Alvos presos ao Linux:** `make verifica` (`ldd`, `nm -uD`), `pool-fuzz` (caminhos `/usr/include/...`), `install-mime` e `install-icone` (pulados no Darwin) e o `IJ_HOME` do `make intellij` (4.5).
@@ -2848,6 +2847,7 @@ Itens da trilha já fechados: 2 (Pyrite) foi superado pelo rename pra Jinga; 4 (
 | 09-28 | 16.2.0 | ver `git log` | Windows nativo completo no código (processos, ConPTY, fibras, JIT Win64, jinker sem fork, gmp int64, pacote, `instalar.ps1`, job `windows`); vetores da fibra sob demanda (923 MB -> 243 MB); este md versionado (repositório privado) |
 | 09-29 | 16.2.1 | dd368eb | Windows compila no CI (gcc 16 e cabeçalhos novos do UCRT64: `strndup`, `__USE_MINGW_ANSI_STDIO`) |
 | 09-29 | 16.2.2 | ver `git log` | As 20 falhas do 1º run do Windows (8516/8536): `_isatty` do NUL, casos com sintaxe de `sh` no `os.cmd`, `/dev/full`, url do sqlite, pty; bugs achados no caminho: `os.rmdir(force)` seguia link e apagava o destino, `os.copy` apagava link, `os.move` dizia ok sem apagar a origem, `rename` do Windows não substituía, `--check` dava MemoryError na borda do aninhamento; membro ausente numa chamada diz "method" e sugere a primeira palavra (`send` -> `send_linux`) |
+| 09-30 | 16.2.3 | ver `git log` | O `make check` inteiro portado pra macOS e Windows (os drivers sobem e derrubam processo pelo `Process`, sem shell; pastas de trabalho relativas); o CI Linux (`ci.yml`) vermelho desde 26/09 (atalho do `jpkg` testava o `jinga` instalado, fibra pequena demais sob ASan, erro do `lcov` escondido); motor no Windows: caminho `C:\` absoluto, separador `\` (`vm/ps_caminho.h`), `realpath` que não resolvia link (o static do jinker servia arquivo de fora), erro do Winsock no connect com prazo, aspas pro metacaractere do `cmd.exe` no `os.run`; `delete()` que não apagava dizia True; o F5 do VS Code não depurava (a sonda da extensão gastava a única conexão); `attach(pasta)` com o mesmo erro nos 3 sistemas; verdes falsos fechados em `unidade`, `audita_c`, `audita_exemplos_doc`, `conserta_barra_doc`, `e2e_roda` e `leis` |
 | 09-28 | 16.1.8 | ec711c7 | Folga da pilha medida rodando (o clang põe o dobro de pilha no laço da VM); nome do sinal pelo `strsignal` no runner |
 | 09-28 | 16.1.7 | c669a78 | macOS: resolução de nomes do módulo `sockets` pela camada de sistema |
 | 09-28 | 16.1.6 | 6980c40 | Pacote macOS, `instalar.sh` com ramo Darwin, `build.yml` (Linux + macOS Intel) |
@@ -3124,7 +3124,7 @@ Além do que o `ci.yml` instala, a VPS também recebeu `pkg-config`, `lcov`, `po
 | PostgreSQL | `teste/e2e/db.pr`; CI `postgres:16`; local: serviço `postgresql` 16.15 habilitado e ativo | 127.0.0.1:5432 | `ps_teste` | `ps_teste` | `ps_teste` |
 | MariaDB/MySQL | `teste/e2e/db.pr`; CI `mariadb:10.11` (root: `ps_teste_raiz`); local: serviço `mariadb` 10.11.14 habilitado e ativo | 127.0.0.1:3306 | `ps_teste` | `ps_teste` | `ps_teste` |
 | MongoDB (e2e) | `teste/e2e/mongo.pr`; CI `mongo:7` com `27099:27017` | 127.0.0.1:27099 | sem autenticação | — | `ps_teste` |
-| MongoDB (autônomo) | `teste/mongo_roda.pr` sobe o próprio `mongod` em `/tmp/ps_mongo_teste` | 127.0.0.1:28961 | sem autenticação | — | `ps_teste` |
+| MongoDB (autônomo) | `teste/mongo_roda.pr` sobe o próprio `mongod` em `/tmp/ps_mongo_teste` (no Windows, `ps_mongo_teste` na pasta corrente) | 127.0.0.1:28961 | sem autenticação | — | `ps_teste` |
 | SMTP falso | `teste/e2e/mail_local.pr` + `teste/smtp_falso.py`, STARTTLS com certificado auto-assinado em `/tmp/ps_smtp_cert.pem` | 127.0.0.1, porta dada pelo sistema | `teste@local` | `segredo123` | — |
 | Gmail real | `teste/e2e/mail.pr`, variáveis `MAIL_SMTP`, `MAIL_IMAP`, `MAIL_USER`, `MAIL_PASS` (senha de app) | — | — | — | sem as variáveis o teste diz PULOU |
 | Isca do jinker | `teste/jinker_alvo.pr` grava `estatico/.env` com `SENHA=nao`; o servidor não pode servir esse arquivo | — | — | — | — |
@@ -3841,8 +3841,8 @@ O plano é o `~/.claude/plans/steady-weaving-pine.md`, com um motor só (o mesmo
   - **No 16.2.0 os dois foram tratados.** O caso dos descritores contava as linhas do `ls /dev/fd`, e o `ls` do macOS abre um descritor a mais (o da pasta de volta): media o `ls`, não o motor. Agora ele usa uma testemunha, o número de um socket aberto no motor, que não pode existir no filho, e o 2, que tem que existir. O do pool de fibra: cada fibra tinha ~128 KB residentes (o `calloc` dos três vetores), e 9000 tarefas davam 923 MB de RSS no Linux (medido). Os vetores passaram pra memória mapeada que só vira RAM quando é tocada: 243 MB e 0,37 s (antes 1,09 s), e o `perf stat` de um lote de tarefas async foi de 334,8 M pra 332,7 M instruções. Que isso era o estouro de tempo do Mac é a hipótese; a prova é o próximo CI do Mac.
 - **O `make check` inteiro nunca rodou até o fim no Mac.** O passo "portao inteiro" ficou `skipped` em todos os runs, porque a suíte antes dele reprovou. O que já se sabe lendo o código:
   - `analisa` e `avisos` exigem `brew install gcc`;
-  - `editor/nvim/teste_nvim.sh` chama `timeout` direto (linha 52), e no Mac o do coreutils se chama `gtimeout`;
-  - `editor/intellij/plugin/teste_intellij.sh` procura o IDEA em `/opt/idea*` e `~/.local/share/JetBrains`, então pula no Mac;
+  - `editor/nvim/teste_nvim.sh` chamava `timeout` direto; desde o 16.2.3 usa `timeout` ou `gtimeout`;
+  - `editor/intellij/plugin/teste_intellij.sh` procurava o IDEA só onde o Linux o instala; desde o 16.2.3 conhece o `.app` do macOS e as pastas do Windows (no CI não há IDEA, e ele diz PULOU com a contagem);
   - o `make intellij` não conhece a pasta de plugins do Mac e cai na instalação pelo disco.
 - **Nenhum release tem o pacote do Mac.** O último release é o `v8.4.3` (2026-09-08). O job `release` do `build.yml` roda em tag `v*` e precisa do `linux` e do `mac` verdes. Hoje ele publica dois pacotes: `jinga-portable.tar.gz` e `jinga-macos-x86_64.tar.gz`.
 - **O `mongo-c-driver@1` sai do Homebrew.** O CI avisa que ele está descontinuado e será desativado em 2027-04-01. O build do Mac depende dele (`BREW_MG` no Makefile, `libmongoc-1.0.0.dylib` no `build_bundle.sh`).
@@ -3869,7 +3869,9 @@ O plano é o `~/.claude/plans/steady-weaving-pine.md`, com um motor só (o mesmo
   - doc: `jinga.md` (instalação no macOS e no Windows, o que muda no Windows), `docs/lsp.md`, e as páginas de `os.cmd`, `os.run`, `Process`, `sockets` e `Jinker`.
 - **CI de verdade (16.2.1, run 36516748809):** Windows compilou e rodou; suíte 8516/8536. As 20 falhas foram diagnosticadas por um workflow (6 grupos, cada um com verificador adversário) e tratadas no 16.2.2: 1 bug do porte (`_isatty` diz "terminal" pro NUL; agora `ps_e_terminal` pergunta ao console), e casos que dependiam de detalhe acidental reescritos testando a mesma propriedade (aspas simples do `sh` no `os.cmd` -> `os.run` com lista; `/dev/full` -> só Linux + irmãos portáveis "pai que é arquivo"; `startswith("/")` -> medir que o caminho não depende do cwd; pty -> ler até `""`). Mac: suíte verde com e sem JIT; o `make check` caía no caso dos 30 mil parênteses porque o make 3.81 da Apple sobe a pilha dos filhos (64 MB) e 30 mil níveis cabem — o caso usa agora PS_PARSE_PROF_MAX + 1.
 - **Conferir aqui sem Windows:** `scratchpad/win_check.sh` (sintaxe com os cabeçalhos do UCRT64 extraídos do repo.msys2.org, `-std=gnu2x`) e `scratchpad/win_liga.sh` (liga o `jinga.exe` estático). Os pacotes ficam em `scratchpad/ucrt/` (some com a sessão; baixar de novo pelo `ucrt64.db`).
-- **Falta**: ler o CI do 16.2.2 e tratar o que sobrar; o passo "portão inteiro" (`make check`) do Windows ainda não rodou — os harnesses `.pr` (cli_roda, jinker_roda, e2e...) usam `os.cmd` com sintaxe de `sh` e vão reprovar lá; é a próxima leva.
+- **CI do 16.2.2 / `ffb55a8`:** Mac passou as duas suítes e o `make check` até o `cobre_stdlib` (constantes de socket que o Mac não tem); Windows passou as duas suítes e caiu na `unidade` (faltava `-lbcrypt`). O `ci.yml` (Linux) estava vermelho desde 26/09.
+- **16.2.3:** todo o `make check` portado (cada harness por um agente, revisado por outro, medido na VPS original x novo), mais os bugs do motor no Windows achados no caminho (ver a linha do histórico). Conferido antes do push: compilação do Windows limpa com o sysroot UCRT64 (`win_check.sh`), e o `make check` inteiro na VPS como `nobody`, com o PATH sem o `jinga` instalado.
+- **Falta**: ler o CI do 16.2.3 nos três sistemas (o Windows roda agora também o `mail_local`, com python3, e o `mongo_roda`, com o MongoDB do runner no PATH) e tratar o que sobrar.
 - **Portão do Windows, pelo plano:**
   - a suíte inteira no job `windows-latest`/MSYS2;
   - cada falha separada em bug do porte (corrige) ou diferença real do sistema (`cmd.exe` no lugar de `sh`, `\r\n`), que ganha a expectativa do Windows;

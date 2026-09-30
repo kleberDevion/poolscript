@@ -53,6 +53,15 @@ static void resolve_pool(void)
     const char *bin = (alt && alt[0]) ? alt : POOL;
 #if defined(_WIN32)
     if (!_fullpath(POOL_ABS, bin, sizeof POOL_ABS)) snprintf(POOL_ABS, sizeof POOL_ABS, "%s", bin);
+    /* `PS_POOL=pool-debug` vem com o nome do alvo do make, e o arquivo é
+     * `pool-debug.exe`. Sem arquivo com o nome dado e com o `.exe` ao lado,
+     * vale o `.exe` — resolvido aqui, e não deixado pro CreateProcess, cuja
+     * doc diz que ele não completa o `.exe` de um nome que traz pasta. */
+    size_t n = strlen(POOL_ABS);
+    if (GetFileAttributesA(POOL_ABS) == INVALID_FILE_ATTRIBUTES && n + 4 < sizeof POOL_ABS) {
+        memcpy(POOL_ABS + n, ".exe", 5);
+        if (GetFileAttributesA(POOL_ABS) == INVALID_FILE_ATTRIBUTES) POOL_ABS[n] = '\0';
+    }
 #else
     if (!realpath(bin, POOL_ABS)) snprintf(POOL_ABS, sizeof POOL_ABS, "%s", bin);
 #endif
@@ -81,23 +90,6 @@ static const char *pasta_temp(void)
 #define O_BINARY_TESTE 0
 #endif
 
-/* Arquivo temporário novo (criado exclusivo) na pasta temporária: o fd, ou -1. */
-static int temp_novo(char *out, size_t cap, const char *prefixo)
-{
-#if defined(_WIN32)
-    static unsigned seq = 0;
-    for (int tent = 0; tent < 1000; tent++) {
-        snprintf(out, cap, "%s\\%s%lu_%u", pasta_temp(), prefixo,
-                 (unsigned long)GetCurrentProcessId(), seq++);
-        int fd = open(out, O_WRONLY | O_CREAT | O_EXCL | O_BINARY, 0600);
-        if (fd >= 0 || errno != EEXIST) return fd;
-    }
-    return -1;
-#else
-    snprintf(out, cap, "%s/%sXXXXXX", pasta_temp(), prefixo);
-    return mkstemp(out);
-#endif
-}
 
 /* Diretório temporário novo; NULL se não deu. */
 static const char *dir_novo(char *out, size_t cap)
@@ -365,7 +357,17 @@ static int roda(const Caso *c, Resultado *out)
 {
     memset(out, 0, sizeof(*out));
 
-    char arquivo[256];
+    /* O script mora numa pasta SÓ DELE, separada da pasta do caso. No temp
+     * comum, a busca por nome do motor (o `os.loadFile` e o `import` procuram
+     * primeiro na pasta do script) achava arquivo de OUTRA rodada ou de outro
+     * usuário: um `/tmp/sv.txt` velho, de outro dono, fazia o
+     * `os.loadFile("sv.txt")` do caso abrir o arquivo errado e cair em
+     * PermissionError. Na pasta vazia não há nada a achar além do que o
+     * próprio caso cria. */
+    char dir_script[4096];
+    if (!dir_novo(dir_script, sizeof(dir_script))) { perror("pasta do script"); return -1; }
+
+    char arquivo[4400];
     char fonte_ajustada[8192];
     const char *fonte = c->fonte;
     int fd;
@@ -380,7 +382,7 @@ static int roda(const Caso *c, Resultado *out)
         if (ponto) *ponto = '\0';
         char unico[192];
         snprintf(unico, sizeof(unico), "%s_%d", base, (int)getpid());
-        snprintf(arquivo, sizeof(arquivo), "%s/%s" PS_EXT, pasta_temp(), unico);
+        snprintf(arquivo, sizeof(arquivo), "%s/%s" PS_EXT, dir_script, unico);
         /* troca cada ocorrência do nome base pelo nome único, no fonte */
         /* Se o fonte não couber, o caso roda um programa PELA METADE e a
          * comparação vale nada — falha calada, do pior tipo. Melhor recusar. */
@@ -388,6 +390,7 @@ static int roda(const Caso *c, Resultado *out)
             fprintf(stderr, "caso '%s': fonte de %zu bytes nao cabe em %zu — "
                             "aumente fonte_ajustada[] em ps_teste.c\n",
                     c->nome, strlen(c->fonte), sizeof(fonte_ajustada));
+            apaga_arvore(dir_script);
             return -1;
         }
         size_t nb = strlen(base), j = 0;
@@ -402,13 +405,12 @@ static int roda(const Caso *c, Resultado *out)
         }
         fonte_ajustada[j] = '\0';
         fonte = fonte_ajustada;
-        fd = open(arquivo, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY_TESTE, 0600);
-        if (fd < 0) { perror("open"); return -1; }
     } else {
-        fd = temp_novo(arquivo, sizeof(arquivo), "ps_teste_");
-        if (fd < 0) { perror("arquivo temporario"); return -1; }
+        snprintf(arquivo, sizeof(arquivo), "%s/ps_teste_caso" PS_EXT, dir_script);
     }
-    if (write(fd, fonte, strlen(fonte)) < 0) { close(fd); unlink(arquivo); return -1; }
+    fd = open(arquivo, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY_TESTE, 0600);
+    if (fd < 0) { perror("open"); apaga_arvore(dir_script); return -1; }
+    if (write(fd, fonte, strlen(fonte)) < 0) { close(fd); apaga_arvore(dir_script); return -1; }
     close(fd);
 
     /* Cada caso roda num diretório SÓ DELE. Sem isso, um caso com caminho
@@ -421,7 +423,7 @@ static int roda(const Caso *c, Resultado *out)
     const char *dir_ok = dir_novo(dir_caso, sizeof(dir_caso));
 
     int rc = roda_filho(dir_ok, arquivo, out);
-    unlink(arquivo);
+    apaga_arvore(dir_script);
     if (dir_ok) apaga_arvore(dir_caso);
     return rc;
 }

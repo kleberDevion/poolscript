@@ -26,9 +26,21 @@ import sys
 import date
 import sockets
 
-PASTA = "/tmp/ps_cobre_stdlib"
+# O sistema decide o shell do `os.cmd`, o valor de algumas constantes de
+# socket e quais delas existem.
+SO = sys.platform()
+WINDOWS = SO == "windows"
+
+# A pasta de trabalho fica DENTRO da pasta corrente, e não em /tmp: no Windows
+# o motor é nativo, e "/tmp/x" é "<disco>:\tmp\x", na raiz do disco, não o /tmp
+# do MSYS2. O caminho é o INTEIRO, como era o de /tmp: os filhos rodam com
+# outra pasta corrente, e o import por caminho absoluto é um dos casos. A `\`
+# que o `os.cwd()` do Windows devolve vira `/`: o caminho entra no fonte dos
+# programas gerados, e ali `\a`, `\t` e cia. seriam escape.
+PASTA = os.cwd().replace("\\", "/") + "/ps_cobre_stdlib"
 
 falhas = []
+puladas = []
 ok = 0
 
 
@@ -45,13 +57,51 @@ funct confere(nome, cond)
     }
 }
 
+# Checagem que depende do que o sistema NÃO tem não roda, e o relatório diz
+# qual ficou de fora e por quê: pular calado contaria como coberto o que não
+# foi.
+funct nao_rodou(nome, motivo)
+{
+    addEnd(puladas, nome + " — " + motivo)
+}
 
-os.cmd("rm -rf " + PASTA)
+# O `os.cmd` roda no shell do sistema: /bin/sh no Linux e no macOS, cmd.exe no
+# Windows. Os dois entendem aspas DUPLAS, `<`, `>` e `2>&1`, e as linhas daqui
+# só usam isso: aspas simples e `VAR=x cmd` o cmd.exe não tem, e o `cd` dele
+# não é o do sh.
+EXE = "\"" + sys.executable + "\""
+
+# Roda o motor num processo FILHO com a pasta corrente em `pasta`, a saída e o
+# erro juntos em `saida` (relativo a `pasta`, ou inteiro). O filho herda a
+# pasta corrente de quem o dispara, então ela muda aqui e volta depois: era
+# `cd <pasta> && ...` dentro do sh. `home` não vazio é o JINGA_HOME só do
+# filho: `VAR="x" cmd` no sh, `set "VAR=x" && cmd` no cmd.exe.
+funct roda_em(pasta, args, saida, home) {
+    linha = EXE + " " + args + " > \"" + saida + "\" 2>&1"
+    if home != "" {
+        if WINDOWS {
+            linha = "set \"JINGA_HOME=" + home + "\" && " + linha
+        }
+        else {
+            linha = "JINGA_HOME=\"" + home + "\" " + linha
+        }
+    }
+    volta = os.cwd()
+    os.chdir(pasta)
+    os.cmd(linha)
+    os.chdir(volta)
+}
+
+
+# Sobra de uma rodada que caiu no meio sai pelo próprio motor: o `rm -rf` de
+# antes não é programa do Windows.
+if os.exists(PASTA) {
+    os.rmdir(PASTA, force=true)
+}
 os.mkdir(PASTA, exist_ok=true)
 
 # ── sys ─────────────────────────────────────────────────────────────────────
-p = sys.platform()
-confere("sys.platform() diz o sistema", p == "linux" or p == "darwin" or p == "win32")
+confere("sys.platform() diz o sistema", SO == "linux" or SO == "darwin" or SO == "windows")
 
 # `sys.RelativePath` BUSCA o arquivo recursivamente a partir do cwd e devolve
 # onde achou; sem achar, devolve Null. Então o teste cria o alvo primeiro —
@@ -92,8 +142,8 @@ os.writeFile(PASTA + "/le_stdin.pr",
              + "r = sys.stdin.read(4)\n"
              + "post(l.strip() + \"|\" + r)\n")
 os.writeFile(PASTA + "/entrada.txt", "primeira\nabcdefgh")
-os.cmd("'" + sys.executable + "' " + PASTA + "/le_stdin.pr < " + PASTA
-       + "/entrada.txt > " + PASTA + "/stdin.out 2>&1")
+os.cmd(EXE + " \"" + PASTA + "/le_stdin.pr\" < \"" + PASTA + "/entrada.txt\" > \""
+       + PASTA + "/stdin.out\" 2>&1")
 confere("sys.stdin.readline() e read(n) leem a entrada",
         os.readFile(PASTA + "/stdin.out").strip() == "primeira|abcd")
 
@@ -109,10 +159,10 @@ os.writeFile(PASTA + "/rel/pacote/modulo.pr", "z = 99\n")
 os.writeFile(PASTA + "/rel/sub/filho.pr", "from ..pacote.modulo import z\npost(\"z:\", z)\n")
 os.writeFile(PASTA + "/rel/nomeado.pr", "post(\"nome:\", __name__)\n")
 os.writeFile(PASTA + "/rel/principal.pr", "import nomeado\n")
-os.cmd("cd " + PASTA + "/rel && '" + sys.executable + "' sub/filho.pr > saida_rel.out 2>&1")
+roda_em(PASTA + "/rel", "sub/filho.pr", "saida_rel.out", "")
 confere("import relativo `..` com o script dado como caminho relativo (sub/filho.pr)",
         os.readFile(PASTA + "/rel/saida_rel.out").strip() == "z: 99")
-os.cmd("cd " + PASTA + "/rel && '" + sys.executable + "' principal.pr > saida_nome.out 2>&1")
+roda_em(PASTA + "/rel", "principal.pr", "saida_nome.out", "")
 confere("__name__ num modulo importado e o nome do modulo",
         os.readFile(PASTA + "/rel/saida_nome.out").strip() == "nome: nomeado")
 
@@ -123,7 +173,7 @@ os.mkdir(PASTA + "/rel/acesso", exist_ok=true)
 os.writeFile(PASTA + "/rel/acesso/smtp.pr", "funct manda() {\n    return \"mandou\"\n}\n")
 os.writeFile(PASTA + "/rel/acesso/controller.pr", "import smtp\nfunct entra() {\n    return smtp.manda()\n}\n")
 os.writeFile(PASTA + "/rel/rotas.pr", "from acesso.controller import entra\npost(entra())\n")
-os.cmd("cd " + PASTA + "/rel && '" + sys.executable + "' rotas.pr > saida_viz.out 2>&1")
+roda_em(PASTA + "/rel", "rotas.pr", "saida_viz.out", "")
 confere("`import vizinho` dentro de modulo de subpasta acha o arquivo ao lado",
         os.readFile(PASTA + "/rel/saida_viz.out").strip() == "mandou")
 
@@ -154,10 +204,10 @@ os.writeFile(PASTA + "/asp/sub/filho.pr",
     + "import './meu-mod.pr' as mm\n"
     + "post(modulo.z, w, zz, json.stringify([1]), st([2]), minhalib.LIB, pm.z, w2, abs.f(), mm.q)\n")
 ESPERADO_ASP = "99 7 99 [1] [2] lib ok 99 7 f de modulo 1"
-os.cmd("cd " + PASTA + "/asp && JINGA_HOME=" + PASTA + "/asp/home '" + sys.executable + "' sub/filho.pr > saida_asp.out 2>&1")
+roda_em(PASTA + "/asp", "sub/filho.pr", "saida_asp.out", PASTA + "/asp/home")
 confere("import por caminho: relativo, pai, sem extensao, `as`, PUSH/GET, absoluto, lib e modulo do motor entre aspas",
         os.readFile(PASTA + "/asp/saida_asp.out").strip() == ESPERADO_ASP)
-os.cmd("cd " + PASTA + "/asp/sub && JINGA_HOME=" + PASTA + "/asp/home '" + sys.executable + "' filho.pr > ../saida_asp2.out 2>&1")
+roda_em(PASTA + "/asp/sub", "filho.pr", "../saida_asp2.out", PASTA + "/asp/home")
 confere("import por caminho resolve pela pasta do arquivo, nao pelo cwd",
         os.readFile(PASTA + "/asp/saida_asp2.out").strip() == ESPERADO_ASP)
 
@@ -175,8 +225,7 @@ os.writeFile(PASTA + "/asp/jinga/libs/doprojeto.pr", "P = 5\n")
 
 funct roda_qual(nome, fonte) {
     os.writeFile(PASTA + "/asp/" + nome, fonte)
-    os.cmd("cd " + PASTA + "/asp && JINGA_HOME=" + PASTA + "/asp/home '" + sys.executable
-           + "' " + nome + " > " + nome + ".out 2>&1")
+    roda_em(PASTA + "/asp", nome, nome + ".out", PASTA + "/asp/home")
     return os.readFile(PASTA + "/asp/" + nome + ".out").strip()
 }
 
@@ -228,7 +277,7 @@ os.writeFile(EST + "/m.pr",
 # roda `fonte` como EST/<arq> e devolve stdout+stderr sem o fim de linha
 funct roda_est(arq, fonte) {
     os.writeFile(EST + "/" + arq, fonte)
-    os.cmd("cd " + EST + " && '" + sys.executable + "' " + arq + " > " + arq + ".out 2>&1")
+    roda_em(EST, arq, arq + ".out", "")
     return os.readFile(EST + "/" + arq + ".out").strip()
 }
 
@@ -243,7 +292,7 @@ confere("import *: PUSH m GET * e a mesma regra",
 confere("import *: caminho entre aspas, nas duas grafias",
         roda_est("e4.pr", "from './m.pr' import *\nimport './m' *\n" + USA) == TUDO)
 os.writeFile(EST + "/sub/rel.pr", "from ..m import *\n" + USA)
-os.cmd("cd " + EST + " && '" + sys.executable + "' sub/rel.pr > sub/rel.out 2>&1")
+roda_em(EST, "sub/rel.pr", "sub/rel.out", "")
 confere("import *: relativo com pontos a partir de subpasta",
         os.readFile(EST + "/sub/rel.out").strip() == TUDO)
 confere("import *: nao liga o nome do modulo",
@@ -295,11 +344,11 @@ confere("import *: range que vem do * desliga o atalho do for each",
         roda_est("e26.pr", "from mr import *\nfor each i in range(3) {\n    post(i)\n}\n") == "r")
 os.writeFile(EST + "/ca.pr", "from cb import *\npost(fb())\n")
 os.writeFile(EST + "/cb.pr", "funct fb() {\n    return \"fb\"\n}\nfrom ca import *\n")
-os.cmd("cd " + EST + " && '" + sys.executable + "' ca.pr > ca.out 2>&1")
+roda_em(EST, "ca.pr", "ca.out", "")
 confere("import *: ciclo entre dois arquivos termina e liga o que ja tem valor",
         os.readFile(EST + "/ca.out").strip() == "fb\nfb")
 os.writeFile(EST + "/auto.pr", "x = 1\nfrom auto import *\npost(x)\n")
-os.cmd("cd " + EST + " && '" + sys.executable + "' auto.pr > auto.out 2>&1")
+roda_em(EST, "auto.pr", "auto.out", "")
 confere("import *: arquivo que importa a si mesmo com * termina",
         os.readFile(EST + "/auto.out").strip() == "1\n1")
 confere("import *: modulo que so aparece em runtime diz por que o * nao tem nomes",
@@ -311,13 +360,13 @@ os.writeFile(EST + "/inc_b.pr", "from naoexiste import *\nW = 1\n")
 confere("import *: modulo com * que nao resolve nao entrega lista pela metade",
         roda_est("e28.pr", "from inc_b import *\npost(W)\n").startswith("ImportError: No module named 'naoexiste'"))
 os.writeFile(EST + "/chk.pr", "from m import *\npost(f())\n")
-os.cmd("cd " + EST + " && '" + sys.executable + "' --check chk.pr > chk.out 2>&1")
+roda_em(EST, "--check chk.pr", "chk.out", "")
 confere("import *: --check resolve o * do modulo vizinho",
         os.readFile(EST + "/chk.out").strip() == "{\"ok\":true}")
 # E quando o modulo NAO existe, o `--check` acusa com a MESMA frase de rodar.
 # Antes dizia `{"ok":true}`: um typo no import so aparecia na execucao.
 os.writeFile(EST + "/chk2.pr", "from naoexiste_zz import *\npost(f())\n")
-os.cmd("cd " + EST + " && '" + sys.executable + "' --check chk2.pr > chk2.out 2>&1")
+roda_em(EST, "--check chk2.pr", "chk2.out", "")
 confere("import *: --check acusa o modulo ausente do *",
         "No module named 'naoexiste_zz'" in os.readFile(EST + "/chk2.out")
         and "ImportError" in os.readFile(EST + "/chk2.out"))
@@ -333,17 +382,35 @@ confere("import *: --check acusa o modulo ausente do *",
 # (4) programa inexistente continua levantando IOError — sem isso o disparo
 # ficaria calado, com o processo morrendo de 127 sem ninguem saber,
 # (5) `capture=true` continua ESPERANDO e devolvendo a saida.
-os.mkdir(PASTA + "/bg", exist_ok=true)
-os.cmd("rm -f " + PASTA + "/bg/prova.txt")
+#
+# O filho é o próprio motor, que existe igual nos três sistemas: dorme 2 s e
+# grava a prova. Era `sh -c "sleep 2; echo RODOU > ..."`, e o `sh` não é
+# programa do Windows (o que o `run` acha lá é o do MSYS2, e só com ele no
+# PATH). A pasta `bg` nasce vazia: a prova NÃO pode existir antes do disparo.
+BG = PASTA + "/bg"
+if os.exists(BG) {
+    os.rmdir(BG, force=true)
+}
+os.mkdir(BG, exist_ok=true)
+PROVA = BG + "/prova.txt"
+os.writeFile(BG + "/dorme.pr",
+             "import os\nsleep(2)\nos.writeFile(\"" + PROVA + "\", \"RODOU\\n\")\n")
+
+funct tem_prova() {
+    return os.exists(PROVA) and os.readFile(PROVA).strip() == "RODOU"
+}
+
 t0 = date.timestamp()
-pid = os.run(["sh", "-c", "sleep 2; echo RODOU > " + PASTA + "/bg/prova.txt"])
+pid = os.run([sys.executable, BG + "/dorme.pr"])
 gasto = date.timestamp() - t0
 confere("os.run sem capture volta antes do processo terminar", gasto < 2)
 confere("os.run sem capture devolve o PID", type(pid) == "int" and pid > 0)
-os.cmd("sleep 3")
-confere("o processo disparado RODA e sobrevive a quem disparou",
-        os.exists(PASTA + "/bg/prova.txt")
-        and os.readFile(PASTA + "/bg/prova.txt").strip() == "RODOU")
+# Espera a prova com PRAZO, e não um `sleep 3` fixo: o filho dorme 2 s, e o
+# quanto ele leva pra nascer depende da máquina (o runner do CI é mais lento).
+while not tem_prova() and date.timestamp() - t0 < 20 {
+    sleep(0.1)
+}
+confere("o processo disparado RODA e sobrevive a quem disparou", tem_prova())
 
 pegou = false
 try {
@@ -354,7 +421,10 @@ catch (IOError e) {
 }
 confere("os.run de programa inexistente levanta IOError (nao volta PID calado)", pegou)
 
-r = os.run(["echo", "capturado"], true)
+# O `capture=true` também com o próprio motor: o `echo` é comando interno do
+# cmd.exe, não programa que o `run` ache no PATH do Windows.
+os.writeFile(PASTA + "/eco.pr", "post(\"capturado\")\n")
+r = os.run([sys.executable, PASTA + "/eco.pr"], true)
 confere("os.run com capture=true espera e devolve a saida",
         type(r) == "str" and r.strip() == "capturado")
 
@@ -419,6 +489,16 @@ catch (e) {
 confere("loadFile recusa charset e aponta o os.readFile", pegou)
 
 # ── os: caminho, diretório, ambiente ────────────────────────────────────────
+# Caminho ABSOLUTO do sistema: começa com "/" no Linux e no macOS; no Windows,
+# com o disco ("D:\" ou "D:/") ou com "\\" (pasta de rede).
+funct absoluto(c) {
+    if WINDOWS {
+        disco = len(c) >= 3 and c[1] == ":" and (c[2] == "\\" or c[2] == "/")
+        return disco or c.startswith("\\\\") or c.startswith("//")
+    }
+    return c.startswith("/")
+}
+
 # `pathFile`/`pathFolder` BUSCAM a partir do cwd e levantam se não acharem —
 # então o teste cria o alvo e roda de dentro da pasta.
 os.mkdir(PASTA + "/uploads", exist_ok=true)
@@ -429,12 +509,12 @@ cf = os.pathFile("dados.json")
 cp = os.pathFolder("uploads")
 os.chdir(volta2)
 confere("os.pathFile devolve o caminho absoluto do arquivo",
-        cf.startswith("/") and cf.endswith("dados.json"))
+        absoluto(cf) and cf.endswith("dados.json"))
 confere("os.pathFolder devolve o caminho absoluto da pasta",
-        cp.startswith("/") and cp.endswith("uploads"))
+        absoluto(cp) and cp.endswith("uploads"))
 
 antes = os.cwd()
-confere("os.cwd() devolve caminho absoluto", antes.startswith("/"))
+confere("os.cwd() devolve caminho absoluto", absoluto(antes))
 os.chdir(PASTA)
 confere("os.chdir muda o cwd de verdade", os.cwd() != antes)
 os.chdir(antes)
@@ -447,7 +527,14 @@ confere("os.rename move o arquivo",
 confere("e o conteúdo atravessa intacto",
         os.readFile(PASTA + "/novo.txt") == "conteudo")
 
-confere("os.environ lê variável do ambiente", os.environ("HOME") == os.getenv("HOME"))
+# A variável que o sistema SEMPRE tem: HOME no Linux e no macOS; a do Windows
+# é USERPROFILE (lá o HOME só existe se quem disparou o põe, como o MSYS2), e
+# sem ela os dois lados seriam null e a igualdade passaria sem ler nada.
+VAR_CASA = "HOME"
+if WINDOWS {
+    VAR_CASA = "USERPROFILE"
+}
+confere("os.environ lê variável do ambiente", os.environ(VAR_CASA) == os.getenv(VAR_CASA))
 confere("os.environ de variável inexistente é null",
         os.environ("PS_NAO_EXISTE_MESMO_123") == null)
 
@@ -499,27 +586,110 @@ confere("load() põe a variável no ambiente", os.getenv("PS_COB_DOIS") == "beta
 # São 63 funções de uma linha cada, e nenhuma era lida. Conferir o VALOR (e não
 # só que existe) é o que separa cobrir de carimbar: `SOCK_STREAM` tem que ser 1
 # no Linux, não "algum inteiro".
+#
+# O valor é o do SISTEMA, e dois mudam de um pro outro: `AF_INET6` (10 no
+# Linux, 30 no macOS, 23 no Windows) e `SOL_SOCKET` (1 no Linux, 0xffff no
+# macOS e no Windows). Os outros que se conferem pelo número são iguais nos três.
+AF_INET6_AQUI = 10
+SOL_SOCKET_AQUI = 1
+if SO == "darwin" {
+    AF_INET6_AQUI = 30
+    SOL_SOCKET_AQUI = 65535
+}
+elif WINDOWS {
+    AF_INET6_AQUI = 23
+    SOL_SOCKET_AQUI = 65535
+}
+
+# E há constante que só alguns sistemas têm (docs/sockets/sockets.md diz
+# quais): onde o sistema não tem, ela não existe no módulo, e o nome que falta
+# nem compila — o conferidor acusa `sockets.X` inexistente antes de rodar,
+# mesmo dentro de um `if`. Então essas são lidas num programa FILHO escrito só
+# com as deste sistema, e o dict volta com o valor de cada uma. A que não vier
+# (o filho não compilou) fica fora do dict, e a checagem que a usa reprova pela
+# contagem.
+funct consts_do_sistema(nomes) {
+    fonte = "import sockets\n"
+    for each nome in nomes {
+        fonte = fonte + "post(\"" + nome + "\", sockets." + nome + ")\n"
+    }
+    os.writeFile(PASTA + "/consts.pr", fonte)
+    saida = os.run([sys.executable, PASTA + "/consts.pr"], true)
+    lidas = dict()
+    for each linha in saida.split("\n") {
+        partes = linha.strip().split(" ")
+        if len(partes) == 2 and partes[0] in nomes {
+            lidas[partes[0]] = int(partes[1])
+        }
+    }
+    if len(lidas) != len(nomes) {
+        post("constantes de socket: o filho não leu todas —", saida)
+    }
+    return lidas
+}
+
+# o ocioso do keepalive: TCP_KEEPIDLE no Linux e no Windows, TCP_KEEPALIVE no macOS
+OCIOSO = "TCP_KEEPIDLE"
+if SO == "darwin" {
+    OCIOSO = "TCP_KEEPALIVE"
+}
+SO_TEM = [OCIOSO, "TCP_KEEPINTVL", "TCP_KEEPCNT"]
+if SO == "linux" {
+    addEnd(SO_TEM, "AF_PACKET")
+}
+if not WINDOWS {
+    addEnd(SO_TEM, "SO_REUSEPORT")
+    addEnd(SO_TEM, "MSG_DONTWAIT")
+    addEnd(SO_TEM, "MSG_TRUNC")
+}
+DO_SISTEMA = consts_do_sistema(SO_TEM)
+
+# os valores de `nomes` que o filho leu, na ordem
+funct lidas_de(nomes) {
+    vals = []
+    for each nm in nomes {
+        if nm in DO_SISTEMA {
+            addEnd(vals, DO_SISTEMA[nm])
+        }
+    }
+    return vals
+}
+
 confere("AF_INET/AF_INET6/AF_UNIX",
-        sockets.AF_INET == 2 and sockets.AF_INET6 == 10 and sockets.AF_UNIX == 1)
+        sockets.AF_INET == 2 and sockets.AF_INET6 == AF_INET6_AQUI and sockets.AF_UNIX == 1)
 confere("AF_UNSPEC é 0", sockets.AF_UNSPEC == 0)
-confere("AF_PACKET é 17 no Linux", sockets.AF_PACKET == 17)
+if SO == "linux" {
+    pk = lidas_de(["AF_PACKET"])
+    confere("AF_PACKET é 17 no Linux", len(pk) == 1 and pk[0] == 17)
+}
+else {
+    nao_rodou("AF_PACKET é 17 no Linux", "AF_PACKET só existe no Linux")
+}
 confere("SOCK_STREAM=1 SOCK_DGRAM=2 SOCK_RAW=3",
         sockets.SOCK_STREAM == 1 and sockets.SOCK_DGRAM == 2 and sockets.SOCK_RAW == 3)
 confere("SOCK_SEQPACKET é 5", sockets.SOCK_SEQPACKET == 5)
-confere("SOL_SOCKET é 1", sockets.SOL_SOCKET == 1)
+confere("SOL_SOCKET é " + str(SOL_SOCKET_AQUI), sockets.SOL_SOCKET == SOL_SOCKET_AQUI)
 
-opts = [sockets.SO_REUSEADDR, sockets.SO_REUSEPORT, sockets.SO_KEEPALIVE,
+opts = [sockets.SO_REUSEADDR, sockets.SO_KEEPALIVE,
         sockets.SO_BROADCAST, sockets.SO_LINGER, sockets.SO_RCVBUF,
         sockets.SO_SNDBUF, sockets.SO_ERROR, sockets.SO_RCVTIMEO,
         sockets.SO_SNDTIMEO, sockets.SO_OOBINLINE, sockets.SO_DONTROUTE,
         sockets.SO_TYPE]
-confere("as 13 opções SO_* são inteiros distintos e positivos",
-        len(opts) == 13 and min(opts) > 0)
+if WINDOWS {
+    nao_rodou("SO_REUSEPORT nas opções SO_*", "o Windows não tem SO_REUSEPORT")
+    confere("as 12 opções SO_* (sem SO_REUSEPORT) são inteiros distintos e positivos",
+            len(opts) == 12 and min(opts) > 0)
+}
+else {
+    opts = opts + lidas_de(["SO_REUSEPORT"])
+    confere("as 13 opções SO_* são inteiros distintos e positivos",
+            len(opts) == 13 and min(opts) > 0)
+}
 
 confere("TCP_NODELAY é 1", sockets.TCP_NODELAY == 1)
-confere("TCP_KEEPIDLE/INTVL/CNT existem e diferem",
-        sockets.TCP_KEEPIDLE != sockets.TCP_KEEPINTVL
-        and sockets.TCP_KEEPINTVL != sockets.TCP_KEEPCNT)
+kp = lidas_de([OCIOSO, "TCP_KEEPINTVL", "TCP_KEEPCNT"])
+confere(OCIOSO + "/INTVL/CNT existem e diferem",
+        len(kp) == 3 and kp[0] != kp[1] and kp[1] != kp[2])
 
 confere("IPPROTO_IP=0 TCP=6 UDP=17 ICMP=1 RAW=255",
         sockets.IPPROTO_IP == 0 and sockets.IPPROTO_TCP == 6
@@ -529,10 +699,17 @@ confere("IPPROTO_IP=0 TCP=6 UDP=17 ICMP=1 RAW=255",
 confere("SHUT_RD=0 WR=1 RDWR=2",
         sockets.SHUT_RD == 0 and sockets.SHUT_WR == 1 and sockets.SHUT_RDWR == 2)
 
-msgs = [sockets.MSG_PEEK, sockets.MSG_WAITALL, sockets.MSG_DONTWAIT,
-        sockets.MSG_OOB, sockets.MSG_DONTROUTE, sockets.MSG_TRUNC]
-confere("as 6 flags MSG_* são potências de dois distintas",
-        len(msgs) == 6 and min(msgs) > 0)
+msgs = [sockets.MSG_PEEK, sockets.MSG_WAITALL, sockets.MSG_OOB, sockets.MSG_DONTROUTE]
+if WINDOWS {
+    nao_rodou("MSG_DONTWAIT e MSG_TRUNC nas flags MSG_*", "o Windows não tem essas duas")
+    confere("as 4 flags MSG_* (sem MSG_DONTWAIT e MSG_TRUNC) são potências de dois distintas",
+            len(msgs) == 4 and min(msgs) > 0)
+}
+else {
+    msgs = msgs + lidas_de(["MSG_DONTWAIT", "MSG_TRUNC"])
+    confere("as 6 flags MSG_* são potências de dois distintas",
+            len(msgs) == 6 and min(msgs) > 0)
+}
 
 ais = [sockets.AI_PASSIVE, sockets.AI_CANONNAME, sockets.AI_NUMERICHOST,
        sockets.AI_NUMERICSERV, sockets.AI_ADDRCONFIG, sockets.AI_V4MAPPED,
@@ -554,7 +731,8 @@ confere("as 6 opções de IP são positivas", len(ips) == 6 and min(ips) > 0)
 
 # ── resolução de nome ───────────────────────────────────────────────────────
 #
-# `localhost` resolve sem rede: está no /etc/hosts. Nada aqui sai da máquina.
+# `localhost` resolve sem rede: está no /etc/hosts (no Windows, o próprio
+# resolvedor responde). Nada aqui sai da máquina.
 h = sockets.gethostbyname_ex("localhost")
 confere("gethostbyname_ex devolve nome, apelidos e endereços",
         len(h) == 3 and "127.0.0.1" in h[2])
@@ -563,11 +741,20 @@ confere("gethostbyaddr resolve o loopback de volta",
 confere("has_dualstack_ipv6 responde bool",
         sockets.has_dualstack_ipv6() == true or sockets.has_dualstack_ipv6() == false)
 
-os.cmd("rm -rf " + PASTA)
+# a pasta sai pelo próprio motor, como a sobra lá do começo
+os.rmdir(PASTA, force=true)
 
 # ── relatório ───────────────────────────────────────────────────────────────
 post("")
 post("stdlib:", ok, "checagens passaram")
+if puladas.len() > 0
+{
+    post("NAO RODARAM neste sistema:", puladas.len())
+    for each x in puladas
+    {
+        post("  " + x)
+    }
+}
 if falhas.len() > 0
 {
     post("FALHARAM:", falhas.len())

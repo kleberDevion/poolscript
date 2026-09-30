@@ -139,12 +139,16 @@ static const char *limpa_arquivo(const char *fn, char *buf, size_t cap)
     char cwd[1024];
     if (getcwd(cwd, sizeof(cwd))) {
         size_t lc = strlen(cwd);
-        if (strncmp(fn, cwd, lc) == 0 && fn[lc] == '/') {   /* sob o cwd => relativo */
+        /* o prefixo é a pasta corrente com QUALQUER separador: no Windows o
+         * getcwd dá `\` e o caminho resolvido do script dá `/` */
+        size_t k = 0;
+        while (k < lc && (fn[k] == cwd[k] || (ps_eh_sep(fn[k]) && ps_eh_sep(cwd[k])))) k++;
+        if (k == lc && ps_eh_sep(fn[lc])) {                  /* sob o cwd => relativo */
             snprintf(buf, cap, "%s", fn + lc + 1);
             return buf;
         }
     }
-    const char *b = strrchr(fn, '/');           /* fora do cwd => basename */
+    const char *b = ps_ultimo_sep(fn);          /* fora do cwd => basename */
     return b ? b + 1 : fn;
 }
 

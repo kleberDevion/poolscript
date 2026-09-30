@@ -108,3 +108,22 @@ editor/intellij/plugin/dist/
 
 # Sobra do examples/swagger.pr rodado na raiz (teste/exemplos_roda.pr apaga)
 /path/
+
+# Os binários no Windows saem com .exe (o `make` gera; nao versionar)
+/pool.exe
+/testar.exe
+/pool-debug.exe
+/unidade.exe
+
+# Pastas de trabalho dos portões, na pasta de onde o `make check` roda (a
+# raiz). Cada script cria a sua, apaga no fim e apaga a sobra no começo da
+# rodada seguinte; só fica se a rodada for interrompida no meio (no Windows,
+# também quando o servidor é derrubado sem saída graciosa).
+/ps_audita_exemplos_tmp/
+/ps_cli_teste/
+/ps_cm_tmp/
+/ps_cobre_stdlib/
+/ps_e2e_*/
+/ps_leis_tmp/
+/ps_mongo_teste/
+/ps_unidade_zip_*.xlsx

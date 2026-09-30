@@ -104,14 +104,14 @@ funct literais(L) {
 # comparação (foi o que aconteceu no `fortalece_casos.pr`).
 #
 # O `\r` do fim da linha também sai: não é do fonte (o gcc lê `\r\n` como
-# `\n`, inclusive na continuação com `\`). O checkout do Windows entrega
-# `\r\n` (o git de lá converte, e o repositório não tem .gitattributes), e o
-# que o motor grava lá sai só com `\n`: um gerador rodado lá deixa arquivo
-# `\n` ao lado de arquivo `\r\n`. Um literal continuado com `\` no fim da
-# linha levava o `\r` pra digital, e o mesmo caso nos dois arquivos passava
-# como dois — medido, o portão dizia "nenhum caso repete". No Linux e no
-# macOS os casos não têm `\r`. As linhas do bloco ficam como estão: o
-# `--remove` regrava o arquivo com o fim de linha dele.
+# `\n`, inclusive na continuação com `\`). O `.gitattributes` põe os casos
+# com `\n` no checkout dos três sistemas; o `\r\n` chega quando um arquivo é
+# salvo assim fora do git (editor do Windows), e o que o motor grava sai só
+# com `\n`: fica arquivo `\n` ao lado de arquivo `\r\n`. Um literal
+# continuado com `\` no fim da linha levava o `\r` pra digital, e o mesmo
+# caso nos dois arquivos passava como dois — medido, o portão dizia "nenhum
+# caso repete". As linhas do bloco ficam como estão: o `--remove` regrava o
+# arquivo com o fim de linha dele.
 funct digital(nome, corpo) {
     tudo = ""
     em_com = false

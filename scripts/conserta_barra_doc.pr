@@ -44,7 +44,8 @@ funct junta_md(dir, acc) {
 }
 
 
-# Onde `//` começa nesta linha, ignorando `://`. -1 = não tem.
+# Onde o próximo `//` começa nesta linha, a partir de `inicio_b`, ignorando
+# `://`. -1 = não tem.
 #
 # Usa `find` do motor, não varredura em Jinga: indexar `L[i]` numa string
 # UTF-8 custa O(n) (conta code points), então o laço char a char virava O(n²)
@@ -54,8 +55,8 @@ funct junta_md(dir, acc) {
 # a um nome que existe no módulo ESCREVE no de fora (ver notas/LIMITACOES.md).
 # Com `i` aqui, o `i` do laço de quem chama era sobrescrito e o laço nunca
 # terminava — travou este script por meia hora, sem erro nenhum.
-funct acha_barra(L) {
-    de = 0
+funct acha_barra(L, inicio_b) {
+    de = inicio_b
     while true {
         p = L.find("//", de)
         if p < 0 {
@@ -100,38 +101,49 @@ if __name__ == "main" {
                 i = i + 1
                 continue
             }
-            b = acha_barra(L)
-            if b < 0 {
-                i = i + 1
-                continue
-            }
-            # começo da linha, ou dois espaços antes = comentário à direita
-            eh_comentario = so_espaco_antes(L, b)
-            if not eh_comentario and b >= 2 {
-                if L[b - 1] == " " and L[b - 2] == " " {
-                    eh_comentario = true
+            # TODOS os `//` da linha, não só o primeiro. Com só o primeiro, em
+            # `t = 7 // 2  // comentario` a divisão ia pra lista de conferir à
+            # mão e o `//` de comentário passava pelo portão.
+            desde = 0
+            listada = false
+            while true {
+                b = acha_barra(L, desde)
+                if b < 0 {
+                    break
                 }
-            }
-            # Um espaço só antes: decide pelo que vem DEPOIS. Divisão inteira
-            # tem um operando atrás — dígito, `-` ou `(`. Comentário tem
-            # palavra. As 5 divisões reais da doc são `// 2`, `// -2`, `// 1`;
-            # nenhuma delas passa por aqui.
-            if not eh_comentario and b + 3 <= len(L) {
-                depois = L[b + 2:b + 4]
-                if depois[0:1] == " " {
-                    c = depois[1:2]
-                    if c != "" and not (c >= "0" and c <= "9") and c != "-" and c != "(" {
+                # começo da linha, ou dois espaços antes = comentário à direita
+                eh_comentario = so_espaco_antes(L, b)
+                if not eh_comentario and b >= 2 {
+                    if L[b - 1] == " " and L[b - 2] == " " {
                         eh_comentario = true
                     }
                 }
-            }
-            if eh_comentario {
-                linhas[i] = L[0:b] + "#" + L[b + 2:]
-                trocadas = trocadas + 1
-                mudou = true
-            }
-            else {
-                addEnd(ambiguas, caminho + ":" + str(i + 1) + "  " + L.strip())
+                # Um espaço só antes: decide pelo que vem DEPOIS. Divisão inteira
+                # tem um operando atrás — dígito, `-` ou `(`. Comentário tem
+                # palavra. As 5 divisões reais da doc são `// 2`, `// -2`, `// 1`;
+                # nenhuma delas passa por aqui.
+                if not eh_comentario and b + 3 <= len(L) {
+                    depois = L[b + 2:b + 4]
+                    if depois[0:1] == " " {
+                        c = depois[1:2]
+                        if c != "" and not (c >= "0" and c <= "9") and c != "-" and c != "(" {
+                            eh_comentario = true
+                        }
+                    }
+                }
+                if eh_comentario {
+                    # o resto da linha vira comentário: não há mais o que olhar
+                    L = L[0:b] + "#" + L[b + 2:]
+                    linhas[i] = L
+                    trocadas = trocadas + 1
+                    mudou = true
+                    break
+                }
+                if not listada {
+                    addEnd(ambiguas, caminho + ":" + str(i + 1) + "  " + L.strip())
+                    listada = true
+                }
+                desde = b + 2
             }
             i = i + 1
         }

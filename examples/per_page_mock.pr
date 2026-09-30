@@ -1,6 +1,7 @@
 # per_page_mock.pr — paginação de uma consulta, na forma de um handler do
 # jinker (o `self` e o `data` são os do handler baseado em classe). Roda
-# sozinho: o banco é um sqlite temporário que ele mesmo cria e povoa.
+# sozinho: o banco é um sqlite temporário que ele mesmo cria e povoa na pasta
+# de onde roda, e apaga no fim.
 import jinker
 import psodbc
 
@@ -9,7 +10,7 @@ conn = Null
 funct connDatabase() {
     global conn
     if conn == Null {
-        conn = psodbc.connect(url="sqlite:////tmp/per_page_mock.db")
+        conn = psodbc.connect(url="sqlite:///per_page_mock.db")
         cur = conn.cursor()
         cur.execute("CREATE TABLE IF NOT EXISTS emails (id INTEGER PRIMARY KEY, id_user INTEGER, assunto TEXT)")
         cur.execute("DELETE FROM emails")
@@ -90,4 +91,10 @@ funct SearchInbox(self, data) {
 if __name__ == "main" {
     resposta, codigo = SearchInbox(Null, {"page": 2, "per_page": 10})
     post(codigo)
+    # o banco do exemplo sai junto: fecha a conexão (no Windows arquivo aberto
+    # não se apaga) e apaga pelo handle, que apaga o caminho escrito
+    conn.close()
+    banco = open("per_page_mock.db", "rb")
+    banco.close()
+    banco.delete()
 }

@@ -340,8 +340,10 @@ sem ele, `nova = 1` dentro da funct e `post(nova)` fora dá
 `using <expr> as <nome> { … }` avalia a expressão, liga ao nome e roda o bloco; ao
 terminar (**por saída normal ou por erro**) ele **fecha o recurso**, se for um
 dos tipos que a linguagem sabe fechar — **arquivo**, **conexão de banco**
-(com `commit` antes de fechar) e **planilha** (salva ao sair). Garante a
-liberação mesmo se o bloco estourar. Para um valor que não é
+(com `commit` antes de fechar), **planilha** (salva ao sair), **socket** e
+**processo** do `os.run(..., capture="live")` (fecha os três canais; o
+processo segue vivo, e quem quer esperar por ele chama `wait()` dentro do
+bloco). Garante a liberação mesmo se o bloco estourar. Para um valor que não é
 um desses recursos, o `using` só executa o bloco (não há o que fechar).
 
 ```ps

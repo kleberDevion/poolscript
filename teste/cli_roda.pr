@@ -17,11 +17,35 @@ import os
 import sys
 import json
 
-PASTA = "/tmp/ps_cli_teste"
+# A pasta de trabalho mora na pasta de onde se roda e sai no fim. Era
+# /tmp/ps_cli_teste, e no Windows o "/tmp/..." do motor nativo vira
+# "<disco>:\tmp\...", que não é o /tmp de ninguém. O caminho vai INTEIRO: os
+# comandos rodam de dentro dela e das subpastas, e JINGA_HOME e companhia
+# valem de qualquer uma. A barra é `/` nos três sistemas: o `os.cwd()` do
+# Windows vem com `\`, que dentro do fonte gerado (o servidor do registry)
+# viraria escape.
+PASTA = os.cwd().replace("\\", "/") + "/ps_cli_teste"
 HOME  = PASTA + "/home"
 PORTA = 28951
 
+# O que muda de nome no Windows: o `-o` grava `nome.exe` (vm/main.c), o
+# atalho do `jpkg install` é `nome.cmd` (vm/ps_pkg.c), a pasta do usuário vem
+# da USERPROFILE e não da HOME (vm/ps_so.h), e o PATH separa com `;`.
+WINDOWS    = sys.platform() == "windows"
+EXE        = ""
+EXT_ATALHO = ""
+VAR_CASA   = "HOME"
+SEP_PATH   = ":"
+if WINDOWS
+{
+    EXE        = ".exe"
+    EXT_ATALHO = ".cmd"
+    VAR_CASA   = "USERPROFILE"
+    SEP_PATH   = ";"
+}
+
 falhas = []
+pulou  = []
 ok = 0
 
 funct confere(nome, cond)
@@ -37,18 +61,178 @@ funct confere(nome, cond)
     }
 }
 
-# Roda um comando e devolve {"saida": <stdout+stderr>, "rc": <int>}. O `os.cmd`
-# não devolve código de saída (só a saída), então ele vai pro arquivo — sem
-# isso metade dos casos da CLI seria "não deu erro", que não é asserção.
-funct roda(cmd)
+# O que não roda neste sistema porque falta a ele o recurso: não é falha nem
+# aprovação — sai no relatório, contado e com o motivo.
+funct pula(nome, motivo)
 {
-    os.cmd("cd " + PASTA + " && { " + cmd + " ; } > " + PASTA + "/.out 2>&1; echo $? > " + PASTA + "/.rc")
-    return {"saida": os.readFile(PASTA + "/.out"), "rc": int(os.readFile(PASTA + "/.rc").strip())}
+    addEnd(pulou, nome + " (" + motivo + ")")
 }
 
-funct com_home(cmd)
+# Os dois canais do filho são lidos JUNTOS, cada um numa tarefa: lendo o
+# stdout até o fim antes do stderr, um filho que enche o cano do stderr fica
+# parado esperando alguém ler.
+async funct junta_saida(p)
 {
-    return roda("JINGA_HOME=" + HOME + " " + cmd)
+    texto = ""
+    parte = p.read()
+    while parte != ""
+    {
+        texto = texto + parte
+        parte = p.read()
+    }
+    return texto
+}
+
+async funct junta_erro(p)
+{
+    texto = ""
+    parte = p.read_err()
+    while parte != ""
+    {
+        texto = texto + parte
+        parte = p.read_err()
+    }
+    return texto
+}
+
+# Roda um programa e devolve {"saida": <stdout+stderr>, "rc": <int>}. O código
+# de saída vem do próprio processo — sem ele metade dos casos da CLI seria
+# "não deu erro", que não é asserção.
+#
+# SEM shell: `args` é a lista do programa e dos argumentos. Era uma linha do
+# `os.cmd` (`cd PASTA && { cmd ; } > .out 2>&1; echo $? > .rc`), que só valia
+# no /bin/sh: no Windows o `os.cmd` passa pelo cmd.exe, onde aspas simples não
+# são aspas e `{ ; }`, `$?`, `printf` e `/dev/null` não existem.
+#   entrada  vai pro stdin (o `printf ... |` de antes); sem ela o filho acha a
+#            entrada FECHADA (o `< /dev/null`)
+#   pasta    onde o filho roda (o `cd` de antes); sem ela, PASTA
+#   amb      variáveis de ambiente só dele (ver `com_ambiente`)
+# Programa que não existe sai 127 e morte por sinal sai 128 + sinal, como o
+# `$?` contava (o Windows não tem sinal: lá o código é o que o sistema deu).
+funct roda(args, entrada="", pasta="", amb=Null)
+{
+    if pasta == ""
+    {
+        pasta = PASTA
+    }
+    if amb != Null
+    {
+        args = com_ambiente(args, amb)
+    }
+    volta = os.cwd()
+    os.chdir(pasta)
+    p = Null
+    try
+    {
+        p = os.run(args, capture="live")
+    }
+    catch (IOError e)
+    {
+        return {"saida": str(e) + "\n", "rc": 127}
+    }
+    finally
+    {
+        os.chdir(volta)
+    }
+    using p as filho
+    {
+        # Filho que sai sem ler a entrada (argumento recusado) fecha o cano, e
+        # a escrita falha: isso não é o resultado do caso, como a falha do
+        # `printf` não era o `$?` do cano de antes.
+        if entrada != ""
+        {
+            try
+            {
+                filho.write(entrada)
+            }
+            catch (IOError e)
+            {
+                pass
+            }
+        }
+        filho.close()
+        canais = gather(junta_saida(filho), junta_erro(filho))
+        rc = filho.wait()
+    }
+    if rc < 0 and not WINDOWS
+    {
+        rc = 128 - rc
+    }
+    return {"saida": canais[0] + canais[1], "rc": rc}
+}
+
+# Variável de ambiente SÓ pro filho: o `os.run` não tem `env`. No Linux e no
+# macOS ela vai pelo `env` (`env VAR=valor programa args`, sem shell). No
+# Windows é o `set "VAR=valor"` do cmd.exe, num arquivo de comandos: na linha
+# do `cmd /c` que o `os.run` monta, a aspa de dentro chega como `\"`, que o
+# cmd.exe não desfaz. O `exit /b` devolve o código do programa como o do
+# cmd.exe, e o atalho `.cmd` do jpkg vai com `call` (sem ele o cmd.exe não
+# volta de um `.cmd` chamado de outro).
+funct com_ambiente(args, amb)
+{
+    if not WINDOWS
+    {
+        lista = ["env"]
+        for each k in amb.keys()
+        {
+            addEnd(lista, k + "=" + amb[k])
+        }
+        return lista + args
+    }
+    linhas = ["@echo off"]
+    for each k in amb.keys()
+    {
+        addEnd(linhas, "set \"" + k + "=" + amb[k].replace("%", "%%") + "\"")
+    }
+    prog = "\"" + args[0].replace("/", "\\").replace("%", "%%") + "\""
+    if args[0].endswith(".cmd")
+    {
+        prog = "call " + prog
+    }
+    for each a in args[1:]
+    {
+        prog = prog + " \"" + a.replace("%", "%%") + "\""
+    }
+    addEnd(linhas, prog)
+    addEnd(linhas, "exit /b %errorlevel%")
+    os.writeFile(PASTA + "/amb.cmd", "\r\n".join(linhas) + "\r\n")
+    return ["cmd.exe", "/d", "/c", (PASTA + "/amb.cmd").replace("/", "\\")]
+}
+
+funct com_home(args)
+{
+    return roda(args, amb={"JINGA_HOME": HOME})
+}
+
+# O atalho que o `jpkg install` grava (vm/ps_pkg.c, write_shim) é um script de
+# shell no Linux e no macOS e um `.cmd` no Windows, e os dois chamam o `jinga`
+# (ou o `pool`) do PATH. A pasta deste binário vai na frente do PATH: numa
+# máquina sem a linguagem instalada, como a do CI, o atalho não acharia nenhum
+# dos dois.
+funct roda_atalho(nome)
+{
+    corte = POOL.rfind("/")
+    if POOL.rfind("\\") > corte
+    {
+        corte = POOL.rfind("\\")
+    }
+    amb = {"JINGA_HOME": HOME, "PATH": POOL[0:corte] + SEP_PATH + os.getenv("PATH", "")}
+    if WINDOWS
+    {
+        return roda([HOME + "/bin/" + nome + EXT_ATALHO], amb=amb)
+    }
+    return roda(["sh", HOME + "/bin/" + nome], amb=amb)
+}
+
+# O executável que o `-o` gerou, chamado da pasta atual como no shell
+# (`./nome`); no Windows ele é `nome.exe`, e a barra do caminho é a de lá.
+funct gerado(nome)
+{
+    if WINDOWS
+    {
+        return ".\\" + nome + EXE
+    }
+    return "./" + nome
 }
 
 if os.exists(PASTA)
@@ -60,7 +244,7 @@ os.mkdir(HOME, exist_ok=true)
 POOL = sys.executable
 
 # ── superfície da CLI (vm/main.c) ───────────────────────────────────────────
-r = roda("'" + POOL + "' --version")
+r = roda([POOL, "--version"])
 confere("--version imprime a versão", "Jinga" in r["saida"] and r["rc"] == 0)
 # A DATA da build distingue dois binários da mesma versão (o instalado e o
 # recém-compilado respondiam igual). O prefixo não muda: quem lê a saída — o
@@ -68,7 +252,7 @@ confere("--version imprime a versão", "Jinga" in r["saida"] and r["rc"] == 0)
 confere("--version traz a data da build entre parênteses",
         "[PSVM] (" in r["saida"] and ")" in r["saida"].split("(")[1]
         and "-" in r["saida"].split("(")[1].split(")")[0])
-r = roda("'" + POOL + "' -V")
+r = roda([POOL, "-V"])
 confere("-V é o mesmo que --version", "Jinga" in r["saida"] and r["rc"] == 0)
 
 # ── os nomes de antes do rename continuam valendo ───────────────────────────
@@ -78,60 +262,62 @@ confere("-V é o mesmo que --version", "Jinga" in r["saida"] and r["rc"] == 0)
 # Nada disso pode quebrar de um dia pro outro. O contrato é: a variável antiga
 # ainda é lida (a nova ganha quando as duas existem), a forma antiga do import
 # ainda importa, e a pasta antiga vira `~/.jinga` na primeira chamada do `jpkg`
-# — com aviso, porque mover pasta calado é o tipo de coisa que some.
+# — com aviso, porque mover pasta calado é o tipo de coisa que some. A pasta
+# do usuário (o `~`) é a HOME no Linux e no macOS e a USERPROFILE no Windows.
 os.mkdir(PASTA + "/home_antigo/libs", exist_ok=true)
 os.writeFile(PASTA + "/home_antigo/libs/velha.pr", "V = \"da pasta antiga\"\n")
 os.writeFile(PASTA + "/usa_velha.pr",
              "import velha\nimport poolscript.libs.velha as p\nimport jinga.libs.velha as j\npost(velha.V, p.V, j.V)\n")
-r = roda("POOLSCRIPT_HOME=" + PASTA + "/home_antigo '" + POOL + "' usa_velha.pr")
+r = roda([POOL, "usa_velha.pr"], amb={"POOLSCRIPT_HOME": PASTA + "/home_antigo"})
 confere("POOLSCRIPT_HOME ainda e lida, e import poolscript.libs.x e jinga.libs.x acham a mesma lib",
         r["rc"] == 0 and r["saida"].strip() == "da pasta antiga da pasta antiga da pasta antiga")
 os.mkdir(PASTA + "/home_novo/libs", exist_ok=true)
 os.writeFile(PASTA + "/home_novo/libs/velha.pr", "V = \"da pasta nova\"\n")
-r = roda("JINGA_HOME=" + PASTA + "/home_novo POOLSCRIPT_HOME=" + PASTA + "/home_antigo '" + POOL + "' usa_velha.pr")
+r = roda([POOL, "usa_velha.pr"],
+         amb={"JINGA_HOME": PASTA + "/home_novo", "POOLSCRIPT_HOME": PASTA + "/home_antigo"})
 confere("com as duas variaveis, JINGA_HOME ganha",
         r["rc"] == 0 and r["saida"].strip() == "da pasta nova da pasta nova da pasta nova")
 os.mkdir(PASTA + "/casa/.poolscript/libs", exist_ok=true)
 os.writeFile(PASTA + "/casa/.poolscript/libs/velha.pr", "V = \"migrada\"\n")
-r = roda("HOME=" + PASTA + "/casa '" + POOL + "' list")
+r = roda([POOL, "list"], amb={VAR_CASA: PASTA + "/casa"})
 confere("jpkg move ~/.poolscript pra ~/.jinga na primeira chamada e avisa",
         r["rc"] == 0 and "virou" in r["saida"] and os.exists(PASTA + "/casa/.jinga/libs/velha.pr")
         and not os.exists(PASTA + "/casa/.poolscript"))
-r = roda("HOME=" + PASTA + "/casa '" + POOL + "' usa_velha.pr")
+r = roda([POOL, "usa_velha.pr"], amb={VAR_CASA: PASTA + "/casa"})
 confere("depois de movida, a lib e achada em ~/.jinga",
         r["rc"] == 0 and r["saida"].strip() == "migrada migrada migrada")
 
-r = roda("'" + POOL + "' --help")
+r = roda([POOL, "--help"])
 confere("--help lista os modos", "jinga arquivo.pr" in r["saida"] and r["rc"] == 0)
-r = roda("'" + POOL + "' -h")
+r = roda([POOL, "-h"])
 confere("-h é o mesmo que --help", "jinga arquivo.pr" in r["saida"])
 
-r = roda("'" + POOL + "' //doc")
+r = roda([POOL, "//doc"])
 confere("//doc aponta a especificação", "http" in r["saida"])
 
-r = roda("'" + POOL + "' -e 'post(2 + 3)'")
+r = roda([POOL, "-e", "post(2 + 3)"])
 confere("-e roda código inline", r["saida"].strip() == "5" and r["rc"] == 0)
 
-r = roda("'" + POOL + "' -e 'post(1/0)'")
+r = roda([POOL, "-e", "post(1/0)"])
 confere("-e propaga erro com rc != 0", r["rc"] != 0 and "zero" in r["saida"])
 
 os.writeFile(PASTA + "/bom.pr", "post(\"rodou\")\n")
-r = roda("'" + POOL + "' bom.pr")
+r = roda([POOL, "bom.pr"])
 confere("roda arquivo", r["saida"].strip() == "rodou" and r["rc"] == 0)
 
 os.writeFile(PASTA + "/torto.pr", "x = (1 +\n")
-r = roda("'" + POOL + "' torto.pr")
+r = roda([POOL, "torto.pr"])
 confere("arquivo com sintaxe torta sai != 0", r["rc"] != 0 and "SyntaxError" in r["saida"])
 
-r = roda("'" + POOL + "' nao_existe.pr")
+r = roda([POOL, "nao_existe.pr"])
 confere("arquivo inexistente sai != 0", r["rc"] != 0)
 
-r = roda("'" + POOL + "' --check bom.pr")
+r = roda([POOL, "--check", "bom.pr"])
 confere("--check aprova fonte válido", "\"ok\":true" in r["saida"])
-r = roda("'" + POOL + "' --check torto.pr")
+r = roda([POOL, "--check", "torto.pr"])
 confere("--check reprova fonte torto com linha e coluna",
         "\"ok\":false" in r["saida"] and "\"linha\":" in r["saida"] and "\"coluna\":" in r["saida"])
-r = roda("echo 'post(1)' | '" + POOL + "' --check")
+r = roda([POOL, "--check"], entrada="post(1)\n")
 confere("--check lê da entrada padrão", "\"ok\":true" in r["saida"])
 
 # Método sem `self`: UM erro, na linha do `funct` (5) — não um NameError no
@@ -140,14 +326,14 @@ confere("--check lê da entrada padrão", "\"ok\":true" in r["saida"])
 os.writeFile(PASTA + "/sem_self.pr",
              "class C {\n    funct __init__(self) {\n        self.x = 1\n    }\n"
              + "    funct m() {\n        return self.x\n    }\n}\nc = C()\nc.m()\n")
-r = roda("'" + POOL + "' --check sem_self.pr")
+r = roda([POOL, "--check", "sem_self.pr"])
 confere("--check: método sem self dá um erro só, na linha da declaração",
         "\"ok\":false" in r["saida"] and "sem self" in r["saida"]
         and "\"linha\":5" in r["saida"] and "\"linha\":6" not in r["saida"]
         and "\"linha\":10" not in r["saida"]
         and len(r["saida"].split("\"tipo\":")) == 3)
 
-r = roda("echo 'x = 1' | '" + POOL + "' --tokens")
+r = roda([POOL, "--tokens"], entrada="x = 1\n")
 confere("--tokens devolve JSON de tokens", "\"t\":\"IDENT\"" in r["saida"] and "\"l\":1" in r["saida"])
 
 # ── `--contexto`: o que o editor chama a cada tecla ─────────────────────────
@@ -158,44 +344,44 @@ confere("--tokens devolve JSON de tokens", "\"t\":\"IDENT\"" in r["saida"] and "
 #
 # O contrato tem cinco respostas — `topo`, `membro`, `nenhum`, `decorador`,
 # `import` — mais o NOME PARCIAL, que só conta quando encosta no cursor.
-r = roda("echo 'post(1)' | '" + POOL + "' --contexto 1:1")
+r = roda([POOL, "--contexto", "1:1"], entrada="post(1)\n")
 confere("--contexto no topo diz `topo`", "\"contexto\":\"topo\"" in r["saida"])
 
 # depois de um ponto, o contexto é MEMBRO e o receptor vem junto — é o que faz
 # o editor listar os métodos de `str` e não a linguagem inteira
-r = roda("printf 'x = \"ab\"\\nx.' | '" + POOL + "' --contexto 2:3")
+r = roda([POOL, "--contexto", "2:3"], entrada="x = \"ab\"\nx.")
 confere("--contexto depois do ponto diz `membro`", "\"contexto\":\"membro\"" in r["saida"])
 confere("--contexto membro diz de QUEM é o membro", "x" in r["saida"])
 
 # nome PARCIAL: `ge|` conta, `ge |` não. Sem essa distinção o editor completa
 # em cima de espaço em branco.
-r = roda("printf 'po' | '" + POOL + "' --contexto 1:3")
+r = roda([POOL, "--contexto", "1:3"], entrada="po")
 confere("--contexto pega o nome parcial encostado no cursor", "\"parcial\":\"po\"" in r["saida"])
-r = roda("printf 'po ' | '" + POOL + "' --contexto 1:4")
+r = roda([POOL, "--contexto", "1:4"], entrada="po ")
 confere("--contexto NÃO pega parcial separado por espaço",
         not "\"parcial\":\"po\"" in r["saida"])
 
 # decorador e import são contextos próprios: o editor oferece listas diferentes
-r = roda("printf '@' | '" + POOL + "' --contexto 1:2")
+r = roda([POOL, "--contexto", "1:2"], entrada="@")
 confere("--contexto depois de `@` diz `decorador`", "\"decorador\"" in r["saida"])
-r = roda("printf 'import ' | '" + POOL + "' --contexto 1:8")
+r = roda([POOL, "--contexto", "1:8"], entrada="import ")
 confere("--contexto depois de `import` diz `import`", "\"import\"" in r["saida"])
 
 # ARGUMENTO TORTO: tem que ser erro com mensagem, não lixo nem crash. É entrada
 # não confiável — quem chama é o editor, com o cursor onde o usuário deixou.
-r = roda("echo 'post(1)' | '" + POOL + "' --contexto")
+r = roda([POOL, "--contexto"], entrada="post(1)\n")
 confere("--contexto sem posição é erro", "\"erro\"" in r["saida"] and r["rc"] != 0)
-r = roda("echo 'post(1)' | '" + POOL + "' --contexto abc")
+r = roda([POOL, "--contexto", "abc"], entrada="post(1)\n")
 confere("--contexto com posição não numérica é erro", "\"erro\"" in r["saida"])
-r = roda("echo 'post(1)' | '" + POOL + "' --contexto 0:0")
+r = roda([POOL, "--contexto", "0:0"], entrada="post(1)\n")
 confere("--contexto com linha/coluna zero é erro", "\"erro\"" in r["saida"])
-r = roda("echo 'post(1)' | '" + POOL + "' --contexto -1:5")
+r = roda([POOL, "--contexto", "-1:5"], entrada="post(1)\n")
 confere("--contexto com linha negativa é erro", "\"erro\"" in r["saida"])
 # posição MUITO além do fim do arquivo: não pode ler fora
-r = roda("echo 'post(1)' | '" + POOL + "' --contexto 9999:9999")
+r = roda([POOL, "--contexto", "9999:9999"], entrada="post(1)\n")
 confere("--contexto além do fim não quebra", r["rc"] == 0 or "\"contexto\"" in r["saida"])
 # entrada vazia
-r = roda("printf '' | '" + POOL + "' --contexto 1:1")
+r = roda([POOL, "--contexto", "1:1"], entrada="")
 confere("--contexto de arquivo vazio não quebra", "\"contexto\"" in r["saida"])
 
 # ── comandos de editor: arquivo no argumento, buffer com caminho, import ────
@@ -208,82 +394,90 @@ os.mkdir(PASTA + "/proj", exist_ok=true)
 os.writeFile(PASTA + "/proj/util.pr", "funct soma(a, b)\n{\n    return a + b\n}\n")
 os.writeFile(PASTA + "/proj/main.pr", "import util\npost(util.soma(1, 2))\n")
 
-r = roda("'" + POOL + "' --tokens proj/main.pr < /dev/null")
+r = roda([POOL, "--tokens", "proj/main.pr"])
 confere("--tokens lê o arquivo do argumento", "\"v\":\"util\"" in r["saida"])
-r = roda("'" + POOL + "' --ast proj/main.pr < /dev/null")
+r = roda([POOL, "--ast", "proj/main.pr"])
 confere("--ast lê o arquivo do argumento", "\"k\":\"ImportStmt\"" in r["saida"])
-r = roda("'" + POOL + "' --contexto 2:11 proj/main.pr < /dev/null")
+r = roda([POOL, "--contexto", "2:11", "proj/main.pr"])
 confere("--contexto lê o arquivo do argumento", "\"receptor\":\"util\"" in r["saida"])
 
 # `--path`: o buffer vem do stdin, mas vale como se fosse aquele arquivo — é
 # assim que o módulo VIZINHO é achado. Sem isso, o editor não conferia nada
 # entre arquivos, e calado.
-r = roda("printf 'import util\\nutil.naoexiste()\\n' | '" + POOL + "' --check --path proj/main.pr")
+r = roda([POOL, "--check", "--path", "proj/main.pr"], entrada="import util\nutil.naoexiste()\n")
 confere("--check --path enxerga o módulo vizinho",
         "\"ok\":false" in r["saida"] and "naoexiste" in r["saida"])
-r = roda("printf 'import util\\npost(util.soma(1, 2))\\n' | '" + POOL + "' --check --path proj/main.pr")
+r = roda([POOL, "--check", "--path", "proj/main.pr"], entrada="import util\npost(util.soma(1, 2))\n")
 confere("--check --path aprova o que está certo", "\"ok\":true" in r["saida"])
 
 # Módulo que não existe: o `--check` dizia `{"ok":true}` e o erro só aparecia
 # rodando. Um typo no import passava limpo pelo editor.
-r = roda("printf 'import nao_existe_zz\\n' | '" + POOL + "' --check")
+r = roda([POOL, "--check"], entrada="import nao_existe_zz\n")
 confere("--check acusa módulo que não existe",
         "ImportError" in r["saida"] and "No module named" in r["saida"]
         and "nao_existe_zz" in r["saida"])
-r = roda("printf 'from nao_existe_zz import coisa\\npost(coisa)\\n' | '" + POOL + "' --check")
+r = roda([POOL, "--check"], entrada="from nao_existe_zz import coisa\npost(coisa)\n")
 confere("--check acusa módulo que não existe no from", "No module named" in r["saida"])
-r = roda("printf 'from nao_existe_zz import *\\n' | '" + POOL + "' --check")
+r = roda([POOL, "--check"], entrada="from nao_existe_zz import *\n")
 confere("--check acusa módulo que não existe no from *", "No module named" in r["saida"])
-r = roda("printf 'from nao_existe_zz import a, b, c\\n' | '" + POOL + "' --check")
+r = roda([POOL, "--check"], entrada="from nao_existe_zz import a, b, c\n")
 confere("--check acusa o módulo ausente uma vez só",
         len(r["saida"].split("No module named")) == 3)
-r = roda("printf 'import os\\nimport util\\n' | '" + POOL + "' --check --path proj/main.pr")
+r = roda([POOL, "--check", "--path", "proj/main.pr"], entrada="import os\nimport util\n")
 confere("--check não acusa módulo que existe (nativo e vizinho)", "\"ok\":true" in r["saida"])
 
 # A coluna aponta o NOME, não a palavra-chave: o editor sublinhava `import`.
-r = roda("printf 'import naoexiste_zz\\n' | '" + POOL + "' --check")
+r = roda([POOL, "--check"], entrada="import naoexiste_zz\n")
 confere("o erro do import aponta a coluna do nome do módulo", "\"coluna\":8" in r["saida"])
-r = roda("printf '    from pacote.sub import x\\n' | '" + POOL + "' --check")
+r = roda([POOL, "--check"], entrada="    from pacote.sub import x\n")
 confere("com indentação e caminho pontilhado, a coluna é a do primeiro segmento",
         "\"coluna\":10" in r["saida"])
-r = roda("printf 'from json import naoexiste_zz\\n' | '" + POOL + "' --check")
+r = roda([POOL, "--check"], entrada="from json import naoexiste_zz\n")
 confere("nome que o módulo não tem aponta a coluna do NOME importado",
         "\"coluna\":18" in r["saida"])
-r = roda("'" + POOL + "' --check proj/main.pr")
+r = roda([POOL, "--check", "proj/main.pr"])
 confere("--check por caminho continua aprovando o import vizinho", "\"ok\":true" in r["saida"])
 
-# Arquivo que não dá `fseek` (pipe, /dev/stdin): saía 66 calado.
-r = roda("printf 'post(7)\\n' | '" + POOL + "' /dev/stdin")
-confere("jinga roda fonte vindo de pipe", r["saida"].strip() == "7" and r["rc"] == 0)
+# Arquivo que não dá `fseek` (pipe, /dev/stdin): saía 66 calado. O Windows
+# não tem caminho de arquivo que leia o stdin: lá o caso não roda, e diz.
+if WINDOWS
+{
+    pula("jinga roda fonte vindo de pipe", "o Windows nao tem /dev/stdin")
+}
+else
+{
+    r = roda([POOL, "/dev/stdin"], entrada="post(7)\n")
+    confere("jinga roda fonte vindo de pipe", r["saida"].strip() == "7" and r["rc"] == 0)
+}
 
 # ── `--contexto`: o que faltava pro editor não completar no lugar errado ────
 #
 # A coluna do lexer conta CARACTERE; o corte do receptor contava BYTE, então
 # um acento antes na linha devolvia `" o"` em vez de `os`.
-r = roda("printf 'f(\"é\", os.' | '" + POOL + "' --contexto 1:11")
+r = roda([POOL, "--contexto", "1:11"], entrada="f(\"é\", os.")
 confere("--contexto não se perde com acento antes do receptor",
         "\"receptor\":\"os\"" in r["saida"])
 # dentro de string e de comentário o editor não pode abrir completion
-r = roda("printf 'x = \"os.pa\"' | '" + POOL + "' --contexto 1:11")
+r = roda([POOL, "--contexto", "1:11"], entrada="x = \"os.pa\"")
 confere("--contexto dentro de string diz `texto`", "\"contexto\":\"texto\"" in r["saida"])
-r = roda("printf 'x = 1 # veja os.' | '" + POOL + "' --contexto 1:17")
+r = roda([POOL, "--contexto", "1:17"], entrada="x = 1 # veja os.")
 confere("--contexto dentro de comentário diz `comentario`",
         "\"contexto\":\"comentario\"" in r["saida"])
 # mas o que está dentro de `{}` de f-string é CÓDIGO, e completa como código
-r = roda("printf 'x = 1\\npost(f\"oi {x} {os.pa}\")\\n' | '" + POOL + "' --contexto 2:21")
+r = roda([POOL, "--contexto", "2:21"], entrada="x = 1\npost(f\"oi {x} {os.pa}\")\n")
 confere("--contexto dentro de {} da f-string enxerga o membro",
         "\"contexto\":\"membro\"" in r["saida"] and "\"receptor\":\"os\"" in r["saida"])
 # em que funct/classe o cursor está — `topo` não quer dizer escopo global
-r = roda("printf 'funct soma(a)\\n{\\n    a\\n}\\n' | '" + POOL + "' --contexto 3:6")
+r = roda([POOL, "--contexto", "3:6"], entrada="funct soma(a)\n{\n    a\n}\n")
 confere("--contexto diz em que funct o cursor está", "\"escopo\":\"soma\"" in r["saida"])
 # (o escopo sai da ÁRVORE; com a linha quebrada no meio, a árvore ainda para
 # no primeiro erro — é o que o lote da recuperação de erro resolve)
-r = roda("printf 'class C\\n{\\n    funct m(self)\\n    {\\n        self.x\\n    }\\n}\\n' | '"
-         + POOL + "' --contexto 5:14")
+r = roda([POOL, "--contexto", "5:14"],
+         entrada="class C\n{\n    funct m(self)\n    {\n        self.x\n    }\n}\n")
 confere("--contexto diz a classe e o método",
         "\"escopo\":\"C.m\"" in r["saida"] and "\"receptor\":\"self\"" in r["saida"])
 # no meio da palavra, o pedaço ANTES do cursor é o que se está digitando
-r = roda("printf 'post(abcdef)' | '" + POOL + "' --contexto 1:9")
+r = roda([POOL, "--contexto", "1:9"], entrada="post(abcdef)")
 confere("--contexto no meio da palavra devolve o pedaço antes do cursor",
         "\"parcial\":\"abc\"" in r["saida"])
 
@@ -296,21 +490,21 @@ os.writeFile(PASTA + "/tarefa_erro.pr",
              "async funct falha()\n{\n    sleep(0.01)\n    raise ValueError(\"quebrei\")\n}\n"
              + "async funct boa()\n{\n    sleep(0.2)\n    return 1\n}\n"
              + "f = falha()\ng = boa()\npost(await g)\n")
-r = roda("'" + POOL + "' tarefa_erro.pr")
+r = roda([POOL, "tarefa_erro.pr"])
 confere("erro de tarefa que ninguém aguardou aparece no fim",
         "quebrei" in r["saida"] and "ninguem aguardou" in r["saida"])
 
 os.writeFile(PASTA + "/tarefa_await.pr",
              "async funct falha()\n{\n    sleep(0.01)\n    raise ValueError(\"quebrei\")\n}\n"
              + "f = falha()\nv = await f\n")
-r = roda("'" + POOL + "' tarefa_await.pr")
+r = roda([POOL, "tarefa_await.pr"])
 confere("o traceback da tarefa termina na linha do raise",
         "linha 4" in r["saida"] and r["rc"] != 0)
 
 os.writeFile(PASTA + "/tarefa_comeca.pr",
              "async funct t()\n{\n    post(\"corpo\")\n    sleep(0.01)\n    post(\"resto\")\n}\n"
              + "f = t()\npost(\"chamou\")\nawait f\n")
-r = roda("'" + POOL + "' tarefa_comeca.pr")
+r = roda([POOL, "tarefa_comeca.pr"])
 confere("a tarefa começa na chamada, antes da linha seguinte",
         r["saida"].strip() == "corpo\nchamou\nresto")
 
@@ -319,10 +513,10 @@ confere("a tarefa começa na chamada, antes da linha seguinte",
 # Sem coluna final, o editor sublinha 1 caractere e a seleção estrutural
 # (Ctrl+W) não tem onde parar. E a f-string saía como UM token: as expressões
 # de dentro não existiam pro realce nem pro "ir pra definição".
-r = roda("printf 'nome = \"ana\"\\n' | '" + POOL + "' --tokens")
+r = roda([POOL, "--tokens"], entrada="nome = \"ana\"\n")
 confere("--tokens diz onde o token termina",
         "\"c2\":" in r["saida"] and "\"l2\":" in r["saida"])
-r = roda("printf 'funct f(a)\\n{\\n    return a\\n}\\n' | '" + POOL + "' --ast")
+r = roda([POOL, "--ast"], entrada="funct f(a)\n{\n    return a\n}\n")
 confere("--ast diz a coluna final do nó", "\"c2\":" in r["saida"])
 
 # `--bytecode`: o que o compilador gera, uma instrução por linha, com o
@@ -346,7 +540,7 @@ funct opcodes_de(saida, proto)
     return nomes
 }
 os.writeFile(PASTA + "/laco.pr", "int n = 0\nwhile n < 1000000000 {\n    n++\n}\npost(n)\n")
-r = roda("'" + POOL + "' --bytecode laco.pr")
+r = roda([POOL, "--bytecode", "laco.pr"])
 confere("--bytecode lista o proto do modulo", r["rc"] == 0 and "== proto 0 <module>" in r["saida"])
 confere("--bytecode diz o nome do global e o alvo do salto",
         "LOAD_GLOBAL      " in r["saida"] and "; n" in r["saida"] and "; -> " in r["saida"])
@@ -360,7 +554,7 @@ confere("laco tipado: comparacao+desvio e n++ fundidos",
                                       "LOAD_GLOBAL", "CALL", "POP_TOP", "HALT"])
 os.writeFile(PASTA + "/laco2.pr",
              "funct f() {\n    int i = 10\n    while i > 0 {\n        i--\n    }\n    int j = 0\n    j += 1\n    return i + j\n}\nx = 0\nwhile x {\n    x = 0\n}\nif x == 1 and x > 2 {\n    post(1)\n}\nif x != 2 {\n    post(2)\n}\n")
-r = roda("'" + POOL + "' --bytecode laco2.pr")
+r = roda([POOL, "--bytecode", "laco2.pr"])
 confere("i-- e j += 1 em int local viram DEC/INC_LOCAL_INT",
         "DEC_LOCAL_INT" in opcodes_de(r["saida"], 1) and "INC_LOCAL_INT" in opcodes_de(r["saida"], 1)
         and not "COERCE_DECL" in opcodes_de(r["saida"], 1))
@@ -370,7 +564,7 @@ confere("== no if e no lado esquerdo do and vira JF_EQ; != no if vira JF_NE",
         "JF_EQ" in opcodes_de(r["saida"], 0) and "JF_NE" in opcodes_de(r["saida"], 0)
         and "TO_BOOL" in opcodes_de(r["saida"], 0))
 os.writeFile(PASTA + "/rng.pr", "s = 0\nfor each i in range(3) {\n    s = s + i\n}\npost(s)\n")
-r = roda("'" + POOL + "' --bytecode rng.pr")
+r = roda([POOL, "--bytecode", "rng.pr"])
 confere("range decodificado uma vez: RANGE_PREPARA antes do ITER_RANGE",
         "RANGE_PREPARA" in opcodes_de(r["saida"], 0) and "ITER_RANGE" in opcodes_de(r["saida"], 0))
 
@@ -381,8 +575,8 @@ os.writeFile(PASTA + "/jit.pr",
              + "t = \"\"\ni = 0\nwhile i < 3 {\n    t = t + str(i)\n    i = i + 1\n}\n"
              + "big = 9223372036854775807\nbig = big + 1\n"
              + "post(n, s, fib(15), t, big, 1 < 2, \"a\" < \"b\", not (2 > 1))\n")
-com = roda("JINGA_JIT_LOG=1 '" + POOL + "' jit.pr")
-sem = roda("'" + POOL + "' --sem-jit jit.pr")
+com = roda([POOL, "jit.pr"], amb={"JINGA_JIT_LOG": "1"})
+sem = roda([POOL, "--sem-jit", "jit.pr"])
 # `fib` compila: a chamada entre functs nativas e direta (jit_chama), sem
 # passar pelo interpretador, e o `return` volta pro chamador nativo.
 confere("com codigo de maquina o programa roda e o log diz o que compilou",
@@ -390,17 +584,17 @@ confere("com codigo de maquina o programa roda e o log diz o que compilou",
 confere("com e sem codigo de maquina a saida e a mesma",
         sem["rc"] == 0 and "300000 45 610 012 9223372036854775808 True True False" in sem["saida"]
         and "300000 45 610 012 9223372036854775808 True True False" in com["saida"])
-falha = roda("JINGA_JIT_FALHA=1 JINGA_JIT_LOG=1 '" + POOL + "' jit.pr")
+falha = roda([POOL, "jit.pr"], amb={"JINGA_JIT_FALHA": "1", "JINGA_JIT_LOG": "1"})
 confere("mmap recusado: o programa segue interpretado, sem abortar",
         falha["rc"] == 0 and "300000 45 610" in falha["saida"] and not "[jit]" in falha["saida"])
 os.writeFile(PASTA + "/jit_erro.pr", "int n = 9223372036854775807\nwhile n < 9223372036854775807 + 0 {\n    n++\n}\nn++\n")
-r = roda("'" + POOL + "' jit_erro.pr")
+r = roda([POOL, "jit_erro.pr"])
 confere("estouro dentro do nativo: o erro e o do interpretador, na linha certa",
         r["rc"] != 0 and "declare como 'long n'" in r["saida"] and "linha 5" in r["saida"])
-r = roda("printf 'x = = 1\\n' | '" + POOL + "' --bytecode")
+r = roda([POOL, "--bytecode"], entrada="x = = 1\n")
 confere("--bytecode com erro de sintaxe sai como ao rodar", r["rc"] != 0 and "SyntaxError" in r["saida"])
 
-r = roda("printf 'x = 1\\npost(f\"oi {x} {x + 2}\")\\n' | '" + POOL + "' --tokens")
+r = roda([POOL, "--tokens"], entrada="x = 1\npost(f\"oi {x} {x + 2}\")\n")
 confere("--tokens publica os tokens de dentro da f-string",
         "\"v\":\"x\"" in r["saida"] and "\"v\":\"+\"" in r["saida"])
 confere("os tokens da f-string têm a posição real no fonte",
@@ -411,7 +605,7 @@ confere("os tokens de dentro vêm marcados", "\"em\":\"fstring\"" in r["saida"])
 # e na ÁRVORE: as interpolações são nós FILHOS do literal, com posição real.
 # Enquanto elas não existiam na árvore, quem anda nela não via o que está
 # entre as chaves — a captura de closure perdia a variável usada só ali.
-r = roda("printf 'post(f\"oi {n.upper()}\")\\n' | '" + POOL + "' --ast")
+r = roda([POOL, "--ast"], entrada="post(f\"oi {n.upper()}\")\n")
 confere("--ast traz a expressão de dentro da f-string",
         "\"texto\":\"upper\"" in r["saida"])
 confere("o nó de dentro da f-string tem a coluna real",
@@ -419,22 +613,21 @@ confere("o nó de dentro da f-string tem a coluna real",
 
 # o INTERVALO de cada `{...}` vem no token da f-string: é com ele que o editor
 # sabe que ali é código, inclusive no espaço entre os tokens de dentro
-r = roda("printf 'x = 1\\npost(f\"oi {x} e { x + 2 }\")\\n' | '" + POOL + "' --tokens")
+r = roda([POOL, "--tokens"], entrada="x = 1\npost(f\"oi {x} e { x + 2 }\")\n")
 confere("--tokens diz onde cada interpolação começa e acaba",
         "\"interp\":[{\"l\":2,\"c\":12,\"l2\":2,\"c2\":13},{\"l\":2,\"c\":18,\"l2\":2,\"c2\":25}]" in r["saida"])
 # enquanto se digita, a chave fica aberta — é justo aí que o completion abre
-r = roda("printf 'post(f\"sao {tot' | '" + POOL + "' --tokens")
+r = roda([POOL, "--tokens"], entrada="post(f\"sao {tot")
 confere("interpolação ainda aberta também tem intervalo",
         "\"interp\":[{\"l\":1,\"c\":13,\"l2\":1,\"c2\":16}]" in r["saida"])
 
 # A contagem de coluna do protocolo do editor é UTF-16; a do motor é
 # caractere. Com `--utf16` o motor entrega a do editor, e quem não pede não vê
 # diferença.
-# (o `printf` do sh não entende `\x`; os bytes do 𠮷 vão em octal)
-r = roda("printf 'a = \"\\360\\240\\256\\267\" + b\\n' | '" + POOL + "' --tokens")
+r = roda([POOL, "--tokens"], entrada="a = \"𠮷\" + b\n")
 confere("sem --utf16 a coluna conta CARACTERE",
         "\"c\":11,\"n\":1,\"l2\":1,\"c2\":12,\"v\":\"b\"" in r["saida"])
-r = roda("printf 'a = \"\\360\\240\\256\\267\" + b\\n' | '" + POOL + "' --tokens --utf16")
+r = roda([POOL, "--tokens", "--utf16"], entrada="a = \"𠮷\" + b\n")
 confere("com --utf16 o caractere fora do plano básico vale 2",
         "\"c\":12,\"n\":1,\"l2\":1,\"c2\":13,\"v\":\"b\"" in r["saida"])
 # o TAMANHO do token vai na mesma conta que as colunas: a string tem aspa,
@@ -443,7 +636,7 @@ confere("com --utf16 o n da string conta o caractere como 2",
         "\"t\":\"STR\",\"l\":1,\"c\":5,\"n\":4,\"l2\":1,\"c2\":9" in r["saida"])
 # a posição do cursor CHEGA na mesma conta: com `--utf16` o motor recebe a
 # coluna do editor e acha o mesmo lugar
-r = roda("printf 'x = \"\\360\\240\\256\\267\"\\nx.up' | '" + POOL + "' --contexto 2:5")
+r = roda([POOL, "--contexto", "2:5"], entrada="x = \"𠮷\"\nx.up")
 confere("--contexto sem --utf16 lê coluna em caractere", "\"parcial\":\"up\"" in r["saida"])
 
 # ── código pela metade: o editor precisa do que sobrou ──────────────────────
@@ -452,41 +645,40 @@ confere("--contexto sem --utf16 lê coluna em caractere", "\"parcial\":\"up\"" i
 # um caractere estranho fazia o `--tokens` devolver `[]` (a tela inteira
 # perdia a cor) e um erro de sintaxe fazia o `--ast` parar ali (o painel de
 # estrutura esvaziava da linha do erro pra baixo).
-r = roda("printf 'x = 1\\nstr ação = 2\\ny = 3\\n' | '" + POOL + "' --tokens")
+r = roda([POOL, "--tokens"], entrada="x = 1\nstr ação = 2\ny = 3\n")
 confere("--tokens devolve os tokens das linhas boas apesar do caractere estranho",
         "\"v\":\"x\"" in r["saida"] and "\"v\":\"y\"" in r["saida"])
 confere("--tokens diz o erro do lexer junto com os tokens",
         "\"erros\":[" in r["saida"] and "sem acento" in r["saida"])
 confere("--tokens marca o trecho ruim como token ERRO",
         "\"t\":\"ERRO\"" in r["saida"])
-r = roda("printf 'x = \"aberta\\ny = 2\\n' | '" + POOL + "' --tokens")
+r = roda([POOL, "--tokens"], entrada="x = \"aberta\ny = 2\n")
 confere("--tokens com string sem fechar não perde a linha seguinte",
         "\"v\":\"y\"" in r["saida"])
 
-r = roda("printf 'import os\\nx = 1\\nif x > 0 \\npost(1)\\nfunct f() { return 7 }\\n' | '"
-         + POOL + "' --ast")
+r = roda([POOL, "--ast"], entrada="import os\nx = 1\nif x > 0 \npost(1)\nfunct f() { return 7 }\n")
 confere("--ast devolve o que vem DEPOIS do erro de sintaxe",
         "\"texto\":\"f\"" in r["saida"])
 confere("--ast lista os erros de sintaxe", "\"erros\":[" in r["saida"])
 
-r = roda("printf 'if x > 0 \\npost(1)\\nwhile y \\npost(2)\\n' | '" + POOL + "' --check")
+r = roda([POOL, "--check"], entrada="if x > 0 \npost(1)\nwhile y \npost(2)\n")
 confere("--check lista TODOS os erros de sintaxe, não só o primeiro",
         len(r["saida"].split("\"linha\":")) >= 3)
 
 # com erro de sintaxe, a conferência de tipo não roda: statement descartado
 # faria nome existente aparecer como inexistente (cascata)
-r = roda("printf 'n = 1\\nif n > 0 \\npost(n)\\n' | '" + POOL + "' --check")
+r = roda([POOL, "--check"], entrada="n = 1\nif n > 0 \npost(n)\n")
 confere("--check com sintaxe torta não inventa erro de nome",
         not "NameError" in r["saida"])
 
 # o programa RODANDO continua parando no primeiro erro
 os.writeFile(PASTA + "/torto2.pr", "x = 1\nif x > 0 \npost(1)\n")
-r = roda("'" + POOL + "' torto2.pr")
+r = roda([POOL, "torto2.pr"])
 confere("rodar continua parando no primeiro erro de sintaxe",
         r["rc"] != 0 and "SyntaxError" in r["saida"])
 
 # nome com acento: a mensagem diz a regra, não só "caractere inesperado"
-r = roda("printf 'ação = 1\\n' | '" + POOL + "' --check")
+r = roda([POOL, "--check"], entrada="ação = 1\n")
 confere("nome com acento explica a regra do identificador",
         "sem acento" in r["saida"])
 
@@ -548,27 +740,27 @@ funct erros_do_check(saida)
 
 os.writeFile(PASTA + "/aberto.pr",
              "import os\npost(1)\nfunct f(\nint funct depois(int a) {\n    return a\n}\nz = 3\n")
-r = roda("'" + POOL + "' --check aberto.pr")
+r = roda([POOL, "--check", "aberto.pr"])
 confere("parentese esquecido: o erro sai no `(`, um só",
         erros_do_check(r["saida"]) == [[3, 8, "parentese '(' aberto nao foi fechado"]])
-r = roda("'" + POOL + "' --ast aberto.pr")
+r = roda([POOL, "--ast", "aberto.pr"])
 confere("parentese esquecido: a declaracao de baixo continua na arvore",
         "FunctDecl:depois" in topo(r["saida"]) and "Assignment:z" in topo(r["saida"]))
-r = roda("'" + POOL + "' --tokens aberto.pr")
+r = roda([POOL, "--tokens", "aberto.pr"])
 confere("--tokens marca onde o motor fechou o grupo (SINC)", "\"t\":\"SINC\"" in r["saida"])
-r = roda("'" + POOL + "' aberto.pr")
+r = roda([POOL, "aberto.pr"])
 confere("rodando, o erro tambem sai no `(` da linha 3",
         r["rc"] != 0 and "parentese '(' aberto nao foi fechado" in r["saida"]
         and "linha 3" in r["saida"])
 
 os.writeFile(PASTA + "/quebrado.pr", "import os\nfunct f( {\npost(1)\n")
-r = roda("'" + POOL + "' --check quebrado.pr")
+r = roda([POOL, "--check", "quebrado.pr"])
 confere("`funct f( {`: um erro, no `(` — o `{` logo depois nao vira outro",
         erros_do_check(r["saida"]) == [[2, 8, "parentese '(' aberto nao foi fechado"]])
 
 os.writeFile(PASTA + "/multi.pr",
              "import os\nfunct f( {\npost(1)\nx = = 2\nint funct depois(int a) {\n    return a\n}\n")
-r = roda("'" + POOL + "' --ast multi.pr")
+r = roda([POOL, "--ast", "multi.pr"])
 confere("`funct f( {` nao engole a declaracao que vem depois",
         "FunctDecl:depois" in topo(r["saida"]))
 # A linha de baixo que VOLTA a indentacao da linha do `(` fecha o grupo ali:
@@ -578,7 +770,7 @@ confere("`funct f( {` nao engole a declaracao que vem depois",
 # sumia da arvore.
 confere("o que esta depois do `(` aberto volta pra arvore",
         "ExpressionStmt:" in topo(r["saida"]))
-r = roda("'" + POOL + "' --check multi.pr")
+r = roda([POOL, "--check", "multi.pr"])
 confere("o erro real da linha de baixo nao some como sintoma do `(`",
         erros_do_check(r["saida"]) == [[2, 8, "parentese '(' aberto nao foi fechado"],
                                        [4, 5, "expressao invalida"]])
@@ -586,17 +778,17 @@ confere("o erro real da linha de baixo nao some como sintoma do `(`",
 # nome de parametro" no `{` da coluna 10. A sonda de grupos do modo de
 # recuperacao escolhe a frase quando o parser para dentro de um grupo sem
 # par. Vale tambem pro modulo importado.
-r = roda("'" + POOL + "' quebrado.pr")
+r = roda([POOL, "quebrado.pr"])
 confere("rodando `funct f( {`: a frase e a coluna sao as do `--check` (o `(`)",
         r["rc"] != 0 and "parentese '(' aberto nao foi fechado" in r["saida"]
         and "linha 2" in r["saida"] and "|        ^^^" in r["saida"])
 os.writeFile(PASTA + "/mq.pr", "funct f( {\npost(1)\n")
 os.writeFile(PASTA + "/main_q.pr", "import mq\n")
-r = roda("'" + POOL + "' main_q.pr")
+r = roda([POOL, "main_q.pr"])
 confere("modulo importado com `funct f( {`: rodando acusa o `(` dele",
         r["rc"] != 0 and "mq: parentese '(' aberto nao foi fechado" in r["saida"]
         and "em mq.pr, linha 1" in r["saida"])
-r = roda("'" + POOL + "' --check main_q.pr")
+r = roda([POOL, "--check", "main_q.pr"])
 confere("--check do importador acusa o `(` do modulo, na coluna do `(`",
         "mq: parentese '(' aberto nao foi fechado" in r["saida"] and "\"coluna_arquivo\":8" in r["saida"])
 
@@ -609,35 +801,35 @@ funct fins_do_check(saida)
     return [[e["linha"], e["coluna"], e["l2"], e["c2"]] for each e in d["erros"]]
 }
 os.writeFile(PASTA + "/fim.pr", "x = = 2\nfunct f(\n")
-r = roda("'" + POOL + "' --check fim.pr")
+r = roda([POOL, "--check", "fim.pr"])
 confere("--check: l2/c2 do erro de sintaxe e o fim do token; do grupo sem par, o abridor",
         fins_do_check(r["saida"]) == [[1, 5, 1, 6], [2, 8, 2, 9]])
 os.writeFile(PASTA + "/fim_tipo.pr", "int x = \"abc\"\n")
-r = roda("'" + POOL + "' --check fim_tipo.pr")
+r = roda([POOL, "--check", "fim_tipo.pr"])
 confere("--check: l2/c2 do erro de tipo cobre a expressao inteira",
         fins_do_check(r["saida"]) == [[1, 9, 1, 14]])
-r = roda("printf 'x = \"\\360\\240\\256\\267\" = 2\\n' | '" + POOL + "' --check")
+r = roda([POOL, "--check"], entrada="x = \"𠮷\" = 2\n")
 confere("--check sem --utf16: c2 em caractere", fins_do_check(r["saida"]) == [[1, 9, 1, 10]])
-r = roda("printf 'x = \"\\360\\240\\256\\267\" = 2\\n' | '" + POOL + "' --check --utf16")
+r = roda([POOL, "--check", "--utf16"], entrada="x = \"𠮷\" = 2\n")
 confere("--check --utf16: c2 convertido como a coluna", fins_do_check(r["saida"]) == [[1, 10, 1, 11]])
 
 os.writeFile(PASTA + "/corpo.pr",
              "funct a() {\n    x = = 1\n    y = 2\n}\nfunct b() {\n    return 3\n}\n")
-r = roda("'" + POOL + "' --ast corpo.pr")
+r = roda([POOL, "--ast", "corpo.pr"])
 confere("statement quebrado dentro da funct: a funct fica, nada vaza pro topo",
         topo(r["saida"]) == ["FunctDecl:a", "FunctDecl:b"])
 confere("statement quebrado dentro da funct: o resto do corpo continua dentro dela",
         corpo_de(r["saida"], "a") == ["Assignment:y"])
-r = roda("'" + POOL + "' --check corpo.pr")
+r = roda([POOL, "--check", "corpo.pr"])
 confere("statement quebrado dentro da funct: sem erro fantasma no `}`",
         erros_do_check(r["saida"]) == [[2, 9, "expressao invalida"]])
 
 os.writeFile(PASTA + "/fecha.pr",
              "funct a() {\n    x = f(\n}\nfunct b() {\n    return 3\n}\n")
-r = roda("'" + POOL + "' --ast fecha.pr")
+r = roda([POOL, "--ast", "fecha.pr"])
 confere("`(` aberto fechado pelo `}` da funct: as duas funct ficam",
         topo(r["saida"]) == ["FunctDecl:a", "FunctDecl:b"])
-r = roda("'" + POOL + "' --check fecha.pr")
+r = roda([POOL, "--check", "fecha.pr"])
 confere("`(` aberto fechado pelo `}` da funct: o erro sai no `(`",
         erros_do_check(r["saida"]) == [[2, 10, "parentese '(' aberto nao foi fechado"]])
 
@@ -662,20 +854,20 @@ funct membros(saida, k)
 }
 os.writeFile(PASTA + "/classe.pr",
              "class C {\n    public int = = 1\n    funct n(self) { return 1 }\n}\nz = 1\n")
-r = roda("'" + POOL + "' --ast classe.pr")
+r = roda([POOL, "--ast", "classe.pr"])
 confere("membro quebrado nao derruba a classe", membros(r["saida"], "EntityDecl") == ["n"])
 os.writeFile(PASTA + "/modelo.pr", "model M() {\n    nome: str(\n    idade: int\n}\nz = 1\n")
-r = roda("'" + POOL + "' --ast modelo.pr")
+r = roda([POOL, "--ast", "modelo.pr"])
 confere("campo com `(` aberto nao derruba o model", "ModelDecl:M" in topo(r["saida"]))
 os.writeFile(PASTA + "/enumr.pr", "enum Cor {\n    A = = 1\n    B = 2\n}\nz = 1\n")
-r = roda("'" + POOL + "' --ast enumr.pr")
+r = roda([POOL, "--ast", "enumr.pr"])
 confere("membro quebrado nao derruba o enum", membros(r["saida"], "EnumDecl") == ["B"])
 
 # o erro do lexer (grupo sem par) não esconde mais o erro de sintaxe de outra
 # linha: o `--check` lista os dois, na ordem do arquivo
 os.writeFile(PASTA + "/dois.pr",
              "funct f(\nint funct depois(int a) {\n    return a\n}\nx = = 3\n")
-r = roda("'" + POOL + "' --check dois.pr")
+r = roda([POOL, "--check", "dois.pr"])
 confere("--check lista o grupo sem par E o erro de outra linha, em ordem",
         erros_do_check(r["saida"]) == [[1, 8, "parentese '(' aberto nao foi fechado"],
                                        [5, 5, "expressao invalida"]])
@@ -687,11 +879,22 @@ confere("--check lista o grupo sem par E o erro de outra linha, em ordem",
 # arrastam — 36 no `ldd`, 90% do trabalho de um `pool --version` (callgrind),
 # e o binário nem abria numa máquina sem o cliente do Mongo. Agora cada driver
 # abre a sua na primeira conexão. Isto já se perdeu uma vez: fica travado.
-r = roda("ldd '" + POOL + "'")
+#
+# Quem lista o que o binário pede ao carregador é o `ldd` no Linux e no
+# Windows (o do MSYS2, o mesmo que o build_bundle.sh passa no pool.exe); o
+# macOS não tem `ldd`, e lá é o `otool -L`. O cliente ODBC do Windows é o
+# odbc32.dll, e o nome da DLL pode vir em maiúscula.
+lista_libs = ["ldd", POOL]
+if sys.platform() == "darwin"
+{
+    lista_libs = ["otool", "-L", POOL]
+}
+r = roda(lista_libs)
+libs = r["saida"].lower()
 confere("o pool nao depende de cliente de banco na partida",
-        r["rc"] == 0 and not "libpq" in r["saida"] and not "libmariadb" in r["saida"]
-        and not "libmongoc" in r["saida"] and not "libodbc" in r["saida"]
-        and not "libgssapi" in r["saida"] and not "libldap" in r["saida"])
+        r["rc"] == 0 and not "libpq" in libs and not "libmariadb" in libs
+        and not "libmongoc" in libs and not "libodbc" in libs and not "odbc32" in libs
+        and not "libgssapi" in libs and not "libldap" in libs)
 
 # ── conferir N funct custa proporcional a N, não a N² ───────────────────────
 #
@@ -713,14 +916,14 @@ funct gera_decl(n)
     addEnd(partes, "post(f0(1))")
     return "\n".join(partes) + "\n"
 }
-funct melhor_de_tres(cmd)
+funct melhor_de_tres(args)
 {
     melhor = 1000000.0
     k = 0
     while k < 3
     {
         t0 = date.monotonic()
-        roda(cmd)
+        roda(args)
         t = date.monotonic() - t0
         if t < melhor
         {
@@ -732,8 +935,8 @@ funct melhor_de_tres(cmd)
 }
 os.writeFile(PASTA + "/decl5k.pr", gera_decl(5000))
 os.writeFile(PASTA + "/decl20k.pr", gera_decl(20000))
-t5  = melhor_de_tres("'" + POOL + "' --check decl5k.pr")
-t20 = melhor_de_tres("'" + POOL + "' --check decl20k.pr")
+t5  = melhor_de_tres([POOL, "--check", "decl5k.pr"])
+t20 = melhor_de_tres([POOL, "--check", "decl20k.pr"])
 confere("--check de 20 mil funct custa perto de 4x o de 5 mil (era 16x)", t20 < t5 * 8)
 
 # ── a memória não guarda o arquivo inteiro ──────────────────────────────────
@@ -746,19 +949,42 @@ confere("--check de 20 mil funct custa perto de 4x o de 5 mil (era 16x)", t20 < 
 # por `/usr/bin/time -f %M` (KB) entre 20 mil e 5 mil funct dá o custo das 15
 # mil a mais; era 3,1 KB por linha e passou a ~1,5 KB. Teto folgado pra ruído,
 # apertado o bastante pra pegar a volta do arquivo inteiro.
-funct pico_kb(cmd)
+#
+# O `time` do macOS (o do BSD) não tem `-f`: lá o `-l` imprime o uso do
+# processo, e o pico vem na linha "maximum resident set size", em BYTES. O
+# `time` escreve depois que o programa termina, então a linha dele é a
+# última da saída. O Windows não tem `/usr/bin/time`.
+funct pico_kb(args)
 {
-    r = roda("/usr/bin/time -f '%M' " + cmd + " > /dev/null")
+    if sys.platform() == "darwin"
+    {
+        r = roda(["/usr/bin/time", "-l"] + args)
+        linha = ""
+        for each l in r["saida"].split("\n")
+        {
+            if "maximum resident set size" in l
+            {
+                linha = l
+            }
+        }
+        return int(linha.strip().split()[0]) // 1024
+    }
+    r = roda(["/usr/bin/time", "-f", "%M"] + args)
     linhas = r["saida"].strip().split("\n")
     return int(linhas[linhas.len() - 1].strip())
 }
 if os.exists("/usr/bin/time")
 {
-    m5  = pico_kb("'" + POOL + "' decl5k.pr")
-    m20 = pico_kb("'" + POOL + "' decl20k.pr")
+    m5  = pico_kb([POOL, "decl5k.pr"])
+    m20 = pico_kb([POOL, "decl20k.pr"])
     por_linha = (m20 - m5) * 1024 / 15000
     confere("rodar 20 mil funct custa menos de 2,2 KB de memoria por linha (era 3,1 KB): "
             + str(por_linha) + " B", por_linha < 2200)
+}
+else
+{
+    pula("rodar 20 mil funct custa menos de 2,2 KB de memoria por linha",
+         "falta /usr/bin/time, que mede o pico de memoria")
 }
 
 # O LIMITE da regra: palavra-chave como argumento nomeado, compreensão e lambda
@@ -769,7 +995,7 @@ os.writeFile(PASTA + "/validos.pr",
              "funct g(*a, **k) { return k }\npost(g(1,\nclass=2, from=3, import=4))\n"
              + "post([x * 2\nfor each x in [1, 2]])\nh = funct(cb) { return cb(1) }\n"
              + "post(h(funct(v) {\n    funct interna(w) { return w + 1 }\n    return interna(v)\n}))\n")
-r = roda("'" + POOL + "' --check validos.pr")
+r = roda([POOL, "--check", "validos.pr"])
 confere("continuacao valida dentro de `(` continua passando no --check",
         r["saida"].strip() == "{\"ok\":true}")
 
@@ -782,7 +1008,7 @@ os.mkdir(PASTA + "/obra", exist_ok=true)
 os.writeFile(PASTA + "/obra/b_segundo.pr", "post(\"SEGUNDO\")\n")
 os.writeFile(PASTA + "/obra/a_primeiro.pr", "post(\"PRIMEIRO\")\n")
 os.writeFile(PASTA + "/obra/nao_e_fonte.txt", "isto nao roda\n")
-r = roda("cd obra && '" + POOL + "' build")
+r = roda([POOL, "build"], pasta=PASTA + "/obra")
 confere("build roda os .pr da pasta", "PRIMEIRO" in r["saida"] and "SEGUNDO" in r["saida"])
 # a ORDEM é parte do contrato: `build` de resultado imprevisível é inútil
 # quando um arquivo depende do que o anterior deixou pronto
@@ -793,36 +1019,37 @@ confere("build sai 0 quando tudo passa", r["rc"] == 0)
 
 # arquivo que FALHA no meio: o `build` não pode engolir e sair 0
 os.writeFile(PASTA + "/obra/c_quebra.pr", "post(nao_existe_essa_variavel)\n")
-r = roda("cd obra && '" + POOL + "' build")
+r = roda([POOL, "build"], pasta=PASTA + "/obra")
 confere("build reprova quando um arquivo falha", r["rc"] != 0)
-os.cmd("rm -f " + PASTA + "/obra/c_quebra.pr")
+# o `rm -f` de antes: quem apaga um arquivo é o PoolFile dele
+os.loadFile(PASTA + "/obra/c_quebra.pr", mode="rb").delete()
 
 # pasta sem nenhum fonte: caso de borda do coletor
 os.mkdir(PASTA + "/vazia", exist_ok=true)
-r = roda("cd vazia && '" + POOL + "' build")
+r = roda([POOL, "build"], pasta=PASTA + "/vazia")
 confere("build em pasta vazia não quebra", r["rc"] == 0 or r["saida"].strip().len() > 0)
 
 # ── entradas tortas da CLI ──────────────────────────────────────────────────
-r = roda("'" + POOL + "' arquivo_que_nao_existe.pr")
+r = roda([POOL, "arquivo_que_nao_existe.pr"])
 confere("arquivo inexistente é erro com mensagem",
         r["rc"] != 0 and "nao consegui abrir" in r["saida"])
-r = roda("'" + POOL + "' -e 'post(1 + 1)'")
+r = roda([POOL, "-e", "post(1 + 1)"])
 confere("-e roda código inline", "2" in r["saida"] and r["rc"] == 0)
-r = roda("'" + POOL + "' -e 'post(nao_existe)'")
+r = roda([POOL, "-e", "post(nao_existe)"])
 confere("-e com erro sai != 0", r["rc"] != 0)
-r = roda("'" + POOL + "' -e")
+r = roda([POOL, "-e"])
 confere("-e sem código é erro", r["rc"] != 0)
-r = roda("'" + POOL + "'")
+r = roda([POOL])
 confere("sem argumento nenhum mostra a ajuda", "Uso:" in r["saida"])
-r = roda("'" + POOL + "' --version")
+r = roda([POOL, "--version"])
 confere("--version diz a versão", "Jinga" in r["saida"] and r["rc"] == 0)
-r = roda("'" + POOL + "' --help")
+r = roda([POOL, "--help"])
 confere("--help lista os comandos", "Uso:" in r["saida"] and r["rc"] == 0)
 
-r = roda("'" + POOL + "' --metadata")
+r = roda([POOL, "--metadata"])
 confere("--metadata expõe os módulos", "\"modulos\"" in r["saida"] and r["rc"] == 0)
 
-r = roda("'" + POOL + "' --opcao-que-nao-existe")
+r = roda([POOL, "--opcao-que-nao-existe"])
 # `rc != 0 OU qualquer saída` aprovava um pool que imprimisse lixo e saísse 0.
 # O contrato de verdade: recusa (rc != 0) E diz O QUE recusou.
 confere("opção desconhecida é recusada citando a opção",
@@ -831,34 +1058,34 @@ confere("opção desconhecida é recusada citando a opção",
 # `build` roda todos os .pr da pasta — inclusive os que já criamos
 os.mkdir(PASTA + "/b", exist_ok=true)
 os.writeFile(PASTA + "/b/um.pr", "post(\"um\")\n")
-r = roda("cd b && '" + POOL + "' build")
+r = roda([POOL, "build"], pasta=PASTA + "/b")
 confere("build roda os .pr da pasta", "um" in r["saida"])
 
 # ── gerenciador de pacotes: instalar do disco (vm/ps_pkg.c) ─────────────────
 os.writeFile(PASTA + "/hello.pr", "#!cmd\nfunct main() {\n    post(\"oi do pacote\")\n}\nmain()\n")
 
-r = com_home("'" + POOL + "' install hello.pr")
+r = com_home([POOL, "install", "hello.pr"])
 confere("jpkg install cria o comando", "instalado" in r["saida"] and r["rc"] == 0)
 confere("jpkg install grava o .pr e o atalho",
-        os.isfile(HOME + "/commands/hello.pr") and os.isfile(HOME + "/bin/hello"))
+        os.isfile(HOME + "/commands/hello.pr") and os.isfile(HOME + "/bin/hello" + EXT_ATALHO))
 confere("jpkg install registra em installed.json", os.isfile(HOME + "/installed.json"))
 
-r = com_home("'" + POOL + "' list")
+r = com_home([POOL, "list"])
 confere("jpkg list mostra o comando instalado", "hello" in r["saida"])
 
-r = com_home("sh " + HOME + "/bin/hello")
+r = roda_atalho("hello")
 confere("o atalho instalado executa o pacote", "oi do pacote" in r["saida"])
 
-r = com_home("'" + POOL + "' uninstall hello")
+r = com_home([POOL, "uninstall", "hello"])
 confere("jpkg uninstall remove", r["rc"] == 0 and os.exists(HOME + "/commands/hello.pr") == false)
 
 os.writeFile(PASTA + "/minhalib.pr", "#!lib\nfunct dobro(x) {\n    return x * 2\n}\n")
-r = com_home("'" + POOL + "' install minhalib.pr -asLib")
+r = com_home([POOL, "install", "minhalib.pr", "-asLib"])
 confere("jpkg install -asLib instala como biblioteca", r["rc"] == 0)
 confere("a lib vai pra pasta de libs", os.isfile(HOME + "/libs/minhalib.pr"))
 
 os.writeFile(PASTA + "/usa.pr", "import minhalib\npost(minhalib.dobro(21))\n")
-r = com_home("'" + POOL + "' usa.pr")
+r = com_home([POOL, "usa.pr"])
 confere("a lib instalada é importável", r["saida"].strip() == "42")
 
 # As exceções são valores também DENTRO de módulo importado: a ligação dos
@@ -866,41 +1093,41 @@ confere("a lib instalada é importável", r["saida"].strip() == "42")
 # `ValueError` num módulo era NameError.
 os.writeFile(PASTA + "/zzexc.pr", "funct quem() {\n    return ValueError\n}\n")
 os.writeFile(PASTA + "/usa_exc.pr", "import zzexc\npost(zzexc.quem() is Exception, zzexc.quem())\n")
-r = roda("'" + POOL + "' usa_exc.pr")
+r = roda([POOL, "usa_exc.pr"])
 confere("exceção é valor dentro de módulo importado", r["saida"].strip() == "True ValueError")
 
-r = com_home("'" + POOL + "' uninstall minhalib -asLib")
+r = com_home([POOL, "uninstall", "minhalib", "-asLib"])
 confere("jpkg uninstall -asLib remove a lib", os.exists(HOME + "/libs/minhalib.pr") == false)
 
 # nome instalado como comando E como lib: sem flag, o uninstall dizia "Erro:"
 # e removia o comando mesmo assim. Comando destrutivo sob "Erro:" para.
 os.writeFile(PASTA + "/dup.pr", "#!cmd\nfunct main() {\n    post(\"dup\")\n}\nmain()\n")
-com_home("'" + POOL + "' install dup.pr")
-com_home("'" + POOL + "' install dup.pr -asLib")
-r = com_home("'" + POOL + "' uninstall dup")
+com_home([POOL, "install", "dup.pr"])
+com_home([POOL, "install", "dup.pr", "-asLib"])
+r = com_home([POOL, "uninstall", "dup"])
 confere("uninstall ambiguo recusa (rc 1) e diz como desambiguar",
         r["rc"] == 1 and "-asLib" in r["saida"])
 confere("uninstall ambiguo nao remove nada",
         os.isfile(HOME + "/commands/dup.pr") and os.isfile(HOME + "/libs/dup.pr"))
-com_home("'" + POOL + "' uninstall dup -asLib")
-r = com_home("'" + POOL + "' uninstall dup")
+com_home([POOL, "uninstall", "dup", "-asLib"])
+r = com_home([POOL, "uninstall", "dup"])
 confere("desambiguado, o comando sai", r["rc"] == 0 and os.exists(HOME + "/commands/dup.pr") == false)
 
-r = com_home("'" + POOL + "' uninstall nao_instalado")
+r = com_home([POOL, "uninstall", "nao_instalado"])
 confere("uninstall do que não existe não finge sucesso",
         r["rc"] != 0 and "nao esta instalado" in r["saida"])
 
 # ── registry: configuração e recusa de HTTP inseguro ────────────────────────
-r = com_home("'" + POOL + "' registry show")
+r = com_home([POOL, "registry", "show"])
 confere("registry show sem configuração avisa", r["saida"].strip().len() > 0)
 
-r = com_home("'" + POOL + "' registry set-url https://exemplo.test/index.json")
+r = com_home([POOL, "registry", "set-url", "https://exemplo.test/index.json"])
 confere("registry set-url grava", r["rc"] == 0)
-r = com_home("'" + POOL + "' registry show")
+r = com_home([POOL, "registry", "show"])
 confere("registry show devolve o que foi gravado", "exemplo.test" in r["saida"])
 
-r = com_home("'" + POOL + "' registry set-url http://exemplo-inseguro.test/i.json")
-saiu = com_home("'" + POOL + "' install qualquer")
+r = com_home([POOL, "registry", "set-url", "http://exemplo-inseguro.test/i.json"])
+saiu = com_home([POOL, "install", "qualquer"])
 confere("registry em http inseguro é recusado",
         "https" in saiu["saida"] or saiu["rc"] != 0)
 
@@ -926,7 +1153,12 @@ srv_src = srv_src + "    app(debug=false, host=\"127.0.0.1\", port=" + str(PORTA
 srv_src = srv_src + "}\n"
 os.writeFile(PASTA + "/registry_srv.pr", srv_src)
 
-os.cmd("'" + POOL + "' " + PASTA + "/registry_srv.pr > " + PASTA + "/srv.log 2>&1 & echo $! > " + PASTA + "/srv.pid")
+# O servidor é um processo vivo (`capture="live"`), não um `&` do shell. A
+# saída dele ia pra srv.log; agora os dois canais são lidos em segundo plano,
+# porque cano que ninguém lê enche e para o servidor no meio de uma resposta.
+srv = os.run([POOL, PASTA + "/registry_srv.pr"], capture="live")
+srv.close()
+leitura_srv = [junta_saida(srv), junta_erro(srv)]
 
 # espera a porta ABRIR, em vez de dormir no escuro
 import sockets
@@ -948,30 +1180,33 @@ confere("o registry local subiu", subiu)
 
 if subiu
 {
-    com_home("'" + POOL + "' registry set-url " + raiz_url + "/index.json")
+    com_home([POOL, "registry", "set-url", raiz_url + "/index.json"])
 
-    r = com_home("'" + POOL + "' install pacote")
+    r = com_home([POOL, "install", "pacote"])
     confere("jpkg install <nome> baixa do registry e confere o sha256",
             r["rc"] == 0 and os.isfile(HOME + "/commands/pacote.pr"))
 
-    r = com_home("sh " + HOME + "/bin/pacote")
+    r = roda_atalho("pacote")
     confere("o pacote baixado executa", "vim do registry" in r["saida"])
 
-    r = com_home("'" + POOL + "' install torto")
+    r = com_home([POOL, "install", "torto"])
     confere("sha256 que não confere ABORTA a instalação",
             r["rc"] != 0 and os.exists(HOME + "/commands/torto.pr") == false)
 
-    r = com_home("'" + POOL + "' install simples")
+    r = com_home([POOL, "install", "simples"])
     confere("entrada sem sha256 instala (integridade é OPCIONAL — ver auditoria)",
             r["rc"] == 0)
 
-    r = com_home("'" + POOL + "' install nao_esta_no_indice")
+    r = com_home([POOL, "install", "nao_esta_no_indice"])
     confere("nome fora do índice é erro, não silêncio", r["rc"] != 0)
-
-    # mata pelo PID gravado — `pkill -f <padrao>` casa com qualquer linha de
-    # comando que contenha o padrao, inclusive a de quem esta rodando o teste.
-    os.cmd("kill $(cat " + PASTA + "/srv.pid) 2>/dev/null; true")
 }
+
+# mata pelo próprio processo (no Windows o `kill` é o TerminateProcess) —
+# `pkill -f <padrao>` casa com qualquer linha de comando que contenha o
+# padrao, inclusive a de quem esta rodando o teste.
+srv.kill()
+srv.wait()
+gather(leitura_srv[0], leitura_srv[1])
 
 # ── erro DENTRO de um módulo importado ──────────────────────────────────────
 #
@@ -991,7 +1226,7 @@ if subiu
 os.writeFile(PASTA + "/lib_torta.pr", "funct f() {\n    // nota velha\n    return 1\n}\n")
 os.writeFile(PASTA + "/usa_lib.pr", "import lib_torta\npost(lib_torta.f())\n")
 
-r = roda("'" + POOL + "' usa_lib.pr")
+r = roda([POOL, "usa_lib.pr"])
 confere("erro dentro do módulo importado aponta o ARQUIVO da lib",
         "lib_torta.pr" in r["saida"])
 confere("...e a LINHA de dentro dela, não a do import",
@@ -1002,12 +1237,12 @@ confere("'//' diz que virou divisão inteira, em vez de 'expressao invalida'",
         "divisao inteira, nao comentario" in r["saida"] and r["rc"] != 0)
 
 os.writeFile(PASTA + "/so_barra.pr", "x = 1\n// nota\npost(x)\n")
-r = roda("'" + POOL + "' so_barra.pr")
+r = roda([POOL, "so_barra.pr"])
 confere("'//' solto no arquivo principal dá a mesma mensagem",
         "divisao inteira, nao comentario" in r["saida"])
 
 os.writeFile(PASTA + "/divide.pr", "post(7 // 2)\n")
-r = roda("'" + POOL + "' divide.pr")
+r = roda([POOL, "divide.pr"])
 confere("e a divisão inteira de verdade continua funcionando",
         r["rc"] == 0 and r["saida"].strip() == "3")
 
@@ -1018,41 +1253,42 @@ confere("e a divisão inteira de verdade continua funcionando",
 # fonte ao lado, recebe argumentos, aceita as tres extensoes, nao gera nada
 # quando o fonte esta torto, e recompilar nao empilha payload (senao cada
 # geracao carregaria o programa da anterior e o arquivo cresceria sem parar).
+# No Windows o gerado se chama `nome.exe` (EXE).
 os.writeFile(PASTA + "/prog.pr", "import sys\npost(\"compilado\")\npost(\"argv:\", sys.argv)\n")
-r = roda("'" + POOL + "' prog.pr -o meuprog")
+r = roda([POOL, "prog.pr", "-o", "meuprog"])
 confere("`-o` gera o executavel", r["rc"] == 0 and "gerado:" in r["saida"])
-confere("o gerado existe", os.exists(PASTA + "/meuprog"))
+confere("o gerado existe", os.exists(PASTA + "/meuprog" + EXE))
 
-r = roda("./meuprog um dois")
+r = roda([gerado("meuprog"), "um", "dois"])
 # `sys.argv` segue a convencao de C/Python tambem no executavel gerado: o
 # proprio programa em [0] e os argumentos a partir de [1]. O caso conferia
 # `['um', 'dois']` e ficou para tras quando a convencao mudou.
 confere("o gerado roda e recebe argumentos",
-        "compilado" in r["saida"] and "meuprog', 'um', 'dois']" in r["saida"]
+        "compilado" in r["saida"] and "meuprog" + EXE + "', 'um', 'dois']" in r["saida"]
         and r["rc"] == 0)
 
-os.cmd("mv " + PASTA + "/prog.pr " + PASTA + "/guardado.pr")
-r = roda("./meuprog")
+os.move(PASTA + "/prog.pr", PASTA + "/guardado.pr")
+r = roda([gerado("meuprog")])
 confere("o gerado roda SEM o fonte ao lado", "compilado" in r["saida"] and r["rc"] == 0)
-os.cmd("mv " + PASTA + "/guardado.pr " + PASTA + "/prog.pr")
+os.move(PASTA + "/guardado.pr", PASTA + "/prog.pr")
 
-tam1 = os.size(PASTA + "/meuprog")
+tam1 = os.size(PASTA + "/meuprog" + EXE)
 os.writeFile(PASTA + "/prog2.pr", "post(\"dois\")\n")
-roda("'" + POOL + "' prog2.pr -o meuprog2")
-tam2 = os.size(PASTA + "/meuprog2")
+roda([POOL, "prog2.pr", "-o", "meuprog2"])
+tam2 = os.size(PASTA + "/meuprog2" + EXE)
 confere("recompilar nao empilha o payload anterior", tam2 > 0 and tam2 < tam1 + 4096)
 
 os.writeFile(PASTA + "/p3.pr", "post(\"tres\")\n")
-roda("'" + POOL + "' p3.pr -o prog3")
-r = roda("./prog3")
+roda([POOL, "p3.pr", "-o", "prog3"])
+r = roda([gerado("prog3")])
 confere("`-o` gera executavel de qualquer .pr", "tres" in r["saida"] and r["rc"] == 0)
 
 os.writeFile(PASTA + "/ruim.pr", "funct f( {\n")
-r = roda("'" + POOL + "' ruim.pr -o naodeve")
+r = roda([POOL, "ruim.pr", "-o", "naodeve"])
 confere("fonte com erro nao gera executavel",
-        r["rc"] != 0 and not os.exists(PASTA + "/naodeve"))
+        r["rc"] != 0 and not os.exists(PASTA + "/naodeve" + EXE))
 
-r = roda("'" + POOL + "' prog.pr -o")
+r = roda([POOL, "prog.pr", "-o"])
 confere("`-o` sem nome de saida diz o uso", r["rc"] == 64 and "uso:" in r["saida"])
 
 # ── `-o` embute os MODULOS que o programa alcanca ───────────────────────────
@@ -1079,37 +1315,41 @@ os.writeFile(EMB + "/main.pr",
              + "post(reais(10), pix.pix(), estrela(), minhalib.de_lib())\n"
              + "if \"quebra\" in sys.argv { quebra() }\n"
              + "if \"erro\" in sys.argv { post(int(\"abc\")) }\n")
-r = com_home("'" + POOL + "' emb/main.pr -o emb/app")
+r = com_home([POOL, "emb/main.pr", "-o", "emb/app"])
 confere("`-o` embute os modulos alcancados e diz quantos (vizinho, subpasta, relativo, `*`, lib)",
         r["rc"] == 0 and "5 modulos embutidos" in r["saida"])
 
 LONGE = PASTA + "/longe"
 os.mkdir(LONGE, exist_ok=true)
-os.cmd("cp " + EMB + "/app " + LONGE + "/app && mv " + EMB + " " + PASTA + "/emb_guardado")
-r = roda("cd longe && JINGA_HOME=/nao/existe HOME=/nao/existe ./app")
+# o executável vai MOVIDO pra lá: o `move` leva a permissão de execução junto,
+# e o `os.copy` grava o destino como arquivo comum, sem ela
+os.move(EMB + "/app" + EXE, LONGE + "/app" + EXE)
+os.move(EMB, PASTA + "/emb_guardado")
+sem_libs = {"JINGA_HOME": "/nao/existe", VAR_CASA: "/nao/existe"}
+r = roda([gerado("app")], pasta=LONGE, amb=sem_libs)
 confere("o executavel roda longe, sem nenhum fonte no caminho de origem e sem libs",
         r["rc"] == 0 and r["saida"].strip() == "R$ 10 pix-g * lib")
-r = roda("cd longe && JINGA_HOME=/nao/existe HOME=/nao/existe ./app quebra")
+r = roda([gerado("app"), "quebra"], pasta=LONGE, amb=sem_libs)
 confere("erro dentro de modulo embutido: o traceback diz o modulo e mostra a linha do fonte",
         r["rc"] != 0 and "banco.pr, linha 5" in r["saida"] and "return 1 / 0" in r["saida"])
-r = roda("cd longe && JINGA_HOME=/nao/existe HOME=/nao/existe ./app erro")
+r = roda([gerado("app"), "erro"], pasta=LONGE, amb=sem_libs)
 confere("erro no principal: o traceback diz main.pr e mostra a linha dele, nao a do ELF",
         r["rc"] != 0 and "main.pr, linha 8" in r["saida"] and "int(\"abc\")" in r["saida"]
-        and not "app, linha" in r["saida"])
-os.cmd("mv " + PASTA + "/emb_guardado " + EMB)
+        and not ("app" + EXE + ", linha" in r["saida"]))
+os.move(PASTA + "/emb_guardado", EMB)
 
 # modulo que nao existe: erro na COMPILACAO, nada gerado — um executavel que
 # so descobre isso na maquina de quem roda nasce quebrado
 os.writeFile(EMB + "/falta.pr", "import naoexiste\npost(1)\n")
-r = com_home("'" + POOL + "' emb/falta.pr -o emb/naodeve")
+r = com_home([POOL, "emb/falta.pr", "-o", "emb/naodeve"])
 confere("`-o` com modulo que nao se acha recusa e diz qual",
-        r["rc"] != 0 and "naoexiste" in r["saida"] and not os.exists(EMB + "/naodeve"))
+        r["rc"] != 0 and "naoexiste" in r["saida"] and not os.exists(EMB + "/naodeve" + EXE))
 # e cada modulo passa pela mesma conferencia do --check (tipagem inclusive)
 os.writeFile(EMB + "/tipo.pr", "str s = 10\n")
 os.writeFile(EMB + "/usa_tipo.pr", "import tipo\npost(1)\n")
-r = com_home("'" + POOL + "' emb/usa_tipo.pr -o emb/naodeve2")
+r = com_home([POOL, "emb/usa_tipo.pr", "-o", "emb/naodeve2"])
 confere("`-o` com erro de tipo num modulo recusa, com a mesma frase do --check",
-        r["rc"] != 0 and "esperava str" in r["saida"] and not os.exists(EMB + "/naodeve2"))
+        r["rc"] != 0 and "esperava str" in r["saida"] and not os.exists(EMB + "/naodeve2" + EXE))
 
 # ── regra 5 da tipagem estatica: assinatura dos `.pr` importados ───────────
 #
@@ -1135,8 +1375,8 @@ os.writeFile(IMP + "/ciclo_b.pr", "import ciclo_a\nfunct fb() {\n    return 2\n}
 funct caso5(c5_nome, c5_fonte, c5_erro)
 {
     os.writeFile(IMP + "/m.pr", c5_fonte)
-    c5_check = roda("'" + POOL + "' --check imp5/m.pr")
-    c5_roda = roda("'" + POOL + "' imp5/m.pr")
+    c5_check = roda([POOL, "--check", "imp5/m.pr"])
+    c5_roda = roda([POOL, "imp5/m.pr"])
     confere("importado: " + c5_nome + " — acusado ANTES de rodar",
             "\"ok\":false" in c5_check["saida"] and c5_erro in c5_check["saida"])
     confere("importado: " + c5_nome + " — a mesma frase rodando (rc 2)",
@@ -1153,10 +1393,10 @@ caso5("aridade de funct do modulo", "import util\npost(util.soma(1, 2, 3))\n",
 # conferido contra `g()` e recusado.
 os.writeFile(IMP + "/util_pos.pr", "funct f(a, b) {\n    return a + b\n}\n")
 os.writeFile(IMP + "/m.pr", "funct g() {\n    return 1\n}\nfrom util_pos import f\npost(f(1, 2))\n")
-r = roda("'" + POOL + "' --check imp5/m.pr")
+r = roda([POOL, "--check", "imp5/m.pr"])
 confere("importado na mesma posicao de uma declaracao local: --check aceita",
         r["saida"].strip() == "{\"ok\":true}")
-r = roda("'" + POOL + "' imp5/m.pr")
+r = roda([POOL, "imp5/m.pr"])
 confere("importado na mesma posicao de uma declaracao local: roda com a assinatura do modulo",
         r["rc"] == 0 and r["saida"].strip() == "3")
 caso5("tipo do parametro, via from-import", "from util import soma\npost(soma(\"a\"))\n",
@@ -1179,16 +1419,16 @@ caso5("modulo importado que nao compila: acusado na linha do import",
 
 # o que NAO pode virar erro falso
 os.writeFile(IMP + "/m.pr", "from util import trocada\npost(trocada(1, 2))\n")
-r = roda("'" + POOL + "' --check imp5/m.pr")
+r = roda([POOL, "--check", "imp5/m.pr"])
 confere("importado: funct decorada por decorador geral nao e conferida", "\"ok\":true" in r["saida"])
 os.writeFile(IMP + "/m.pr", "from util import X\npost(X + 1)\n")
-r = roda("'" + POOL + "' imp5/m.pr")
+r = roda([POOL, "imp5/m.pr"])
 confere("importado: variavel do modulo passa e roda", r["rc"] == 0 and r["saida"].strip() == "11")
 os.writeFile(IMP + "/m.pr", "import ciclo_a\npost(ciclo_a.usa_b(), ciclo_a.fa())\n")
-r = roda("'" + POOL + "' imp5/m.pr")
+r = roda([POOL, "imp5/m.pr"])
 confere("importado: ciclo de import nao da veredito falso e roda", r["rc"] == 0 and r["saida"].strip() == "2 1")
 os.writeFile(IMP + "/m.pr", "import util\nc = util.Conta(5)\npost(c.extrato() + util.soma(1))\n")
-r = roda("'" + POOL + "' imp5/m.pr")
+r = roda([POOL, "imp5/m.pr"])
 confere("importado: chamada certa passa e roda", r["rc"] == 0 and r["saida"].strip() == "7")
 
 # ── extensão de antes na linha de comando ───────────────────────────────────
@@ -1203,23 +1443,23 @@ for each velha in [".ps", ".psl", ".p"]
 {
     alvo = "velho" + velha
     os.writeFile(PASTA + "/" + alvo, "post(\"nao devia rodar\")\n")
-    r = roda("'" + POOL + "' " + alvo)
+    r = roda([POOL, alvo])
     confere("rodar " + velha + " e recusado dizendo o conserto",
             r["rc"] != 0 and ".pr" in r["saida"] and "migra_pr" in r["saida"]
             and not "nao devia rodar" in r["saida"])
-    r = roda("'" + POOL + "' --check " + alvo)
+    r = roda([POOL, "--check", alvo])
     confere("--check em " + velha + " tambem recusa", r["rc"] != 0 and ".pr" in r["saida"])
-    r = roda("'" + POOL + "' " + alvo + " -o naodeve2")
+    r = roda([POOL, alvo, "-o", "naodeve2"])
     confere("`-o` sobre " + velha + " tambem recusa",
-            r["rc"] != 0 and not os.exists(PASTA + "/naodeve2"))
+            r["rc"] != 0 and not os.exists(PASTA + "/naodeve2" + EXE))
 }
 
 os.writeFile(PASTA + "/outra.txt", "post(\"extensao estranha roda\")\n")
-r = roda("'" + POOL + "' outra.txt")
+r = roda([POOL, "outra.txt"])
 confere("extensao QUALQUER continua rodando — a recusa e so das tres de antes",
         r["rc"] == 0 and "extensao estranha roda" in r["saida"])
 
-r = roda("'" + POOL + "' nao_existe.pr")
+r = roda([POOL, "nao_existe.pr"])
 confere("arquivo ausente com a extensao certa diz que nao abriu, sem falar de migracao",
         r["rc"] != 0 and "nao consegui abrir" in r["saida"]
         and not "migra_pr" in r["saida"])
@@ -1228,7 +1468,7 @@ confere("arquivo ausente com a extensao certa diz que nao abriu, sem falar de mi
 # named", diz que a extensão mudou — o erro tem que falar do ARQUIVO.
 os.writeFile(PASTA + "/vizinho.ps", "z = 1\n")
 os.writeFile(PASTA + "/importa.pr", "import './vizinho.ps'\n")
-r = roda("'" + POOL + "' importa.pr")
+r = roda([POOL, "importa.pr"])
 confere("import de caminho com extensao velha ensina a nova",
         r["rc"] != 0 and "ImportError" in r["saida"] and "migra_pr" in r["saida"])
 
@@ -1243,12 +1483,12 @@ os.writeFile(MIG + "/sub/usa.psl", "import '../util.ps'\npost(util.f())\n")
 os.writeFile(MIG + "/leiame.md", "roda com `pool sub/usa.psl`\n")
 MIGRADOR = os.cwd() + "/scripts/migra_pr.pr"
 
-r = roda("'" + POOL + "' '" + MIGRADOR + "' " + MIG)
+r = roda([POOL, MIGRADOR, MIG])
 confere("migrador sem --aplica nao renomeia nada",
         os.exists(MIG + "/util.ps") and not os.exists(MIG + "/util.pr")
         and "nada foi mudado" in r["saida"])
 
-r = roda("'" + POOL + "' '" + MIGRADOR + "' " + MIG + " --aplica")
+r = roda([POOL, MIGRADOR, MIG, "--aplica"])
 confere("migrador renomeia as tres extensoes",
         os.exists(MIG + "/util.pr") and os.exists(MIG + "/sub/usa.pr")
         and not os.exists(MIG + "/util.ps"))
@@ -1256,7 +1496,7 @@ confere("migrador arruma a referencia dentro do arquivo",
         "'../util.pr'" in os.readFile(MIG + "/sub/usa.pr"))
 confere("migrador arruma a referencia na doc tambem",
         "sub/usa.pr" in os.readFile(MIG + "/leiame.md"))
-r = roda("cd " + MIG + " && '" + POOL + "' sub/usa.pr")
+r = roda([POOL, "sub/usa.pr"], pasta=MIG)
 confere("o programa migrado roda", r["rc"] == 0 and "7" in r["saida"])
 
 # ── migra_classe.pr: `class X() {` -> `class X {`, `base(x)` -> `base().__init__(x)`
@@ -1264,7 +1504,11 @@ confere("o programa migrado roda", r["rc"] == 0 and "7" in r["saida"])
 # colado na palavra, a armadilha do limite de palavra); mensagens de erro do
 # motor com `base()` ficam como estão.
 MIGC = PASTA + "/obra_classe"
-os.cmd("rm -rf '" + MIGC + "' && mkdir -p '" + MIGC + "'")
+if os.exists(MIGC)
+{
+    os.rmdir(MIGC, force=true)
+}
+os.mkdir(MIGC, exist_ok=true)
 MIGRADOR_C = os.cwd() + "/scripts/migra_classe.pr"
 os.writeFile(MIGC + "/velho.pr",
     "Entity A() {\n    funct __init__(self, x) { self.x = x }\n}\n"
@@ -1275,11 +1519,11 @@ os.writeFile(MIGC + "/leiame.md", "Use `Entity Conta() {` e chame `base(args)`.\
 os.writeFile(MIGC + "/casos.c",
     "{ \"x\", \"Entity A() {\\n}\\nEntity B(A) {\\n    funct __init__(self) { base() }\\n}\\n\",\n"
     + "  \"\", \"TypeError: base(): a Entity pai 'A' nao tem __init__\", 1 },\n")
-r = roda("'" + POOL + "' '" + MIGRADOR_C + "' " + MIGC)
+r = roda([POOL, MIGRADOR_C, MIGC])
 confere("migra_classe sem --aplica so relata (3 arquivos, 5 cabecalhos, 3 base)",
         r["rc"] == 0 and "nada mudou" in r["saida"] and "3 arquivo(s)" in r["saida"]
         and os.readFile(MIGC + "/velho.pr").find("Entity A() {") >= 0)
-r = roda("'" + POOL + "' '" + MIGRADOR_C + "' " + MIGC + " --aplica --confere")
+r = roda([POOL, MIGRADOR_C, MIGC, "--aplica", "--confere"])
 velho_novo = os.readFile(MIGC + "/velho.pr")
 confere("migra_classe tira o () vazio e mantem a heranca",
         velho_novo.find("Entity A {") >= 0 and velho_novo.find("class B(A) {") >= 0
@@ -1295,7 +1539,7 @@ confere("migra_classe deixa a mensagem de erro `base():` como esta",
 confere("migra_classe mexe na doc tambem",
         os.readFile(MIGC + "/leiame.md").find("`Entity Conta {`") >= 0)
 confere("--confere nao reprovou nada", not "REPROVOU" in r["saida"])
-r = roda("cd " + MIGC + " && '" + POOL + "' velho.pr")
+r = roda([POOL, "velho.pr"], pasta=MIGC)
 confere("o programa migrado roda com a sintaxe nova", r["rc"] == 0 and "1 3" in r["saida"])
 
 # ── `private` em qualquer declaração do topo: o que NÃO sai pelo import ──────
@@ -1319,9 +1563,9 @@ os.writeFile(PRIV + "/lib.pr",
     + "pub = 9\n"
     + "funct usa() {\n    return [f(), x, n, a, b, E.A, K().m(), {\"x\": 1} == M]\n}\n")
 os.writeFile(PRIV + "/dentro.pr", "import lib\npost(lib.usa())\npost(lib.pub)\n")
-r = roda("cd " + PRIV + " && '" + POOL + "' --check lib.pr")
+r = roda([POOL, "--check", "lib.pr"], pasta=PRIV)
 confere("a lib com private em toda declaracao passa no --check", "\"ok\":true" in r["saida"])
-r = roda("cd " + PRIV + " && '" + POOL + "' dentro.pr")
+r = roda([POOL, "dentro.pr"], pasta=PRIV)
 confere("por dentro da lib todo private e alcancado, e o publico sai",
         r["rc"] == 0 and "[1, 5, 7, 3, 4, 1, 2, True]" in r["saida"] and "9" in r["saida"])
 
@@ -1333,28 +1577,28 @@ for each caso in [["f", 1, "post(lib.f())"], ["x", 4, "post(lib.x)"], ["n", 5, "
     nome = caso[0]
     linha = caso[1]
     os.writeFile(PRIV + "/usa_" + nome + ".pr", "import lib\n" + caso[2] + "\n")
-    r = roda("cd " + PRIV + " && '" + POOL + "' --check usa_" + nome + ".pr")
+    r = roda([POOL, "--check", "usa_" + nome + ".pr"], pasta=PRIV)
     confere("--check acusa lib." + nome + " private antes de rodar, com a declaracao",
             "\"ok\":false" in r["saida"]
             and "(existe, mas é private: declarada em lib.pr, linha " + str(linha) + ")" in r["saida"]
             and "\"linha_arquivo\":" + str(linha) in r["saida"] and "/lib.pr\"" in r["saida"])
-    r = roda("cd " + PRIV + " && '" + POOL + "' usa_" + nome + ".pr")
+    r = roda([POOL, "usa_" + nome + ".pr"], pasta=PRIV)
     confere("jinga barra lib." + nome + " pela tipagem e mostra os dois quadros",
             r["rc"] == 2 and "em usa_" + nome + ".pr, linha 2" in r["saida"]
             and "em lib.pr, linha " + str(linha) in r["saida"])
     os.writeFile(PRIV + "/de_" + nome + ".pr", "from lib import " + nome + "\n")
-    r = roda("cd " + PRIV + " && '" + POOL + "' --check de_" + nome + ".pr")
+    r = roda([POOL, "--check", "de_" + nome + ".pr"], pasta=PRIV)
     confere("--check acusa `from lib import " + nome + "` private",
             "\"ok\":false" in r["saida"] and "(existe, mas é private: declarada em lib.pr, linha " + str(linha) + ")" in r["saida"])
 }
 # o cursor do quadro da declaração vai em cima do NOME, não da palavra-chave
-r = roda("cd " + PRIV + " && '" + POOL + "' usa_f.pr")
+r = roda([POOL, "usa_f.pr"], pasta=PRIV)
 confere("o quadro da declaracao poe o cursor no nome",
         "| private funct f() {\n  |               ^^^" in r["saida"])
 
 # o `*` deixa os private de fora: `pub` vem, `x` dá NameError
 os.writeFile(PRIV + "/estrela.pr", "from lib import *\npost(pub)\npost(x)\n")
-r = roda("cd " + PRIV + " && '" + POOL + "' --check estrela.pr")
+r = roda([POOL, "--check", "estrela.pr"], pasta=PRIV)
 confere("o `*` nao traz variavel private (NameError antes de rodar)",
         "\"ok\":false" in r["saida"] and "name 'x' is not defined" in r["saida"])
 
@@ -1362,20 +1606,20 @@ confere("o `*` nao traz variavel private (NameError antes de rodar)",
 # chamadores E a nota da declaração, com a linha do fonte e o cursor no nome
 os.writeFile(PRIV + "/alias.pr",
     "import lib\nm = lib\nfunct h() {\n    return m.f()\n}\nfunct g() {\n    return h()\n}\npost(g())\n")
-r = roda("cd " + PRIV + " && '" + POOL + "' alias.pr")
+r = roda([POOL, "alias.pr"], pasta=PRIV)
 confere("rodando: a recusa do private traz o traceback inteiro e a nota da declaracao",
         r["rc"] == 1
         and "AttributeError: module 'lib' has no attribute 'f' (existe, mas é private)" in r["saida"]
         and "em alias.pr, linha 4" in r["saida"] and "em alias.pr, linha 7" in r["saida"]
         and "'f' e private: declarada em lib.pr, linha 1\n  | private funct f() {\n  |               ^^^" in r["saida"])
 os.writeFile(PRIV + "/alias_var.pr", "import lib\nm = lib\npost(m.n)\n")
-r = roda("cd " + PRIV + " && '" + POOL + "' alias_var.pr")
+r = roda([POOL, "alias_var.pr"], pasta=PRIV)
 confere("rodando: variavel tipada private tambem leva a nota",
         "'n' e private: declarada em lib.pr, linha 5\n  | private int n = 7\n  |             ^^^" in r["saida"])
 # erro pego: a nota morre com ele — o erro seguinte, sem relação, não a herda
 os.writeFile(PRIV + "/pego.pr",
     "import lib\nm = lib\ntry {\n    post(m.x)\n} catch (e) {\n    post(\"pego:\", e)\n}\npost(m.nao)\n")
-r = roda("cd " + PRIV + " && '" + POOL + "' pego.pr")
+r = roda([POOL, "pego.pr"], pasta=PRIV)
 confere("a nota da declaracao nao vaza pro erro seguinte depois de um catch",
         "pego: module 'lib' has no attribute 'x' (existe, mas é private)" in r["saida"]
         and "has no attribute 'nao'" in r["saida"] and not "declarada em" in r["saida"])
@@ -1383,6 +1627,15 @@ confere("a nota da declaracao nao vaza pro erro seguinte depois de um catch",
 # ── relatório ───────────────────────────────────────────────────────────────
 post("")
 post("cli/jpkg:", ok, "checagens passaram")
+if pulou.len() > 0
+{
+    post("PULARAM (falta o recurso neste sistema):", pulou.len())
+    for each x in pulou
+    {
+        post("  " + x)
+    }
+}
+os.rmdir(PASTA, force=true)
 if falhas.len() > 0
 {
     post("FALHARAM:", falhas.len())

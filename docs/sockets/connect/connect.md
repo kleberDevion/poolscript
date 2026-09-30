@@ -27,7 +27,9 @@ quiser o código numérico em vez da exceção usa
 - **`RuntimeError`** — `timed out`, quando o prazo do
   [`settimeout`](../settimeout/settimeout.md) estoura antes de completar
 - **`RuntimeError`** — recusa/falha do sistema:
-  `[Errno 111] Connection refused`, `[Errno 113] No route to host`
+  `[Errno 111] Connection refused`, `[Errno 113] No route to host` (os números
+  e o texto são os do sistema: a recusa é `111` no Linux, `61` no macOS e
+  `107` no Windows)
 - **`RuntimeError`** — nome que não resolve:
   `[Errno -5] No address associated with hostname`
 - **`OSError`** — socket fechado: `[Errno 9] Bad file descriptor`
@@ -61,7 +63,7 @@ s.settimeout(2)
 try {
     s.connect(("127.0.0.1", 1))
 } catch (e) {
-    post("Errno 111" in str(e))
+    post("refused" in str(e).lower())
 }
 s.close()
 ```

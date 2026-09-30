@@ -4,7 +4,16 @@
 import qrcode
 import os
 
-dir = "/tmp/ps_qr"
+# A pasta de trabalho é RELATIVA à corrente, criada aqui e apagada no fim pelo
+# próprio motor. Era "/tmp/ps_qr", esvaziada com `os.run(["rm", "-f", ...])`,
+# e isso só vale inteiro no Linux e no macOS. No Windows o motor é nativo:
+# "/tmp/ps_qr" é "<disco>:\tmp\ps_qr", na raiz do disco corrente, e o
+# `os.mkdir`, que cria a cadeia inteira, deixava a pasta \tmp lá depois do
+# teste. E `rm` não é programa do Windows: o que o `os.run` acha no PATH do CI
+# é o do MSYS2, que lê "/tmp/..." como o /tmp DELE — o `-f` calava o "não
+# existe", os PNGs ficavam, e o `os.rmdir` do fim caía em "Directory not
+# empty".
+dir = "ps_e2e_qrcode"
 if not os.exists(dir) {
     os.mkdir(dir)
 }
@@ -66,8 +75,8 @@ using open(p1, "rb") as f {
     post("assinatura PNG ->", f.read(4))
 }
 
-for each ent in os.ls(dir) {
-    _r = os.run(["rm", "-f", dir + "/" + ent["name"]], true)
-}
-os.rmdir(dir)
+# A pasta sai com os PNGs dentro, pelo motor e na hora (era um `rm -f` por
+# arquivo pelo `os.run`: ver o começo). Vem DEPOIS do `using` acima, que fecha
+# o PNG que abriu: no Windows arquivo aberto não se apaga.
+os.rmdir(dir, force=true)
 post("fim")

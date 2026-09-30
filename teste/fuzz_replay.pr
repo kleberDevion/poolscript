@@ -16,9 +16,110 @@
 # morte violenta.
 import os
 import sys
+import date
 
 ACHADOS = "teste/fuzz_achados"
 TEMPO = 20
+
+
+# ── processos: sem shell, nos três sistemas ─────────────────────────────────
+#
+# Cada achado roda pelo `os.run([...], capture="live")`: o `Process` que volta
+# dá o código de saída (`wait()`), os dois canais da saída e o `kill()` do
+# prazo, sem shell no meio e sem arquivo temporário. Era uma linha do `os.cmd`
+# (`timeout 20 '<pool>' --check <achado> > /dev/null 2>&1; echo $? >
+# /tmp/ps_replay_rc`), e isso só existia inteiro no Linux. No macOS o
+# `timeout` do GNU vem do coreutils do Homebrew com o nome `gtimeout`: sem
+# `timeout` no PATH o shell sai 127 ("command not found"), que não é sinal
+# nem 124, e todo achado passava sem ter rodado. No Windows o `os.cmd` é o
+# cmd.exe, onde aspas simples não são aspas e `;`, `$?` e `/dev/null` não
+# existem, e o "/tmp/ps_replay_rc" do motor nativo é
+# "<disco>:\tmp\ps_replay_rc", na raiz do disco, não o /tmp do MSYS2.
+
+WINDOWS = sys.platform() == "windows"
+
+
+# Um pedaço do stdout (ou do stderr) do processo; "" quando o canal fechou.
+funct le_canal(proc, do_erro) {
+    if do_erro {
+        return proc.read_err()
+    }
+    return proc.read()
+}
+
+
+# Lê um canal até o fim, numa TAREFA, e joga fora: é o `> /dev/null 2>&1` de
+# antes. Os dois canais andam JUNTOS: cano que ninguém lê enche, e o filho
+# trava na escrita. Um achado que enchesse o stderr ficaria esperando o teste,
+# e o prazo acusaria TRAVOU sem o motor ter travado.
+async funct escoa(proc, do_erro) {
+    parte = le_canal(proc, do_erro)
+    while parte != "" {
+        parte = le_canal(proc, do_erro)
+    }
+}
+
+
+# O `timeout` de antes, agora dentro do teste: passou de `prazo` segundos, vai
+# o SIGTERM; se em 6 s o processo não saiu, o SIGKILL (o `timeout` sem `-k`
+# esperava pra sempre por quem ignorasse o TERM). No Windows não há sinal: lá
+# o `kill()` encerra o processo na hora. Termina sozinha quando
+# `estado["acabou"]` vira verdadeiro, e liga `estado["estourou"]` quando o
+# prazo venceu. A volta é curta (0,01 s) porque é o que cada achado espera a
+# mais depois de sair, e isso se soma por achado no tempo do portão.
+async funct vigia(proc, prazo, estado) {
+    fim = date.monotonic() + prazo
+    while not estado["acabou"] and date.monotonic() < fim {
+        sleep(0.01)
+    }
+    if estado["acabou"] {
+        return
+    }
+    estado["estourou"] = true
+    proc.kill()
+    fim = date.monotonic() + 6
+    while not estado["acabou"] and date.monotonic() < fim {
+        sleep(0.01)
+    }
+    if not estado["acabou"] {
+        proc.kill(9)
+    }
+}
+
+
+# Roda o `--check` de um achado e devolve o código que o `$?` depois do
+# `timeout` dava, pra regra de reprovação lá embaixo ficar a mesma: 124 quando
+# o prazo venceu (mesmo que o processo, ao morrer, saísse com outro código), e
+# 128 + sinal quando ele morreu de sinal (o `wait()` dá `-sinal`). A entrada
+# fecha na hora: o `--check` com arquivo não a lê. A `vigia` e as duas `escoa`
+# andam enquanto o `wait()` espera: a espera do principal é o ponto em que as
+# tarefas rodam. O `using` fecha os canais no fim de cada achado, sem esperar
+# o coletor: a pasta só cresce (achado que entra não sai), e descritor
+# esquecido aberto soma contra o limite de arquivos abertos do processo.
+#
+# O Windows não tem sinal: lá o processo que morre de exceção sai com o código
+# dela (0xC0000005 é o acesso inválido à memória, 0xC00000FD o estouro da
+# pilha), e o `wait()` devolve os 32 bits do código como `int` com sinal: de
+# 0x80000000 pra cima, negativo. Esse volta como veio.
+funct replaya(caminho) {
+    using os.run([sys.executable, "--check", caminho], capture="live") as proc {
+        proc.close()
+        canais = [escoa(proc, false), escoa(proc, true)]
+        estado = {"acabou": false, "estourou": false}
+        guarda = vigia(proc, TEMPO, estado)
+        rc = proc.wait()
+        estado["acabou"] = true
+        await guarda
+        await canais
+    }
+    if estado["estourou"] {
+        return 124
+    }
+    if rc < 0 and not WINDOWS {
+        return 128 - rc
+    }
+    return rc
+}
 
 
 funct arquivos() {
@@ -58,13 +159,21 @@ if __name__ == "main" {
     mortes = []
     for each caminho in lista {
         # o mesmo caminho do fuzzer: `--check` analisa sem executar
-        os.cmd("timeout " + str(TEMPO) + " '" + sys.executable + "' --check " +
-               caminho + " > /dev/null 2>&1; echo $? > /tmp/ps_replay_rc")
-        rc = int(open("/tmp/ps_replay_rc").read().strip())
-        if rc > 128 or rc == 124 {
+        rc = replaya(caminho)
+        # Acima de 128 é morte por sinal, e 124 é o prazo vencido. No Windows
+        # a morte por exceção chega negativa, e o código sai em hexadecimal,
+        # que é como o sistema o mostra (0xc0000005).
+        if rc > 128 or rc == 124 or rc < 0 {
             motivo = "sinal " + str(rc - 128)
             if rc == 124 {
                 motivo = "TRAVOU"
+            }
+            elif WINDOWS {
+                cod = rc
+                if cod < 0 {
+                    cod = cod + 4294967296
+                }
+                motivo = "codigo " + hex(cod)
             }
             mortes.append([caminho, motivo])
         }

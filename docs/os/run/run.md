@@ -48,7 +48,7 @@ aí é shell, e vale a advertência de injeção lá embaixo.
 
 ```
 versao = os.run(["jinga", "--version"], capture=true)
-post(versao)                        # "Jinga 16.2.2 [PSVM] (2026-09-24) Runtime standalone"
+post(versao)                        # "Jinga 16.2.3 [PSVM] (2026-09-24) Runtime standalone"
 ```
 
 Com `capture=true` o `run` **espera** o processo terminar: colher a saída exige
@@ -127,6 +127,14 @@ pasta atual, nas do sistema e no PATH, completando `.exe`. Um `.cmd` ou `.bat`
 (o `npm`, por exemplo, é `npm.cmd`) só roda pelo shell, então é com
 [`os.cmd`](../cmd/cmd.md). Em segundo plano, o processo nasce num grupo próprio:
 o Ctrl+C do terminal de quem disparou não chega nele (o `setsid` do Linux).
+
+O Windows entrega ao programa UMA linha de texto, e cada argumento da lista
+vai com as aspas que o programa desfaz: o que tem espaço, aspa ou
+metacaractere do `cmd.exe` (`& | < > ^ ( ) , ; =`) vai entre aspas. Pro
+programa comum o argumento chega igual; quando o programa é o próprio
+`cmd.exe` (`os.run(["cmd.exe", "/c", "dir", caminho])`), é isso que impede um
+`&` no nome de virar um segundo comando. O `%VAR%` o `cmd.exe` expande mesmo
+entre aspas: dado de fora não vai pro `cmd.exe` com `%`.
 
 ---
 

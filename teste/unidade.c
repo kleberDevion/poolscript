@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <errno.h>
 
 #include "ps_hash.h"
 #include "ps_regex.h"
@@ -751,17 +752,54 @@ static size_t monta_zip(unsigned char *z, const char *nome, unsigned long comp,
     return p;
 }
 
+/* Grava o ZIP num arquivo e passa pelo leitor de verdade.
+ *
+ * O arquivo é RELATIVO à pasta corrente (a raiz do repositório, pelo `make`) e
+ * é apagado logo depois. Era "/tmp/ps_unidade_zip.xlsx": no Windows o programa
+ * é nativo e "/tmp/x" é "\tmp\x" na raiz do disco corrente (não o /tmp do
+ * MSYS2) — sem essa pasta o fopen falha e os quatro casos reprovam com a
+ * mensagem do caso, sem o leitor ter rodado. Um nome por caso porque no
+ * Windows o arquivo apagado só some quando o último processo que o segura (o
+ * antivírus, que lê todo arquivo novo) o solta, e até lá recriar o MESMO nome
+ * dá acesso negado.
+ *
+ * -99 = o arquivo não ficou gravado inteiro, ou o leitor não o abriu, e a
+ * causa sai aqui. Nenhum dos dois pode chegar ao `CONF` como -1: ZIP truncado
+ * também dá -1, arquivo que o leitor não abriu também, e o caso passaria sem
+ * ter testado nada. O `fclose` entra na conta porque é ele que descarrega o
+ * buffer: disco cheio aparece nele, não no `fwrite`. */
 static int roda_xlsx(const unsigned char *z, size_t n)
 {
-    const char *cam = "/tmp/ps_unidade_zip.xlsx";
+    static int seq = 0;
+    char cam[64];
+    snprintf(cam, sizeof cam, "ps_unidade_zip_%d.xlsx", ++seq);
     FILE *f = fopen(cam, "wb");
-    if (!f) return -99;
-    fwrite(z, 1, n, f);
-    fclose(f);
+    if (!f) {
+        printf("  [%s] nao consegui criar '%s' na pasta corrente: %s\n",
+               grupo_atual, cam, strerror(errno));
+        return -99;
+    }
+    size_t gravados = fwrite(z, 1, n, f);
+    if (fclose(f) != 0 || gravados != n) {
+        printf("  [%s] nao consegui gravar '%s' inteiro: %s\n",
+               grupo_atual, cam, strerror(errno));
+        remove(cam);
+        return -99;
+    }
     PSGrade g; char erro[256] = "";
     int rc = ps_xlsx_le(cam, &g, erro, sizeof erro);
+    int causa = errno;
     ps_grade_libera(&g);
     remove(cam);
+    /* O outro lado da gravação curta: o leitor que nem abriu o arquivo também
+     * devolve -1, e o caso passaria sem o ZIP ter sido lido. Reconhece pela
+     * mensagem do próprio `ps_xlsx_le`. */
+    static const char nao_abriu[] = "nao consegui abrir";
+    if (rc == -1 && strncmp(erro, nao_abriu, sizeof nao_abriu - 1) == 0) {
+        printf("  [%s] o leitor nao abriu '%s', gravado inteiro: %s\n",
+               grupo_atual, cam, strerror(causa));
+        return -99;
+    }
     return rc;
 }
 

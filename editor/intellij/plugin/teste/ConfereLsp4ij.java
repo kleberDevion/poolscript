@@ -28,6 +28,7 @@ import java.io.File;
 import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -52,6 +53,8 @@ import java.util.jar.JarFile;
  */
 public class ConfereLsp4ij {
   static int falhas = 0;
+  /* no Windows mudam as pastas do usuario e o caminho vem em C:\... */
+  static final boolean WIN = System.getProperty("os.name", "").toLowerCase().startsWith("windows");
 
   static void ok(String s) { System.out.println("  ok     " + s); }
   static void falha(String s, Object detalhe) {
@@ -128,10 +131,12 @@ public class ConfereLsp4ij {
       confere("pasta de trabalho existe", p.getWorkingDirectory() != null && new File(p.getWorkingDirectory()).isDirectory(),
               p.getWorkingDirectory());
 
-      /* 6. initializationOptions serializado pelo Gson REAL do IDEA (a chave `pool` e a que o servidor le) */
+      /* 6. initializationOptions serializado pelo Gson REAL do IDEA (a chave `pool` e a que o servidor le).
+            No JSON a `\` do caminho do Windows sai `\\`, e a `"` sai `\"`. */
       Object opts = p.getInitializationOptions(null);
       String json = new Gson().toJson(opts);
-      String esperado = motor.isEmpty() ? "{}" : "{\"pool\":\"" + motor + "\"}";
+      String motorJson = motor.replace("\\", "\\\\").replace("\"", "\\\"");
+      String esperado = motor.isEmpty() ? "{}" : "{\"pool\":\"" + motorJson + "\"}";
       confere("initializationOptions vira " + esperado, json.equals(esperado), json);
 
       /* 7. a busca do executavel: fallback fora do PATH, null pro que nao existe,
@@ -152,8 +157,16 @@ public class ConfereLsp4ij {
       @SuppressWarnings("unchecked")
       List<String> ps = (List<String>) pastas.invoke(null, "");
       String home = System.getProperty("user.home");
-      confere("pastasDeBusca() tem ~/.jinga/bin e ~/.poolscript/bin",
-              ps.contains(home + "/.jinga/bin") && ps.contains(home + "/.poolscript/bin"), ps);
+      /* no Windows as duas sao a bin do instalar.ps1 e a dos comandos do jpkg (o
+         ~/.poolscript e do instalador antigo, que so existiu no Linux). Uma chamada
+         so do confere: o teste_intellij.sh conta as checagens pelas linhas dele */
+      String local = System.getenv("LOCALAPPDATA");
+      if (local == null || local.isEmpty()) local = home + "\\AppData\\Local";
+      String[] doUsuario = WIN ? new String[] { local + "\\Programs\\Jinga\\bin", home + "\\.jinga\\bin" }
+                               : new String[] { home + "/.jinga/bin", home + "/.poolscript/bin" };
+      confere("pastasDeBusca() tem " + (WIN ? "%LOCALAPPDATA%\\Programs\\Jinga\\bin e ~\\.jinga\\bin"
+                                            : "~/.jinga/bin e ~/.poolscript/bin"),
+              ps.contains(doUsuario[0]) && ps.contains(doUsuario[1]), ps);
       /* os dois nomes lado a lado numa pasta que vem ANTES no PATH: o novo ganha —
          com os arrays que o plugin usa de verdade, nao com copia deles */
       Path lado = Files.createTempDirectory("jinga_ij_bin_");
@@ -186,6 +199,9 @@ public class ConfereLsp4ij {
     System.out.println();
     if (falhas > 0) { System.out.println("intellij: " + falhas + " checagem(ns) FALHARAM"); System.exit(1); }
     System.out.println("intellij: o plugin liga com o IDEA e o LSP4IJ reais, e o servidor responde ao LSP4J");
+    /* as threads do LSP4J nao sao daemon: sem o exit o JVM so saia quando elas
+       morriam de ociosas, bem depois do resumo */
+    System.exit(0);
   }
 
   static void pontaAPonta(ProcessStreamConnectionProvider p, Object opts) throws Exception {
@@ -193,13 +209,7 @@ public class ConfereLsp4ij {
     Path arq = dir.resolve("a.pr");
     String texto = "import regex\nx = regex.\n";
     Files.write(arq, texto.getBytes(StandardCharsets.UTF_8));
-    /* a URI como o DefaultUriConverter do LSP4IJ monta: new URI("file", "", abs, null) */
-    String uri = new URI("file", "", arq.toAbsolutePath().toString(), null).toString();
-
-    ProcessBuilder pb = new ProcessBuilder(p.getCommands());
-    pb.directory(new File(p.getWorkingDirectory()));
-    pb.redirectError(ProcessBuilder.Redirect.INHERIT);
-    Process proc = pb.start();
+    Process proc = null;
     final List<String> avisos = new ArrayList<>();
     LanguageClient cliente = new LanguageClient() {
       public void telemetryEvent(Object o) {}
@@ -208,7 +218,14 @@ public class ConfereLsp4ij {
       public CompletableFuture<MessageActionItem> showMessageRequest(ShowMessageRequestParams r) { return CompletableFuture.completedFuture(null); }
       public void logMessage(MessageParams m) {}
     };
+    /* a URI e a partida do servidor ficam DENTRO do try: uma excecao delas
+       derrubava o teste inteiro, sem o FALHOU e sem o resumo */
     try {
+      String uri = uriComoLsp4ij(arq.toAbsolutePath().toString());
+      ProcessBuilder pb = new ProcessBuilder(p.getCommands());
+      pb.directory(new File(p.getWorkingDirectory()));
+      pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+      proc = pb.start();
       Launcher<LanguageServer> launcher = LSPLauncher.createClientLauncher(cliente, proc.getInputStream(), proc.getOutputStream());
       launcher.startListening();
       LanguageServer srv = launcher.getRemoteProxy();
@@ -229,7 +246,20 @@ public class ConfereLsp4ij {
     } catch (Exception e) {
       falha("LSP4J: ponta a ponta", e);
     } finally {
-      proc.destroy();
+      if (proc != null) proc.destroy();
+      /* o arquivo e a pasta dele saem junto: antes cada rodada deixava um ps_ij_* na pasta temporaria */
+      try { Files.deleteIfExists(arq); Files.deleteIfExists(dir); }
+      catch (java.io.IOException e) { System.out.println("  (nao consegui apagar " + dir + ": " + e + ")"); }
     }
+  }
+
+  /** A URI de um arquivo como o DefaultUriConverter do LSP4IJ a monta: o caminho
+   *  absoluto com `/` no lugar de `\` e uma `/` na frente (C:\x\a.pr vira
+   *  /C:/x/a.pr), em new URI("file", "", caminho, null). O C:\... cru nao serve:
+   *  com o esquema `file`, a URI exige caminho que comece por `/` (URISyntaxException). */
+  static String uriComoLsp4ij(String absoluto) throws URISyntaxException {
+    String caminho = absoluto.replace('\\', '/');
+    if (!caminho.startsWith("/")) caminho = "/" + caminho;
+    return new URI("file", "", caminho, null).toString();
   }
 }

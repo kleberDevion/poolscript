@@ -297,6 +297,9 @@ static inline int ps_e_terminal(int fd) { return isatty(fd); }
  * link é de pasta (no Windows ele sai com rmdir, não com unlink). */
 int ps_e_link(const char *caminho, int *e_pasta);
 
+/* separador de pasta e caminho absoluto de cada sistema (só texto) */
+#include "ps_caminho.h"
+
 /* A variável da pasta do usuário: HOME no Linux e no macOS, USERPROFILE no
  * Windows (o HOME lá só existe dentro do MSYS2, e aponta pra outra pasta).
  * O motor (as libs do `import`) e o `jpkg` (onde elas são instaladas) leem a

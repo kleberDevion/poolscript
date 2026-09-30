@@ -13,7 +13,11 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const url = require('url');
 
+/* No Windows o `./pool` que o make passa roda o `pool.exe`: sem extensão no
+ * nome, o `spawn` do Node procura `.com` e `.exe` (sem shell), e o servidor
+ * faz a mesma conta no `achaPrograma`. */
 const JINGA = process.argv[2] || 'jinga';
 const SERVIDOR = path.join(__dirname, 'server.js');
 /* as tabelas do motor, pros casos dirigidos por tabela (apelidos de tipo…) */
@@ -21,6 +25,7 @@ const META_LOCAL = JSON.parse(require('child_process').execFileSync(JINGA, ['--m
 
 let falhas = 0;
 let feitos = 0;
+let pulos = 0;
 
 function conf(nome, cond, detalhe) {
   feitos++;
@@ -28,6 +33,13 @@ function conf(nome, cond, detalhe) {
   falhas++;
   console.log('  FALHOU ' + nome);
   if (detalhe !== undefined) console.log('         ' + JSON.stringify(detalhe).slice(0, 400));
+}
+
+/* `n` checagens que não rodaram: diz quais e por que, e entram na conta do
+ * fim — "todas passaram" sem dizer quantas nem rodaram é falso verde. */
+function pula(n, motivo) {
+  pulos += n;
+  console.log('  PULOU ' + motivo);
 }
 
 /* Conversa com o servidor: manda o roteiro e devolve as respostas por id.
@@ -111,15 +123,26 @@ function conversa(texto, pedidos, op) {
   });
 }
 
-const URI = 'file://' + path.join(os.tmpdir(), 'ps_lsp_t', 'a.pr');
+/* A URI de arquivo do documento, a do `pathToFileURL`: `file:///tmp/...` no
+ * Linux e no macOS, `file:///C:/...` no Windows. `'file://' + caminho` só
+ * vale pra caminho que começa com `/`: no Windows saía `file://C:\...`, que
+ * não é URI de arquivo — e a definição no próprio arquivo, que volta com a
+ * URI do documento, terminava em `\a.pr`. */
+const URI = url.pathToFileURL(path.join(os.tmpdir(), 'ps_lsp_t', 'a.pr')).href;
 
-/* As libs instaladas: `~/.jinga/libs`, ou `~/.poolscript/libs` enquanto o
- * `jpkg` não moveu a pasta antiga — o mesmo fallback do motor e do servidor. */
+/* As libs instaladas: `$JINGA_HOME/libs` (ou `$POOLSCRIPT_HOME`), senão
+ * `~/.jinga/libs`, ou `~/.poolscript/libs` enquanto o `jpkg` não moveu a
+ * pasta antiga — a regra do motor (`pasta_libs`) e do servidor. A pasta do
+ * usuário é o USERPROFILE no Windows: o HOME lá só existe dentro do MSYS2 e
+ * aponta pra outra pasta, que o motor não olha. */
 function pastaLibs() {
-  if (!process.env.HOME) return '';
-  const nova = path.join(process.env.HOME, '.jinga', 'libs');
+  const over = process.env.JINGA_HOME || process.env.POOLSCRIPT_HOME;
+  if (over) return path.join(over, 'libs');
+  const h = process.platform === 'win32' ? process.env.USERPROFILE : process.env.HOME;
+  if (!h) return '';
+  const nova = path.join(h, '.jinga', 'libs');
   try { if (fs.statSync(nova).isDirectory()) return nova; } catch (_) { /* segue */ }
-  return path.join(process.env.HOME, '.poolscript', 'libs');
+  return path.join(h, '.poolscript', 'libs');
 }
 
 
@@ -132,6 +155,27 @@ const rotulos = (m) => {
 
 const compl = (id, l, c, uri) => ({ jsonrpc: '2.0', id, method: 'textDocument/completion',
   params: { textDocument: { uri: uri || URI }, position: { line: l, character: c } } });
+
+/* O hover tem link `file:` e TODOS são URI de arquivo como o editor abre (a
+ * que volta igual de URI -> caminho -> URI). `'file://' + caminho` cru só
+ * coincide com ela quando o caminho começa com `/` e não tem espaço nem
+ * acento: no Windows sai `file://C:\...`, que o editor não abre — e um
+ * `includes('](file://')` passava igual. */
+function linksDeArquivoValidos(t) {
+  const links = [];
+  let i = 0;
+  for (;;) {
+    const a = t.indexOf('](file:', i);
+    if (a < 0) break;
+    const b = t.indexOf(')', a + 2);
+    if (b < 0) break;
+    links.push(t.slice(a + 2, b));
+    i = b + 1;
+  }
+  return links.length > 0 && links.every((u) => {
+    try { return url.pathToFileURL(url.fileURLToPath(u)).href === u; } catch (_) { return false; }
+  });
+}
 
 async function main() {
   fs.mkdirSync(path.join(os.tmpdir(), 'ps_lsp_t'), { recursive: true });
@@ -152,7 +196,7 @@ async function main() {
       alguma = f.slice(0, f.length - '.pr'.length);
     } catch (_) { /* sem libs instaladas */ }
     if (!alguma) {
-      console.log('  PULOU lib instalada — nenhuma em ~/.jinga/libs');
+      pula(2, 'lib instalada — nenhuma em ' + (libs || 'pasta nenhuma (sem JINGA_HOME e sem a pasta do usuario)'));
     } else {
       const src = `import ${alguma}\nx = ${alguma}.\n`;
       const m = await conversa(src, [compl(2, 1, 5 + alguma.length)]);
@@ -308,7 +352,7 @@ async function main() {
     conf('hover de `nome = Jinker(...)` apresenta a classe: assinatura, resumo, membros, exemplo e link da doc',
          txt(12).includes('Jinker nome') && txt(12).includes('class Jinker(name=') && txt(12).includes('membros**')
            && txt(12).includes('`route(...)`') && txt(12).includes('from jinker import Jinker')
-           && txt(12).includes('](file://') && txt(12).includes('Jinker.md)'),
+           && txt(12).includes('](file://') && txt(12).includes('Jinker.md)') && linksDeArquivoValidos(txt(12)),
          txt(12).slice(0, 300));
     conf('hover de `n = 1` diz `int n` (tipo basico: so type())',
          txt(13).includes('int n') && txt(13).includes('tipo basico') && txt(13).includes('só o universal `type()`'), txt(13).slice(0, 200));
@@ -318,7 +362,8 @@ async function main() {
     conf('hover no apelido `String` responde como o tipo str, com os membros',
          txt(15).includes('String = str') && txt(15).includes('class str') && txt(15).includes('`upper(...)`'), txt(15).slice(0, 200));
     conf('hover de retorno com mais de um tipo apresenta cada lado com membros e link',
-         txt(16).includes('str|Process') && txt(16).includes('**Process**') && txt(16).includes('`read(...)`') && txt(16).includes('Process.md)'),
+         txt(16).includes('str|Process') && txt(16).includes('**Process**') && txt(16).includes('`read(...)`') && txt(16).includes('Process.md)')
+           && linksDeArquivoValidos(txt(16)),
          txt(16).slice(0, 300));
     /* propriedade sai SEM parenteses na lista (o metadata marca `property`) */
     const r2 = await conversa('import psodbc\ncon = psodbc.connect("x")\ncur = con.cursor()\npost(cur)\n', [
@@ -328,11 +373,12 @@ async function main() {
     const t18 = (() => { const h = resp(r2, 18); return h && h.result && h.result.contents ? (h.result.contents.value || '') : ''; })();
     conf('hover de `cur` (DbCursor) lista `execute(...)` e a propriedade `rowcount` sem parenteses, com link absoluto no resumo',
          t18.includes('DbCursor cur') && t18.includes('`execute(...)`') && t18.includes('`rowcount`') && !t18.includes('rowcount(...)')
-           && t18.includes('](file://') && !t18.includes('](../'),
+           && t18.includes('](file://') && !t18.includes('](../') && linksDeArquivoValidos(t18),
          t18.slice(0, 400));
     const t19 = (() => { const h = resp(r2, 19); return h && h.result && h.result.contents ? (h.result.contents.value || '') : ''; })();
     conf('hover no modulo (`psodbc`) traz o resumo da pagina, os membros e o link',
-         t19.includes('import psodbc') && t19.includes('membros**') && t19.includes('`connect(...)`') && t19.includes('psodbc.md)'),
+         t19.includes('import psodbc') && t19.includes('membros**') && t19.includes('`connect(...)`') && t19.includes('psodbc.md)')
+           && linksDeArquivoValidos(t19),
          t19.slice(0, 300));
     /* todos os apelidos que o motor publica, nao dois */
     const apelidos = Object.keys(META_LOCAL.tipos_apelidos || {});
@@ -1321,13 +1367,14 @@ async function main() {
         if (i < 0) continue;
         let j = i + 6;
         let nome = '';
-        while (j < txt.length && txt[j] !== '(' && txt[j] !== ' ' && txt[j] !== '\n') nome += txt[j++];
+        /* o `\r` de um arquivo salvo com o fim de linha do Windows não é nome */
+        while (j < txt.length && txt[j] !== '(' && txt[j] !== ' ' && txt[j] !== '\n' && txt[j] !== '\r') nome += txt[j++];
         if (!nome) continue;
         comClasse = f.slice(0, -3); classe = nome; break;
       }
     } catch (_) { /* sem libs */ }
     if (!comClasse) {
-      console.log('  PULOU o teto de exposicao — nenhuma lib com class em ~/.jinga/libs');
+      pula(2, 'o teto de exposicao — nenhuma lib com class em ' + (libs || 'pasta nenhuma (sem JINGA_HOME e sem a pasta do usuario)'));
     } else {
       const src = `import ${comClasse}\ninst = ${comClasse}.${classe}()\ninst.\n`;
       const m = await conversa(src, [compl(2, 2, 5)]);
@@ -1579,7 +1626,10 @@ async function main() {
 
     /* 1. `initialize` como o LSP4J manda: sem initializationOptions — o
      *    servidor cai no PATH, que aqui tem o binário (`jinga`, ou `pool` numa
-     *    instalação de antes do rename: é o `command -v` do servidor que escolhe) */
+     *    instalação de antes do rename: é a busca no PATH do servidor, sem
+     *    shell, que escolhe; no Windows ela acha o `pool.exe`). No Windows o
+     *    nome da variável não distingue maiúscula: o `spawn` fica com uma só,
+     *    e `PATH` ordena antes de `Path` — vale a daqui. */
     const jingaDir = path.dirname(path.resolve(JINGA));
     const envMin = Object.assign({}, process.env, { PATH: jingaDir + path.delimiter + (process.env.PATH || '') });
     const m1 = await conversa('import regex\nx = regex.\n', [compl(60, 1, 10)],
@@ -1729,8 +1779,9 @@ async function main() {
   }
 
   console.log('');
-  if (falhas) { console.log(`lsp: ${feitos} checagens, ${falhas} FALHARAM`); process.exit(1); }
-  console.log(`lsp: ${feitos} checagens, todas passaram`);
+  const naoRodaram = pulos ? `; ${pulos} PULARAM (ver os PULOU acima)` : '';
+  if (falhas) { console.log(`lsp: ${feitos} checagens, ${falhas} FALHARAM${naoRodaram}`); process.exit(1); }
+  console.log(`lsp: ${feitos} checagens, todas passaram${naoRodaram}`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

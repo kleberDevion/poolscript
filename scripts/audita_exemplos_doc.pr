@@ -38,7 +38,10 @@ import sys
 import json
 
 RAIZ = "docs"
-TMP = "/tmp/ps_audita_doc"
+# Pasta de trabalho RELATIVA à corrente, criada antes da conferência e apagada
+# no fim dela. Era "/tmp/ps_audita_doc": no Windows o motor é nativo, "/tmp/x"
+# vira "<unidade>:\tmp\x" (não é o /tmp do MSYS2), e nada apagava a pasta.
+TMP = "ps_audita_exemplos_tmp"
 
 
 funct lista_md(dir) {
@@ -109,13 +112,64 @@ funct blocos_ps(txt) {
 }
 
 
+# O que o próprio motor escreve rodando com `args`: o stdout e o stderr
+# INTEIROS, cada um no seu campo. Com lista e sem shell: era `os.cmd` com o
+# caminho entre aspas simples, e no Windows o `os.cmd` é o cmd.exe, onde aspa
+# simples não é aspa (o programa procurado virava `'C:\...\pool.exe'`, com as
+# aspas no nome).
+#
+# Os dois canais, e não o `capture=true`: ele devolve o stdout e só cai pro
+# stderr quando o stdout vem vazio. O `--check` que não abre o arquivo escreve
+# nos DOIS (medido: "jinga: nao consegui abrir '...'" no stderr e o JSON de
+# IOError no stdout), e só com o stdout um bloco que cita IOError passaria
+# como erro anunciado.
+#
+# O stdout é lido até o fim antes do stderr. O `--check` só escreve no stderr
+# quando não consegue ler o arquivo (uma mensagem de poucas linhas) e o
+# `--metadata` não escreve nada lá: o cano do stderr não enche enquanto o
+# stdout é lido.
+funct roda_motor(args) {
+    m_saida = ""
+    m_erro = ""
+    m_rc = 0
+    using os.run([sys.executable] + args, capture="live") as m_proc {
+        m_parte = m_proc.read()
+        while m_parte != "" {
+            m_saida = m_saida + m_parte
+            m_parte = m_proc.read()
+        }
+        m_parte = m_proc.read_err()
+        while m_parte != "" {
+            m_erro = m_erro + m_parte
+            m_parte = m_proc.read_err()
+        }
+        m_rc = m_proc.wait()
+    }
+    return {"saida": m_saida, "erro": m_erro, "rc": m_rc}
+}
+
+
 funct confere(codigo) {
     alvo = TMP + "/bloco.pr"
     using open(alvo, "w") as f {
         f.write(codigo + "\n")
     }
-    os.cmd("'" + sys.executable + "' --check " + alvo + " > " + TMP + "/saida.json 2>&1")
-    return os.readFile(TMP + "/saida.json").strip()
+    # O stderr NA FRENTE do stdout, como o `2>&1` deixava no arquivo: o stderr
+    # sai na hora e o stdout, que não é terminal, só no fim do processo. Com
+    # stderr, a resposta não começa por "{" e o `tipo_do_erro` a toma inteira
+    # como o erro: não passa calada.
+    c_resposta = roda_motor(["--check", alvo])
+    c_texto = (c_resposta["erro"] + c_resposta["saida"]).strip()
+    # O `--check` sai 0 (passou) ou 1 (acusou), sempre com o JSON. O filho que
+    # morre sem responder (sinal no Linux e no macOS, violação de acesso no
+    # Windows) deixava a resposta vazia, e o `tipo_do_erro` lia "" como
+    # "passou": o bloco que DERRUBA o motor contava como aprovado. Resposta
+    # vazia ou código fora de 0 e 1 vira achado, com o código de saída.
+    if c_texto == "" or not (c_resposta["rc"] in [0, 1]) {
+        return ("o --check nao respondeu direito (saiu com " + str(c_resposta["rc"])
+                + ") " + c_texto).strip()
+    }
+    return c_texto
 }
 
 
@@ -159,10 +213,13 @@ funct tipo_do_erro(resposta) {
 os.mkdir(TMP, exist_ok=true)
 lista = "--lista" in sys.argv
 
-# os nomes de erro da linguagem — do motor, não de lista digitada
-os.cmd("'" + sys.executable + "' --metadata > " + TMP + "/meta.json")
+# os nomes de erro da linguagem — do motor, não de lista digitada. O stderr do
+# `--metadata` vai pro stderr daqui, como ia quando ele herdava o terminal: se
+# o JSON não vier, o motivo aparece antes do erro do `json.parse`.
+META = roda_motor(["--metadata"])
+sys.stderr.write(META["erro"])
 NOMES_DE_ERRO = []
-for each e in json.parse(os.readFile(TMP + "/meta.json"))["excecoes"] {
+for each e in json.parse(META["saida"])["excecoes"] {
     addEnd(NOMES_DE_ERRO, e["nome"])
 }
 addEnd(NOMES_DE_ERRO, "SyntaxError")
@@ -219,6 +276,10 @@ for each md in lista_md(RAIZ) {
         addEnd(achados, {"arq": md, "linha": b["linha"], "msg": msg, "codigo": codigo})
     }
 }
+
+# A pasta de trabalho sai aqui: nada abaixo a usa, e o `sys.exit` do fim não
+# passa por limpeza nenhuma.
+os.rmdir(TMP, force=true)
 
 post("blocos ```ps conferidos:", total)
 post("  dos quais mostram um erro de proposito, e o motor da ESSE erro:", anunciados)

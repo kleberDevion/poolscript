@@ -379,29 +379,93 @@ const Caso CASOS_CRASH[] = {
   "post(os.exists(\"cheio\"))\n", "levantou\nTrue", NULL, 0, NULL, 0, "linux" },
 /* Mover e copiar E apagar a origem. Origem que nao sai era ignorada: o move
  * dizia "ok" e o arquivo ficava nos dois lugares. Cada sistema segura a
- * origem do seu jeito: pasta sem escrita no Linux e no macOS (o rename e o
- * unlink falham); no Windows, a origem aberta (o rename e o apagar recusam o
- * arquivo em uso). O ramo por sistema e so o MEIO de segurar a origem; a
- * propriedade conferida e a mesma. */
+ * origem do seu jeito, e o jeito tem que valer TAMBEM pro root (a suite roda
+ * como root na VPS, e ali a pasta sem escrita nao segurava nada: o root
+ * renomeia e apaga mesmo assim, e o caso reprovava com "False False"):
+ * - Linux: um arquivo do /proc. Le-se, mas ninguem o apaga (EACCES pro
+ *   usuario, EPERM pro root), e o rename cai no copiar-e-apagar (EXDEV);
+ * - macOS: pasta sem escrita (o rename e o unlink falham);
+ * - Windows: a origem aberta (o rename e o apagar recusam o arquivo em uso).
+ * O ramo por sistema e so o MEIO de segurar a origem; a propriedade conferida
+ * e a mesma. */
 { "os.move que nao consegue apagar a origem levanta",
   "import os\n"
   "import sys\n"
-  "os.mkdir(\"ro\")\n"
-  "os.writeFile(\"ro/f.txt\", \"dado\")\n"
+  "origem = \"ro/f.txt\"\n"
   "aberto = Null\n"
-  "if sys.platform() == \"windows\" {\n"
-  "    aberto = open(\"ro/f.txt\")\n"
+  "if sys.platform() == \"linux\" {\n"
+  "    origem = \"/proc/version\"\n"
   "} else {\n"
-  "    os.run([\"chmod\", \"555\", \"ro\"], capture=true)\n"
+  "    os.mkdir(\"ro\")\n"
+  "    os.writeFile(origem, \"dado\")\n"
+  "    if sys.platform() == \"windows\" {\n"
+  "        aberto = open(origem)\n"
+  "    } else {\n"
+  "        os.run([\"chmod\", \"555\", \"ro\"], capture=true)\n"
+  "    }\n"
   "}\n"
   "houve_erro = false\n"
-  "try { os.move(\"ro/f.txt\", \"dest.txt\") } catch (e) { houve_erro = true }\n"
+  "try { os.move(origem, \"dest.txt\") } catch (e) { houve_erro = true }\n"
   "if sys.platform() == \"windows\" {\n"
   "    aberto.close()\n"
-  "} else {\n"
+  "} elif sys.platform() != \"linux\" {\n"
   "    os.run([\"chmod\", \"755\", \"ro\"], capture=true)\n"
   "}\n"
-  "post(houve_erro, os.exists(\"ro/f.txt\"))\n", "True True", NULL, 0 },
+  "post(houve_erro, os.exists(origem))\n", "True True", NULL, 0 },
+/* O mesmo defeito no `delete()`: o retorno do unlink era ignorado e ele
+ * devolvia True com o arquivo no lugar. Ja apagado continua nao sendo erro; o
+ * que existe e nao sai levanta. A origem e segurada como no caso do move. */
+{ "PoolFile.delete que nao consegue apagar levanta PermissionError",
+  "import os\n"
+  "import sys\n"
+  "alvo = \"ro/f.txt\"\n"
+  "aberto = Null\n"
+  "if sys.platform() == \"linux\" {\n"
+  "    alvo = \"/proc/version\"\n"
+  "} else {\n"
+  "    os.mkdir(\"ro\")\n"
+  "    os.writeFile(alvo, \"dado\")\n"
+  "    if sys.platform() == \"windows\" {\n"
+  "        aberto = open(alvo)\n"
+  "    } else {\n"
+  "        os.run([\"chmod\", \"555\", \"ro\"], capture=true)\n"
+  "    }\n"
+  "}\n"
+  "p = os.loadFile(alvo, mode=\"rb\")\n"
+  "houve_erro = false\n"
+  "try { p.delete() } catch (PermissionError e) { houve_erro = true }\n"
+  "if sys.platform() == \"windows\" {\n"
+  "    aberto.close()\n"
+  "} elif sys.platform() != \"linux\" {\n"
+  "    os.run([\"chmod\", \"755\", \"ro\"], capture=true)\n"
+  "}\n"
+  "post(houve_erro, os.exists(alvo))\n", "True True", NULL, 0 },
+{ "PoolFile.delete de arquivo que ja nao existe nao e erro",
+  "import os\n"
+  "os.writeFile(\"some.txt\", \"x\")\n"
+  "p = os.loadFile(\"some.txt\", mode=\"rb\")\n"
+  "os.rename(\"some.txt\", \"outro.txt\")\n"
+  "post(p.delete(), os.exists(\"some.txt\"), os.exists(\"outro.txt\"))\n", "True False True", NULL, 0 },
+/* CAMINHO ABSOLUTO pela regra do sistema. Era `caminho[0] == '/'` em quatro
+ * lugares (os.loadFile/pathFile/pathFolder, `import "..."`, o `file=` do
+ * request e o `static_folder` do jinker), e no Windows o absoluto `C:\...`
+ * caia na busca pelo nome e nao achava. `os.cwd()` da o absoluto de cada
+ * sistema; no Linux e no macOS o caso passa igual antes e depois. */
+{ "os.loadFile e os.pathFile com caminho absoluto da pasta corrente",
+  "import os\n"
+  "os.writeFile(\"abs_alvo.txt\", \"dado\")\n"
+  "p = os.cwd() + \"/abs_alvo.txt\"\n"
+  "post(os.loadFile(p, mode=\"r\"))\n"
+  "post(os.pathFile(p).endswith(\"abs_alvo.txt\"))\n",
+  "dado\nTrue", NULL, 0 },
+{ "import com caminho absoluto acha o modulo (no Windows, C:/...)",
+  "import os\n"
+  "import sys\n"
+  "os.writeFile(\"mod_abs.pr\", \"funct oi() {\\n    return 42\\n}\\n\")\n"
+  "raiz = os.cwd().replace(\"\\\\\", \"/\")\n"
+  "os.writeFile(\"principal.pr\", \"import \\\"\" + raiz + \"/mod_abs.pr\\\"\\npost(mod_abs.oi())\\n\")\n"
+  "post(os.run([sys.executable, \"principal.pr\"], capture=true))\n",
+  "42", NULL, 0 },
 /* O rename do Windows (o do CRT) nao substituia um destino que ja existe, e o
  * mesmo `os.rename` que no Linux e no macOS troca o arquivo levantava erro. */
 { "os.rename por cima de um arquivo que existe substitui",

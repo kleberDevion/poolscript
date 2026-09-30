@@ -4,6 +4,16 @@ import request
 
 U = "http://127.0.0.1:28840"
 
+# Os arquivos que os dois lados trocam ficam na pasta de trabalho do servidor:
+# o MESMO nome do `PASTA` do jinker_srv.pr, relativo à pasta corrente — o
+# `teste/e2e_roda.pr` sobe os dois da raiz do repositório. O servidor a recria
+# VAZIA ao subir, então o que se lê aqui foi gravado NESTA rodada. Ao parar, no
+# Linux e no macOS, ele a apaga; no Windows ela sobra até a subida seguinte (ver
+# o fim do jinker_srv.pr). Era /tmp, e no Windows o motor é nativo:
+# "/tmp/x" é "<disco>:\tmp\x", na raiz do disco, fora do checkout — pasta que
+# só existia porque o `os.mkdir` do servidor a criava de carona.
+PASTA = "ps_e2e_jinker"
+
 r = request.get(U + "/oi")
 post("status_code ->", r.status_code)
 post("ok ->", r.ok)
@@ -72,14 +82,14 @@ b = request.get(U + "/baixar")
 post("filename ->", b.filename, "| corpo ->", b.text.strip())
 
 # ── upload: PoolFileUpload atravessando de verdade ──────────────────────────
-alvo = "/tmp/ps_e2e_envio.txt"
+alvo = PASTA + "/ps_e2e_envio.txt"
 using open(alvo, "w") as arq {
     arq.write("conteudo enviado")
 }
 
 u = request.post(U + "/upload", file={"arq": alvo})
 post("upload ->", u.get_json())
-post("salvou no servidor ->", open("/tmp/ps_upload_recebido.txt").read())
+post("salvou no servidor ->", open(PASTA + "/ps_upload_recebido.txt").read())
 
 m = request.post(U + "/uploads", file={"fotos": {"name": alvo}})
 post("files(campo) ->", m.get_json())
@@ -94,7 +104,7 @@ eco.on_message(funct(m) { vindas.append(m) })
 eco.send("pingue")
 sleep(1)
 post("return do handler volta ->", vindas)
-post("e o handler rodou ->", open("/tmp/ps_ws_sem_canal.txt").read())
+post("e o handler rodou ->", open(PASTA + "/ps_ws_sem_canal.txt").read())
 eco.close()
 
 # emit que não alcança ninguém é Error, não Success
@@ -114,7 +124,7 @@ falante.send("oi da outra ponta")
 
 sleep(2)                      # tem que chegar DURANTE a espera, não no close
 post("ouvinte recebeu durante o sleep ->", recebidas)
-post("status_send do emissor ->", open("/tmp/ps_ws_status.txt").read())
+post("status_send do emissor ->", open(PASTA + "/ps_ws_status.txt").read())
 
 falante.close()
 ouvinte.close()

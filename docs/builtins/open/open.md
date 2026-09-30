@@ -33,7 +33,7 @@ Todo arquivo na linguagem é `PoolFile`: o que sai do `open()` e o que sai do
 | `.bytes()` | `bytes` | o conteúdo em bytes |
 | `.copy(destino)` | `PoolFile` | copia; o original fica |
 | `.move(destino)` | `PoolFile` | move e passa a apontar pro novo lugar |
-| `.delete()` | `bool` | apaga do disco |
+| `.delete()` | `bool` | apaga do disco; o que já não existe não é erro, o que existe e não sai levanta `PermissionError` |
 | `.name` | `str` | o nome do arquivo (sem pasta) — **campo, sem `()`** |
 | `.ext` | `str` | a extensão com ponto (`".png"`) — campo |
 | `.size` | `int` | o tamanho em bytes — campo |

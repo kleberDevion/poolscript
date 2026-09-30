@@ -132,15 +132,22 @@ u1.close()
 u2.close()
 
 # ── erro de conexão é erro, não silêncio ────────────────────────────────────
+# O que se confere é a RECUSA da porta fechada; o prazo só impede o teste de
+# travar. No Linux e no macOS o loopback recusa na hora. O Windows, quando o
+# SYN volta com RST, insiste e manda o SYN de novo antes de dar a conexão como
+# recusada: com 2 s de prazo, o relógio do próprio teste podia vencer a recusa
+# e as duas checagens passavam pelo prazo estourado (`timed out`), que é erro
+# de prazo e não o de porta fechada que elas afirmam. Os 10 s são folga pra
+# essa insistência do Windows.
 morto = sockets.socket()
-morto.settimeout(2.0)
+morto.settimeout(10.0)
 rc = morto.connect_ex(("127.0.0.1", 1))
 confere("connect_ex em porta fechada devolve errno", rc != 0)
 morto.close()
 
 recusou = false
 s2 = sockets.socket()
-s2.settimeout(2.0)
+s2.settimeout(10.0)
 try
 {
     s2.connect(("127.0.0.1", 1))

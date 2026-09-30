@@ -211,7 +211,11 @@ function linkDoc(arq) {
   if (!arq || !raiz) return '';
   let abs = arq;
   try { abs = fs.realpathSync(arq); } catch (_) { /* fica o caminho */ }
-  return '[' + path.relative(raiz, arq) + '](file://' + abs + ')';
+  // A URI de arquivo pelo `uriDe`, não `file://` + caminho cru: no Windows o
+  // cru saía `file://D:\...\Jinker.md`, que o editor não abre, e em qualquer
+  // sistema um espaço ou acento no caminho quebrava o link. O texto do link
+  // usa `/` nos três sistemas.
+  return '[' + path.relative(raiz, arq).split(path.sep).join('/') + '](' + uriDe(abs) + ')';
 }
 
 /* Os membros de um tipo do motor, compactos: `nome(...)` pra método, `nome`
@@ -2609,7 +2613,7 @@ conexao.onHover((p) => {
                 + (filhos.length ? ' · filhos: ' + filhos.join(', ') : '');
     const pagina = path.join(raizDoc(), 'exceptions', 'exceptions.md');
     return md('```ps\n' + nome + '\n```\n\n' + linha + '\n\n`catch (' + nome + ' e)` pega ' + nome
-              + (filhos.length ? ' e os descendentes' : '') + ' · [árvore de exceções](' + pagina + ')');
+              + (filhos.length ? ' e os descendentes' : '') + ' · [árvore de exceções](' + uriDe(pagina) + ')');
   }
   const alvo = alvoDoImport(doc, nome, p.position.line);
   if (alvo) return hoverDoImportado(doc, alvo, nome, p.position.line);

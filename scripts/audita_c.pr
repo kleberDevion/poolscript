@@ -32,7 +32,9 @@
 #                                  calloc falha, o destrutor percorre `k`
 #                                  posições de um ponteiro NULL.
 #
-# Todos os quatro são a MESMA família: estado publicado pela metade.
+# Os quatro acima (1 a 4) são a MESMA família: estado publicado pela metade.
+# As outras regras do arquivo (opcode fora do `.def`, forma da assinatura,
+# tecnologia de outra linguagem citada no C) são cada uma a sua.
 import os
 import sys
 import regex
@@ -111,12 +113,18 @@ funct acha_gc(caminho, linhas, achados) {
         var = m[0]
 
         # 2) nasceu de malloc? (procura a declaração nas 8 linhas anteriores)
+        #
+        # O prefixo é OPCIONAL: `(.*[^A-Za-z0-9_])?`. Exigir um caractere antes
+        # do nome deixava passar calada a atribuição numa linha própria
+        # (`o = malloc(sizeof(PSFoo));`, com a declaração separada), porque
+        # depois do strip não sobra nada antes do nome. A fronteira continua:
+        # `xo = malloc(...)` não casa com a variável `o`.
         j = i - 8
         if j < 0 {
             j = 0
         }
         while j < i {
-            if regex.fullmatch(".*[^A-Za-z0-9_]" + var + "\\s*=\\s*malloc\\(sizeof\\(.*", linhas[j].strip()) and not aceito(linhas[j]) {
+            if regex.fullmatch("(.*[^A-Za-z0-9_])?" + var + "\\s*=\\s*malloc\\(sizeof\\(.*", linhas[j].strip()) and not aceito(linhas[j]) {
                 achados.append([caminho, j + 1,
                                 "objeto do GC nasce de malloc (lixo de pilha): " + var,
                                 linhas[j].strip()])
@@ -337,7 +345,7 @@ if __name__ == "main" {
         }
     }
     post("")
-    post("Os quatro padroes sao a MESMA familia: estado publicado pela metade.")
+    post("Os padroes 1 a 4 sao a MESMA familia: estado publicado pela metade.")
     post("Se algum for falso positivo, o conserto e deixar o codigo obvio pro")
     post("detector — nao silenciar o detector.")
     sys.exit(1)

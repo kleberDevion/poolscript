@@ -38,7 +38,8 @@ import date
 # Pasta dos programas gerados, RELATIVA à pasta de onde se roda (a raiz do
 # repositório, no `make leis`): nasce vazia no começo e é apagada no fim. Era
 # "/tmp/ps_leis", que no Windows o motor nativo lê como `\tmp` na raiz do
-# drive — nem é o /tmp do MSYS2, nem existe numa máquina limpa.
+# drive — nem é o /tmp do MSYS2, nem existe numa máquina limpa. É também a
+# pasta de TRABALHO de cada programa que este script roda (ver `executa`).
 TMP = "ps_leis_tmp"
 
 # Contraexemplo achado com semente VARIÁVEL (o noturno usa a do dia) some quando
@@ -584,11 +585,11 @@ async funct junta_erro(p) {
 # ainda rodando, mata o filho — a leitura dos canais chega ao fim e o `wait`
 # volta.
 #
-# Ninguém espera por ele: esperar custaria a fatia de sono inteira em cada
-# execução, mais do que o próprio lote leva pra rodar. Terminada a execução,
-# ele vê `acabou` na próxima vez que acorda e termina sozinho; o motor não
-# espera tarefa pendente no fim do programa, e sair com uma dormindo não
-# imprime nada nem muda o código de saída.
+# Ninguém espera por ele: esperar faria cada execução pagar o resto da volta
+# de sono em que ele estivesse quando o filho saiu, e são centenas de execuções
+# por `make leis`. Terminada a execução, ele vê `acabou` na próxima vez que
+# acorda e termina sozinho; o motor não espera tarefa pendente no fim do
+# programa, e sair com uma dormindo não imprime nada nem muda o código de saída.
 async funct vigia(p, estado) {
     fim = date.monotonic() + PRAZO
     while not estado["acabou"] {
@@ -603,11 +604,30 @@ async funct vigia(p, estado) {
 
 
 # Roda `arquivo` com o motor que roda este script, a entrada fechada (o
-# `< /dev/null` de antes) e o PRAZO, e devolve [rc, stdout, stderr]. O `using`
-# fecha os canais no fim da execução, sem esperar o coletor: são centenas de
-# execuções, e descritor esquecido aberto soma contra o limite do sistema.
+# `< /dev/null` de antes) e o PRAZO, e devolve [rc, stdout, stderr].
+#
+# O filho trabalha DENTRO de TMP, como no `cd` de antes, e `arquivo` é visto
+# de lá: relativo a TMP ou absoluto. Na pasta de onde este script roda (a raiz
+# do repositório, no `make leis`), o que uma lei ou um achado criasse com
+# caminho relativo ficaria no repositório, fora do alcance do `encerra`. O
+# `os.run` não recebe a pasta do filho: ele nasce na pasta corrente deste
+# processo. Então o script entra em TMP só pra criar o filho e volta em
+# seguida, e TMP e ACHADOS continuam relativos à pasta de onde ele foi chamado.
+#
+# O `using` fecha os canais no fim da execução, sem esperar o coletor: são
+# centenas de execuções, e descritor esquecido aberto soma contra o limite do
+# sistema.
 funct executa(arquivo) {
-    using os.run([sys.executable, arquivo], capture="live") as p {
+    filho = Null
+    volta = os.cwd()
+    os.chdir(TMP)
+    try {
+        filho = os.run([sys.executable, arquivo], capture="live")
+    }
+    finally {
+        os.chdir(volta)
+    }
+    using filho as p {
         p.close()
         estado = {"acabou": false, "estourou": false}
         vigia(p, estado)
@@ -637,14 +657,21 @@ funct encerra(codigo) {
 
 # Monta um programa com várias leis, roda e devolve [rc, stdout, stderr]. Cada
 # lei que falha imprime o índice; o resto fica calado.
+#
+# O contador é `rl_i`, e não `i`: atribuir dentro de uma funct a um nome que
+# está vivo no bloco principal escreve no de lá (docs/linguagem/04, 4.6.2 e
+# 4.7), e o laço de morte do principal conta com `i` enquanto chama esta funct
+# com um item só. Com `i` aqui, cada chamada deixava o `i` de lá em 1, o
+# principal somava 1, e o laço rodava o mesmo item sozinho pra sempre, pondo a
+# morte na conta de outra lei.
 funct roda_lote(itens, tag) {
     corpo = PREAMBULO
-    i = 0
-    while i < len(itens) {
-        corpo = corpo + "if not (" + itens[i][0] + ") {\n"
-        corpo = corpo + "    post(\"FALHOU " + str(i) + "\")\n"
+    rl_i = 0
+    while rl_i < len(itens) {
+        corpo = corpo + "if not (" + itens[rl_i][0] + ") {\n"
+        corpo = corpo + "    post(\"FALHOU " + str(rl_i) + "\")\n"
         corpo = corpo + "}\n"
-        i = i + 1
+        rl_i = rl_i + 1
     }
     corpo = corpo + "post(\"FIM\")\n"
 
@@ -652,7 +679,8 @@ funct roda_lote(itens, tag) {
     using open(alvo, "w") as f {
         f.write(corpo)
     }
-    return executa(alvo)
+    # o filho trabalha dentro de TMP: de lá o programa é só o nome
+    return executa(tag + ".pr")
 }
 
 
@@ -664,12 +692,15 @@ CANDIDATOS_T = ["", "a", "ab", "ç", "日", "\n", " "]
 CANDIDATOS_L = [[], [0], [1], [1, 0], [0, 0], [-1, 1]]
 
 
+# `af_r`, e não `r`: o `r` do bloco principal (a rodada) está vivo quando o
+# encolhimento roda, e com `r` aqui cada chamada escrevia a lista da execução
+# nele — a mesma regra do `rl_i` do `roda_lote`.
 funct ainda_falha(forma) {
-    r = roda_lote([[forma, ""]], "shrink")
-    if r[0] != 0 {
+    af_r = roda_lote([[forma, ""]], "shrink")
+    if af_r[0] != 0 {
         return true
     }
-    return "FALHOU 0" in r[1]
+    return "FALHOU 0" in af_r[1]
 }
 
 
@@ -800,8 +831,10 @@ if __name__ == "main" {
             if not n.endswith(".pr") {
                 continue
             }
-            # stdout e stderr num texto só, como o `2>&1` de antes
-            rep = executa(ACHADOS + "/" + n)
+            # O filho trabalha dentro de TMP (ver `executa`), então o achado vai
+            # com o caminho inteiro. stdout e stderr num texto só, como o
+            # `2>&1` de antes.
+            rep = executa(os.cwd() + "/" + ACHADOS + "/" + n)
             rc = rep[0]
             saida = rep[1] + rep[2]
             if rc != 0 or "AINDA FALHA" in saida or not "FIM" in saida {

@@ -15,18 +15,207 @@
 # Precisa de `openssl` e `python3`. Sem eles, PULOU — nunca falso verde.
 import os
 import sys
+import date
 
-CERT = "/tmp/ps_smtp_cert.pem"
-CHAVE = "/tmp/ps_smtp_key.pem"
-CAIXA = "/tmp/ps_smtp_caixa.txt"
+# Tudo mora numa pasta RELATIVA à corrente, criada aqui e apagada no fim pelo
+# próprio motor: o certificado, a caixa e o log do servidor falso, o programa
+# de cada caso e o anexo. Era tudo em /tmp, apagado com `rm` pelo `os.cmd`, e
+# isso só vale inteiro no Linux e no macOS: no Windows o motor é nativo,
+# "/tmp/x" é "<disco>:\tmp\x", na raiz do disco corrente, e o cmd.exe não tem
+# `rm`.
+#
+# Os caminhos vão com "/" nos três sistemas: o `attach` tira o nome do anexo
+# do que vem depois do último separador (`/`, e no Windows também `\`;
+# `met_mm_attach` em vm/jinga_vm.c, pela regra de vm/ps_caminho.h), e o caso
+# 5c confere esse nome na caixa.
+PASTA = "ps_e2e_mail_local"
+CERT = PASTA + "/ps_smtp_cert.pem"
+CHAVE = PASTA + "/ps_smtp_key.pem"
+CAIXA = PASTA + "/ps_smtp_caixa.txt"
+LOG_SRV = PASTA + "/ps_smtp_srv.log"
+CASO = PASTA + "/ps_mail_caso.pr"
+ANEXO = PASTA + "/ps_mail_anexo.txt"
+PASTA_COMO_ANEXO = PASTA + "/ps_mail_pasta"
 SRV = "teste/smtp_falso.py"
+WINDOWS = sys.platform() == "windows"
+
+# O prazo de cada caso, em segundos: o `timeout 25` de antes (ver `executa`).
+PRAZO = 25
 
 erros = 0
 
+# Quantos arquivos de comandos o `com_ambiente` já gravou (só no Windows).
+n_amb = 0
 
-funct tem(cmd) {
-    os.cmd("command -v " + cmd + " > /dev/null 2>&1; echo $? > /tmp/ps_tem.txt")
-    return int(open("/tmp/ps_tem.txt").read().strip()) == 0
+
+# ── processos: sem shell, nos três sistemas ─────────────────────────────────
+#
+# Os casos e os servidores falsos rodam pelo `os.run([...], capture="live")`:
+# o `Process` que volta dá os dois canais, o código de saída e o `kill()`, sem
+# shell no meio. Antes era tudo linha de sh pelo `os.cmd` (`command -v`,
+# `timeout 25`, `setsid ... &`, `sleep 0.1`, `> arq 2>&1; echo $?`), e isso só
+# existe inteiro no Linux: no macOS não há `timeout` nem `setsid`; no Windows
+# o `os.cmd` é o cmd.exe, sem aspas simples, `;`, `&` no fim, `$?`, `VAR=x
+# prog` nem /dev/null.
+
+
+# Os dois canais são lidos JUNTOS, cada um numa tarefa: lendo o stdout até o
+# fim antes do stderr, um filho que enche o cano do stderr fica parado
+# esperando alguém ler, e o prazo o daria como travado sem ele ter travado.
+async funct junta_saida(p) {
+    texto = ""
+    parte = p.read()
+    while parte != "" {
+        texto = texto + parte
+        parte = p.read()
+    }
+    return texto
+}
+
+
+async funct junta_erro(p) {
+    texto = ""
+    parte = p.read_err()
+    while parte != "" {
+        texto = texto + parte
+        parte = p.read_err()
+    }
+    return texto
+}
+
+
+# Encerra `p` e o que ele disparou. No Linux e no macOS é o `kill()`, o sinal
+# 15 do `timeout` de antes, e `p` é o próprio programa (o `env` do
+# `com_ambiente` dá lugar a ele). No Windows, com variável de ambiente, `p` é
+# o cmd.exe do `com_ambiente`, e o `kill()` encerraria só ele: o programa
+# seguiria rodando, segurando os canais, e a leitura deles não acabaria. O
+# `taskkill /T` encerra a árvore inteira; o `kill()` depois garante o próprio
+# `p`.
+funct mata(p) {
+    if WINDOWS {
+        os.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture=true)
+    }
+    p.kill()
+}
+
+
+# O VIGIA de uma execução: acorda a cada 10 ms e, passado o PRAZO com o filho
+# ainda rodando, encerra o filho — a leitura dos canais chega ao fim e o
+# `wait` volta. Ninguém espera por ele: terminada a execução, ele vê `acabou`
+# na próxima vez que acorda e termina sozinho; o motor não espera tarefa
+# pendente no fim do programa.
+async funct vigia(p, estado) {
+    fim = date.monotonic() + PRAZO
+    while not estado["acabou"] {
+        if date.monotonic() >= fim {
+            estado["estourou"] = true
+            mata(p)
+            return
+        }
+        sleep(0.01)
+    }
+}
+
+
+# Roda `args` com a entrada fechada e o PRAZO, e devolve [rc, saida]. A saída
+# é o stdout seguido do stderr: o `> arq 2>&1` de antes juntava os dois num
+# arquivo só; aqui são dois canos, e toda conferência abaixo é de trecho
+# contido, que não depende da ordem entre um e outro.
+#
+# Travar continua sendo morte: passado o PRAZO, o filho é encerrado e o código
+# vira 124, o que o `timeout` devolvia. Morte por sinal sai como o shell
+# contava, 128 + sinal, no Linux e no macOS; o Windows não tem sinal, e lá o
+# código é o que o sistema deu ao processo (ver `abortou`).
+funct executa(args) {
+    using os.run(args, capture="live") as p {
+        p.close()
+        estado = {"acabou": false, "estourou": false}
+        vigia(p, estado)
+        canais = gather(junta_saida(p), junta_erro(p))
+        rc = p.wait()
+        estado["acabou"] = true
+    }
+    if estado["estourou"] {
+        rc = 124
+    }
+    elif rc < 0 and not WINDOWS {
+        rc = 128 - rc
+    }
+    return [rc, canais[0] + canais[1]]
+}
+
+
+# O programa `args` com a variável `env` ("NOME=valor") no ambiente dele, e só
+# no dele; com `env` vazio, o próprio `args`. O `os.run` não recebe ambiente.
+# No Linux e no macOS ela vai pelo `env` (`env NOME=valor prog args`, sem
+# shell), que dá lugar ao programa. No Windows é o `set "NOME=valor"` do
+# cmd.exe, num arquivo de comandos: na linha do `cmd /c` que o `os.run` monta,
+# a aspa de dentro chega como `\"`, que o cmd.exe não desfaz. O `exit /b`
+# devolve o código do programa como o do cmd.exe.
+#
+# Cada chamada grava o SEU arquivo: o servidor falso fica no ar depois do
+# caso, e o cmd.exe relê o arquivo de comandos a cada linha que executa —
+# regravá-lo embaixo dele trocaria o que ele roda quando o servidor sair.
+funct com_ambiente(args, env) {
+    global n_amb
+    if env == "" {
+        return args
+    }
+    if not WINDOWS {
+        return ["env", env] + args
+    }
+    n_amb = n_amb + 1
+    arq = PASTA + "/ambiente_" + str(n_amb) + ".cmd"
+    linha = "\"" + args[0].replace("/", "\\").replace("%", "%%") + "\""
+    for each a in args[1:] {
+        linha = linha + " \"" + a.replace("%", "%%") + "\""
+    }
+    os.writeFile(arq, "@echo off\r\n"
+                 + "set \"" + env.replace("%", "%%") + "\"\r\n"
+                 + linha + "\r\n"
+                 + "exit /b %errorlevel%\r\n")
+    return ["cmd.exe", "/d", "/c", arq.replace("/", "\\")]
+}
+
+
+# O filho morreu num abort, que é por onde saem a proteção da pilha e a do
+# heap. No Linux e no macOS é o SIGABRT: 134, que é 128 + 6, como o shell
+# contava (ver `executa`). O Windows não tem sinal: lá o abort e a proteção da
+# pilha saem pelo encerramento de emergência do sistema, com a exceção
+# 0xC0000409, e o heap corrompido com a 0xC0000374 — que o `wait()` devolve
+# como int de 32 bits com sinal.
+funct abortou(rc) {
+    if WINDOWS {
+        return rc == 0xC0000409 - 4294967296 or rc == 0xC0000374 - 4294967296
+    }
+    return rc == 134
+}
+
+
+# Sai apagando a pasta da rodada (o `rm` do fim, de antes). No Windows arquivo
+# aberto não se apaga, e a pasta com ele dentro também não: por isso tudo aqui
+# se lê pelo `os.readFile`, que fecha na hora, e não pelo `open(...).read()`,
+# que deixava o arquivo aberto até o coletor passar.
+funct encerra(codigo) {
+    if os.exists(PASTA) {
+        os.rmdir(PASTA, force=true)
+    }
+    sys.exit(codigo)
+}
+
+
+# O programa existe e roda? Era `command -v` pelo /bin/sh, com o `$?` gravado
+# num arquivo em /tmp. Agora quem responde é o próprio programa, sem shell: o
+# que não existe levanta IOError no `os.run`, e o que existe sai 0 com `arg`.
+# Sair 0 faz parte da resposta: no Windows, sem o Python instalado, `python3`
+# ainda acha o atalho que o sistema põe no PATH, que só avisa que falta
+# instalar e sai 9009.
+funct tem(cmd, arg) {
+    try {
+        return executa([cmd, arg])[0] == 0
+    } catch (IOError e) {
+        return false
+    }
 }
 
 
@@ -42,13 +231,10 @@ funct conf(nome, cond, detalhe) {
 
 # Roda um .pr com o ambiente dado e devolve [rc, saida].
 funct roda(fonte, env) {
-    using open("/tmp/ps_mail_caso.pr", "w") as f {
+    using open(CASO, "w") as f {
         f.write(fonte)
     }
-    os.cmd(env + " timeout 25 '" + sys.executable + "' /tmp/ps_mail_caso.pr"
-           + " > /tmp/ps_mail_out.txt 2>&1; echo $? > /tmp/ps_mail_rc.txt")
-    return [int(open("/tmp/ps_mail_rc.txt").read().strip()),
-            open("/tmp/ps_mail_out.txt").read()]
+    return executa(com_ambiente([sys.executable, CASO], env))
 }
 
 
@@ -59,7 +245,7 @@ funct roda(fonte, env) {
 # o servidor anterior fica até 60 s no ar, e o teste reprovava por "não subiu"
 # sem ter nada a ver com mail.
 #
-# A espera é por SINAL (o arquivo aparecer), não por `sleep` no escuro.
+# A espera é por SINAL (a linha `PRONTO` aparecer), não por `sleep` no escuro.
 funct sobe_servidor() {
     return sobe(SRV)
 }
@@ -74,45 +260,104 @@ funct sobe(script) {
 
 # O mesmo, com variáveis de ambiente pro servidor falso (ex.: anunciar só
 # `AUTH LOGIN` em vez de `PLAIN`).
+#
+# O servidor é um `Process` (ver `com_ambiente`), com canais próprios que
+# ninguém lê: ele só escreve se cair, e aí o que escreveu vai pro LOG_SRV (o
+# `> ps_smtp_srv.log 2>&1` de antes). Fica no ar depois do caso, como ficava
+# com o `setsid ... &`: sai sozinho em até 60 s.
+#
+# A caixa é ESVAZIADA, não apagada (era `rm -f`), e só depois que o servidor
+# ANTERIOR gravou o diálogo dele (a espera do `le_caixa`, logo abaixo). Essa
+# gravação vem quando o cliente dele sai, e nos casos que não conferem a caixa
+# ninguém a esperava: caindo na caixa já esvaziada, ela virava a primeira
+# linha — `CLARO EHLO ...` no lugar do `PRONTO` — e o `int("EHLO")` derrubava
+# o teste. Medido na VPS com a gravação do servidor atrasada de propósito:
+# caíam o original e o portado, e com atraso pequeno o portado caía primeiro
+# (o `os.writeFile` esvazia na hora; o `rm -f` pelo `os.cmd` ainda subia um
+# `sh`). Pelo mesmo motivo o sinal é a linha que COMEÇA com `PRONTO`, a que o
+# servidor novo escreve ao abrir a caixa do zero, e não qualquer linha com
+# duas palavras.
 funct sobe_com(script, env) {
-    os.cmd("rm -f " + CAIXA)
-    os.cmd(env + " setsid python3 " + script + " 0 " + CERT + " " + CHAVE
-           + " " + CAIXA + " > /tmp/ps_smtp_srv.log 2>&1 &")
+    if os.exists(CAIXA) {
+        le_caixa()
+    }
+    os.writeFile(CAIXA, "")
+    p = os.run(com_ambiente(["python3", script, "0", CERT, CHAVE, CAIXA], env),
+               capture="live")
+    p.close()
     i = 0
     while i < 100 {
-        if os.exists(CAIXA) {
-            prim = open(CAIXA).read().split("\n")[0].split()
-            if len(prim) > 1 {
-                return int(prim[1])
-            }
+        prim = os.readFile(CAIXA).split("\n")[0].split()
+        if len(prim) > 1 and prim[0] == "PRONTO" {
+            return int(prim[1])
         }
-        os.cmd("sleep 0.1")
+        sleep(0.1)
         i = i + 1
     }
+    # não subiu: o log só está inteiro depois que ele sai
+    mata(p)
+    canais = gather(junta_saida(p), junta_erro(p))
+    os.writeFile(LOG_SRV, canais[0] + canais[1])
     return 0
 }
 
 
+# A caixa DEPOIS que o servidor gravou o diálogo do caso.
+#
+# O servidor falso só escreve o que viu quando o diálogo acaba, e fecha com a
+# linha `--- fim do dialogo`. Essa escrita vem depois da resposta ao último
+# comando: o cliente sai, e o teste pode ler a caixa antes dela. A corrida já
+# existia com o `timeout` e o `sh` de antes, que só davam mais tempo ao
+# servidor; com o `executa` a leitura vem logo que o cliente sai, e na VPS a
+# caixa chegou a ser lida só com o `PRONTO <porta>`: a conferência de presença
+# reprovou sem defeito nenhum, e a de ausência (`not "DELETE" in caixa`) passa
+# sem ter visto o diálogo.
+#
+# A espera é pelo SINAL, como a da subida. O teto de 5 s é pro diálogo que não
+# houve (o cliente caiu antes de conectar): aí confere assim mesmo, e a caixa
+# sem a linha de fim aparece no detalhe do erro.
+funct le_caixa() {
+    i = 0
+    while i < 50 {
+        lido = os.readFile(CAIXA)
+        if "--- fim do dialogo" in lido {
+            return lido
+        }
+        sleep(0.1)
+        i = i + 1
+    }
+    return os.readFile(CAIXA)
+}
+
+
 if __name__ == "main" {
-    if not tem("openssl") or not tem("python3") {
+    if not tem("openssl", "version") or not tem("python3", "--version") {
         post("PULOU — falta openssl ou python3")
         sys.exit(0)
     }
 
+    # a rodada começa do ZERO: a sobra de uma que caiu no meio sai antes
+    if os.exists(PASTA) {
+        os.rmdir(PASTA, force=true)
+    }
+    os.mkdir(PASTA)
+
     # certificado auto-assinado, válido por 2 dias. É de propósito que ele NÃO
-    # seja confiável: metade deste teste é o cliente recusá-lo.
-    os.cmd("openssl req -x509 -newkey rsa:2048 -keyout " + CHAVE + " -out " + CERT
-           + " -days 2 -nodes -subj '/CN=localhost' > /dev/null 2>&1")
+    # seja confiável: metade deste teste é o cliente recusá-lo. A saída do
+    # `openssl` não interessa (era o `> /dev/null 2>&1`): quem diz se deu certo
+    # é o arquivo existir.
+    executa(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-keyout", CHAVE,
+             "-out", CERT, "-days", "2", "-nodes", "-subj", "/CN=localhost"])
     if not os.exists(CERT) {
         post("PULOU — openssl nao gerou o certificado")
-        sys.exit(0)
+        encerra(0)
     }
 
     # ── 1. certificado nao confiavel: TEM que ser recusado ──────────────────
     porta = sobe_servidor()
     if porta == 0 {
-        post("ERRO: o SMTP falso nao subiu —", open("/tmp/ps_smtp_srv.log").read())
-        sys.exit(1)
+        post("ERRO: o SMTP falso nao subiu —", os.readFile(LOG_SRV))
+        encerra(1)
     }
     r = roda("import mail\n"
              + "s = mail.MailServer()\n"
@@ -124,7 +369,7 @@ if __name__ == "main" {
                          r[1])
     caixa = ""
     if os.exists(CAIXA) {
-        caixa = open(CAIXA).read()
+        caixa = le_caixa()
     }
     erros = erros + conf("o servidor viu o handshake ser recusado",
                          "HANDSHAKE_RECUSADO" in caixa, caixa)
@@ -135,7 +380,7 @@ if __name__ == "main" {
     porta = sobe_servidor()
     if porta == 0 {
         post("ERRO: o SMTP falso nao subiu (2)")
-        sys.exit(1)
+        encerra(1)
     }
     r = roda("import mail\n"
              + "s = mail.MailServer()\n"
@@ -152,7 +397,7 @@ if __name__ == "main" {
     erros = erros + conf("com o escape, o envio completa", r[0] == 0 and "ENVIOU" in r[1], r[1])
     caixa = ""
     if os.exists(CAIXA) {
-        caixa = open(CAIXA).read()
+        caixa = le_caixa()
     }
     erros = erros + conf("TLS estabelecido", "TLS_OK" in caixa, caixa)
     erros = erros + conf("autenticou", "LOGIN_OK teste@local" in caixa, caixa)
@@ -170,7 +415,7 @@ if __name__ == "main" {
     porta = sobe_servidor()
     if porta == 0 {
         post("ERRO: o SMTP falso nao subiu (3)")
-        sys.exit(1)
+        encerra(1)
     }
     r = roda("import mail\n"
              + "s = mail.MailServer()\n"
@@ -214,7 +459,7 @@ if __name__ == "main" {
     erros = erros + conf("AUTH LOGIN completa o envio", r[0] == 0 and "ENVIOU" in r[1], r[1])
     caixa = ""
     if os.exists(CAIXA) {
-        caixa = open(CAIXA).read()
+        caixa = le_caixa()
     }
     erros = erros + conf("usou AUTH LOGIN, nao PLAIN",
                          "SEGURO AUTH LOGIN" in caixa and not "AUTH PLAIN" in caixa, caixa)
@@ -232,7 +477,7 @@ if __name__ == "main" {
 
     # ── 5c. anexo: outra montagem de MIME ───────────────────────────────────
     porta = sobe_servidor()
-    using open("/tmp/ps_mail_anexo.txt", "w") as f {
+    using open(ANEXO, "w") as f {
         f.write("conteudo do anexo")
     }
     r = roda("import mail\n"
@@ -244,14 +489,14 @@ if __name__ == "main" {
              + "m.toAddress(\"destino@local\")\n"
              + "m.subject(\"com anexo\")\n"
              + "m.body(\"olha o anexo\")\n"
-             + "m.attach(\"/tmp/ps_mail_anexo.txt\")\n"
+             + "m.attach(\"" + ANEXO + "\")\n"
              + "s.send(m)\n"
              + "s.quit()\n"
              + "post(\"ENVIOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
     erros = erros + conf("envio com anexo completa", r[0] == 0 and "ENVIOU" in r[1], r[1])
     caixa = ""
     if os.exists(CAIXA) {
-        caixa = open(CAIXA).read()
+        caixa = le_caixa()
     }
     erros = erros + conf("o anexo entra como parte MIME própria",
                          "ps_mail_anexo.txt" in caixa, caixa)
@@ -272,8 +517,8 @@ if __name__ == "main" {
     # código — e por isso é testada de novo, não é repetição do caso 1.
     porta = sobe("teste/imap_falso.py")
     if porta == 0 {
-        post("ERRO: o IMAP falso nao subiu —", open("/tmp/ps_smtp_srv.log").read())
-        sys.exit(1)
+        post("ERRO: o IMAP falso nao subiu —", os.readFile(LOG_SRV))
+        encerra(1)
     }
     r = roda("import mail\n"
              + "r = mail.MailReader()\n"
@@ -307,7 +552,7 @@ if __name__ == "main" {
                          "corpo com ção e ê" in r[1], r[1])
     caixa = ""
     if os.exists(CAIXA) {
-        caixa = open(CAIXA).read()
+        caixa = le_caixa()
     }
     erros = erros + conf("IMAP: autenticou", "LOGIN_OK" in caixa, caixa)
     # `select(readonly=true)` é o padrão e vira EXAMINE, não SELECT
@@ -327,7 +572,7 @@ if __name__ == "main" {
              + "post(\"OK\")\n", "PS_MAIL_TLS_INSEGURO=1")
     caixa = ""
     if os.exists(CAIXA) {
-        caixa = open(CAIXA).read()
+        caixa = le_caixa()
     }
     erros = erros + conf("IMAP: readonly=false manda SELECT",
                          "C A2 SELECT" in caixa, caixa)
@@ -352,7 +597,7 @@ if __name__ == "main" {
              + "r.close()\n", "PS_MAIL_TLS_INSEGURO=1")
     caixa = ""
     if os.exists(CAIXA) {
-        caixa = open(CAIXA).read()
+        caixa = le_caixa()
     }
     erros = erros + conf("IMAP: termo ASCII vai entre aspas, sem literal",
                          "SEARCH CHARSET UTF-8 SUBJECT \"acentuada\"" in caixa
@@ -369,7 +614,7 @@ if __name__ == "main" {
              + "r.close()\n", "PS_MAIL_TLS_INSEGURO=1")
     caixa = ""
     if os.exists(CAIXA) {
-        caixa = open(CAIXA).read()
+        caixa = le_caixa()
     }
     erros = erros + conf("IMAP: termo com acento usa LITERAL", "SEARCH_LITERAL" in caixa, caixa)
     # o literal conta BYTES: "relatório" tem 9 caracteres e 10 bytes em UTF-8.
@@ -468,12 +713,15 @@ if __name__ == "main" {
     #     fread (EISDIR). Ninguém olhava o ferror: o anexo saía com ZERO byte
     #     e o método devolvia True. Relatório em anexo que ninguém confere
     #     depois é exatamente onde isso passa despercebido.
-    os.cmd("mkdir -p /tmp/ps_mail_pasta")
+    os.mkdir(PASTA_COMO_ANEXO, exist_ok=true)
     r = roda("import mail\n"
              + "m = mail.MailMessage()\n"
-             + "post(\"attach:\", m.attach(\"/tmp/ps_mail_pasta\"))\n", "")
+             + "post(\"attach:\", m.attach(\"" + PASTA_COMO_ANEXO + "\"))\n", "")
     erros = erros + conf("attach de pasta FALHA, não anexa vazio",
                          r[0] != 0 and not "attach: True" in r[1], r[1])
+    # O errno é EISDIR (21) nos três sistemas: o motor recusa a pasta antes de
+    # abrir, como no `open()` e no `os.readFile`. Era o do sistema (no Windows
+    # o abrir recusava com EACCES, 13), e o mesmo anexo dava dois erros.
     erros = erros + conf("e diz o errno, como o CPython",
                          "Errno 21" in r[1] and "Is a directory" in r[1], r[1])
 
@@ -492,7 +740,7 @@ if __name__ == "main" {
                          r[0] == 0 and "ENVIOU" in r[1], r[1])
     caixa = ""
     if os.exists(CAIXA) {
-        caixa = open(CAIXA).read()
+        caixa = le_caixa()
     }
     erros = erros + conf("e o assunto do atalho chega",
                          "Subject: assunto curto" in caixa, caixa)
@@ -510,7 +758,7 @@ if __name__ == "main" {
              + "try { s.login(\"a\"*4000 + \"@x.com\", \"senha\") }\n"
              + "catch (e) { post(\"LEVANTOU\", e) }\n", "PS_MAIL_TLS_INSEGURO=1")
     erros = erros + conf("AUTH com usuário de 4000 chars não estoura a pilha",
-                         r[0] != 134 and not "stack smashing" in r[1], r[1])
+                         not abortou(r[0]) and not "stack smashing" in r[1], r[1])
     erros = erros + conf("e vira erro na linguagem", "LEVANTOU" in r[1], r[1])
 
     # 7.5 Literal IMAP com tamanho NEGATIVO. O `{n}` vem do SERVIDOR e entrava
@@ -527,7 +775,7 @@ if __name__ == "main" {
              + "try { post(r.body(\"1\")) }\n"
              + "catch (e) { post(\"LEVANTOU\", e) }\n", "PS_MAIL_TLS_INSEGURO=1")
     erros = erros + conf("literal IMAP negativo não corrompe o heap",
-                         r[0] != 134 and not "buffer overflow" in r[1], r[1])
+                         not abortou(r[0]) and not "buffer overflow" in r[1], r[1])
     erros = erros + conf("literal negativo vira erro, não crash", "LEVANTOU" in r[1], r[1])
 
     # 7.6 Corpo em base64 com UM byte fora do alfabeto: o decodificador é
@@ -559,19 +807,17 @@ if __name__ == "main" {
              + "catch (e) { post(\"LEVANTOU\", e) }\n", "PS_MAIL_TLS_INSEGURO=1")
     caixa = ""
     if os.exists(CAIXA) {
-        caixa = open(CAIXA).read()
+        caixa = le_caixa()
     }
     erros = erros + conf("CR/LF no argumento IMAP é recusado", "LEVANTOU" in r[1], r[1])
     erros = erros + conf("e o DELETE nunca chega no servidor",
                          not "DELETE" in caixa, caixa)
 
-    os.cmd("rm -rf /tmp/ps_mail_pasta")
-    os.cmd("rm -f " + CERT + " " + CHAVE + " " + CAIXA)
     post("")
     if erros > 0 {
         post("mail local: FALHOU em", erros, "checagens")
-        sys.exit(1)
+        encerra(1)
     }
     post("OK — SMTP completo offline, e o certificado invalido é recusado")
-    sys.exit(0)
+    encerra(0)
 }

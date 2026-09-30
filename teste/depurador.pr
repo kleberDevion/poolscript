@@ -170,7 +170,11 @@ post("subindo o motor em modo debug na porta", PORTA)
 # `sys.executable`, não `./pool`: sob `make cobertura` o motor que roda o
 # teste é o instrumentado (`cob/pool`), e o depurador tem que ser ELE — com o
 # `./pool` fixo, o `ps_debug.c` ficava de fora da medição (0% de ramo).
-os.run("'" + sys.executable + "' --debug " + str(PORTA) + " " + ALVO)
+# Em LISTA, e não numa string com o caminho entre aspas simples: a string é
+# partida pelas aspas do próprio `os.run`, e um apóstrofo no caminho do motor
+# (nome de usuário do Windows, `C:\Users\O'Neil\...`) cortava o executável
+# ali e o disparo morria em IOError. Na lista cada item chega inteiro.
+os.run([sys.executable, "--debug", str(PORTA), ALVO])
 
 # O motor precisa de um instante pra abrir o socket. Tentar conectar em laço é
 # mais confiável que dormir um tempo fixo, que falha em máquina carregada.
@@ -340,7 +344,7 @@ eventos = []
 proximo_seq = 0
 post("")
 post("segunda sessao: alvo que quebra")
-os.run("'" + sys.executable + "' --debug " + str(PORTA2) + " teste/alvo_debug_erro.pr")
+os.run([sys.executable, "--debug", str(PORTA2), "teste/alvo_debug_erro.pr"])
 
 sock = Null
 tentativa = 0
@@ -438,10 +442,24 @@ eventos = []
 proximo_seq = 0
 post("")
 post("terceira sessao: breakpoint e next em linha com chamada")
-os.run("'" + sys.executable + "' --debug " + str(PORTA3) + " " + ALVO)
+os.run([sys.executable, "--debug", str(PORTA3), ALVO])
+# A SONDA do editor: a extensão do VS Code conecta e fecha só pra ver se a
+# porta abriu, e depois abre a sessão de verdade. O motor aceitava UMA
+# conexão, a sonda gastava a vez, o programa rodava sem parar e a conexão do
+# editor era recusada — o F5 não depurava. Esta sessão tem que parar no
+# breakpoint mesmo com a sonda antes.
+sonda = conecta(PORTA3)
+sonda.close()
 sock = conecta(PORTA3)
 pede(sock, "initialize", { "adapterID": "jinga" })
-pede(sock, "setBreakpoints", { "source": { "path": ALVO },
+# O caminho do breakpoint como o editor manda: absoluto e com o separador do
+# sistema (no Windows `C:\...\teste\alvo_debug.pr`), enquanto o motor guarda
+# o da linha de comando (`teste/alvo_debug.pr`).
+caminho_bp = os.cwd() + "/" + ALVO
+if sys.platform() == "windows" {
+    caminho_bp = caminho_bp.replace("/", "\\")
+}
+pede(sock, "setBreakpoints", { "source": { "path": caminho_bp },
                                "breakpoints": [ { "line": 17 }, { "line": 18 } ] })
 pede(sock, "configurationDone", {})
 
@@ -493,7 +511,7 @@ eventos = []
 proximo_seq = 0
 post("")
 post("quarta sessao: laco chamando funct tres vezes")
-os.run("'" + sys.executable + "' --debug " + str(PORTA4) + " " + ALVO4)
+os.run([sys.executable, "--debug", str(PORTA4), ALVO4])
 sock = conecta(PORTA4)
 pede(sock, "initialize", { "adapterID": "jinga" })
 pede(sock, "setBreakpoints", { "source": { "path": ALVO4 },

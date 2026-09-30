@@ -8,12 +8,18 @@ virava `$1` no PostgreSQL.
 
 | script | precisa de | roda com |
 |---|---|---|
-| `arquivo.pr` | nada (usa `/tmp`) | `./pool teste/e2e/arquivo.pr` |
+| `arquivo.pr` | nada (no Linux e no macOS usa `/tmp/ps_e2e`; no Windows a pasta `ps_e2e_arquivo` na pasta corrente) | `./pool teste/e2e/arquivo.pr` |
 | `sqlite.pr` | nada (sqlite é embutido) | `./pool teste/e2e/sqlite.pr` |
 | `socket.pr` | nada (loopback) | `./pool teste/e2e/socket.pr` |
-| `jinker_srv.pr` + `jinker_cli.pr` | nada (loopback) | ver abaixo |
+| `pkg.pr`, `manpu.pr`, `qrcode.pr`, `c.pr`, `d.pr`, `f.pr` | nada | `./pool teste/e2e/<script>` |
+| `mail_local.pr` | `python3` e `openssl` (os servidores falsos de SMTP/IMAP) | `./pool teste/e2e/mail_local.pr` |
+| `jinker_srv.pr` + `jinker_cli.pr` + `jinker_bruto.pr` | nada (loopback) | ver abaixo |
 | `db.pr` | PostgreSQL e/ou MySQL | ver abaixo |
 | `mongo.pr` | mongod local | ver abaixo |
+
+Os scripts que criam arquivo trabalham numa pasta `ps_e2e_*` da pasta de
+onde rodam (a raiz do repositório, pelo `make`), apagam no fim e apagam a
+sobra de uma rodada interrompida no começo da seguinte.
 
 Script que não encontra o recurso imprime `PULOU` e o motivo — **não** passa
 calado nem falha a suíte por ausência de servidor.
@@ -36,7 +42,7 @@ Três papéis, declarados no topo do driver:
 
 | papel | o que o driver faz |
 |---|---|
-| **par** (servidor + cliente) | sobe o servidor com `setsid`, **espera a porta aceitar conexão** (não dorme no escuro), roda o cliente, e mata o servidor aconteça o que acontecer |
+| **par** (servidor + cliente) | sobe o servidor como processo filho (`os.run(..., capture="live")`, sem shell), **espera a porta aceitar conexão** (tenta conectar, com prazo de relógio; não dorme no escuro), roda os clientes em ordem, e derruba o servidor aconteça o que acontecer: `kill()` (SIGTERM no Linux e no macOS e, se não sair em 6 s, SIGKILL; no Windows, TerminateProcess). Cliente de par que diz PULOU conta como FALHA: a porta já tinha aberto, então foi o servidor que caiu |
 | **sozinho** | roda direto |
 | **sem par** | servidor sem cliente — bloquearia até o timeout. É RELATADO, não rodado |
 
@@ -47,14 +53,18 @@ suíte principal fechou com `mkdtemp`+`chdir`.
 
 ## jinker (servidor + cliente), na mão
 
-Se quiser rodar fora do driver — pra depurar o servidor, por exemplo:
+O jeito curto é o próprio driver com o filtro: `./pool teste/e2e_roda.pr jinker`.
+Pra depurar o servidor fora dele, dois terminais na MESMA pasta (a raiz do
+repositório — servidor e cliente trocam arquivos pela pasta `ps_e2e_jinker`
+de lá):
 
 ```bash
-setsid ./pool teste/e2e/jinker_srv.pr > /tmp/ps_srv.log 2>&1 < /dev/null &
-sleep 2
-./pool teste/e2e/jinker_cli.pr
-pkill -f jinker_srv.pr
+./pool teste/e2e/jinker_srv.pr      # terminal 1: fica servindo na 28840
+./pool teste/e2e/jinker_cli.pr      # terminal 2, com o servidor de pé
+./pool teste/e2e/jinker_bruto.pr    # terminal 2: o HTTP cru
 ```
+
+Ctrl+C no terminal 1 derruba o servidor.
 
 Cobre HTTP (rotas, status, tupla, 204, upload), **upload multipart**
 (`file()`/`files(campo)`, `PoolFileUpload` inteiro) e **WebSocket**:
@@ -89,12 +99,12 @@ sudo mysql -e "DROP DATABASE ps_teste; DROP USER 'ps_teste'@'localhost';"
 
 ## mongo
 
-Sem tocar na instalação do sistema — sobe num diretório temporário e numa
-porta própria:
+Sem tocar na instalação do sistema — sobe numa pasta vazia e numa porta
+própria, em outro terminal:
 
 ```bash
-mkdir -p /tmp/ps_mongo_db
-mongod --dbpath /tmp/ps_mongo_db --port 27099 --bind_ip 127.0.0.1 --quiet &
-./pool teste/e2e/mongo.pr
-pkill -f "port 27099"
+mongod --dbpath <pasta vazia> --port 27099 --bind_ip 127.0.0.1 --quiet   # terminal 1
+./pool teste/e2e/mongo.pr                                                # terminal 2
 ```
+
+Ctrl+C no terminal 1 derruba o mongod.

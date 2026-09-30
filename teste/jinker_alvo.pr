@@ -28,9 +28,30 @@ os.writeFile(PASTA + "/estatico/.well-known/acme", "token")         # a UNICA ex
 os.mkdir("teste/static", exist_ok=true)
 os.writeFile("teste/static/solto.txt", "asset solto")
 # symlink DENTRO da pasta publicada apontando pra FORA: nao tem `..` na URL,
-# so o `realpath` pega. O `os` nao cria link; o `ln` do sistema serve.
-os.cmd("ln -sf /etc/passwd " + PASTA + "/estatico/link_passwd")
-os.cmd("ln -sf " + PASTA + "/segredo.txt teste/static/link_fora")
+# so o `realpath` pega. O `os` nao cria link; quem cria e o sistema: o `ln` no
+# Linux e no macOS, o `mklink` no Windows (la o `os.cmd` e o `cmd.exe`, que nao
+# tem `ln`). O Windows nao tem `/etc/passwd`, entao la o `link_passwd` nao
+# existe; e o `mklink` exige o privilegio de criar link (administrador ou o
+# modo de desenvolvedor), sem ele o `link_fora` tambem nao nasce. Link que
+# faltou nao derruba o alvo: o driver confere o destino de cada vetor e diz,
+# contado, qual nao tinha o que provar.
+if sys.platform() == "windows"
+{
+    post("servidor-alvo: sem estatico/link_passwd: o Windows nao tem /etc/passwd")
+    # Barra invertida: no `cmd.exe` a `/` abre opcao. O `\tmp\...` sem disco e
+    # o mesmo `/tmp` do motor: a raiz do disco corrente.
+    motivo = os.cmd("mklink \"teste\\static\\link_fora\" \""
+                    + PASTA.replace("/", "\\") + "\\segredo.txt\"", true)
+    if not os.exists("teste/static/link_fora")
+    {
+        post("servidor-alvo: sem static/link_fora: " + motivo)
+    }
+}
+else
+{
+    os.cmd("ln -sf /etc/passwd " + PASTA + "/estatico/link_passwd")
+    os.cmd("ln -sf " + PASTA + "/segredo.txt teste/static/link_fora")
+}
 
 app = jinker.Jinker(name="alvo", static_folder=PASTA + "/estatico", static_url="/estatico")
 
@@ -469,10 +490,13 @@ async funct rota_await_helper()
 # `os.run(capture=true)` DENTRO da rota: a espera do filho não pode segurar o
 # worker (é um só aqui). Antes o `roda_processo` esperava na própria fibra e
 # toda outra requisição ficava na fila atrás do comando.
+# O filho é o próprio binário dormindo 3 s, não o `sleep` do sistema: o Windows
+# não tem `sleep`, e com o programa faltando o `os.run` levanta na hora, a rota
+# responde 500 sem esperar nada e a medição do driver passa sem ter medido.
 @app.route("/lento")
 funct lento()
 {
-    os.run(["sleep", "3"], capture=true)
+    os.run([sys.executable, "-e", "sleep(3)"], capture=true)
     return {"lento": true}
 }
 
@@ -496,7 +520,8 @@ TAREFA_ANTES = "pendente"
 async funct tarefa_antes_do_servidor()
 {
     global TAREFA_ANTES
-    os.run(["sleep", "0.3"], capture=true)
+    # o filho é o próprio binário, como na `/lento`: o Windows não tem `sleep`
+    os.run([sys.executable, "-e", "sleep(0.3)"], capture=true)
     TAREFA_ANTES = "terminou"
 }
 

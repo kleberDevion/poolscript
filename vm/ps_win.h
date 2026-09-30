@@ -47,18 +47,38 @@
 static inline int ps_win_mkdir(const char *p, int modo) { (void)modo; return _mkdir(p); }
 #define mkdir(p, m) ps_win_mkdir((p), (m))
 
-/* `realpath`: `_fullpath` faz a mesma coisa (caminho absoluto, sem `..`) */
+/* `realpath` com a regra do POSIX: caminho absoluto, sem `..` e com link
+ * simbólico e junção RESOLVIDOS. Era `_fullpath`, que só arruma o texto: um
+ * link dentro da pasta estática do jinker passava pela conferência "está sob a
+ * raiz" e o arquivo de FORA era servido (o vetor de travessia `link_fora`).
+ * Quem diz o caminho final é o sistema, pelo objeto aberto: a pasta abre com
+ * FILE_FLAG_BACKUP_SEMANTICS, e com acesso 0 (sem pedir leitura) o arquivo sem
+ * permissão de leitura também resolve. Com o manifesto (activeCodePage UTF-8)
+ * as funções `A` falam UTF-8. O nome volta sem o prefixo `\\?\`, com `/`. */
 static inline char *realpath(const char *p, char *r)
 {
-    char *out = _fullpath(r, p, r ? MAX_PATH : 0);
-    if (!out) return NULL;
-    DWORD a = GetFileAttributesA(out);
-    if (a == INVALID_FILE_ATTRIBUTES) {       /* o POSIX recusa caminho que não existe */
-        if (!r) free(out);
-        errno = ENOENT;
+    HANDLE h = CreateFileA(p, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                           NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    if (h == INVALID_HANDLE_VALUE) {          /* o POSIX recusa caminho que não existe */
+        errno = GetLastError() == ERROR_ACCESS_DENIED ? EACCES : ENOENT;
         return NULL;
     }
-    for (char *c = out; *c; c++) if (*c == '\\') *c = '/';
+    enum { CAP_FINAL = 32768 };               /* o teto do caminho longo do Windows */
+    char *fin = malloc(CAP_FINAL);
+    if (!fin) { CloseHandle(h); errno = ENOMEM; return NULL; }
+    DWORD n = GetFinalPathNameByHandleA(h, fin, CAP_FINAL, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+    CloseHandle(h);
+    if (n == 0 || n >= CAP_FINAL) { free(fin); errno = ENAMETOOLONG; return NULL; }
+    char *c = fin;
+    if (strncmp(c, "\\\\?\\UNC\\", 8) == 0) { c += 6; c[0] = '\\'; }   /* \\?\UNC\srv\x -> \\srv\x */
+    else if (strncmp(c, "\\\\?\\", 4) == 0) c += 4;                    /* \\?\C:\x -> C:\x */
+    size_t len = strlen(c);
+    char *out = r;
+    if (r && len >= MAX_PATH) { free(fin); errno = ENAMETOOLONG; return NULL; }
+    if (!r && !(out = malloc(len + 1))) { free(fin); errno = ENOMEM; return NULL; }
+    memcpy(out, c, len + 1);
+    free(fin);
+    for (char *q = out; *q; q++) if (*q == '\\') *q = '/';
     return out;
 }
 
@@ -146,10 +166,13 @@ static inline char *ps_w_strcasestr(const char *h, const char *n)
  * e traduzem o erro pro `errno` — o código que as chama não muda. Um `connect`
  * não-bloqueante em andamento é WSAEWOULDBLOCK no Windows e EINPROGRESS no
  * POSIX: a tradução do `connect` diz EINPROGRESS. O `setsockopt`/`getsockopt`
- * do Winsock pedem `char *`; aqui aceitam o ponteiro de sempre. */
-static inline int ps_w_errno(void)
+ * do Winsock pedem `char *`; aqui aceitam o ponteiro de sempre.
+ *
+ * `ps_w_errno_de` traduz um código do Winsock dado; o `SO_ERROR` do connect
+ * com prazo chega assim (10061, não ECONNREFUSED), e ia cru pro `errno`: o
+ * erro saía "[Errno 10061] Unknown error". */
+static inline int ps_w_errno_de(int w)
 {
-    int w = WSAGetLastError();
     switch (w) {
         case WSAEWOULDBLOCK: case WSAETIMEDOUT: errno = EAGAIN; break;
         case WSAEINTR:       errno = EINTR; break;
@@ -176,6 +199,7 @@ static inline int ps_w_errno(void)
     }
     return errno;
 }
+static inline int ps_w_errno(void) { return ps_w_errno_de(WSAGetLastError()); }
 static inline int ps_w_socket(int f, int t, int p)
 {
     SOCKET s = socket(f, t, p);

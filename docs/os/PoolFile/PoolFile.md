@@ -33,7 +33,7 @@ pdf = os.loadFile("nota.pdf")     # PoolFile
 | `.save(path=null)` | grava o conteúdo em disco — devolve um novo `PoolFile`. Sem `path`, salva **na pasta do script em execução** com o próprio `.name`; com `path`, salva lá (criando as pastas que faltarem) |
 | `.move(destino)` | move o arquivo pro destino — devolve um novo `PoolFile` |
 | `.copy(destino)` | copia pro destino — devolve um novo `PoolFile` |
-| `.delete()` | apaga o arquivo do disco |
+| `.delete()` | apaga o arquivo do disco. Arquivo que já não existe não é erro; o que existe e não sai (pasta sem permissão de escrita; no Windows, o arquivo aberto em outro programa) levanta `PermissionError` |
 
 ```
 img = os.loadFile("temp/foto.png")

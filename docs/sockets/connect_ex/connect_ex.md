@@ -17,12 +17,14 @@ portas ou tentar vários endereços sem `try/catch` em volta de cada um.
 | valor | significa |
 |---|---|
 | `0` | conectou |
-| `111` | `Connection refused` — nada escutando ali |
-| `110` | o prazo do [`settimeout`](../settimeout/settimeout.md) estourou |
-| outro | o `errno` que o sistema devolveu (`113` sem rota, e assim por diante) |
+| `ECONNREFUSED` do sistema: `111` no Linux, `61` no macOS, `107` no Windows | `Connection refused` — nada escutando ali |
+| `ETIMEDOUT` do sistema: `110` no Linux, `60` no macOS, `138` no Windows | o prazo do [`settimeout`](../settimeout/settimeout.md) estourou |
+| outro | o `errno` que o sistema devolveu (sem rota, e assim por diante) |
 
-Só isso: nunca uma tupla, nunca `Null`. O número é o `errno` cru — para
-comparar, compare com o número.
+Só isso: nunca uma tupla, nunca `Null`. O número é o `errno` do sistema em
+que o programa roda, e ele **muda de sistema pra sistema**: `0` é o único
+valor igual em todos. Pra saber se conectou, compare com `0`; pra separar
+recusa de prazo, compare com o número do sistema.
 
 ## Erros
 
@@ -58,6 +60,8 @@ fechado.close()
 111
 ```
 
+(`111` é a saída no Linux; no macOS sai `61`, no Windows `107`.)
+
 Varredura simples, sem `try` em volta de cada porta:
 
 ```ps
@@ -87,8 +91,8 @@ False fechada
 
 ## Bordas
 
-- prazo estourado devolve **`110`**, não levanta `timed out` — a diferença
-  central em relação ao `connect`
+- prazo estourado devolve o **`ETIMEDOUT`** do sistema (`110` no Linux),
+  não levanta `timed out` — a diferença central em relação ao `connect`
 - `0` é o único valor que quer dizer sucesso; qualquer outro é falha
 - o socket continua utilizável depois de um retorno diferente de `0` só para
   ser fechado: tentar de novo no mesmo objeto é recusado pelo sistema

@@ -21,6 +21,10 @@
 import os
 import sys
 
+# No Windows os links são listados, lidos e refeitos pelo cmd.exe (ver
+# `conserta_links`), e a pasta do usuário é a USERPROFILE.
+WINDOWS = sys.platform() == "windows"
+
 VELHAS = [".ps", ".psl", ".p"]
 NOVA = ".pr"
 PULA_PASTA = [".git", "node_modules", "dist", "__pycache__", ".venv"]
@@ -233,49 +237,440 @@ funct migra_pasta(raiz, aplica, so_renome) {
 }
 
 
+# Os dois canais do filho, lidos JUNTOS, cada um numa tarefa: lendo o stdout
+# até o fim antes do stderr, um filho que enche o cano do stderr fica parado
+# esperando alguém ler.
+async funct le_saida(p) {
+    texto = ""
+    parte = p.read()
+    while parte != "" {
+        texto = texto + parte
+        parte = p.read()
+    }
+    return texto
+}
+
+
+async funct le_erro(p) {
+    texto = ""
+    parte = p.read_err()
+    while parte != "" {
+        texto = texto + parte
+        parte = p.read_err()
+    }
+    return texto
+}
+
+
+# Roda um programa SEM shell e devolve [stdout, stderr, código de saída].
+# Programa que não existe levanta IOError, como o próprio `os.run`.
+funct roda(args) {
+    p = os.run(args, capture="live")
+    using p as filho {
+        filho.close()
+        canais = gather(le_saida(filho), le_erro(filho))
+        rc = filho.wait()
+    }
+    return [canais[0], canais[1], rc]
+}
+
+
+# A primeira linha com texto — o recado de um programa que recusou.
+funct primeira_linha(texto) {
+    for each linha in texto.split("\n") {
+        if linha.strip() != "" {
+            return linha.strip()
+        }
+    }
+    return ""
+}
+
+
 # Link simbólico: renomear o link muda o NOME dele, nunca o ALVO que ele
 # guarda dentro — e aí o link fica apontando pra um arquivo que não existe
 # mais. Foi assim que `teste/geradores/para_chaves.pr` virou link quebrado
 # pra `scripts/para_chaves.ps`, e o `make semeia` parou de rodar sem ninguém
 # ver: o renome dizia "6 arquivos", e o estrago não aparecia em lugar nenhum.
 #
-# A linguagem não tem `readlink`, então o alvo vem do `find` do sistema. Só
-# mexe no link cujo alvo termina em extensão VELHA — o resto fica como está.
+# A linguagem não lê link: o `os.ls` segue o link (diz "file" ou "dir" do que
+# está do outro lado) e o `os` não tem `readlink` nem `symlink`. Quem lista,
+# lê o alvo e refaz o link é o sistema: no Linux e no macOS, programas
+# chamados SEM shell; no Windows, o `dir` e o `mklink`, que são do cmd.exe.
+# Era um `find '<pasta>' -type l -printf '%p\t%l\n' 2>/dev/null` pelo
+# `os.cmd`: o `-printf` só o find do GNU tem, e no macOS o find recusava, o
+# `2>/dev/null` engolia a recusa e nenhum link era visto; no Windows o cmd.exe
+# não tem aspa simples nem /dev/null, e o `find` do sistema é o FIND.EXE, que
+# procura texto dentro de arquivo.
+#
+# Só mexe no link cujo alvo termina em extensão VELHA — o resto fica como
+# está. Devolve quantos links precisavam de conserto; com `aplica`, quantos
+# foram consertados.
 funct conserta_links(raiz, aplica) {
-    saida = os.cmd("find '" + raiz + "' -type l -printf '%p\t%l\n' 2>/dev/null",
-                   capture=true)
-    if saida == Null or saida == "" {
-        return 0
+    links = []
+    if WINDOWS {
+        links = links_windows(raiz)
+    } else {
+        links = links_posix(raiz)
     }
     quebrados = []
-    for each linha in saida.split("\n") {
-        if linha == "" {
-            continue
-        }
-        p = linha.split("\t")
-        if len(p) != 2 {
-            continue
-        }
-        if pula_caminho(p[0]) {
-            continue
-        }
-        velha = extensao_velha(p[1])
+    for each l in links {
+        velha = extensao_velha(l[1])
         if velha == "" {
             continue
         }
-        quebrados.append([p[0], p[1], p[1][0:len(p[1]) - len(velha)] + NOVA])
+        addEnd(quebrados, [l[0], l[1], l[1][0:len(l[1]) - len(velha)] + NOVA, l[2]])
     }
     if len(quebrados) == 0 {
         return 0
     }
     post("  links simbolicos a reapontar:", len(quebrados))
+    recusados = 0
     for each l in quebrados {
         post("   ", l[0], "->", l[2])
         if aplica {
-            os.cmd("ln -sfn '" + l[2] + "' '" + l[0] + "'")
+            motivo = ""
+            if WINDOWS {
+                motivo = reaponta_windows(l[0], l[2], l[3])
+            } else {
+                motivo = reaponta_posix(l[0], l[2])
+            }
+            if motivo != "" {
+                recusados = recusados + 1
+                post("      NAO reapontado:", motivo)
+            }
         }
     }
-    return len(quebrados)
+    if recusados > 0 {
+        post("  links NAO reapontados:", recusados, "de", len(quebrados))
+    }
+    return len(quebrados) - recusados
+}
+
+
+# Linux e macOS: `find <pasta> -type l` lista (o `-type l` é do POSIX, o find
+# do GNU e o do macOS têm) e o `readlink` de cada um dá o alvo como está
+# gravado no link. Cada link é [caminho, alvo, ""].
+funct links_posix(raiz) {
+    achados = []
+    lista = []
+    try {
+        lista = roda(["find", raiz, "-type", "l"])
+    } catch (IOError e) {
+        post("  links simbolicos NAO conferidos: o find nao rodou (" + str(e) + ")")
+        return achados
+    }
+    if lista[1] != "" {
+        post("  aviso do find (a lista de links pode ter ficado incompleta):",
+             primeira_linha(lista[1]))
+    }
+    for each caminho in lista[0].split("\n") {
+        if caminho == "" or pula_caminho(caminho) {
+            continue
+        }
+        r = []
+        try {
+            r = roda(["readlink", "--", caminho])
+        } catch (IOError e) {
+            post("  links simbolicos NAO conferidos: o readlink nao rodou (" + str(e) + ")")
+            return []
+        }
+        if r[2] != 0 {
+            post("  link sem alvo legivel:", caminho, "(" + primeira_linha(r[1]) + ")")
+            continue
+        }
+        addEnd(achados, [caminho, r[0].removesuffix("\n"), ""])
+    }
+    return achados
+}
+
+
+# `ln -sfn` troca o link no lugar; o `-n` não entra num link de pasta que já
+# esteja ali (o `ln` do GNU e o do macOS têm os três).
+funct reaponta_posix(link, alvo) {
+    r = []
+    try {
+        r = roda(["ln", "-sfn", "--", alvo, link])
+    } catch (IOError e) {
+        return "o ln nao rodou (" + str(e) + ")"
+    }
+    if r[2] != 0 {
+        return "o ln recusou (" + primeira_linha(r[1] + r[0]) + ")"
+    }
+    return ""
+}
+
+
+# O `dir` e o `mklink` são do cmd.exe, e o caminho chega a eles pela linha de
+# comando que o motor monta: ele só põe aspas no argumento que tem espaço,
+# tab, quebra de linha ou aspa (`wl_argumento` em vm/ps_so.c).
+funct vai_com_aspas(texto) {
+    for each c in [" ", "\t", "\n", "\""] {
+        if c in texto {
+            return true
+        }
+    }
+    return false
+}
+
+
+# Sem aspas, o cmd.exe interpreta `& | < > ^ ( ) %`: a pasta `C:\P&D` virava
+# `dir C:\P` seguido do comando `D`, e um alvo `a&b.ps` rodaria `b.pr`. O `^`
+# antes de cada um faz dele letra. Entre aspas eles já são letra, e o `^`
+# ficaria no texto. O `!` é letra com o `/v:off` de cada chamada.
+funct arg_cmd(texto) {
+    if vai_com_aspas(texto) {
+        return texto
+    }
+    saida = ""
+    for each c in texto {
+        if c in "&|<>^()%" {
+            saida = saida + "^"
+        }
+        saida = saida + c
+    }
+    return saida
+}
+
+
+# O que o `arg_cmd` não resolve: sem aspas, `,`, `;` e `=` separam argumento
+# como o espaço (o `cmd /?` põe os três entre os caracteres que pedem aspas);
+# com aspas, o `%NOME%` vira o valor da variável. Nos dois casos o cmd.exe
+# receberia outro caminho — o `dir` listaria outra pasta, o `mklink` gravaria
+# outro alvo —, e o caminho é recusado com o motivo. Devolve "" quando ele
+# chega inteiro.
+funct motivo_cmd(texto) {
+    if vai_com_aspas(texto) {
+        p = texto.find("%")
+        if p >= 0 and texto.find("%", p + 1) >= 0 {
+            return "entre aspas o cmd.exe troca %NOME% pelo valor da variavel"
+        }
+        return ""
+    }
+    for each c in [",", ";", "="] {
+        if c in texto {
+            return "sem espaco no caminho ele vai sem aspas, e o cmd.exe separa argumento em '" + c + "'"
+        }
+    }
+    return ""
+}
+
+
+# Windows: o `dir` do cmd.exe com `/a:l` (o atributo de ponto de nova análise:
+# o link simbólico e a junção de pasta) lista os links da árvore com `/s /b`,
+# um caminho inteiro por linha, e, pasta por pasta, mostra o alvo entre
+# colchetes no fim da linha (ver `alvo_no_dir`). Sem link nenhum o `dir` diz
+# "File Not Found" (no idioma do sistema) no stderr e sai 1: é a lista vazia.
+# Cada link é [caminho, alvo, tipo do `mklink`].
+funct links_windows(raiz) {
+    achados = []
+    pasta = raiz.replace("/", "\\")
+    motivo = motivo_cmd(pasta)
+    if motivo != "" {
+        post("  links simbolicos NAO conferidos em " + raiz + ": " + motivo)
+        return achados
+    }
+    lista = []
+    try {
+        lista = roda(["cmd.exe", "/d", "/v:off", "/c", "dir", "/a:l", "/s", "/b", arg_cmd(pasta)])
+    } catch (IOError e) {
+        post("  links simbolicos NAO conferidos: o cmd.exe nao rodou (" + str(e) + ")")
+        return achados
+    }
+    # O "File Not Found" é UMA linha, e só sai quando nada foi achado. Linha
+    # a mais, ou stderr junto com links achados, é aviso, como o do `find`.
+    avisos = []
+    for each l in lista[1].split("\n") {
+        if l.strip() != "" {
+            addEnd(avisos, l.strip())
+        }
+    }
+    if len(avisos) > 1 or (len(avisos) == 1 and lista[0].strip() != "") {
+        post("  aviso do dir (a lista de links pode ter ficado incompleta):", avisos[0])
+    }
+    listagens = {}
+    nomes = {}
+    vistos = []
+    for each linha in lista[0].split("\n") {
+        inteiro = linha.strip()
+        barra = inteiro.rfind("\\")
+        if barra < 0 {
+            continue                      # o `/b /s` dá o caminho inteiro
+        }
+        # O `dir /s` desce por pasta-link e junção; o `find` do POSIX não
+        # desce. O que está abaixo de um link já listado foi alcançado através
+        # dele, e fica de fora como lá.
+        atravessou = false
+        for each v in vistos {
+            if inteiro.startswith(v + "\\") {
+                atravessou = true
+            }
+        }
+        addEnd(vistos, inteiro)
+        if atravessou {
+            continue
+        }
+        pai = inteiro[0:barra]
+        nome = inteiro[barra + 1:]
+        if pai.endswith(":") {
+            pai = pai + "\\"              # `dir C:` é a pasta corrente do disco
+        }
+        caminho = inteiro.replace("\\", "/")
+        if pula_caminho(caminho) {
+            continue
+        }
+        motivo = motivo_cmd(pai)
+        if motivo != "" {
+            post("  link sem alvo legivel:", caminho, "(" + motivo + ")")
+            continue
+        }
+        if not (pai in listagens) {
+            listagens[pai] = ""
+            try {
+                listagens[pai] = roda(["cmd.exe", "/d", "/v:off", "/c", "dir", "/a:l", arg_cmd(pai)])[0]
+            } catch (IOError e) {
+                listagens[pai] = ""
+            }
+        }
+        alvo = alvo_no_dir(listagens[pai], nome)
+        if len(alvo) == 0 {
+            post("  link sem alvo legivel:", caminho, "(o dir da pasta dele nao mostrou)")
+            continue
+        }
+        # O nome como o `dir` escreveu tem que existir na pasta (o `os.ls` lê
+        # o nome certo). O `dir` escreve na página de código do console, que o
+        # jinga põe em UTF-8 (`ps_w_inicia` em vm/ps_so.c); em outra, um nome
+        # com acento chega trocado, e o link novo nasceria sem o velho, por
+        # esse nome, poder sair.
+        onde = caminho[0:caminho.rfind("/")]
+        if onde.endswith(":") {
+            onde = onde + "/"             # `C:` é a pasta corrente do disco
+        }
+        if not (onde in nomes) {
+            nomes[onde] = []
+            try {
+                for each ent in os.ls(onde) {
+                    addEnd(nomes[onde], ent["name"])
+                }
+            } catch (e) {
+                nomes[onde] = []
+            }
+        }
+        if not (nome in nomes[onde]) {
+            post("  link sem alvo legivel:", caminho, "(o nome que o dir escreveu nao esta na pasta)")
+            continue
+        }
+        addEnd(achados, [caminho, alvo[0], alvo[1]])
+    }
+    return achados
+}
+
+
+# O alvo do link `nome` numa listagem do `dir /a:l` da pasta dele, e o tipo que
+# o `mklink` precisa pra refazê-lo: [alvo, "" (arquivo) | "/D" (pasta) | "/J"
+# (junção) | "?"], ou [] se o nome não aparece. A linha é
+#     30/09/2026  10:00    <SYMLINK>      liga.pr [..\scripts\alvo.ps]
+# e a data muda com o idioma: o que se lê é a marca entre `<>`, o nome depois
+# dela e o alvo no último par de colchetes. Marca que não seja SYMLINK,
+# SYMLINKD ou JUNCTION sai "?", e esse link não é refeito às cegas.
+funct alvo_no_dir(listagem, nome) {
+    for each bruta in listagem.split("\n") {
+        linha = bruta.strip()
+        fecha = linha.find(">")
+        if fecha < 0 or not linha.endswith("]") {
+            continue
+        }
+        resto = linha[fecha + 1:].strip()
+        if not resto.startswith(nome + " [") {
+            continue
+        }
+        marca = linha[0:fecha + 1]
+        tipo = "?"
+        if "<SYMLINKD>" in marca {
+            tipo = "/D"
+        } elif "<SYMLINK>" in marca {
+            tipo = ""
+        } elif "<JUNCTION>" in marca {
+            tipo = "/J"
+        }
+        return [resto[len(nome) + 2:len(resto) - 1], tipo]
+    }
+    return []
+}
+
+
+# `mklink` (do cmd.exe) cria o link novo ao lado do velho, com o nome
+# provisório `NOVO_LINK`: o nome do link não passa pelo cmd.exe (quem dá o
+# nome final é o `os.rename`), só a pasta e o alvo, pelo `arg_cmd`. Antes da
+# troca, o `dir` da pasta mostra o alvo que ficou gravado, e só segue o que é
+# igual ao pedido; o que o cmd.exe tiver mudado é apagado e sai na saída.
+# Então o velho sai (`os.rmdir` tira o link sem entrar nele) e o novo assume
+# o nome. Link simbólico no Windows pede administrador ou o Modo de
+# Desenvolvedor: quando o sistema recusa, o link velho fica como estava e a
+# saída diz o que o `mklink` respondeu.
+NOVO_LINK = "migra_pr_novo.tmp"
+
+funct reaponta_windows(link, alvo, tipo) {
+    if tipo == "?" {
+        return "o dir nao disse se o link e de arquivo (SYMLINK), de pasta (SYMLINKD) ou juncao (JUNCTION)"
+    }
+    barra = link.rfind("/")
+    pasta = link[0:barra].replace("/", "\\")
+    if pasta.endswith(":") {
+        pasta = pasta + "\\"              # `dir C:` é a pasta corrente do disco
+    }
+    novo = link[0:barra + 1] + NOVO_LINK
+    novo_cmd = pasta.removesuffix("\\") + "\\" + NOVO_LINK
+    for each texto in [novo_cmd, alvo] {
+        motivo = motivo_cmd(texto)
+        if motivo != "" {
+            return motivo + " (" + texto + ")"
+        }
+    }
+    if os.exists(novo) {
+        return "ja existe " + novo
+    }
+    args = ["cmd.exe", "/d", "/v:off", "/c", "mklink"]
+    if tipo != "" {
+        addEnd(args, tipo)
+    }
+    addEnd(args, arg_cmd(novo_cmd))
+    addEnd(args, arg_cmd(alvo))
+    r = []
+    try {
+        r = roda(args)
+    } catch (IOError e) {
+        return "o cmd.exe nao rodou (" + str(e) + ")"
+    }
+    if r[2] != 0 {
+        return "o Windows nao deixou criar o link (" + primeira_linha(r[1] + r[0]) + ")"
+    }
+    gravado = []
+    try {
+        gravado = alvo_no_dir(roda(["cmd.exe", "/d", "/v:off", "/c", "dir", "/a:l", arg_cmd(pasta)])[0], NOVO_LINK)
+    } catch (IOError e) {
+        gravado = []
+    }
+    # `/` e `\` são o mesmo separador pro Windows: a barra trocada não é
+    # outro alvo
+    if len(gravado) == 0 or gravado[0].replace("/", "\\") != alvo.replace("/", "\\") or gravado[1] != tipo {
+        visto = "o dir da pasta nao mostrou o link novo"
+        if len(gravado) > 0 {
+            visto = "ficou gravado " + gravado[0]
+        }
+        try {
+            os.rmdir(novo, force=true)
+        } catch (e) {
+            return "o alvo nao conferiu (" + visto + "); o link novo ficou em " + novo + " (" + str(e) + ")"
+        }
+        return "o alvo nao conferiu (" + visto + "); o link novo foi apagado"
+    }
+    try {
+        os.rmdir(link, force=true)
+        os.rename(novo, link)
+    } catch (e) {
+        return "o link novo ficou em " + novo + " (" + str(e) + ")"
+    }
+    return ""
 }
 
 
@@ -302,8 +697,9 @@ funct migra_libs(aplica) {
         home = os.getenv("POOLSCRIPT_HOME", "")
     }
     if home == "" {
-        home = os.getenv("HOME", "") + "/.jinga"
-        velha = os.getenv("HOME", "") + "/.poolscript"
+        casa = pasta_usuario()
+        home = casa + "/.jinga"
+        velha = casa + "/.poolscript"
         if not os.exists(home) and os.exists(velha) {
             home = velha
         }
@@ -322,8 +718,13 @@ funct migra_libs(aplica) {
     if not aplica or not os.isdir(home + "/libs") {
         return total
     }
-    # prova de que voltaram a servir: importar cada uma de verdade. O código de
-    # saída vem do shell (`echo $?`) porque `os.cmd` sem `capture` devolve Null.
+    # prova de que voltaram a servir: importar cada uma de verdade, pelo `-e`
+    # do próprio binário, sem shell e com o código de saída do próprio
+    # processo. Era um `/tmp/ps_migra_prova.pr` rodado pelo /bin/sh com
+    # `> /dev/null 2>&1; echo $?`: o "/tmp" do motor nativo do Windows é
+    # "<unidade>:\tmp", que pode nem existir, e o cmd.exe não tem `$?` nem
+    # /dev/null. Sem arquivo de prova, o import só acha o que está nas libs —
+    # um `<modulo>.pr` largado no /tmp não aprova mais uma lib que falta.
     post("  conferindo os imports:")
     for each ent in os.ls(home + "/libs") {
         nome = ent["name"]
@@ -331,17 +732,35 @@ funct migra_libs(aplica) {
             continue
         }
         modulo = nome[0:len(nome) - len(NOVA)]
-        prova = "/tmp/ps_migra_prova.pr"
-        os.writeFile(prova, "import " + modulo + "\n")
-        rc = os.cmd("'" + sys.executable + "' " + prova + " > /dev/null 2>&1; echo $?",
-                    capture=true).strip()
-        if rc == "0" {
+        rc = 127                          # o "command not found" do shell
+        try {
+            rc = roda([sys.executable, "-e", "import " + modulo])[2]
+        } catch (IOError e) {
+            rc = 127
+        }
+        # morte por sinal sai 128 + sinal, como o `$?` contava (o Windows não
+        # tem sinal: lá o código é o que o sistema deu)
+        if rc < 0 and not WINDOWS {
+            rc = 128 - rc
+        }
+        if rc == 0 {
             post("    ok    ", modulo)
         } else {
-            post("    FALHOU", modulo, "(rc " + rc + ")")
+            post("    FALHOU", modulo, "(rc " + str(rc) + ")")
         }
     }
     return total
+}
+
+
+# A pasta do usuário, a MESMA do motor (`PS_HOME_VAR` em vm/ps_so.h): HOME no
+# Linux e no macOS, USERPROFILE no Windows — o HOME de lá só existe dentro do
+# MSYS2, e aponta pra outra pasta.
+funct pasta_usuario() {
+    if WINDOWS {
+        return os.getenv("USERPROFILE", "")
+    }
+    return os.getenv("HOME", "")
 }
 
 

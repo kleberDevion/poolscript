@@ -118,13 +118,40 @@ funct espera_porta(prazo_decimos)
     return false
 }
 
+# Tudo o que um processo do teste escreveu, lido ate ele terminar: o `read`
+# devolve "" no fim do canal, e com o processo vivo ele espera — servidor, so
+# depois de morto.
+funct saida_de(p)
+{
+    texto = ""
+    parte = p.read()
+    while parte != ""
+    {
+        texto = texto + parte
+        parte = p.read()
+    }
+    parte = p.read_err()
+    while parte != ""
+    {
+        texto = texto + parte
+        parte = p.read_err()
+    }
+    return texto
+}
+
+# Os servidores do teste sobem pelo `os.run` com `capture="live"`, sem shell:
+# o `sh -c "... & echo $!"` de antes nao existe no `cmd.exe` do Windows, e o
+# `setsid` nao existe no macOS. O `Process` devolvido e quem mata (`kill`) e
+# guarda a saida no cano; `close()` fecha a entrada, como o `< /dev/null`.
 os.mkdir(PASTA, exist_ok=true)
-os.cmd("'" + sys.executable + "' teste/jinker_alvo.pr > " + PASTA + "/alvo.log 2>&1 & echo $! > " + PASTA + "/alvo.pid")
+srv_alvo = os.run([sys.executable, "teste/jinker_alvo.pr"], capture="live")
+srv_alvo.close()
 
 if espera_porta(100) == false
 {
     post("o servidor-alvo nao abriu a porta " + str(PORTA))
-    post(os.readFile(PASTA + "/alvo.log"))
+    srv_alvo.kill(9)
+    post(saida_de(srv_alvo))
     sys.exit(1)
 }
 
@@ -334,7 +361,9 @@ VETORES = [
     "/static/../../../../../../../../etc/passwd",
     "/static/link_fora"
 ]
-SEGREDOS = ["FORA da pasta", "root:x:", "Jinker(", "SENHA=nao"]
+# `root:x:` e a linha do root no `/etc/passwd` do Linux; no do macOS ela e
+# `root:*:`, e so com `root:x:` o `/etc/passwd` vazando passava calado la.
+SEGREDOS = ["FORA da pasta", "root:x:", "root:*:", "Jinker(", "SENHA=nao"]
 vazou = []
 for each caminho in VETORES
 {
@@ -351,6 +380,36 @@ confere("nenhum dos " + str(len(VETORES)) + " vetores de travessia entrega segre
 for each v in vazou
 {
     post("      VAZOU: " + v)
+}
+# Um vetor so prova a defesa se o arquivo do outro lado EXISTE: sem ele, o 404
+# vem da falta do arquivo. O `/etc/passwd` nao existe no Windows, e la o alvo
+# nem cria o `link_passwd`, que apontaria pra ele; o `link_fora` o alvo cria
+# com o `ln` no Linux e no macOS e com o `mklink` no Windows, que exige o
+# privilegio de criar link (administrador ou o modo de desenvolvedor) — sem
+# ele o link nao existe. Os vetores continuam na lista; a saida diz, contado,
+# quais nao tinham o que entregar neste sistema. O motivo que o alvo deu (o
+# erro do `mklink`) esta na saida DELE, e o driver o mostra depois que o alvo
+# para (ver o fim da parada limpa): com ele vivo, ler a saida esperaria.
+DESTINOS = [["/estatico/../../../../../../../../etc/passwd", "/etc/passwd"],
+            ["/static/../../../../../../../../etc/passwd", "/etc/passwd"],
+            ["/estatico/link_passwd", PASTA + "/estatico/link_passwd"],
+            ["/static/link_fora", "teste/static/link_fora"]]
+sem_destino = []
+for each par in DESTINOS
+{
+    if not os.exists(par[1])
+    {
+        addEnd(sem_destino, par[0] + "  (falta " + par[1] + ")")
+    }
+}
+if len(sem_destino) > 0
+{
+    post("  PULOU a prova de " + str(len(sem_destino)) + " dos " + str(len(VETORES))
+         + " vetores de travessia: o arquivo do outro lado nao existe neste sistema")
+    for each faltou in sem_destino
+    {
+        post("      " + faltou)
+    }
 }
 r = get(RAIZ + "/estatico/.env")
 confere("oculto (.env) DENTRO da pasta publicada e 404", r.status_code == 404)
@@ -506,8 +565,8 @@ confere("cors.local() e true no modo padrao", r.get_json("local") == true)
 # Servidor A PARTE (teste/jinker_alvo_estrito.pr): a config e do servidor
 # inteiro. So a lista vale — nem localhost, nem cliente sem Origin.
 ESTRITO = 28962
-os.cmd("setsid '" + sys.executable + "' teste/jinker_alvo_estrito.pr > "
-       + PASTA + "/estrito.log 2>&1 < /dev/null & echo $! > " + PASTA + "/estrito.pid")
+srv_estrito = os.run([sys.executable, "teste/jinker_alvo_estrito.pr"], capture="live")
+srv_estrito.close()
 estrito_subiu = false
 i = 0
 while i < 100
@@ -568,12 +627,13 @@ if estrito_subiu
     confere("o alvo estrito parou pelo /__parar", estrito_parou)
     if not estrito_parou
     {
-        os.cmd("kill $(cat " + PASTA + "/estrito.pid) 2>/dev/null; true")
+        srv_estrito.kill()
     }
 }
 else
 {
-    post(os.readFile(PASTA + "/estrito.log"))
+    srv_estrito.kill(9)
+    post(saida_de(srv_estrito))
 }
 
 # Socket LONGO declarado antes do curto com o mesmo parametro (`/chat/<sala>/admin`
@@ -766,7 +826,11 @@ confere("length na list conta itens",
 # o `accept` da primeira resposta. `settimeout` no accept: se o teste cair
 # antes, o servidor nao fica pendurado.
 CRU_PORTA = 28958
-os.cmd("rm -f " + PASTA + "/cru_pronto")
+# o aviso que sobrou de uma rodada anterior diria "pronto" antes da hora
+if os.exists(PASTA + "/cru_pronto")
+{
+    os.loadFile(PASTA + "/cru_pronto", mode="rb").delete()
+}
 os.writeFile(PASTA + "/cru_http.pr",
     "import os\nimport sockets\n"
     + "srv = sockets.create_server((\"127.0.0.1\", " + str(CRU_PORTA) + "))\n"
@@ -778,7 +842,8 @@ os.writeFile(PASTA + "/cru_http.pr",
     + "c = srv.accept()[0]\nc.recv(65536)\n"
     + "c.sendall(\"HTTP/1.1 200 OK\\r\\nConnection: close\\r\\n\\r\\ncorpo ate fechar\".encode())\nc.close()\n"
     + "srv.close()\n")
-os.cmd("setsid '" + sys.executable + "' " + PASTA + "/cru_http.pr > " + PASTA + "/cru_http.log 2>&1 < /dev/null &")
+srv_cru = os.run([sys.executable, PASTA + "/cru_http.pr"], capture="live")
+srv_cru.close()
 cru_ouve = false
 i = 0
 while i < 50
@@ -851,9 +916,19 @@ confere("domain= nomeado mantem o HttpOnly do default",
 # O primeiro conserto tinha SIGSEGV: `ncorpo` guardava o total baixado com
 # `corpo` vazio, e o `.content` copiava dai — com corpo pequeno voltava heap do
 # proprio processo no lugar dos dados.
+# A contagem e pelo `os.ls` (lista os ocultos, como o `ls -a`), nao por
+# `ls | grep` no shell: no Windows o shell e o `cmd.exe`.
 funct sobra_temp()
 {
-    return int(os.cmd("ls -a . | grep -c ps_resposta_", true).strip())
+    n = 0
+    for each item in os.ls(".")
+    {
+        if "ps_resposta_" in item["name"]
+        {
+            n = n + 1
+        }
+    }
+    return n
 }
 alvo_sv = PASTA + "/baixado.bin"
 r = get(RAIZ + "/grande", save=alvo_sv)
@@ -992,17 +1067,32 @@ confere("o handler lento termina e responde a quem mandou", "lento-fim" in travo
 # rota `/lento` fazia TODA outra requisição esperar esses 3 s. Aqui a `/lento` é
 # disparada de outro processo e, enquanto ela roda, o `/ok` tem que responder na
 # hora.
-# o `try` é porque o servidor cai antes de a `/lento` responder: sem ele, o
-# processo de fundo escreve um NetworkError no meio da saída da suíte
-os.run([sys.executable, "-e",
-        "import request\ntry { request.get(\"" + RAIZ + "/lento\") } catch (e) { pass }"],
-       capture=false)
+# A `/lento` também é conferida: 200 depois de pelo menos 2,5 s (o filho dela
+# dorme 3 s). Sem isso o `/ok` rápido não provava nada: se o `os.run` da rota
+# levanta (programa que falta), ela responde 500 em milissegundos e não segura
+# ninguém. Quem pede a `/lento` escreve o status e os milissegundos que ela
+# levou, no relógio monotônico (o `timestamp` é em segundos inteiros); o
+# `readline` espera a resposta, então o servidor só para depois dela.
+proc_lento = os.run([sys.executable, "-e",
+                     "import request\nimport date\ninicio = date.monotonic()\n"
+                     + "rl = request.get(\"" + RAIZ + "/lento\", timeout=10)\n"
+                     + "post(rl.status_code, int((date.monotonic() - inicio) * 1000))"],
+                    capture="live")
+proc_lento.close()
 sleep(0.5)
 t0 = date.timestamp()
 r = get(RAIZ + "/ok")
 t1 = date.timestamp()
+lento_diz = proc_lento.readline().strip()
+lento_partes = lento_diz.split(" ")
+lento_ok = len(lento_partes) == 2 and lento_partes[0] == "200" and int(lento_partes[1]) >= 2500
 confere("os.run dentro da rota nao segura as outras requisicoes",
-        r.status == 200 and (t1 - t0) <= 1)
+        r.status == 200 and (t1 - t0) <= 1 and lento_ok)
+if not lento_ok
+{
+    post("      a /lento tem que dar 200 depois de pelo menos 2500 ms; deu (status, ms): "
+         + (lento_diz + " " + saida_de(proc_lento)).strip())
+}
 
 # ── tarefa criada antes do servidor subir ───────────────────────────────────
 # O alvo cria uma tarefa que espera 0,3 s de I/O e só então chama `app()`. O
@@ -1107,7 +1197,25 @@ while i < 50
     i = i + 1
 }
 confere("o servidor para limpo quando pedido (sem isso o gcov dele não existe)", parou)
-os.cmd("kill $(cat " + PASTA + "/alvo.pid) 2>/dev/null; true")
+srv_alvo.kill()
+# Vetor que PULOU: o motivo que o alvo deu pra cada link que nao criou (o erro
+# do `mklink`, por exemplo) esta na saida dele, lida agora que ele parou. Se
+# ele nao saiu pelo `/__parar`, o `kill(9)` garante o fim do canal; se saiu,
+# nada de `kill(9)`: ele termina sozinho, gravando o `.gcda`.
+if len(sem_destino) > 0
+{
+    if not parou
+    {
+        srv_alvo.kill(9)
+    }
+    for each linha in saida_de(srv_alvo).split("\n")
+    {
+        if linha.startswith("servidor-alvo: sem ")
+        {
+            post("  " + linha.strip())
+        }
+    }
+}
 
 
 # ── TLS: o mesmo servidor, agora em HTTPS ───────────────────────────────────
@@ -1121,27 +1229,41 @@ os.cmd("kill $(cat " + PASTA + "/alvo.pid) 2>/dev/null; true")
 # O cliente da linguagem NÃO serve aqui: ele valida o certificado, e o do teste
 # é self-signed, então `request.get` recusa (corretamente). Quem fala é o
 # `curl -k`. Sem curl, PULA — e diz que pulou.
-# `os.cmd` ECOA a saída e devolve Null — quem quer o resultado grava em
-# arquivo e lê. É o mesmo jeito do resto da suíte.
-os.cmd("command -v curl > /dev/null 2>&1; echo $? > " + PASTA + "/tem_curl")
-if os.readFile(PASTA + "/tem_curl").strip() != "0"
+# O curl roda pelo `os.run` com `capture=true`, sem shell (o `command -v`, o
+# `2>/dev/null` e o `; true` eram do `sh`): ele devolve o que o curl escreveu,
+# e programa que nao existe e `IOError`.
+tem_curl = true
+try
+{
+    os.run(["curl", "--version"], capture=true)
+}
+catch (IOError e)
+{
+    tem_curl = false
+}
+if not tem_curl
 {
     post("  PULOU o TLS — falta o curl (o cliente da linguagem valida o cert,")
     post("  e o do teste é self-signed)")
 }
 else
 {
+    # A pasta e a do `teste/jinker_alvo_tls.pr`, e o certificado tem que nascer
+    # nesta rodada. Sai pelo `os.rmdir`, nao pelo `rm`: no Windows o `/tmp` do
+    # motor e `<disco>:\tmp`, e o `rm` do MSYS2 le `/tmp` como o dele.
     PASTA_TLS = "/tmp/ps_jinker_tls"
-    os.cmd("rm -rf " + PASTA_TLS)
-    os.cmd("setsid '" + sys.executable + "' teste/jinker_alvo_tls.pr > "
-           + PASTA + "/tls.log 2>&1 < /dev/null & echo $! > " + PASTA + "/tls.pid")
+    if os.exists(PASTA_TLS)
+    {
+        os.rmdir(PASTA_TLS, force=true)
+    }
+    srv_tls = os.run([sys.executable, "teste/jinker_alvo_tls.pr"], capture="live")
+    srv_tls.close()
 
     subiu = false
     i = 0
     while i < 60
     {
-        os.cmd("curl -sk --max-time 2 https://127.0.0.1:28953/ok > " + PASTA + "/tls_ok.txt 2>/dev/null; true")
-        txt = os.readFile(PASTA + "/tls_ok.txt")
+        txt = os.run(["curl", "-sk", "--max-time", "2", "https://127.0.0.1:28953/ok"], capture=true)
         if "\"ok\"" in txt
         {
             subiu = true
@@ -1156,8 +1278,7 @@ else
 
     if subiu
     {
-        os.cmd("curl -sk --max-time 3 https://127.0.0.1:28953/ok > " + PASTA + "/tls_ok.txt 2>/dev/null; true")
-        txt = os.readFile(PASTA + "/tls_ok.txt")
+        txt = os.run(["curl", "-sk", "--max-time", "3", "https://127.0.0.1:28953/ok"], capture=true)
         confere("a resposta atravessa o TLS inteira", "\"protocolo\": \"https\"" in txt)
 
         # O cliente HTTPS DA LINGUAGEM (`request.get("https://...")`) nao tinha
@@ -1180,7 +1301,7 @@ else
 
         # parada limpa pelo MESMO motivo do alvo HTTP: morto por sinal, o
         # servidor não grava o `.gcda` e a medição perde o lado TLS.
-        os.cmd("curl -sk --max-time 3 https://127.0.0.1:28953/__parar > /dev/null 2>&1; true")
+        os.run(["curl", "-sk", "--max-time", "3", "https://127.0.0.1:28953/__parar"], capture=true)
         parou_tls = false
         i = 0
         while i < 50
@@ -1199,7 +1320,7 @@ else
         }
         confere("o servidor TLS para limpo quando pedido", parou_tls)
     }
-    os.cmd("kill $(cat " + PASTA + "/tls.pid) 2>/dev/null; true")
+    srv_tls.kill()
 }
 
 # ── relatório ───────────────────────────────────────────────────────────────

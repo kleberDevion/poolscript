@@ -15,23 +15,69 @@
 import os
 import sys
 
-RAIZ = "/tmp/ps_pkg_teste"
+# Tudo mora numa pasta RELATIVA à corrente, criada aqui e apagada no fim pelo
+# próprio motor: o `JINGA_HOME` (RAIZ), os pacotes de mentira e os arquivos da
+# saída e do código de cada chamada. Era tudo em /tmp, apagado com `rm -rf`
+# pelo `os.cmd`, e isso só vale inteiro no Linux e no macOS: no Windows o
+# motor é nativo, "/tmp/x" é "<disco>:\tmp\x", na raiz do disco corrente, e o
+# cmd.exe não tem `rm`.
+#
+# Os caminhos vão com "/" nos três sistemas: o `jpkg` tira o nome do pacote do
+# que vem depois da última "/" (`derive_name`, em vm/ps_pkg.c).
+#
+# E o que se lê de volta é pelo `os.readFile`, que fecha o arquivo na hora. O
+# `open(...).read()` de antes deixava cada arquivo aberto até o coletor passar,
+# e o Windows não apaga arquivo aberto: com um deles aberto, o `os.rmdir` do
+# fim não esvazia a pasta e levanta erro.
+PASTA = "ps_e2e_pkg"
+RAIZ = PASTA + "/home"
+SAIDA = PASTA + "/ps_pkg_out.txt"
+CODIGO = PASTA + "/ps_pkg_rc.txt"
+
+# O atalho que faz o comando ser chamável pelo nome (`write_shim`, em
+# vm/ps_pkg.c): no Linux e no macOS um script sem extensão; no Windows um
+# `.cmd`, que é o que o terminal de lá acha pelo nome.
+SHIM = RAIZ + "/bin/ps_pkg_cmd"
+if sys.platform() == "windows" {
+    SHIM = SHIM + ".cmd"
+}
 
 
-# `os.cmd` devolve a SAÍDA (ou Null), nunca o código de saída — não há API na
-# linguagem pra isso, então o código vem pelo `echo $?` num arquivo. É o mesmo
-# contorno de `teste/fuzz_replay.pr`; está anotado em notas/LIMITACOES.md.
+# `os.cmd` devolve a SAÍDA (ou Null), nunca o código de saída, então o código
+# vem num arquivo, gravado pelo próprio shell. E é o `os.cmd`, não o `os.run`
+# com o `wait()` do `Process`, porque o `JINGA_HOME` só chega ao filho pelo
+# shell: o `os.run` não recebe ambiente.
+#
+# A linha vai na sintaxe do shell de cada sistema:
+#
+#   Linux e macOS  /bin/sh: `VAR='x' prog`, e o código no `echo $?`.
+#   Windows        cmd.exe, que não tem `VAR=x prog`, aspas simples nem `$?`:
+#                  `set "VAR=x" && prog`, e o código no `%errorlevel%`. O
+#                  cmd troca todo `%nome%` quando LÊ a linha, antes de rodar o
+#                  primeiro comando, e um `echo %errorlevel%` gravaria o código
+#                  de antes do programa. O `^` esconde o nome dessa leitura (e
+#                  some nela); o `call` troca de novo na hora de rodar, quando
+#                  o programa já saiu.
+#
+# O arquivo do código é esvaziado antes de cada chamada: se a linha não
+# rodasse, o código da chamada ANTERIOR responderia por esta. Vazio, o `int`
+# estoura.
 #
 # Cuidado que custou caro aqui: `Null == 0` é **True** neste motor (é
 # deliberado, `val_iguais` documenta o porquê). Então `os.cmd(...) != 0` é
 # sempre False e um teste escrito assim aprova qualquer coisa — falso verde
 # perfeito, do tipo que passa por revisão.
 funct psl(args) {
+    os.writeFile(CODIGO, "")
     cmd = ("JINGA_HOME='" + RAIZ + "' '" + sys.executable + "' " + args
-           + " > /tmp/ps_pkg_out.txt 2>&1; echo $? > /tmp/ps_pkg_rc.txt")
+           + " > '" + SAIDA + "' 2>&1; echo $? > '" + CODIGO + "'")
+    if sys.platform() == "windows" {
+        cmd = ("set \"JINGA_HOME=" + RAIZ + "\" && \"" + sys.executable + "\" " + args
+               + " > \"" + SAIDA + "\" 2>&1 & call echo %^errorlevel% > \"" + CODIGO + "\"")
+    }
     os.cmd(cmd)
-    rc = int(open("/tmp/ps_pkg_rc.txt").read().strip())
-    return [rc, open("/tmp/ps_pkg_out.txt").read()]
+    rc = int(os.readFile(CODIGO).strip())
+    return [rc, os.readFile(SAIDA)]
 }
 
 
@@ -48,30 +94,33 @@ funct conf(nome, cond, detalhe) {
 
 
 if __name__ == "main" {
-    os.cmd("rm -rf " + RAIZ)
-    os.mkdir(RAIZ, exist_ok=true)
+    if os.exists(PASTA) {
+        os.rmdir(PASTA, force=true)       # sobra de uma rodada que caiu no meio
+    }
+    os.mkdir(PASTA)
+    os.mkdir(RAIZ)
 
     # ── um pacote de mentira, mas .pr de verdade ────────────────────────────
-    using open("/tmp/ps_pkg_ola.pr", "w") as f {
+    using open(PASTA + "/ps_pkg_ola.pr", "w") as f {
         f.write("funct saudacao(nome) {\n    return \"ola \" + nome\n}\n")
     }
-    using open("/tmp/ps_pkg_cmd.pr", "w") as f {
+    using open(PASTA + "/ps_pkg_cmd.pr", "w") as f {
         f.write("post(\"rodei como comando\")\n")
     }
 
     # ── install como LIB ────────────────────────────────────────────────────
-    r = psl("install /tmp/ps_pkg_ola.pr -asLib")
+    r = psl("install " + PASTA + "/ps_pkg_ola.pr -asLib")
     erros = erros + conf("install -asLib sai 0", r[0] == 0, "rc=" + str(r[0]) + " " + r[1])
     erros = erros + conf("gravou em libs/", os.exists(RAIZ + "/libs/ps_pkg_ola.pr"),
                          "nao achei o .pr em libs/")
 
     # ── install como COMANDO ────────────────────────────────────────────────
-    r = psl("install /tmp/ps_pkg_cmd.pr")
+    r = psl("install " + PASTA + "/ps_pkg_cmd.pr")
     erros = erros + conf("install comando sai 0", r[0] == 0, "rc=" + str(r[0]) + " " + r[1])
     erros = erros + conf("gravou em commands/", os.exists(RAIZ + "/commands/ps_pkg_cmd.pr"),
                          "nao achei o .pr em commands/")
     # o shim é o que faz o comando ser chamável pelo nome
-    erros = erros + conf("gerou o shim em bin/", os.exists(RAIZ + "/bin/ps_pkg_cmd"),
+    erros = erros + conf("gerou o shim em bin/", os.exists(SHIM),
                          "nao achei o shim")
 
     # ── list mostra os dois ─────────────────────────────────────────────────
@@ -84,7 +133,7 @@ if __name__ == "main" {
     erros = erros + conf("escreveu installed.json", os.exists(RAIZ + "/installed.json"),
                          "nao achei installed.json")
     if os.exists(RAIZ + "/installed.json") {
-        reg = open(RAIZ + "/installed.json").read()
+        reg = os.readFile(RAIZ + "/installed.json")
         erros = erros + conf("installed.json tem as duas secoes",
                              "commands" in reg and "libs" in reg, reg)
     }
@@ -109,9 +158,14 @@ if __name__ == "main" {
     psl("registry set-url https://exemplo.invalido/reg.json")
 
     # ── caminhos de ERRO ────────────────────────────────────────────────────
-    r = psl("install /tmp/nao_existe_mesmo.pr")
+    r = psl("install " + PASTA + "/nao_existe_mesmo.pr")
     erros = erros + conf("install de arquivo inexistente falha", r[0] != 0, r[1])
-    r = psl("install /etc/hostname")
+    # Um arquivo que EXISTE e não é .pr, criado aqui. Era o /etc/hostname, que
+    # só o Linux tem: no macOS e no Windows o caminho não tinha arquivo nenhum.
+    using open(PASTA + "/nao_e_fonte.txt", "w") as f {
+        f.write("isto nao e fonte da linguagem\n")
+    }
+    r = psl("install " + PASTA + "/nao_e_fonte.txt")
     erros = erros + conf("install de nao-.pr falha", r[0] != 0, "aceitou: " + r[1])
     r = psl("uninstall nao_instalado_nenhum")
     erros = erros + conf("uninstall do que nao existe falha", r[0] != 0, r[1])
@@ -127,7 +181,7 @@ if __name__ == "main" {
                          "o .pr continua la")
     r = psl("uninstall ps_pkg_cmd")
     erros = erros + conf("uninstall comando sai 0", r[0] == 0, "rc=" + str(r[0]) + " " + r[1])
-    erros = erros + conf("sumiu o shim", not os.exists(RAIZ + "/bin/ps_pkg_cmd"),
+    erros = erros + conf("sumiu o shim", not os.exists(SHIM),
                          "o shim continua la")
 
     # ── list vazio depois de tudo ───────────────────────────────────────────
@@ -135,7 +189,7 @@ if __name__ == "main" {
     erros = erros + conf("list depois de limpar sai 0", r[0] == 0, "rc=" + str(r[0]))
     erros = erros + conf("nao cita mais a lib", not "ps_pkg_ola" in r[1], r[1])
 
-    os.cmd("rm -rf " + RAIZ)
+    os.rmdir(PASTA, force=true)
     post("")
     if erros > 0 {
         post("psl: FALHOU em", erros, "checagens")

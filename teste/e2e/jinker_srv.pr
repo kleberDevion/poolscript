@@ -14,7 +14,8 @@ from jinker import cors
 PASTA = "ps_e2e_jinker"
 # static_folder/static_url: pasta de front servida junto com as rotas. É uma
 # subpasta, pra servir só o que o teste pôs nela. Relativa, o jinker a procura
-# na pasta do script e, não achando lá, na corrente — que é onde ela está.
+# sob a pasta do script (ela e as subpastas) e, não achando lá, sob a corrente
+# — que é onde ela está.
 ESTATICA = PASTA + "/static"
 
 # A rodada começa do ZERO: o que sobrou da anterior sai antes. É isso que deixa
@@ -141,7 +142,7 @@ funct up() {
     if f == Null {
         return {"erro": "sem arquivo"}
     }
-    f.save("/tmp/ps_upload_recebido.txt")
+    f.save(PASTA + "/ps_upload_recebido.txt")
     return {"name": f.name, "ext": f.ext, "size": f.size,
             "content_type": f.content_type, "bytes": len(f.bytes())}
 }
@@ -164,7 +165,7 @@ funct ups() {
 # alcança conexão com channel=true).
 @app.socket("/ws")
 funct ws_handler() {
-    using open("/tmp/ps_ws_sem_canal.txt", "w") as f {
+    using open(PASTA + "/ps_ws_sem_canal.txt", "w") as f {
         f.write(jinker.request.text())
     }
     return "eco: " + jinker.request.text()
@@ -176,7 +177,7 @@ funct ws_handler() {
 funct ws_sala() {
     envia = app.socket()
     envia.emit(jinker.request.text(), exclude_self=false)
-    using open("/tmp/ps_ws_status.txt", "w") as f {
+    using open(PASTA + "/ps_ws_status.txt", "w") as f {
         f.write(str(envia.status_send()) + "|" + str(app.socket.status_send()))
     }
 }
@@ -198,5 +199,16 @@ funct emitir() {
 
 # a app é CHAMÁVEL: `app(...)` sobe o servidor (não existe `.run`)
 if __name__ == "main" {
-    app(debug=false, host="127.0.0.1", port=28840)
+    # A limpeza do fim. O `app(...)` VOLTA quando o servidor para: no Linux e
+    # no macOS o `kill()` do e2e_roda é o SIGTERM, o jinker sai do laço e
+    # retorna, e a pasta da rodada sai aqui. O `finally` apaga também quando o
+    # `app(...)` levanta (porta ocupada) — e o erro segue adiante. No Windows
+    # o `kill()` é TerminateProcess: o processo morre sem passar por aqui, e a
+    # sobra sai no começo da rodada seguinte (lá em cima).
+    try {
+        app(debug=false, host="127.0.0.1", port=28840)
+    }
+    finally {
+        os.rmdir(PASTA, force=true)
+    }
 }

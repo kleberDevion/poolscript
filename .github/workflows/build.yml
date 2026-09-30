@@ -97,9 +97,11 @@ jobs:
           update: true
           install: >-
             make zip
+          # python: os servidores falsos de SMTP/IMAP do teste/e2e/mail_local.pr
+          # (sem ele o teste diz PULOU e o módulo mail fica sem teste no Windows)
           pacboy: >-
             gcc:p openssl:p libpng:p gmp:p sqlite3:p expat:p zlib:p
-            postgresql:p libmariadbclient:p mongo-c-driver:p nodejs:p
+            postgresql:p libmariadbclient:p mongo-c-driver:p nodejs:p python:p
       - name: compila
         run: scripts/ci_anota.sh make pool testar
       - name: versao
@@ -112,6 +114,12 @@ jobs:
       - name: portao inteiro
         run: |
           (cd editor/vscode && npm install --omit=dev --no-audit --no-fund)
+          # O runner traz o MongoDB instalado, mas fora do PATH mínimo do
+          # MSYS2: com a pasta dele no PATH, o teste/mongo_roda.pr sobe o
+          # mongod e roda as checagens do driver aqui também.
+          for d in "/c/Program Files/MongoDB/Server/"*/bin; do
+            if [ -x "$d/mongod.exe" ]; then PATH="$PATH:$d"; fi
+          done
           scripts/ci_anota.sh make check
       - name: empacota
         run: scripts/ci_anota.sh ./build_bundle.sh

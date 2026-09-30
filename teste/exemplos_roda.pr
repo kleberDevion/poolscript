@@ -18,6 +18,7 @@
 #     ./pool teste/exemplos_roda.pr
 import os
 import sys
+import date
 
 PASTA = "examples"
 TEMPO = 20
@@ -34,19 +35,126 @@ SERVIDOR = ["socket_demo.pr", "cobrinha.pr"]
 PODE_FALTAR = ["mail_demo.pr", "request.pr", "push_get.pr", "swagger.pr"]
 
 
+# ── processos: sem shell, nos três sistemas ─────────────────────────────────
+#
+# Cada exemplo roda pelo `os.run([...], capture="live")`: o `Process` que volta
+# dá o código de saída (`wait()`), os dois canais da saída e o `kill()` do
+# prazo, sem shell no meio e sem arquivo temporário. Era uma linha do `os.cmd`
+# (`timeout 20 '<pool>' <ex> > /tmp/... 2>&1 < /dev/null; echo $? > /tmp/...`),
+# e isso só existia inteiro no Linux: no macOS o `timeout` do GNU se chama
+# `gtimeout` (vem do coreutils do Homebrew), e sem ele TODO exemplo saía 127
+# ("command not found"); no Windows o `os.cmd` é o cmd.exe, onde aspas simples
+# não são aspas e `;`, `$?` e `/dev/null` não existem, e o "/tmp/..." do motor
+# nativo é "<disco>:\tmp\...", na raiz do disco, não o /tmp do MSYS2.
+
+WINDOWS = sys.platform() == "windows"
+
+
+# Um pedaço do stdout (ou do stderr) do processo; "" quando o canal fechou.
+funct le_canal(proc, do_erro) {
+    if do_erro {
+        return proc.read_err()
+    }
+    return proc.read()
+}
+
+
+# Lê um canal até o fim, numa TAREFA. Os dois canais andam JUNTOS: cano que
+# ninguém lê enche, e o filho trava na escrita. Lendo o stdout até o fim antes
+# do stderr, um exemplo que enchesse o stderr ficava esperando o teste, e o
+# teste esperando o exemplo.
+async funct drena(proc, do_erro) {
+    texto = ""
+    parte = le_canal(proc, do_erro)
+    while parte != "" {
+        texto = texto + parte
+        parte = le_canal(proc, do_erro)
+    }
+    return texto
+}
+
+
+# O `timeout` de antes, agora dentro do teste: passou de `prazo` segundos, vai
+# o SIGTERM; se em 6 s o exemplo não saiu, o SIGKILL (o `timeout` sem `-k`
+# esperava pra sempre por quem ignorasse o TERM). No Windows não há sinal: lá
+# o `kill()` encerra o processo na hora. Termina sozinha quando
+# `estado["acabou"]` vira verdadeiro, e liga `estado["estourou"]` quando o
+# prazo venceu.
+async funct vigia(proc, prazo, estado) {
+    fim = date.monotonic() + prazo
+    while not estado["acabou"] and date.monotonic() < fim {
+        sleep(0.1)
+    }
+    if estado["acabou"] {
+        return
+    }
+    estado["estourou"] = true
+    proc.kill()
+    fim = date.monotonic() + 6
+    while not estado["acabou"] and date.monotonic() < fim {
+        sleep(0.1)
+    }
+    if not estado["acabou"] {
+        proc.kill(9)
+    }
+}
+
+
+# Roda `args` e devolve [código, saída]. A entrada fecha na hora: é o
+# `< /dev/null` de antes (exemplo que lesse o teclado veria fim de arquivo, não
+# um terminal esperando). A `vigia` e as duas `drena` andam enquanto o `wait()`
+# espera: a espera do principal é o ponto em que as tarefas rodam. O `using`
+# fecha os canos no fim do bloco; sem ele, cada exemplo deixava os dois abertos
+# até o coletor passar.
+#
+# A saída é o stdout seguido do stderr. Era um arquivo só (`2>&1`); agora são
+# dois canos, e a ordem ENTRE uma linha de um e uma do outro não é mais a da
+# escrita. A classificação lá embaixo procura o nome do erro no texto inteiro,
+# e isso não depende da ordem.
+#
+# O código é o que o `$?` depois do `timeout` contava: 124 quando o prazo
+# venceu (mesmo que o exemplo, ao morrer, saísse com outro código), e 128 +
+# sinal quando ele morreu de sinal (o `wait()` dá `-sinal`). O aviso do sinal
+# era o shell que escrevia ("Killed", "Segmentation fault"); sem shell, ele
+# vai no fim da saída. O Windows não tem sinal: lá o código é o que o sistema
+# deu.
+funct executa(args) {
+    rc = 0
+    textos = []
+    estado = {"acabou": false, "estourou": false}
+    using os.run(args, capture="live") as proc {
+        proc.close()
+        canais = [drena(proc, false), drena(proc, true)]
+        guarda = vigia(proc, TEMPO, estado)
+        rc = proc.wait()
+        estado["acabou"] = true
+        await guarda
+        textos = await canais
+    }
+    saida = textos[0]
+    if saida != "" and not saida.endswith("\n") {
+        saida = saida + "\n"
+    }
+    saida = saida + textos[1]
+    if estado["estourou"] {
+        rc = 124
+        saida = saida + "\npassou de " + str(TEMPO) + " s: encerrado pelo exemplos_roda"
+    }
+    elif rc < 0 and not WINDOWS {
+        saida = saida + "\nmorreu do sinal " + str(-rc)
+        rc = 128 - rc
+    }
+    return [rc, saida]
+}
+
+
 funct roda(caminho) {
-    os.cmd("timeout " + str(TEMPO) + " '" + sys.executable + "' " + caminho
-           + " > /tmp/ps_ex_out.txt 2>&1 < /dev/null; echo $? > /tmp/ps_ex_rc.txt")
-    return [int(open("/tmp/ps_ex_rc.txt").read().strip()),
-            open("/tmp/ps_ex_out.txt").read()]
+    return executa([sys.executable, caminho])
 }
 
 
 funct confere_sintaxe(caminho) {
-    os.cmd("'" + sys.executable + "' --check " + caminho
-           + " > /tmp/ps_ex_chk.txt 2>&1; echo $? > /tmp/ps_ex_rc.txt")
-    return [int(open("/tmp/ps_ex_rc.txt").read().strip()),
-            open("/tmp/ps_ex_chk.txt").read()]
+    return executa([sys.executable, "--check", caminho])
 }
 
 

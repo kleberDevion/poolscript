@@ -96,11 +96,18 @@ for each ent in os.ls(dir) {
     # pasta vazia. Era `os.run(["rm", "-f", ...], true)`, e o `rm` não é do
     # Windows (só o do MSYS2, e só com ele no PATH); o do MSYS2 lê "/tmp/..."
     # como o /tmp DELE, não o do motor — o `-f` calava o "não existe" e o
-    # `rmdir` caía em "Directory not empty". `mode="rb"` devolve PoolFile pra
-    # QUALQUER arquivo, texto também, e o PoolFile tem `delete()`. O
-    # `delete()` não levanta quando o arquivo não sai: quem acusa é o `rmdir`
-    # SEM `force`, logo abaixo.
-    os.loadFile(dir + "/" + ent["name"], mode="rb").delete()
+    # `rmdir` caía em "Directory not empty".
+    # Pelo handle do `open()`, já fechado, e não pelo `os.loadFile`: o handle
+    # guarda o caminho como foi escrito, e o `delete()` dele tira a ENTRADA da
+    # pasta, como o `rm`. O `loadFile` resolve o caminho (realpath): num link
+    # simbólico o `delete()` apagava o arquivo de DESTINO, fora da pasta, e o
+    # link ficava — medido. E com caminho relativo (o do Windows) o `loadFile`
+    # procura o nome na pasta do script antes da corrente; o `open()` abre na
+    # corrente direto. O `delete()` não levanta quando o arquivo não sai: quem
+    # acusa é o `rmdir` SEM `force`, logo abaixo.
+    h = open(dir + "/" + ent["name"], "rb")
+    h.close()
+    h.delete()
 }
 os.rmdir(dir)
 post("fim")

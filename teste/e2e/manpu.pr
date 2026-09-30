@@ -6,17 +6,43 @@
 # Só a do objeto entende "full" em `column`/`cell`.
 import manpu as mp
 import os
+import sys
 
+# A pasta de trabalho é /tmp no Linux e no macOS. No Windows o motor é nativo
+# e "/tmp/ps_mp" é "<disco>:\tmp\ps_mp", na raiz do disco corrente — não o
+# /tmp do MSYS2 —, e o `os.mkdir`, que cria a cadeia inteira, deixaria a pasta
+# \tmp na raiz do disco depois do teste. Então lá ela é uma subpasta da pasta
+# corrente, criada aqui e apagada no fim como a de /tmp.
 dir = "/tmp/ps_mp"
+if sys.platform() == "windows" {
+    dir = "ps_e2e_manpu"
+}
 if not os.exists(dir) {
     os.mkdir(dir)
 }
 
+# Apaga o arquivo `p` pelo próprio motor, na hora. Era
+# `os.run(["rm", "-f", p], true)`, e o `rm` não é programa do Windows: o que o
+# `os.run` acha lá é o do MSYS2, só com ele no PATH, e ele lê "/tmp/..." como o
+# /tmp DELE, não o do motor.
+# Pelo handle do `open()`, já fechado, e não pelo `os.loadFile`: o handle
+# guarda o caminho como foi escrito, e o `delete()` dele tira a ENTRADA da
+# pasta, como o `rm`. O `loadFile` resolve o caminho (realpath): num link
+# simbólico o `delete()` apagava o arquivo de DESTINO, fora da pasta, e o link
+# ficava — medido. E com caminho relativo (o do Windows) o `loadFile` procura o
+# nome na pasta do script antes da corrente; o `open()` abre na corrente
+# direto. Como o `-f`, o `delete()` não levanta quando o arquivo não sai.
+funct apaga(p) {
+    h = open(p, "rb")
+    h.close()
+    h.delete()
+}
+
 txt = dir + "/lista.txt"
 # começa limpo: execução anterior que abortou deixaria conteúdo pra trás e a
-# semântica de escrita (acrescenta x sobrescreve) ficaria ilegível
+# semântica de escrita (acrescenta x sobrescreve) ficaria ilegível.
 if os.exists(txt) {
-    _r = os.run(["rm", "-f", txt], true)      # capture=true = espera terminar
+    apaga(txt)
 }
 
 # ── manpu.write: grava direto ───────────────────────────────────────────────
@@ -54,8 +80,11 @@ post("xlsx lido ->", mp.read(xls))
 # ── manpu.remove ────────────────────────────────────────────────────────────
 post("remove ->", mp.remove(target=xls, value="cabecalho"))
 
+# rmdir só remove diretório VAZIO: apaga o conteúdo antes, com o `apaga` lá de
+# cima. O `delete()` não levanta quando o arquivo não sai: quem acusa é o
+# `rmdir` SEM `force`, logo abaixo.
 for each ent in os.ls(dir) {
-    _r = os.run(["rm", "-f", dir + "/" + ent["name"]], true)
+    apaga(dir + "/" + ent["name"])
 }
 os.rmdir(dir)
 post("fim")
