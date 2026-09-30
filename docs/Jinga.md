@@ -814,15 +814,14 @@ str SECRET = os.getenv("SECRET_KEY")
 
 app = Jinker(__name__)
 cors(options=["POST", "GET"], permiser=["*/api", "allowed.all/Users-Agent"])
-
-model Usuario() {
+public model Usuario() {
     nome: str(length=60)
     email: str(length=100)
     senha: str(length=100)
 }
 
 @app.middleware()
-funct verificar() {
+public funct verificar() {
     token = request.get("token")
     if (not token) {
         return jsonify({"msg": "não autorizado"}), 401
@@ -835,7 +834,7 @@ funct verificar() {
 }
 
 @app.route("/api/cadastro", auth=cors.permiser(), methods=cors.options(["POST"]))
-funct cadastrar() {
+public funct cadastrar() {
     data = request.get_json()
 
     if (data == Usuario) {
@@ -863,7 +862,7 @@ funct cadastrar() {
 }
 
 @app.route("/api/login", auth=cors.permiser(), methods=cors.options(["POST"]))
-funct logar() {
+public funct logar() {
     data = request.get_json()
     email = data.get("email")
     senha = data.get("senha")
@@ -888,7 +887,7 @@ funct logar() {
 }
 
 @app.route("/api/dados", auth=cors.permiser(), methods=cors.options(["GET"]), middleware=app.middleware)
-funct dados() {
+public funct dados() {
     return jsonify({"msg": "área protegida"}), 200
 }
 

@@ -47,8 +47,7 @@ jinga --version / -v / -V       # versão do binário
 jinga --help    / -h       # ajuda
 ```
 
-`pool` é o nome de antes do rename e continua instalado como atalho do mesmo
-binário.
+`pool` - e o nome atecessor, continua em uso.
 
 ### Compilar: `jinga arquivo.pr -o nome`
 
