@@ -25,9 +25,40 @@
  * O carregador procura a DLL na pasta do executável primeiro — é onde o
  * pacote do Windows põe as dos clientes de banco. */
 #include "ps_win.h"
+/* O `dlsym` do Linux e do macOS acha a função na biblioteca OU nas que ela
+ * trouxe junto; o `GetProcAddress` só olha a própria DLL. O driver 2.x do
+ * Mongo são duas (as `mongoc_*` na libmongoc2.dll, as `bson_*` na
+ * libbson2.dll que ela importa), e no Windows o `connect` dizia que faltava
+ * `bson_append_document`. Aqui é a busca do `dlsym`: a DLL, depois as que ela
+ * importa, em largura. Quais são diz a tabela de importação do PE, e todas já
+ * estão na memória (o LoadLibrary carregou a árvore inteira). */
 static inline void *ps_dl_sim(void *h, const char *nome)
 {
-    return (void *)GetProcAddress((HMODULE)h, nome);
+    FARPROC f = GetProcAddress((HMODULE)h, nome);
+    if (f) return (void *)f;
+    HMODULE fila[64];
+    int n = 0, i = 0;
+    fila[n++] = (HMODULE)h;
+    while (i < n) {
+        const BYTE *base = (const BYTE *)fila[i++];
+        const IMAGE_NT_HEADERS *nt =
+            (const IMAGE_NT_HEADERS *)(base + ((const IMAGE_DOS_HEADER *)base)->e_lfanew);
+        const IMAGE_DATA_DIRECTORY *dir =
+            &nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+        if (!dir->VirtualAddress || !dir->Size) continue;
+        const IMAGE_IMPORT_DESCRIPTOR *imp =
+            (const IMAGE_IMPORT_DESCRIPTOR *)(base + dir->VirtualAddress);
+        for (; imp->Name; imp++) {
+            HMODULE dep = GetModuleHandleA((const char *)(base + imp->Name));
+            if (!dep) continue;
+            int visto = 0;
+            for (int k = 0; k < n && !visto; k++) visto = fila[k] == dep;
+            if (visto) continue;
+            if ((f = GetProcAddress(dep, nome))) return (void *)f;
+            if (n < (int)(sizeof(fila) / sizeof(fila[0]))) fila[n++] = dep;
+        }
+    }
+    return NULL;
 }
 #define PS_DL_SIM(h, nome) ps_dl_sim((h), (nome))
 #else

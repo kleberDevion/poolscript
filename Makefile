@@ -955,7 +955,13 @@ check-debug: pool-debug testar
 # último passo sem ter comparado nada.
 cobertura: pool testar
 	@rm -rf cob && mkdir -p cob
-	$(CC) -O0 -g --coverage $(CFLAGS_BASE) -I$(VM) -o cob/pool $(FONTES) $(LIBS_TESTE)
+	# `-fprofile-update=atomic`: o motor tem threads (o pool que faz as
+	# chamadas bloqueantes das fibras enquanto o laço de eventos segue), e o
+	# contador comum do gcov é `x++` sem trava. Dois `x++` ao mesmo tempo
+	# perdem um, os contadores de um mesmo bloco deixam de fechar a conta, e
+	# o lcov recusa a medição ("negative count" em ps_so.h, no
+	# `ps_sock_escreve` que a thread principal e as do pool chamam).
+	$(CC) -O0 -g --coverage -fprofile-update=atomic $(CFLAGS_BASE) -I$(VM) -o cob/pool $(FONTES) $(LIBS_TESTE)
 	@echo "rodando a suite contra o binario instrumentado…"
 	@PS_POOL=cob/pool nice -n 19 ./testar 2>&1 | tail -2
 	# O PORTÃO INTEIRO, não só o `testar`. Enquanto a medição rodava apenas a

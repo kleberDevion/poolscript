@@ -31116,14 +31116,23 @@ static void sintaxe_na_causa(const char *fonte, size_t len, char *msg, size_t ca
     ps_lexer_free(tl);
 }
 
+/* O `e` das três entradas (rodar, `--check`, `--bytecode`) começa INTEIRO
+ * zerado. Quem reporta lê a nota do private e o nome do tipo sem saber se o
+ * erro os preencheu, e o `e` do chamador é variável de pilha: a limpeza campo
+ * a campo, copiada em cada entrada, esqueceu a nota nas três, e no macOS todo
+ * erro de runtime saía com "'?' e private: declarada em ?, linha 32766" (lixo
+ * da pilha; no Linux a pilha vinha zerada por acaso). */
+static void erro_zera(PSErroExec *e)
+{
+    memset(e, 0, sizeof(*e));           /* PS_ERRO_NENHUM = 0, tipos = NULL */
+}
+
 /* `jinga --bytecode arquivo.pr`: compila como pra rodar (sem recuperação,
  * mesmo resolvedor de import) e imprime o bytecode de cada proto. Erro de
  * compilação sai como ao rodar. NUNCA executa. */
 int ps_desmonta_fonte(const char *fonte, size_t len, const char *caminho, FILE *saida, PSErroExec *e)
 {
-    e->tipo = PS_ERRO_NENHUM; e->msg[0] = '\0'; e->tipo_nome[0] = '\0';
-    e->linha = e->col = 0; e->ntb = 0;
-    e->tipos = NULL; e->ntipos = 0;
+    erro_zera(e);
     char dir_script[sizeof(((VM *)0)->dir_script)];
     dir_do_script(caminho, dir_script, sizeof(dir_script));
     char abs_script[1024];
@@ -31175,9 +31184,7 @@ int ps_desmonta_fonte(const char *fonte, size_t len, const char *caminho, FILE *
 int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e,
                       PSAviso **avisos, int32_t *navisos)
 {
-    e->tipo = PS_ERRO_NENHUM; e->msg[0] = '\0'; e->tipo_nome[0] = '\0';
-    e->linha = e->col = 0;
-    e->tipos = NULL; e->ntipos = 0;
+    erro_zera(e);
     if (avisos) *avisos = NULL;
     if (navisos) *navisos = 0;
 
@@ -31341,12 +31348,7 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
      * na criação, então semear depois deixaria hashes de duas gerações. */
     ps_hash_semeia();
 
-    e->tipo = PS_ERRO_NENHUM;
-    e->msg[0] = '\0';
-    e->linha = e->col = 0;
-    e->ntb = 0;
-    e->tipos = NULL;
-    e->ntipos = 0;
+    erro_zera(e);
 
     /* Executável gerado (`-o`): `caminho` é o ELF — vale como nome do
      * programa (sys.argv[0], recarga do jinker) — mas a pasta do script, a

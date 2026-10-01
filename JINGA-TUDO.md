@@ -2848,6 +2848,7 @@ Itens da trilha já fechados: 2 (Pyrite) foi superado pelo rename pra Jinga; 4 (
 | 09-29 | 16.2.1 | dd368eb | Windows compila no CI (gcc 16 e cabeçalhos novos do UCRT64: `strndup`, `__USE_MINGW_ANSI_STDIO`) |
 | 09-29 | 16.2.2 | ver `git log` | As 20 falhas do 1º run do Windows (8516/8536): `_isatty` do NUL, casos com sintaxe de `sh` no `os.cmd`, `/dev/full`, url do sqlite, pty; bugs achados no caminho: `os.rmdir(force)` seguia link e apagava o destino, `os.copy` apagava link, `os.move` dizia ok sem apagar a origem, `rename` do Windows não substituía, `--check` dava MemoryError na borda do aninhamento; membro ausente numa chamada diz "method" e sugere a primeira palavra (`send` -> `send_linux`) |
 | 09-30 | 16.2.3 | ver `git log` | O `make check` inteiro portado pra macOS e Windows (os drivers sobem e derrubam processo pelo `Process`, sem shell; pastas de trabalho relativas); o CI Linux (`ci.yml`) vermelho desde 26/09 (atalho do `jpkg` testava o `jinga` instalado, fibra pequena demais sob ASan, erro do `lcov` escondido); motor no Windows: caminho `C:\` absoluto, separador `\` (`vm/ps_caminho.h`), `realpath` que não resolvia link (o static do jinker servia arquivo de fora), erro do Winsock no connect com prazo, aspas pro metacaractere do `cmd.exe` no `os.run`; `delete()` que não apagava dizia True; o F5 do VS Code não depurava (a sonda da extensão gastava a única conexão); `attach(pasta)` com o mesmo erro nos 3 sistemas; verdes falsos fechados em `unidade`, `audita_c`, `audita_exemplos_doc`, `conserta_barra_doc`, `e2e_roda` e `leis` |
+| 09-30 | 16.2.4 | ver `git log` | O que o CI do 16.2.3 achou: a nota do `private` no traceback saía com lixo da pilha em todo erro de runtime (as três entradas do motor limpavam o erro campo a campo e esqueciam a nota; no Linux a pilha vinha zerada por acaso, no Mac não); o mongo no Windows não achava as `bson_*` (o `GetProcAddress` só olha a própria DLL; agora procura também nas que ela importa, como o `dlsym`); `make cobertura` com contador atômico (as threads do pool deixavam contador negativo e o `lcov` recusava a medição) |
 | 09-28 | 16.1.8 | ec711c7 | Folga da pilha medida rodando (o clang põe o dobro de pilha no laço da VM); nome do sinal pelo `strsignal` no runner |
 | 09-28 | 16.1.7 | c669a78 | macOS: resolução de nomes do módulo `sockets` pela camada de sistema |
 | 09-28 | 16.1.6 | 6980c40 | Pacote macOS, `instalar.sh` com ramo Darwin, `build.yml` (Linux + macOS Intel) |
@@ -3827,7 +3828,7 @@ O plano é o `~/.claude/plans/steady-weaving-pine.md`, com um motor só (o mesmo
 | 2. macOS | feito: pacote, instalador e workflow (`6980c40`), sockets pela camada (`c669a78`), pilha do clang (`ec711c7`), casos só do Linux e TLS pelo Keychain (`3c245e7`) |
 | 3. `scripts/compila.pr` | feito (`89e32d7`) |
 | 4. Este md | `JINGA-TUDO.md`, raiz; no `.gitignore` em `4aedf8b`, versionado desde que o repositório é privado |
-| 5. Windows nativo | código completo (16.2.0); no 1º run do CI de verdade (16.2.1) a suíte deu 8516/8536, e o 16.2.2 trata as 20; conferir o CI do 16.2.2 |
+| 5. Windows nativo | código completo (16.2.0); no 1º run do CI de verdade (16.2.1) a suíte deu 8516/8536, e o 16.2.2 trata as 20; o 16.2.3 porta o `make check` inteiro; a suíte fecha 8545/8545 no CI; o 16.2.4 trata o que o `make check` do 16.2.3 achou; conferir o CI do 16.2.4 |
 | 6. Release com os três pacotes | o `build.yml` já publica os três numa tag `v*`; nenhuma tag criada |
 
 **macOS**
@@ -3871,7 +3872,17 @@ O plano é o `~/.claude/plans/steady-weaving-pine.md`, com um motor só (o mesmo
 - **Conferir aqui sem Windows:** `scratchpad/win_check.sh` (sintaxe com os cabeçalhos do UCRT64 extraídos do repo.msys2.org, `-std=gnu2x`) e `scratchpad/win_liga.sh` (liga o `jinga.exe` estático). Os pacotes ficam em `scratchpad/ucrt/` (some com a sessão; baixar de novo pelo `ucrt64.db`).
 - **CI do 16.2.2 / `ffb55a8`:** Mac passou as duas suítes e o `make check` até o `cobre_stdlib` (constantes de socket que o Mac não tem); Windows passou as duas suítes e caiu na `unidade` (faltava `-lbcrypt`). O `ci.yml` (Linux) estava vermelho desde 26/09.
 - **16.2.3:** todo o `make check` portado (cada harness por um agente, revisado por outro, medido na VPS original x novo), mais os bugs do motor no Windows achados no caminho (ver a linha do histórico). Conferido antes do push: compilação do Windows limpa com o sysroot UCRT64 (`win_check.sh`), e o `make check` inteiro na VPS como `nobody`, com o PATH sem o `jinga` instalado.
-- **Falta**: ler o CI do 16.2.3 nos três sistemas (o Windows roda agora também o `mail_local`, com python3, e o `mongo_roda`, com o MongoDB do runner no PATH) e tratar o que sobrar.
+- **CI do 16.2.3 / `cd8d31a`:** Mac e Windows passaram as duas suítes (8545/8545, com e sem JIT). No `make check`, o Mac caiu no `cli_roda` (1 de 260: a nota do `private` com lixo da pilha, bug do motor nos 3 sistemas que só o Mac mostrou; o valgrind acusava no Linux também). O Windows passou tudo até o `jinker` e caiu no `mongo_roda`: o driver 2.x do MSYS2 é `libmongoc2.dll` + `libbson2.dll`, e o `GetProcAddress` não procura na dependência. No Linux, o portão do `ci.yml` passou; a cobertura caiu no `lcov` ("negative count", contador sem trava com threads).
+- **16.2.4:** as três causas tratadas (ver a linha do histórico). Conferido antes do push:
+  - o `make check` inteiro na VPS como `nobody`;
+  - o `make cobertura` na VPS: o `lcov` aceita a medição. A catraca acusa só o `ps_db.c` (209 -> 177 ramos cobertos), porque lá o e2e de banco diz PULOU: a 5432 da VPS é do PostgreSQL de produção. O job do CI sobe os bancos como serviço;
+  - no `win_check.sh`, com as flags do `avisos` (`-Wshadow -Wlogical-op -Wformat-truncation=1`), os 20 fontes saem limpos;
+  - o `-fanalyzer` no código do Windows acha só os 3 falsos positivos do `ANALISA_ACEITOS`.
+
+  O `ps_so.c` não tem piso no `teste/cobertura_base.txt`, e os pisos que sobem no CI se perdem: a catraca regrava o arquivo só na cópia do job.
+
+  Ainda não rodaram no CI: no Windows, o LSP, `gera_realce`, nvim, IntelliJ, `analisa`, `avisos`, `check-debug` e `check-e2e-local`; no Mac, tudo depois do `cli_roda`.
+- **Falta**: ler o CI do 16.2.4 e tratar o que sobrar.
 - **Portão do Windows, pelo plano:**
   - a suíte inteira no job `windows-latest`/MSYS2;
   - cada falha separada em bug do porte (corrige) ou diferença real do sistema (`cmd.exe` no lugar de `sh`, `\r\n`), que ganha a expectativa do Windows;
