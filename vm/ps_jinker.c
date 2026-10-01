@@ -163,8 +163,9 @@ int ps_jk_listen(const char *host, int porta, char *erro, size_t ecap)
     /* fd de escuta NÃO-BLOQUEANTE: com multi-processo (prefork) vários workers
      * acordam no mesmo `poll` (thundering herd) e chamam accept(); um pega, os
      * outros recebem EAGAIN -> ps_jk_accept devolve NULL e o worker segue, em
-     * vez de travar bloqueado no accept(). A conexão aceita continua bloqueante
-     * (com o SO_RCVTIMEO dela), só o socket de escuta muda. */
+     * vez de travar bloqueado no accept(). A conexão aceita é bloqueante (com
+     * o SO_RCVTIMEO dela): o ps_jk_accept garante, porque no macOS e no
+     * Windows ela herdaria o não-bloqueante desta escuta. */
     ps_sock_nao_bloqueia(fd, 1);
     return fd;
 }
@@ -176,11 +177,14 @@ PSJkConn *ps_jk_accept(int fd_escuta, void *ssl_ctx, char *ip, size_t ipcap)
     do { fd = (int)accept(fd_escuta, (struct sockaddr *)&a, &al); if (fd < 0) ps_sock_errno(); }
     while (fd < 0 && errno == EINTR);
     if (fd < 0) return NULL;
-#if defined(_WIN32)
-    /* no Windows o socket aceito herda o não-bloqueante da escuta; aqui a
-     * conexão é bloqueante (com timeout), como no Linux */
+    /* A conexão é bloqueante (com timeout): o pedido e o handshake do TLS são
+     * lidos numa thread do pool, que espera os bytes. O socket aceito herda o
+     * não-bloqueante da escuta no macOS (BSD) e no Windows; no Linux não. Só
+     * o Windows desligava, e no macOS a leitura voltava EAGAIN quando o
+     * cliente ainda não tinha mandado nada: o servidor dava a conexão por
+     * caída e fechava (o `ws_connect` caía no handshake, o 403 chegava como
+     * RST, o HTTPS fechava depois do ClientHello). */
     ps_sock_nao_bloqueia(fd, 0);
-#endif
 
     if (ip && ipcap) {
         ip[0] = '\0';

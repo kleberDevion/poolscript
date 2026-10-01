@@ -103,9 +103,13 @@ jobs:
       # Falha de alocação ponto a ponto. O contrato é: ou termina, ou levanta
       # erro — segfault, liberação dupla e trava reprovam.
       - run: make oom
-      # O runner de CI tem mais memória que a máquina de desenvolvimento, então
-      # aqui o analisador roda TAMBÉM no arquivo grande, que fica de fora lá.
-      - run: make analisa ANALISA_TUDO=1 ANALISA_MB=12000
+      # O analisador roda TAMBÉM no arquivo grande, que fica de fora no portão.
+      # O teto cabe no runner: o de repositório privado tem 2 núcleos e 7,9 GB
+      # (medido em 2026-10-01). Com 12000 MB o gcc passava da RAM e o runner
+      # era derrubado ("received a shutdown signal"). Medido com teto de
+      # 5000 MB: ps_parser.c pede 2,0 GB, ps_compiler.c 3,3 GB, e o
+      # jinga_vm.c passa de 5 GB e não termina — o alvo diz NAO TERMINARAM.
+      - run: make analisa ANALISA_TUDO=1 ANALISA_MB=6000
       # Nivel 2 do format-truncation: ruidoso demais pro portao (acusa
       # snprintf com precisao explicita), mas util pra revisao noturna.
       # `continue-on-error` em vez de `|| true`: o step aparece VERMELHO no

@@ -238,7 +238,9 @@ static inline int ps_sock_nao_bloqueia(int fd, int sim)
 {
     int fl = fcntl(fd, F_GETFL, 0);
     if (fl < 0) return -1;
-    return fcntl(fd, F_SETFL, sim ? (fl | O_NONBLOCK) : (fl & ~O_NONBLOCK));
+    int novo = sim ? (fl | O_NONBLOCK) : (fl & ~O_NONBLOCK);
+    if (novo == fl) return 0;          /* já está no modo pedido */
+    return fcntl(fd, F_SETFL, novo);
 }
 static inline int ps_sock_timeout(int fd, int ms_le, int ms_escreve)
 {

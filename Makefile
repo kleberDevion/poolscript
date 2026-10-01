@@ -490,12 +490,21 @@ ANALISA_FORA := $(VM)/jinga_vm.c
 #                                 conversão. Quem abre (ps_jk_ws_conecta, os
 #                                 sockets do motor) guarda em `c->fd` e fecha em
 #                                 todo caminho de erro
+#   ps_lexer.c leak of `nv`     — só o gcc 16 (o do MSYS2; medido também com o
+#                                 gcc 16.2 no Linux, o 13 não acusa): o
+#                                 `realloc` de `o->blocos` no `novo_token` dá
+#                                 certo, o `malloc` do bloco falha e o `erro()`
+#                                 escreve na MESMA lista (`lx->out`); o
+#                                 analisador perde o vínculo e dá o vetor por
+#                                 perdido. Ele fica em `o->blocos` e sai no
+#                                 `ps_lexer_free` (`free(lista->blocos)`)
 # Cada entrada e um padrao de `grep` (regex basica, sem espaco: `.` casa o
 # espaco e as aspas do gcc) casando ARQUIVO + MENSAGEM, nao arquivo:linha —
 # a linha anda a cada edicao e o portao reprovava o mesmo falso positivo de
 # antes, ja conferido, so porque o codigo acima dele cresceu (345 -> 357).
 ANALISA_ACEITOS := ps_xlsx.c:[0-9]*:[0-9]*:.*leak.of..nb. ps_db.c:[0-9]*:[0-9]*:.*leak.of..strdup \
-                   ps_win.h:[0-9]*:[0-9]*:.*leak.of.file.descriptor
+                   ps_win.h:[0-9]*:[0-9]*:.*leak.of.file.descriptor \
+                   ps_lexer.c:[0-9]*:[0-9]*:.*leak.of..nv.
 ANALISA_ALVO := $(if $(ANALISA_TUDO),$(FONTES),$(filter-out $(ANALISA_FORA),$(FONTES)))
 
 # O TETO não vale em todo sistema, e isso tem que aparecer. No macOS o kernel
@@ -505,6 +514,9 @@ ANALISA_ALVO := $(if $(ANALISA_TUDO),$(FONTES),$(filter-out $(ANALISA_FORA),$(FO
 # também pode ser recusado. A recusa ia calada pra saída do gcc — que só é lida
 # por `warning:|error:` — e o gcc rodava SEM teto sem ninguém saber. Agora o
 # teto é testado antes: recusado, o alvo diz que roda sem ele.
+# O aviso do `FORA por padrao` é um `$(if)` que vira `true` com ANALISA_TUDO:
+# vazio, sobrava um `;` sozinho e o `sh` recusava a receita inteira — o
+# `make analisa ANALISA_TUDO=1` do noturno caía sem analisar nada.
 analisa:
 	@set -f; achou=0; faltou=""; \
 	if [ -z "$(GCC_GNU)" ]; then \
@@ -531,7 +543,7 @@ analisa:
 	if [ -n "$$faltou" ]; then \
 	  if [ $$teto -eq 1 ]; then echo "  NAO TERMINARAM (teto de $(ANALISA_MB) MB):$$faltou"; \
 	  else echo "  NAO TERMINARAM (sem o teto de $(ANALISA_MB) MB: o gcc saiu com erro sem achado):$$faltou"; fi; fi; \
-	$(if $(ANALISA_TUDO),,echo "  FORA por padrao (grande demais p/ esta maquina): $(ANALISA_FORA)"); \
+	$(if $(ANALISA_TUDO),true,echo "  FORA por padrao (grande demais p/ esta maquina): $(ANALISA_FORA)"); \
 	if [ $$achou -ne 0 ]; then \
 	  echo; \
 	  echo "  Achado do analisador REPROVA. Falso positivo conferido vai pra"; \
