@@ -24,7 +24,7 @@ O tamanho do resultado vai de `0` a `bufsize`:
 | `b"…"` com 1..`bufsize` bytes | chegou isso; **pode ser menos** do que o outro lado mandou numa tacada |
 | `b""` (vazio, `len` = 0) | **fim de fluxo**: o outro lado fechou ou deu `shutdown(SHUT_WR)`. Não é erro, e nunca vai chegar mais nada |
 
-`b""` é o sinal de fim — um laço `while true { d = s.recv(4096) }` que não testa
+`b""` é o sinal de fim — um laço `while True { d = s.recv(4096) }` que não testa
 `len(d) == 0` gira para sempre.
 
 ## Erros

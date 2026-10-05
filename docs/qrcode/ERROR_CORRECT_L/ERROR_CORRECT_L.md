@@ -87,7 +87,7 @@ qrcode.QRCode(error_correction=qrcode.ERROR_CORRECT_L, box_size=10, border=4)
 - **Só a primeira letra conta, e sem diferenciar maiúscula de minúscula.**
   `"l"`, `"L"` e `"Lorem"` são todos o nível L.
 - **Valor não reconhecido cai em L, calado.** `qrcode.make(x, "Z")`,
-  `qrcode.make(x, 3)` e `qrcode.make(x, null)` geram um QR nível L sem
+  `qrcode.make(x, 3)` e `qrcode.make(x, Null)` geram um QR nível L sem
   reclamar — medido pela capacidade: os três aceitam 2953 bytes e recusam 2954.
   Digitar o nível à mão é justamente o que a constante evita.
 - A constante é somente leitura no uso normal: ela vive no módulo, e o valor

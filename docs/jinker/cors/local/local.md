@@ -1,7 +1,7 @@
 # `cors.local()`
 
-Devolve o modo de origem da última chamada de `cors(app, ...)`: `true` (o
-padrão) ou `false` quando foi configurado `local=false`, o modo estrito.
+Devolve o modo de origem da última chamada de `cors(app, ...)`: `True` (o
+padrão) ou `False` quando foi configurado `local=False`, o modo estrito.
 
 ```
 cors.local() -> bool
@@ -12,11 +12,11 @@ cors.local() -> bool
 ## O que o modo muda
 
 ```
-cors(app, origins=["https://meusite.com"])                # cors.local() == true
-cors(app, origins=["https://meusite.com"], local=false)   # cors.local() == false
+cors(app, origins=["https://meusite.com"])                # cors.local() == True
+cors(app, origins=["https://meusite.com"], local=False)   # cors.local() == false
 ```
 
-| Pedido | `true` (padrão) | `false` (estrito) |
+| Pedido | `True` (padrão) | `False` (estrito) |
 |---|---|---|
 | `Origin` da lista | passa | passa |
 | `Origin` fora da lista | `403` | `403` |
@@ -37,7 +37,7 @@ modo não tem efeito: lista vazia libera tudo.
 from jinker import Jinker, cors
 
 app = Jinker(__name__)
-cors(app, origins=["https://meusite.com"], local=false)
+cors(app, origins=["https://meusite.com"], local=False)
 
 @app.route("/estado")
 funct estado() {

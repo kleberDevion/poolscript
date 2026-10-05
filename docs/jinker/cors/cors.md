@@ -1,4 +1,4 @@
-# `cors(app, ..., options=None, origins=None, local=True)`
+# `cors(app, ..., options=Null, origins=Null, local=True)`
 
 Configuração de acesso de um servidor: quais métodos HTTP são aceitos e de
 quais origens (domínios). O **primeiro argumento é o servidor** (a instância
@@ -9,7 +9,7 @@ que forem passados.
 from jinker import Jinker, cors
 
 app = Jinker(__name__)
-cors(app, options: list = None, origins: list = None, local: bool = True) -> cors
+cors(app, options: list = Null, origins: list = Null, local: bool = True) -> cors
 ```
 
 Chamar `cors(...)` é **opcional** — servidor sem `cors(app, ...)` libera tudo
@@ -96,12 +96,12 @@ Ver [`cors.origins()`](origins/origins.md) para usar no `auth=` de uma rota.
 ## `local` — modo estrito
 
 ```
-cors(app, origins=["https://meusite.com"], local=false)
+cors(app, origins=["https://meusite.com"], local=False)
 ```
 
-Com `local=false` **só a lista vale**, no HTTP e no WebSocket:
+Com `local=False` **só a lista vale**, no HTTP e no WebSocket:
 
-| Pedido | `local=True` (padrão) | `local=false` |
+| Pedido | `local=True` (padrão) | `local=False` |
 |---|---|---|
 | `Origin` da lista | passa | passa |
 | `Origin` fora da lista | `403` | `403` |
@@ -109,7 +109,7 @@ Com `local=false` **só a lista vale**, no HTTP e no WebSocket:
 | sem `Origin` (`curl`, backend) | passa | `403` `Origem não autorizada: (sem origin)` |
 | `Origin: null` | `403` | passa **só** se `"null"` estiver na lista |
 
-Sem `origins` (lista vazia), `local=false` não muda nada: sem lista não há o
+Sem `origins` (lista vazia), `local=False` não muda nada: sem lista não há o
 que conferir. `local=` que não é bool é `TypeError` na chamada. O valor
 configurado vem em [`cors.local()`](local/local.md).
 
@@ -142,7 +142,7 @@ cors(app, options=["GET", "POST"], origins=["https://meusite.com"])
 
 @app.route("/api/dados", auth=cors.origins(), methods=cors.options(["GET"]))
 funct dados() {
-    return jsonify({"ok": true})
+    return jsonify({"ok": True})
 }
 ```
 
@@ -168,4 +168,4 @@ doc velha.
 |---|---|---|
 | `cors.options([...])` | resolve/filtra métodos pra uma rota | [options/options.md](options/options.md) |
 | `cors.origins()` | devolve as origens configuradas (usado em `auth=`) | [origins/origins.md](origins/origins.md) |
-| `cors.local()` | `false` = modo estrito (`local=false`) | [local/local.md](local/local.md) |
+| `cors.local()` | `False` = modo estrito (`local=False`) | [local/local.md](local/local.md) |

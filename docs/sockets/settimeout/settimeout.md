@@ -14,7 +14,7 @@ Os três modos, e é só isso que existe:
 
 | valor | modo | o que acontece quando não há dado |
 |---|---|---|
-| `null` | bloqueante | espera o tempo que for |
+| `Null` | bloqueante | espera o tempo que for |
 | `0` | não-bloqueante | levanta `timed out` **na hora** |
 | `> 0` | com prazo | espera até esse tempo e aí levanta `timed out` |
 
@@ -40,7 +40,7 @@ post(s.settimeout(5))
 post(s.gettimeout())
 s.settimeout(0.25)
 post(s.gettimeout())
-s.settimeout(null)
+s.settimeout(Null)
 post(s.gettimeout())
 s.close()
 ```

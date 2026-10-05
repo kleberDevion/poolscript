@@ -1,10 +1,10 @@
-# `request.files(field, allowed=None)`
+# `request.files(field, allowed=Null)`
 
 Pega **vários arquivos** enviados no mesmo campo (upload múltiplo). Devolve uma
 **lista** de `PoolFileUpload` — lista vazia se não houver arquivo.
 
 ```
-request.files(field: str, allowed: list = None) -> list[PoolFileUpload]
+request.files(field: str, allowed: list = Null) -> list[PoolFileUpload]
 ```
 
 | Parâmetro | O que é |

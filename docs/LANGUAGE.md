@@ -156,7 +156,7 @@ x = 10                 # sem tipo escrito — o tipo fica fixado na 1ª atribui�
 str nome = "Pool"       # tipada — só aceita valor desse tipo
 int idade = 20
 flo altura = 1.75
-bool ativo = true
+bool ativo = True
 ```
 
 Tipos primitivos: `str`, `int`, `flo`, `bool`; e mais `char`, `long`, `list`,
@@ -180,12 +180,12 @@ valor é convertido automaticamente (e falha com erro claro se não for
 conversível).
 
 No **fim da entrada** (EOF — o outro lado fechou, ou a entrada veio de um
-arquivo que acabou), `input()` devolve **`null`**, não `""`. Uma linha vazia de
+arquivo que acabou), `input()` devolve **`Null`**, não `""`. Uma linha vazia de
 verdade continua devolvendo `""`, então dá pra distinguir as duas e um laço de
 leitura sabe onde parar:
 
 ```ps
-while true {
+while True {
     linha = input()
     if linha == Null {
         break          # acabou a entrada
@@ -219,11 +219,11 @@ quebrava `base(...)` — antes
 Quatro grafias equivalentes, todas o mesmo valor:
 
 ```
-Null   null   None   none
+Null   Null   Null   Null
 ```
 
 `Null` só é igual a `Null`: `Null == 0` é **`False`**, e o mesmo vale para
-`false` e `""`. Comparação de magnitude (`<`, `>`, `<=`, `>=`) com `Null`
+`False` e `""`. Comparação de magnitude (`<`, `>`, `<=`, `>=`) com `Null`
 **levanta** `TypeError` — devolver `False` sem erro fazia `if x > 0` com `x` nulo
 cair no `else` sem avisar. `post(Null)` imprime **`Null`**, com inicial
 maiúscula — igual a `True` e `False`.
@@ -695,7 +695,7 @@ model Usuario() {
     ativo: bool
 }
 
-data = {"nome": "ana", "idade": 20, "ativo": true}
+data = {"nome": "ana", "idade": 20, "ativo": True}
 
 if (data == Usuario) {
     post("Dados válidos!")
@@ -708,7 +708,7 @@ Campo ausente, tipo errado, ou string/int que excede o `length` declarado →
 inválido. Tipos aceitos: `str`, `int`, `flo`, `bool`, `list`, `dict` e o nome
 de outro `model` (aninhado). Os parâmetros entre parênteses validam o
 **dado**: `length=N`, `regex="…"`, `in=[…]`, `not_in=[…]`, `min=N`, `max=N`,
-`optional=true`, `of=T` (item da lista) — detalhe em
+`optional=True`, `of=T` (item da lista) — detalhe em
 [08-model-e-enum](linguagem/08-model-e-enum.md).
 
 ---
@@ -1017,7 +1017,8 @@ count each int(7) in nums {
 
 Dentro do bloco, `return;` (vazio) **acumula** e devolve o total ao final
 para a `funct` que envolve o `count each`; `return valor` interrompe
-imediatamente (curto-circuito) e devolve `valor`.
+imediatamente (curto-circuito) e devolve `valor`. Fora de funct (no topo do
+arquivo) o `return` é erro de sintaxe antes de rodar: `'return' fora de funct`.
 
 ---
 

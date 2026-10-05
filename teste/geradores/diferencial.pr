@@ -93,11 +93,11 @@ funct tokens(L) {
 funct sem_comentario(texto) {
     out = ""
     i = 0
-    em = false
+    em = False
     while i < len(texto) {
         if em {
             if texto[i:i+2] == "*/" {
-                em = false
+                em = False
                 i = i + 2
                 continue
             }
@@ -105,7 +105,7 @@ funct sem_comentario(texto) {
             continue
         }
         if texto[i:i+2] == "/*" {
-            em = true
+            em = True
             i = i + 2
             continue
         }
@@ -298,16 +298,16 @@ funct roda(fonte_bytes) {
 
 funct iguais(a, b) {
     if a[0] != b[0] or a[2] != b[2] or len(a[1]) != len(b[1]) {
-        return false
+        return False
     }
     i = 0
     while i < len(a[1]) {
         if a[1][i] != b[1][i] {
-            return false
+            return False
         }
         i = i + 1
     }
-    return true
+    return True
 }
 
 
@@ -325,7 +325,7 @@ funct texto_de(bs) {
 # linhas do último arquivo lido e o contador foi zerado. Dentro de uma funct
 # os nomes são locais dela, e ninguém de fora os alcança.
 funct principal() {
-    os.mkdir(TMP, exist_ok=true)
+    os.mkdir(TMP, exist_ok=True)
     linhas = []
     addEnd(linhas, "/*")
     addEnd(linhas, " * DIFERENCIAL — antes x depois, o corpus inteiro.")
@@ -363,10 +363,10 @@ funct principal() {
                 fora_binario = fora_binario + 1
                 continue
             }
-            depende = false
+            depende = False
             for each marca in DEPENDE_DE_FORA {
                 if texto.find(marca) >= 0 {
-                    depende = true
+                    depende = True
                 }
             }
             if depende {

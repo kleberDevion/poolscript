@@ -69,7 +69,7 @@ se erra por analogia (caixa só ASCII, `find`/`count`/`index` aceitam inteiro,
 |---|---|
 | [`b.split(sep=Null, maxsplit=-1)`](split/split.md) | parte no separador, ou em branco |
 | [`b.rsplit(sep=Null, maxsplit=-1)`](rsplit/rsplit.md) | o mesmo, contando do fim |
-| [`b.splitlines(keepends=false)`](splitlines/splitlines.md) | parte em linhas (`\n`, `\r`, `\r\n`) |
+| [`b.splitlines(keepends=False)`](splitlines/splitlines.md) | parte em linhas (`\n`, `\r`, `\r\n`) |
 | [`b.partition(sep)`](partition/partition.md) | `(antes, sep, depois)` na primeira |
 | [`b.rpartition(sep)`](rpartition/rpartition.md) | o mesmo, na última |
 | [`b.join(lista)`](join/join.md) | junta usando este valor como separador |

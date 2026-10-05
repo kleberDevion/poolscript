@@ -69,7 +69,7 @@ Ctrl+C no terminal 1 derruba o servidor.
 Cobre HTTP (rotas, status, tupla, 204, upload), **upload multipart**
 (`file()`/`files(campo)`, `PoolFileUpload` inteiro) e **WebSocket**:
 
-- `/sala` (`channel=true`) — dois clientes, um só ouvindo num `sleep`. A
+- `/sala` (`channel=True`) — dois clientes, um só ouvindo num `sleep`. A
   mensagem tem que chegar **durante** a espera; era aqui que o cliente fora de
   fibra não drenava a conexão e só entregava no `close()`.
 - `/ws` (sem canal) — o `return` do handler volta pro remetente daquela

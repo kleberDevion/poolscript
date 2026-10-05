@@ -1,12 +1,12 @@
-# `request.patch(url, headers=None, body=None, timeout=30, stream=false, max_size=None, fields=None, file=None, save=None)`
+# `request.patch(url, headers=Null, body=Null, timeout=30, stream=False, max_size=Null, fields=Null, file=Null, save=Null)`
 
 Faz uma requisição HTTP **PATCH** — usada pra **atualizar parte** de um recurso
 (só os campos que mudaram). Mesma assinatura de
 [`request.post`](../post/post.md). Devolve um [`Response`](../Response/Response.md).
 
 ```
-request.patch(url, headers=None, body=None, timeout=30, stream=false, max_size=None,
-              fields=None, file=None, save=None) -> Response
+request.patch(url, headers=Null, body=Null, timeout=30, stream=False, max_size=Null,
+              fields=Null, file=Null, save=Null) -> Response
 ```
 
 ---

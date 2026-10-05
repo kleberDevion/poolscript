@@ -36,13 +36,13 @@ const Caso CASOS_PENDENTES[] = {
  * verde PERMANENTE, porque `Null != 0` era False. Isso já escondeu defeito
  * nesta suíte. */
 { "Null é igual só a Null",
-  "post(false == null, null == false, true == null, null == null)\n",
+  "post(False == Null, Null == False, True == Null, Null == Null)\n",
   "False False False True", NULL, 0 },
 
 /* bool participa da aritmética em todo lugar (`true + 1` == 2); o menos
  * unário não podia ser a exceção. */
 { "menos unário em bool",
-  "x = true\npost(-x, -false)\n", "-1 0", NULL, 0 },
+  "x = True\npost(-x, -False)\n", "-1 0", NULL, 0 },
 
 /* ── Unicode ─────────────────────────────────────────────────────────────
  * A tabela de caixa da VM só cobria ASCII + Latin-1/Ext-A. Grego e cirílico
@@ -60,7 +60,7 @@ const Caso CASOS_PENDENTES[] = {
 { "index com posição inicial",
   "l = [1, 2, 3, 2]\npost(l.index(2), l.index(2, 2))\n", "1 3", NULL, 0 },
 { "índice booleano vale 0/1",
-  "l = [10, 20]\npost(l[true], l[false], \"ab\"[true])\n", "20 10 b", NULL, 0 },
+  "l = [10, 20]\npost(l[True], l[False], \"ab\"[True])\n", "20 10 b", NULL, 0 },
 { "limite de fatia acima do int64 satura",
   "s = \"abcdef\"\npost(s[999999999999999999999:], s[:999999999999999999999])\n", " abcdef", NULL, 0 },
 

@@ -100,7 +100,7 @@ funct roda(fonte, tag) {
 
 
 if __name__ == "main" {
-    os.mkdir(TMP, exist_ok=true)
+    os.mkdir(TMP, exist_ok=True)
 
     rodadas = 200
     if len(sys.argv) > 1 {

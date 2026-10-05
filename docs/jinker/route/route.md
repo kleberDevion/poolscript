@@ -1,4 +1,4 @@
-# `@app.route(path, methods=None, auth=None, middleware=None, model=None)`
+# `@app.route(path, methods=Null, auth=Null, middleware=Null, model=Null)`
 
 Registra uma **rota**: liga um caminho de URL à `funct` declarada logo abaixo
 do decorador. Quando alguém acessa esse caminho, o jinker chama a funct e usa
@@ -38,7 +38,7 @@ model Login() {
 
 @app.post("/login", model=Login, auth=cors.origins())
 funct entrar() {
-    return jsonify({"ok": true, "email": request.get("email")})
+    return jsonify({"ok": True, "email": request.get("email")})
 }
 
 @app.get("/perfil")
@@ -60,7 +60,7 @@ daquele path aceita:
 ```
 GET /login          (rota declarada só com POST)
 → 405   Allow: POST
-  {"error": true, "code": 405, "message": "método inválido: GET /login — a rota aceita POST"}
+  {"error": True, "code": 405, "message": "método inválido: GET /login — a rota aceita POST"}
 ```
 
 `404` fica reservado pra path que **não existe**. A diferença é o que o front
@@ -218,7 +218,7 @@ responde por ele.
     auth=cors.origins()               # só origens configuradas no cors(app, ...)
 )
 funct login() {
-    return jsonify({"ok": true})
+    return jsonify({"ok": True})
 }
 ```
 
@@ -265,7 +265,7 @@ return {"a": 1}                      # dict/lista → JSON 200
 return "texto"                       # string → texto puro 200
 return jsonify({"x": 1}), 201        # JSON com status
 return render("web/index.html")      # arquivo
-return None                          # 204 sem corpo
+return Null                          # 204 sem corpo
 ```
 
 ---

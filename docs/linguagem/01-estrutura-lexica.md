@@ -301,10 +301,17 @@ nome comum. Detalhes e o tipo em [bytes](../bytes/bytes.md).
 
 ### 1.6.4. Booleanos e nulo
 
-- **Booleano:** `True`/`true` e `False`/`false` (as quatro formas valem).
-- **Nulo:** `Null`/`null`/`None`/`none` (as quatro grafias valem na escrita; o
-  valor **imprime** como `Null`, com inicial maiúscula, igual a `True` e
-  `False`).
+- **Booleano:** `True` e `False`.
+- **Nulo:** `Null`.
+
+A grafia é uma só, com a inicial maiúscula: a mesma que o motor imprime.
+`true`, `false`, `null`, `None` e `none` não são literais, são nomes comuns.
+Usar um deles sem ter definido dá erro antes de rodar, com a dica da grafia
+certa:
+
+```ps
+x = true      # NameError: name 'true' is not defined. Did you mean: 'True'?
+```
 
 ### 1.6.5. Literal de cor — `<cor>"texto"`
 

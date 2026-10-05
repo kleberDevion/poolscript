@@ -1,15 +1,15 @@
-# `dotenv.load(path=None)`
+# `dotenv.load(path=Null)`
 
 Carrega um arquivo `.env` (linhas `CHAVE=VALOR`) para as variáveis de ambiente.
 Depois disso, [`os.getenv`](../../os/getenv/getenv.md) lê os valores.
 
 ```
-load(path: str = None) -> dict
+load(path: str = Null) -> dict
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
-| `path` | `None` | caminho do `.env`; `None` = busca automática subindo os diretórios |
+| `path` | `Null` | caminho do `.env`; `Null` = busca automática subindo os diretórios |
 
 ---
 

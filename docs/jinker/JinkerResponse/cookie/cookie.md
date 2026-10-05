@@ -1,11 +1,11 @@
-# `JinkerResponse.cookie(nome, valor, path="/", max_age=Null, httponly=true, secure=false, samesite="Lax", domain=Null)`
+# `JinkerResponse.cookie(nome, valor, path="/", max_age=Null, httponly=True, secure=False, samesite="Lax", domain=Null)`
 
 Acrescenta um `Set-Cookie` à resposta. Devolve o próprio `JinkerResponse`
 (encadeável).
 
 ```
 cookie(nome: str, valor: str, path: str = "/", max_age: int = Null,
-       httponly: bool = true, secure: bool = false,
+       httponly: bool = True, secure: bool = False,
        samesite: str = "Lax", domain: str = Null) -> JinkerResponse
 ```
 
@@ -20,8 +20,8 @@ em português, como o motor os declara:
 | 2 | `valor` | `str` | — | o conteúdo do cookie; **obrigatório** |
 | 3 | `path` | `str` | `"/"` | vira `Path=`; caminho em que o navegador devolve o cookie |
 | 4 | `max_age` | `int` | `Null` | vira `Max-Age=`, em **segundos**. Sem ele, o cookie morre quando o navegador fecha |
-| 5 | `httponly` | `bool` | `true` | vira `HttpOnly`; o cookie fica invisível pro código da página |
-| 6 | `secure` | `bool` | `false` | vira `Secure`; o cookie só viaja em HTTPS |
+| 5 | `httponly` | `bool` | `True` | vira `HttpOnly`; o cookie fica invisível pro código da página |
+| 6 | `secure` | `bool` | `False` | vira `Secure`; o cookie só viaja em HTTPS |
 | 7 | `samesite` | `str` | `"Lax"` | vira `SameSite=`; `"Strict"`, `"Lax"` ou `"None"` |
 | 8 | `domain` | `str` | `Null` | vira `Domain=`; sem ele, vale só pro host que respondeu |
 
@@ -42,7 +42,7 @@ Menos de 2 ou mais de 8 argumentos é `TypeError`:
 ## Retorno
 
 **`JinkerResponse`** — **o próprio objeto**, não um cookie nem um cabeçalho.
-`resp.cookie(...) == resp` é `true` e `type(...)` devolve `"JinkerResponse"`.
+`resp.cookie(...) == resp` é `True` e `type(...)` devolve `"JinkerResponse"`.
 
 Por isso encadeia, e cada chamada **acrescenta** um cookie em vez de
 substituir o anterior:
@@ -55,10 +55,12 @@ token = "t-1"
 ```
 
 ```ps
-return JinkerResponse()
-       .json({"ok": true})
-       .cookie("sid", token, max_age=3600)
-       .cookie("tema", "escuro", httponly=false)
+funct entra() {
+    return JinkerResponse()
+           .json({"ok": True})
+           .cookie("sid", token, max_age=3600)
+           .cookie("tema", "escuro", httponly=False)
+}
 ```
 
 Sai na resposta, um cabeçalho por cookie:
@@ -95,7 +97,7 @@ vale: `max_age="10"` (string) não gera `Max-Age` nenhum, e `path=7` gera
 
 ## O default vale mesmo quando você nomeia outro parâmetro
 
-Nomear um parâmetro não mexe nos que você não citou: o `httponly=true` e o
+Nomear um parâmetro não mexe nos que você não citou: o `httponly=True` e o
 `samesite="Lax"` continuam valendo. Medido no servidor, um `Set-Cookie` por
 linha:
 
@@ -108,7 +110,7 @@ funct exemplos(resp)
     # Set-Cookie: so_path=1; Path=/p; SameSite=Lax; HttpOnly
     resp.cookie("so_maxage", "1", max_age=5)
     # Set-Cookie: so_maxage=1; Path=/; Max-Age=5; SameSite=Lax; HttpOnly
-    resp.cookie("so_secure", "1", secure=true)
+    resp.cookie("so_secure", "1", secure=True)
     # Set-Cookie: so_secure=1; Path=/; SameSite=Lax; HttpOnly; Secure
     resp.cookie("so_samesite", "1", samesite="Strict")
     # Set-Cookie: so_samesite=1; Path=/; SameSite=Strict; HttpOnly
@@ -121,7 +123,7 @@ funct exemplos(resp)
 > **Isto foi um bug até a versão 15.90.12.** Nomear `secure`, `samesite` ou
 > `domain` apagava o `HttpOnly` em silêncio: o motor não distinguia "não
 > passou" de "passou falso", e o default seguro virava permissivo. Se você
-> escreveu `httponly=true` na mão por causa disso, pode tirar — o default já
+> escreveu `httponly=True` na mão por causa disso, pode tirar — o default já
 > entrega. Ficar não muda nada.
 
 Para **desligar** o `HttpOnly` é preciso dizer:
@@ -129,7 +131,7 @@ Para **desligar** o `HttpOnly` é preciso dizer:
 ```ps
 funct sem_httponly(resp)
 {
-    resp.cookie("tema", "escuro", httponly=false)
+    resp.cookie("tema", "escuro", httponly=False)
     # Set-Cookie: tema=escuro; Path=/; SameSite=Lax
     return resp
 }
@@ -140,7 +142,7 @@ A chamada toda posicional segue a ordem da tabela acima:
 ```ps
 funct posicional(resp)
 {
-    resp.cookie("p", "1", "/", 5, true, false, "Strict", "e.com")
+    resp.cookie("p", "1", "/", 5, True, False, "Strict", "e.com")
     # Set-Cookie: p=1; Path=/; Max-Age=5; Domain=e.com; SameSite=Strict; HttpOnly
     return resp
 }
@@ -152,7 +154,9 @@ Não há `delete`: apaga-se sobrescrevendo com vida zero, no **mesmo** `path`
 usado ao gravar — cookie é identificado por `(nome, domínio, path)`.
 
 ```ps
-return JinkerResponse().json({"ok": true}).cookie("sid", "", max_age=0)
+funct sai() {
+    return JinkerResponse().json({"ok": True}).cookie("sid", "", max_age=0)
+}
 # Set-Cookie: sid=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly
 ```
 

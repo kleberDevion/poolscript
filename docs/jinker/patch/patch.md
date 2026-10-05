@@ -1,4 +1,4 @@
-# `Jinker.patch(path, auth=None, middleware=None, model=None)`
+# `Jinker.patch(path, auth=Null, middleware=Null, model=Null)`
 
 Registra uma rota que responde **só a PATCH** — o
 [`@app.route(...)`](../route/route.md) com o método decidido pelo nome. Não

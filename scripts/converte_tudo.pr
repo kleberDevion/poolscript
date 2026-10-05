@@ -42,12 +42,12 @@ funct junta_ps(alvo, acc) {
 
 
 if __name__ == "main" {
-    os.mkdir(TMP, exist_ok=true)
-    grava = false
+    os.mkdir(TMP, exist_ok=True)
+    grava = False
     alvos = []
     for each a in sys.argv[1:] {   # sys.argv[0] é o nome do script
         if a == "--grava" {
-            grava = true
+            grava = True
         }
         else {
             alvos.append(a)

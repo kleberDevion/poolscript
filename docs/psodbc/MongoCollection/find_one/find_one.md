@@ -1,10 +1,10 @@
-# `MongoCollection.find_one(query=None)`
+# `MongoCollection.find_one(query=Null)`
 
 Busca o **primeiro** documento que bate com o filtro. Devolve um dict, ou
 `Null` se nenhum bater.
 
 ```
-col.find_one(query: dict = None) -> dict | Null
+col.find_one(query: dict = Null) -> dict | Null
 ```
 
 ---

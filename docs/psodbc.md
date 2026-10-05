@@ -18,7 +18,7 @@ A tabela abaixo é a superfície INTEIRA de `psodbc.*`: o que não está aqui
 | Nome | Serve para | Retorno |
 |---|---|---|
 | `psodbc.connect` | **Qualquer** banco suportado (SQLite, Postgres, MySQL, SQL Server, Mongo) | `DbConnection` ou `MongoConnection` |
-| `psodbc.query` | **SÓ SQLite** — atalho de arquivo `.db` local. Não funciona com SQL Server/Postgres/MySQL/Mongo (chama `sqlite3.connect` fixo) | `DbConnection`, `list[dict]` ou `None` |
+| `psodbc.query` | **SÓ SQLite** — atalho de arquivo `.db` local. Não funciona com SQL Server/Postgres/MySQL/Mongo (chama `sqlite3.connect` fixo) | `DbConnection`, `list[dict]` ou `Null` |
 
 `driver` aceita: `sqlite`, `postgres`/`postgresql`/`pg`, `mysql`/`mariadb`,
 `mssql`/`sqlserver`, `mongo`/`mongodb`. `url`/o próprio `driver` também aceitam
@@ -70,10 +70,10 @@ automaticamente). Com instância nomeada normalmente NÃO se passa porta.
 11.0` → `FreeTDS` → `SQL Server`. Se nenhum existir, erro claro pedindo pra
 instalar o 17/18. Só passe o nome exato se quiser forçar um específico.
 
-**`trust_server_cert`** (default `true`): manda `TrustServerCertificate=yes` —
+**`trust_server_cert`** (default `True`): manda `TrustServerCertificate=yes` —
 necessário porque o ODBC Driver 18+ valida o certificado por padrão e derruba
 a conexão com certificado autoassinado (erro `08001` "cadeia de certificação...
-não é de confiança"). Só use `false` se o servidor tiver certificado de CA
+não é de confiança"). Só use `False` se o servidor tiver certificado de CA
 confiável de verdade.
 
 **Automático (não é parâmetro):** a conexão abre com `autocommit=True` — sem
@@ -109,7 +109,7 @@ conn = psodbc.connect(driver="sqlserver", host="localhost", database="vendas",
                       odbc_driver="ODBC Driver 17 for SQL Server")
 
 cursor = conn.cursor()
-cursor.execute("SELECT * FROM clientes WHERE ativo = ?", (true,))
+cursor.execute("SELECT * FROM clientes WHERE ativo = ?", (True,))
 post(cursor.fetchall())
 conn.close()
 ```
@@ -137,7 +137,7 @@ conn.close()
 
 ```
 resultado = psodbc.query(base="meu_banco.db", cmd="SELECT * FROM @t", table="users")
-post(resultado)   # list[dict], ou None se não for SELECT
+post(resultado)   # list[dict], ou Null se não for SELECT
 ```
 
 **Por parâmetros — Postgres/MySQL/SQL Server**:
@@ -152,7 +152,7 @@ conn = psodbc.connect(
     database="meu_banco"
 )
 cursor = conn.cursor()
-cursor.execute("SELECT * FROM users WHERE ativo = ?", (true,))
+cursor.execute("SELECT * FROM users WHERE ativo = ?", (True,))
 post(cursor.fetchall())
 conn.close()
 ```
@@ -210,7 +210,7 @@ frente) responde normalmente por `.`.
 |---|---|
 | `.execute(sql, params=())` | `DbCursor` (encadeável) |
 | `.fetchall()` | `list[dict]` |
-| `.fetchone()` | `dict` ou `None` |
+| `.fetchone()` | `dict` ou `Null` |
 | `.fetchmany(size=1)` | `list[dict]` |
 | `.rowcount` | `int` |
 | `.close()` | — |
@@ -226,13 +226,13 @@ frente) responde normalmente por `.`.
 
 | Método | Retorno |
 |---|---|
-| `.find(query=None, skip=0, limit=0, sort=None)` | `list` ou `None` — `skip`/`limit`/`sort` rodam no servidor |
-| `.find_one(query=None)` | `dict` ou `None` |
-| `.insert(document)` | `None` |
-| `.insert_many(documents)` | `None` |
-| `.update(query, new_values)` | `None` |
-| `.remove(query)` | `None` |
-| `.count(query=None)` | `int` |
+| `.find(query=Null, skip=0, limit=0, sort=Null)` | `list` ou `Null` — `skip`/`limit`/`sort` rodam no servidor |
+| `.find_one(query=Null)` | `dict` ou `Null` |
+| `.insert(document)` | `Null` |
+| `.insert_many(documents)` | `Null` |
+| `.update(query, new_values)` | `Null` |
+| `.remove(query)` | `Null` |
+| `.count(query=Null)` | `int` |
 
 ---
 

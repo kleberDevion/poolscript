@@ -14,7 +14,7 @@ valor | Null
 
 ## Erros
 
-Nenhum. `str` que não contém JSON válido devolve `null`, com rc 0 — não
+Nenhum. `str` que não contém JSON válido devolve `Null`, com rc 0 — não
 levanta. A seção dizia `TypeError`, e nunca houve.
 
 ## Exemplos

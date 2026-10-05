@@ -1,4 +1,4 @@
-# `s.rfind(sub, inicio=0, fim=null)`
+# `s.rfind(sub, inicio=0, fim=Null)`
 
 Índice da ÚLTIMA ocorrência, ou -1.
 
@@ -8,7 +8,7 @@
 |---|---|---|---|
 | `sub` | str | — |  |
 | `inicio` | int | 0 | posição (em caracteres) onde a faixa de busca começa |
-| `fim` | int | null | onde a faixa termina (exclusivo); `null` = até o fim |
+| `fim` | int | `Null` | onde a faixa termina (exclusivo); `Null` = até o fim |
 
 ## Retorno
 

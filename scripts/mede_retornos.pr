@@ -122,7 +122,7 @@ funct esperadas(chamadas, conta) {
         }
         conta[chave] = conta[chave] + len(amostras_de(ch))
         if len(ch) > 2 and ch[2] == "*" {
-            VARIA[chave] = true
+            VARIA[chave] = True
         }
     }
     return conta
@@ -284,7 +284,7 @@ funct mede_tipo(tipo, meta, feitos) {
             continue
         }
         if conf != "" and conf != resultado {
-            VARIA[chave] = true
+            VARIA[chave] = True
             anota(chave, resultado)
             anota(chave, conf)
         }
@@ -442,11 +442,11 @@ os.writeFile("@TMP@/os.txt", "a")
         ["os", "writeFile", 'os.writeFile("@TMP@/os2.txt", "b")'],
         ["os", "warn", 'os.warn("")'],
         ["os", "ipmach", 'os.ipmach()'],
-        ["os", "mkdir", 'os.mkdir("@TMP@/d1", exist_ok=true)'],
+        ["os", "mkdir", 'os.mkdir("@TMP@/d1", exist_ok=True)'],
         ["os", "rmdir", 'os.rmdir("@TMP@/d1")'],
         ["os", "ls", 'os.ls("@TMP@")'],
-        ["os", "cmd", 'os.cmd("true")', 'os.cmd("echo a", capture=true)'],
-        ["os", "run", 'os.run(["true"])', 'os.run(["echo", "a"], capture=true)',
+        ["os", "cmd", 'os.cmd("true")', 'os.cmd("echo a", capture=True)'],
+        ["os", "run", 'os.run(["true"])', 'os.run(["echo", "a"], capture=True)',
                       'os.run(["true"], capture="live")'],
         ["os", "code", 'os.code("@TMP@")'],
         ["os", "exists", 'os.exists("@TMP@")'],
@@ -474,7 +474,7 @@ os.writeFile("@TMP@/os.txt", "a")
         ["Process", "read_err", 'mr_p.read_err(10)'],
         ["Process", "wait", 'mr_p.wait()'],
         ["Process", "kill", 'mr_p.kill()'],
-        ["!", 'mr_pt = os.run(["sleep", "5"], capture="live", pty=true)'],
+        ["!", 'mr_pt = os.run(["sleep", "5"], capture="live", pty=True)'],
         ["Process", "resize", 'mr_pt.resize(100, 40)'],
         ["!", 'mr_pt.kill()'],
         ["!", 'mr_pt.wait()']
@@ -531,7 +531,7 @@ addEnd(GRUPOS, {
         ["sys.stdin", "readline", 'sys.stdin.readline()'],
         ["sys.stdin", "read", 'sys.stdin.read(1)', 'sys.stdin.read()', 'sys.stdin.read()'],
         ["sys.stdin", "readline", 'sys.stdin.readline()'],
-        ["sys.stdin", "raw", 'sys.stdin.raw(false)']
+        ["sys.stdin", "raw", 'sys.stdin.raw(False)']
     ]
 })
 
@@ -698,7 +698,7 @@ mr_cli = sockets.socket(sockets.AF_INET, sockets.SOCK_STREAM)
         ["socket", "settimeout", 'mr_cli.settimeout(1.0)'],
         ["socket", "gettimeout", 'mr_cli.gettimeout()'],
         ["socket", "getblocking", 'mr_cli.getblocking()'],
-        ["socket", "setblocking", 'mr_cli.setblocking(true)'],
+        ["socket", "setblocking", 'mr_cli.setblocking(True)'],
         ["socket", "fileno", 'mr_cli.fileno()'],
         ["socket", "dup", 'mr_cli.dup()'],
         ["socket", "shutdown", 'mr_cli.shutdown(sockets.SHUT_RDWR)'],
@@ -887,9 +887,9 @@ SRV_BLOCOS = {
         ["ChannelManager", "status", 'app.channel.status']
     ],
     "@SALA@": [
-        ["SocketEmitter", "emit", 'mr_envia.emit(jinker.request.text(), exclude_self=false)'],
+        ["SocketEmitter", "emit", 'mr_envia.emit(jinker.request.text(), exclude_self=False)'],
         ["SocketEmitter", "status_send", 'mr_envia.status_send()'],
-        ["SocketNamespace", "emit", 'app.socket.emit("y", exclude_self=false)'],
+        ["SocketNamespace", "emit", 'app.socket.emit("y", exclude_self=False)'],
         ["SocketNamespace", "status_send", 'app.socket.status_send()']
     ]
 }
@@ -950,14 +950,14 @@ funct mr_canal() {
     return "ok"
 }
 
-@app.socket("/sala", channel=true)
+@app.socket("/sala", channel=True)
 funct mr_sala() {
     mr_envia = app.socket()
 @SALA@
 }
 
 if __name__ == "main" {
-    app(debug=false, host="127.0.0.1", port=@PORTA@)
+    app(debug=False, host="127.0.0.1", port=@PORTA@)
 }
 '''
 
@@ -965,12 +965,12 @@ CLIENTE_PREP = '''import request
 import os
 U = "http://127.0.0.1:@PORTA@"
 W = "ws://127.0.0.1:@PORTA_WS@"
-mr_pronto = false
+mr_pronto = False
 mr_i = 0
 while mr_i < 100 and not mr_pronto {
     try {
         request.get(U + "/pronto")
-        mr_pronto = true
+        mr_pronto = True
     } catch (mr_e) {
         sleep(0.1)
     }
@@ -1134,15 +1134,15 @@ funct mede_valores(meta, feitos) {
 
 if __name__ == "main" {
     confere = "--confere" in sys.argv
-    os.mkdir(TMP, exist_ok=true)
-    os.mkdir(TMP + "/bin", exist_ok=true)
-    POOL = os.run(["readlink", "-f", sys.executable], capture=true).strip()
+    os.mkdir(TMP, exist_ok=True)
+    os.mkdir(TMP + "/bin", exist_ok=True)
+    POOL = os.run(["readlink", "-f", sys.executable], capture=True).strip()
     os.cmd("'" + POOL + "' --metadata > " + META)
     meta = json.parse(os.readFile(META))
     # `os.code` abre o editor do sistema: aqui ele acha um `code` de mentira
     # no PATH do grupo, e a medicao nao abre janela nenhuma.
     os.writeFile(TMP + "/bin/code", "#!/bin/sh\nexit 0\n")
-    os.run(["chmod", "+x", TMP + "/bin/code"], capture=true)
+    os.run(["chmod", "+x", TMP + "/bin/code"], capture=True)
     qrcode.make("x").save(PNG)
 
     feitos = {}

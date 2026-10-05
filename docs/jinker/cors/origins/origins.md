@@ -17,14 +17,14 @@ cors(app, origins=["https://meusite.com"])
 
 @app.route("/api/dados", auth=cors.origins(), methods=cors.options(["GET"]))
 funct dados() {
-    return jsonify({"ok": true})
+    return jsonify({"ok": True})
 }
 ```
 
 `auth=cors.origins()` diz "essa rota só aceita requisições das origens
 configuradas". Requisição de um domínio fora da lista recebe **403 Forbidden**,
 sem `Access-Control-Allow-Origin`. No modo padrão origens locais e clientes
-sem `Origin` passam; com `cors(app, ..., local=false)` só a lista vale — ver
+sem `Origin` passam; com `cors(app, ..., local=False)` só a lista vale — ver
 [`cors`](../cors.md) e [`cors.local()`](../local/local.md).
 
 A lista vale sozinha no **handshake do WebSocket** (`@app.socket` não tem

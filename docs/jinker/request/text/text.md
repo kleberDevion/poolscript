@@ -19,7 +19,7 @@ formato próprio, ou quando você quer o conteúdo exato pra processar na mão.
 funct webhook() {
     corpo = request.text()           # string com o corpo exato
     post(f"recebido: {corpo}")
-    return jsonify({"ok": true})
+    return jsonify({"ok": True})
 }
 ```
 

@@ -3,7 +3,7 @@
 Define o **destinatário** do e-mail (quem recebe).
 
 ```
-m.toAddress(address: str) -> None
+m.toAddress(address: str) -> Null
 ```
 
 ---

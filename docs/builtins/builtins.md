@@ -31,6 +31,7 @@ A lista sai da tabela `BUILTINS[]` de `vm/jinga_vm.c`, publicada por `jinga --me
 | [`oct`](oct/oct.md) | `oct(n)` | Inteiro em octal, com prefixo 0o. |
 | [`open`](open/open.md) | `open(caminho, modo="r")` | Abre um arquivo e devolve o handle; combine com `using` para fechar sozinho. |
 | [`ord`](ord/ord.md) | `ord(c)` | Codepoint unicode de um caractere. |
+| [`pow`](pow/pow.md) | `pow(base, expo, mod=Null)` | Potência; com `mod`, a potência modular sem montar o número inteiro. |
 | [`post`](post/post.md) | `post(v1, v2, ...)` | Imprime os valores no stdout, separados por espaço, com quebra de linha no final. |
 | [`range`](range/range.md) | `range(fim) | range(inicio, fim, passo=1)` | Lista de inteiros de inicio (inclusive) a fim (exclusive). |
 | [`removeEnd`](removeEnd/removeEnd.md) | `removeEnd(lista)` | Remove e devolve o ÚLTIMO item da lista. |

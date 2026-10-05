@@ -15,7 +15,7 @@ cursor.fetchmany(size: int = 1) -> list
 cursor.execute("SELECT * FROM muitos_registros")
 
 # processa de 100 em 100
-while (true) {
+while (True) {
     bloco = cursor.fetchmany(100)
     if (len(bloco) == 0) {
         break

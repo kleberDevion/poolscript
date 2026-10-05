@@ -1,7 +1,7 @@
 # `regex.search(pattern, string)`
 
-Procura o padrão em **qualquer posição** do texto. Devolve **`bool`**: `true`
-se achou em algum lugar, `false` se não.
+Procura o padrão em **qualquer posição** do texto. Devolve **`bool`**: `True`
+se achou em algum lugar, `False` se não.
 
 ```
 regex.search(pattern: str, string: str) -> bool

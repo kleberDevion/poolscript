@@ -48,11 +48,11 @@ funct chaves_nuas(texto) {
     while cn_i < len(cn_toks) {
         t = cn_toks[cn_i]
         if t["t"] == "LBRACE" {
-            eh_dict = true
+            eh_dict = True
             if cn_i > 0 {
                 ant = cn_toks[cn_i - 1]["t"]
                 if ABRE_BLOCO.contains(ant) {
-                    eh_dict = false
+                    eh_dict = False
                 }
             }
             # `$` de `{}` no meio de f-string não chega aqui: é STR
@@ -79,7 +79,7 @@ funct chaves_nuas(texto) {
 
 funct blocos_ps(txt) {
     b_blocos = []
-    b_dentro = false
+    b_dentro = False
     b_atual = []
     b_ini = 0
     b_n = 0
@@ -89,7 +89,7 @@ funct blocos_ps(txt) {
         if b_dentro {
             if limpa == "```" {
                 addEnd(b_blocos, {"linha": b_ini, "codigo": "\n".join(b_atual)})
-                b_dentro = false
+                b_dentro = False
                 b_atual = []
             }
             else {
@@ -97,7 +97,7 @@ funct blocos_ps(txt) {
             }
         }
         elif limpa == "```ps" or limpa == "```jinga" or limpa == "```ps contexto" {
-            b_dentro = true
+            b_dentro = True
             b_ini = b_n
             b_atual = []
         }

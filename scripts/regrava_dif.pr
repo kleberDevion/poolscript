@@ -34,7 +34,7 @@ TMP = "/tmp/ps_regrava"
 # caso que escreve `o.txt` (o do slot 299 grava a saida do programa que ele
 # gera) pisava no `o.txt` em que o stdout dele estava sendo capturado.
 funct roda(fonte) {
-    os.mkdir(TMP, exist_ok=true)
+    os.mkdir(TMP, exist_ok=True)
     r_pasta = TMP + "/caso"
     os.cmd("rm -rf '" + r_pasta + "'")
     os.mkdir(r_pasta)
@@ -85,7 +85,7 @@ funct tokeniza(txt) {
             t_ini = t_pos
             t_pos = t_pos + 1
             t_val = ""
-            t_tem_x = false
+            t_tem_x = False
             while t_pos < t_tam and txt[t_pos] != "\"" {
                 if txt[t_pos] == "\\" and t_pos + 1 < t_tam {
                     t_e = txt[t_pos + 1]
@@ -108,7 +108,7 @@ funct tokeniza(txt) {
                         # `\x..` e o resto: fica como esta; o fonte que tiver
                         # isso e recusado, porque o programa nao seria o mesmo
                         if t_e == "x" {
-                            t_tem_x = true
+                            t_tem_x = True
                         }
                         t_val = t_val + "\\" + t_e
                     }
@@ -123,7 +123,7 @@ funct tokeniza(txt) {
             continue
         }
         if t_ch == "{" or t_ch == "}" or t_ch == "," {
-            addEnd(t_toks, ["pont", t_ch, t_pos, t_pos + 1, false])
+            addEnd(t_toks, ["pont", t_ch, t_pos, t_pos + 1, False])
             t_pos = t_pos + 1
             continue
         }
@@ -139,7 +139,7 @@ funct tokeniza(txt) {
         elif t_palavra.isdigit() or (t_palavra.startswith("-") and t_palavra[1:].isdigit()) {
             t_tipo = "num"
         }
-        addEnd(t_toks, [t_tipo, t_palavra, t_pos, t_j, false])
+        addEnd(t_toks, [t_tipo, t_palavra, t_pos, t_j, False])
         t_pos = t_j
     }
     return t_toks
@@ -188,10 +188,10 @@ if __name__ == "main" {
         sys.exit(1)
     }
     caminho = args[0]
-    grava = false
+    grava = False
     nomes = []
     i = 0
-    proxima_lista = false
+    proxima_lista = False
     for each a in args {
         i = i + 1
         if i == 1 {
@@ -203,13 +203,13 @@ if __name__ == "main" {
                     nomes.append(l.strip())
                 }
             }
-            proxima_lista = false
+            proxima_lista = False
         }
         elif a == "--lista" {
-            proxima_lista = true
+            proxima_lista = True
         }
         elif a == "--grava" {
-            grava = true
+            grava = True
         } else {
             nomes.append(a)
         }
@@ -236,7 +236,7 @@ if __name__ == "main" {
             n = n + 1
             continue
         }
-        achados[achou] = true
+        achados[achou] = True
 
         # junta o corpo do caso até a linha que fecha com `},`
         bloco = [l]
@@ -261,10 +261,10 @@ if __name__ == "main" {
             continue
         }
         fonte = ""
-        ok = true
+        ok = True
         for each t in campos[1] {
             if t[0] != "str" or t[4] {
-                ok = false
+                ok = False
             }
             fonte = fonte + t[1]
         }

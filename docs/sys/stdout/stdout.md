@@ -5,7 +5,7 @@ automática do `post`, ou forçando a saída na hora (`flush`).
 
 ```
 import sys
-sys.stdout.write(texto, end=false)
+sys.stdout.write(texto, end=False)
 sys.stdout.writeln(texto)
 sys.stdout.flush()
 ```
@@ -16,7 +16,7 @@ sys.stdout.flush()
 
 | Método | O que faz |
 |---|---|
-| `.write(texto, end=false)` | escreve **sem** quebra de linha (a não ser que `end=true`) |
+| `.write(texto, end=False)` | escreve **sem** quebra de linha (a não ser que `end=True`) |
 | `.writeln(texto)` | escreve **com** quebra de linha (como `post`) |
 | `.flush()` | força o que foi escrito a aparecer agora |
 

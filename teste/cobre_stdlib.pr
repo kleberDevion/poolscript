@@ -96,9 +96,9 @@ funct roda_em(pasta, args, saida, home) {
 # Sobra de uma rodada que caiu no meio sai pelo próprio motor: o `rm -rf` de
 # antes não é programa do Windows.
 if os.exists(PASTA) {
-    os.rmdir(PASTA, force=true)
+    os.rmdir(PASTA, force=True)
 }
-os.mkdir(PASTA, exist_ok=true)
+os.mkdir(PASTA, exist_ok=True)
 
 # ── sys ─────────────────────────────────────────────────────────────────────
 confere("sys.platform() diz o sistema", SO == "linux" or SO == "darwin" or SO == "windows")
@@ -106,16 +106,16 @@ confere("sys.platform() diz o sistema", SO == "linux" or SO == "darwin" or SO ==
 # `sys.RelativePath` BUSCA o arquivo recursivamente a partir do cwd e devolve
 # onde achou; sem achar, devolve Null. Então o teste cria o alvo primeiro —
 # pedir um nome inexistente testaria só o caminho de falha.
-os.mkdir(PASTA + "/fundo", exist_ok=true)
+os.mkdir(PASTA + "/fundo", exist_ok=True)
 os.writeFile(PASTA + "/fundo/alvo_rp.txt", "achou")
 volta = os.cwd()
 os.chdir(PASTA)
 rp = sys.RelativePath("alvo_rp.txt")
 os.chdir(volta)
 confere("sys.RelativePath acha o arquivo em subpasta",
-        rp != null and rp.endswith("alvo_rp.txt"))
-confere("sys.RelativePath de nome inexistente devolve null",
-        sys.RelativePath("nao_existe_mesmo_987.txt") == null)
+        rp != Null and rp.endswith("alvo_rp.txt"))
+confere("sys.RelativePath de nome inexistente devolve Null",
+        sys.RelativePath("nao_existe_mesmo_987.txt") == Null)
 
 confere("sys.executable aponta um arquivo que existe", os.isfile(sys.executable))
 # `sys.argv[0]` é o NOME DO SCRIPT e os argumentos vêm a partir de `[1]` — a
@@ -130,7 +130,7 @@ sys.stdout.flush()
 sys.stderr.write("")
 sys.stderr.writeln("")
 sys.stderr.flush()
-confere("sys.stdout/stderr write+writeln+flush não levantam", true)
+confere("sys.stdout/stderr write+writeln+flush não levantam", True)
 
 # ── sys.stdin ───────────────────────────────────────────────────────────────
 #
@@ -153,8 +153,8 @@ confere("sys.stdin.readline() e read(n) leem a entrada",
 # cwd, nao da pasta do arquivo — `pool ./sub/filho.pr` funcionava e o outro
 # nao. E `__name__` nao existia em modulo importado (`Jinker(__name__)` num
 # modulo estourava com NameError). Os dois medidos pela auditoria doc x motor.
-os.mkdir(PASTA + "/rel/sub", exist_ok=true)
-os.mkdir(PASTA + "/rel/pacote", exist_ok=true)
+os.mkdir(PASTA + "/rel/sub", exist_ok=True)
+os.mkdir(PASTA + "/rel/pacote", exist_ok=True)
 os.writeFile(PASTA + "/rel/pacote/modulo.pr", "z = 99\n")
 os.writeFile(PASTA + "/rel/sub/filho.pr", "from ..pacote.modulo import z\npost(\"z:\", z)\n")
 os.writeFile(PASTA + "/rel/nomeado.pr", "post(\"nome:\", __name__)\n")
@@ -169,7 +169,7 @@ confere("__name__ num modulo importado e o nome do modulo",
 # `import vizinho` (sem ponto) dentro de um modulo de subpasta acha o arquivo
 # ao lado dele — so a raiz do projeto era olhada, e `import smtp` dentro de
 # `acesso/controller.pr` dava "No module named 'smtp'" (o erro da tela dele).
-os.mkdir(PASTA + "/rel/acesso", exist_ok=true)
+os.mkdir(PASTA + "/rel/acesso", exist_ok=True)
 os.writeFile(PASTA + "/rel/acesso/smtp.pr", "funct manda() {\n    return \"mandou\"\n}\n")
 os.writeFile(PASTA + "/rel/acesso/controller.pr", "import smtp\nfunct entra() {\n    return smtp.manda()\n}\n")
 os.writeFile(PASTA + "/rel/rotas.pr", "from acesso.controller import entra\npost(entra())\n")
@@ -184,9 +184,9 @@ confere("`import vizinho` dentro de modulo de subpasta acha o arquivo ao lado",
 # Aqui o que precisa de arquivo de verdade: relativo, pai, sem extensao, `as`,
 # PUSH/GET, absoluto, lib (JINGA_HOME), modulo do motor entre aspas e
 # `__name__` dentro do modulo importado por caminho.
-os.mkdir(PASTA + "/asp/sub", exist_ok=true)
-os.mkdir(PASTA + "/asp/pacote", exist_ok=true)
-os.mkdir(PASTA + "/asp/home/libs", exist_ok=true)
+os.mkdir(PASTA + "/asp/sub", exist_ok=True)
+os.mkdir(PASTA + "/asp/pacote", exist_ok=True)
+os.mkdir(PASTA + "/asp/home/libs", exist_ok=True)
 os.writeFile(PASTA + "/asp/pacote/modulo.pr", "z = 99\nfunct f() {\n    return \"f de \" + __name__\n}\n")
 os.writeFile(PASTA + "/asp/sub/irmao.pr", "w = 7\n")
 os.writeFile(PASTA + "/asp/home/libs/minhalib.pr", "LIB = \"lib ok\"\n")
@@ -220,7 +220,7 @@ confere("import por caminho resolve pela pasta do arquivo, nao pelo cwd",
 # sendo achada quando nao ha lib instalada com aquele nome. `poolscript.libs.`
 # e o nome de antes do rename da linguagem e continua valendo.
 os.writeFile(PASTA + "/asp/home/libs/contalib.pr", "post(\"corpo\")\nC = 3\n")
-os.mkdir(PASTA + "/asp/jinga/libs", exist_ok=true)
+os.mkdir(PASTA + "/asp/jinga/libs", exist_ok=True)
 os.writeFile(PASTA + "/asp/jinga/libs/doprojeto.pr", "P = 5\n")
 
 funct roda_qual(nome, fonte) {
@@ -260,7 +260,7 @@ confere("import poolscript.libs.x (o nome de antes do rename) continua importand
 # compilacao; o que fica pra runtime e o valor (em ciclo, o nome ainda sem
 # valor e pulado). Os casos de um arquivo so estao em casos_linguagem.c.
 EST = PASTA + "/estrela"
-os.mkdir(EST + "/sub", exist_ok=true)
+os.mkdir(EST + "/sub", exist_ok=True)
 os.writeFile(EST + "/m.pr",
     "import json\n"
     + "funct f() {\n    return \"f\"\n}\n"
@@ -269,7 +269,7 @@ os.writeFile(EST + "/m.pr",
     + "_u = 2\n"
     + "private funct p() {\n    return 1\n}\n"
     + "private class Pc {\n}\n"
-    + "if true {\n    bloco = 3\n}\n"
+    + "if True {\n    bloco = 3\n}\n"
     + "funct init() {\n    global cfg\n    cfg = 9\n}\n"
     + "init()\n"
     + "n_chamou = len(\"ab\")\n")
@@ -325,11 +325,11 @@ confere("import *: o * sobrescreve o que ja existia",
 confere("import *: funct do importador usa o nome que veio do *",
         roda_est("e18.pr", "from m import *\nfunct g() {\n    return f() + str(x)\n}\npost(g())\n") == "f1")
 confere("import *: escrita dentro de bloco atravessa ate o nome do *",
-        roda_est("e19.pr", "from m import *\nif true {\n    x = 9\n}\npost(x)\n") == "9")
+        roda_est("e19.pr", "from m import *\nif True {\n    x = 9\n}\npost(x)\n") == "9")
 confere("import *: for each sobre o nome do * devolve o valor depois do laco",
         roda_est("e20.pr", "from m import *\nfor each x in [7, 8] {\n}\npost(x)\n") == "1")
 confere("import *: nome novo dentro de bloco continua sumindo no fim do bloco",
-        roda_est("e21.pr", "from m import *\nif true {\n    novo = 1\n}\npost(novo)\n").startswith("NameError"))
+        roda_est("e21.pr", "from m import *\nif True {\n    novo = 1\n}\npost(novo)\n").startswith("NameError"))
 confere("import *: variavel tipada do importador confere o valor que chega, como o import explicito",
         roda_est("e22.pr", "str x = \"a\"\nfrom m import *\n").split("\n")[0]
         == roda_est("e23.pr", "str x = \"a\"\nfrom m import x\n").split("\n")[0])
@@ -381,7 +381,7 @@ confere("import *: --check acusa o modulo ausente do *",
 # (3) o processo RODA de verdade e sobrevive ao fim de quem disparou,
 # (4) programa inexistente continua levantando IOError — sem isso o disparo
 # ficaria calado, com o processo morrendo de 127 sem ninguem saber,
-# (5) `capture=true` continua ESPERANDO e devolvendo a saida.
+# (5) `capture=True` continua ESPERANDO e devolvendo a saida.
 #
 # O filho é o próprio motor, que existe igual nos três sistemas: dorme 2 s e
 # grava a prova. Era `sh -c "sleep 2; echo RODOU > ..."`, e o `sh` não é
@@ -389,9 +389,9 @@ confere("import *: --check acusa o modulo ausente do *",
 # PATH). A pasta `bg` nasce vazia: a prova NÃO pode existir antes do disparo.
 BG = PASTA + "/bg"
 if os.exists(BG) {
-    os.rmdir(BG, force=true)
+    os.rmdir(BG, force=True)
 }
-os.mkdir(BG, exist_ok=true)
+os.mkdir(BG, exist_ok=True)
 PROVA = BG + "/prova.txt"
 os.writeFile(BG + "/dorme.pr",
              "import os\nsleep(2)\nos.writeFile(\"" + PROVA + "\", \"RODOU\\n\")\n")
@@ -412,20 +412,20 @@ while not tem_prova() and date.timestamp() - t0 < 20 {
 }
 confere("o processo disparado RODA e sobrevive a quem disparou", tem_prova())
 
-pegou = false
+pegou = False
 try {
     os.run(["programa_que_nao_existe_zz_987"])
 }
 catch (IOError e) {
-    pegou = true
+    pegou = True
 }
 confere("os.run de programa inexistente levanta IOError (nao volta PID calado)", pegou)
 
-# O `capture=true` também com o próprio motor: o `echo` é comando interno do
+# O `capture=True` também com o próprio motor: o `echo` é comando interno do
 # cmd.exe, não programa que o `run` ache no PATH do Windows.
 os.writeFile(PASTA + "/eco.pr", "post(\"capturado\")\n")
-r = os.run([sys.executable, PASTA + "/eco.pr"], true)
-confere("os.run com capture=true espera e devolve a saida",
+r = os.run([sys.executable, PASTA + "/eco.pr"], True)
+confere("os.run com capture=True espera e devolve a saida",
         type(r) == "str" and r.strip() == "capturado")
 
 # ── charset em arquivo: TODO codec que a linguagem conhece ──────────────────
@@ -439,14 +439,14 @@ confere("os.run com capture=true espera e devolve a saida",
 # A ida e volta e o que se afirma: gravar num charset e ler de volta nele tem
 # que devolver o MESMO texto, e o TAMANHO em bytes prova que a conversao
 # aconteceu (latin-1 gasta 4 onde utf-8 gasta 5).
-os.mkdir(PASTA + "/cs", exist_ok=true)
+os.mkdir(PASTA + "/cs", exist_ok=True)
 TXT = "café"
-volta_ok = true
+volta_ok = True
 for each cod in ["utf-8", "latin-1", "utf-16", "utf-16be", "utf-32", "utf-32be", "iso-8859-1", "cp819"] {
     arq = PASTA + "/cs/" + cod.replace("-", "") + ".txt"
     os.writeFile(arq, TXT, encoding=cod)
     if os.readFile(arq, encoding=cod) != TXT {
-        volta_ok = false
+        volta_ok = False
     }
 }
 confere("arquivo: grava e le de volta em todo codec da linguagem", volta_ok)
@@ -455,21 +455,21 @@ confere("arquivo: latin-1 gasta 4 bytes onde utf-8 gasta 5",
 confere("arquivo: utf-16 gasta 8 bytes e utf-32 gasta 16",
         os.size(PASTA + "/cs/utf16.txt") == 8 and os.size(PASTA + "/cs/utf32.txt") == 16)
 
-pegou = false
+pegou = False
 try {
     os.writeFile(PASTA + "/cs/x.txt", "ção", encoding="ascii")
 }
 catch (e) {
-    pegou = true
+    pegou = True
 }
 confere("arquivo: caractere que nao cabe no charset levanta", pegou)
 
-pegou = false
+pegou = False
 try {
     os.readFile(PASTA + "/cs/utf8.txt", encoding="klingon")
 }
 catch (e) {
-    pegou = true
+    pegou = True
 }
 confere("arquivo: encoding inexistente levanta", pegou)
 
@@ -479,7 +479,7 @@ confere("arquivo: content em bytes ignora o encoding", os.size(PASTA + "/cs/b.bi
 
 # o 2o argumento do loadFile e MODO, e charset ali e erro com o caminho certo
 os.writeFile(PASTA + "/cs/d.csv", "a,b\n1,2\n")
-pegou = false
+pegou = False
 try {
     os.loadFile(PASTA + "/cs/d.csv", "latin-1")
 }
@@ -501,7 +501,7 @@ funct absoluto(c) {
 
 # `pathFile`/`pathFolder` BUSCAM a partir do cwd e levantam se não acharem —
 # então o teste cria o alvo e roda de dentro da pasta.
-os.mkdir(PASTA + "/uploads", exist_ok=true)
+os.mkdir(PASTA + "/uploads", exist_ok=True)
 os.writeFile(PASTA + "/dados.json", "{}")
 volta2 = os.cwd()
 os.chdir(PASTA)
@@ -535,8 +535,8 @@ if WINDOWS {
     VAR_CASA = "USERPROFILE"
 }
 confere("os.environ lê variável do ambiente", os.environ(VAR_CASA) == os.getenv(VAR_CASA))
-confere("os.environ de variável inexistente é null",
-        os.environ("PS_NAO_EXISTE_MESMO_123") == null)
+confere("os.environ de variável inexistente é Null",
+        os.environ("PS_NAO_EXISTE_MESMO_123") == Null)
 
 ip = os.ipmach()
 confere("os.ipmach devolve um IP com três pontos", len(ip.split(".")) == 4)
@@ -547,7 +547,7 @@ confere("os.ipmach devolve um IP com três pontos", len(ip.split(".")) == 4)
 # `os.warn` escreve em stderr colorido — não devolve nada; o que se afirma é
 # que ele aceita a cor e não levanta.
 os.warn("aviso do teste de cobertura", color="yellow")
-confere("os.warn aceita texto e cor", true)
+confere("os.warn aceita texto e cor", True)
 
 # ── date ────────────────────────────────────────────────────────────────────
 t = date.time()
@@ -614,7 +614,7 @@ funct consts_do_sistema(nomes) {
         fonte = fonte + "post(\"" + nome + "\", sockets." + nome + ")\n"
     }
     os.writeFile(PASTA + "/consts.pr", fonte)
-    saida = os.run([sys.executable, PASTA + "/consts.pr"], true)
+    saida = os.run([sys.executable, PASTA + "/consts.pr"], True)
     lidas = dict()
     for each linha in saida.split("\n") {
         partes = linha.strip().split(" ")
@@ -739,10 +739,10 @@ confere("gethostbyname_ex devolve nome, apelidos e endereços",
 confere("gethostbyaddr resolve o loopback de volta",
         len(sockets.gethostbyaddr("127.0.0.1")) == 3)
 confere("has_dualstack_ipv6 responde bool",
-        sockets.has_dualstack_ipv6() == true or sockets.has_dualstack_ipv6() == false)
+        sockets.has_dualstack_ipv6() == True or sockets.has_dualstack_ipv6() == False)
 
 # a pasta sai pelo próprio motor, como a sobra lá do começo
-os.rmdir(PASTA, force=true)
+os.rmdir(PASTA, force=True)
 
 # ── relatório ───────────────────────────────────────────────────────────────
 post("")

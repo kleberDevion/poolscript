@@ -38,7 +38,7 @@ Exemplos de coisas que vivem em headers, não no corpo:
 ```
 @app.route("/api/dado", methods=cors.options(["GET"]))
 funct dado() {
-    return jsonify({"ok": true}).header("X-Request-Id", "req-42")
+    return jsonify({"ok": True}).header("X-Request-Id", "req-42")
 }
 ```
 
@@ -69,10 +69,10 @@ A ordem não importa — todos entram na resposta.
 
 ```
 # forma 1 — tupla no return
-return jsonify({"criado": true}).header("Location", "/itens/10"), 201
+return jsonify({"criado": True}).header("Location", "/itens/10"), 201
 
 # forma 2 — .status() dispensa a tupla
-return jsonify({"criado": true}).header("Location", "/itens/10").status(201)
+return jsonify({"criado": True}).header("Location", "/itens/10").status(201)
 ```
 
 As duas produzem uma resposta `201 Created` com o header `Location`.

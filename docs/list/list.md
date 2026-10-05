@@ -1,6 +1,6 @@
 # Métodos de list
 
-Chamados direto no valor: `l.metodo()`. A MAIORIA muta a lista no lugar e devolve `null` — não encadeia. Para uma cópia modificada, use os builtins `sorted(l)`/`reversed(l)`.
+Chamados direto no valor: `l.metodo()`. A MAIORIA muta a lista no lugar e devolve `Null` — não encadeia. Para uma cópia modificada, use os builtins `sorted(l)`/`reversed(l)`.
 
 A lista sai da tabela `METODOS_LIST` de `vm/jinga_vm.c`, publicada por `jinga --metadata`; cada página traz um exemplo executável.
 

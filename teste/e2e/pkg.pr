@@ -95,7 +95,7 @@ funct conf(nome, cond, detalhe) {
 
 if __name__ == "main" {
     if os.exists(PASTA) {
-        os.rmdir(PASTA, force=true)       # sobra de uma rodada que caiu no meio
+        os.rmdir(PASTA, force=True)       # sobra de uma rodada que caiu no meio
     }
     os.mkdir(PASTA)
     os.mkdir(RAIZ)
@@ -189,7 +189,7 @@ if __name__ == "main" {
     erros = erros + conf("list depois de limpar sai 0", r[0] == 0, "rc=" + str(r[0]))
     erros = erros + conf("nao cita mais a lib", not "ps_pkg_ola" in r[1], r[1])
 
-    os.rmdir(PASTA, force=true)
+    os.rmdir(PASTA, force=True)
     post("")
     if erros > 0 {
         post("psl: FALHOU em", erros, "checagens")

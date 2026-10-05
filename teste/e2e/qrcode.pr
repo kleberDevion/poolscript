@@ -45,7 +45,7 @@ q = qrcode.QRCode()
 post("QRCode ->", type(q))
 q.add_data("primeiro pedaco ")
 q.add_data("segundo pedaco")
-q.make(true)
+q.make(True)
 im2 = q.make_image("#000000", "#FFFFFF", "montado.png")
 post("make_image ->", type(im2), "| name ->", im2.name)
 p4 = dir + "/montado.png"
@@ -55,7 +55,7 @@ post("builder salvou ->", os.exists(p4), os.size(p4) > 0)
 # clear zera o conteúdo acumulado
 q.clear()
 q.add_data("depois do clear")
-q.make(true)
+q.make(True)
 im3 = q.make_image("#000000", "#FFFFFF", "limpo.png")
 p5 = dir + "/limpo.png"
 im3.save(p5)
@@ -78,5 +78,5 @@ using open(p1, "rb") as f {
 # A pasta sai com os PNGs dentro, pelo motor e na hora (era um `rm -f` por
 # arquivo pelo `os.run`: ver o começo). Vem DEPOIS do `using` acima, que fecha
 # o PNG que abriu: no Windows arquivo aberto não se apaga.
-os.rmdir(dir, force=true)
+os.rmdir(dir, force=True)
 post("fim")

@@ -1,10 +1,10 @@
-# `psodbc.query(base="", cmd=None, table="")`
+# `psodbc.query(base="", cmd=Null, table="")`
 
 Atalho **só pra SQLite** (arquivo local). Faz a consulta e já devolve os dados
 prontos, sem você abrir cursor manualmente.
 
 ```
-psodbc.query(base: str, cmd=None, table: str = "") -> list | Null | DbConnection
+psodbc.query(base: str, cmd=Null, table: str = "") -> list | Null | DbConnection
 ```
 
 | Parâmetro | O que é |
@@ -56,7 +56,7 @@ O `table` substitui `@t` no SQL (útil quando a tabela varia):
 ```
 psodbc.query(
     base="loja.db",
-    cmd=("SELECT * FROM @t WHERE ativo = ?", (true,)),
+    cmd=("SELECT * FROM @t WHERE ativo = ?", (True,)),
     table="clientes"
 )
 # vira: SELECT * FROM clientes WHERE ativo = ?

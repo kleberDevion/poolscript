@@ -4,7 +4,7 @@ Define o **assunto** (título) do e-mail — a linha que aparece na lista de
 e-mails do destinatário.
 
 ```
-m.subject(title: str) -> None
+m.subject(title: str) -> Null
 ```
 
 ---

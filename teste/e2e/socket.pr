@@ -38,8 +38,8 @@ d = cli.dup()
 post("dup ->", d.fileno() > 0)
 d.close()
 
-cli.setblocking(false)
-post("setblocking(false) ->", cli.getblocking())
+cli.setblocking(False)
+post("setblocking(False) ->", cli.getblocking())
 
 cli.shutdown(sockets.SHUT_RDWR)
 cli.close()

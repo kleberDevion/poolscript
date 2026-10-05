@@ -215,7 +215,7 @@ for each b in BYT {
     met("replace", b, ["\"a\".encode()", "\"X\".encode()"])
     met("replace", b, ["\"a\".encode()", "\"X\".encode()", "1"])
     met("replace", b, ["\"\".encode()", "\"-\".encode()"])
-    met("splitlines", b, ["true"])
+    met("splitlines", b, ["True"])
     met("split", b, ["\"-\".encode()", "1"])
     met("rsplit", b, ["\"-\".encode()", "1"])
     met("strip", b, ["\"a \".encode()"])
@@ -369,7 +369,7 @@ funct monta_caso(nome, expr, saida) {
 
 
 if __name__ == "main" {
-    os.mkdir(TMP, exist_ok=true)
+    os.mkdir(TMP, exist_ok=True)
 
     # dedup preservando a ordem
     vistos = {}

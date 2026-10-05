@@ -178,7 +178,7 @@ Um nome **criado** dentro de um bloco só existe ali. Depois do bloco, ele não 
 mais visível:
 
 ```ps
-if true {
+if True {
     dentro = 5
 }
 post(dentro)        # NameError: name 'dentro' is not defined
@@ -190,7 +190,7 @@ o nome **antes** do bloco (aí a atribuição dentro dele é write-through, 4.6.
 
 ```ps
 linha = "  texto  "
-em_codigo = true
+em_codigo = True
 funct troca(s) { return s.upper() }
 funct ajusta(s) { return s.strip() }
 
@@ -210,7 +210,7 @@ essa variável** (não cria uma nova):
 
 ```ps
 x = 1
-if true {
+if True {
     x = 2           # mesma x de fora
 }
 post(x)             # 2
@@ -368,7 +368,7 @@ faz — são detalhadas na parte de bibliotecas.)
 ## 4.9. Notas
 
 - **`pass` existe** e é o "não faça nada" (seção 5.4.1) — é palavra reservada,
-  e `if true { pass }` roda. Bloco **vazio** (`{ }`) também é aceito, em `if`,
+  e `if True { pass }` roda. Bloco **vazio** (`{ }`) também é aceito, em `if`,
   `while`, `for each` e no corpo de uma `funct`; a funct de corpo vazio devolve
   `Null`. O `pass` serve para deixar o lugar marcado à vista.
 - Nome lido que não existe é `NameError` **antes de rodar**, e a frase sugere

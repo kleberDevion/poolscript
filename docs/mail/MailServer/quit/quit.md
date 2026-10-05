@@ -3,7 +3,7 @@
 Encerra a conexão com o servidor SMTP. Chame ao terminar de enviar.
 
 ```
-s.quit() -> None
+s.quit() -> Null
 ```
 
 ---

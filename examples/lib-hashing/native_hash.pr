@@ -1,6 +1,6 @@
 #!lib
 
-funct hashing(segredo=none) {
+funct hashing(segredo=Null) {
    lista = str(list(segredo)).replace("'", "").replace(",", "").replace(" ", "").replace("[", "").replace("]", "")
    box = []
    for each i in lista {
@@ -17,7 +17,7 @@ funct hashing(segredo=none) {
    return livre_hash
 }
 
-funct check_hash(segredo=none, hash_comparar=none) {
+funct check_hash(segredo=Null, hash_comparar=Null) {
    lista = str(list(segredo)).replace("'", "").replace(",", "").replace(" ", "").replace("[", "").replace("]", "")
    box = []
    for each i in lista {
@@ -32,8 +32,8 @@ funct check_hash(segredo=none, hash_comparar=none) {
       livre = livre + chr(mais)
    }
    if (hash_comparar == livre) {
-      return true
+      return True
    } else {
-      return false
+      return False
    }
 }

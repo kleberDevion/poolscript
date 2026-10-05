@@ -3,7 +3,7 @@
 Encerra a conexão IMAP. Chame ao terminar de ler.
 
 ```
-r.close() -> None
+r.close() -> Null
 ```
 
 ---

@@ -1,7 +1,7 @@
 # `os.isfile(path)`
 
 Diz se o caminho existe **e é um arquivo** (não uma pasta). Devolve
-`true`/`false`.
+`True`/`False`.
 
 ```
 os.isfile(path: str) -> bool
@@ -19,8 +19,8 @@ if (os.isfile("dados.csv")) {
 }
 ```
 
-Retorna `false` tanto pra caminho inexistente quanto pra uma **pasta** — só é
-`true` pra arquivo de verdade.
+Retorna `False` tanto pra caminho inexistente quanto pra uma **pasta** — só é
+`True` pra arquivo de verdade.
 
 ---
 

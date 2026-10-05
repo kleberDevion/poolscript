@@ -62,7 +62,7 @@ static void desmonta_const(const PSConst *k, FILE *f)
 {
     switch (k->kind) {
         case K_NULL:   fputs("Null", f); break;
-        case K_BOOL:   fputs(k->i ? "true" : "false", f); break;
+        case K_BOOL:   fputs(k->i ? "True" : "False", f); break;
         case K_INT:    fprintf(f, "%lld", (long long)k->i); break;
         case K_FLO:    fprintf(f, "%g", k->d); break;
         case K_BIGINT: fprintf(f, "%s (bigint)", k->s ? k->s : ""); break;
@@ -2317,18 +2317,25 @@ static int tp_na_lista(char **v, int32_t n, const char *nome)
     return 0;
 }
 
-/* O nome lido existe em algum lugar? A funct e as que a envolvem, o arquivo,
- * o campo `static` da classe em compilação, o que a VM liga sozinha e o que o
- * jinker injeta. Nome que nada disso liga é `NameError` certo rodando — e
- * sai antes: uma `int funct` engolia esse erro e o programa terminava calado,
- * com `rc=0`, sem nunca ter feito o que devia. */
+/* O programa liga o nome no escopo? A funct e as que a envolvem, o arquivo
+ * (atribuição, funct, import) e o campo `static` da classe em compilação. Não
+ * conta o que a VM liga sozinha. */
+static int tp_ligado_no_escopo(C *c, Unidade *u, const char *nome)
+{
+    for (Unidade *q = u; q; q = q->pai)
+        if (tp_na_lista(q->ligados, q->nligados, nome)) return 1;
+    if (ix_busca(&c->ix_ligados_mod, nome) >= 0) return 1;
+    return c->entity_no && campo_estatico_da_classe(c, nome);
+}
+
+/* O nome lido existe em algum lugar? O escopo (acima), o que a VM liga
+ * sozinha e o que o jinker injeta. Nome que nada disso liga é `NameError`
+ * certo rodando — e sai antes: uma `int funct` engolia esse erro e o programa
+ * terminava calado, com `rc=0`, sem nunca ter feito o que devia. */
 static void tp_confere_nome(C *c, Unidade *u, const char *nome, PSNode *onde)
 {
     if (!nome || !*nome || c->nomes_incertos) return;
-    for (Unidade *q = u; q; q = q->pai)
-        if (tp_na_lista(q->ligados, q->nligados, nome)) return;
-    if (ix_busca(&c->ix_ligados_mod, nome) >= 0) return;
-    if (c->entity_no && campo_estatico_da_classe(c, nome)) return;
+    if (tp_ligado_no_escopo(c, u, nome)) return;
     if (ps_nome_pre_ligado(nome) || ps_tipo_info(nome)) return;
     if (c->usa_jinker && (!strcmp(nome, "request") || !strcmp(nome, "channel"))) return;
     /* O nome parecido que EXISTE aqui — do escopo, do arquivo ou dos que a VM
@@ -3391,6 +3398,16 @@ static const char *tp_dica_membro(C *c, const char *tipo, const char *nome, char
 static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
 {
     if (!n->texto || !n->a) return;
+    /* `json.parse` sem `import json`: `json` também é nome de TIPO (o dict),
+     * e por isso a conferência do nome solto o deixava passar. Receptor de
+     * `.` é o MÓDULO, e rodando dava NameError: o módulo que pede import, sem
+     * o import, é NameError aqui também — a frase do `os.getcwd()` sem import. */
+    if (n->a->kind == N_NAME && n->a->texto && !c->nomes_incertos
+            && ps_tipo_info(n->a->texto) && ps_nativo_eh_modulo(n->a->texto)
+            && !tp_ligado_no_escopo(c, u, n->a->texto)) {
+        terro(c, n->a, "NameError", "name '%s' is not defined", n->a->texto);
+        return;
+    }
     char buf[64];
     const char *mod = tp_modulo_de(c, u, n->a, buf, sizeof(buf));
     if (mod) {
@@ -3958,7 +3975,7 @@ static int compila_params_model(C *c, Unidade *u, PSNode *f, PSModelCampoDef *cd
             if (pn[1] == 'i') { cd->tem_min = 1; cd->min = d; } else { cd->tem_max = 1; cd->max = d; }
         } else if (!strcmp(pn, "optional")) {
             if (!v || v->kind != N_LITERAL || v->lit != L_BOOL) {
-                cerro_sx(c, par, "parametro 'optional' do campo %s: so true ou false", nc); return -1;
+                cerro_sx(c, par, "parametro 'optional' do campo %s: so True ou False", nc); return -1;
             }
             cd->optional = v->i != 0;
         } else if (!strcmp(pn, "of")) {
@@ -4289,7 +4306,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                      * tipo chega como N_TYPE_NAME, nunca N_LITERAL, entao a
                      * checagem separa os dois sozinha. */
                     /* `x is Null` FICA: e o idioma da linguagem pro teste
-                     * de ausencia, e `type(null)` e
+                     * de ausencia, e `type(Null)` e
                      * literalmente "Null" — ali o literal ocupa a posicao de
                      * tipo com sentido. Os outros literais nao tem essa
                      * leitura. */
@@ -5039,6 +5056,10 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             return;
 
         case N_RETURN_STMT:
+            /* `return` só existe dentro de funct (lambda e método contam). No
+             * topo do arquivo, ou num `if`/laço do topo, ele encerrava o
+             * programa calado, com rc 0 e o `--check` dizendo ok. */
+            if (u->eh_modulo) { cerro_sx(c, n, "'return' fora de funct"); return; }
             /* `return;` seco dentro de `count each` devolve o TOTAL contado,
              * não Null — é o que faz `count each ... { return; }` ser a forma
              * curta de "conte e me dê o número". `return <expr>` segue
@@ -5054,7 +5075,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                               "%s() devolve %s, e `return` sem valor devolveria Null",
                               u->nome_funct ? u->nome_funct : "?", u->tipo_ret_nome);
                 } else if (!(u->tipo_ret && n->a->kind == N_LITERAL && n->a->lit == L_NULL)) {
-                    /* `return null` numa `int`/`bool funct` é o `return` seco:
+                    /* `return Null` numa `int`/`bool funct` é o `return` seco:
                      * o sentinela (0 / True) */
                     const char *vt = tp_de(c, u, n->a);
                     int v = tp_aceita(c, u->tipo_ret_nome, vt, n->a, 1);
@@ -5232,6 +5253,10 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
         }
 
         case N_YIELD_STMT: {
+            /* `yield` fora de funct só quebrava rodando ("yield fora de
+             * gerador"), e o `--check` dizia ok: o erro sai aqui, como o do
+             * `return`. */
+            if (u->eh_modulo) { cerro_sx(c, n, "'yield' fora de funct"); return; }
             /* Marca a unidade atual: quem chama precisa saber que é gerador
              * ANTES de montar o frame. Como a marca é no protótipo e o
              * `yield` aparece durante o corpo, ela é escrita aqui. */

@@ -49,11 +49,11 @@ dentro de classe (ver [decoradores](../../linguagem/14-decoradores.md)):
 
 ```ps
 @app.get("/funct")
-funct f() { return {"ok": true} }        # registra f
+funct f() { return {"ok": True} }        # registra f
 
 @app.get("/classe")
 class H {
-    funct handler(self) { return {"ok": true} }   # registra o 1º método, ligado à instância de H
+    funct handler(self) { return {"ok": True} }   # registra o 1º método, ligado à instância de H
 }
 ```
 
@@ -67,7 +67,7 @@ Como o registrador é descartável, dá pra fazer o mesmo na mão, sem decorador
 
 ```ps
 funct trata() {
-    return jsonify({"ok": true})
+    return jsonify({"ok": True})
 }
 
 app.get("/manual").register(trata)       # idêntico a @app.get("/manual")

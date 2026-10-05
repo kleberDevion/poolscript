@@ -65,7 +65,7 @@ else {
     }
 
     # search com include_body traz o corpo de uma vez
-    com_corpo = r.search("SUBJECT", marca, limit=1, include_body=true)
+    com_corpo = r.search("SUBJECT", marca, limit=1, include_body=True)
     if len(com_corpo) > 0 {
         post("include_body ->", com_corpo[0].has("body"))
     }

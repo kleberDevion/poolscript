@@ -145,7 +145,7 @@ typedef struct {
 /* Campo de `model`, na forma neutra do compilador. Além do tipo e do
  * `length`, os parâmetros que validam o DADO: `regex` (str), `in`/`not_in`
  * (valores permitidos/proibidos), `min`/`max` (int, flo), `optional`
- * (pode faltar ou ser null), `of` (tipo de cada item de uma list) e o
+ * (pode faltar ou ser Null), `of` (tipo de cada item de uma list) e o
  * tipo que é OUTRO model (estrutura aninhada). Tudo literal, decidido na
  * compilação. */
 typedef struct {

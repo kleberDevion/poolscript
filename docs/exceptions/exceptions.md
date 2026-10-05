@@ -82,7 +82,7 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `MemoryError` | sem memória. A mensagem diz ONDE acabou — `sem memoria em sorted()` — em vez de vir vazia: num processo que morreu de memória essa é a única pista que sobra |
 | `AttributedValueError` | valor incompatível atribuído a variável **tipada**: `str x = 10`. **Não** cobre o `+` — somar tipos que não somam é `TypeError` |
 | `IndexError` | índice fora da faixa, lendo **ou** escrevendo. O texto diz qual: `list index out of range`, `string index out of range`, `tup index out of range`, `index out of range` (bytes), e `list assignment index out of range` na escrita |
-| `AssertionError` | `assert(...)` que não passou. Com um valor só, o texto é o valor recebido (`false nao e verdadeiro`); com dois, os dois lados (`veio 3, esperava 4`); com uma nota, ela vem na frente. É capturável como qualquer outra — um teste pode contar as falhas em vez de parar na primeira |
+| `AssertionError` | `assert(...)` que não passou. Com um valor só, o texto é o valor recebido (`False nao e verdadeiro`); com dois, os dois lados (`veio 3, esperava 4`); com uma nota, ela vem na frente. É capturável como qualquer outra — um teste pode contar as falhas em vez de parar na primeira |
 | `NotImplemented` | função de lib "stub": existe, e ainda não faz nada. O nome é esse mesmo, **sem** o `Error` no fim — `catch (NotImplementedError e)` não pega esta |
 | `NotImplementedError` | módulo importado que **não compila** por motivo que não é sintaxe. É outro erro, apesar do nome parecido — não confunda com o de cima |
 | `SyntaxError` | erro de sintaxe. Não é capturável em tempo de execução: acontece **antes** de o programa rodar, e é o que o `jinga --check` relata |
@@ -180,9 +180,9 @@ motivo.
 >
 > O nome do tipo na frase é o que o `type()` devolve: `tup`, não `tuple`.
 >
-> Antes eram TRÊS comportamentos: LER devolvia `null` com rc=0 e escrevia
+> Antes eram TRÊS comportamentos: LER devolvia `Null` com rc=0 e escrevia
 > `IndexOutOfBoundsWarning` direto no stderr — que não era exceção, então
-> `try { post(l[99]) } catch (e)` **não pegava nada** e o `null` seguia adiante
+> `try { post(l[99]) } catch (e)` **não pegava nada** e o `Null` seguia adiante
 > no pipeline, com o erro aparecendo longe da causa. Escrever e chave ausente
 > já levantavam. Era o ilogismo I4/I5 do catálogo.
 
@@ -244,10 +244,10 @@ funct buscar(url=str) {
         return r.json()
     } catch (TimeoutError) {
         post("demorou demais")
-        return null
+        return Null
     } catch (NetworkError e) {
         post("sem rede:", e)
-        return null
+        return Null
     }
 }
 ```

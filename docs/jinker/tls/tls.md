@@ -12,11 +12,11 @@ from jinker import Jinker
 Ligar HTTPS é uma linha:
 
 ```ps
-app = Jinker(__name__, oauth={"tls": true})
-if __name__ == "main" { app(debug=false, host="0.0.0.0", port=2000) }
+app = Jinker(__name__, oauth={"tls": True})
+if __name__ == "main" { app(debug=False, host="0.0.0.0", port=2000) }
 ```
 
-Com `"tls": true` e nenhum certificado, o jinker **gera um self-signed** na hora
+Com `"tls": True` e nenhum certificado, o jinker **gera um self-signed** na hora
 (`.jinkerTls` + `.jinkerTls.key`, já com SAN pra localhost/127.0.0.1/::1). O
 servidor sobe em `https://`, mas o navegador vai mostrar **"não seguro"**.
 
@@ -42,10 +42,10 @@ jinker aceita os dois modos:
 
 ```ps
 # separados (o normal — Let's Encrypt, mkcert)
-app = Jinker(__name__, oauth={"tls": true, "cert": "fullchain.pem", "key": "privkey.pem"})
+app = Jinker(__name__, oauth={"tls": True, "cert": "fullchain.pem", "key": "privkey.pem"})
 
 # juntos, num PEM só (cert + chave concatenados)
-app = Jinker(__name__, oauth={"tls": true, "cert": "tudo.pem"})
+app = Jinker(__name__, oauth={"tls": True, "cert": "tudo.pem"})
 ```
 
 Sem `key`, o jinker procura a chave irmã `<base>.key` ao lado do cert
@@ -75,7 +75,7 @@ mkcert localhost 127.0.0.1 192.168.0.10
 
 ```ps
 app = Jinker(__name__, oauth={
-    "tls":  true,
+    "tls":  True,
     "cert": "localhost+2.pem",
     "key":  "localhost+2-key.pem"
 })
@@ -106,11 +106,11 @@ sudo certbot certonly --standalone -d api.seusite.com
 
 ```ps
 app = Jinker(__name__, oauth={
-    "tls":  true,
+    "tls":  True,
     "cert": "/etc/letsencrypt/live/api.seusite.com/fullchain.pem",
     "key":  "/etc/letsencrypt/live/api.seusite.com/privkey.pem"
 })
-if __name__ == "main" { app(debug=false, host="0.0.0.0", port=443) }
+if __name__ == "main" { app(debug=False, host="0.0.0.0", port=443) }
 ```
 
 **Renovação** (o cert dura 90 dias): `sudo certbot renew` renova; agende num
@@ -139,7 +139,7 @@ curl --cacert .jinkerTls --resolve localhost:2000:127.0.0.1 https://localhost:20
 
 | Situação | Solução | Aviso some? |
 |---|---|---|
-| Rodar rápido, sem se importar com aviso | `"tls": true` (self-signed automático) | não (é self-signed) |
+| Rodar rápido, sem se importar com aviso | `"tls": True` (self-signed automático) | não (é self-signed) |
 | Dev no seu PC / LAN, sem aviso | **mkcert** + `cert=`/`key=` | sim, no seu PC |
 | Produção com domínio | **Let's Encrypt** + `cert=`/`key=` | sim, pra todos |
 

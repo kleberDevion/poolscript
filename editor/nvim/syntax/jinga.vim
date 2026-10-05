@@ -67,11 +67,11 @@ syn match   psModelParam "\<\%(length\|regex\|in\|not_in\|min\|max\|optional\|of
 " ── tipos ───────────────────────────────────────────────────────────────────
 " GERADO: tipos
 syn keyword psType     str int flo bool list dict tup char Object long byte
-      \ json JSON object Long type PoolFile
+      \ type PoolFile
 " Apelidos de tipo (`string s = "a"`): valem por POSIÇÃO, só onde um tipo vale.
 " Fora dali são nome comum — `string = "a"` é variável, e não pode pintar.
 " GERADO: apelidos
-syn match   psType     "\<\%(string\|String\|integer\|Integer\|tuple\|Tuple\|dictionary\|Dictionary\)\>\ze\s\+[A-Za-z_]"
+syn match   psType     "\<\%(string\|String\|integer\|Integer\|tuple\|Tuple\|dictionary\|Dictionary\|json\|JSON\|object\|Long\)\>\ze\s\+[A-Za-z_]"
 
 " ── modificadores ───────────────────────────────────────────────────────────
 syn keyword psModifier private public
@@ -111,8 +111,8 @@ syn keyword psException Exception OSError FileExistsError FileNotFoundError
       \ NotImplementedError TimeoutError DatabaseError
 
 " ── constantes ──────────────────────────────────────────────────────────────
-syn keyword psBoolean true True false False
-syn keyword psNull    Null null None none
+syn keyword psBoolean True False
+syn keyword psNull    Null
 syn match   psDunder  "\<__\w\+__\>"
 syn match   psNumber  "\<\%(0[xX]\x\+\|0[oO]\o\+\|0[bB][01]\+\|\d\+\.\=\d*\%([eE][+-]\=\d\+\)\=\)\>"
 

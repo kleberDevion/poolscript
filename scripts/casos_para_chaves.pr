@@ -91,10 +91,10 @@ if __name__ == "main" {
         sys.exit(1)
     }
     caminho = args[0]
-    grava = false
+    grava = False
     for each a in args {
         if a == "--grava" {
-            grava = true
+            grava = True
         }
     }
 

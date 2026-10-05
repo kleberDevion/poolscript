@@ -345,11 +345,11 @@
       "patterns": [
         {
           "name": "constant.language.boolean.jinga",
-          "match": "\\b(true|True|false|False)\\b"
+          "match": "\\b(True|False)\\b"
         },
         {
           "name": "constant.language.null.jinga",
-          "match": "\\b(Null|null|None|none)\\b"
+          "match": "\\bNull\\b"
         }
       ]
     },

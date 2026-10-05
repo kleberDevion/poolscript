@@ -15,15 +15,15 @@ str
 ## Exemplos
 
 ```ps
-post(str(12) + "!", str(Null), str(true))
+post(str(12) + "!", str(Null), str(True))
 ```
 
 ```saida
-12! null True
+12! Null True
 ```
 
 ## Bordas
 
-- `str(Null)` é `"Null"` (nunca `None` nem `null`); bool vira `True`/`False`
+- `str(Null)` é `"Null"` (nunca `"null"` nem `"None"`); bool vira `True`/`False`
 
 [← índice](../builtins.md)

@@ -58,7 +58,7 @@ funct somar() {
 # 4. sobe o servidor quando o arquivo é executado direto
 if __name__ == "main" {
     porta = int(os.getenv("PORT", "8080"))
-    app(debug=true, host="0.0.0.0", port=porta)
+    app(debug=True, host="0.0.0.0", port=porta)
 }
 ```
 
@@ -104,7 +104,7 @@ o servidor** (pode ser mais de um), e depois os parâmetros:
 ```
 cors(app, options=["POST", "GET", "DELETE"], origins=["https://meusite.com"])
 cors(api, admin, origins=["https://meusite.com"])     # a mesma config pros dois
-cors(app, origins=["https://meusite.com"], local=false)   # modo estrito: só a lista
+cors(app, origins=["https://meusite.com"], local=False)   # modo estrito: só a lista
 ```
 
 Sem o servidor é erro (`TypeError: cors() precisa do servidor como primeiro
@@ -128,7 +128,7 @@ Origem fora da lista recebe `403` com `{"error": true, "code": 403,
 "message": "Origem não autorizada: https://outro.com"}`, **sem**
 `Access-Control-Allow-Origin` (uma recusa não libera origem nenhuma).
 
-Regras do modo padrão (`local=true`, não precisa configurar):
+Regras do modo padrão (`local=True`, não precisa configurar):
 - **Origens locais** (`localhost`, `127.x.x.x`, `0.0.0.0`, `::1`, também
   `[::1]:porta`) são permitidas, mesmo com uma lista de `origins` restrita —
   pra você testar local sem liberar o mundo. `127.evil.com` **não** é local:
@@ -136,7 +136,7 @@ Regras do modo padrão (`local=true`, não precisa configurar):
 - **Cliente sem `Origin`** (Insomnia, Postman, `curl`, outro backend) passa —
   a checagem de origem é uma proteção de *browser*, não bloqueia ferramenta.
 
-**local** — `local=false` é o **modo estrito**: só a lista vale. Origem local
+**local** — `local=False` é o **modo estrito**: só a lista vale. Origem local
 fora da lista é `403`, e pedido **sem `Origin`** também é `403` (no HTTP e no
 WebSocket). `Origin: null` (arquivo aberto do disco, sandbox) só passa se
 `"null"` estiver na lista. `cors.local()` devolve o modo. Ver
@@ -172,7 +172,7 @@ app = Jinker(route_prefix="api")     # "api" | "/api/" -> "/api"
 
 @app.route("/hello", methods=["GET"])   # servida em  /api/hello
 funct hello() {
-    return {"ok": true}
+    return {"ok": True}
 }
 ```
 
@@ -248,7 +248,7 @@ return jsonify({"msg": "erro interno"}), 500
 return "olá mundo"
 
 # sem body
-return None    # responde 204
+return Null    # responde 204
 ```
 
 ### `jsonify` e `JinkerResponse` são a MESMA coisa
@@ -526,10 +526,10 @@ em runtime, devolve um emissor.
 
 **Quem enviou a mensagem não recebe o próprio broadcast de volta por
 padrão** — evita a mensagem aparecer duplicada em UIs de chat. Pra ecoar
-de volta também pro remetente, passe `exclude_self=false`:
+de volta também pro remetente, passe `exclude_self=False`:
 
 ```
-send.emit(payload=msg, room_id=id, exclude_self=false)
+send.emit(payload=msg, room_id=id, exclude_self=False)
 ```
 
 Sem `room_id`, `emit()`/`app.socket.emit()` faz broadcast pra todo mundo
@@ -540,7 +540,7 @@ sujeito ao `exclude_self`).
 |---|---|
 | `app.socket(path, channel=True)` | decorator — registra o handler do socket |
 | `app.socket()` | instancia um emissor (`SocketEmitter`) pra usar em runtime |
-| `app.socket.emit(payload, room_id=None, exclude_self=True)` | emite direto, sem instanciar |
+| `app.socket.emit(payload, room_id=Null, exclude_self=True)` | emite direto, sem instanciar |
 | `send = app.socket(); send.emit(...)` | emite via instância |
 | `send.status_send()` | status do último emit feito por essa instância |
 | `app.channel(forAll=msg)` | broadcast geral (todas as salas), API antiga |
@@ -584,7 +584,7 @@ os outros no mesmo worker.
 @app.route("/lento")
 funct lento() {
     sleep(1)                 # 100 clientes aqui NÃO viram 100s de fila:
-    return jsonify({"ok": true})   # todos dormem juntos e respondem em ~1s
+    return jsonify({"ok": True})   # todos dormem juntos e respondem em ~1s
 }
 ```
 

@@ -9,7 +9,7 @@ col.find(query: dict = Null, skip: int = 0, limit: int = 0, sort: dict = Null) -
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
-| `query` | `Null` | o filtro do Mongo (`{"ativo": true}`); `Null` = todos |
+| `query` | `Null` | o filtro do Mongo (`{"ativo": True}`); `Null` = todos |
 | `skip` | `0` | quantos documentos pular antes de começar a devolver |
 | `limit` | `0` | no máximo quantos devolver; `0` = sem limite |
 | `sort` | `Null` | a ordem: `{"campo": 1}` crescente, `{"campo": -1}` decrescente; várias chaves valem na ordem escrita |
@@ -25,7 +25,7 @@ O `_id` **não** vem nos documentos devolvidos.
 ## Uso
 
 ```
-col.find({"ativo": true})      # todos com ativo = true
+col.find({"ativo": True})      # todos com ativo = True
 col.find()                     # todos (sem filtro)
 
 for each doc in col.find({"preco": 15}) {
@@ -37,7 +37,7 @@ for each doc in col.find({"preco": 15}) {
 
 ```
 # página 3, de 20 em 20, os mais novos primeiro
-pagina = col.find({"ativo": true}, skip=40, limit=20, sort={"criado": -1})
+pagina = col.find({"ativo": True}, skip=40, limit=20, sort={"criado": -1})
 ```
 
 Sem `sort`, a ordem é a que o servidor quiser, e duas páginas seguidas podem

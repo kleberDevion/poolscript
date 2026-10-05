@@ -64,7 +64,7 @@ b'abcdac\xcc\xa7ao'
 
 - **confira o retorno.** Um `send` que devolve menos que o tamanho do dado
   mandou só um pedaço — o resto não vai sozinho
-- num socket com prazo `0` ([`setblocking(false)`](../setblocking/setblocking.md))
+- num socket com prazo `0` ([`setblocking(False)`](../setblocking/setblocking.md))
   o `send` volta com o que coube e, se não coube nada, levanta `timed out`
 - para UDP sem `connect`, quem manda é [`sendto`](../sendto/sendto.md):
   `send` num datagrama sem destino é `[Errno 89] Destination address required`

@@ -3,7 +3,7 @@
 Define o **remetente** do e-mail (quem envia).
 
 ```
-m.fromAddress(address: str) -> None
+m.fromAddress(address: str) -> Null
 ```
 
 ---

@@ -1,6 +1,6 @@
 # `Parsing.boolean(value, to_type="bool")`
 
-Converte um valor pra **booleano** (`true`/`false`), entendendo textos comuns.
+Converte um valor pra **booleano** (`True`/`False`), entendendo textos comuns.
 
 ```
 Parsing.boolean(value, to_type="bool") -> bool
@@ -14,16 +14,16 @@ Parsing.boolean(value, to_type="bool") -> bool
 ## Uso
 
 ```
-Parsing.boolean("sim")       # true
-Parsing.boolean("true")      # true
-Parsing.boolean("1")         # true
-Parsing.boolean("não")       # false
-Parsing.boolean("0")         # false
-Parsing.boolean("")          # false
+Parsing.boolean("sim")       # True
+Parsing.boolean("true")      # True
+Parsing.boolean("1")         # True
+Parsing.boolean("não")       # False
+Parsing.boolean("0")         # False
+Parsing.boolean("")          # False
 ```
 
 Textos que representam "vazio/falso" (`""`, `"0"`, `"false"`, `"null"`,
-`"none"`) viram `false`; o resto vira `true`.
+`"none"`) viram `False`; o resto vira `True`.
 
 ---
 

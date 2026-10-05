@@ -45,5 +45,5 @@ incerta** (texto de usuário, planilha) e você quer o melhor esforço.
 # entrada suja de um formulário
 preco = Parsing.floating("R$ 19,90")     # 19.90 (entende vírgula BR)
 qtd   = Parsing.integer("12 unidades")   # 12
-ativo = Parsing.boolean("sim")           # true
+ativo = Parsing.boolean("sim")           # True
 ```

@@ -47,15 +47,15 @@ funct extensao_velha(nome) {
 funct eh_texto(nome) {
     ponto = nome.rfind(".")
     if ponto < 0 {
-        return true                  # Makefile, LEIAME e afins — e o binário
+        return True                  # Makefile, LEIAME e afins — e o binário
     }                                # de build, que o `tem_byte_zero` barra
     ext = nome[ponto:]
     for each e in TEXTO {
         if ext == e {
-            return true
+            return True
         }
     }
-    return false
+    return False
 }
 
 
@@ -69,16 +69,16 @@ funct tem_byte_zero(texto) {
 
 funct char_de_nome(c) {
     if c == "" {
-        return false
+        return False
     }
     if c >= "a" and c <= "z" {
-        return true
+        return True
     }
     if c >= "A" and c <= "Z" {
-        return true
+        return True
     }
     if c >= "0" and c <= "9" {
-        return true
+        return True
     }
     return c == "_"
 }
@@ -134,10 +134,10 @@ funct varre(dir, achados, textos) {
         nome = ent["name"]
         caminho = dir + "/" + nome
         if ent["type"] == "dir" {
-            pula = false
+            pula = False
             for each p in PULA_PASTA {
                 if nome == p {
-                    pula = true
+                    pula = True
                 }
             }
             if not pula {
@@ -406,10 +406,10 @@ funct reaponta_posix(link, alvo) {
 funct vai_com_aspas(texto) {
     for each c in [" ", "\t", "\n", "\""] {
         if c in texto {
-            return true
+            return True
         }
     }
-    return false
+    return False
 }
 
 
@@ -499,10 +499,10 @@ funct links_windows(raiz) {
         # O `dir /s` desce por pasta-link e junção; o `find` do POSIX não
         # desce. O que está abaixo de um link já listado foi alcançado através
         # dele, e fica de fora como lá.
-        atravessou = false
+        atravessou = False
         for each v in vistos {
             if inteiro.startswith(v + "\\") {
-                atravessou = true
+                atravessou = True
             }
         }
         addEnd(vistos, inteiro)
@@ -658,14 +658,14 @@ funct reaponta_windows(link, alvo, tipo) {
             visto = "ficou gravado " + gravado[0]
         }
         try {
-            os.rmdir(novo, force=true)
+            os.rmdir(novo, force=True)
         } catch (e) {
             return "o alvo nao conferiu (" + visto + "); o link novo ficou em " + novo + " (" + str(e) + ")"
         }
         return "o alvo nao conferiu (" + visto + "); o link novo foi apagado"
     }
     try {
-        os.rmdir(link, force=true)
+        os.rmdir(link, force=True)
         os.rename(novo, link)
     } catch (e) {
         return "o link novo ficou em " + novo + " (" + str(e) + ")"
@@ -678,10 +678,10 @@ funct reaponta_windows(link, alvo, tipo) {
 funct pula_caminho(caminho) {
     for each x in PULA_PASTA {
         if "/" + x + "/" in caminho {
-            return true
+            return True
         }
     }
-    return false
+    return False
 }
 
 
@@ -710,7 +710,7 @@ funct migra_libs(aplica) {
         if not os.isdir(alvo) {
             continue
         }
-        total = total + migra_pasta(alvo, aplica, true)
+        total = total + migra_pasta(alvo, aplica, True)
     }
     # A conferência roda SEMPRE que se aplicou, mesmo com 0 renomes: rodar o
     # migrador de novo numa pasta já migrada é o jeito natural de perguntar
@@ -766,18 +766,18 @@ funct pasta_usuario() {
 
 funct principal() {
     alvos = []
-    aplica = false
-    so_renome = false
-    libs = false
+    aplica = False
+    so_renome = False
+    libs = False
     i = 1
     while i < len(sys.argv) {
         a = sys.argv[i]
         if a == "--aplica" {
-            aplica = true
+            aplica = True
         } elif a == "--so-renome" {
-            so_renome = true
+            so_renome = True
         } elif a == "--libs" {
-            libs = true
+            libs = True
         } elif a == "--sem" {
             i = i + 1
             if i >= len(sys.argv) {

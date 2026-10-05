@@ -3,7 +3,7 @@
 Remove os documentos que batem com o filtro.
 
 ```
-col.remove(query: dict) -> None
+col.remove(query: dict) -> Null
 ```
 
 ---
@@ -11,7 +11,7 @@ col.remove(query: dict) -> None
 ## Uso
 
 ```
-col.remove({"ativo": false})      # remove todos os inativos
+col.remove({"ativo": False})      # remove todos os inativos
 col.remove({"nome": "café"})      # remove os cafés
 ```
 

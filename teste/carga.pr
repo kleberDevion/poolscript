@@ -50,7 +50,7 @@ funct sobe(cmd, porta) {
         try {
             r = get("http://127.0.0.1:" + str(porta) + "/ping", timeout=1)
             if r.status_code == 200 {
-                return true
+                return True
             }
         } catch (e) {
             pass
@@ -58,7 +58,7 @@ funct sobe(cmd, porta) {
         sleep(0.1)
         i = i + 1
     }
-    return false
+    return False
 }
 
 
@@ -109,8 +109,8 @@ funct carga_http() {
     post("── servidor HTTP: requisicoes por segundo (cliente: Jinga, " + str(POR_NIVEL) + " req por nivel) ──")
     os.writeFile(PASTA + "/srv_ps.pr",
         "import jinker\nfrom jinker import Jinker\napp = Jinker(__name__)\n"
-        + "@app.get(\"/ping\")\nfunct ping() {\n    return {\"ok\": true}\n}\n"
-        + "if __name__ == \"main\" {\n    app(debug=false, host=\"127.0.0.1\", port=" + str(PORTA_PS) + ")\n}\n")
+        + "@app.get(\"/ping\")\nfunct ping() {\n    return {\"ok\": True}\n}\n"
+        + "if __name__ == \"main\" {\n    app(debug=False, host=\"127.0.0.1\", port=" + str(PORTA_PS) + ")\n}\n")
     servidores = [["jinker (Jinga)", "'" + sys.executable + "' srv_ps.pr", PORTA_PS]]
     if tem("python3") {
         os.writeFile(PASTA + "/srv_py.py",
@@ -227,15 +227,15 @@ funct carga_motor() {
 
 
 if __name__ == "main" {
-    os.mkdir(PASTA, exist_ok=true)
-    so_http = false
-    so_motor = false
+    os.mkdir(PASTA, exist_ok=True)
+    so_http = False
+    so_motor = False
     for each a in sys.argv {
         if a == "--so-http" {
-            so_http = true
+            so_http = True
         }
         if a == "--so-motor" {
-            so_motor = true
+            so_motor = True
         }
     }
     if not so_motor {

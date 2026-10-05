@@ -19,7 +19,7 @@ int
 ## Exemplos
 
 ```ps
-post(int("7"), int(3.9), int(true))
+post(int("7"), int(3.9), int(True))
 ```
 
 ```saida

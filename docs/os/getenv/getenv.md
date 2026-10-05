@@ -1,17 +1,17 @@
-# `os.getenv(key, default=None)`
+# `os.getenv(key, default=Null)`
 
 Lê uma **variável de ambiente**. É como você pega segredos e configuração
 (senhas, caminhos, chaves de API) sem escrever no código — normalmente vindas
 de um arquivo `.env`.
 
 ```
-os.getenv(key: str, default: any = None) -> str | Null | default
+os.getenv(key: str, default: any = Null) -> str | Null | default
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
 | `key` | — | nome da variável (ex: `"DB_PATH"`) |
-| `default` | `None` | valor devolvido se a variável não existir |
+| `default` | `Null` | valor devolvido se a variável não existir |
 
 ---
 

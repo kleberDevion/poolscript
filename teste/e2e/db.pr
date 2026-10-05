@@ -67,7 +67,7 @@ funct exercita(nome, drv, porta) {
 
     # O parâmetro vai com o TIPO do valor. O mysql monta a query com o valor
     # dentro, e mandava tudo entre aspas: `LIMIT '2'` era erro de sintaxe,
-    # `true` virava 'True' (= 0, casava com FALSE) e `'41' + 1` virava float.
+    # `True` virava 'True' (= 0, casava com FALSE) e `'41' + 1` virava float.
     cur.execute("SELECT id FROM t ORDER BY id LIMIT ? OFFSET ?", (2, 1))
     r = cur.fetchall()
     confere(nome + ": int em LIMIT/OFFSET", len(r) == 2 and r[0]["id"] == 2 and r[1]["id"] == 3)
@@ -76,13 +76,13 @@ funct exercita(nome, drv, porta) {
     confere(nome + ": int em conta continua int", r == 42 and type(r) == "int")
     cur.execute("DROP TABLE IF EXISTS tb")
     cur.execute("CREATE TABLE tb (id INT, ativo BOOLEAN, preco FLOAT)")
-    cur.execute("INSERT INTO tb (id, ativo, preco) VALUES (?, ?, ?)", (1, true, 2.5))
-    cur.execute("INSERT INTO tb (id, ativo, preco) VALUES (?, ?, ?)", (2, false, 7.25))
+    cur.execute("INSERT INTO tb (id, ativo, preco) VALUES (?, ?, ?)", (1, True, 2.5))
+    cur.execute("INSERT INTO tb (id, ativo, preco) VALUES (?, ?, ?)", (2, False, 7.25))
     con.commit()
-    cur.execute("SELECT id FROM tb WHERE ativo = ?", (true,))
+    cur.execute("SELECT id FROM tb WHERE ativo = ?", (True,))
     r = cur.fetchall()
     confere(nome + ": bool true casa so com a linha true", len(r) == 1 and r[0]["id"] == 1)
-    cur.execute("SELECT id FROM tb WHERE ativo = ?", (false,))
+    cur.execute("SELECT id FROM tb WHERE ativo = ?", (False,))
     r = cur.fetchall()
     confere(nome + ": bool false casa so com a linha false", len(r) == 1 and r[0]["id"] == 2)
     cur.execute("SELECT id FROM tb WHERE preco = ?", (7.25,))
@@ -176,7 +176,7 @@ funct exercita(nome, drv, porta) {
     # atual, que é pior que erro.
     cur.close()
     for each op in ["execute", "fetchall", "fetchone", "fetchmany"] {
-        levantou = false
+        levantou = False
         tipo = ""
         try {
             if op == "execute" {
@@ -193,7 +193,7 @@ funct exercita(nome, drv, porta) {
             }
         }
         catch (e) {
-            levantou = true
+            levantou = True
             tipo = str(e)
         }
         confere(nome + ": " + op + "() depois de close() recusa", levantou)
@@ -201,21 +201,21 @@ funct exercita(nome, drv, porta) {
     }
     # fechar duas vezes continua válido: nenhum DB-API trata isso como erro
     cur.close()
-    confere(nome + ": close() duas vezes é inofensivo", true)
+    confere(nome + ": close() duas vezes é inofensivo", True)
 
     con.close()
     # e a conexão fechada duas vezes não pode quebrar
     con.close()
-    confere(nome + ": fechar a conexão duas vezes é inofensivo", true)
+    confere(nome + ": fechar a conexão duas vezes é inofensivo", True)
     post(nome, "-> ok")
 }
 
 for each alvo in [["postgres", "postgres", 5432], ["mysql", "mysql", 3306]] {
-    de_pe = false
+    de_pe = False
     try {
         c = conecta(alvo[1], alvo[2])
         c.close()
-        de_pe = true
+        de_pe = True
     }
     catch (e) {
         post("PULOU", alvo[0], "->", e)

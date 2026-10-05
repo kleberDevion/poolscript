@@ -21,7 +21,7 @@ post(d.get("a"), d.get("z"), d.get("z", 0))
 ```
 
 ```saida
-1 null 0
+1 Null 0
 ```
 
 ## Bordas

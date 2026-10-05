@@ -1,4 +1,4 @@
-# `Jinker.put(path, auth=None, middleware=None, model=None)`
+# `Jinker.put(path, auth=Null, middleware=Null, model=Null)`
 
 Registra uma rota que responde **só a PUT** — o
 [`@app.route(...)`](../route/route.md) com o método decidido pelo nome. Não

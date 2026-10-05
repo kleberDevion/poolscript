@@ -108,14 +108,14 @@ funct le_titulo(caminho) {
 # nome a citar.
 funct retorno_citado(esperado, corpo) {
     if esperado == "*" {
-        return true
+        return True
     }
     for each lado in esperado.split("|") {
         if not (lado in corpo) {
-            return false
+            return False
         }
     }
-    return true
+    return True
 }
 
 
@@ -195,7 +195,7 @@ funct tipos_do_motor() {
         # devolvido conta.
         linhas = fonte.split("\n")
         i = 0
-        dentro = false
+        dentro = False
         while i < len(linhas) {
             L = linhas[i]
             # assinatura de funcao no nivel de arquivo (nao indentada)
@@ -252,10 +252,10 @@ funct confere_tipos_de_erro(paginas) {
             if m in motor or do_usuario.contains(m) {
                 continue
             }
-            achou = false
+            achou = False
             for each f in fantasmas {
                 if f[0] == m and f[1] == pag {
-                    achou = true
+                    achou = True
                 }
             }
             if not achou {
@@ -292,10 +292,10 @@ funct confere_motor_na_doc() {
 
 
 if __name__ == "main" {
-    tudo = false
+    tudo = False
     for each a in sys.argv {
         if a == "--tudo" {
-            tudo = true
+            tudo = True
         }
     }
 
@@ -305,8 +305,8 @@ if __name__ == "main" {
     # cmd.exe: aspa simples lá não é aspa (o programa procurado virava
     # `'C:\...\pool.exe'`, com as aspas no nome) e o "/tmp" do motor nativo é
     # "<unidade>:\tmp", não o /tmp do MSYS2.
-    saida_meta = os.run([sys.executable, "--metadata"], capture=true)
-    # Com o stdout vazio o `capture=true` devolve o stderr do filho. Quando era
+    saida_meta = os.run([sys.executable, "--metadata"], capture=True)
+    # Com o stdout vazio o `capture=True` devolve o stderr do filho. Quando era
     # o `os.cmd`, esse stderr saía direto no terminal; aqui ele volta como
     # texto, e sem esta guarda o que aparecia era só o `json.parse` reclamando
     # do primeiro caractere, não o que o `--metadata` disse.
@@ -436,14 +436,14 @@ if __name__ == "main" {
     ret_real = {}
     for each mod in meta["modulos"].keys() {
         for each f in meta["modulos"][mod] {
-            if "retorna" in f and f["retorna"] != null {
+            if "retorna" in f and f["retorna"] != Null {
                 ret_real[mod + "." + f["nome"]] = f["retorna"]
             }
         }
     }
     for each tp in meta["tipos"].keys() {
         for each f in meta["tipos"][tp] {
-            if "retorna" in f and f["retorna"] != null {
+            if "retorna" in f and f["retorna"] != Null {
                 ret_real[tp + "|" + f["nome"]] = f["retorna"]
             }
         }

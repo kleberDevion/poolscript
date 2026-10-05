@@ -13,7 +13,7 @@ código escrito em Jinga sem montar a checagem à mão.
 
 ## Retorno
 
-`true` quando passa — então serve dentro de expressão.
+`True` quando passa — então serve dentro de expressão.
 
 ## As três formas
 
@@ -27,7 +27,7 @@ assert(soma(2, 2), 4, "soma de dois")  # falhou -> AssertionError: soma de dois 
 ```
 
 A forma de **dois valores** existe porque `assert(a == b)` é a que mais se
-escreve e a que menos ajuda quando quebra: o `==` já virou `false` e a
+escreve e a que menos ajuda quando quebra: o `==` já virou `False` e a
 mensagem não tem como dizer o que veio. Recebendo os dois lados, ela diz.
 
 ## Bordas

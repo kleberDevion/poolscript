@@ -10,7 +10,7 @@ tamanho de buffer, Nagle. Quase sempre é a primeira linha depois do
 |---|---|---|---|
 | `level` | int | — | a camada da opção: `sockets.SOL_SOCKET` para as `SO_*`, `sockets.IPPROTO_TCP` para as `TCP_*`, `sockets.IPPROTO_IP` para as `IP_*` |
 | `optname` | int | — | a opção: `sockets.SO_REUSEADDR`, `SO_KEEPALIVE`, `SO_RCVBUF`, `TCP_NODELAY`… |
-| `value` | int \| bool \| bytes \| str | — | `int`/`bool` vão como inteiro do sistema (`true` = `1`); `bytes`/`str` vão **crus**, do tamanho que têm |
+| `value` | int \| bool \| bytes \| str | — | `int`/`bool` vão como inteiro do sistema (`True` = `1`); `bytes`/`str` vão **crus**, do tamanho que têm |
 
 As três posições são obrigatórias — não há default nenhum.
 
@@ -37,7 +37,7 @@ import sockets
 s = sockets.socket()
 post(s.setsockopt(sockets.SOL_SOCKET, sockets.SO_REUSEADDR, 1))
 post(s.getsockopt(sockets.SOL_SOCKET, sockets.SO_REUSEADDR))
-post(s.setsockopt(sockets.SOL_SOCKET, sockets.SO_KEEPALIVE, true))
+post(s.setsockopt(sockets.SOL_SOCKET, sockets.SO_KEEPALIVE, True))
 post(s.getsockopt(sockets.SOL_SOCKET, sockets.SO_KEEPALIVE))
 s.close()
 ```

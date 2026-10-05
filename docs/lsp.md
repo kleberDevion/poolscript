@@ -112,8 +112,15 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   página da doc; instância de Entity do arquivo mostra `class X { … }` com
   os membros; `int n` diz que só tem `type()`; retorno com mais de um tipo
   (`str|Process`) descreve cada lado. Apelido de tipo (`String`,
-  `Integer`… a tabela `tipos_apelidos` do motor, inteira) responde como o
-  tipo que designa;
+  `Integer`, `json`… a tabela `tipos_apelidos` do motor, inteira) responde
+  como o tipo que designa. O tipo primitivo (`str`, `int`, `list`, `dict`,
+  `tup`, `byte`… os declaráveis que o `type()` devolve) diz `tipo primitivo`;
+  o tipo do motor (`Jinker`, `Response`, `PoolFile`…) diz `tipo nativo`.
+  `class` aparece só na classe escrita em Jinga;
+- **hover de um nome da linguagem** — o builtin (`len`, `range`, `sum`…)
+  mostra a assinatura e a página `docs/builtins/`; o nome de tipo mostra o
+  tipo; `json.` sem `import json` diz que falta o import. Nenhum nome que a
+  linguagem liga sozinha cai no "rodando dá NameError";
 - **hover** — a assinatura real do método e o tipo que ele devolve, com a
   prosa da página `docs/…` achada pelo **caminho** (`jinker/request/get`;
   método de tipo em `docs/<tipo>/`, como `docs/str/upper/`, `docs/byte/decode/`).
@@ -346,7 +353,7 @@ neles.
 | parâmetro | `#9CDCFE` |
 | string · escape · chaves de interpolação | `#98C379` · `#56B6C2` · `#C678DD` |
 | literal de bytes `b"..."` | `#B5CEA8` |
-| número · `true false Null` | `#D19A66` · `#D19A66` itálico |
+| número · `True False Null` | `#D19A66` · `#D19A66` itálico |
 | operador de símbolo, pontuação, propriedade | `#ABB2BF` |
 | dunder (`__name__ __init__`) | `#E5C07B` itálico |
 | comentário | `#5C6370` itálico |

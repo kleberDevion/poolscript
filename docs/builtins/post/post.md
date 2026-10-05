@@ -15,7 +15,7 @@ Null
 ## Exemplos
 
 ```ps
-post(1, "a", true)
+post(1, "a", True)
 ```
 
 ```saida
@@ -27,7 +27,7 @@ post([1, Null], {"k": 2})
 ```
 
 ```saida
-[1, null] {'k': 2}
+[1, Null] {'k': 2}
 ```
 
 ## Bordas

@@ -17,8 +17,8 @@ mesmo servidor não embaralha as duas.
 
 | Acesso | O que faz |
 |---|---|
-| `.file(field, allowed=None)` | request.file('campo', allowed=['.jpg', '.png']) → PoolFileUpload |
-| `.files(field, allowed=None)` | request.files('campo') → lista de PoolFileUpload |
+| `.file(field, allowed=Null)` | request.file('campo', allowed=['.jpg', '.png']) → PoolFileUpload |
+| `.files(field, allowed=Null)` | request.files('campo') → lista de PoolFileUpload |
 | `.get(key)` |  |
 | `.get_json()` |  |
 | `.header(key)` | request.header('User-Agent') → valor do header (case-insensitive), |

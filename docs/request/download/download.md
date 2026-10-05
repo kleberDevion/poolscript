@@ -48,7 +48,7 @@ post(r.status_code, r.size, os.size("pacote.deb"))
 `.content` com `save=` **lê do arquivo salvo** — `save=` decide só onde o corpo
 está, não se você pode lê-lo.
 
-> **`stream=true` não faz nada disso.** Apesar do nome, a única coisa que
+> **`stream=True` não faz nada disso.** Apesar do nome, a única coisa que
 > `stream` liga é o teto do `max_size` (abaixo). O corpo nunca é carregado por
 > conta do motor, com ou sem `stream`.
 
@@ -94,15 +94,15 @@ mesmo vale quando o corpo veio de `save=` — mover apagaria o que você pediu.
 ## Limitando o tamanho — `stream` e `max_size`
 
 `max_size` corta o download quando o corpo passa do teto, levantando erro em vez
-de continuar baixando. Ele **só vale com `stream=true`**:
+de continuar baixando. Ele **só vale com `stream=True`**:
 
 ```ps
 import request
 url = "https://exemplo.com/arquivo.zip"
 
-request.get(url, stream=true)                    # teto padrão: 100 MB
-request.get(url, stream=true, max_size="500mb")  # teto maior
-request.get(url, stream=true, max_size=2000000)  # em bytes também vale
+request.get(url, stream=True)                    # teto padrão: 100 MB
+request.get(url, stream=True, max_size="500mb")  # teto maior
+request.get(url, stream=True, max_size=2000000)  # em bytes também vale
 ```
 
 Combina com `save=`: `max_size` continua sendo o teto, e o que couber nele vai

@@ -67,9 +67,9 @@ for each n in [0, 1, 5, 17] {
 # ── chave na MESMA linha x na linha seguinte (Allman) ───────────────────────
 # Com o bloco `:` fora da linguagem, o que sobra de redundância na hora de
 # abrir um bloco é ONDE a chave fica. As duas formas têm que dar no mesmo.
-F("if", ['if true {\n    post("A")\n}', 'if (true)\n{\n    post("A")\n}'])
-F("if/else", ['if false {\n    post("X")\n} else {\n    post("A")\n}',
-              'if (false)\n{\n    post("X")\n}\nelse\n{\n    post("A")\n}'])
+F("if", ['if True {\n    post("A")\n}', 'if (True)\n{\n    post("A")\n}'])
+F("if/else", ['if False {\n    post("X")\n} else {\n    post("A")\n}',
+              'if (False)\n{\n    post("X")\n}\nelse\n{\n    post("A")\n}'])
 F("while", ['n = 0\nwhile n < 3 {\n    n = n + 1\n}\npost(n)',
             'n = 0\nwhile (n < 3)\n{\n    n = n + 1\n}\npost(n)'])
 F("for each", ['for each i in [1,2] {\n    post(i)\n}',
@@ -232,7 +232,7 @@ F("ler chave existente", [
 # ── erro: raise x int funct x try ──────────────────────────────────────────
 F("erro capturado vira valor", [
   'funct f():\n    try:\n        raise B("x")\n    catch(e):\n        return 0\npost(f())',
-  'int funct g():\n    return null\npost(g())',
+  'int funct g():\n    return Null\npost(g())',
   'post(0)'])
 
 # ── fatia x laço com índice ─────────────────────────────────────────────────
@@ -289,7 +289,7 @@ funct esc(s) {
 
 
 if __name__ == "main" {
-    os.mkdir(TMP, exist_ok=true)
+    os.mkdir(TMP, exist_ok=True)
 
     out = ["/*",
       " * EQUIVALENCIA INTERNA — a mesma computação escrita de várias formas.",
@@ -320,10 +320,10 @@ if __name__ == "main" {
         }
         # todas as formas têm que dar o MESMO (código de saída, stdout)
         chave0 = str(res[0][0]) + "\u0000" + res[0][1]
-        igual = true
+        igual = True
         for each r in res {
             if str(r[0]) + "\u0000" + r[1] != chave0 {
-                igual = false
+                igual = False
             }
         }
         if not igual {

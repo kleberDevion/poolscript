@@ -3,7 +3,7 @@
 Atualiza os documentos que batem com o filtro, aplicando os novos valores.
 
 ```
-col.update(query: dict, new_values: dict) -> None
+col.update(query: dict, new_values: dict) -> Null
 ```
 
 | Parâmetro | O que é |
@@ -20,7 +20,7 @@ col.update(query: dict, new_values: dict) -> None
 col.update({"nome": "café"}, {"preco": 18})
 
 # marca como inativo quem tem estoque 0
-col.update({"estoque": 0}, {"ativo": false})
+col.update({"estoque": 0}, {"ativo": False})
 ```
 
 ---

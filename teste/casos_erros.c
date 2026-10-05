@@ -2,7 +2,7 @@
  * Erros: quando a VM tem que RECLAMAR e quando tem que deixar passar.
  *
  * O padrão que mais dói aqui é o silêncio: chamada com argumento faltando
- * devolvendo `null`, nome nomeado errado sumindo, f-string engolindo o erro.
+ * devolvendo `Null`, nome nomeado errado sumindo, f-string engolindo o erro.
  * Erro engolido é pior que erro barulhento.
  */
 #include "ps_teste.h"
@@ -240,7 +240,7 @@ const Caso CASOS_ERROS[] = {
 { "dict como chave de dict",
   "d = {}\nd[{ \"x\": 1 }] = \"b\"\n", "", "unhashable type: 'dict'", 1 },
 { "chaves imutáveis seguem valendo",
-  "d = {}\nd[\"s\"] = 1\nd[2] = \"b\"\nd[2.5] = \"c\"\nd[true] = \"d\"\nd[(1, 2)] = \"tup\"\n"
+  "d = {}\nd[\"s\"] = 1\nd[2] = \"b\"\nd[2.5] = \"c\"\nd[True] = \"d\"\nd[(1, 2)] = \"tup\"\n"
   "post(len(d), d[\"s\"], d[2], d[(1, 2)])\n",
   "5 1 b tup", NULL, 0 },
 
@@ -274,7 +274,7 @@ const Caso CASOS_ERROS[] = {
   "        return a\n"
   "    }\n"
   "}\n"
-  "post(C().f(null))\n",
+  "post(C().f(Null))\n",
   "", "nonnull", 1 },
 { "nonnull colado dentro de Entity",
   "class C {\n"
@@ -282,7 +282,7 @@ const Caso CASOS_ERROS[] = {
   "        return a\n"
   "    }\n"
   "}\n"
-  "post(C().f(null))\n",
+  "post(C().f(Null))\n",
   "", "nonnull: parametro 'a' em 'f' nao pode ser Null", 1 },
 { "@NonNull com valor válido passa",
   "class C {\n"

@@ -39,7 +39,7 @@ post("İ".lower())       # i      — o I turco com pingo
 
 | Método | Faz |
 |---|---|
-| `strip(chars=null)` / `lstrip` / `rstrip` | remove espaços (ou os `chars` dados) das duas pontas / esquerda / direita |
+| `strip(chars=Null)` / `lstrip` / `rstrip` | remove espaços (ou os `chars` dados) das duas pontas / esquerda / direita |
 | `ljust(width, fillchar)` / `rjust(width, fillchar)` / `center(width, fillchar)` | preenche até a largura à esquerda / direita / centro; sem `fillchar`, com espaço |
 | `zfill(n)` | preenche com zeros à esquerda até `n` (respeita o sinal) |
 | `expandtabs(tabsize=8)` | troca TABs por espaços |
@@ -48,9 +48,9 @@ post("İ".lower())       # i      — o I turco com pingo
 
 | Método | Faz |
 |---|---|
-| `find(sub, inicio=0, fim=null)` / `rfind(...)` | índice da 1ª / última ocorrência, ou **-1** se não achar; `inicio`/`fim` limitam a faixa de busca (em caracteres, negativo conta do fim) |
-| `index(sub, inicio=0, fim=null)` / `rindex(...)` | como find/rfind, mas **erro** se não achar |
-| `count(sub, inicio=0, fim=null)` | quantas vezes `sub` aparece (na faixa) |
+| `find(sub, inicio=0, fim=Null)` / `rfind(...)` | índice da 1ª / última ocorrência, ou **-1** se não achar; `inicio`/`fim` limitam a faixa de busca (em caracteres, negativo conta do fim) |
+| `index(sub, inicio=0, fim=Null)` / `rindex(...)` | como find/rfind, mas **erro** se não achar |
+| `count(sub, inicio=0, fim=Null)` | quantas vezes `sub` aparece (na faixa) |
 | `contains(sub)` / `has(sub)` | `sub` está na string? (`bool`) |
 | `startswith(pre)` / `endswith(suf)` | começa / termina com? (`bool`); `pre`/`suf` pode ser **uma** `str` ou uma **tupla/lista de opções** (basta uma bater) |
 
@@ -120,7 +120,7 @@ caractere da classe.
 |---|---|
 | `len()` | nº de caracteres (igual a `len(s)`) |
 | `encode(encoding="utf-8", errors="strict")` | string → `byte` no encoding pedido |
-| `get_json(chave=null)` | interpreta a string como JSON e devolve os dados (ou a chave) |
+| `get_json(chave=Null)` | interpreta a string como JSON e devolve os dados (ou a chave) |
 | `get(...)` | acessa dado dentro de uma string JSON |
 
 #### `encode` / `decode`: o encoding vale de verdade
@@ -157,7 +157,7 @@ try {
 
 ## 12.2. Métodos de `list` (14)
 
-A maioria **altera a própria lista** (in-place) e devolve `null` — não encadeia.
+A maioria **altera a própria lista** (in-place) e devolve `Null` — não encadeia.
 
 | Método | Faz | Muta? |
 |---|---|---|
@@ -200,7 +200,7 @@ post(l2.index(2, 2))    # 3   — a primeira a partir da posição 2
 | `keys()` | lista das chaves |
 | `values()` / `value()` | lista dos valores (os dois nomes, o mesmo resultado) |
 | `items()` | lista de tuplas `(chave, valor)` |
-| `get(chave, default=null)` | valor da chave, ou `default` (ou `null`) se não existir — **não dá erro** |
+| `get(chave, default=Null)` | valor da chave, ou `default` (ou `Null`) se não existir — **não dá erro** |
 | `has(chave)` / `contains(chave)` | a chave existe? (`bool`) |
 | `pop(chave)` | remove e devolve o valor da chave |
 | `update(outro)` | mescla os pares de outro dict |
@@ -221,7 +221,7 @@ for each k in d.keys() {
 ### `in` olha a CHAVE; pro VALOR, use `value()`
 
 `x in d` testa se `x` é uma **chave** — então procurar um
-valor ali dá `false` sempre, seja ele str, int, flo, list ou tup:
+valor ali dá `False` sempre, seja ele str, int, flo, list ou tup:
 
 ```ps
 d = { "nome": "ana", "idade": 30, "tags": [1, 2] }

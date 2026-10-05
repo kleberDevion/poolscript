@@ -3,7 +3,7 @@
 Fecha a conexão WebSocket. Depois disso não dá pra enviar nem receber.
 
 ```
-conn.close() -> None
+conn.close() -> Null
 ```
 
 ---
@@ -29,7 +29,7 @@ conn.close()          # encerra quando terminar
 conn = request.ws_connect("ws://localhost:8081/chat/geral")
 conn.on_message(funct(msg) { post(f"\n{msg}") })
 
-while (true) {
+while (True) {
     texto = input("")
     if (texto == "sair") {
         conn.close()

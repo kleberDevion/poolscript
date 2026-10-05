@@ -1,4 +1,4 @@
-# `Jinker.delete(path, auth=None, middleware=None, model=None)`
+# `Jinker.delete(path, auth=Null, middleware=Null, model=Null)`
 
 Registra uma rota que responde **só a DELETE** — o
 [`@app.route(...)`](../route/route.md) com o método decidido pelo nome. Não

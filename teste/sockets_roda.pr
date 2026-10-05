@@ -57,7 +57,7 @@ confere("getprotobyname(tcp) == 6", sockets.getprotobyname("tcp") == 6)
 # ── timeout padrão do módulo ────────────────────────────────────────────────
 sockets.setdefaulttimeout(5.0)
 confere("setdefaulttimeout/getdefaulttimeout", sockets.getdefaulttimeout() == 5.0)
-sockets.setdefaulttimeout(null)
+sockets.setdefaulttimeout(Null)
 
 # ── interfaces de rede ──────────────────────────────────────────────────────
 ifs = sockets.if_nameindex()
@@ -145,7 +145,7 @@ rc = morto.connect_ex(("127.0.0.1", 1))
 confere("connect_ex em porta fechada devolve errno", rc != 0)
 morto.close()
 
-recusou = false
+recusou = False
 s2 = sockets.socket()
 s2.settimeout(10.0)
 try
@@ -154,7 +154,7 @@ try
 }
 catch (e)
 {
-    recusou = true
+    recusou = True
 }
 confere("connect em porta fechada levanta", recusou)
 s2.close()

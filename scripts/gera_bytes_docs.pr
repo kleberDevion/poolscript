@@ -104,7 +104,7 @@ CASOS = {
     "rsplit": ["Como `split`, mas contando do fim quando há `maxsplit`.", "list",
         "post(\"a-b-c\".encode().rsplit(\"-\".encode(), 1))"],
     "splitlines": ["Parte em linhas. Quebra em `\\n`, `\\r` e `\\r\\n` — e SÓ. O `\\v` e o `\\f`, que no `str` quebram, aqui ficam dentro da linha.", "list",
-        "post(\"a\\nb\\r\\nc\".encode().splitlines())\npost(\"a\\nb\".encode().splitlines(true))\npost(bytes.fromhex(\"610b62\").splitlines())"],
+        "post(\"a\\nb\\r\\nc\".encode().splitlines())\npost(\"a\\nb\".encode().splitlines(True))\npost(bytes.fromhex(\"610b62\").splitlines())"],
     "partition": ["Corta na PRIMEIRA ocorrência e devolve `(antes, separador, depois)`. Sem ocorrência, tudo vai no primeiro.", "tup",
         "post(\"a=b=c\".encode().partition(\"=\".encode()))\npost(\"abc\".encode().partition(\"=\".encode()))"],
     "rpartition": ["Corta na ÚLTIMA ocorrência. Sem ocorrência, tudo vai no ÚLTIMO — ao contrário do `partition`.", "tup",
@@ -220,10 +220,10 @@ funct pagina(metodo, sig, frase, retorno, exemplo, saida, params) {
 
 
 if __name__ == "main" {
-    confere = false
+    confere = False
     for each a in sys.argv {
         if a == "--confere" {
-            confere = true
+            confere = True
         }
     }
 
@@ -292,7 +292,7 @@ if __name__ == "main" {
             continue
         }
         if not os.exists(pasta) {
-            os.mkdir(pasta, true)
+            os.mkdir(pasta, True)
         }
         using open(arq, "w") as f {
             f.write(texto)

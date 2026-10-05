@@ -87,7 +87,7 @@ conn = psodbc.connect(url="mongodb://localhost:27017/loja")
   ODBC Driver 18+ valida o certificado e derrubaria conexão local com
   certificado autoassinado. É fixo, não configurável: `trust_server_cert=`
   também estava documentado e **não existe no motor**.
-- **Automático:** a conexão abre com `autocommit=true` (senão `CREATE
+- **Automático:** a conexão abre com `autocommit=True` (senão `CREATE
   DATABASE`/`DROP DATABASE` são rejeitados).
 
 ---

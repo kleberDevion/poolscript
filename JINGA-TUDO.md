@@ -268,7 +268,7 @@ O REPL não existe: `jinga repl` responde isso e sugere `-e`.
 - **Escapes**: `\n \t \r \\ \" \' \a \b \f \v \e` (ESC), `\033`, `\xHH`, `\uXXXX`, `\UXXXXXXXX`. Um escape desconhecido mantém a barra e gera `SyntaxWarning` no stderr (o programa roda).
 - **Bytes**: `b"\x89PNG"` é do tipo `byte`. `br"..."` é cru e `b'''...'''` é multilinha. `\u` não vale em bytes.
 - **Cor**: `<red>"texto"`, `<2196f3>"texto"`, `<f00>"texto"` geram ANSI 24-bit e fecham sozinhos. Nomes aceitos: `red green blue yellow cyan magenta white black purple orange pink gray grey lime teal`. Hex de 4 ou 5 dígitos não é cor.
-- **Booleano**: `True`/`true`, `False`/`false`. **Nulo**: `Null`/`null`/`None`/`none`, que imprime `Null`.
+- **Booleano**: `True`, `False`. **Nulo**: `Null`. Só essa grafia, a mesma que o motor imprime (desde o 16.2.7); `true`, `false`, `null`, `None` e `none` são nomes comuns, e usar um deles dá `NameError` antes de rodar, com a dica da grafia certa.
 - **Números**: `42`, `3.14`, `1e5` (sempre `flo`). `.5` é erro: o dígito antes do ponto é obrigatório. Um inteiro maior que 64 bits vira bignum automaticamente, e `type()` continua `int`.
 - **Identificador**: `[A-Za-z_][A-Za-z0-9_]*`, **sem acento**. Maiúscula inicial é convenção para classe, lib e tipo de erro. `catch (Tipo e)` e `raise Tipo(...)` exigem maiúscula.
 - **Continuação de linha**: dentro de `( [ {` a quebra de linha é livre. Uma linha que começa com `.membro` continua a expressão anterior. Uma linha que começa com `+` **não** continua a anterior: dá `SyntaxError: expressao invalida`. Use parênteses.
@@ -291,7 +291,7 @@ post(<red>"erro", <2196f3>"azul", "sem cor")
 b = b"\x89PNG"
 post(type(b), len(b), b[0])            # byte 4 137
 post(7 // 2, 7 / 2, 2 ** 10, -7 % 3)   # 3 3.5 1024 2
-post(True, true, Null, null, None)     # True True Null Null Null
+post(True, True, Null, Null, Null)     # True True Null Null Null
 ```
 
 ### 2.4 Tipos e tipagem estática
@@ -303,7 +303,7 @@ post(True, true, Null, null, None)     # True True Null Null Null
 | `int` | `int` | `42` | 64 bits com promoção a bignum. Uma declaração `int` recusa bignum; use `long` |
 | `long` | `int` | — | Inteiro de qualquer tamanho. É restrição da declaração, não tipo de runtime |
 | `flo` | `flo` | `3.14` | double IEEE-754 |
-| `bool` | `bool` | `true` | Subtipo de int em aritmética (`True + True == 2`) |
+| `bool` | `bool` | `True` | Subtipo de int em aritmética (`True + True == 2`) |
 | `str` | `str` | `"x"` | UTF-8. Índice, fatia e `len` contam **caracteres** |
 | `char` | `str` | `"x"` ou `64` | Um caractere. Um inteiro vira codepoint **só na declaração** |
 | `list` | `list` | `[1, 2]` | Mutável |
@@ -341,7 +341,7 @@ Apelidos (valem só onde cabe um tipo): `string`/`String` = `str`, `integer`/`In
 int idade = 30
 str nome = "ana"
 flo preco = 9.9
-bool ativo = true
+bool ativo = True
 char letra = "x"
 char arroba = 64
 long grande = 99999999999999999999
@@ -380,7 +380,7 @@ p.nome = 5       -> AttributedValueError: campo nome de P esperava str, recebeu 
 
 ```ps
 k = "a"
-d = {k: 1, "tls": true}
+d = {k: 1, "tls": True}
 post(d)                                    # {'a': 1, 'tls': True}
 post("a" in d, 1 in d.value())             # True True  (in olha a CHAVE; valor via .value())
 d.nova = 2                                 # chave por atributo == d["nova"] = 2
@@ -390,7 +390,7 @@ for each chave, valor in d.items() {
 }
 ```
 
-`{tls: true}` sem a variável `tls` dá `NameError: name 'tls' is not defined`. Uma chave ausente em `d["x"]` ou `d.x` dá `KeyError`, e `d.get(k, padrao)` nunca dá erro. Um método tem prioridade sobre uma chave de mesmo nome.
+`{tls: True}` sem a variável `tls` dá `NameError: name 'tls' is not defined`. Uma chave ausente em `d["x"]` ou `d.x` dá `KeyError`, e `d.get(k, padrao)` nunca dá erro. Um método tem prioridade sobre uma chave de mesmo nome.
 
 ### 2.5 Variáveis, escopo e atribuição
 
@@ -445,14 +445,14 @@ Precedência, do mais fraco para o mais forte: ternário `A if C else B` < `or`/
 | `**` e `pow(b, e, mod)` | Potência. `-2 ** 2` dá `-4`. `2 ** 3 ** 2` dá `512` |
 | `+` | Soma números ou concatena sequências do mesmo tipo. **Não coage**: `"a" + 1` dá `TypeError: can only concatenate str (not "int") to str` |
 | `*` | Sequência vezes int repete: `"-" * 40`, `[0] * 3` |
-| `==` | Compara valor: `1 == 1.0`, `1 == true`, estrutura de list, tup e dict. `5 == "5"` é False |
+| `==` | Compara valor: `1 == 1.0`, `1 == True`, estrutura de list, tup e dict. `5 == "5"` é False |
 | `===`, `!==` | Não existem: `` `===` nao existe nesta linguagem; use `==` `` |
 | `<` com `Null` | `TypeError: '<' not supported between instances of 'Null' and 'int'`. `Null == 0` é False |
 | `a < b < c` | Não encadeia, é `(a < b) < c`. Escreva `a < b and b < c` |
 | `and`, `or` | Devolvem **sempre bool** (`0 or "x"` dá `True`). Para valor padrão use o ternário |
 | `is`, `is not` | Testam **tipo**: `x is int`, `x is Null`. `x is 5` é SyntaxError |
 | `in`, `not in` | Lista/tup: elemento. str: substring. dict: **chave** |
-| Bitwise | Só entre int (bool entra como 0/1, e `~true` é erro) |
+| Bitwise | Só entre int (bool entra como 0/1, e `~True` é erro) |
 | `count` | `int(7) count in l` e `count int(7) in l` contam o valor. `int in l count` e `count int in l` contam o tipo |
 
 ### 2.7 Controle de fluxo
@@ -774,7 +774,7 @@ model Usuario() {
     nome:     str(length=20)
     idade:    int(min=18, max=120)
     papel:    str(in=["admin", "user"])
-    apelido:  str(optional=true)
+    apelido:  str(optional=True)
     endereco: Endereco
     tags:     list(of=str, length=5)
 }
@@ -791,7 +791,7 @@ post(dado == Usuario)    # False
 | `regex="..."` | str | A string inteira casa o padrão (fullmatch). Padrão inválido é erro de compilação |
 | `in=[...]` / `not_in=[...]` | str, int, flo, bool | O valor está (ou não está) na lista |
 | `min=N` / `max=N` | int, flo | Faixa inclusiva |
-| `optional=true` | qualquer | O campo pode faltar ou vir `null` |
+| `optional=True` | qualquer | O campo pode faltar ou vir `Null` |
 | `of=T` | list | Cada item é do tipo T ou do model T |
 
 - Os tipos de campo são `str int flo bool list dict` ou outro model (aninhado, que pode ser declarado depois ou vir de import).
@@ -870,7 +870,7 @@ assert(len("abc"), 3, "tamanho")
 - `try` com `finally` e sem `catch` é válido (o erro propaga depois do finally). `try` sozinho dá `esperado 'catch' ou 'finally' apos bloco do try`.
 - `raise Nome("msg")` aceita um nome livre com maiúscula, sem declaração prévia. `raise "texto"` gera `RuntimeError`. Os nomes da árvore são valores (`erro = KeyError`, `raise erro`, `ValueError is Exception`).
 - Um `SyntaxError`, e todo erro de tipo, nome, aridade ou membro que o compilador já conhece, sai antes de rodar e não chega ao `catch`.
-- `assert(cond)`, `assert(cond, "mensagem")` e `assert(veio, esperado, "nota")` levantam `AssertionError`. Exemplo: `AssertionError: soma — veio 4, esperava 5`. Quando passa, devolve `true`. Um `esperado` do tipo str é lido como mensagem, então para comparar com texto use a forma de três.
+- `assert(cond)`, `assert(cond, "mensagem")` e `assert(veio, esperado, "nota")` levantam `AssertionError`. Exemplo: `AssertionError: soma — veio 4, esperava 5`. Quando passa, devolve `True`. Um `esperado` do tipo str é lido como mensagem, então para comparar com texto use a forma de três.
 
 Árvore de exceções (`jinga --metadata`, campo `excecoes`):
 
@@ -961,7 +961,7 @@ Apelidos de módulo **não existem**: `import db`, `mp`, `qr`, `sqlite`, `JSON`,
 - `post(...)` imprime separando por espaço. `print` **não existe** (`NameError`).
 - `input(prompt)` devolve str, ou `Null` no fim da entrada.
 - `load(caminho)` carrega o `.env` e devolve um dict.
-- `len` conta caracteres, e `len(null)` dá 0.
+- `len` conta caracteres, e `len(Null)` dá 0.
 - `range` devolve uma lista.
 - `round` arredonda metade para par.
 - `sorted` e `reversed` devolvem cópia.
@@ -976,7 +976,7 @@ Apelidos de módulo **não existem**: `import db`, `mp`, `qr`, `sqlite`, `JSON`,
 | Tipo | Quantidade | Destaques |
 |---|---|---|
 | `str` | 55 | Caixa Unicode (`upper lower title capitalize swapcase casefold`), `strip` com conjunto, `find` (-1) e `index` (erro) com `inicio` e `fim`, `startswith`/`endswith` com tupla de opções, testes `is...`, `split rsplit splitlines join partition rpartition`, `replace` com **lista** de alvos, `removeprefix removesuffix ljust rjust center zfill expandtabs`, `format format_map maketrans translate`, regex `match` (string inteira), `findall` e `sub`, e também `encode`, `get_json`, `get`, `len`, `contains`/`has` |
-| `list` | 14 | `append extend insert pop remove reverse sort clear index count contains has copy len`. Os que mudam a lista devolvem `null` |
+| `list` | 14 | `append extend insert pop remove reverse sort clear index count contains has copy len`. Os que mudam a lista devolvem `Null` |
 | `dict` | 12 | `keys values value items get has contains pop update clear copy len` |
 | `tup` | 5 | `index count contains has len`. `t.append(3)` dá `AttributeError: 'tup' object has no attribute 'append'` |
 | `byte` | 44 | Os nomes do str, com caixa só ASCII e busca que aceita int de 0 a 255. Indexar e iterar dão int, fatiar dá byte. Inclui `decode(encoding, errors)` e `hex` |
@@ -992,9 +992,9 @@ A lista viva está em `jinga --help` e em `jinga --metadata` (`modulos`). Todos 
 
 | Módulo | Uma linha |
 |---|---|
-| `os` | Arquivos e pastas (`readFile writeFile exists isfile isdir mkdir rmdir ls rename copy move size cwd chdir`), ambiente (`getenv environ loadFile`), `pathFile`/`pathFolder` (olham a pasta do `.pr`), `cmd(c, capture=false)` via shell (com `capture=true` devolve a saída), `run(lista)` sem shell (a forma segura contra injeção), `ipmach`, `warn`, `code`, `PoolFile` |
+| `os` | Arquivos e pastas (`readFile writeFile exists isfile isdir mkdir rmdir ls rename copy move size cwd chdir`), ambiente (`getenv environ loadFile`), `pathFile`/`pathFolder` (olham a pasta do `.pr`), `cmd(c, capture=False)` via shell (com `capture=True` devolve a saída), `run(lista)` sem shell (a forma segura contra injeção), `ipmach`, `warn`, `code`, `PoolFile` |
 | `sys` | `argv` (`argv[0]` é o caminho do `.pr`), `exit(code)`, `platform`, `executable`, `RelativePath`, `stdout`/`stderr` (`write writeln flush`), `stdin` (`read readline raw`) |
-| `json` | `parse(texto)` e `stringify(valor)`. `Null` vira `null` |
+| `json` | `parse(texto)` e `stringify(valor)`. `Null` vira `null` no texto JSON |
 | `date` | `time today datahora now timestamp timestamp_ms monotonic` e `hora(hours, minutes, days)`, que devolve segundos |
 | `regex` | `compile` (devolve `Pattern`), `match`/`fullmatch` (string inteira), `search` (bool), `findall sub split escape` |
 | `dotenv` | `load(caminho)` carrega o `.env` no ambiente e devolve um dict |
@@ -1060,7 +1060,7 @@ Libs `.pr` instaladas nesta máquina em `~/.jinga/libs` (são do dono e vão jun
 | `print("x")` | `NameError: name 'print' is not defined` | `post("x")` |
 | `post(vlaor)` | `NameError: name 'vlaor' is not defined. Did you mean: 'valor'?` | O nome certo |
 | `json.parsse(...)` | `AttributeError: module 'json' has no attribute 'parsse'. Did you mean: 'parse'?` | `json.parse` |
-| `{tls: true}` | `NameError: name 'tls' is not defined` | `{"tls": true}` |
+| `{tls: True}` | `NameError: name 'tls' is not defined` | `{"tls": True}` |
 | Variável criada no `if` e usada depois | `NameError: name 'dentro' is not defined` | Declarar antes do bloco |
 | `for each k in d` (dict) | `TypeError: 'dict' object is not iterable` | `d.keys()` / `d.items()` |
 | `"a" + 1` | `TypeError: can only concatenate str (not "int") to str` | `"a" + str(1)` ou f-string |
@@ -1564,7 +1564,7 @@ Comportamento gravado no código:
 - **WebSocket (RFC 6455)**: handshake com `Sec-WebSocket-Accept` (SHA-1 da OpenSSL mais base64), ping respondido com pong, e um cliente (`ps_jk_ws_conecta`) com frames mascarados.
 - **Multipart** (`ps_jk_multipart`), tabela de MIME por extensão e decodificação de URL (no path, `+` não vira espaço; na query, vira).
 - **TLS**: `ps_jk_tls_ctx` com cert e chave. `ps_jk_tls_autogera` gera um certificado autoassinado (CN=localhost, RSA 2048, 365 dias).
-- **CORS**: `cors(app, ..., local=false)` é o modo estrito. Só a lista `origins` vale, localhost fora da lista recebe 403, e pedido **sem** `Origin` recebe 403, tanto no HTTP quanto no handshake do WebSocket. A lista de `origins` vale no handshake do WS. Sem `cors()`, fica como sempre foi: HTTP com `*` e WS aceitando qualquer origem. O 403 de origem sai **sem** `Access-Control-Allow-Origin`. `jk_is_local` só aceita `127.` seguido de dígito ou ponto (`127.evil.com` não é local), e `[::1]:porta` é local.
+- **CORS**: `cors(app, ..., local=False)` é o modo estrito. Só a lista `origins` vale, localhost fora da lista recebe 403, e pedido **sem** `Origin` recebe 403, tanto no HTTP quanto no handshake do WebSocket. A lista de `origins` vale no handshake do WS. Sem `cors()`, fica como sempre foi: HTTP com `*` e WS aceitando qualquer origem. O 403 de origem sai **sem** `Access-Control-Allow-Origin`. `jk_is_local` só aceita `127.` seguido de dígito ou ponto (`127.evil.com` não é local), e `[::1]:porta` é local.
 - **PoolIp**: rate limit por IP numa janela de 60 s, mais ban em dias.
 - **Auto-reload** (desenvolvimento, só com 1 worker): vigia o mtime do `.pr` de entrada e re-executa o processo quando ele muda.
 
@@ -2353,7 +2353,7 @@ Regra dele pra ferramenta de teste: faltou banco, binário ou pacote pra testar,
 | `exemplos_roda.pr` | roda os `examples/`; os que bloqueiam só passam por `--check`; `mail_demo`, `request`, `push_get` e `swagger` podem dar PULOU |
 | `fuzz_replay.pr` | replaya `teste/fuzz_achados/` (hoje `crash-parser-profundo`) |
 | `fuzz_semeia.pr` | semeia o corpus do fuzzer com os programas válidos do repositório |
-| `jinker_alvo.pr`, `jinker_alvo_tls.pr`, `jinker_alvo_estrito.pr` | servidores-alvo do `jinker_roda.pr`: HTTP, HTTPS e origem estrita (`cors ... local=false`); saem por `/__parar` pra a cobertura contar |
+| `jinker_alvo.pr`, `jinker_alvo_tls.pr`, `jinker_alvo_estrito.pr` | servidores-alvo do `jinker_roda.pr`: HTTP, HTTPS e origem estrita (`cors ... local=False`); saem por `/__parar` pra a cobertura contar |
 | `jinker_roda.pr` | o servidor jinker a fundo, em loopback |
 | `leis.pr` | leis da linguagem sobre valores sorteados, com encolhimento do contraexemplo |
 | `mongo_roda.pr` | sobe `mongod` próprio em `/tmp` e testa o driver; PULOU sem o binário |
@@ -2823,8 +2823,8 @@ Itens da trilha já fechados: 2 (Pyrite) foi superado pelo rename pra Jinga; 4 (
     - regex com NUL: o `--check` aprova e o programa falha com "sem memoria";
     - `==` contra model com campo vindo de import que ainda não rodou devolve False;
     - regex com mais de 120 caracteres sai cortado no 422;
-    - hover do model: `min=undefined` pra 1e999, `max=2.0` vira `max=2`, `length=0` some, `null` no `in` vira `…`;
-    - testes que faltam: "nao pode ser null", `()` vazio e vírgula final, model importado como tipo de campo, `in=[x]` com variável, e o comentário do bloco 17 do `teste_servidor.js`.
+    - hover do model: `min=undefined` pra 1e999, `max=2.0` vira `max=2`, `length=0` some, `Null` no `in` vira `…`;
+    - testes que faltam: "nao pode ser Null", `()` vazio e vírgula final, model importado como tipo de campo, `in=[x]` com variável, e o comentário do bloco 17 do `teste_servidor.js`.
 - **Self-hosting** (compromisso seu de 2026-08-24).
   - Lexer, parser e avaliador da Jinga escritos em Jinga. Toda limitação encontrada no caminho é corrigida no motor, nunca contornada.
   - Ordem: lexer; parser -> AST; avaliador (expressões, statements, funções e escopo, Entity e decoradores); por fim, diferencial rodando os `.pr` da suíte.
@@ -2853,6 +2853,7 @@ Itens da trilha já fechados: 2 (Pyrite) foi superado pelo rename pra Jinga; 4 (
 | 09-30 | 16.2.4 | ver `git log` | O que o CI do 16.2.3 achou: a nota do `private` no traceback saía com lixo da pilha em todo erro de runtime (as três entradas do motor limpavam o erro campo a campo e esqueciam a nota; no Linux a pilha vinha zerada por acaso, no Mac não); o mongo no Windows não achava as `bson_*` (o `GetProcAddress` só olha a própria DLL; agora procura também nas que ela importa, como o `dlsym`); `make cobertura` com contador atômico (as threads do pool deixavam contador negativo e o `lcov` recusava a medição) |
 | 10-01 | 16.2.5 | ver `git log` | O que o CI do 16.2.4 achou: no macOS a conexão aceita pelo jinker herdava o não-bloqueante da escuta (o BSD herda, o Linux não; só o Windows desligava), e a leitura do pedido do WebSocket e o handshake do TLS, feitos na thread do pool, voltavam EAGAIN e fechavam a conexão (10 falhas do `jinker_roda`); o `-fanalyzer` do gcc 16 (Windows) acusa um falso "leak of 'nv'" no lexer (aceito com o motivo); o `make analisa ANALISA_TUDO=1` do noturno nunca rodou desde 26/08 (um `;` sozinho na receita), e com a receita certa o teto de 12000 MB passava da RAM do runner privado (7,9 GB) e o derrubava: agora 6000; o fuzzer não compilava desde que o `ps_verifica_fonte` ganhou os avisos |
 | 10-05 | 16.2.6 | ver `git log` | Etapa 0 do plano "JIT nunca pior que o interpretador": a chamada direta entre functs nativas (`jit_chama`) passa a ser ponto seguro do GC, como a entrada do CALL no interpretador. Uma recursão que aloca não coletava no código de máquina: `g(22)` com uma lista por chamada ia a 2045 page-faults, contra 609 agora (98,6 M -> 82,9 M instruções). A conferência custa 3 instruções por chamada (fib +0,74%, chamada +0,57%). `JINGA_GC_LOG=1` diz cada coleta no stderr, e o teste exige o mesmo número de coletas com e sem JIT (sem a correção: 1 contra 2) |
+| 10-05 | 16.2.7 | ver `git log` | Regras do front-end: (1) só `True`, `False` e `Null`: `true`, `false`, `null`, `None` e `none` são nomes comuns, e usar um deles dá NameError antes de rodar com a dica pelo "Did you mean" (`True`/`False`/`Null` entraram nos candidatos); migrador `scripts/migra_literais.pr` (por token; `.pr`, blocos da doc e programas dos casos em C; 1465 trocas no repositório); mensagens e assinaturas do motor que mostravam a forma antiga (`pty=true`, `keepends=false`, `slice indices must be integers or None`, `nao pode ser null`, o 422 do model) passaram pra nova; (2) `return` e `yield` fora de funct são SyntaxError antes de rodar (o `return` no topo encerrava o programa calado, com rc 0 e `--check` ok); (3) `json.parse` sem `import json` passava no `--check` (o `json` também é nome de tipo) e quebrava rodando: agora é NameError no check; `tipos_apelidos` do `--metadata` sai do `ps_tipos.def` (a cópia digitada esquecia `json`, `JSON`, `object`, `Long`); (4) editor: os 27 builtins sem página de palavra-chave (`len`, `range`, `sum`…), `json`, `PoolFile` e `byte` diziam "rodando dá NameError" no hover, e `str`/`list`/`dict`/`tup` saíam como `class`: agora o builtin mostra a assinatura e a página, o tipo primitivo diz `tipo primitivo` e o tipo do motor `tipo nativo`; `class` só a classe escrita em Jinga |
 | 09-28 | 16.1.8 | ec711c7 | Folga da pilha medida rodando (o clang põe o dobro de pilha no laço da VM); nome do sinal pelo `strsignal` no runner |
 | 09-28 | 16.1.7 | c669a78 | macOS: resolução de nomes do módulo `sockets` pela camada de sistema |
 | 09-28 | 16.1.6 | 6980c40 | Pacote macOS, `instalar.sh` com ramo Darwin, `build.yml` (Linux + macOS Intel) |
@@ -2870,7 +2871,7 @@ Itens da trilha já fechados: 2 (Pyrite) foi superado pelo rename pra Jinga; 4 (
 | 09-25 | 15.94.3-15.94.4 | 3d82c5b, 9c1f4be | Chamada direta entre functs em código de máquina (fib(30): 549 M -> 267 M ciclos); depurador |
 | 09-24 | 15.94.0-15.94.2 | 03d4769, 8b0409e, 8db868c | JIT x86-64 na 1ª execução de cada funct (laço tipado a 8,7 ciclos por volta) |
 | 09-24 | 15.93.1-15.93.6 | 6b372a5 .. 4f2988c | Fase 1: `jinga --bytecode`, goto calculado, laço tipado de 12 pra 5 instruções, hash de string preguiçoso (texto 19,6 s -> 0,31 s) |
-| 09-24 | 15.93.0 | 066eff7 | `cors(app, ..., local=false)`, `Origin` valendo no WebSocket |
+| 09-24 | 15.93.0 | 066eff7 | `cors(app, ..., local=False)`, `Origin` valendo no WebSocket |
 | 09-24 | 15.92.0-15.92.1 | 0d01921, 92c0ec4 | A linguagem passa a se chamar Jinga; logo gerada em Jinga |
 | 09-24 | 15.91.33 | b72a0dc | Compila direto do fonte em 2 passadas (200 mil functs: 612 MB -> 353 MB, 16 s -> 5,9 s) |
 | 09-23 | 15.91.29-15.91.32 | 12583b8, 53256ee, c891d53, 3e52b52 | Servidor não morre mais pelo epoll; `--utf16`; parêntese esquecido não engole o arquivo; partida 5x mais rápida |
@@ -2898,13 +2899,13 @@ A métrica de cobertura da doc passou a medir "documentado em algum lugar" em ve
 - I11: `//` é divisão inteira, junto com `**` e `pow`; comentário só com `#`.
 - I18: path param injetado no argumento do handler quando o dev quiser.
 - I19: ficam `sqlite3`, `manpu`, `psodbc`, `qrcode` e `request`. Saem os apelidos `db`, `mp`, `qr`, `sqlite` e o plural de `request`.
-- I22: `true`, `false` e `null` saem com inicial maiúscula (medido: `True False Null`).
+- I22: `True`, `False` e `Null` saem com inicial maiúscula (medido: `True False Null`).
 - Null é igual só a Null (I1/I2/I3, 28/08).
 - `__name__` vale `"main"` no programa principal. O guard só é reconhecido com o literal `"main"`.
 - Tipagem estática, aprovada em 2026-09-16:
   - tudo que tem tipo é conferido antes de rodar;
   - variável sem tipo fica com o tipo da 1ª atribuição;
-  - funct tipada só devolve e só dá saída do seu tipo (medido: `post(1)` em `str funct` dá AttributedValueError). `int funct` com erro vira 500 e sem return vira 0; `bool funct` com erro vira false e sem return vira true;
+  - funct tipada só devolve e só dá saída do seu tipo (medido: `post(1)` em `str funct` dá AttributedValueError). `int funct` com erro vira 500 e sem return vira 0; `bool funct` com erro vira False e sem return vira True;
   - chamada conferida, inclusive de `.pr` importado;
   - nome nunca ligado dá NameError antes de rodar;
   - `--check` lista todos os erros, e programa com erro de tipo não roda (rc 2).
@@ -2927,7 +2928,7 @@ A métrica de cobertura da doc passou a medir "documentado em algum lugar" em ve
 **jinker**
 
 - `cors(app, ...)`: o servidor é o primeiro argumento, que é variádico; sem app é TypeError; a config é por servidor.
-- `cors(..., local=false)` liga o modo estrito: só a lista vale, e pedido sem `Origin` recebe 403 no HTTP e no WebSocket. **Sem `cors()`, fica como era.**
+- `cors(..., local=False)` liga o modo estrito: só a lista vale, e pedido sem `Origin` recebe 403 no HTTP e no WebSocket. **Sem `cors()`, fica como era.**
 - Multi-processo com salas WS entre processos precisa de backplane e não fecha 100%. Não se começa.
 - O modelo de concorrência é fibras cooperativas + offload da I/O em thread. Uma trava global foi descartada.
 
@@ -3337,7 +3338,7 @@ Fora de `~/projetos`:
 | `math.pr` | 23 | `public Entity math` com `static f(x, a, b)` = `a * x + b` (ValueError se `x` for nulo ou negativo), `fat(x)` (fatorial) e `square(x)` | versão diferente em `~/projetos/libs/math/math.ps` |
 | `pagination.pr` | 358 | paginação para todo banco do `psodbc`: `page(url, query, page=1, per_page=20, ...)` com OFFSET e `cursor(url, query, key, ...)` com keyset; cola `LIMIT ? OFFSET ?` (ou `OFFSET/FETCH` no SQL Server) no fim da query | igual a `~/projetos/libs/pagination/pagination.pr` |
 | `pondy.pr` | 161 | `public class pondy`, cliente assíncrono da API da Groq: `create` (chat), `models`, `transcription` e `translate` (áudio), `load_model` (roda modelo local por comando externo); **a chave de API está no fonte** (7.8) | **só aqui** |
-| `prserver.pr` | 9 | `run(path)` sobe um `Jinker` com `static_folder=path` em `127.0.0.1:2202`, com `debug=true` | igual a `~/projetos/libs/prserver/prserver.pr` |
+| `prserver.pr` | 9 | `run(path)` sobe um `Jinker` com `static_folder=path` em `127.0.0.1:2202`, com `debug=True` | igual a `~/projetos/libs/prserver/prserver.pr` |
 | `random.pr` | 124 | `public class asterisco`: `valcp` (confere dígito verificador de CPF), `randint(limit)` e `letter(limit)` a partir de `/dev/urandom` + `hash.sha256` + timestamp, `randid(webToken)` | versão diferente em `~/projetos/libs/random/random.pr` |
 | `roken.pr` | 20 | `class Broken` com `_Hashing(string)`, que embaralha o texto em camadas de base64 sobre bytes em hex | **só aqui** |
 | `sunotify.pr` | 25 | `class SunotiFy(title, body)` com `.send()`: notificação de desktop via `notify-send`, que é comando do Linux e não existe no macOS | igual à cópia de trabalho de `~/projetos/libs/sunotfy/sunotify.pr` |
@@ -3861,7 +3862,7 @@ O plano é o `~/.claude/plans/steady-weaving-pine.md`, com um motor só (o mesmo
   - `ps_http`, `ps_mail`, `ps_jinker`, `ps_pkg` (`.cmd` e `setx`), `ps_dl` (LoadLibrary), `ps_db`/`ps_mongo` (nomes das DLLs), `ps_pilha` e `ps_hash` (BCryptGenRandom) compilam pro Windows e continuam iguais no Linux.
 - **Feito no commit do 16.2.0** (todos os `vm/*.c` compilam sem aviso com o MinGW contra o MSYS2; no Linux a suíte inteira, com e sem JIT, cli 260, sockets 29, jinker 173, depurador 26, unidade 253, LSP 244 e os portões da doc passam):
   - fibras por `CreateFiberEx`/`SwitchToFiber`; terminal pela Console API com VT;
-  - processos por `CreateProcessW` com a lista de handles herdados (o `closefrom` do Linux) e pseudoconsole (ConPTY) pro `pty=true`, com uma thread que fecha o console quando o filho sai (senão a saída nunca chega ao fim); `kill` encerra com o código `-sinal`; `os.cmd` pelo `cmd.exe /d /s /c`; `os.code` acha `code.cmd`;
+  - processos por `CreateProcessW` com a lista de handles herdados (o `closefrom` do Linux) e pseudoconsole (ConPTY) pro `pty=True`, com uma thread que fecha o console quando o filho sai (senão a saída nunca chega ao fim); `kill` encerra com o código `-sinal`; `os.cmd` pelo `cmd.exe /d /s /c`; `os.code` acha `code.cmd`;
   - a ABI Win64 no JIT (`vm/ps_jit_x64.h`: argumentos em rcx/rdx/r8, rsi/rdi salvos, 32 bytes de sombra);
   - jinker sem fork: cada worker é o programa rodado de novo e recebe o socket por `WSADuplicateSocketW` (por um cano, porque precisa do pid do filho); o reload vira supervisor (o processo que o terminal espera roda o programa de novo a cada pedido do filho);
   - gmp: int64 por `mpz_import`/`mpz_export`; e os `long` que carregavam int da linguagem (`read(n)`, `sys.stdin.read(n)`, skip/limit/count do mongo, `Max-Age` do cookie, o PoolIp) viraram `int64_t`;

@@ -1,4 +1,4 @@
-# `s.find(sub, inicio=0, fim=null)`
+# `s.find(sub, inicio=0, fim=Null)`
 
 Índice da primeira ocorrência, ou -1.
 
@@ -8,7 +8,7 @@
 |---|---|---|---|
 | `sub` | str | — |  |
 | `inicio` | int | 0 | posição (em caracteres) onde começa a procurar; negativo conta do fim |
-| `fim` | int | null | posição onde para (exclusivo); `null` = até o fim |
+| `fim` | int | `Null` | posição onde para (exclusivo); `Null` = até o fim |
 
 ## Retorno
 

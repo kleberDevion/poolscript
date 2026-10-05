@@ -15,7 +15,7 @@ import os
 # caía em "table t already exists".
 pasta = "ps_e2e_sqlite"
 if os.exists(pasta) {
-    os.rmdir(pasta, force=true)       # sobra de uma rodada que caiu no meio
+    os.rmdir(pasta, force=True)       # sobra de uma rodada que caiu no meio
 }
 os.mkdir(pasta)
 arq = pasta + "/ps_e2e.db"
@@ -64,5 +64,5 @@ post("fechou ->", "ok")
 # sem `capture`, em segundo plano, e ninguém esperava ele terminar. Vem
 # DEPOIS dos dois `close()`: no Windows o arquivo que a sqlite mantém aberto
 # não se apaga.
-os.rmdir(pasta, force=true)
+os.rmdir(pasta, force=True)
 post("fim")

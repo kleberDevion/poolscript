@@ -66,7 +66,7 @@ tipos; usá-lo fora deles é erro antes de rodar, na linha do campo.
 | `in=[…]` | str, int, flo, bool | o valor é **um dos** da lista |
 | `not_in=[…]` | str, int, flo, bool | o valor **não é nenhum** da lista (valores proibidos) |
 | `min=N`, `max=N` | int, flo | faixa, inclusiva |
-| `optional=true` | qualquer | o campo pode **faltar** ou vir `null`; presente, o tipo e o resto valem |
+| `optional=True` | qualquer | o campo pode **faltar** ou vir `Null`; presente, o tipo e o resto valem |
 | `of=T` | list | **cada item** é do tipo `T` (`str`, `int`, `flo`, `bool`, `dict` ou um model) |
 
 ```ps
@@ -76,7 +76,7 @@ model Usuario() {
     idade:   int(min=18, max=120)
     papel:   str(in=["admin", "user"])
     status:  str(not_in=["banido"])
-    apelido: str(optional=true)
+    apelido: str(optional=True)
 }
 
 post({ "nome": "ana", "email": "a@b.co", "idade": 30, "papel": "user", "status": "ativo" } == Usuario)   # True
@@ -85,7 +85,7 @@ post({ "nome": "ana", "email": "a@b.co", "idade": 30, "papel": "dono", "status":
 ```
 
 Os valores dos parâmetros são **literais** — número (com sinal), texto,
-`true`/`false`, lista de literais do tipo do campo. `in=[x]` com uma variável,
+`True`/`False`, lista de literais do tipo do campo. `in=[x]` com uma variável,
 `min=5, max=1`, `regex` num `int` ou `of` fora de `list` são erros de
 compilação, com a frase dizendo o campo.
 
@@ -121,7 +121,7 @@ um `import`.
 `dict == Model` (nas duas ordens — `Model == dict` também) é `True` quando:
 
 - **todo campo declarado** está presente no dict (a não ser que seja
-  `optional=true`), e
+  `optional=True`), e
 - cada um tem o **tipo declarado** e passa nos parâmetros dele (8.1.2 e
   8.1.3).
 

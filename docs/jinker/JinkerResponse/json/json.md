@@ -44,13 +44,13 @@ Equivale a `jsonify({"erro": "não encontrado"}), 404`.
 ## O que pode ir em `data`
 
 Qualquer coisa serializável em JSON: dict, lista, string, número, bool, `Null`
-(vira `null`), e combinações aninhadas.
+(vira `Null`), e combinações aninhadas.
 
 ```
-.json({"usuario": {"nome": "ana", "tags": [1, 2, 3], "ativo": true}})
+.json({"usuario": {"nome": "ana", "tags": [1, 2, 3], "ativo": True}})
 ```
 
-Acentos são preservados (`ensure_ascii=false` internamente) — `"ção"` sai como
+Acentos são preservados (`ensure_ascii=False` internamente) — `"ção"` sai como
 `"ção"`, não escapado.
 
 ---

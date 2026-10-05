@@ -29,7 +29,7 @@ troca, quanto dado ainda cabe:
 | `qrcode.ERROR_CORRECT_Q` | `"Q"` | ~25% | 1663 bytes | [ERROR_CORRECT_Q/ERROR_CORRECT_Q.md](ERROR_CORRECT_Q/ERROR_CORRECT_Q.md) |
 | `qrcode.ERROR_CORRECT_H` | `"H"` | ~30% | 1273 bytes | [ERROR_CORRECT_H/ERROR_CORRECT_H.md](ERROR_CORRECT_H/ERROR_CORRECT_H.md) |
 
-`L` é o default. Nível não reconhecido — `"Z"`, um `int`, `null` — cai em `L`
+`L` é o default. Nível não reconhecido — `"Z"`, um `int`, `Null` — cai em `L`
 **sem erro nenhum**; é pra isso que as constantes existem.
 
 ```

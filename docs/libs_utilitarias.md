@@ -68,7 +68,7 @@ s.quit()
 Body em HTML:
 
 ```
-m.body("<h1>Olá!</h1><p>Bem vindo.</p>", true)
+m.body("<h1>Olá!</h1><p>Bem vindo.</p>", True)
 ```
 
 ### Lendo e-mails (`MailReader`)
@@ -85,7 +85,7 @@ passa outra: `r.conn("127.0.0.1", 1143)` pra um servidor local.
 `.select()` escolhe a pasta e retorna o próprio objeto, então dá pra encadear direto com `.search()`:
 
 ```
-emails = r.select("INBOX", true).search("UNSEEN")   # true = readonly, não marca como lida
+emails = r.select("INBOX", True).search("UNSEEN")   # True = readonly, não marca como lida
 ```
 
 `.search(criterion_type, term, limit)` aceita:
@@ -121,7 +121,7 @@ emails = r.select("INBOX").search("SUBJECT", "fatura")
 corpo = r.body(emails[0]["id"])
 
 # (b) já embutido em cada resultado da busca
-emails = r.select("INBOX").search("SUBJECT", "fatura", include_body=true)
+emails = r.select("INBOX").search("SUBJECT", "fatura", include_body=True)
 post(emails[0]["body"])
 ```
 
@@ -141,7 +141,7 @@ funct verificar_caixa() {
     r.conn(os.getenv("MAIL_IMAP"))
     r.login(user=os.getenv("MAIL_SYSTEM"), password=os.getenv("PASSWORD_SYSTEM"))
 
-    nao_lidos = r.select("INBOX", true).search("UNSEEN")
+    nao_lidos = r.select("INBOX", True).search("UNSEEN")
     post(f"{len(nao_lidos)} email(s) não lido(s)")
 
     for each e in nao_lidos {
@@ -181,10 +181,10 @@ funct enviar_email(nome, email_destino) {
         s.send(m)
         s.quit()
         post(f"Email enviado para {email_destino}")
-        return None
+        return Null
     } catch (e) {
         post(f"Erro no envio: {e}")
-        return None
+        return Null
     }
 }
 ```
@@ -203,7 +203,7 @@ import os
 |---|---|---|
 | `os.getenv("CHAVE")` | Lê variável de ambiente (chama `dotenv.load()` sozinho) | `os.getenv("DB_PATH")` |
 | `os.getenv("CHAVE", "default")` | Lê com valor padrão | `os.getenv("PORT", "8000")` |
-| `os.environ(key=None)` | Lê 1 variável (sem `dotenv.load()` automático), ou o dict inteiro se `key` for omitido | `os.environ("PATH")`, `os.environ()` |
+| `os.environ(key=Null)` | Lê 1 variável (sem `dotenv.load()` automático), ou o dict inteiro se `key` for omitido | `os.environ("PATH")`, `os.environ()` |
 
 ```
 import os
@@ -236,14 +236,14 @@ caminho relativo à mão.
 | `os.rename(src, dst)` | Renomeia arquivo ou pasta | `os.rename("a.txt", "b.txt")` |
 | `os.copy(src, dst)` | Copia arquivo | `os.copy("a.txt", "backup/a.txt")` |
 | `os.move(src, dst)` | Move arquivo ou pasta | `os.move("a.txt", "arquivo/a.txt")` |
-| `os.loadFile(nome, encoding=null)` | Carrega conteúdo — binário (`.pdf/.jpg/.png/.docx`...) vira `PoolFile`, texto (`.txt/.json/.csv/.html`...) vira `str`/`dict`/`list` | `os.loadFile("dados.json")` |
+| `os.loadFile(nome, encoding=Null)` | Carrega conteúdo — binário (`.pdf/.jpg/.png/.docx`...) vira `PoolFile`, texto (`.txt/.json/.csv/.html`...) vira `str`/`dict`/`list` | `os.loadFile("dados.json")` |
 
 `loadFile` detecta o tipo pela extensão automaticamente. Pra forçar, passe
 `encoding="rb"` (só extensões binárias) ou um encoding de texto tipo `"utf-8"`
 (só extensões texto) — misturar dá erro claro (`TypeError`).
 
 `PoolFile` (o que `loadFile` devolve pra binários) tem `.name`, `.ext`,
-`.size`, `.bytes()`, `.path()`, `.save(path=null)`, `.move(destino)`,
+`.size`, `.bytes()`, `.path()`, `.save(path=Null)`, `.move(destino)`,
 `.copy(destino)`, `.delete()`. O `save` grava o conteúdo em disco: sem `path`
 salva na pasta do script em execução com o próprio nome.
 
@@ -253,15 +253,15 @@ salva na pasta do script em execução com o próprio nome.
 |---|---|---|
 | `os.cwd()` | Diretório atual | `os.cwd()` |
 | `os.chdir(caminho)` | Muda o diretório atual | `os.chdir("uploads")` |
-| `os.mkdir(caminho, exist_ok=false)` | Cria diretório (cria pais também) | `os.mkdir("uploads/2026", exist_ok=true)` |
-| `os.rmdir(caminho, force=false)` | Remove diretório — `force=true` remove mesmo com conteúdo | `os.rmdir("tmp", force=true)` |
+| `os.mkdir(caminho, exist_ok=False)` | Cria diretório (cria pais também) | `os.mkdir("uploads/2026", exist_ok=True)` |
+| `os.rmdir(caminho, force=False)` | Remove diretório — `force=True` remove mesmo com conteúdo | `os.rmdir("tmp", force=True)` |
 | `os.ls(caminho=".")` | Lista arquivos/pastas com `name`/`type`/`size` | `os.ls("./uploads")` |
 
 ### Sistema / terminal
 
 | Função | O que faz | Exemplo |
 |---|---|---|
-| `os.cmd(comando, capture=false)` | Roda comando no shell; `capture=true` devolve a saída como `str` em vez de imprimir | `os.cmd("jinga --version", capture=true)` |
+| `os.cmd(comando, capture=False)` | Roda comando no shell; `capture=True` devolve a saída como `str` em vez de imprimir | `os.cmd("jinga --version", capture=True)` |
 | `os.code(caminho=".")` | Abre o editor de código instalado (VS Code, Cursor, Zed, nano, vim, nessa ordem) no caminho | `os.code("./meu_projeto")` |
 | `os.warn(texto="", color="yellow")` | Mensagem colorida no terminal (`red/green/yellow/blue/magenta/cyan/white`) | `os.warn("Pasta criada", color="blue")` |
 | `os.ipmach()` | Descobre e imprime o IP da máquina, devolve como `str` | `ip = os.ipmach()` |
@@ -269,7 +269,7 @@ salva na pasta do script em execução com o próprio nome.
 ```
 import os
 
-os.mkdir("uploads", exist_ok=true)
+os.mkdir("uploads", exist_ok=True)
 os.warn("Pasta criada!", color="green")
 
 if (os.isfile("uploads/antigo.txt")) {
@@ -280,7 +280,7 @@ for each item in os.ls("uploads") {
     post(item["name"] " - " item["type"])
 }
 
-versao = os.cmd("jinga --version", capture=true)
+versao = os.cmd("jinga --version", capture=True)
 post(versao)
 ```
 
@@ -384,7 +384,7 @@ conn = request.ws_connect("ws://localhost:7701/chat")
 conn.on_message(funct(msg) { post(f"\n{msg}") })
 post(f"Conectado como {nome}!")
 
-while (true) {
+while (True) {
     str msg = input("")
     if (msg == "sair") {
         conn.close()

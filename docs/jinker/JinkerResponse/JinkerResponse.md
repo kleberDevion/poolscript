@@ -24,12 +24,12 @@ automaticamente:
 |---|---|
 | `{"a": 1}` (dict) ou `[1,2,3]` (lista) | JSON, status `200` |
 | `"texto"` (string) | texto puro, status `200` |
-| `None` / `Null` | resposta vazia, status `204` |
+| `Null` | resposta vazia, status `204` |
 | `jsonify(dados)` | JSON (é um `JinkerResponse`) |
 | `render("arquivo")` | conteúdo do arquivo com MIME correto |
 | `(qualquer_um, 201)` (tupla) | o mesmo, mas com o status da tupla |
 
-Ou seja: pra JSON simples, `return {"ok": true}` basta. `JinkerResponse` entra
+Ou seja: pra JSON simples, `return {"ok": True}` basta. `JinkerResponse` entra
 quando você quer **encadear** ajustes.
 
 ---
@@ -48,7 +48,7 @@ Como cada um devolve o próprio `JinkerResponse`, dá pra encaixar em cadeia:
 
 ```
 return JinkerResponse()
-    .json({"criado": true})
+    .json({"criado": True})
     .status(201)
     .header("Location", "/itens/10")
     .cookie("sid", token, max_age=3600)
@@ -72,10 +72,10 @@ atribuição e não encadeia.
 
 ```
 # atalho (dia a dia):
-return jsonify({"ok": true})
+return jsonify({"ok": True})
 
 # equivalente, na mão:
-return JinkerResponse().json({"ok": true})
+return JinkerResponse().json({"ok": True})
 
 # na mão faz sentido quando você combina várias coisas:
 return JinkerResponse()

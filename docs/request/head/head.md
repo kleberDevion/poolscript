@@ -1,4 +1,4 @@
-# `request.head(url, headers=None, timeout=30)`
+# `request.head(url, headers=Null, timeout=30)`
 
 Faz uma requisição HTTP **HEAD** — o servidor devolve o **status e os
 cabeçalhos** que devolveria num GET, mas **sem o corpo**. Serve pra checar se
@@ -7,13 +7,13 @@ baixar o conteúdo**. Devolve um [`Response`](../Response/Response.md) com
 `.content` vazio.
 
 ```
-request.head(url, headers=None, timeout=30) -> Response
+request.head(url, headers=Null, timeout=30) -> Response
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
 | `url` | — | endereço a checar |
-| `headers` | `None` | dict de cabeçalhos a enviar |
+| `headers` | `Null` | dict de cabeçalhos a enviar |
 | `timeout` | `30` | segundos até desistir |
 
 HEAD não tem corpo de requisição — por isso não existe `body=` aqui.

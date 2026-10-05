@@ -1,10 +1,10 @@
-# `bytes.slice(b, ini=0, fim=None)`
+# `bytes.slice(b, ini=0, fim=Null)`
 
 Recorta uma **fatia** dos bytes, de `ini` (inclusive) até `fim` (exclusive).
 Índices negativos contam a partir do fim.
 
 ```
-bytes.slice(b: bytes, ini: int = 0, fim: int = None) -> bytes
+bytes.slice(b: bytes, ini: int = 0, fim: int = Null) -> bytes
 ```
 
 ---
@@ -30,7 +30,7 @@ bytes.slice(b, 0, -1)   # b'Hell'  — tudo menos o último
 
 - **TypeError** — `b` não é bytes, ou `ini`/`fim` não são inteiros nem `Null`.
 
-`Null` (e `None`, que é apelido dele) vale **omitido** nos dois: `slice(b, 1,
+`Null` vale **omitido** nos dois: `slice(b, 1,
 Null)` é o mesmo que `slice(b, 1)`, e `slice(b, Null, 3)` o mesmo que
 `slice(b, 0, 3)`.
 

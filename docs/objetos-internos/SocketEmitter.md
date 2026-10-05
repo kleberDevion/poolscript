@@ -9,7 +9,7 @@ handler — usado pra mandar mensagens a uma sala específica ou broadcast.
 
 Por padrão, quem disparou o handler (o remetente) NÃO recebe o próprio
 emit de volta — evita a mensagem aparecer duplicada pro remetente.
-Passe exclude_self=false pra ecoar de volta também pro remetente.
+Passe exclude_self=False pra ecoar de volta também pro remetente.
 
 Uso:
     send = sk.socket()
@@ -20,7 +20,7 @@ Uso:
 
 | Acesso | O que faz |
 |---|---|
-| `.emit(payload=None, room_id=None, exclude_self=True)` |  |
+| `.emit(payload=Null, room_id=Null, exclude_self=True)` |  |
 | `.status_send()` |  |
 
 [← índice](objetos-internos.md)

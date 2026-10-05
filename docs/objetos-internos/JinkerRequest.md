@@ -18,7 +18,7 @@ app = jinker.Jinker(__name__)
 @app.get("/x")
 funct h() {
     post(type(request))    # RequestProxy
-    return {"ok": true}
+    return {"ok": True}
 }
 ```
 

@@ -2,7 +2,7 @@
 
 Chamados direto no valor: `t.metodo()`. A tupla é **imutável**, então aqui só
 existem os métodos de **leitura**: nenhum deles muta nada e nenhum devolve
-`null` — todos devolvem um valor (`int` ou `bool`).
+`Null` — todos devolvem um valor (`int` ou `bool`).
 
 A lista sai da tabela `METODOS_TUPLA` de `vm/jinga_vm.c`, publicada por
 `jinga --metadata`; cada página traz um exemplo executável.

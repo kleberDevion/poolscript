@@ -1,4 +1,4 @@
-# `MailServer.send(to_or_msg, subject=None, body=None, html=false)`
+# `MailServer.send(to_or_msg, subject=Null, body=Null, html=False)`
 
 Envia um e-mail. O primeiro parâmetro (`to_or_msg`) aceita duas coisas: um
 [`MailMessage`](../../MailMessage/MailMessage.md) pronto, ou o e-mail de
@@ -6,7 +6,7 @@ destino (aí os demais campos vêm direto).
 
 ```
 s.send(msg)                                            # to_or_msg = MailMessage
-s.send(to, subject=None, body=None, html=false)        # to_or_msg = destinatário
+s.send(to, subject=Null, body=Null, html=False)        # to_or_msg = destinatário
 ```
 
 ---
@@ -34,10 +34,10 @@ Pra um e-mail simples de texto:
 s.send("destino@email.com", "Assunto", "Corpo do e-mail")
 ```
 
-Pra corpo em HTML, passe `html=true`:
+Pra corpo em HTML, passe `html=True`:
 
 ```
-s.send("destino@email.com", "Oi", "<h1>Olá</h1>", html=true)
+s.send("destino@email.com", "Oi", "<h1>Olá</h1>", html=True)
 ```
 
 ---

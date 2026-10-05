@@ -94,7 +94,7 @@ if con != Null {
     confere("limit corta no servidor", ks(col.find({}, limit=3, sort={"k": 1})) == [0, 1, 2])
     confere("skip pula no servidor", ks(col.find({}, skip=7, sort={"k": 1})) == [7, 8, 9])
     confere("skip + limit + sort = uma pagina", ks(col.find({}, skip=4, limit=3, sort={"k": 1})) == [4, 5, 6])
-    confere("pagina com filtro", ks(col.find({"par": true}, skip=1, limit=2, sort={"k": -1})) == [6, 4])
+    confere("pagina com filtro", ks(col.find({"par": True}, skip=1, limit=2, sort={"k": -1})) == [6, 4])
     confere("posicional na ordem query, skip, limit, sort", ks(col.find({}, 2, 2, {"k": 1})) == [2, 3])
     confere("so nomeado, sem query", ks(col.find(limit=2, sort={"k": -1})) == [9, 8])
     confere("limit 0 = sem limite", len(col.find({}, limit=0)) == 10)

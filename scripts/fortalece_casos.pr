@@ -103,13 +103,13 @@ funct roda(fonte) {
 
 
 if __name__ == "main" {
-    grava = false
+    grava = False
     for each a in sys.argv {
         if a == "--grava" {
-            grava = true
+            grava = True
         }
     }
-    os.mkdir(TMP, exist_ok=true)
+    os.mkdir(TMP, exist_ok=True)
 
     total = 0
     fortalecidos = 0
@@ -172,13 +172,13 @@ if __name__ == "main" {
             #
             # Sem este ramo sobravam dois casos que nenhum passo pegava — e
             # dois é o suficiente pra o portão nunca chegar a zero.
-            partida = false
+            partida = False
             if len(fraca) == 0 and len(bloco) >= 2 {
                 so_msg = regex.findall("^\\s*\"((?:[^\"\\\\]|\\\\.)*)\",\\s*-1\\s*\\},\\s*$", ultima)
                 anterior = bloco[len(bloco) - 2]
                 if len(so_msg) > 0 and anterior.rstrip().endswith("NULL,") {
                     fraca = so_msg
-                    partida = true
+                    partida = True
                 }
             }
             if len(fraca) == 0 {
@@ -198,7 +198,7 @@ if __name__ == "main" {
             # o script o denunciou como regressão. Era o extrator, não o motor.
             fonte = []
             k = 0
-            em_com = false
+            em_com = False
             while k < len(bloco) - 1 {
                 L2 = bloco[k]
                 limpa = ""
@@ -206,7 +206,7 @@ if __name__ == "main" {
                 while z < len(L2) {
                     if em_com {
                         if L2[z:z+2] == "*/" {
-                            em_com = false
+                            em_com = False
                             z = z + 2
                             continue
                         }
@@ -214,7 +214,7 @@ if __name__ == "main" {
                         continue
                     }
                     if L2[z:z+2] == "/*" {
-                        em_com = true
+                        em_com = True
                         z = z + 2
                         continue
                     }
@@ -232,14 +232,14 @@ if __name__ == "main" {
             if cabeca != "" {
                 lim = ""
                 z = 0
-                emc = false
+                emc = False
                 while z < len(cabeca) {
                     if emc {
-                        if cabeca[z:z+2] == "*/" { emc = false z = z + 2 continue }
+                        if cabeca[z:z+2] == "*/" { emc = False z = z + 2 continue }
                         z = z + 1
                         continue
                     }
-                    if cabeca[z:z+2] == "/*" { emc = true z = z + 2 continue }
+                    if cabeca[z:z+2] == "/*" { emc = True z = z + 2 continue }
                     lim = lim + cabeca[z]
                     z = z + 1
                 }

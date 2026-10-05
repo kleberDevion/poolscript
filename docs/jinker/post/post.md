@@ -1,4 +1,4 @@
-# `Jinker.post(path, auth=None, middleware=None, model=None)`
+# `Jinker.post(path, auth=Null, middleware=Null, model=Null)`
 
 Registra uma rota que responde **só a POST**. É o
 [`@app.route(...)`](../route/route.md) com o método já decidido pelo nome —
@@ -20,7 +20,7 @@ model Login() {
 @app.post("/login", model=Login, auth=cors.origins())
 funct entrar() {
     # chegou aqui: é POST, a origem foi checada, e email/senha EXISTEM
-    return jsonify({"ok": true, "email": request.get("email")})
+    return jsonify({"ok": True, "email": request.get("email")})
 }
 ```
 
@@ -78,7 +78,7 @@ A URL existia; o **método** é que não. O servidor agora separa os dois casos:
 GET /login
 → 405
   Allow: POST
-  {"error": true, "code": 405, "message": "método inválido: GET /login — a rota aceita POST"}
+  {"error": True, "code": 405, "message": "método inválido: GET /login — a rota aceita POST"}
 ```
 
 Se o mesmo path tem mais de um verbo (`@app.get("/perfil")` e

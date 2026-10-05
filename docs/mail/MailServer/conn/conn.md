@@ -1,14 +1,14 @@
-# `MailServer.conn(host, port=None)`
+# `MailServer.conn(host, port=Null)`
 
 Conecta ao servidor SMTP (envio) no `host` dado. Sem `port`, usa a 587 (a porta
 de envio com STARTTLS).
 
 ```
-s.conn(host: str, port: int = None) -> bool
+s.conn(host: str, port: int = Null) -> bool
 ```
 
-Devolve `true` quando conectou; falha de rede, de TLS ou de host inexistente é
-erro (não devolve `false`).
+Devolve `True` quando conectou; falha de rede, de TLS ou de host inexistente é
+erro (não devolve `False`).
 
 ---
 

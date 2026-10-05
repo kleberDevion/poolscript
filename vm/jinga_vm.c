@@ -81,7 +81,7 @@
 #include <net/if.h>
 #include <sys/wait.h>
 #include <termios.h>
-/* `os.run(..., pty=true)`: o filho num terminal de verdade. Na glibc >= 2.34
+/* `os.run(..., pty=True)`: o filho num terminal de verdade. Na glibc >= 2.34
  * (a distribuicao pede 2.38) o `forkpty` mora na propria libc — nao precisa de
  * -lutil. No macOS ele e declarado em <util.h>. O ioctl e pra `resize`. */
 #if defined(PS_SO_MAC)
@@ -305,7 +305,7 @@ typedef struct {
 /* `os.run(args, capture="live")`: o processo filho VIVO. Escreve no stdin
  * dele, lê a saída ENQUANTO ele roda, espera o código e mata.
  *
- * Com `pty=true` o filho roda num terminal de verdade: `fd_out` é o mestre do
+ * Com `pty=True` o filho roda num terminal de verdade: `fd_out` é o mestre do
  * pty (leitura E escrita), `fd_err` é -1 — terminal tem um canal só, então o
  * stderr do filho chega junto com o stdout, como no terminal do usuário. */
 typedef struct {
@@ -615,7 +615,7 @@ typedef struct {
     struct PSJkConn *conn;
     char  *sala;      /* NULL = sem sala */
     int    idx_sock;  /* qual JkSock atende esse path */
-    int    canal;     /* entra no broadcast (socket com channel=true) */
+    int    canal;     /* entra no broadcast (socket com channel=True) */
     Value  params;    /* dict dos path params */
     void  *epw;       /* watcher do epoll (EpWs*) — identifica o fd no epoll_wait */
     /* A fibra que está atendendo uma mensagem DESTA conexão agora, e a marca
@@ -719,7 +719,7 @@ typedef struct {
     char **metodos; int nmetodos;
     char **origens; int norigens;
     int    local;    /* 1 = origem local passa por fora da lista e pedido sem
-                      * Origin passa (padrão); 0 = `cors(app, ..., local=false)`,
+                      * Origin passa (padrão); 0 = `cors(app, ..., local=False)`,
                       * modo estrito: SÓ a lista vale, no HTTP e no WebSocket */
 } PSJCors;
 
@@ -3371,7 +3371,7 @@ static void escreve_valor(const Value *v, int dentro)
 }
 
 /* ── valor → texto (para interpolação) ──────────────────────────────────── */
-/* Reusa exatamente as regras do `post` — null vira "null", 4.0 mantém o
+/* Reusa exatamente as regras do `post` — Null vira "Null", 4.0 mantém o
  * ".0", string aninhada ganha aspas. Duplicar essa lógica faria a
  * interpolação divergir da impressão sem ninguém notar. */
 typedef struct { char *b; int n; int cap; } TxtBuf;
@@ -3581,7 +3581,7 @@ static int nativa_len(VM *vm, Value *args, int n, Value *out)
      * este texto, então não há motivo pra este sítio ter cópia própria */
     if (n != 1) return erro_aridade(vm, "len", 1, 1, n);
     Value v = args[0];
-    if (v.t == V_NULL) { *out = MK_INT(0); return 0; }   /* len(null) = 0, como o interp */
+    if (v.t == V_NULL) { *out = MK_INT(0); return 0; }   /* len(Null) = 0, como o interp */
     /* string conta CARACTERES (codepoints), como o método s.len() e o
      * interpretador — contar bytes fazia len("olá") responder 4 */
     if (EH_STRING(v)) { *out = MK_INT(str_ncp(COMO_STRING(v))); return 0; }
@@ -5565,8 +5565,7 @@ static int faixa_busca(VM *vm, PSString *s, Value *args, int n, const char *quem
     if (n >= 2 && args[1].t != V_NULL) {
         if (args[1].t != V_INT)
             MERRO(vm, "TypeError",
-                  "slice indices must be integers or None"
-                  " or have an __index__ method");
+                  "slice indices must be integers or Null");
         i0 = args[1].as.i;
         if (i0 < 0) i0 += total;
         if (i0 < 0) i0 = 0;
@@ -5575,8 +5574,7 @@ static int faixa_busca(VM *vm, PSString *s, Value *args, int n, const char *quem
     if (n >= 3 && args[2].t != V_NULL) {
         if (args[2].t != V_INT)
             MERRO(vm, "TypeError",
-                  "slice indices must be integers or None"
-                  " or have an __index__ method");
+                  "slice indices must be integers or Null");
         i1 = args[2].as.i;
         if (i1 < 0) i1 += total;
         if (i1 < 0) i1 = 0;
@@ -5722,7 +5720,7 @@ static int met_split(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSString *sep = NULL;
     if (n >= 1 && args[0].t != V_NULL) {
         if (!EH_STRING(args[0]))
-            MERRO(vm, "TypeError", "must be str or None, not %s", nome_do_tipo_valor(args[0]));
+            MERRO(vm, "TypeError", "must be str or Null, not %s", nome_do_tipo_valor(args[0]));
         sep = COMO_STRING(args[0]);
         if (sep->len == 0) MERRO(vm, "ValueError", "empty separator");
     }
@@ -5788,7 +5786,7 @@ static int met_rsplit(VM *vm, Value alvo, Value *args, int n, Value *out)
     /* sem limite (ou negativo) a direção não importa — delega ao split */
     if (limite < 0) return met_split(vm, alvo, args, n, out);
     if (n >= 1 && args[0].t != V_NULL && !EH_STRING(args[0]))
-        MERRO(vm, "TypeError", "must be str or None, not %s", nome_do_tipo_valor(args[0]));
+        MERRO(vm, "TypeError", "must be str or Null, not %s", nome_do_tipo_valor(args[0]));
 
     PSString *s = COMO_STRING(alvo);
     PSString *sep = (n >= 1 && EH_STRING(args[0])) ? COMO_STRING(args[0]) : NULL;
@@ -6594,7 +6592,7 @@ static int met_l_index(VM *vm, Value alvo, Value *args, int n, Value *out)
         return erro_aridade(vm, "index", 1, 3, n);
     PSList *l = COMO_LIST(alvo);
     int64_t de = 0, ate = l->len;
-    /* Sem o "or None" que o `str.find` tem: aqui a faixa não aceita Null,
+    /* Sem o "or Null" que o `str.find` tem: aqui a faixa não aceita Null,
      * então a frase é a mais curta. */
     if (n >= 2) {
         if (args[1].t != V_INT)
@@ -7769,8 +7767,7 @@ static int by_faixa(VM *vm, int total, Value *args, int n, int *b0, int *b1)
     if (n >= 2 && args[1].t != V_NULL) {
         if (args[1].t != V_INT)
             MERRO(vm, "TypeError",
-                  "slice indices must be integers or None"
-                  " or have an __index__ method");
+                  "slice indices must be integers or Null");
         i0 = args[1].as.i;
         if (i0 < 0) i0 += total;
         if (i0 < 0) i0 = 0;
@@ -7779,8 +7776,7 @@ static int by_faixa(VM *vm, int total, Value *args, int n, int *b0, int *b1)
     if (n >= 3 && args[2].t != V_NULL) {
         if (args[2].t != V_INT)
             MERRO(vm, "TypeError",
-                  "slice indices must be integers or None"
-                  " or have an __index__ method");
+                  "slice indices must be integers or Null");
         i1 = args[2].as.i;
         if (i1 < 0) i1 += total;
         if (i1 < 0) i1 = 0;
@@ -8506,7 +8502,7 @@ static const MetodoNat METODOS_BYTES[] = {
     { "rstrip", met_b_rstrip, "chars=Null" },
     { "removeprefix", met_b_removeprefix, "p" }, { "removesuffix", met_b_removesuffix, "p" },
     { "split", met_b_split, "sep=Null,maxsplit=-1" }, { "rsplit", met_b_rsplit, "sep=Null,maxsplit=-1" },
-    { "splitlines", met_b_splitlines, "keepends=false" },
+    { "splitlines", met_b_splitlines, "keepends=False" },
     { "partition", met_b_partition, "sep" }, { "rpartition", met_b_rpartition, "sep" },
     { "join", met_b_join, "lista" }, { "replace", met_b_replace, "old,new,count=-1" },
     { "ljust", met_b_ljust, "width,fillbyte" }, { "rjust", met_b_rjust, "width,fillbyte" },
@@ -8900,17 +8896,17 @@ static int met_mr_body(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_mr_close(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_MAILSRV[] = {
     { "conn", met_ms_conn, "host,porta=Null" }, { "login", met_ms_login, "usuario,senha" },
-    { "send", met_ms_send, "to_or_msg,subject=Null,body=Null,html=false" }, { "quit", met_ms_quit, NULL },
+    { "send", met_ms_send, "to_or_msg,subject=Null,body=Null,html=False" }, { "quit", met_ms_quit, NULL },
 };
 static const MetodoNat METODOS_MAILMSG[] = {
     { "fromAddress", met_mm_from, "endereco" }, { "toAddress", met_mm_to, "endereco" },
-    { "subject", met_mm_subject, "titulo" }, { "body", met_mm_body, "conteudo,is_html=false" },
+    { "subject", met_mm_subject, "titulo" }, { "body", met_mm_body, "conteudo,is_html=False" },
     { "attach", met_mm_attach, "arquivo_ou_caminho" }, { "get_as_string", met_mm_asstring, NULL },
 };
 static const MetodoNat METODOS_MAILRD[] = {
     { "conn", met_mr_conn, "host,porta=Null" }, { "login", met_mr_login, "usuario,senha" },
-    { "select", met_mr_select, "folder=\"INBOX\",readonly=true" },
-    { "search", met_mr_search, "criterion_type=\"ALL\",term=Null,limit=Null,include_body=false" },
+    { "select", met_mr_select, "folder=\"INBOX\",readonly=True" },
+    { "search", met_mr_search, "criterion_type=\"ALL\",term=Null,limit=Null,include_body=False" },
     { "body", met_mr_body, "id" }, { "close", met_mr_close, NULL },
 };
 
@@ -9050,7 +9046,7 @@ static const MetodoNat METODOS_JRESP[] = {
     { "status", met_jresp_status, "code" },
     { "header", met_jresp_header, "key,value" },
     { "cookie", met_jresp_cookie,
-      "nome,valor,path=\"/\",max_age=Null,httponly=true,secure=false,samesite=\"Lax\",domain=Null" },
+      "nome,valor,path=\"/\",max_age=Null,httponly=True,secure=False,samesite=\"Lax\",domain=Null" },
 };
 static const MetodoNat METODOS_JPROXY[] = {
     { "get_json", met_jpx_get_json, NULL },
@@ -9852,7 +9848,7 @@ static int acha_model_por_nome(const VM *vm, const char *nome, PSModelCampo **ca
     return 0;
 }
 
-/* Como o valor aparece na frase do 422: 'x', 12, 1.5, true. */
+/* Como o valor aparece na frase do 422: 'x', 12, 1.5, True. */
 static void num_texto(double x, char *buf, size_t cap)
 {
     if (x == (double)(long long)x && x > -1e15 && x < 1e15) snprintf(buf, cap, "%lld", (long long)x);
@@ -9862,7 +9858,7 @@ static void mlit_texto(const PSModelLit *l, char *buf, size_t cap)
 {
     switch (l->tipo) {
         case TIPO_STR:  snprintf(buf, cap, "'%s'", l->s ? l->s : ""); break;
-        case TIPO_BOOL: snprintf(buf, cap, "%s", l->i ? "true" : "false"); break;
+        case TIPO_BOOL: snprintf(buf, cap, "%s", l->i ? "True" : "False"); break;
         case TIPO_INT:  snprintf(buf, cap, "%lld", (long long)l->i); break;
         default:        num_texto(l->d, buf, cap); break;
     }
@@ -9872,7 +9868,7 @@ static void valor_curto(const Value *v, char *buf, size_t cap)
     if (EH_STRING(*v))        snprintf(buf, cap, "'%.100s'", COMO_STRING(*v)->chars);
     else if (v->t == V_INT)   snprintf(buf, cap, "%lld", (long long)v->as.i);
     else if (v->t == V_FLOAT) num_texto(v->as.d, buf, cap);
-    else if (v->t == V_BOOL)  snprintf(buf, cap, "%s", v->as.b ? "true" : "false");
+    else if (v->t == V_BOOL)  snprintf(buf, cap, "%s", v->as.b ? "True" : "False");
     else                      snprintf(buf, cap, "%s", nome_do_tipo_valor(*v));
 }
 static int mlit_igual(const PSModelLit *l, const Value *v)
@@ -9941,8 +9937,8 @@ static int model_valida_em(const VM *vm, const PSModelCampo *campos, int32_t nca
             }
         }
         if (!tem || um.t == V_NULL) {
-            if (f->optional) continue;               /* pode faltar ou vir null */
-            M_CAMPO(rot); M_MOTIVO("%s", tem ? "nao pode ser null" : "faltando"); return 0;
+            if (f->optional) continue;               /* pode faltar ou vir Null */
+            M_CAMPO(rot); M_MOTIVO("%s", tem ? "nao pode ser Null" : "faltando"); return 0;
         }
         /* tipo: int aceita flo e vice-versa (validação de dado, não de
          * representação); outro model desce nele */
@@ -10360,7 +10356,7 @@ static int liga_args(VM *vm, const Proto *np, Value *dest, const Value *self, in
         return -1;
     }
     /* Parâmetro obrigatório (sem default) que ninguém preencheu é ERRO —
-     * o slot ficaria UNSET e a funct devolveria `null` calada. O slot do
+     * o slot ficaria UNSET e a funct devolveria `Null` calada. O slot do
      * self (desloca) fica de fora. */
     int obrig = nfix - np->ndefaults;
     int faltam;
@@ -11752,13 +11748,13 @@ static int mod_bytes_slice(VM *vm, Value *args, int n, Value *out)
     int64_t ini = 0;
     if (n > 1 && args[1].t != V_UNSET && args[1].t != V_NULL) {
         if (args[1].t == V_BOOL || args[1].t != V_INT)
-            BY_ERRO_TIPO(vm, "slice indices must be integers or None or have an __index__ method");
+            BY_ERRO_TIPO(vm, "slice indices must be integers or Null");
         ini = args[1].as.i;
     }
     int64_t fim = len;
     if (n > 2 && args[2].t != V_UNSET && args[2].t != V_NULL) {
         if (args[2].t == V_BOOL || args[2].t != V_INT)
-            BY_ERRO_TIPO(vm, "slice indices must be integers or None or have an __index__ method");
+            BY_ERRO_TIPO(vm, "slice indices must be integers or Null");
         fim = args[2].as.i;
     }
     if (ini < 0) ini += len;
@@ -12209,7 +12205,7 @@ static int mod_err_flush(VM *vm, Value *a, int n, Value *o)
 { (void)a; EXIGE_ARGS(vm, "flush", 0); fflush(stderr); *o = MK_NULL(); return 0; }
 
 /* Os nomes dos parametros PRECISAM estar aqui: a tabela e o que autoriza a
- * chamada por nome. Estavam NULL, entao `sys.stdout.write("x", end=true)` —
+ * chamada por nome. Estavam NULL, entao `sys.stdout.write("x", end=True)` —
  * que a doc mostra — era `write() takes no keyword arguments`, embora o
  * `escreve_em` ja tratasse o 2o argumento como `end`. */
 static const MembroMod MOD_STDOUT[] = {
@@ -12272,8 +12268,8 @@ static int stdin_em_poll(void)
  * tamanho (o LSP, por exemplo): as mensagens vêm coladas, sem `\n` entre
  * elas, e ler por linha invade a mensagem seguinte.
  * Sem argumento, lê a entrada TODA até o fim.
- * Devolve `null` quando já não há mais nada — igual ao `input()`. Exceção: num
- * terminal em modo poll, "nada agora" é `""` (string vazia), não `null` —
+ * Devolve `Null` quando já não há mais nada — igual ao `input()`. Exceção: num
+ * terminal em modo poll, "nada agora" é `""` (string vazia), não `Null` —
  * assim um laço de jogo distingue "sem tecla" de "fim". */
 static int mod_in_read(VM *vm, Value *a, int n, Value *o)
 {
@@ -12329,10 +12325,10 @@ static int mod_in_readline(VM *vm, Value *a, int n, Value *o)
     return devolve_sbuf(vm, &b, o);
 }
 
-/* Modo cru do terminal, no MOTOR — sem `os.cmd("stty")`. `sys.stdin.raw(true)`
- * deixa a tecla chegar na hora, sem eco e sem esperar Enter; `raw(false)`
+/* Modo cru do terminal, no MOTOR — sem `os.cmd("stty")`. `sys.stdin.raw(True)`
+ * deixa a tecla chegar na hora, sem eco e sem esperar Enter; `raw(False)`
  * volta ao normal. O estado original é salvo e RESTAURADO sozinho: em
- * `raw(false)`, no fim do processo (atexit) e num Ctrl+C — senão o jogo que
+ * `raw(False)`, no fim do processo (atexit) e num Ctrl+C — senão o jogo que
  * esquece de desligar (ou que crasha) deixa o terminal do usuário mudo.
  *
  * É "cbreak", não raw total: ICANON e ECHO saem, mas ISIG fica — Ctrl+C
@@ -12340,7 +12336,7 @@ static int mod_in_readline(VM *vm, Value *a, int n, Value *o)
 #if defined(PS_SO_WINDOWS)
 /* Windows: o modo do console (sem linha e sem eco; com entrada VT, pra seta
  * chegar como no Linux; o Ctrl+C continua processado). O modo de antes volta
- * no `raw(false)`, na saída e no Ctrl+C — o console guarda o modo depois que
+ * no `raw(False)`, na saída e no Ctrl+C — o console guarda o modo depois que
  * o programa sai. */
 static DWORD g_term_modo_orig = 0;
 static int g_term_salvo = 0;
@@ -12363,7 +12359,7 @@ static BOOL WINAPI term_ctrl(DWORD ev)
 static int mod_in_raw(VM *vm, Value *a, int n, Value *o)
 {
     EXIGE_ARGS(vm, "raw", 1);
-    if (a[0].t != V_BOOL) BERRO(vm, "TypeError", "raw() espera bool (true liga, false desliga)");
+    if (a[0].t != V_BOOL) BERRO(vm, "TypeError", "raw() espera bool (True liga, False desliga)");
     /* Sem console (pipe, arquivo, NUL) não há modo cru: devolve false pra o
      * script saber, em vez de estourar. */
     if (!ps_e_terminal(0)) { *o = MK_BOOL(0); return 0; }
@@ -12408,7 +12404,7 @@ static void term_sig(int s)
 static int mod_in_raw(VM *vm, Value *a, int n, Value *o)
 {
     EXIGE_ARGS(vm, "raw", 1);
-    if (a[0].t != V_BOOL) BERRO(vm, "TypeError", "raw() espera bool (true liga, false desliga)");
+    if (a[0].t != V_BOOL) BERRO(vm, "TypeError", "raw() espera bool (True liga, False desliga)");
     /* Sem terminal (entrada por pipe/arquivo) não há modo cru: devolve false
      * pra o script saber, em vez de estourar. */
     if (!ps_e_terminal(0)) { *o = MK_BOOL(0); return 0; }
@@ -13183,7 +13179,7 @@ static int remove_link(const char *caminho, int e_pasta)
 /* Apaga `caminho` e o que houver dentro. Um LINK (simbólico, ou a junção do
  * Windows) sai como link, sem descer: o `stat`/`opendir` seguem o link, e
  * descer apagava o conteúdo do DESTINO — medido: com `arvore/link ->
- * ../alvo`, o `os.rmdir("arvore", force=true)` apagava alvo/precioso.txt. O
+ * ../alvo`, o `os.rmdir("arvore", force=True)` apagava alvo/precioso.txt. O
  * `rm -rf` também só tira o link. */
 static int apaga_arvore(const char *caminho, int prof)
 {
@@ -13465,7 +13461,7 @@ static int proc_nao_disparou(VM *vm, int err, const char *prog)
     return -1;
 }
 
-/* O texto do `capture=true`: sem as quebras e espaços das pontas, e
+/* O texto do `capture=True`: sem as quebras e espaços das pontas, e
  * `stdout` vazio cai pro `stderr` — comando que falhou tem a mensagem lá, e
  * devolver vazio esconderia o motivo. */
 static int devolve_saida(VM *vm, SBuf *so, SBuf *se, Value *out)
@@ -13793,7 +13789,7 @@ static int os_run_dispara(VM *vm, char **vetor, int capturar, Value *out)
      * disparar quantos quiser e terminar antes deles. O PID do neto volta pelo
      * cano; sem ele so daria pra devolver o pid do meio, que morre na hora.
      *
-     * COM `capture=true` continua esperando: colher a saida exige o fim do
+     * COM `capture=True` continua esperando: colher a saida exige o fim do
      * processo, e devolver texto vazio "porque e bg" seria mentira.
      */
 #if defined(PS_SO_WINDOWS)
@@ -13871,7 +13867,7 @@ static int os_run_dispara(VM *vm, char **vetor, int capturar, Value *out)
 
 /* ── o processo VIVO: `os.run(args, capture="live")` ──────────────────────
  *
- * Com `capture=false` o processo é disparado e some; com `capture=true` o
+ * Com `capture=False` o processo é disparado e some; com `capture=True` o
  * programa espera e recebe o texto no fim. Nenhum dos dois serve pra um
  * editor: não dá pra escrever no stdin do filho, ler o que ele já imprimiu,
  * saber o código de saída nem matar. Este modo entrega o processo em si.
@@ -14281,7 +14277,7 @@ static int met_pr_resize(VM *vm, Value alvo, Value *args, int n, Value *out)
               args[0].t != V_INT ? 1 : 2, nome_do_tipo_valor(args[0].t != V_INT ? args[0] : args[1]));
     PSProcesso *p = COMO_PROCESSO(alvo);
     if (!p->eh_pty)
-        MERRO(vm, "RuntimeError", "erro de execução: resize() so vale com pty=true (sem terminal nao ha tamanho)");
+        MERRO(vm, "RuntimeError", "erro de execução: resize() so vale com pty=True (sem terminal nao ha tamanho)");
 #if defined(PS_SO_WINDOWS)
     /* o pseudoconsole avisa o filho sozinho (o SIGWINCH do Linux) */
     if (ps_w_proc_redimensiona(&p->w, (int)args[0].as.i, (int)args[1].as.i) != 0)
@@ -14300,7 +14296,7 @@ static int met_pr_resize(VM *vm, Value alvo, Value *args, int n, Value *out)
 #endif
 }
 
-/* `capture=true, pty=true`: roda no terminal e devolve o texto no fim. Serve
+/* `capture=True, pty=True`: roda no terminal e devolve o texto no fim. Serve
  * pra programa que muda de saída quando não está num terminal (cor, barra de
  * progresso, pergunta). Um terminal tem um canal só, então stdout e stderr
  * chegam juntos. */
@@ -14326,7 +14322,7 @@ static int os_run_captura_pty(VM *vm, char **vetor, Value *out)
     if (p->fd_in >= 0 && p->fd_in != p->fd_out) close(p->fd_in);
     if (p->fd_out >= 0) close(p->fd_out);
     p->fd_out = -1; p->fd_in = -1;
-    /* mesma aparação do `capture=true` de sempre */
+    /* mesma aparação do `capture=True` de sempre */
     int fim = p->nbuf;
     while (fim > 0 && (p->buf[fim-1] == '\n' || p->buf[fim-1] == ' '
                        || p->buf[fim-1] == '\t' || p->buf[fim-1] == '\r')) fim--;
@@ -14349,7 +14345,7 @@ static int mod_os_run(VM *vm, Value *args, int n, Value *out)
     int pty = (n == 3) && val_truthy(&args[2]);
     if (pty && !vivo && !capturar)
         BERRO(vm, "ValueError",
-              "run(): pty=true precisa de capture=\"live\" ou capture=true (ninguem leria o terminal)");
+              "run(): pty=True precisa de capture=\"live\" ou capture=True (ninguem leria o terminal)");
     char **vetor = NULL;
     char *copia = NULL;
     int q = 0, cap = 0;
@@ -14497,8 +14493,8 @@ static const MembroMod MOD_OS[] = {
     { "readFile", mod_os_readfile, 0, "path,encoding" }, { "writeFile", mod_os_writefile, 0, "path,content,encoding" },
     { "warn", mod_os_warn, 0, "text,color" }, { "ipmach", mod_os_ipmach, 0, NULL },
     { "mkdir", mod_os_mkdir, 0, "path,exist_ok" }, { "rmdir", mod_os_rmdir, 0, "path,force" }, { "ls", mod_os_ls, 0, "path" },
-    { "cmd", mod_os_cmd, 0, "command,capture=false" },
-    { "run", mod_os_run, 0, "args,capture=false,pty=false" },
+    { "cmd", mod_os_cmd, 0, "command,capture=False" },
+    { "run", mod_os_run, 0, "args,capture=False,pty=False" },
     { "code", mod_os_code, 0, "path" },
     { "exists", mod_os_exists, 0, "path" }, { "isfile", mod_os_isfile, 0, "path" }, { "isdir", mod_os_isdir, 0, "path" },
     { "rename", mod_os_rename, 0, "src,dst" }, { "copy", mod_os_copy, 0, "src,dst" }, { "move", mod_os_move, 0, "src,dst" },
@@ -19610,9 +19606,9 @@ static int mod_jk_request(VM *vm, Value *args, int n, Value *out)
  * `cors(http, origins=...)` punha o app em `options` — não é lista, era
  * ignorado, e configurava nada.
  *
- * `local=false` é o modo estrito: só a lista de `origins` vale — origem local
+ * `local=False` é o modo estrito: só a lista de `origins` vale — origem local
  * não passa por fora dela e pedido SEM `Origin` é recusado, no HTTP e no
- * WebSocket. O padrão (`local=true`) é o de sempre: local passa, ferramenta
+ * WebSocket. O padrão (`local=True`) é o de sempre: local passa, ferramenta
  * sem `Origin` passa.
  *
  * Cada chamada cria UMA config e a guarda em cada app dado (`j->cors`); é
@@ -19635,7 +19631,7 @@ static int jcors_call(VM *vm, Value alvo, Value *args, int n, Value *out)
     int local = 1;
     if (n >= 5 && args[4].t != V_UNSET && args[4].t != V_NULL) {
         if (args[4].t != V_BOOL)
-            MERRO(vm, "TypeError", "cors(local=) precisa de bool (true/false), veio %s",
+            MERRO(vm, "TypeError", "cors(local=) precisa de bool (True/False), veio %s",
                   nome_do_tipo_valor(args[4]));
         local = args[4].as.b ? 1 : 0;
     }
@@ -19741,7 +19737,7 @@ static int met_jcors_origins(VM *vm, Value alvo, Value *args, int n, Value *out)
 { (void)args; (void)n; return jk_origens_lista(vm, alvo, out); }
 static int met_jcors_permiser(VM *vm, Value alvo, Value *args, int n, Value *out)
 { (void)args; (void)n; return jk_origens_lista(vm, alvo, out); }
-/* cors.local() -> bool: false = modo estrito (`cors(app, ..., local=false)`) */
+/* cors.local() -> bool: False = modo estrito (`cors(app, ..., local=False)`) */
 static int met_jcors_local(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)vm; (void)args; (void)n;
@@ -19841,13 +19837,13 @@ static int met_jresp_header(VM *vm, Value alvo, Value *args, int n, Value *out)
  * sem ela, sessão, login e "lembrar de mim" se escrevem montando o cabeçalho
  * `Set-Cookie` na mão, com o escape e os atributos por conta de quem chama.
  *
- *     resp.cookie("sid", token, httponly=true, samesite="Lax", max_age=3600)
+ *     resp.cookie("sid", token, httponly=True, samesite="Lax", max_age=3600)
  *     request.cookie("sid")     ->  o valor, ou Null
  *
- * Os padrões são os SEGUROS, não os permissivos: `path="/"`, `httponly=true`,
+ * Os padrões são os SEGUROS, não os permissivos: `path="/"`, `httponly=True`,
  * `samesite="Lax"`. Cookie de sessão que nasce legível pelo script da página é XSS
  * virando roubo de sessão, e quem escreve `resp.cookie("sid", t)` sem pensar
- * nos atributos merece o padrão que não o machuca. `httponly=false` continua
+ * nos atributos merece o padrão que não o machuca. `httponly=False` continua
  * disponível pra quem PRECISA ler no cliente.
  */
 static int jk_cookie_valido(const char *s)
@@ -19875,8 +19871,8 @@ static int met_jresp_cookie(VM *vm, Value alvo, Value *args, int n, Value *out)
     /* "não veio" tem que ser distinguido de "veio falso": a chamada por NOME
      * preenche os slots pulados com UNSET (`pos[k] = MK_UNSET()` no OP_CALL_KW),
      * e `val_truthy(UNSET)` é falso. Sem esta distinção, nomear `secure`,
-     * `samesite` ou `domain` APAGAVA o `httponly=true` que o default promete —
-     * medido: `.cookie("s","1", secure=true)` saía sem `HttpOnly`. O default
+     * `samesite` ou `domain` APAGAVA o `httponly=True` que o default promete —
+     * medido: `.cookie("s","1", secure=True)` saía sem `HttpOnly`. O default
      * seguro virava permissivo em silêncio, que é o pior jeito de errar.
      * Os outros opcionais já se salvavam por checarem o TIPO (EH_STRING,
      * V_INT), que UNSET não passa; estes dois liam qualquer coisa. */
@@ -20276,12 +20272,12 @@ static int jk_emit_nucleo(VM *vm, PSJinker *j, Value payload, Value room,
     free(livre);
     /* Emit que não alcançou ninguém é `Error`, não `Success`. Antes o caso
      * "nenhum alvo" contava como sucesso, e a armadilha mais comum do jinker —
-     * esquecer o `channel=true` no @app.socket — respondia Success mandando a
+     * esquecer o `channel=True` no @app.socket — respondia Success mandando a
      * mensagem pra lugar nenhum. Em debug, diz também o porquê. */
     if (j->debug && enviados == 0) {
         if (alvos == 0 && j->nws > 0)
             fprintf(stderr, "[jinker-ws] emit sem alvo: %d conexao(oes) aberta(s), "
-                            "nenhuma no canal - falta channel=true no @app.socket\n", j->nws);
+                            "nenhuma no canal - falta channel=True no @app.socket\n", j->nws);
         else if (alvos == 0)
             fprintf(stderr, "[jinker-ws] emit sem alvo: nenhuma conexao WS aberta\n");
         else
@@ -20294,7 +20290,7 @@ static int jk_emit_nucleo(VM *vm, PSJinker *j, Value payload, Value room,
 }
 
 /* emit compartilhado por SocketEmitter e SocketNamespace: exclui o remetente
- * por padrão (exclude_self=true) */
+ * por padrão (exclude_self=True) */
 static int met_jsock_emit(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     Value app = EH_JEMIT(alvo) ? COMO_JEMIT(alvo)->app
@@ -20758,7 +20754,7 @@ static int jk_is_local(const char *origin)
 /* `auth`/`nauth` = a lista de origens (a da rota, ou a do `cors(app, ...)`
  * pro WebSocket); `local` = o modo da config do app: 1 (padrão) deixa origem
  * local passar por fora da lista e aceita cliente sem `Origin` (ferramenta,
- * outro backend); 0 (`local=false`) só aceita o que está na lista, e pedido
+ * outro backend); 0 (`local=False`) só aceita o que está na lista, e pedido
  * sem `Origin` é recusado. Lista vazia = sem restrição, nos dois modos. */
 static int jk_origem_ok(char **auth, int nauth, int local, const char *origin, const char *sec_fetch)
 {
@@ -21412,7 +21408,7 @@ static int jk_ws_processa(VM *vm, PSJinker *j, int i)
         /* o que o handler DEVOLVE volta pro remetente daquela mensagem. Antes
          * o retorno era descartado, e num socket sem canal não havia jeito
          * nenhum de responder a quem mandou (o emit só alcança quem tem
-         * channel=true). String sai crua; o resto vira JSON, como no emit. */
+         * channel=True). String sai crua; o resto vira JSON, como no emit. */
         if (EH_STRING(ret)) {
             ps_jk_ws_envia_texto(c, COMO_STRING(ret)->chars, (size_t)COMO_STRING(ret)->len);
         } else {
@@ -21949,7 +21945,7 @@ typedef struct Fiber {
     struct PSJkConn *conn;
     /* WebSocket: 0 = fazer o handshake desta conexão; 1 = atender uma
      * mensagem dela. `ws_atual` é o remetente corrente DESTA fibra (o que o
-     * `emit(exclude_self=true)` exclui) e `ws_salvo` guarda o de quem foi
+     * `emit(exclude_self=True)` exclui) e `ws_salvo` guarda o de quem foi
      * interrompido — era um campo só no Jinker, e com duas fibras intercaladas
      * o emit excluía a conexão errada. */
     int        ws_fase;
@@ -23550,7 +23546,7 @@ static int nativa_input(VM *vm, Value *args, int n, Value *out)
         char ch = (char)c;
         if (sb_bytes(&b, &ch, 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
     }
-    /* Fim da entrada devolve `null`, não `""`: sem isso não dá pra distinguir
+    /* Fim da entrada devolve `Null`, não `""`: sem isso não dá pra distinguir
      * "acabou" de "linha vazia", e um laço `while true: input()` gira pra
      * sempre queimando CPU depois que o outro lado fecha o cano. Linha vazia
      * de verdade (só o `\n`) continua devolvendo `""`. */
@@ -23665,7 +23661,7 @@ static int nativa_filter(VM *vm, Value *args, int n, Value *out)
  * existe. É a mesma razão de o `ValueError` do desempacotamento dizer os dois
  * números.
  *
- * Devolve `true` quando passa, então serve dentro de expressão e o valor não
+ * Devolve `True` quando passa, então serve dentro de expressão e o valor não
  * se perde.
  */
 static int nativa_assert(VM *vm, Value *args, int n, Value *out)
@@ -23707,7 +23703,7 @@ static int nativa_assert(VM *vm, Value *args, int n, Value *out)
     if (val_truthy(&args[0])) { *out = MK_BOOL(1); return 0; }
     if (nota) BERRO(vm, "AssertionError", "%.240s", nota);
     /* Sem nota, mostrar o valor recebido é a única informação que sobra —
-     * "AssertionError" seco não diz nem se veio `false`, `null` ou `0`. */
+     * "AssertionError" seco não diz nem se veio `False`, `Null` ou `0`. */
     {
         TXTBUF_AUTO a = {0};
         valor_para_texto(&a, &args[0], 1);
@@ -24198,7 +24194,7 @@ static int chamada_sem_frame(VM *vm, Alvo alvo, const Value *pos, int npos,
     if (a->instancia) {
         /* `Entity(...)` vale a instância: um `__init__` que devolve gerador
          * ou future não teria onde pôr o que produz */
-        snprintf(vm->erro, sizeof(vm->erro), "__init__() should return None, not '%s'",
+        snprintf(vm->erro, sizeof(vm->erro), "__init__() should return Null, not '%s'",
                  np->eh_gerador ? "generator" : "future");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
         return -1;
@@ -25899,7 +25895,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (arg >= vm->nglobals) ERRO(vm, "global fora da tabela");
             /* UNSET = nunca atribuída. Ler antes de definir é erro, como no
              * interpretador ("variável não definida") — não pode devolver
-             * Null calado, senão um typo vira `null` silencioso. */
+             * Null calado, senão um typo vira `Null` silencioso. */
             if (vm->globals[arg].t == V_UNSET)
                 ERRO_TF(vm, "NameError", "name '%s' is not defined",
                         nome_do_global(vm, arg));
@@ -27104,8 +27100,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if ((ini.t != V_INT && ini.t != V_NULL) || (fim.t != V_INT && fim.t != V_NULL)
                     || (passo.t != V_INT && passo.t != V_NULL))
                 ERRO_T(vm, "TypeError",
-                       "slice indices must be integers or None"
-                       " or have an __index__ method");
+                       "slice indices must be integers or Null");
             int64_t st = 1;
             if (passo.t == V_INT) st = passo.as.i;
             if (st == 0) ERRO_T(vm, "ValueError", "slice step cannot be zero");
@@ -30746,16 +30741,20 @@ const char *ps_sugere_nome(const char *alvo, const char **nomes, int n)
 
 /* O nome que a VM liga sozinha (builtin, `__name__`, `PoolFile`, `byte`)
  * mais parecido com `nome` — o "Did you mean" do NameError do checador.
- * NULL quando nenhum chega perto. */
+ * Os literais `True`, `False` e `Null` entram como candidatos: `true` é um
+ * nome comum, e a dica dele é `True`. NULL quando nenhum chega perto. */
 const char *ps_sugere_pre_ligado(const char *nome)
 {
     if (!nome) return NULL;
-    const char *cands[NBUILTINS + 3];
+    const char *cands[NBUILTINS + 6];
     int n = 0;
     for (int b = 0; b < NBUILTINS; b++) cands[n++] = BUILTINS[b].nome;
     cands[n++] = "__name__";
     cands[n++] = "PoolFile";
     cands[n++] = "byte";
+    cands[n++] = "True";
+    cands[n++] = "False";
+    cands[n++] = "Null";
     return sugere_nome(nome, cands, n);
 }
 
@@ -31012,19 +31011,24 @@ void ps_metadata_json(FILE *saida)
         }
     }
     /* Apelidos de tipo (`string` = str…): o editor precisa saber que `string
-     * s = ...` e um `str` pra oferecer os metodos certos em `s.`. */
+     * s = ...` e um `str` pra oferecer os metodos certos em `s.`. Saem da
+     * tabela do parser (`ps_tipos.def`): a copia digitada aqui tinha 8 e
+     * esquecia `json`, `JSON`, `object` e `Long`. */
     fprintf(f, "\n ],\n \"tipos_apelidos\": {");
     {
-        static const char *const AP[][2] = {
-            { "string", "str" }, { "String", "str" }, { "integer", "int" }, { "Integer", "int" },
-            { "tuple", "tup" }, { "Tuple", "tup" }, { "dictionary", "dict" }, { "Dictionary", "dict" },
+        static const struct { const char *grafia; int cod; } AP[] = {
+#define PS_TIPO(suf, nome, aceita, decl, expr, count, model)
+#define PS_APELIDO(grafia, suf) { grafia, TIPO_##suf },
+#include "ps_tipos.def"
+#undef PS_TIPO
+#undef PS_APELIDO
         };
         for (size_t i = 0; i < sizeof(AP) / sizeof(AP[0]); i++) {
             if (i) fputc(',', f);
             fprintf(f, "\n  ");
-            jm_txt(f, AP[i][0]);
+            jm_txt(f, AP[i].grafia);
             fprintf(f, ": ");
-            jm_txt(f, AP[i][1]);
+            jm_txt(f, TIPOS[AP[i].cod].nome);
         }
     }
     /* Módulos que nascem ligados, sem import (`Parsing.integer(...)`): o editor

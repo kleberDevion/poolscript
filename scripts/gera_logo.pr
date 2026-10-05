@@ -104,12 +104,12 @@ funct no_gancho(P) {
     vy = P[1] - C[1]
     d2 = vx * vx + vy * vy
     if d2 > R * R or d2 < RI * RI {
-        return false
+        return False
     }
     # fora do setor de cima (entre o pescoço e a ponta esquerda, passando por cima)
     u = [vx, vy]
     if cruz(n, u) < 0 and cruz(u, VL) < 0 {
-        return false
+        return False
     }
     # do lado certo do corte da esquerda
     return (cruz(DL, [P[0] - EO[0], P[1] - EO[1]]) > 0) == LADO_ESQ
@@ -119,7 +119,7 @@ funct na_haste(P) {
     a = ponto(v, d)
     b = 0 - ponto(v, n)
     if a < 0 or b < 0 or b > W {
-        return false
+        return False
     }
     return (cruz(e, [P[0] - TO[0], P[1] - TO[1]]) > 0) == LADO_TOPO
 }
@@ -347,15 +347,15 @@ monta_crc()
 if __name__ == "main" {
     if len(sys.argv) > 1 {
         pasta = sys.argv[1]
-        os.writeFile(pasta + "/previa.png", rasteriza(512, 0.74, true, 96))
+        os.writeFile(pasta + "/previa.png", rasteriza(512, 0.74, True, 96))
         os.writeFile(pasta + "/previa.svg", svg())
         post("prévia em " + pasta)
     } else {
         os.writeFile("dados/icones/text-jinga.svg", svg())
-        os.writeFile("editor/vscode/images/icon.png", rasteriza(256, 0.74, true, 48))
-        os.writeFile("editor/vscode/images/arquivo.png", rasteriza(128, 0.9, false, 0))
-        os.writeFile("editor/intellij/plugin/resources/icons/jinga_pr.png", rasteriza(16, 0.96, false, 0))
-        os.writeFile("editor/intellij/plugin/resources/icons/jinga_pr@2x.png", rasteriza(32, 0.96, false, 0))
+        os.writeFile("editor/vscode/images/icon.png", rasteriza(256, 0.74, True, 48))
+        os.writeFile("editor/vscode/images/arquivo.png", rasteriza(128, 0.9, False, 0))
+        os.writeFile("editor/intellij/plugin/resources/icons/jinga_pr.png", rasteriza(16, 0.96, False, 0))
+        os.writeFile("editor/intellij/plugin/resources/icons/jinga_pr@2x.png", rasteriza(32, 0.96, False, 0))
         post("logo gerada: svg + 4 png")
     }
 }

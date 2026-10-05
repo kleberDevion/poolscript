@@ -209,10 +209,10 @@ funct divida(nome, ramo_hoje) {
 
 
 if __name__ == "main" {
-    grava = false
+    grava = False
     for each a in sys.argv {
         if a == "--grava" {
-            grava = true
+            grava = True
         }
     }
 

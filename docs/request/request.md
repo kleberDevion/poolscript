@@ -38,7 +38,7 @@ na memória. Pra baixar binário (`.exe`, imagem, zip, pdf):
 | `resp.save(pasta_ou_caminho)` | **move** o arquivo do corpo pro destino, sem carregar nada, e devolve um [`PoolFile`](../os/PoolFile/PoolFile.md) (`.name`/`.size`/`.move()`) |
 | `request.get(url, save=caminho)` | o corpo já desce pra esse caminho; o arquivo é seu |
 | `resp.decode('utf-8')` | corpo como texto num encoding específico |
-| `stream=true` | liga o teto do `max_size` (padrão 100MB): passa dele, levanta erro. Só isso |
+| `stream=True` | liga o teto do `max_size` (padrão 100MB): passa dele, levanta erro. Só isso |
 | `resp.content_type('...')` | valida o MIME; raise se não bater |
 
 Ver a página de [download](download/download.md) e [`Response`](Response/Response.md).

@@ -1,18 +1,18 @@
-# `os.cmd(command, capture=false)`
+# `os.cmd(command, capture=False)`
 
 Executa um **comando no terminal** do sistema. Por padrão só roda; com
-`capture=true`, devolve a saída como texto. Nos dois modos ele **espera** o
+`capture=True`, devolve a saída como texto. Nos dois modos ele **espera** o
 comando terminar, e a espera cede: numa rota do jinker ou numa `async funct`,
 o resto continua sendo atendido enquanto o comando roda.
 
 ```
-os.cmd(command: str, capture: bool = false) -> str | Null
+os.cmd(command: str, capture: bool = False) -> str | Null
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
 | `command` | — | a linha de comando a executar (ex: `"jinga --version"`) |
-| `capture` | `false` | `true` = devolve a saída; `false` = só roda e devolve `Null` |
+| `capture` | `False` | `True` = devolve a saída; `False` = só roda e devolve `Null` |
 
 O shell é o do sistema: `/bin/sh -c` no Linux e no macOS, `cmd.exe /d /s /c`
 no Windows. A linha tem que ser na sintaxe daquele shell (no Windows, `dir` e
@@ -31,11 +31,11 @@ os.cmd("git status")              # a saída vai direto pro terminal
 ## Capturar a saída
 
 ```
-versao = os.cmd("jinga --version", capture=true)
-post(versao)                      # "Jinga 16.2.6 [PSVM] (2026-09-24) Runtime standalone"
+versao = os.cmd("jinga --version", capture=True)
+post(versao)                      # "Jinga 16.2.7 [PSVM] (2026-09-24) Runtime standalone"
 ```
 
-Com `capture=true`, devolve o **stdout** (sem espaços nas pontas). Se o comando
+Com `capture=True`, devolve o **stdout** (sem espaços nas pontas). Se o comando
 não produziu stdout mas gerou erro, devolve o **stderr** — então você vê a
 mensagem de erro em vez de string vazia.
 
@@ -47,7 +47,7 @@ mensagem de erro em vez de string vazia.
 import os
 
 # checa se uma ferramenta existe — pelo código de saída, não pelo texto
-achou = os.cmd("command -v git > /dev/null; echo $?", capture=true).strip()
+achou = os.cmd("command -v git > /dev/null; echo $?", capture=True).strip()
 if achou == "0" {
     post("git instalado")
 } else {
@@ -64,7 +64,7 @@ if achou == "0" {
 
 ## Cuidado (segurança)
 
-`os.cmd(...)` roda com `shell=true` — o comando é interpretado pelo shell. **Não
+`os.cmd(...)` roda com `shell=True` — o comando é interpretado pelo shell. **Não
 monte o comando concatenando entrada não confiável do usuário** (isso permite
 injeção de comando): `os.cmd("mkdir " + nome)` com `nome = "x; rm -rf ~"`
 executa o `rm`. Para valores dinâmicos vindos de fora, use

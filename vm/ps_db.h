@@ -54,7 +54,7 @@ int ps_db_eh_nome_erro(const char *nome);
 
 /* `tipos` (pode ser NULL = tudo texto): um caractere por parâmetro, o tipo do
  * VALOR na linguagem — 'i' int, 'f' flo, 'b' bool, 's' o resto. O texto em
- * `params` perde o tipo, e sqlite e mysql precisam dele: sem isto `true` ia
+ * `params` perde o tipo, e sqlite e mysql precisam dele: sem isto `True` ia
  * como 'True' (casava com nada no sqlite e com FALSE no mysql) e `LIMIT ?` ia
  * como LIMIT '10', que o mysql recusa. O postgres deduz o tipo no servidor. */
 int ps_db_exec(PSDbConn *c, const char *sql, const char **params, const char *tipos,

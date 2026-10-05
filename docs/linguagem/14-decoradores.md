@@ -85,7 +85,7 @@ Null — só os parâmetros reais são conferidos.
 
 ## 14.2. `nonnull` — barra argumento nulo (e o `@NonNull` antigo)
 
-Marca uma `funct` cujos **argumentos não podem ser `null`**. Passar `null` num
+Marca uma `funct` cujos **argumentos não podem ser `Null`**. Passar `Null` num
 parâmetro levanta erro antes do corpo rodar:
 
 ```ps
@@ -94,7 +94,7 @@ nonnull funct saudar(nome) {
 }
 
 post(saudar("ana"))      # olá, ana
-saudar(null)             # RuntimeError: nonnull: parametro 'nome' em 'saudar' nao pode ser Null
+saudar(Null)             # RuntimeError: nonnull: parametro 'nome' em 'saudar' nao pode ser Null
 ```
 
 A checagem é sobre os **parâmetros** (a entrada), não sobre o valor de retorno,
@@ -170,7 +170,7 @@ app = jinker.Jinker(__name__)
 
 @app.route("/usuarios", methods=["GET"])
 funct listar() {
-    return { "ok": true }
+    return { "ok": True }
 }
 ```
 
@@ -430,7 +430,7 @@ y = 1
 - **`static`** (colado; `@static` é a grafia antiga) — método de Entity sem
   `self`, chamado na Entity.
 - **`nonnull`** (colado; `@NonNull` é a grafia antiga) — recusa argumento
-  `null` na funct.
+  `Null` na funct.
 - **`@dataentity`** — marca uma Entity de dados (construtor de campos tipados já
   é automático); conversões `asdict`/`astuple`/`aslist`/`asjson` vêm da lib
   `datasentity`.

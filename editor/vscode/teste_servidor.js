@@ -349,18 +349,22 @@ async function main() {
       { jsonrpc: '2.0', id: 16, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 15, character: 6 } } },
     ]);
     const txt = (id) => { const h = resp(m, id); return h && h.result && h.result.contents ? (h.result.contents.value || '') : ''; };
-    conf('hover de `nome = Jinker(...)` apresenta a classe: assinatura, resumo, membros, exemplo e link da doc',
-         txt(12).includes('Jinker nome') && txt(12).includes('class Jinker(name=') && txt(12).includes('membros**')
+    /* tipo do motor é `# tipo nativo`, nunca `class`: class é só a escrita em
+     * Jinga (ele, 2026-10-05) */
+    conf('hover de `nome = Jinker(...)` apresenta o tipo nativo: assinatura, resumo, membros, exemplo e link da doc',
+         txt(12).includes('Jinker nome') && txt(12).includes('Jinker(name=') && txt(12).includes('# tipo nativo')
+           && !txt(12).includes('class Jinker') && txt(12).includes('membros**')
            && txt(12).includes('`route(...)`') && txt(12).includes('from jinker import Jinker')
            && txt(12).includes('](file://') && txt(12).includes('Jinker.md)') && linksDeArquivoValidos(txt(12)),
          txt(12).slice(0, 300));
-    conf('hover de `n = 1` diz `int n` (tipo basico: so type())',
-         txt(13).includes('int n') && txt(13).includes('tipo basico') && txt(13).includes('só o universal `type()`'), txt(13).slice(0, 200));
+    conf('hover de `n = 1` diz `int n` (tipo primitivo: so type())',
+         txt(13).includes('int n') && txt(13).includes('int   # tipo primitivo') && txt(13).includes('só o universal `type()`'), txt(13).slice(0, 200));
     conf('hover de instancia de Entity do arquivo mostra a classe com campos tipados e metodos com assinatura',
          txt(14).includes('Osx o') && txt(14).includes('class Osx {') && txt(14).includes('int x') && txt(14).includes('funct dobra(self)'),
          txt(14).slice(0, 300));
-    conf('hover no apelido `String` responde como o tipo str, com os membros',
-         txt(15).includes('String = str') && txt(15).includes('class str') && txt(15).includes('`upper(...)`'), txt(15).slice(0, 200));
+    conf('hover no apelido `String` responde como o tipo primitivo str, com os membros',
+         txt(15).includes('String = str') && txt(15).includes('str   # tipo primitivo') && !txt(15).includes('class str')
+           && txt(15).includes('`upper(...)`'), txt(15).slice(0, 200));
     conf('hover de retorno com mais de um tipo apresenta cada lado com membros e link',
          txt(16).includes('str|Process') && txt(16).includes('**Process**') && txt(16).includes('`read(...)`') && txt(16).includes('Process.md)')
            && linksDeArquivoValidos(txt(16)),
@@ -391,6 +395,53 @@ async function main() {
       if (t.includes(ap + ' = ' + META_LOCAL.tipos_apelidos[ap])) ok++;
     }
     conf('hover responde em TODOS os ' + apelidos.length + ' apelidos de tipo do motor', ok === apelidos.length, { ok, apelidos });
+  }
+  /* As palavras da LINGUAGEM no hover (ele, 2026-10-05: "kw e builtins da
+   * lang dá NameError nos sugestores"; "tipo primitivo dá que é objeto, sendo
+   * que não é"). Medido no 16.2.6: 27 builtins (`len`, `range`, `sum`…),
+   * `json`, `PoolFile` e `byte` diziam "rodando dá NameError" — o motor liga
+   * todos sem import —, e str/list/dict/tup saíam `class`. Tudo pelas
+   * tabelas do motor, cada nome sozinho numa linha. */
+  {
+    const hoverDe = async (nomes) => {
+      const r = await conversa(nomes.join('\n') + '\n', nomes.map((_, i) => (
+        { jsonrpc: '2.0', id: 300 + i, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: i, character: 1 } } })));
+      return nomes.map((_, i) => { const h = resp(r, 300 + i); return h && h.result && h.result.contents ? (h.result.contents.value || '') : ''; });
+    };
+    const builtins = (META_LOCAL.builtins || []).map((b) => b.nome);
+    const tb = await hoverDe(builtins);
+    const ruins = builtins.filter((b, i) => tb[i].includes('NameError') || !tb[i].includes(b));
+    conf('hover de TODOS os ' + builtins.length + ' builtins do motor apresenta o builtin, nunca NameError', ruins.length === 0, ruins);
+    /* primitivo = abre declaração E é tipo de valor (o que o type() devolve);
+     * `long`, `char` e `Object` abrem declaração mas não são tipo de valor
+     * (type() de um long dá int) e não se dizem primitivos */
+    const real = (t) => (META_LOCAL.tipos_apelidos || {})[t] || t;
+    const decl = (META_LOCAL.tipos_declaraveis || []);
+    const prims = decl.filter((t) => (META_LOCAL.tipos_valor || []).includes(real(t)));
+    const soDecl = decl.filter((t) => !prims.includes(t));
+    const tp = await hoverDe(prims);
+    const comoClasse = prims.filter((t, i) => tp[i].includes('class ') || tp[i].includes('NameError') || !tp[i].includes('# tipo primitivo'));
+    conf('hover de TODOS os ' + prims.length + ' tipos primitivos diz `tipo primitivo`, nunca class nem NameError', comoClasse.length === 0, comoClasse);
+    const td = await hoverDe(soDecl);
+    const dRuins = soDecl.filter((t, i) => td[i].includes('class ') || td[i].includes('NameError') || td[i].includes('# tipo primitivo'));
+    conf('hover das ' + soDecl.length + ' palavras de declaração que não são tipo de valor (' + soDecl.join(', ')
+         + ') não diz primitivo, class nem NameError', dRuins.length === 0, dRuins);
+    const nativos = Object.keys(META_LOCAL.tipos || {}).filter((t) => !decl.includes(t) && !t.startsWith('__'));
+    const tn = await hoverDe(nativos);
+    const nRuins = nativos.filter((t, i) => tn[i].includes('class ') || tn[i].includes('NameError') || !tn[i].includes('# tipo nativo'));
+    conf('hover de TODOS os ' + nativos.length + ' tipos do motor diz `tipo nativo`, nunca class nem NameError', nRuins.length === 0, nRuins);
+    const r = await conversa('list l = [1, 2]\npost(l)\ndict d = json.parse("{}")\nimport os\npost(os.getcwd(), json)\n', [
+      { jsonrpc: '2.0', id: 320, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 1, character: 5 } } },
+      { jsonrpc: '2.0', id: 321, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 2, character: 10 } } },
+      { jsonrpc: '2.0', id: 322, method: 'textDocument/hover', params: { textDocument: { uri: URI }, position: { line: 4, character: 18 } } },
+    ]);
+    const tx = (id) => { const h = resp(r, id); return h && h.result && h.result.contents ? (h.result.contents.value || '') : ''; };
+    conf('hover de variavel list apresenta `list   # tipo primitivo`, nao `class list`',
+         tx(320).includes('list l') && tx(320).includes('list   # tipo primitivo') && !tx(320).includes('class list'), tx(320).slice(0, 200));
+    conf('hover em `json.` sem `import json` diz que falta o import (e o motor da NameError)',
+         tx(321).includes('falta `import json`'), tx(321).slice(0, 200));
+    conf('hover no `json` solto responde como o dict, sem NameError',
+         tx(322).includes('json = dict') && !tx(322).includes('NameError'), tx(322).slice(0, 200));
   }
   /* enum: hover e completion com o VALOR e o tipo de cada membro (ele,
    * 2026-09-26, `enum User { nome='kleber' idade=17 }`: o hover em
@@ -675,12 +726,12 @@ async function main() {
     '@mapping.post("/x", model=Rota)',
     'int async funct entra(data) {',
     '    if data == "" {',
-    '        return jsonify({"ok": false})',
+    '        return jsonify({"ok": False})',
     '    }',
     '    for each it in [1, 2] {',
     '        post(it)',
     '    }',
-    '    return jsonify({"ok": true, "e": request.get("email")})',
+    '    return jsonify({"ok": True, "e": request.get("email")})',
     '}',
     'mapping.',
     '@mapping.',
@@ -870,11 +921,12 @@ async function main() {
       ['sem receptor: as EXCEÇÕES do motor aparecem',
        ['x = Val'], 0, undefined,
        ['ValueError', 'Exception', 'OSError'], []],
-      /* LITERAIS e `__name__`: o lexer entrega `true`/`false`/`Null` como token
+      /* LITERAIS e `__name__`: o lexer entrega `True`/`False`/`Null` como token
        * próprio (BOOL/NULL) e `__name__` é global do compilador — nenhum dos
-       * quatro está na KEYWORDS[] do --metadata, e o sugestor não os tinha. */
+       * quatro está na KEYWORDS[] do --metadata, e o sugestor não os tinha.
+       * A grafia antiga (`true`, `null`) é nome comum e não é sugerida. */
       ['sem receptor: os LITERAIS e `__name__` aparecem',
-       ['x = 1', 'x'], 1, undefined, ['true', 'false', 'Null', '__name__'], []],
+       ['x = 1', 'x'], 1, undefined, ['True', 'False', 'Null', '__name__'], ['true', 'false', 'null']],
       ['dentro da Entity o CONSTRUTOR e sugerido',
        ['Entity Conta {', '    saldo: int', '    f'], 2, undefined, ['__init__'], []],
       ['Entity que JA tem __init__ nao sugere outro',
@@ -1122,7 +1174,7 @@ async function main() {
     const dir = path.join(os.tmpdir(), 'ps_lsp_t');
     fs.writeFileSync(path.join(dir, 'estrela_fonte.pr'),
       'funct soma_estrela(a) {\n    return a\n}\nprivate funct escondida() {\n    return 0\n}\n'
-      + '_interno = 1\nif true {\n    so_no_bloco = 2\n}\n');
+      + '_interno = 1\nif True {\n    so_no_bloco = 2\n}\n');
     fs.writeFileSync(path.join(dir, 'estrela_ponte.pr'),
       'import estrela_fonte *\nfunct da_ponte() {\n    return 1\n}\n');
     /* `*` de ida e volta: sem o corte de ciclo o servidor não termina */
@@ -1744,7 +1796,7 @@ async function main() {
       '    nome: str(length=20, regex="^[a-z]+$")',           // 4
       '    idade: int(min=18, max=120)',                      // 5
       '    papel: str(in=["admin", "user"])',                 // 6
-      '    apelido: str(optional=true)',                      // 7
+      '    apelido: str(optional=True)',                      // 7
       '    endereco: Endereco',                               // 8
       '    tags: list(of=str, length=3)',                     // 9
       '    saldo: flo(min=-1.5)',                             // 10
@@ -1757,7 +1809,7 @@ async function main() {
     conf('hover do model mostra min e max', h.includes('idade: int(min=18, max=120)'), h);
     conf('hover do model mostra in com a lista', h.includes('papel: str(in=["admin", "user"])'), h);
     conf('hover do model mostra optional, o model aninhado e o of',
-         h.includes('apelido: str(optional=true)') && h.includes('endereco: Endereco')
+         h.includes('apelido: str(optional=True)') && h.includes('endereco: Endereco')
          && h.includes('tags: list(length=3, of=str)'), h);
     conf('hover do model mostra número negativo', h.includes('saldo: flo(min=-1.5)'), h);
     /* a linha pela metade — o momento em que o completion é pedido; o

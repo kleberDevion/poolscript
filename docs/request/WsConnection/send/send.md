@@ -3,7 +3,7 @@
 Envia uma mensagem pro servidor WebSocket.
 
 ```
-conn.send(data) -> None
+conn.send(data) -> Null
 ```
 
 | Parâmetro | O que é |

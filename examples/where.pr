@@ -37,7 +37,7 @@ funct mainter()
     } catch (e) {
         post(<red>f"WhereCommandError: {e}")
     }
-    return false
+    return False
 }
 
 mainter()

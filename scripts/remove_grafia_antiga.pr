@@ -29,13 +29,13 @@ ANTIGAS = ["reaction", "action"]      # `reaction` PRIMEIRO: contem `action`
 
 funct eh_char_de_nome(c) {
     if c >= "a" and c <= "z" {
-        return true
+        return True
     }
     if c >= "A" and c <= "Z" {
-        return true
+        return True
     }
     if c >= "0" and c <= "9" {
-        return true
+        return True
     }
     return c == "_"
 }
@@ -55,13 +55,13 @@ funct troca_palavra(texto, velha, nova) {
     m = len(velha)
     while i < n {
         if texto[i] == velha[0] and i + m <= n and texto[i:i + m] == velha {
-            antes_ok = true
+            antes_ok = True
             if i > 0 and eh_char_de_nome(texto[i - 1]) {
-                antes_ok = false
+                antes_ok = False
             }
-            depois_ok = true
+            depois_ok = True
             if i + m < n and eh_char_de_nome(texto[i + m]) {
-                depois_ok = false
+                depois_ok = False
             }
             if antes_ok and depois_ok {
                 addEnd(pedacos, texto[ini:i])
@@ -108,11 +108,11 @@ if __name__ == "main" {
         post("uso: jinga scripts/remove_grafia_antiga.pr [--grava] <arq> [<arq>...]")
         sys.exit(1)
     }
-    grava = false
+    grava = False
     alvos = []
     for each a in args {
         if a == "--grava" {
-            grava = true
+            grava = True
             continue
         }
         addEnd(alvos, a)

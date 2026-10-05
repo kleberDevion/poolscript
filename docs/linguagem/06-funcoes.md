@@ -238,18 +238,27 @@ campo, então uma Entity com mais de 255 campos é recusada do mesmo jeito:
 ## 6.3. Retorno — `return`
 
 `return <expr>` devolve um valor e encerra a função. Um `return` **sem valor**,
-ou uma função que **termina sem `return`**, devolve `null`:
+ou uma função que **termina sem `return`**, devolve `Null`:
 
 ```ps
 funct nada() {
     return
 }
-post(nada())     # null
+post(nada())     # Null
 
 funct semret() {
-    x = 1
+    int x = 1
 }
-post(semret())   # null
+post(semret())   # Null
+```
+
+`return` só existe dentro de funct (funct anônima e método contam). No topo do
+arquivo, ou num `if`, laço ou `count each` do topo, é erro de sintaxe antes de
+rodar, com a linha do `return` — como o `break` fora de laço:
+
+```ps
+post("começo")
+return 5        # SyntaxError: 'return' fora de funct
 ```
 
 ---
@@ -307,13 +316,13 @@ Boom: x
 | Situação | Devolve |
 |---|---|
 | `return <int>` | o próprio inteiro |
-| `return null` / sem return | `0` |
+| `return Null` / sem return | `0` |
 | erro/exceção no corpo | `500` |
 | `return <outro tipo>` | erro de tipo — que o `try` implícito transforma em `500` |
 
 ```ps
 int funct status() {
-    return null
+    return Null
 }
 post(status())        # 0
 
@@ -324,7 +333,7 @@ post(quebra())        # 500 — e o erro sai no stderr
 ```
 
 `bool funct`: `return <bool>` devolve ele; **erro no corpo → `False`**;
-`return null`/sem return → `True`. `return 1` é erro de tipo (e vira `False`
+`return Null`/sem return → `True`. `return 1` é erro de tipo (e vira `False`
 pelo mesmo `try`) — não há conversão por verdadeiro/falso.
 
 ### Qualquer tipo vale como retorno
@@ -536,6 +545,13 @@ espalhada (`g(*lista)`), como **método** (`obj.conta(2)`, ou `f = obj.conta` e
 depois `f(2)`) e passada a uma função que chama de volta (`map([2], obj.conta)`
 devolve uma lista de geradores).
 
+`yield` só existe dentro de funct. Fora dela é erro de sintaxe antes de rodar
+(antes só quebrava rodando):
+
+```ps
+yield 1         # SyntaxError: 'yield' fora de funct
+```
+
 ---
 
 ## 6.8. Assíncrono — `async` / `await` / `gather`
@@ -639,7 +655,7 @@ TypeError: f() got an unexpected keyword argument 'b'
 ```
 
 Um `__init__` não pode ser `async` nem gerador — a instanciação vale o objeto,
-e não teria onde pôr o future: `TypeError: __init__() should return None, not 'future'`.
+e não teria onde pôr o future: `TypeError: __init__() should return Null, not 'future'`.
 
 **Handler de framework roda o corpo no lugar.** A rota, o middleware e o
 socket do `jinker`, e o `on_message` de um WebSocket de saída, **esperam** o
@@ -663,9 +679,9 @@ modelo é *stackful* (cada task tem pilha própria): escala bem até a casa das
   **tipo antes do nome** (opcional); **variádicos** `*args` (tup) e `**kwarg`
   (dict); `f(*lista)` / `f(**dict)` espalham na chamada; aridade errada é erro;
   no máximo 256 parâmetros fixos, conferido na declaração.
-- `return` sem valor / ausência de `return` → `null`.
+- `return` sem valor / ausência de `return` → `Null`.
 - **`int funct` / `bool funct`**: nunca propagam erro (int→`500`, bool→`False`
-  no erro, e o erro sai junto no stderr) e tratam `null` (int→`0`,
+  no erro, e o erro sai junto no stderr) e tratam `Null` (int→`0`,
   bool→`True`); não coagem o valor retornado.
 - **`static`** e **`nonnull`** vêm colados na cabeça, em qualquer ordem com os
   outros modificadores, e valem só para a funct em que estão escritos.

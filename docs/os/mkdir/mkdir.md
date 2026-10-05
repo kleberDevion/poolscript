@@ -1,15 +1,15 @@
-# `os.mkdir(path, exist_ok=false)`
+# `os.mkdir(path, exist_ok=False)`
 
 Cria uma pasta (diretório).
 
 ```
-os.mkdir(path: str, exist_ok: bool = false) -> Null
+os.mkdir(path: str, exist_ok: bool = False) -> Null
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
 | `path` | — | caminho da pasta a criar |
-| `exist_ok` | `false` | `true` = não dá erro se a pasta já existir |
+| `exist_ok` | `False` | `True` = não dá erro se a pasta já existir |
 
 ---
 
@@ -19,14 +19,14 @@ os.mkdir(path: str, exist_ok: bool = false) -> Null
 import os
 
 os.mkdir("uploads")                      # cria "uploads"
-os.mkdir("dados/2026", exist_ok=true)    # cria; se já existir, tudo bem
+os.mkdir("dados/2026", exist_ok=True)    # cria; se já existir, tudo bem
 ```
 
-Com `exist_ok=false` (padrão), criar uma pasta que já existe **levanta erro**.
-Use `exist_ok=true` quando "garantir que a pasta exista" for a intenção:
+Com `exist_ok=False` (padrão), criar uma pasta que já existe **levanta erro**.
+Use `exist_ok=True` quando "garantir que a pasta exista" for a intenção:
 
 ```
-os.mkdir("cache", exist_ok=true)   # roda quantas vezes quiser, sem erro
+os.mkdir("cache", exist_ok=True)   # roda quantas vezes quiser, sem erro
 ```
 
 ---
@@ -38,7 +38,7 @@ if (not os.exists("uploads")) {
     os.mkdir("uploads")
 }
 # ou, mais curto:
-os.mkdir("uploads", exist_ok=true)
+os.mkdir("uploads", exist_ok=True)
 ```
 
 ---

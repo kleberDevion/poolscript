@@ -63,7 +63,7 @@ const Caso CASOS_CRASH[] = {
   "import sys\n"
   "funct checa(n) {\n"
   "    using open(\"b.pr\", \"w\") as f { f.write(\"post(\" + (\"(\" * n) + \"1\" + (\")\" * n) + \")\") }\n"
-  "    return os.run([sys.executable, \"--check\", \"b.pr\"], capture=true)\n"
+  "    return os.run([sys.executable, \"--check\", \"b.pr\"], capture=True)\n"
   "}\n"
   "baixo = 1\n"
   "alto = 100001\n"
@@ -345,35 +345,35 @@ const Caso CASOS_CRASH[] = {
 { "os.move que falha mantem a origem",
   "import os\n"
   "using open(\"o.txt\", \"w\") as f { f.write(\"dado\") }\n"
-  "houve_erro = false\n"
-  "try { os.move(\"o.txt\", \"/dev/full\") } catch (e) { houve_erro = true }\n"
+  "houve_erro = False\n"
+  "try { os.move(\"o.txt\", \"/dev/full\") } catch (e) { houve_erro = True }\n"
   "post(houve_erro, os.exists(\"o.txt\"))\n", "True True", NULL, 0, NULL, 0, "linux" },
 { "os.copy que falha nao deixa destino pela metade",
   "import os\n"
   "using open(\"o2.txt\", \"w\") as f { f.write(\"dado\") }\n"
-  "houve_erro = false\n"
-  "try { os.copy(\"o2.txt\", \"/dev/full\") } catch (e) { houve_erro = true }\n"
+  "houve_erro = False\n"
+  "try { os.copy(\"o2.txt\", \"/dev/full\") } catch (e) { houve_erro = True }\n"
   "post(houve_erro, os.exists(\"o2.txt\"))\n", "True True", NULL, 0, NULL, 0, "linux" },
 { "os.move pra pai que e arquivo mantem a origem",
   "import os\n"
   "using open(\"o.txt\", \"w\") as f { f.write(\"dado\") }\n"
   "os.writeFile(\"pai\", \"sou arquivo\")\n"
-  "houve_erro = false\n"
-  "try { os.move(\"o.txt\", \"pai/o.txt\") } catch (e) { houve_erro = true }\n"
+  "houve_erro = False\n"
+  "try { os.move(\"o.txt\", \"pai/o.txt\") } catch (e) { houve_erro = True }\n"
   "post(houve_erro, os.exists(\"o.txt\"))\n", "True True", NULL, 0 },
 { "os.copy pra pai que e arquivo nao cria destino",
   "import os\n"
   "using open(\"o2.txt\", \"w\") as f { f.write(\"dado\") }\n"
   "os.writeFile(\"pai\", \"sou arquivo\")\n"
-  "houve_erro = false\n"
-  "try { os.copy(\"o2.txt\", \"pai/o2.txt\") } catch (e) { houve_erro = true }\n"
+  "houve_erro = False\n"
+  "try { os.copy(\"o2.txt\", \"pai/o2.txt\") } catch (e) { houve_erro = True }\n"
   "post(houve_erro, os.exists(\"o2.txt\"), os.exists(\"pai/o2.txt\"))\n", "True True False", NULL, 0 },
 /* A copia que falhou apagava a ENTRADA do destino sem olhar o que era: um
  * link pra /dev/full sumia (e, como root, o proprio /dev/full). So sai a
  * entrada que e o arquivo comum que a copia escreveu. */
 { "copy que falha nao apaga destino que nao e arquivo comum",
   "import os\n"
-  "os.run([\"ln\", \"-s\", \"/dev/full\", \"cheio\"], capture=true)\n"
+  "os.run([\"ln\", \"-s\", \"/dev/full\", \"cheio\"], capture=True)\n"
   "using open(\"o3.txt\", \"w\") as f { f.write(\"dado\") }\n"
   "try { os.copy(\"o3.txt\", \"cheio\") } catch (e) { post(\"levantou\") }\n"
   "post(os.exists(\"cheio\"))\n", "levantou\nTrue", NULL, 0, NULL, 0, "linux" },
@@ -401,15 +401,15 @@ const Caso CASOS_CRASH[] = {
   "    if sys.platform() == \"windows\" {\n"
   "        aberto = open(origem)\n"
   "    } else {\n"
-  "        os.run([\"chmod\", \"555\", \"ro\"], capture=true)\n"
+  "        os.run([\"chmod\", \"555\", \"ro\"], capture=True)\n"
   "    }\n"
   "}\n"
-  "houve_erro = false\n"
-  "try { os.move(origem, \"dest.txt\") } catch (e) { houve_erro = true }\n"
+  "houve_erro = False\n"
+  "try { os.move(origem, \"dest.txt\") } catch (e) { houve_erro = True }\n"
   "if sys.platform() == \"windows\" {\n"
   "    aberto.close()\n"
   "} elif sys.platform() != \"linux\" {\n"
-  "    os.run([\"chmod\", \"755\", \"ro\"], capture=true)\n"
+  "    os.run([\"chmod\", \"755\", \"ro\"], capture=True)\n"
   "}\n"
   "post(houve_erro, os.exists(origem))\n", "True True", NULL, 0 },
 /* O mesmo defeito no `delete()`: o retorno do unlink era ignorado e ele
@@ -428,16 +428,16 @@ const Caso CASOS_CRASH[] = {
   "    if sys.platform() == \"windows\" {\n"
   "        aberto = open(alvo)\n"
   "    } else {\n"
-  "        os.run([\"chmod\", \"555\", \"ro\"], capture=true)\n"
+  "        os.run([\"chmod\", \"555\", \"ro\"], capture=True)\n"
   "    }\n"
   "}\n"
   "p = os.loadFile(alvo, mode=\"rb\")\n"
-  "houve_erro = false\n"
-  "try { p.delete() } catch (PermissionError e) { houve_erro = true }\n"
+  "houve_erro = False\n"
+  "try { p.delete() } catch (PermissionError e) { houve_erro = True }\n"
   "if sys.platform() == \"windows\" {\n"
   "    aberto.close()\n"
   "} elif sys.platform() != \"linux\" {\n"
-  "    os.run([\"chmod\", \"755\", \"ro\"], capture=true)\n"
+  "    os.run([\"chmod\", \"755\", \"ro\"], capture=True)\n"
   "}\n"
   "post(houve_erro, os.exists(alvo))\n", "True True", NULL, 0 },
 { "PoolFile.delete de arquivo que ja nao existe nao e erro",
@@ -464,7 +464,7 @@ const Caso CASOS_CRASH[] = {
   "os.writeFile(\"mod_abs.pr\", \"funct oi() {\\n    return 42\\n}\\n\")\n"
   "raiz = os.cwd().replace(\"\\\\\", \"/\")\n"
   "os.writeFile(\"principal.pr\", \"import \\\"\" + raiz + \"/mod_abs.pr\\\"\\npost(mod_abs.oi())\\n\")\n"
-  "post(os.run([sys.executable, \"principal.pr\"], capture=true))\n",
+  "post(os.run([sys.executable, \"principal.pr\"], capture=True))\n",
   "42", NULL, 0 },
 /* O rename do Windows (o do CRT) nao substituia um destino que ja existe, e o
  * mesmo `os.rename` que no Linux e no macOS troca o arquivo levantava erro. */
@@ -474,7 +474,7 @@ const Caso CASOS_CRASH[] = {
   "os.writeFile(\"v.txt\", \"velho\")\n"
   "os.rename(\"n.txt\", \"v.txt\")\n"
   "post(os.readFile(\"v.txt\"), os.exists(\"n.txt\"))\n", "novo False", NULL, 0 },
-/* `os.rmdir(force=true)` seguia link: o stat/opendir olhavam o destino, e
+/* `os.rmdir(force=True)` seguia link: o stat/opendir olhavam o destino, e
  * descer apagava o conteudo DELE — com `arvore/link -> ../alvo`, sumia
  * alvo/precioso.txt. Link (simbolico; no Windows a juncao de pasta) sai como
  * link, sem descer, como no `rm -rf`. O ramo por sistema e so o jeito de
@@ -486,23 +486,23 @@ const Caso CASOS_CRASH[] = {
   "os.writeFile(\"alvo/precioso.txt\", \"dado\")\n"
   "os.mkdir(\"arvore\")\n"
   "if sys.platform() == \"windows\" {\n"
-  "    os.cmd(\"mklink /J \\\"\" + os.cwd() + \"\\\\arvore\\\\link\\\" \\\"\" + os.cwd() + \"\\\\alvo\\\"\", true)\n"
+  "    os.cmd(\"mklink /J \\\"\" + os.cwd() + \"\\\\arvore\\\\link\\\" \\\"\" + os.cwd() + \"\\\\alvo\\\"\", True)\n"
   "} else {\n"
-  "    os.run([\"ln\", \"-s\", \"../alvo\", \"arvore/link\"], capture=true)\n"
+  "    os.run([\"ln\", \"-s\", \"../alvo\", \"arvore/link\"], capture=True)\n"
   "}\n"
   "post(len(os.ls(\"arvore\")))\n"
-  "os.rmdir(\"arvore\", force=true)\n"
+  "os.rmdir(\"arvore\", force=True)\n"
   "post(os.exists(\"arvore\"), os.readFile(\"alvo/precioso.txt\"))\n", "1\nFalse dado", NULL, 0 },
 
 { "500 parenteses aninhados sao LEGITIMOS",
   /* Sem shell (`os.run` com lista), como o dos 100 mil: a aspa simples era
    * sintaxe do sh, e o cmd.exe a toma como parte do nome do programa.
-   * `capture=true` devolve o stdout, ou o stderr se nao houve stdout. */
+   * `capture=True` devolve o stdout, ou o stderr se nao houve stdout. */
   "import os\n"
   "import sys\n"
   "src = \"post(\" + (\"(\" * 500) + \"1\" + (\")\" * 500) + \")\"\n"
   "using open(\"leg.pr\", \"w\") as f { f.write(src) }\n"
-  "post(os.run([sys.executable, \"leg.pr\"], capture=true))\n", "1", NULL, 0 },
+  "post(os.run([sys.executable, \"leg.pr\"], capture=True))\n", "1", NULL, 0 },
 { "estrutura 200 niveis funda imprime inteira",
   "x = [\"fundo\"]\n"
   "i = 0\n"

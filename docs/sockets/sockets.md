@@ -50,10 +50,10 @@ uniforme de banco/HTTP/mail.
 | `shutdown(how)` | encerra um lado: `SHUT_RD`/`SHUT_WR`/`SHUT_RDWR` |
 | `setsockopt(level, opt, valor)` | opção do socket (int ou bytes) |
 | `getsockopt(level, opt, buflen)` | lê opção → int (ou bytes, com buflen) |
-| `settimeout(t)` | prazo em segundos; `null` = bloqueante; `0` = não-bloqueante |
-| `gettimeout()` | o prazo atual (flo) ou `null` |
-| `setblocking(flag)` | `true` = `settimeout(null)`; `false` = `settimeout(0)` |
-| `getblocking()` | `true` se bloqueante (prazo `null` ou > 0) |
+| `settimeout(t)` | prazo em segundos; `Null` = bloqueante; `0` = não-bloqueante |
+| `gettimeout()` | o prazo atual (flo) ou `Null` |
+| `setblocking(flag)` | `True` = `settimeout(Null)`; `False` = `settimeout(0)` |
+| `getblocking()` | `True` se bloqueante (prazo `Null` ou > 0) |
 | `getsockname()` | endereço local → tup |
 | `getpeername()` | endereço do outro lado → tup |
 | `fileno()` | o fd cru (−1 se fechado) |
@@ -73,7 +73,7 @@ O timeout estourado dá erro com **"timed out"** na mensagem — capturável com
 |---|---|
 | `socket(family, type, proto)` | cria um socket |
 | `create_connection(endereco, timeout, source_address)` | TCP já conectado (atalho) |
-| `create_server(endereco, backlog, reuse_port)` | TCP já em listen com `SO_REUSEADDR` (no Windows sem ele: lá ele deixaria outro servidor escutar na mesma porta; `reuse_port=true` é `ValueError`, não existe `SO_REUSEPORT`) |
+| `create_server(endereco, backlog, reuse_port)` | TCP já em listen com `SO_REUSEADDR` (no Windows sem ele: lá ele deixaria outro servidor escutar na mesma porta; `reuse_port=True` é `ValueError`, não existe `SO_REUSEPORT`) |
 | `socketpair()` | par conectado (AF_UNIX; no Windows, um par TCP no loopback, `AF_INET`) → `(a, b)` |
 | `gethostname()` | nome desta máquina |
 | `getfqdn(nome)` | nome totalmente qualificado |

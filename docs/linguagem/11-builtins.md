@@ -24,7 +24,7 @@ Tudo aqui foi verificado rodando o fonte na VM em C.
 
 | Builtin | Assinatura | O que faz |
 |---|---|---|
-| `len` | `len(x)` | tamanho de `str` (em **caracteres**, não bytes: `len("olá")`→3), `list`, `tup`, `dict` ou `byte`. `len(null)` → `0`. |
+| `len` | `len(x)` | tamanho de `str` (em **caracteres**, não bytes: `len("olá")`→3), `list`, `tup`, `dict` ou `byte`. `len(Null)` → `0`. |
 | `type` | `type(x)` | nome do tipo como `str` (`"int"`, `"str"`, `"list"`, `"Null"`, nome da Entity, `"funct"`, `"type"`, `"generator"`). Igual ao método `x.type()`. |
 | `range` | `range(fim)` / `range(início, fim, passo=1)` | **lista** concreta de inteiros, `início` (inclusive) a `fim` (exclusive), de `passo` em `passo` (negativo conta pra trás). Aceita string numérica (`range("3")`) e trunca float. `passo=0` → erro. |
 
@@ -34,10 +34,10 @@ Tudo aqui foi verificado rodando o fonte na VM em C.
 
 | Builtin | Assinatura | O que faz |
 |---|---|---|
-| `str` | `str(x)` | qualquer valor → texto de renderização (o mesmo que `post` imprime): `Null`→`"Null"`, `true`→`"True"`; listas/dicts recursivos. |
+| `str` | `str(x)` | qualquer valor → texto de renderização (o mesmo que `post` imprime): `Null`→`"Null"`, `True`→`"True"`; listas/dicts recursivos. |
 | `int` | `int(x)` | → inteiro: string decimal, `flo` (**trunca** pra zero: `int(3.9)`→3), `bool`. `int()` sem argumento → `0`. String não-numérica → **`ValueError`** (`invalid literal for int() with base 10: 'abc'`) — o tipo está certo, o valor é que não serve; o `TypeError` que esta linha dizia nunca aconteceu. A **declaração** (`int z = "abc"`) não converte nada: é `AttributedValueError`, porque `"abc"` é `str` e não `int` — converter é escrever `int("abc")`. |
 | `flo` | `flo(x)` | → ponto flutuante: string numérica, `int` (`3`→`3.0`), `bool`. Lixo no fim da string é recusado (não converte "meio"). |
-| `bool` | `bool(x)` | verdade do valor: `0`, `0.0`, `""`, `[]`, `{}`, `null` são `False`; o resto `True`. |
+| `bool` | `bool(x)` | verdade do valor: `0`, `0.0`, `""`, `[]`, `{}`, `Null` são `False`; o resto `True`. |
 | `list` | `list(x)` | materializa em lista: `str`→caracteres (por codepoint), `dict`→chaves, `tup`→lista, `range`/gerador→drenados. `list()` sem arg → `[]`. |
 
 (Estes builtins são a **única** forma de converter: a declaração tipada
@@ -89,14 +89,14 @@ post(filter([1, 2, 3, 4], par))    # [2, 4]
 
 ## 11.6. Mutação de lista (in-place)
 
-Estes **alteram a própria lista** e por isso não encadeiam (devolvem o item ou `null`):
+Estes **alteram a própria lista** e por isso não encadeiam (devolvem o item ou `Null`):
 
 | Builtin | Assinatura | O que faz |
 |---|---|---|
-| `addEnd` | `addEnd(lista, item)` | anexa `item` no fim; devolve `null`. |
-| `addStart` | `addStart(lista, item)` | insere `item` no início (desloca o resto); devolve `null`. |
-| `removeEnd` | `removeEnd(lista)` | remove e devolve o **último** item; lista vazia → `null` (não é erro). |
-| `removeStart` | `removeStart(lista)` | remove e devolve o **primeiro** item; lista vazia → `null`. |
+| `addEnd` | `addEnd(lista, item)` | anexa `item` no fim; devolve `Null`. |
+| `addStart` | `addStart(lista, item)` | insere `item` no início (desloca o resto); devolve `Null`. |
+| `removeEnd` | `removeEnd(lista)` | remove e devolve o **último** item; lista vazia → `Null` (não é erro). |
+| `removeStart` | `removeStart(lista)` | remove e devolve o **primeiro** item; lista vazia → `Null`. |
 
 ```ps
 l = [1, 2, 3]
@@ -111,7 +111,7 @@ post(removeStart(l))  # 1   (e l == [2, 3, 4])
 | Builtin | Assinatura | O que faz |
 |---|---|---|
 | `gather` | `gather(a, b, …)` | espera vários `async funct` **concorrentes** e devolve os valores numa lista (na ordem). Valor comum passa direto. Aceita lista de futures. |
-| `sleep` | `sleep(segundos)` | pausa a execução pelo tempo dado (aceita fração). Devolve `null`. Dentro de uma tarefa `async`, cede; no programa principal, as tarefas pendentes andam enquanto ele dorme (§6.8). |
+| `sleep` | `sleep(segundos)` | pausa a execução pelo tempo dado (aceita fração). Devolve `Null`. Dentro de uma tarefa `async`, cede; no programa principal, as tarefas pendentes andam enquanto ele dorme (§6.8). |
 | `id` | `id(x)` | identidade do valor como `int`. Para objetos, o endereço; para imediatos, o conteúdo bruto. O número em si não é estável entre execuções — use só pra comparar identidade. |
 
 ---
@@ -121,7 +121,7 @@ post(removeStart(l))  # 1   (e l == [2, 3, 4])
 - **40 builtins**, sempre disponíveis, sem `import`. Página detalhada de cada um
   em `docs/builtins/`.
 - **I/O**: `post`, `input`, `open`, `load`.
-- **Núcleo**: `len` (conta caracteres; `len(null)`→0), `type`, `range`.
+- **Núcleo**: `len` (conta caracteres; `len(Null)`→0), `type`, `range`.
 - **Conversão**: `str`, `int`, `flo`, `bool`, `list` (ver seção 2).
 - **Número**: `abs`, `round`, `hex`, `bin`, `oct`, `ord`, `chr`, `sum`, `min`,
   `max`.

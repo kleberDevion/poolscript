@@ -1,4 +1,4 @@
-# `s.rindex(sub, inicio=0, fim=null)`
+# `s.rindex(sub, inicio=0, fim=Null)`
 
 Como rfind, mas ERRA quando não acha.
 
@@ -8,7 +8,7 @@ Como rfind, mas ERRA quando não acha.
 |---|---|---|---|
 | `sub` | str | — |  |
 | `inicio` | int | 0 | posição (em caracteres) onde a faixa de busca começa |
-| `fim` | int | null | onde a faixa termina (exclusivo); `null` = até o fim |
+| `fim` | int | `Null` | onde a faixa termina (exclusivo); `Null` = até o fim |
 
 ## Retorno
 

@@ -12,7 +12,7 @@ from jinker import request
 from jinker import cors
 
 PASTA = "/tmp/ps_jinker_teste"
-os.mkdir(PASTA + "/estatico", exist_ok=true)
+os.mkdir(PASTA + "/estatico", exist_ok=True)
 os.writeFile(PASTA + "/estatico/pagina.txt", "sou estatico")
 
 # O que NAO pode sair pela rede — cada arquivo abaixo e um jeito que JA VAZOU
@@ -20,12 +20,12 @@ os.writeFile(PASTA + "/estatico/pagina.txt", "sou estatico")
 os.writeFile(PASTA + "/segredo.txt", "FORA da pasta publicada")      # `..` sobe
 os.writeFile(PASTA + "/estatico/.env", "SENHA=nao")                 # oculto
 os.writeFile(PASTA + "/estatico/fonte.pr", "post(1)")               # fonte da lang
-os.mkdir(PASTA + "/estatico/.well-known", exist_ok=true)
+os.mkdir(PASTA + "/estatico/.well-known", exist_ok=True)
 os.writeFile(PASTA + "/estatico/.well-known/acme", "token")         # a UNICA excecao
 # A pasta fixa `/static/` e a que fica AO LADO do .pr (aqui: teste/static/),
 # nao a do diretorio de onde o servidor foi chamado. O driver roda de
 # `./pool teste/jinker_alvo.pr` na raiz do repositorio; o `/__parar` apaga.
-os.mkdir("teste/static", exist_ok=true)
+os.mkdir("teste/static", exist_ok=True)
 os.writeFile("teste/static/solto.txt", "asset solto")
 # symlink DENTRO da pasta publicada apontando pra FORA: nao tem `..` na URL,
 # so o `realpath` pega. O `os` nao cria link; quem cria e o sistema: o `ln` no
@@ -41,7 +41,7 @@ if sys.platform() == "windows"
     # Barra invertida: no `cmd.exe` a `/` abre opcao. O `\tmp\...` sem disco e
     # o mesmo `/tmp` do motor: a raiz do disco corrente.
     motivo = os.cmd("mklink \"teste\\static\\link_fora\" \""
-                    + PASTA.replace("/", "\\") + "\\segredo.txt\"", true)
+                    + PASTA.replace("/", "\\") + "\\segredo.txt\"", True)
     if not os.exists("teste/static/link_fora")
     {
         post("servidor-alvo: sem static/link_fora: " + motivo)
@@ -62,7 +62,7 @@ cors(app, options=["GET", "POST", "PUT", "DELETE", "PATCH"], origins=["http://pe
 @app.route("/ok")
 funct ok()
 {
-    return {"ok": true, "metodo": request.method}
+    return {"ok": True, "metodo": request.method}
 }
 
 @app.route("/texto")
@@ -76,7 +76,7 @@ funct texto()
 funct com_status()
 {
     r = jinker.JinkerResponse()
-    return r.status(418).json({"cha": true})
+    return r.status(418).json({"cha": True})
 }
 
 @app.route("/eco", methods=["POST", "PUT", "PATCH", "DELETE"])
@@ -187,7 +187,7 @@ funct y_dois()
 funct subir()
 {
     f = request.file("arquivo")
-    if f == null
+    if f == Null
     {
         r = jinker.JinkerResponse()
         return r.status(400).json({"erro": "sem arquivo"})
@@ -215,7 +215,7 @@ funct confere_chave()
 @app.route("/protegida", middleware=app.middleware)
 funct protegida()
 {
-    return {"entrou": true}
+    return {"entrou": True}
 }
 
 
@@ -236,7 +236,7 @@ funct emitir()
 }
 
 # Socket SEM canal: o `return` do handler volta pro REMETENTE da mensagem.
-# `app.socket().emit(...)` é pro caso de CANAL (`channel=true`), onde a mensagem
+# `app.socket().emit(...)` é pro caso de CANAL (`channel=True`), onde a mensagem
 # vai pra todo mundo inscrito — sem canal não há a quem emitir, e o cliente
 # ficava esperando um eco que nunca vinha.
 @app.socket("/ws")
@@ -258,18 +258,18 @@ funct ws_lento()
 
 # Socket LONGO antes do curto com o mesmo parametro: a conexao em `/chat/geral`
 # tem que entrar na sala automatica `geral` (mesmo reset de params das rotas).
-@app.socket("/chat/<sala>/admin", channel=true)
+@app.socket("/chat/<sala>/admin", channel=True)
 funct chat_admin()
 {
     return "admin"
 }
 
-@app.socket("/chat/<sala>", channel=true)
+@app.socket("/chat/<sala>", channel=True)
 funct chat()
 {
     sala = request.path_param("sala")
     send = app.socket()
-    send.emit(payload={"emit": sala}, room_id=sala, exclude_self=false)
+    send.emit(payload={"emit": sala}, room_id=sala, exclude_self=False)
     return "ret:" + str(sala)
 }
 
@@ -299,7 +299,7 @@ model Cadastro() {
     idade:    int(min=18, max=120)
     papel:    str(in=["admin", "user"])
     status:   str(not_in=["banido"])
-    apelido:  str(optional=true)
+    apelido:  str(optional=True)
     endereco: Endereco
     tags:     list(of=str, length=3)
 }
@@ -351,16 +351,16 @@ funct verbo_patch(id)
 @app.post("/cookie-sai")
 funct cookie_sai()
 {
-    return jinker.JinkerResponse().send({"ok": true}).cookie("sid", "", max_age=0)
+    return jinker.JinkerResponse().send({"ok": True}).cookie("sid", "", max_age=0)
 }
 
 @app.route("/cookie-poe")
 funct cookie_poe()
 {
     return jinker.JinkerResponse()
-           .send({"ok": true})
+           .send({"ok": True})
            .cookie("sid", "abc123", max_age=3600)
-           .cookie("tema", "escuro", httponly=false, path="/x")
+           .cookie("tema", "escuro", httponly=False, path="/x")
 }
 
 # O default nao pode sumir porque OUTRO parametro foi nomeado. Nomear
@@ -386,8 +386,8 @@ funct vazio()
 funct cookie_defaults()
 {
     return jinker.JinkerResponse()
-           .send({"ok": true})
-           .cookie("d_secure", "1", secure=true)
+           .send({"ok": True})
+           .cookie("d_secure", "1", secure=True)
            .cookie("d_samesite", "1", samesite="Strict")
            .cookie("d_domain", "1", domain="e.com")
 }
@@ -406,7 +406,7 @@ funct cookie_le()
 # empilhado embaixo do registrador, path param chegando no método, middleware
 # na forma `middleware=app.middleware`. A suíte sem servidor não tem como ver
 # nada disso — é aqui, pelo HTTP, que se sabe se funciona.
-bool trava_cls = false
+bool trava_cls = False
 
 funct controla(func)
 {
@@ -415,12 +415,12 @@ funct controla(func)
         while trava_cls {
             sleep(0.05)
         }
-        trava_cls = true
+        trava_cls = True
         try {
             return func(*args, **kwargs)
         }
         finally {
-            trava_cls = false
+            trava_cls = False
         }
     }
     return envolve
@@ -437,7 +437,7 @@ public class PainelAlvo
     @controla
     public funct login(self)
     {
-        return {"ok": true, "travado": trava_cls}
+        return {"ok": True, "travado": trava_cls}
     }
 
     @app.get("/cls/item/:id")
@@ -487,7 +487,7 @@ async funct rota_await_helper()
 }
 
 
-# `os.run(capture=true)` DENTRO da rota: a espera do filho não pode segurar o
+# `os.run(capture=True)` DENTRO da rota: a espera do filho não pode segurar o
 # worker (é um só aqui). Antes o `roda_processo` esperava na própria fibra e
 # toda outra requisição ficava na fila atrás do comando.
 # O filho é o próprio binário dormindo 3 s, não o `sleep` do sistema: o Windows
@@ -496,8 +496,8 @@ async funct rota_await_helper()
 @app.route("/lento")
 funct lento()
 {
-    os.run([sys.executable, "-e", "sleep(3)"], capture=true)
-    return {"lento": true}
+    os.run([sys.executable, "-e", "sleep(3)"], capture=True)
+    return {"lento": True}
 }
 
 
@@ -506,7 +506,7 @@ funct lento()
 funct parar()
 {
     post("servidor-alvo: parando a pedido do driver")
-    os.rmdir("teste/static", force=true)
+    os.rmdir("teste/static", force=True)
     sys.exit(0)
 }
 
@@ -521,7 +521,7 @@ async funct tarefa_antes_do_servidor()
 {
     global TAREFA_ANTES
     # o filho é o próprio binário, como na `/lento`: o Windows não tem `sleep`
-    os.run([sys.executable, "-e", "sleep(0.3)"], capture=true)
+    os.run([sys.executable, "-e", "sleep(0.3)"], capture=True)
     TAREFA_ANTES = "terminou"
 }
 
@@ -535,5 +535,5 @@ funct tarefa_antes()
 # bloco em silêncio (ver `casos_pendentes.c`, "if __name__ no estilo Allman").
 if __name__ == "main" {
     tarefa_pendente = tarefa_antes_do_servidor()
-    app(debug=false, host="127.0.0.1", port=28952)
+    app(debug=False, host="127.0.0.1", port=28952)
 }

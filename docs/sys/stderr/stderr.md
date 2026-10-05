@@ -5,7 +5,7 @@ Igual ao [`sys.stdout`](../stdout/stdout.md), mas escreve na **saída de erro**
 
 ```
 import sys
-sys.stderr.write(texto, end=false)
+sys.stderr.write(texto, end=False)
 sys.stderr.writeln(texto)
 sys.stderr.flush()
 ```
@@ -18,7 +18,7 @@ Os mesmos do `stdout`:
 
 | Método | O que faz |
 |---|---|
-| `.write(texto, end=false)` | escreve sem quebra de linha |
+| `.write(texto, end=False)` | escreve sem quebra de linha |
 | `.writeln(texto)` | escreve com quebra de linha |
 | `.flush()` | força aparecer agora |
 

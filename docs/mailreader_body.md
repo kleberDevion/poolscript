@@ -67,7 +67,7 @@ cada item do resultado ganha a chave `"body"`.
 Uso:
 
 ```
-emails = reader.select("INBOX").search("UNSEEN", include_body=true)
+emails = reader.select("INBOX").search("UNSEEN", include_body=True)
 for each e in emails {
     post(e["subject"] ": " e["body"])
 }
@@ -173,7 +173,7 @@ sempre funcionou, o que não funcionava era acento — e agora funciona.**
 reader = mail.MailReader()
 reader.conn("imap.meuservidor.com")  # porta 993
 reader.login("user@gmail.com", "senha-de-app")
-reader.select("INBOX", true)          # readonly=true por padrão
+reader.select("INBOX", True)          # readonly=True por padrão
 
 # busca só metadado (rápido, é o default)
 emails = reader.search("SUBJECT", "Relatório, urgente")
@@ -182,7 +182,7 @@ emails = reader.search("SUBJECT", "Relatório, urgente")
 corpo = reader.body(emails[0]["id"])
 
 # ou corpo já embutido em todos os resultados
-com_corpo = reader.select().search("SUBJECT", "fatura", limit=20, include_body=true)
+com_corpo = reader.select().search("SUBJECT", "fatura", limit=20, include_body=True)
 post(com_corpo[0]["body"])
 
 reader.close()
@@ -213,7 +213,7 @@ reader.close()
 
 A suíte em C (`teste/`, rodada por `make check`) cobre:
 
-- `include_body=true` de fato pede `(RFC822)` em vez de `(RFC822.HEADER)`,
+- `include_body=True` de fato pede `(RFC822)` em vez de `(RFC822.HEADER)`,
   e sem ele o campo `"body"` nem aparece no dict de resultado.
 - `.body()` com mensagem `multipart/alternative` (plain + html) devolve o
   plain.

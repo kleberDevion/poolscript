@@ -1,16 +1,16 @@
-# `MailMessage.body(content, is_html=false)`
+# `MailMessage.body(content, is_html=False)`
 
 Define o **corpo** do e-mail — o texto principal. Pode ser texto simples ou
 HTML.
 
 ```
-m.body(content, is_html: bool = false) -> None
+m.body(content, is_html: bool = False) -> Null
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
 | `content` | — | o corpo (texto, HTML, ou bytes de um arquivo) |
-| `is_html` | `false` | `true` = o conteúdo é HTML e vai ser renderizado |
+| `is_html` | `False` | `True` = o conteúdo é HTML e vai ser renderizado |
 
 ---
 
@@ -23,10 +23,10 @@ m.body("Olá! Segue o relatório em anexo.")
 ## HTML
 
 ```
-m.body("<h1>Olá!</h1><p>Segue o <b>relatório</b>.</p>", is_html=true)
+m.body("<h1>Olá!</h1><p>Segue o <b>relatório</b>.</p>", is_html=True)
 ```
 
-Com `is_html=true`, o cliente de e-mail renderiza as tags (negrito, links,
+Com `is_html=True`, o cliente de e-mail renderiza as tags (negrito, links,
 imagens…). Sem, o texto aparece cru.
 
 ---

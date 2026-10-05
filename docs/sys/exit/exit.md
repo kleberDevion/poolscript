@@ -3,7 +3,7 @@
 Encerra o programa imediatamente, com um código de saída.
 
 ```
-sys.exit(code: int = 0) -> None
+sys.exit(code: int = 0) -> Null
 ```
 
 | Parâmetro | Padrão | O que é |

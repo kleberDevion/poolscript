@@ -332,16 +332,16 @@ PREAMBULO = ("funct ordena(l) {\n"
     + "    i = 1\n"
     + "    while i < len(l) {\n"
     + "        if l[i - 1] > l[i] {\n"
-    + "            return false\n"
+    + "            return False\n"
     + "        }\n"
     + "        i = i + 1\n"
     + "    }\n"
-    + "    return true\n"
+    + "    return True\n"
     + "}\n"
     + "funct ehcopia(l) {\n"
     + "    c = l.copy()\n"
     + "    if c != l {\n"
-    + "        return false\n"
+    + "        return False\n"
     + "    }\n"
     + "    addEnd(c, 12345)\n"
     + "    return len(c) == (len(l) + 1)\n"
@@ -349,10 +349,10 @@ PREAMBULO = ("funct ordena(l) {\n"
     + "funct todos_dentro(l) {\n"
     + "    for each v in l {\n"
     + "        if not l.contains(v) {\n"
-    + "            return false\n"
+    + "            return False\n"
     + "        }\n"
     + "    }\n"
-    + "    return true\n"
+    + "    return True\n"
     + "}\n"
     + "funct tamanho_apos_append(l) {\n"
     + "    c = l.copy()\n"
@@ -382,16 +382,16 @@ PREAMBULO = ("funct ordena(l) {\n"
     + "}\n"
     + "funct iguais_item_a_item(l, t) {\n"
     + "    if len(l) != len(t) {\n"
-    + "        return false\n"
+    + "        return False\n"
     + "    }\n"
     + "    i = 0\n"
     + "    while i < len(l) {\n"
     + "        if l[i] != t[i] {\n"
-    + "            return false\n"
+    + "            return False\n"
     + "        }\n"
     + "        i = i + 1\n"
     + "    }\n"
-    + "    return true\n"
+    + "    return True\n"
     + "}\n"
     + "funct monta(l) {\n"
     + "    d = {}\n"
@@ -408,10 +408,10 @@ PREAMBULO = ("funct ordena(l) {\n"
     + "    d = dict(lista_pares)\n"
     + "    for each v in l {\n"
     + "        if d[str(v)] != v {\n"
-    + "            return false\n"
+    + "            return False\n"
     + "        }\n"
     + "    }\n"
-    + "    return true\n"
+    + "    return True\n"
     + "}\n"
     # O denso do dict tem BURACOS depois de remover. Copiar varrendo `count` em
     # vez de `usados` lê as posições erradas e entrega dict furado EM SILÊNCIO —
@@ -419,16 +419,16 @@ PREAMBULO = ("funct ordena(l) {\n"
     + "funct copia_apos_remocao(l) {\n"
     + "    d = monta(l)\n"
     + "    if len(d) < 2 {\n"
-    + "        return true\n"
+    + "        return True\n"
     + "    }\n"
     + "    ks = d.keys()\n"
     + "    d.pop(ks[0])\n"
     + "    c = dict(d)\n"
     + "    if len(c) != len(d) {\n"
-    + "        return false\n"
+    + "        return False\n"
     + "    }\n"
     + "    if ks[0] in c {\n"
-    + "        return false\n"
+    + "        return False\n"
     + "    }\n"
     + "    return c == d\n"
     + "}\n"
@@ -442,15 +442,15 @@ PREAMBULO = ("funct ordena(l) {\n"
     + "funct tupla_recusa_escrita(l) {\n"
     + "    t = tup(l)\n"
     + "    if len(t) == 0 {\n"
-    + "        return true\n"
+    + "        return True\n"
     + "    }\n"
     + "    try {\n"
     + "        t[0] = 999\n"
     + "    }\n"
     + "    catch (e) {\n"
-    + "        return true\n"
+    + "        return True\n"
     + "    }\n"
-    + "    return false\n"
+    + "    return False\n"
     + "}\n"
     + "funct closure_soma(n) {\n"
     + "    x = n\n"
@@ -594,7 +594,7 @@ async funct vigia(p, estado) {
     fim = date.monotonic() + PRAZO
     while not estado["acabou"] {
         if date.monotonic() >= fim {
-            estado["estourou"] = true
+            estado["estourou"] = True
             p.kill()
             return
         }
@@ -629,11 +629,11 @@ funct executa(arquivo) {
     }
     using filho as p {
         p.close()
-        estado = {"acabou": false, "estourou": false}
+        estado = {"acabou": False, "estourou": False}
         vigia(p, estado)
         canais = gather(junta_saida(p), junta_erro(p))
         rc = p.wait()
-        estado["acabou"] = true
+        estado["acabou"] = True
     }
     if estado["estourou"] {
         rc = 124
@@ -649,7 +649,7 @@ funct executa(arquivo) {
 # na pasta de onde se roda.
 funct encerra(codigo) {
     if os.exists(TMP) {
-        os.rmdir(TMP, force=true)
+        os.rmdir(TMP, force=True)
     }
     sys.exit(codigo)
 }
@@ -698,7 +698,7 @@ CANDIDATOS_L = [[], [0], [1], [1, 0], [0, 0], [-1, 1]]
 funct ainda_falha(forma) {
     af_r = roda_lote([[forma, ""]], "shrink")
     if af_r[0] != 0 {
-        return true
+        return True
     }
     return "FALHOU 0" in af_r[1]
 }
@@ -806,9 +806,9 @@ if __name__ == "main" {
     }
 
     if os.exists(TMP) {
-        os.rmdir(TMP, force=true)
+        os.rmdir(TMP, force=True)
     }
-    os.mkdir(TMP, exist_ok=true)
+    os.mkdir(TMP, exist_ok=True)
 
     rodadas = 300
     if len(sys.argv) > 1 {
@@ -919,7 +919,7 @@ if __name__ == "main" {
     # GRAVA cada lei que caiu, uma por arquivo, com a forma exata. O nome sai do
     # id da lei; regravar o mesmo arquivo é de propósito — o valor mais recente
     # que falhou é tão bom quanto o primeiro, e assim a pasta não cresce sem fim.
-    os.mkdir(ACHADOS, exist_ok=true)
+    os.mkdir(ACHADOS, exist_ok=True)
     gravados = 0
     for each a in achados {
         nome = ""

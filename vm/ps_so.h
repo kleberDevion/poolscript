@@ -171,7 +171,7 @@ int ps_socketpair(int par[2]);
 typedef struct PsWPty PsWPty;
 typedef struct {
     void   *h;      /* HANDLE do processo; NULL depois de solto */
-    PsWPty *pty;    /* o pseudoconsole (pty=true), senão NULL */
+    PsWPty *pty;    /* o pseudoconsole (pty=True), senão NULL */
     int     pid;
 } PsWProc;
 
@@ -280,7 +280,7 @@ static inline int ps_sock_espera_leitura(int fd, int ms)
  * dispositivo de caractere, o NUL inclusive (é nele que fica o stdin de quem
  * roda sem terminal: serviço, CI, `< NUL`), e também pra descritor sem handle
  * padrão. Lá a pergunta vai ao console: só um handle de console (o do
- * pseudoconsole do `pty=true` também) responde ao `GetConsoleMode`. */
+ * pseudoconsole do `pty=True` também) responde ao `GetConsoleMode`. */
 #if defined(PS_SO_WINDOWS)
 static inline int ps_e_terminal(int fd)
 {

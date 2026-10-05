@@ -38,30 +38,30 @@ TEXTO = [".pr", ".md", ".c", ".h", ".js", ".sh"]
 funct eh_texto(nome) {
     ponto = nome.rfind(".")
     if ponto < 0 {
-        return false
+        return False
     }
     ext = nome[ponto:]
     for each e in TEXTO {
         if ext == e {
-            return true
+            return True
         }
     }
-    return false
+    return False
 }
 
 
 funct char_de_nome(c) {
     if c == "" {
-        return false
+        return False
     }
     if c >= "a" and c <= "z" {
-        return true
+        return True
     }
     if c >= "A" and c <= "Z" {
-        return true
+        return True
     }
     if c >= "0" and c <= "9" {
-        return true
+        return True
     }
     return c == "_"
 }
@@ -72,16 +72,16 @@ funct char_de_nome(c) {
 # que é colado na palavra sem ser parte dela.
 funct borda_antes(texto, i) {
     if i == 0 {
-        return true
+        return True
     }
     antes = texto[i - 1]
     if not char_de_nome(antes) {
-        return true
+        return True
     }
     if (antes == "n" or antes == "t") and i >= 2 and texto[i - 2] == "\\" {
-        return true
+        return True
     }
-    return false
+    return False
 }
 
 
@@ -287,10 +287,10 @@ funct varre(dir, arquivos) {
         nome = ent["name"]
         caminho = dir + "/" + nome
         if ent["type"] == "dir" {
-            pula = false
+            pula = False
             for each p in PULA_PASTA {
                 if nome == p {
-                    pula = true
+                    pula = True
                 }
             }
             if not pula {
@@ -298,10 +298,10 @@ funct varre(dir, arquivos) {
             }
             continue
         }
-        pula_arq = false
+        pula_arq = False
         for each p in PULA_ARQUIVO {
             if nome == p {
-                pula_arq = true
+                pula_arq = True
             }
         }
         if eh_texto(nome) and not pula_arq {
@@ -394,18 +394,18 @@ funct pasta_libs() {
 
 funct principal() {
     alvos = []
-    aplica = false
-    confere = false
-    libs = false
+    aplica = False
+    confere = False
+    libs = False
     i = 1
     while i < len(sys.argv) {
         a = sys.argv[i]
         if a == "--aplica" {
-            aplica = true
+            aplica = True
         } elif a == "--confere" {
-            confere = true
+            confere = True
         } elif a == "--libs" {
-            libs = true
+            libs = True
         } elif a == "--sem" {
             i = i + 1
             if i >= len(sys.argv) {

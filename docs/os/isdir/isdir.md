@@ -1,7 +1,7 @@
 # `os.isdir(path)`
 
 Diz se o caminho existe **e é uma pasta** (não um arquivo). Devolve
-`true`/`false`.
+`True`/`False`.
 
 ```
 os.isdir(path: str) -> bool
@@ -23,7 +23,7 @@ if (os.isdir("uploads")) {
 }
 ```
 
-Retorna `false` pra caminho inexistente ou pra um **arquivo** — só `true` pra
+Retorna `False` pra caminho inexistente ou pra um **arquivo** — só `True` pra
 pasta.
 
 ---

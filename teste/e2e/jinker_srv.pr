@@ -27,7 +27,7 @@ ESTATICA = PASTA + "/static"
 # handler que não rodou. Sobra existe: no Windows o `kill()` do e2e_roda é
 # TerminateProcess, e a limpeza do fim (lá embaixo) não chega a rodar.
 if os.exists(PASTA) {
-    os.rmdir(PASTA, force=true)
+    os.rmdir(PASTA, force=True)
 }
 os.mkdir(ESTATICA)
 using open(ESTATICA + "/pagina.txt", "w") as f {
@@ -50,7 +50,7 @@ funct confere() {
 
 @app.route("/protegida", middleware=app.middleware)
 funct protegida() {
-    return {"entrou": true}
+    return {"entrou": True}
 }
 
 @app.route("/cors-info")
@@ -110,7 +110,7 @@ funct metodo() {
 funct st() {
     # JinkerResponse montado em etapas: status + header + json
     r = jinker.JinkerResponse()
-    return r.status(418).header("X-Bule", "sim").json({"cha": true})
+    return r.status(418).header("X-Bule", "sim").json({"cha": True})
 }
 
 @app.route("/tupla")
@@ -162,7 +162,7 @@ funct ups() {
 # ── WebSocket: SocketNamespace / SocketEmitter / ChannelManager ─────────────
 # socket SEM canal: o `return` do handler volta pro REMETENTE daquela mensagem.
 # É o único jeito de responder a quem mandou sem estar num canal (o emit só
-# alcança conexão com channel=true).
+# alcança conexão com channel=True).
 @app.socket("/ws")
 funct ws_handler() {
     using open(PASTA + "/ps_ws_sem_canal.txt", "w") as f {
@@ -171,12 +171,12 @@ funct ws_handler() {
     return "eco: " + jinker.request.text()
 }
 
-# canal de verdade: `channel=true` põe a conexão no broadcast. É o caso dos
+# canal de verdade: `channel=True` põe a conexão no broadcast. É o caso dos
 # "dois terminais" — quem está só ouvindo tem que receber o que o outro manda.
-@app.socket("/sala", channel=true)
+@app.socket("/sala", channel=True)
 funct ws_sala() {
     envia = app.socket()
-    envia.emit(jinker.request.text(), exclude_self=false)
+    envia.emit(jinker.request.text(), exclude_self=False)
     using open(PASTA + "/ps_ws_status.txt", "w") as f {
         f.write(str(envia.status_send()) + "|" + str(app.socket.status_send()))
     }
@@ -206,9 +206,9 @@ if __name__ == "main" {
     # o `kill()` é TerminateProcess: o processo morre sem passar por aqui, e a
     # sobra sai no começo da rodada seguinte (lá em cima).
     try {
-        app(debug=false, host="127.0.0.1", port=28840)
+        app(debug=False, host="127.0.0.1", port=28840)
     }
     finally {
-        os.rmdir(PASTA, force=true)
+        os.rmdir(PASTA, force=True)
     }
 }

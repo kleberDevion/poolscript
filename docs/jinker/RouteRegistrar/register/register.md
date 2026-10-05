@@ -35,7 +35,7 @@ Os exemplos desta página pressupõem:
 import jinker
 from jinker import jsonify
 app = jinker.Jinker(__name__)
-funct trata() { return jsonify({"ok": true}) }
+funct trata() { return jsonify({"ok": True}) }
 funct trata_a() { return "a" }
 funct trata_b() { return "b" }
 ```
@@ -71,7 +71,7 @@ from jinker import Jinker, jsonify
 app = Jinker(__name__)
 
 funct trata() {
-    return jsonify({"ok": true})
+    return jsonify({"ok": True})
 }
 
 app.get("/manual").register(trata)      # idêntico a @app.get("/manual")

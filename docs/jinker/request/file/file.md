@@ -1,10 +1,10 @@
-# `request.file(field, allowed=None)`
+# `request.file(field, allowed=Null)`
 
 Pega **um arquivo enviado** por upload (formulário `multipart/form-data`).
 Devolve um `PoolFileUpload` ou `Null` se o campo não tiver arquivo.
 
 ```
-request.file(field: str, allowed: list = None) -> PoolFileUpload | Null
+request.file(field: str, allowed: list = Null) -> PoolFileUpload | Null
 ```
 
 | Parâmetro | O que é |

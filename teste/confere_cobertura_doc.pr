@@ -153,10 +153,10 @@ funct documenta(linha, nome) {
 
 
 if __name__ == "main" {
-    # Sem shell (`os.run` com lista, capture=true devolve o stdout): o
+    # Sem shell (`os.run` com lista, capture=True devolve o stdout): o
     # `os.cmd` com `> /tmp/...` era sintaxe do sh, e no Windows o cmd.exe não
     # tem /tmp.
-    meta = json.parse(os.run([sys.executable, "--metadata"], capture=true))
+    meta = json.parse(os.run([sys.executable, "--metadata"], capture=True))
 
     # Um nome pode ser módulo E tipo (`socket` é o tipo, `sockets` o módulo;
     # `bytes` já foi os dois). Somar as listas em vez de sobrescrever: com

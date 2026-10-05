@@ -93,7 +93,7 @@ async funct junta_erro(p) {
 # `p`.
 funct mata(p) {
     if WINDOWS {
-        os.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture=true)
+        os.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture=True)
     }
     p.kill()
 }
@@ -108,7 +108,7 @@ async funct vigia(p, estado) {
     fim = date.monotonic() + PRAZO
     while not estado["acabou"] {
         if date.monotonic() >= fim {
-            estado["estourou"] = true
+            estado["estourou"] = True
             mata(p)
             return
         }
@@ -129,11 +129,11 @@ async funct vigia(p, estado) {
 funct executa(args) {
     using os.run(args, capture="live") as p {
         p.close()
-        estado = {"acabou": false, "estourou": false}
+        estado = {"acabou": False, "estourou": False}
         vigia(p, estado)
         canais = gather(junta_saida(p), junta_erro(p))
         rc = p.wait()
-        estado["acabou"] = true
+        estado["acabou"] = True
     }
     if estado["estourou"] {
         rc = 124
@@ -198,7 +198,7 @@ funct abortou(rc) {
 # que deixava o arquivo aberto até o coletor passar.
 funct encerra(codigo) {
     if os.exists(PASTA) {
-        os.rmdir(PASTA, force=true)
+        os.rmdir(PASTA, force=True)
     }
     sys.exit(codigo)
 }
@@ -214,7 +214,7 @@ funct tem(cmd, arg) {
     try {
         return executa([cmd, arg])[0] == 0
     } catch (IOError e) {
-        return false
+        return False
     }
 }
 
@@ -338,7 +338,7 @@ if __name__ == "main" {
 
     # a rodada começa do ZERO: a sobra de uma que caiu no meio sai antes
     if os.exists(PASTA) {
-        os.rmdir(PASTA, force=true)
+        os.rmdir(PASTA, force=True)
     }
     os.mkdir(PASTA)
 
@@ -555,26 +555,26 @@ if __name__ == "main" {
         caixa = le_caixa()
     }
     erros = erros + conf("IMAP: autenticou", "LOGIN_OK" in caixa, caixa)
-    # `select(readonly=true)` é o padrão e vira EXAMINE, não SELECT
+    # `select(readonly=True)` é o padrão e vira EXAMINE, não SELECT
     erros = erros + conf("IMAP: readonly padrao manda EXAMINE",
                          "EXAMINE" in caixa, caixa)
     erros = erros + conf("IMAP: encerrou com CLOSE e LOGOUT",
                          "CLOSE" in caixa and "LOGOUT" in caixa, caixa)
 
-    # readonly=false tem que mandar SELECT
+    # readonly=False tem que mandar SELECT
     porta = sobe("teste/imap_falso.py")
     r = roda("import mail\n"
              + "r = mail.MailReader()\n"
              + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
              + "r.login(\"teste@local\", \"segredo123\")\n"
-             + "r.select(\"INBOX\", readonly=false)\n"
+             + "r.select(\"INBOX\", readonly=False)\n"
              + "r.close()\n"
              + "post(\"OK\")\n", "PS_MAIL_TLS_INSEGURO=1")
     caixa = ""
     if os.exists(CAIXA) {
         caixa = le_caixa()
     }
-    erros = erros + conf("IMAP: readonly=false manda SELECT",
+    erros = erros + conf("IMAP: readonly=False manda SELECT",
                          "C A2 SELECT" in caixa, caixa)
 
     # Busca com TERMO tem DOIS caminhos no motor, e quem escolhe é
@@ -713,7 +713,7 @@ if __name__ == "main" {
     #     fread (EISDIR). Ninguém olhava o ferror: o anexo saía com ZERO byte
     #     e o método devolvia True. Relatório em anexo que ninguém confere
     #     depois é exatamente onde isso passa despercebido.
-    os.mkdir(PASTA_COMO_ANEXO, exist_ok=true)
+    os.mkdir(PASTA_COMO_ANEXO, exist_ok=True)
     r = roda("import mail\n"
              + "m = mail.MailMessage()\n"
              + "post(\"attach:\", m.attach(\"" + PASTA_COMO_ANEXO + "\"))\n", "")

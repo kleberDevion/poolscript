@@ -46,7 +46,7 @@ Exportado pela lib caso você queira checar o tipo:
 
 ```
 from jinker import JinkerRequest
-# request is JinkerRequest  → true dentro de uma rota
+# request is JinkerRequest  → True dentro de uma rota
 ```
 
 ---

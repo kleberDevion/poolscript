@@ -1,4 +1,4 @@
-# `s.count(sub, inicio=0, fim=null)`
+# `s.count(sub, inicio=0, fim=Null)`
 
 Quantas ocorrências (sem sobreposição) da substring.
 
@@ -8,7 +8,7 @@ Quantas ocorrências (sem sobreposição) da substring.
 |---|---|---|---|
 | `sub` | str | — |  |
 | `inicio` | int | 0 | posição (em caracteres) onde começa a contar |
-| `fim` | int | null | onde para (exclusivo); `null` = até o fim |
+| `fim` | int | `Null` | onde para (exclusivo); `Null` = até o fim |
 
 ## Retorno
 

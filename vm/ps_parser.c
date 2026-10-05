@@ -3348,7 +3348,7 @@ static PSNode *statement_no(P *p)
             if (aceita(p, T_LPAREN)) {
                 /* Os parâmetros do campo — o que valida o DADO, não só a
                  * estrutura: `length=N`, `regex="…"`, `in=[…]`, `not_in=[…]`,
-                 * `min=N`, `max=N`, `optional=true`, `of=T`. Vírgula entre
+                 * `min=N`, `max=N`, `optional=True`, `of=T`. Vírgula entre
                  * eles, qualquer ordem. `length` fica em `i2` como sempre; os
                  * outros viram nós filhos (`lista`: nome em `texto`, valor em
                  * `a`) — o `--ast` genérico já os emite, então o editor os vê.

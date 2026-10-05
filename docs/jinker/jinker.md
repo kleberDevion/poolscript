@@ -61,7 +61,7 @@ funct somar() {
 
 if __name__ == "main" {                   # 4. sobe o servidor
     porta = int(os.getenv("PORT", "8080"))
-    app(debug=true, host="0.0.0.0", port=porta)
+    app(debug=True, host="0.0.0.0", port=porta)
 }
 ```
 

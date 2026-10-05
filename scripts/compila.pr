@@ -64,7 +64,7 @@ funct roda(linha) {
 
 # A saída de uma linha de sh, sem as quebras das pontas.
 funct sai(linha) {
-    return os.run(["sh", "-c", linha], capture=true)
+    return os.run(["sh", "-c", linha], capture=True)
 }
 
 
@@ -179,7 +179,7 @@ funct remoto(alvo) {
     if roda("gh run watch " + id + " --exit-status") != 0 {
         falha("o build do " + alvo + " reprovou — gh run view " + id + " --log-failed")
     }
-    os.mkdir("dist", exist_ok=true)
+    os.mkdir("dist", exist_ok=True)
     if roda("gh run download " + id + " -n " + ARTEFATO[alvo] + " -D dist") != 0 {
         falha("nao consegui baixar o pacote")
     }

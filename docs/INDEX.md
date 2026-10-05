@@ -22,7 +22,7 @@ Neovim…) com completion type-aware e diagnóstico do parser real, veja
   (`isdigit`…), e regex integrado (`match`/`findall`/`sub`).
 - **[list methods](list/list.md)** — `append`/`extend`/`insert`, `pop`/`remove`,
   `sort`/`reverse`, `index`/`count`/`contains`, `copy`, `len`. A maioria **muta
-  a lista** e devolve `null`.
+  a lista** e devolve `Null`.
 - **[dict methods](dict/dict.md)** — `keys`/`values` (ou `value`)/`items`,
   `get` (com default), `has`, `pop`, `update`, `copy`, `len`. `x in d` testa a
   **chave**; pro **valor**, `x in d.value()`.

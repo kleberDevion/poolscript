@@ -1,9 +1,9 @@
-# `MongoCollection.count(query=None)`
+# `MongoCollection.count(query=Null)`
 
 Conta quantos documentos batem com o filtro. Devolve um int.
 
 ```
-col.count(query: dict = None) -> int
+col.count(query: dict = Null) -> int
 ```
 
 ---
@@ -12,7 +12,7 @@ col.count(query: dict = None) -> int
 
 ```
 total = col.count()                    # todos
-ativos = col.count({"ativo": true})    # só os que batem
+ativos = col.count({"ativo": True})    # só os que batem
 post(ativos, "produtos ativos")
 ```
 

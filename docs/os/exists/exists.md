@@ -1,6 +1,6 @@
 # `os.exists(path)`
 
-Diz se um caminho **existe** — seja arquivo ou pasta. Devolve `true`/`false`.
+Diz se um caminho **existe** — seja arquivo ou pasta. Devolve `True`/`False`.
 
 ```
 os.exists(path: str) -> bool
@@ -24,7 +24,7 @@ if (os.exists("config.json")) {
 
 ## `exists` vs `isfile` vs `isdir`
 
-| Função | `true` quando… |
+| Função | `True` quando… |
 |---|---|
 | `os.exists(x)` | existe (arquivo **ou** pasta) |
 | [`os.isfile(x)`](../isfile/isfile.md) | existe **e** é arquivo |

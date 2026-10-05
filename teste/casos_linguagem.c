@@ -390,13 +390,13 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "post(z)\n", "1", "name 'z' is not defined", 1 },
 { "variável de bloco não vaza",
-  "if true {\n"
+  "if True {\n"
   "    dentro = 5\n"
   "}\n"
   "post(dentro)\n", "", "name 'dentro' is not defined", 1 },
 { "atribuir nome de fora dentro do bloco altera o de fora",
   "x = 1\n"
-  "if true {\n"
+  "if True {\n"
   "    x = 2\n"
   "}\n"
   "post(x)\n", "2", NULL, 0 },
@@ -437,10 +437,10 @@ const Caso CASOS_LINGUAGEM[] = {
   "k = \"a\"\nfunct f() {\n    return \"z\"\n}\npost({k + \"x\": 2, f(): 1})\n",
   "{'ax': 2, 'z': 1}", NULL, 0 },
 { "dict: chave com aspas segue texto",
-  "post({\"tls\": true})\n",
+  "post({\"tls\": True})\n",
   "{'tls': True}", NULL, 0 },
 { "dict: chave nua que o arquivo não liga é NameError antes de rodar",
-  "post({tls: true})\n",
+  "post({tls: True})\n",
   "", "NameError: name 'tls' is not defined", 2 },
 { "dict: chave nua que é nome de tipo segue o objeto tipo",
   "post({str: 1})\n",
@@ -449,7 +449,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "a = \"x\"\nb = \"y\"\npost({a: {b: 1}})\n",
   "{'x': {'y': 1}}", NULL, 0 },
 { "dict: número e bool como chave (true encontra 1)",
-  "post({1: \"a\", 2.5: \"b\", true: \"c\"})\n",
+  "post({1: \"a\", 2.5: \"b\", True: \"c\"})\n",
   "{1: 'c', 2.5: 'b'}", NULL, 0 },
 { "dict: in olha a chave",
   "d = { \"nome\": \"ana\", \"idade\": 30 }\npost(\"nome\" in d, \"ana\" in d)\n", "True False", NULL, 0 },
@@ -502,7 +502,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "x = [1, 2]\n"
   "post(x is list, x is not dict)\n", "True True True\nTrue True", NULL, 0 },
 { "is Null e o idioma de ausencia, e fica",
-  /* equivale ao `x is None` do Python; `type(null)` e literalmente "Null" */
+  /* `type(Null)` e literalmente "Null" */
   "x = Null\npost(x is Null)\n", "True", NULL, 0 },
 { "is com NOME a direita continua valendo",
   /* o nome pode guardar um tipo — so o literal e recusado */
@@ -684,13 +684,13 @@ const Caso CASOS_LINGUAGEM[] = {
   "funct mutuo(n) {\n"
   "    funct par(k) {\n"
   "        if k == 0 {\n"
-  "            return true\n"
+  "            return True\n"
   "        }\n"
   "        return impar(k - 1)\n"
   "    }\n"
   "    funct impar(k) {\n"
   "        if k == 0 {\n"
-  "            return false\n"
+  "            return False\n"
   "        }\n"
   "        return par(k - 1)\n"
   "    }\n"
@@ -793,7 +793,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "    post(\"tarefa\")\n"
   "}\n"
   "f = t()\n"
-  "os.run([\"sleep\", \"0.4\"], capture=true)\n"
+  "os.run([\"sleep\", \"0.4\"], capture=True)\n"
   "post(\"principal\")\n",
   "tarefa\nprincipal", NULL, 0 },
 /* A doc prometia que a tarefa roda "ate o primeiro ponto em que cede — sleep,
@@ -802,7 +802,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "import os\n"
   "async funct t() {\n"
   "    post(\"a\")\n"
-  "    os.run([\"sleep\", \"0.2\"], capture=true)\n"
+  "    os.run([\"sleep\", \"0.2\"], capture=True)\n"
   "    post(\"b\")\n"
   "}\n"
   "f = t()\n"
@@ -912,7 +912,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "s = \"\"\n"
   "if 1 < 1.5 { s = s + \"a\" }\n"
   "if \"a\" < \"b\" { s = s + \"b\" }\n"
-  "if true < 2 { s = s + \"c\" }\n"
+  "if True < 2 { s = s + \"c\" }\n"
   "if [1, 2] == [1, 2] { s = s + \"d\" }\n"
   "if [1] != [2] { s = s + \"e\" }\n"
   "if 2 ** 70 > 1 { s = s + \"f\" }\n"
@@ -942,7 +942,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "for each i in range(10, 0, -3) { s.append(i) }\n"
   "for each i in range(2.9) { s.append(i) }\n"
   "for each i in range(\"3\") { s.append(i) }\n"
-  "for each i in range(true, 3) { s.append(i) }\n"
+  "for each i in range(True, 3) { s.append(i) }\n"
   "for each i in range(5, 5) { s.append(i) }\n"
   "post(s)\n",
   "[10, 7, 4, 1, 0, 1, 0, 1, 2, 1, 2]", NULL, 0 },
@@ -980,11 +980,11 @@ const Caso CASOS_LINGUAGEM[] = {
 
 /* ── caminho quente da chamada (posicional exato, sem liga_args) ── */
 /* o valor vem de um indice de lista pra o checador estatico nao tipar (um
- * literal `true` ele recusa antes de rodar): aqui e a conferencia de RUNTIME */
+ * literal `True` ele recusa antes de rodar): aqui e a conferencia de RUNTIME */
 { "chamada exata com parametro tipado passa e o tipo errado levanta a mesma frase",
   "funct f(int a, str b) { return b + str(a) }\n"
   "post(f(1, \"x\"))\n"
-  "v = [true][0]\n"
+  "v = [True][0]\n"
   "post(f(v, \"x\"))\n",
   "x1", "parâmetro a de f() esperava int, recebeu bool", -1 },
 { "chamada com aridade errada continua dando as frases do binding completo",
@@ -1041,11 +1041,11 @@ const Caso CASOS_LINGUAGEM[] = {
   "", "maximum recursion depth exceeded", -1 },
 { "recursao mutua e chamada de dentro de closure",
   "funct par(int n) {\n"
-  "    if n == 0 { return true }\n"
+  "    if n == 0 { return True }\n"
   "    return impar(n - 1)\n"
   "}\n"
   "funct impar(int n) {\n"
-  "    if n == 0 { return false }\n"
+  "    if n == 0 { return False }\n"
   "    return par(n - 1)\n"
   "}\n"
   "funct fora() {\n"
@@ -1265,7 +1265,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(f({\"a\": 1,\n"
   "        \"b\": 2}))\n", "1", NULL, 0 },
 { "bloco de chaves continua sendo bloco depois de )",
-  "if (true) {\n"
+  "if (True) {\n"
   "    funct f() {\n"
   "        return 1\n"
   "    }\n"
@@ -1354,13 +1354,13 @@ const Caso CASOS_LINGUAGEM[] = {
  * indentação dentro de `{ }` passou a ser LIVRE (o `}` é que fecha) — fora
  * dela a regra dos 4 espaços continua valendo. */
 { "if ':' dentro de bloco de chaves",
-  "if (true) {\n"
-  "    if true {\n"
+  "if (True) {\n"
+  "    if True {\n"
   "        post(\"x\")\n"
   "    }\n"
   "}\n", "x", NULL, 0 },
 { "try/catch ':' dentro de bloco de chaves",
-  "if (true) {\n"
+  "if (True) {\n"
   "    try {\n"
   "        raise Boom(\"x\")\n"
   "    } catch(e) {\n"
@@ -1369,13 +1369,13 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n",
   "peguei", NULL, 0 },
 { "for each ':' dentro de bloco de chaves",
-  "if (true) {\n"
+  "if (True) {\n"
   "    for each i in range(2) {\n"
   "        post(i)\n"
   "    }\n"
   "}\n", "0\n1", NULL, 0 },
 { "bloco de chaves dentro de bloco ':'",
-  "if true {\n"
+  "if True {\n"
   "    funct f() {\n"
   "        return 1\n"
   "    }\n"
@@ -1401,7 +1401,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "model de chaves continua valendo",
   "model M() {\n    a: str(length=3)\n}\npost(\"ok\")\n", "ok", NULL, 0 },
 { "fora de chaves a regra dos 4 espacos vale",
-  "if true:\n  post(\"2 espacos\")\n", "", "multiplo de 4", 2 },
+  "if True:\n  post(\"2 espacos\")\n", "", "multiplo de 4", 2 },
 
 /* ── `for each` sobre range não materializa a lista ──────────────────────
  * `range(20000000)` construía 20 milhões de itens (325 MB) só pra o laço
@@ -1524,7 +1524,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * escrever `int("7")`, `flo(5)`. O `ConversionError` da declaracao de int/flo
  * deixou de existir — sobrou so no `char c = -1`. */
 { "declaracao tipada aceita o tipo EXATO",
-  "str a = \"oi\"\nint b = 7\nflo c = 1.0\nbool d = true\npost(a, b, c, d)\n",
+  "str a = \"oi\"\nint b = 7\nflo c = 1.0\nbool d = True\npost(a, b, c, d)\n",
   "oi 7 1.0 True", NULL, 0 },
 { "int NAO aceita string numerica: nao converte",
   "int b = \"7\"\n",
@@ -1620,7 +1620,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * arquivo passava numa construção e falhava na outra — foi o que impedia uma
  * lib real de carregar. */
 { "if com chave na linha seguinte",
-  "if (true)\n{\n    post(\"A\")\n}\n", "A", NULL, 0 },
+  "if (True)\n{\n    post(\"A\")\n}\n", "A", NULL, 0 },
 { "if/else com chave na linha seguinte",
   "x = 2\n"
   "if (x == 1)\n"
@@ -1645,7 +1645,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "funct com chave na linha seguinte continua valendo",
   "funct f()\n{\n    return 7\n}\npost(f())\n", "7", NULL, 0 },
 { "chave na linha seguinte nao estraga bloco de dois-pontos",
-  "if true {\n"
+  "if True {\n"
   "    post(\"A\")\n"
   "}\n", "A", NULL, 0 },
 /* ── compreensão de lista ───────────────────────────────────────────────────
@@ -1694,13 +1694,13 @@ const Caso CASOS_LINGUAGEM[] = {
  * regressões de parser desta linha do tempo saíram todas da interação entre
  * indentação e chave. A mensagem tem que ENSINAR, não só recusar. */
 { "bloco com ':' e recusado",
-  "if true:\n    post(\"A\")\n", "", "bloco com ':' nao existe mais", 2 },
+  "if True:\n    post(\"A\")\n", "", "bloco com ':' nao existe mais", 2 },
 { "bloco com ':' numa linha so tambem e recusado",
-  "if true: post(\"A\")\n", "", "bloco com ':' nao existe mais", 2 },
+  "if True: post(\"A\")\n", "", "bloco com ':' nao existe mais", 2 },
 { "Entity com ':' e recusada",
   "Entity A:\n    funct m(self) { return 1 }\n", "", "bloco com ':' nao existe mais", 2 },
 { "a mensagem diz o que usar no lugar",
-  "while true:\n    break\n", "", "use '{ }'", 2 },
+  "while True:\n    break\n", "", "use '{ }'", 2 },
 { "dicionario com ':' continua valendo",
   "d = { \"a\": 1, \"b\": 2 }\npost(d[\"a\"], d[\"b\"])\n", "1 2", NULL, 0 },
 { "fatia com ':' continua valendo",
@@ -1806,9 +1806,9 @@ const Caso CASOS_LINGUAGEM[] = {
 { "f-string com escape antes da chave",
   "v = 2\npost(f\"a\\tb {v}\")\n", "a\tb 2", NULL, 0 },
 
-/* ── input(): fim da entrada é `null`, linha vazia é `""` ───────────────────
+/* ── input(): fim da entrada é `Null`, linha vazia é `""` ───────────────────
  * O runner roda todo caso com stdin em /dev/null, então aqui a entrada já
- * começa acabada. Sem o `null`, `while true: input()` giraria pra sempre
+ * começa acabada. Sem o `Null`, `while True { input() }` giraria pra sempre
  * quando o outro lado fechasse o cano — foi o que travou o servidor LSP. */
 /* ── sys.stdin.raw() — modo cru do terminal, 2026-09-09 ────────────────────
  * A suíte roda com stdin em /dev/null (NUL no Windows: não é terminal, embora
@@ -1860,9 +1860,9 @@ const Caso CASOS_LINGUAGEM[] = {
   "import sys\npost(type(sys.argv), len(sys.argv), type(sys.argv[0]))\n",
   "list 1 str", NULL, 0 },
 { "raw() sem terminal devolve false, nao estoura",
-  "import sys\npost(sys.stdin.raw(true), sys.stdin.raw(false))\n", "False False", NULL, 0 },
+  "import sys\npost(sys.stdin.raw(True), sys.stdin.raw(False))\n", "False False", NULL, 0 },
 { "raw() nao muda a leitura de pipe: Null no fim",
-  "import sys\nsys.stdin.raw(true)\npost(type(sys.stdin.read()))\n", "Null", NULL, 0 },
+  "import sys\nsys.stdin.raw(True)\npost(type(sys.stdin.read()))\n", "Null", NULL, 0 },
 { "raw() exige bool",
   "import sys\nsys.stdin.raw(1)\n", "", "raw() espera bool", 1 },
 { "input() no fim da entrada devolve null",
@@ -1871,7 +1871,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(input() == Null, input() == \"\")\n", "True False", NULL, 0 },
 { "input() em laço termina no fim da entrada",
   "n = 0\n"
-  "while true {\n"
+  "while True {\n"
   "    l = input()\n"
   "    if l == Null {\n"
   "        break\n"
@@ -2039,9 +2039,9 @@ const Caso CASOS_LINGUAGEM[] = {
   "addEnd(linhas, \"f()\")\n"
   "os.writeFile(\"s300.pr\", \"\\n\".join(linhas) + \"\\n\")\n"
   /* sem shell: a aspa simples era sintaxe do sh, e o cmd.exe a toma como
-   * parte do nome do programa. `capture=true` devolve o stdout, ou o stderr
+   * parte do nome do programa. `capture=True` devolve o stdout, ou o stderr
    * se nao houve stdout (so um dos dois tem conteudo aqui). */
-  "post(os.run([sys.executable, \"s300.pr\"], capture=true).split(\"\\n\")[0])\n",
+  "post(os.run([sys.executable, \"s300.pr\"], capture=True).split(\"\\n\")[0])\n",
   "AttributedValueError: variável v299 esperava int, recebeu str", NULL, 0 },
 /* Uma tabela de tipos so (vm/ps_tipos.def): `JSON` e `Long` eram apelido num
  * lugar e nome solto noutro — `JSON j = {}` dava NameError e `count JSON` dava
@@ -2301,7 +2301,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "@r.reg()\n"
   "bool async funct g() {\n"
-  "    return true\n"
+  "    return True\n"
   "}\n",
   "registrou\nregistrou", NULL, 0 },
 { "import sem nome nenhum",
@@ -2719,7 +2719,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(int == type(200), type(1.5) == flo, type([1]) == list)\n",
   "True True True", NULL, 0 },
 { "referencia de tipo nao vira igual a texto qualquer",
-  "post(int == \"inteiro\", int == 1, int == none)\n", "False False False", NULL, 0 },
+  "post(int == \"inteiro\", int == 1, int == Null)\n", "False False False", NULL, 0 },
 { "tipo com tipo continua por identidade",
   "post(int == int, int == str)\n", "True False", NULL, 0 },
 { "o idioma canonico continua o `is`",
@@ -3148,6 +3148,66 @@ const Caso CASOS_LINGUAGEM[] = {
  * usavam `cerro` (rc 3) pra erro de quem escreveu. */
 { "break fora de laco e SyntaxError, rc 2",
   "break\n", "", "SyntaxError: 'break' fora de laco", 2 },
+
+/* ── `return`/`yield` fora de funct (2026-10-05) ────────────────────────────
+ * No topo do arquivo, ou num `if`/laço do topo, o `return` encerrava o
+ * programa calado (rc 0, `--check` ok); o `yield` só quebrava rodando. Agora
+ * os dois são SyntaxError antes de rodar, como o `break` fora de laço. */
+{ "return no topo e SyntaxError antes de rodar",
+  "post(1)\nreturn 5\n", "", "SyntaxError: 'return' fora de funct", 2 },
+{ "return no topo mostra a linha dele",
+  "int x = 1\nif x == 1 {\n    return x\n}\n", "", "  |     return x\n", 2 },
+{ "return seco dentro de if do topo e SyntaxError",
+  "if True {\n    return\n}\n", "", "SyntaxError: 'return' fora de funct", 2 },
+{ "return dentro de while do topo e SyntaxError",
+  "int i = 0\nwhile i < 3 {\n    i = i + 1\n    return\n}\n", "", "SyntaxError: 'return' fora de funct", 2 },
+{ "return dentro de for each do topo e SyntaxError",
+  "for each x in [1, 2] {\n    return x\n}\n", "", "SyntaxError: 'return' fora de funct", 2 },
+{ "return; dentro de count each do topo e SyntaxError (encerrava o programa)",
+  "count each int in [1, 2] {\n    return;\n}\npost(\"depois\")\n", "", "SyntaxError: 'return' fora de funct", 2 },
+{ "yield no topo e SyntaxError antes de rodar",
+  "yield 1\n", "", "SyntaxError: 'yield' fora de funct", 2 },
+{ "return em funct, funct anonima e metodo continua valendo",
+  "int funct f() {\n    return 1\n}\nObject g = funct() {\n    return 2\n}\n"
+  "class C {\n    int funct m(self) {\n        return 3\n    }\n}\npost(f(), g(), C().m())\n", "1 2 3", NULL, 0 },
+{ "return; no count each dentro de funct continua devolvendo o total",
+  "int funct conta() {\n    count each int in [1, \"x\", 3] {\n        return;\n    }\n}\npost(conta())\n", "2", NULL, 0 },
+{ "yield em funct continua fazendo gerador",
+  "funct g() {\n    yield 1\n    yield 2\n}\nfor each v in g() {\n    post(v)\n}\n", "1\n2", NULL, 0 },
+
+/* ── literais: so `True`, `False` e `Null` (2026-10-05) ──────────────────────
+ * A grafia e a que o motor imprime, com a inicial maiuscula. `true`, `false`,
+ * `null`, `None` e `none` sao nomes comuns: sem definicao, o NameError sai
+ * antes de rodar, com a dica pelo mecanismo geral do "Did you mean" (`None`
+ * fica longe de `Null` e nao ganha dica). Cada posicao, com JIT e sem. */
+{ "true como valor e NameError com a dica True",
+  "bool x = true\n", "", "NameError: name 'true' is not defined. Did you mean: 'True'?", 2 },
+{ "false como argumento e NameError com a dica False",
+  "post(false)\n", "", "NameError: name 'false' is not defined. Did you mean: 'False'?", 2 },
+{ "null em comparacao e NameError com a dica Null",
+  "int x = 1\npost(x == null)\n", "", "NameError: name 'null' is not defined. Did you mean: 'Null'?", 2 },
+{ "None e NameError sem dica",
+  "post(None)\n", "", "NameError: name 'None' is not defined\n", 2 },
+{ "none como valor de dict e NameError sem dica",
+  "dict d = {\"a\": none}\n", "", "NameError: name 'none' is not defined\n", 2 },
+{ "true no padrao de parametro e NameError com a dica",
+  "funct f(bool a = true) {\n    return a\n}\npost(f())\n", "", "NameError: name 'true' is not defined. Did you mean: 'True'?", 2 },
+{ "a grafia antiga mostra a linha dela",
+  "int x = 1\nstr y = null\n", "", "  | str y = null\n", 2 },
+{ "True, False e Null valem e imprimem como se escrevem",
+  "post(True, False, Null)\npost([True, Null])\n", "True False Null\n[True, Null]", NULL, 0 },
+{ "a grafia antiga em texto e comentario fica como esta",
+  "post(\"true false null None\")  # true\n", "true false null None", NULL, 0 },
+{ "JSON continua minusculo: stringify escreve e parse le true/false/null",
+  "import json\npost(json.stringify({\"a\": True, \"b\": Null, \"c\": False}))\n"
+  "post(json.parse(\"[true, false, null]\"))\n",
+  "{\"a\": true, \"b\": null, \"c\": false}\n[True, False, Null]", NULL, 0 },
+/* `json` tambem e nome de TIPO (o dict), e a conferencia do nome solto
+ * deixava `json.parse` sem import passar no --check; rodando dava NameError */
+{ "json.parse sem import json e NameError antes de rodar",
+  "post(json.parse(\"[1]\"))\n", "", "NameError: name 'json' is not defined", 2 },
+{ "json solto continua sendo o tipo dict, sem import",
+  "post(json)\njson d = {\"a\": 1}\npost(d)\n", "dict\n{'a': 1}", NULL, 0 },
 { "base() com posicional depois de nomeado e SyntaxError, rc 2 (era rc 3)",
   "Entity A { int x\n    funct __init__(self, x, b) { self.x = x } }\n"
   "Entity B(A) {\n    funct __init__(self) { base().__init__(1, b=2, 3) }\n}\nB()\n", "",
@@ -3217,15 +3277,15 @@ const Caso CASOS_LINGUAGEM[] = {
   "post({\"p\": \"a\", \"s\": \"y\"} == M, {\"p\": \"c\", \"s\": \"y\"} == M, {\"p\": \"a\", \"s\": \"x\"} == M)\n",
   "True False False", NULL, 0 },
 { "model: in com int e bool, com sinal",
-  "model M() {\n    n: int(in=[-1, 2])\n    b: bool(in=[true])\n}\n"
-  "post({\"n\": -1, \"b\": true} == M, {\"n\": 3, \"b\": true} == M, {\"n\": 2, \"b\": false} == M)\n",
+  "model M() {\n    n: int(in=[-1, 2])\n    b: bool(in=[True])\n}\n"
+  "post({\"n\": -1, \"b\": True} == M, {\"n\": 3, \"b\": True} == M, {\"n\": 2, \"b\": False} == M)\n",
   "True False False", NULL, 0 },
 { "model: min e max em int e flo (faixa inclusiva)",
   "model M() {\n    i: int(min=1, max=3)\n    f: flo(min=0.5)\n}\n"
   "post({\"i\": 3, \"f\": 0.5} == M, {\"i\": 4, \"f\": 1.0} == M, {\"i\": 2, \"f\": 0.1} == M)\n",
   "True False False", NULL, 0 },
-{ "model: optional=true pode faltar ou vir Null; presente, o tipo vale",
-  "model M() {\n    a: int\n    b: str(optional=true)\n}\n"
+{ "model: optional=True pode faltar ou vir Null; presente, o tipo vale",
+  "model M() {\n    a: int\n    b: str(optional=True)\n}\n"
   "post({\"a\": 1} == M, {\"a\": 1, \"b\": Null} == M, {\"a\": 1, \"b\": 2} == M, {\"b\": \"x\"} == M)\n",
   "True True False False", NULL, 0 },
 { "model: aninhado (tipo = outro model) e list(of=...) item a item, com length de itens",
@@ -3402,21 +3462,21 @@ const Caso CASOS_LINGUAGEM[] = {
   "long g = 2 ** 100\npost(~g)\npost(~(-(2 ** 100)))\n",
   "-1267650600228229401496703205377\n1267650600228229401496703205375", NULL, 0 },
 { "~ segue recusando bool",
-  "post(~true)\n", "", "TypeError: bad operand type for unary ~: 'bool'", 1 },
+  "post(~True)\n", "", "TypeError: bad operand type for unary ~: 'bool'", 1 },
 /* round conferia as casas duas vezes com respostas diferentes: bool passava
  * com n int e estourava com n flo. */
 { "round(flo, bool) usa bool como 0/1 de casas",
-  "post(round(1.5, true), round(1.55, false), round(2.675, 2))\n", "1.5 2.0 2.67", NULL, 0 },
+  "post(round(1.5, True), round(1.55, False), round(2.675, 2))\n", "1.5 2.0 2.67", NULL, 0 },
 { "round segue recusando casas que nao sao inteiro",
   "round(1.5, \"a\")\n", "", "TypeError: 'str' object cannot be interpreted as an integer", 1 },
 /* A fatia so conferia o passo: `s[1.5:]` tratava o limite como ausente e
  * devolvia a colecao inteira, calada. */
 { "fatia: inicio que nao e inteiro e TypeError, nao 'ausente'",
-  "s = \"abcdef\"\ns[1.5:]\n", "", "TypeError: slice indices must be integers or None or have an __index__ method", 1 },
+  "s = \"abcdef\"\ns[1.5:]\n", "", "TypeError: slice indices must be integers or Null", 1 },
 { "fatia: fim que nao e inteiro e TypeError",
-  "s = \"abcdef\"\ns[:\"x\"]\n", "", "TypeError: slice indices must be integers or None or have an __index__ method", 1 },
+  "s = \"abcdef\"\ns[:\"x\"]\n", "", "TypeError: slice indices must be integers or Null", 1 },
 { "fatia: bool, bignum saturado e Null seguem valendo",
-  "s = \"abcdef\"\npost(s[1:], s[:2], s[::2], s[true:], s[999999999999999999999:], s[:999999999999999999999])\nl = [1,2,3,4]\npost(l[1:3], l[::-1])\n",
+  "s = \"abcdef\"\npost(s[1:], s[:2], s[::2], s[True:], s[999999999999999999999:], s[:999999999999999999999])\nl = [1,2,3,4]\npost(l[1:3], l[::-1])\n",
   "bcdef ab ace bcdef  abcdef\n[2, 3] [4, 3, 2, 1]", NULL, 0 },
 /* Argumentos demais com default: metodo e funct escondiam o minimo; so a
  * instanciacao e OP_CALL_KW diziam "from N to M". */
@@ -3434,7 +3494,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "l = [1, 2, 3]\nfunct cresce(x) { l.append(x)\n    return x }\ntry { post(map(l, cresce)) } catch (RuntimeError e) { post(\"pegou:\", e) }\n",
   "pegou: map() cresceu durante a iteracao (linha 4)", NULL, 0 },
 { "filter que cresce a origem nao e MemoryError",
-  "l = [1, 2, 3]\nfunct cresce(x) { l.append(x)\n    return true }\ntry { post(filter(l, cresce)) } catch (MemoryError e) { post(\"NAO devia pegar\") }\n",
+  "l = [1, 2, 3]\nfunct cresce(x) { l.append(x)\n    return True }\ntry { post(filter(l, cresce)) } catch (MemoryError e) { post(\"NAO devia pegar\") }\n",
   "", "RuntimeError: filter() cresceu durante a iteracao", 1 },
 /* base() num pai sem __init__ nem campos: o caminho posicional engolia os
  * argumentos calado e o nomeado levantava. Agora os dois levantam. */
@@ -3921,10 +3981,10 @@ const Caso CASOS_LINGUAGEM[] = {
   "", "TypeError: Z() takes no arguments (1 given)", 1 },
 { "instancia: __init__ gerador e TypeError",
   "Entity E {\n    funct __init__(self) {\n        yield 1\n    }\n}\nE()\n",
-  "", "TypeError: __init__() should return None, not 'generator'", 1 },
+  "", "TypeError: __init__() should return Null, not 'generator'", 1 },
 { "instancia: __init__ async e TypeError, tambem vindo do C",
   "Entity E {\n    async funct __init__(self, x) {\n        post(1)\n    }\n}\nmap([1], E)\n",
-  "", "TypeError: __init__() should return None, not 'future'", 1 },
+  "", "TypeError: __init__() should return Null, not 'future'", 1 },
 { "instancia: base() numa funct sem self e recusado na declaracao",
   "Entity A {\n    funct __init__(self, *a) {\n        self.a = a\n    }\n}\nEntity B(A) {\n    funct __init__(*args) {\n        base().__init__(1)\n    }\n}\n",
   "", "SyntaxError: base() precisa do self: declare `funct __init__(self, ...)` (o self e o objeto que o pai inicializa)", 2 },
@@ -3992,22 +4052,22 @@ const Caso CASOS_LINGUAGEM[] = {
 { "parametros: lambda com 257 parametros e recusada na declaracao",
   "import os\nimport sys\nps = []\nfor each i in range(257) {\n    addEnd(ps, \"p\" + str(i))\n}\n"
   "os.writeFile(\"j.pr\", \"g = funct(\" + \", \".join(ps) + \") {\\n    return 1\\n}\\n\")\n"
-  "post(os.run([sys.executable, \"j.pr\"], capture=true).split(\"\\n\")[0])\n",
+  "post(os.run([sys.executable, \"j.pr\"], capture=True).split(\"\\n\")[0])\n",
   "SyntaxError: <funct>() tem parametros demais (maximo 256)", NULL, 0 },
 { "parametros: metodo com self + 256 parametros e recusado na declaracao",
   "import os\nimport sys\nps = []\nfor each i in range(256) {\n    addEnd(ps, \"p\" + str(i))\n}\n"
   "os.writeFile(\"j.pr\", \"Entity E {\\n    funct m(self, \" + \", \".join(ps) + \") {\\n        return 1\\n    }\\n}\\n\")\n"
-  "post(os.run([sys.executable, \"j.pr\"], capture=true).split(\"\\n\")[0])\n",
+  "post(os.run([sys.executable, \"j.pr\"], capture=True).split(\"\\n\")[0])\n",
   "SyntaxError: m() tem parametros demais (maximo 256)", NULL, 0 },
 { "parametros: Entity com 256 campos e recusada na declaracao",
   "import os\nimport sys\ncs = \"\"\nfor each i in range(256) {\n    cs = cs + \"    c\" + str(i) + \": int\\n\"\n}\n"
   "os.writeFile(\"j.pr\", \"Entity E {\\n\" + cs + \"}\\n\")\n"
-  "post(os.run([sys.executable, \"j.pr\"], capture=true).split(\"\\n\")[0])\n",
+  "post(os.run([sys.executable, \"j.pr\"], capture=True).split(\"\\n\")[0])\n",
   "SyntaxError: Entity E: o __init__ gerado dos campos tem parametros demais (maximo 256: self + 255 campos)", NULL, 0 },
 { "parametros: funct com exatamente 256 parametros roda",
   "import os\nimport sys\nps = []\nfor each i in range(256) {\n    addEnd(ps, \"p\" + str(i))\n}\n"
   "os.writeFile(\"j.pr\", \"funct f(\" + \", \".join(ps) + \") {\\n    return p0\\n}\\npost(f(*list(range(256))))\\n\")\n"
-  "post(os.run([sys.executable, \"j.pr\"], capture=true).split(\"\\n\")[0])\n",
+  "post(os.run([sys.executable, \"j.pr\"], capture=True).split(\"\\n\")[0])\n",
   "0", NULL, 0 },
 
 /* ── tipo escrito junto da estrela: a mesma frase nas duas ordens ─────────── */
@@ -4178,7 +4238,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "private x += 1 nao e declaracao",
   "x = 1\nprivate x += 1\n", "", "'private' vai na declaracao (private x = ...), nao na atribuicao composta", 2 },
 { "private antes de if nao e declaracao",
-  "private if true {\n    post(1)\n}\n", "",
+  "private if True {\n    post(1)\n}\n", "",
   "'private' so vale numa declaracao: funct, class, model, enum ou variavel (private x = 1, private int x = 1)", 2 },
 { "private sozinho na linha nao e declaracao",
   "private\nx = 1\n", "",
@@ -4189,9 +4249,9 @@ const Caso CASOS_LINGUAGEM[] = {
 { "private variavel dentro de funct: erro",
   "funct g() {\n    private x = 1\n}\n", "", "'private' aqui nao tem efeito: so vale no topo do arquivo (o que nao sai pelo import) ou no corpo da Entity", 2 },
 { "private variavel dentro de bloco do topo: erro",
-  "if true {\n    private x = 1\n}\n", "", "'private' aqui nao tem efeito: so vale no topo do arquivo (o que nao sai pelo import) ou no corpo da Entity", 2 },
+  "if True {\n    private x = 1\n}\n", "", "'private' aqui nao tem efeito: so vale no topo do arquivo (o que nao sai pelo import) ou no corpo da Entity", 2 },
 { "private int x dentro de bloco do topo: erro (nao e campo, nao e o topo)",
-  "if true {\n    private int x = 1\n}\n", "", "'private' aqui nao tem efeito: so vale no topo do arquivo (o que nao sai pelo import) ou no corpo da Entity", 2 },
+  "if True {\n    private int x = 1\n}\n", "", "'private' aqui nao tem efeito: so vale no topo do arquivo (o que nao sai pelo import) ou no corpo da Entity", 2 },
 { "private nome = valor dentro de metodo: a forma do campo leva o tipo",
   "Entity A {\n    funct __init__(self) {\n        private x = 1\n    }\n}\n", "",
   "'private x = ...' dentro de uma funct de Entity declara campo do objeto: escreva 'private <tipo> x = <valor>'", 2 },

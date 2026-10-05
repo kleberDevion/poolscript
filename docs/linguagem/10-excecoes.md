@@ -166,7 +166,7 @@ Observações:
 - **`IndexError`** é levantado ao **ler** fora do intervalo (`l[99]`) em `list`,
   `tup`, `str` e `byte`; a mensagem nomeia o tipo (`list index out of range`),
   menos em `byte`, que sai como `index out of range`. Até 28/08 a leitura era
-  um aviso não-fatal que devolvia `null` e não podia ser capturado.
+  um aviso não-fatal que devolvia `Null` e não podia ser capturado.
 - Na **escrita** por índice, `IndexError` só existe em `list`
   (`list assignment index out of range`): `tup`, `str` e `byte` são imutáveis,
   e a escrita neles é `TypeError: '<tipo>' object does not support item
@@ -198,5 +198,5 @@ Observações:
   `MemoryError`, `RuntimeError`. `SyntaxError` não é capturável (é de
   compilação) — e o erro de tipo, de nome, de aridade ou de membro que o
   compilador já sabe também sai antes de rodar, sem `catch` (seção 10.4). Índice fora da faixa **levanta** `IndexError` — a linha que
-  dizia "aviso não-fatal (→ `null`)" contradizia a seção 10.4 desta mesma
+  dizia "aviso não-fatal (→ `Null`)" contradizia a seção 10.4 desta mesma
   página e era resto do comportamento anterior a 28/08.

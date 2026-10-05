@@ -52,7 +52,7 @@ texto e NULL — em sqlite, postgres e mysql:
 
 ```
 cursor.execute("SELECT * FROM logs ORDER BY id LIMIT ? OFFSET ?", (20, 40))
-cursor.execute("SELECT * FROM clientes WHERE ativo = ?", (true,))
+cursor.execute("SELECT * FROM clientes WHERE ativo = ?", (True,))
 ```
 
 No postgres, quem decide o tipo final é o servidor, pelo contexto: um `flo`

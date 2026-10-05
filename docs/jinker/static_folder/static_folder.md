@@ -104,7 +104,7 @@ funct usuarios() {
 # do frontend/dist automaticamente — não precisa de rota pra cada uma
 
 if __name__ == "main" {
-    app(debug=false, host="0.0.0.0", port=8080)
+    app(debug=False, host="0.0.0.0", port=8080)
 }
 ```
 

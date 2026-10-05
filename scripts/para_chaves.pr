@@ -19,7 +19,7 @@ TMP = "/tmp/ps_para_chaves"
 
 # Tokens do lexer do motor, na ordem.
 funct tokens_de(fonte) {
-    os.mkdir(TMP, exist_ok=true)
+    os.mkdir(TMP, exist_ok=True)
     alvo = TMP + "/e.pr"
     using open(alvo, "w") as f {
         f.write(fonte)
@@ -174,7 +174,7 @@ funct converte(fonte) {
 
     # blocos cujo fechamento cai DEPOIS da última linha do arquivo
     n = n + 1
-    while true {
+    while True {
         chave = str(n)
         if not chave in antes {
             break
@@ -202,10 +202,10 @@ funct junta_continuacoes(linhas) {
     r = []
     for each l in linhas {
         alvo = l.strip()
-        eh_cont = false
+        eh_cont = False
         for each c in CONT {
             if alvo == c or alvo.startswith(c + " ") or alvo.startswith(c + "(") {
-                eh_cont = true
+                eh_cont = True
             }
         }
         if eh_cont and len(r) > 0 and r[len(r) - 1].strip() == "}" {
@@ -228,10 +228,10 @@ if __name__ == "main" {
         sys.exit(1)
     }
     caminho = args[0]
-    grava = false
+    grava = False
     for each a in args {
         if a == "--grava" {
-            grava = true
+            grava = True
         }
     }
 

@@ -230,20 +230,20 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "136", NULL, 0 },
 { "equiv: if [1/2]",
-  "if true {\n"
+  "if True {\n"
   "    post(\"A\")\n"
   "}\n"
   "\n",
   "A", NULL, 0 },
 { "equiv: if [2/2]",
-  "if (true)\n"
+  "if (True)\n"
   "{\n"
   "    post(\"A\")\n"
   "}\n"
   "\n",
   "A", NULL, 0 },
 { "equiv: if/else [1/2]",
-  "if false {\n"
+  "if False {\n"
   "    post(\"X\")\n"
   "} else {\n"
   "    post(\"A\")\n"
@@ -251,7 +251,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "A", NULL, 0 },
 { "equiv: if/else [2/2]",
-  "if (false)\n"
+  "if (False)\n"
   "{\n"
   "    post(\"X\")\n"
   "} else\n"
@@ -1173,7 +1173,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "0", NULL, 0 },
 { "equiv: erro capturado vira valor [2/3]",
   "int funct g() {\n"
-  "    return null\n"
+  "    return Null\n"
   "}\n"
   "post(g())\n"
   "\n",

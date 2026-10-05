@@ -4,7 +4,7 @@ Registra uma função que roda **a cada mensagem que o servidor manda**. É como
 você *recebe* dados num WebSocket.
 
 ```
-conn.on_message(callback) -> None
+conn.on_message(callback) -> Null
 ```
 
 | Parâmetro | O que é |

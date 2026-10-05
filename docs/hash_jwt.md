@@ -60,7 +60,7 @@ funct logar(email, senha) {
     if (result and hash.check(result[0]["senha"], senha)) {
         return result[0]
     } else {
-        return None
+        return Null
     }
 }
 ```
@@ -115,7 +115,7 @@ if (payload) {
 }
 ```
 
-Retorna `None` se o token for inválido ou expirado.
+Retorna `Null` se o token for inválido ou expirado.
 
 ---
 

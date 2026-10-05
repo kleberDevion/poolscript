@@ -3,7 +3,7 @@
 Fecha a conexão com o banco. Chame ao terminar — libera o arquivo/rede.
 
 ```
-conn.close() -> None
+conn.close() -> Null
 ```
 
 ---

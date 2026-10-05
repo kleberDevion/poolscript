@@ -12,7 +12,7 @@ JSON.
 |---|---|
 | `.status` | código HTTP (`200`, `404`, `500`…). `-1` em falha de transporte. |
 | `.status_code` | **alias** de `.status` |
-| `.ok` | `true` se o status for `2xx` (sucesso) |
+| `.ok` | `True` se o status for `2xx` (sucesso) |
 | `.text` | o corpo como texto UTF-8 (tolerante a bytes inválidos) |
 | `.content` | o corpo em **bytes** crus, lido do arquivo **na hora em que você pede** — é aí, e só aí, que o corpo ocupa memória. Use pra binário (imagem, zip, pdf, exe); não corrompe |
 | `.size` | bytes que chegaram, lido sem abrir o corpo |
@@ -27,7 +27,7 @@ JSON.
 | Método | Devolve |
 |---|---|
 | `.json()` | o corpo parseado como dict/lista (`Null` se não for JSON válido) |
-| `.get_json(chave=None)` | o JSON inteiro, ou só uma chave dele |
+| `.get_json(chave=Null)` | o JSON inteiro, ou só uma chave dele |
 | `.get(chave)` | um **header** (case-insensitive) **ou** uma chave do JSON |
 
 ---

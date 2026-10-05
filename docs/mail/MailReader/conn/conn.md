@@ -1,14 +1,14 @@
-# `MailReader.conn(host, port=None)`
+# `MailReader.conn(host, port=Null)`
 
 Conecta ao servidor **IMAP** (leitura) no `host` dado, com TLS. Sem `port`, usa
 a 993.
 
 ```
-r.conn(host: str, port: int = None) -> bool
+r.conn(host: str, port: int = Null) -> bool
 ```
 
-Devolve `true` quando conectou; falha de rede, de TLS ou de host inexistente é
-erro (não devolve `false`).
+Devolve `True` quando conectou; falha de rede, de TLS ou de host inexistente é
+erro (não devolve `False`).
 
 ---
 

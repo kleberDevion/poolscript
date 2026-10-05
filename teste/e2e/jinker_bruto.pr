@@ -342,11 +342,11 @@ if __name__ == "main" {
         hcorpo = h[corte+8:len(h)]
         ncorpo = len(hcorpo) // 2
         # 1) nenhum byte NUL: o lixo vinha logo depois do \0 do snprintf
-        temnul = false
+        temnul = False
         i = 0
         while i < len(hcorpo) {
             if hcorpo[i:i+2] == "00" {
-                temnul = true
+                temnul = True
                 break
             }
             i = i + 2

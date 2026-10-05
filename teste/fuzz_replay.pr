@@ -75,7 +75,7 @@ async funct vigia(proc, prazo, estado) {
     if estado["acabou"] {
         return
     }
-    estado["estourou"] = true
+    estado["estourou"] = True
     proc.kill()
     fim = date.monotonic() + 6
     while not estado["acabou"] and date.monotonic() < fim {
@@ -104,11 +104,11 @@ async funct vigia(proc, prazo, estado) {
 funct replaya(caminho) {
     using os.run([sys.executable, "--check", caminho], capture="live") as proc {
         proc.close()
-        canais = [escoa(proc, false), escoa(proc, true)]
-        estado = {"acabou": false, "estourou": false}
+        canais = [escoa(proc, False), escoa(proc, True)]
+        estado = {"acabou": False, "estourou": False}
         guarda = vigia(proc, TEMPO, estado)
         rc = proc.wait()
-        estado["acabou"] = true
+        estado["acabou"] = True
         await guarda
         await canais
     }
@@ -133,10 +133,10 @@ funct arquivos() {
         # O prefixo é conferido por lista: fora de parênteses, o `or` no fim da
         # linha NÃO continua a expressão (a quebra encerra o statement), e uma
         # condição de quatro termos numa linha só fica ilegível.
-        eh = false
+        eh = False
         for each pre in ["crash-", "leak-", "timeout-", "oom-"] {
             if n.startswith(pre) {
-                eh = true
+                eh = True
             }
         }
         if eh {

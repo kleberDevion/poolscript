@@ -57,8 +57,8 @@ Saída padrão e de erro, com flush automático.
 
 ```
 sys.stdout.write("sem quebra de linha")
-sys.stdout.write("com quebra", end=true)
-sys.stdout.writeln("sempre quebra linha")   # atalho de write(..., end=true)
+sys.stdout.write("com quebra", end=True)
+sys.stdout.writeln("sempre quebra linha")   # atalho de write(..., end=True)
 
 sys.stderr.writeln("mensagem de erro")
 ```

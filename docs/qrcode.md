@@ -38,8 +38,8 @@ qrcode.gen({"user_id": 42, "acao": "checkin"}, save="checkin.png")
 ```
 
 **Parâmetros de `gen()`**: `data`, `save`, `size=10`, `border=4`,
-`color="black"`, `bg="white"`, `name=None`, `error_correction="L"`,
-`qr32=None` (tupla largura/altura pra redimensionar).
+`color="black"`, `bg="white"`, `name=Null`, `error_correction="L"`,
+`qr32=Null` (tupla largura/altura pra redimensionar).
 
 **Retorno**: sempre um `PoolFile`-like (`QRPoolFile` se ficou em memória,
 `PoolFile` se `save=` foi usado) — tem `.save(path)`, `.bytes()`, `.name`,
@@ -64,9 +64,9 @@ img.resize(300, 300)
 A classe `QRCode`, com todos os parâmetros:
 
 ```
-qr = qrcode.QRCode(version=None, error_correction="L", box_size=10, border=4)
+qr = qrcode.QRCode(version=Null, error_correction="L", box_size=10, border=4)
 qrcode.add_data("dados")
-qrcode.make(fit=true)
+qrcode.make(fit=True)
 img = qrcode.make_image(fill_color="black", back_color="white")
 img.save("qr.png")
 

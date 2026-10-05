@@ -4,7 +4,7 @@ Fecha o cursor. Chame ao terminar de usá-lo (a conexão continua aberta até vo
 fechar com [`DbConnection.close()`](../../DbConnection/close/close.md)).
 
 ```
-cursor.close() -> None
+cursor.close() -> Null
 ```
 
 ---

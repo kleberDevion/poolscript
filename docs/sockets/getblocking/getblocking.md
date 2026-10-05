@@ -8,7 +8,7 @@ Nenhum. `getblocking(1)` é `getblocking() takes no arguments (1 given)`.
 
 ## Retorno
 
-**`bool`** — e a regra é uma só: é `true` quando
+**`bool`** — e a regra é uma só: é `True` quando
 [`gettimeout()`](../gettimeout/gettimeout.md) **não** é `0`.
 
 | `gettimeout()` | `getblocking()` |
@@ -36,7 +36,7 @@ s = sockets.socket()
 post(s.getblocking(), type(s.getblocking()))
 s.settimeout(5)
 post(s.getblocking())            # com prazo AINDA é bloqueante
-s.setblocking(false)
+s.setblocking(False)
 post(s.getblocking())
 s.close()
 ```

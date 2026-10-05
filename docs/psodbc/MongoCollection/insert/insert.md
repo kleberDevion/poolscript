@@ -3,7 +3,7 @@
 Insere **um** documento (dict) na coleção.
 
 ```
-col.insert(document: dict) -> None
+col.insert(document: dict) -> Null
 ```
 
 ---
@@ -11,7 +11,7 @@ col.insert(document: dict) -> None
 ## Uso
 
 ```
-col.insert({"nome": "café", "preco": 15, "ativo": true})
+col.insert({"nome": "café", "preco": 15, "ativo": True})
 ```
 
 O documento é um dict livre — o Mongo não exige colunas fixas, cada documento

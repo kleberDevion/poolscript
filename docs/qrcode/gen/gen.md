@@ -1,25 +1,25 @@
-# `qrcode.gen(data, save=None, size=10, border=4, color="black", bg="white", name=None, error_correction="L", qr32=None)`
+# `qrcode.gen(data, save=Null, size=10, border=4, color="black", bg="white", name=Null, error_correction="L", qr32=Null)`
 
 Gera um QR Code com controle de tamanho, cores e correção de erro. Devolve um
 [`QRPoolFile`](../../objetos-internos/QRPoolFile.md) (com `.save()` e
 `.bytes()`); se você passar `save=`, o arquivo já é gravado.
 
 ```
-qrcode.gen(data, save=None, size=10, border=4, color="black",
-           bg="white", name=None, error_correction="L", qr32=None)
+qrcode.gen(data, save=Null, size=10, border=4, color="black",
+           bg="white", name=Null, error_correction="L", qr32=Null)
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
 | `data` | — | conteúdo do QR (str; dict/lista viram JSON) |
-| `save` | `None` | caminho pra salvar (`.png`/`.jpg`); se omitido, fica em memória |
+| `save` | `Null` | caminho pra salvar (`.png`/`.jpg`); se omitido, fica em memória |
 | `size` | `10` | tamanho das "caixinhas" do QR |
 | `border` | `4` | largura da borda branca ao redor |
 | `color` | `"black"` | cor do QR |
 | `bg` | `"white"` | cor do fundo |
-| `name` | `None` | nome do arquivo quando fica em memória |
+| `name` | `Null` | nome do arquivo quando fica em memória |
 | `error_correction` | `"L"` | resistência a dano: `L` 7%, `M` 15%, `Q` 25%, `H` 30% |
-| `qr32` | `None` | `(largura, altura)` pra redimensionar a imagem final |
+| `qr32` | `Null` | `(largura, altura)` pra redimensionar a imagem final |
 
 ---
 

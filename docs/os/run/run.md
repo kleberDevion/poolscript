@@ -1,4 +1,4 @@
-# `os.run(args, capture=false, pty=false)`
+# `os.run(args, capture=False, pty=False)`
 
 Executa um comando **sem shell** — cada argumento é uma entrada separada da
 lista, então caracteres de shell (`;`, `|`, `$`, `&`, `>`) viram **texto
@@ -6,14 +6,14 @@ literal** e não conseguem injetar comando. É a forma **segura** de rodar
 programa com valor vindo do usuário.
 
 ```
-os.run(args: list | str, capture: bool | str = false, pty: bool = false) -> int | str | Process
+os.run(args: list | str, capture: bool | str = False, pty: bool = False) -> int | str | Process
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
 | `args` | — | lista `["programa", "arg1", "arg2"]` (recomendado) ou string |
-| `capture` | `false` | `false` = dispara em segundo plano e devolve o **PID**; `true` = **espera** e devolve a saída; `"live"` = devolve o [`Process`](../Process/Process.md), pra conversar com ele enquanto roda |
-| `pty` | `false` | `true` = o filho roda num **terminal de verdade**; precisa de `capture="live"` ou `capture=true` |
+| `capture` | `False` | `False` = dispara em segundo plano e devolve o **PID**; `True` = **espera** e devolve a saída; `"live"` = devolve o [`Process`](../Process/Process.md), pra conversar com ele enquanto roda |
+| `pty` | `False` | `True` = o filho roda num **terminal de verdade**; precisa de `capture="live"` ou `capture=True` |
 
 ---
 
@@ -47,11 +47,11 @@ aí é shell, e vale a advertência de injeção lá embaixo.
 ## Capturar a saída — aí espera
 
 ```
-versao = os.run(["jinga", "--version"], capture=true)
-post(versao)                        # "Jinga 16.2.6 [PSVM] (2026-09-24) Runtime standalone"
+versao = os.run(["jinga", "--version"], capture=True)
+post(versao)                        # "Jinga 16.2.7 [PSVM] (2026-09-24) Runtime standalone"
 ```
 
-Com `capture=true` o `run` **espera** o processo terminar: colher a saída exige
+Com `capture=True` o `run` **espera** o processo terminar: colher a saída exige
 o fim dele. Devolve o **stdout** (sem espaços nas pontas); se o comando não
 produziu stdout mas gerou erro, devolve o **stderr** — igual ao `os.cmd`. A
 espera **cede**: dentro de uma rota do jinker ou de uma `async funct`, as
@@ -84,14 +84,14 @@ using os.run(["wc", "-l"], capture="live") as p {
 }
 ```
 
-## `pty=true` — o filho num terminal
+## `pty=True` — o filho num terminal
 
 Programa interativo se comporta diferente quando não está num terminal: some a
-cor, o `input()` não aparece, a barra de progresso vira lixo. Com `pty=true` o
+cor, o `input()` não aparece, a barra de progresso vira lixo. Com `pty=True` o
 filho ganha um terminal de verdade:
 
 ```
-p = os.run(["sh", "-c", "test -t 0 && echo tem-terminal"], capture="live", pty=true)
+p = os.run(["sh", "-c", "test -t 0 && echo tem-terminal"], capture="live", pty=True)
 s = ""
 parte = p.read()
 while parte != "" {
@@ -104,11 +104,11 @@ post("tem-terminal" in s)        # True
 Lê até `read()` devolver `""` (o terminal fechou): um `read()` devolve o que
 chegou até ali, e o terminal pode mandar coisa antes do texto do programa.
 
-Um terminal tem **um canal só**: com `pty=true`, o stderr do filho chega junto
+Um terminal tem **um canal só**: com `pty=True`, o stderr do filho chega junto
 no `read`, e `read_err` devolve `""`. O tamanho começa em 80x24 e muda com
 [`resize`](../Process/Process.md).
 
-`pty=true` com `capture=false` é `ValueError`: ninguém leria o terminal, e o
+`pty=True` com `capture=False` é `ValueError`: ninguém leria o terminal, e o
 filho travaria com o buffer cheio.
 
 No Windows o terminal é um pseudoconsole (ConPTY): a saída vem com as
@@ -162,7 +162,7 @@ redirecionamento, variável) numa string que **você** controla.
 Também aceita string, dividida respeitando aspas, **sem** interpretar shell:
 
 ```
-os.run("jinga -e \"post(1+1)\"", capture=true)   # "2"
+os.run("jinga -e \"post(1+1)\"", capture=True)   # "2"
 ```
 
 A forma com lista é a recomendada — não depende das regras de divisão por
@@ -180,7 +180,7 @@ import os
 
 funct versao_de(programa) {
     try {
-        return os.run([programa, "--version"], capture=true)
+        return os.run([programa, "--version"], capture=True)
     } catch (IOError e) {
         return programa + " não encontrado"
     }
@@ -192,7 +192,7 @@ post(versao_de("nao_existe"))   # "nao_existe não encontrado"
 
 Diferença importante para o [`os.cmd`](../cmd/cmd.md): como o `cmd` passa pelo
 shell, um comando inexistente **não** vira `IOError` — o shell roda, não acha, e
-o `cmd` devolve `Null` **sem `capture`**; com `capture=true` ele devolve o
+o `cmd` devolve `Null` **sem `capture`**; com `capture=True` ele devolve o
 texto do stderr do shell ("command not found"), porque o stdout veio vazio.
 
 ---

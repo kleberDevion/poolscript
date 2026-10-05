@@ -5,7 +5,7 @@ porque são as duas metades da mesma operação.
 
 ```
 JinkerResponse.cookie(nome, valor, path="/", max_age=Null,
-                      httponly=true, secure=false,
+                      httponly=True, secure=False,
                       samesite="Lax", domain=Null) -> JinkerResponse
 request.cookie(nome) -> str | Null
 ```
@@ -40,7 +40,7 @@ funct entrar()
 {
     token = gera_token(request.get("usuario"))
     return jinker.JinkerResponse()
-           .send({"ok": true})
+           .send({"ok": True})
            .cookie("sid", token, max_age=3600)
 }
 ```
@@ -68,12 +68,12 @@ funct entrar()
 {
     token = gera_token(request.get("usuario"))
     return jinker.JinkerResponse()
-           .send({"ok": true})
+           .send({"ok": True})
            .cookie("sid", token,
                    path="/",
                    max_age=36000,
-                   httponly=true,
-                   secure=true,
+                   httponly=True,
+                   secure=True,
                    samesite="Lax",
                    domain=os.getenv("DOMAINS"))
 }
@@ -81,7 +81,7 @@ funct entrar()
 
 `path`, `httponly` e `samesite` estão nos valores padrão — escritos aqui só
 pra mostrar o nome de cada um. O que muda em relação ao exemplo de cima é
-`secure=true` (o padrão é `false`) e `domain`.
+`secure=True` (o padrão é `False`) e `domain`.
 
 Omitir `httponly` **não** é inofensivo quando você nomeia `secure`, `samesite`
 ou `domain`: medido, o `HttpOnly` some da linha gerada. O caso está em
@@ -91,10 +91,13 @@ Devolve a própria resposta, então **encadeia** — e cada chamada acrescenta u
 cookie, não substitui o anterior:
 
 ```ps
-return jinker.JinkerResponse()
-       .send({"ok": true})
-       .cookie("sid", token, max_age=3600)
-       .cookie("tema", "escuro", httponly=false)
+@app.post("/entrar")
+funct entrar() {
+    return jinker.JinkerResponse()
+           .send({"ok": True})
+           .cookie("sid", token, max_age=3600)
+           .cookie("tema", "escuro", httponly=False)
+}
 ```
 
 > `Set-Cookie` é o único cabeçalho de resposta que **se repete**: um por
@@ -108,7 +111,7 @@ return jinker.JinkerResponse()
 funct eu()
 {
     sid = request.cookie("sid")
-    if sid == null
+    if sid == Null
     {
         return jinker.JinkerResponse().send({"erro": "sem sessao"}).status(401)
     }
@@ -127,19 +130,19 @@ cookie apagado.
 |---|---|---|
 | `path` | `"/"` | caminho em que o navegador manda o cookie de volta |
 | `max_age` | `Null` | vida em SEGUNDOS. Sem ele, o cookie morre quando o navegador fecha |
-| `httponly` | `true` | JavaScript **não** enxerga (`document.cookie` não vê) |
-| `secure` | `false` | só viaja em HTTPS |
+| `httponly` | `True` | JavaScript **não** enxerga (`document.cookie` não vê) |
+| `secure` | `False` | só viaja em HTTPS |
 | `samesite` | `"Lax"` | `"Strict"`, `"Lax"` ou `"None"` — quando o cookie acompanha requisição vinda de outro site |
 | `domain` | `Null` | domínio; sem ele, vale só pro host que respondeu |
 
-Os padrões são os seguros: `httponly=true` e `samesite="Lax"` vêm ligados
+Os padrões são os seguros: `httponly=True` e `samesite="Lax"` vêm ligados
 porque cookie de sessão legível por JavaScript transforma qualquer XSS em
-roubo de sessão. Passe `httponly=false` só quando o cliente precisa ler o
+roubo de sessão. Passe `httponly=False` só quando o cliente precisa ler o
 cookie.
 
-`secure=false` é o padrão porque em desenvolvimento se roda em
-`http://localhost`, e com `secure=true` o navegador descarta o cookie. Em
-produção, `secure=true`.
+`secure=False` é o padrão porque em desenvolvimento se roda em
+`http://localhost`, e com `secure=True` o navegador descarta o cookie. Em
+produção, `secure=True`.
 
 ---
 
@@ -148,7 +151,10 @@ produção, `secure=true`.
 Não há `delete`: um cookie se apaga sobrescrevendo com vida zero.
 
 ```ps
-return jinker.JinkerResponse().send({"ok": true}).cookie("sid", "", max_age=0)
+@app.post("/sair")
+funct sair() {
+    return jinker.JinkerResponse().send({"ok": True}).cookie("sid", "", max_age=0)
+}
 ```
 
 O `path` tem que ser o MESMO usado ao gravar — cookie é identificado por
@@ -184,7 +190,7 @@ funct entrar()
         return jinker.JinkerResponse().send({"erro": "usuario ou senha"}).status(401)
     }
     t = jwt.gen({"uid": uid, "exp": date.timestamp() + 3600}, SEGREDO)
-    return jinker.JinkerResponse().send({"ok": true}).cookie("sid", t, max_age=3600)
+    return jinker.JinkerResponse().send({"ok": True}).cookie("sid", t, max_age=3600)
 }
 
 # ROTA PROTEGIDA — o cookie chega sozinho; `check` devolve Null pra token
@@ -204,7 +210,7 @@ funct eu()
 @app.post("/sair")
 funct sair()
 {
-    return jinker.JinkerResponse().send({"ok": true}).cookie("sid", "", max_age=0)
+    return jinker.JinkerResponse().send({"ok": True}).cookie("sid", "", max_age=0)
 }
 ```
 
@@ -246,7 +252,7 @@ consegue produzir outro token que passe no `check`.
 
 ### O que XSS pode e não pode com esses padrões
 
-- Com `httponly=true` (padrão), um script injetado na página **não lê** o
+- Com `httponly=True` (padrão), um script injetado na página **não lê** o
   cookie: `document.cookie` não o enxerga, então o token não sai da máquina
   por aí.
 - Um script rodando na sua própria origem **ainda usa** a sessão: toda
@@ -254,7 +260,7 @@ consegue produzir outro token que passe no `check`.
   atributo de cookie; resolve-se não tendo XSS — escapar tudo que vem do
   usuário antes de devolver como HTML.
 - `samesite="Lax"` (padrão) impede que **outro site** dispare `POST` com o
-  seu cookie (CSRF). `secure=true` impede que ele viaje em `http://` — ligue
+  seu cookie (CSRF). `secure=True` impede que ele viaje em `http://` — ligue
   em produção.
 
 ### Logout num token sem estado

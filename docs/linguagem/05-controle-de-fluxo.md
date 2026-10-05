@@ -27,7 +27,7 @@ if nota >= 7 {
 ```
 
 - A condição é avaliada pela **verdade** do valor (*truthiness*, seção 2.3), não
-  precisa ser `bool`: `0`, `""`, `[]`, `{}` e `null` são falsos; o resto é
+  precisa ser `bool`: `0`, `""`, `[]`, `{}` e `Null` são falsos; o resto é
   verdadeiro.
 - `elif` encadeia quantas vezes quiser; `else` é opcional e vem por último.
 - A palavra é **`elif`** — não existe `else if` (é erro de sintaxe).
@@ -114,7 +114,7 @@ Regras e limites (verificados):
   índice valem no cabeçalho, com ou sem vírgula:
 
   ```ps
-  ultimo = [null]
+  ultimo = [Null]
   for each ultimo[0] in [7, 8] { }
   post(ultimo)                    # [8]
 
@@ -270,7 +270,7 @@ Vale em **qualquer** posição de statement — corpo de `funct`, `if`/`else`,
 `while`, `for each`, `try`/`catch`, corpo de classe. Diferente de `break` e
 `continue`, não depende de estar dentro de um laço.
 
-Uma funct cujo corpo é só `pass` devolve `null`, igual a uma que termina sem
+Uma funct cujo corpo é só `pass` devolve `Null`, igual a uma que termina sem
 `return` (seção 6.3).
 
 > Uso típico fora de corpo vazio: no **middleware** do `jinker`, chegar no
@@ -357,6 +357,19 @@ count each int in [10, "x", 20, 30] {
 
 Os elementos que não são do tipo (o `"x"` acima) são pulados. `self`, `_count`,
 `_index` e `_match` são do escopo do laço — não existem depois dele.
+
+Dentro de uma funct, `return;` (vazio) no bloco devolve o total contado, e
+`return valor` interrompe e devolve `valor`. No topo do arquivo o `return` é
+erro de sintaxe (6.3), também dentro do `count each`:
+
+```ps
+int funct conta_inteiros(list l) {
+    count each int in l {
+        return;
+    }
+}
+post(conta_inteiros([10, "x", 20]))   # 2
+```
 
 (Existe também a forma de **expressão** do `count`, que só devolve a contagem
 sem laço — `int(2) count in xs` e `int in xs count` — na seção 3.10.)

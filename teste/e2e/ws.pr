@@ -12,5 +12,5 @@ async funct t() {
 }
 
 if __name__ == "main":
-    ap(debug=true, host="127.0.0.0.1", port=2001)
+    ap(debug=True, host="127.0.0.0.1", port=2001)
     

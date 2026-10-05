@@ -59,12 +59,16 @@ encadeia é [`.status(code)`](../status/status.md), que devolve o
 
 ```ps
 # atribuição: uma instrução por vez
-r = jsonify({"criado": true})
-r.status_code = 201
-return r
+funct cria() {
+    JinkerResponse r = jsonify({"criado": True})
+    r.status_code = 201
+    return r
+}
 
 # método: cabe na cadeia
-return jsonify({"criado": true}).status(201).header("Location", "/itens/10")
+funct cria_encadeado() {
+    return jsonify({"criado": True}).status(201).header("Location", "/itens/10")
+}
 ```
 
 | forma | devolve | encadeia |

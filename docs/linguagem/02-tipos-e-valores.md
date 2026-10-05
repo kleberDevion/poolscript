@@ -28,7 +28,7 @@ conferência; só muda o momento. E o erro sai completo: o `--check` lista
 | Tupla | `"tup"` | `(1, 2)` | não | sequência **imutável** |
 | Dicionário | `"dict"` | `{ "k": v }` | **sim** | mapa chave→valor (apelido: `json`) |
 | Bytes | `"byte"` | `b"\x00\xff"`, `"x".encode()` | não | sequência de bytes crus (o tipo é `byte`; `bytes` é o módulo) |
-| Nulo | `"Null"` | `Null`/`null`/`None`/`none` | — | ausência de valor |
+| Nulo | `"Null"` | `Null` | — | ausência de valor |
 
 Além destes, existem **valores-objeto**: instâncias de `Entity`, funções
 (`funct`), módulos importados, `enum`, `model` — descritos nas suas
@@ -46,13 +46,13 @@ de rodar, como em qualquer outra expressão.
 ```ps
 k = "a"
 funct f() { return "z" }
-post({"tls": true})            # {'tls': True}    texto: com aspas
+post({"tls": True})            # {'tls': True}    texto: com aspas
 post({k: 1, k + "x": 2})       # {'a': 1, 'ax': 2} a variável k, e uma conta com ela
 post({f(): 1, 1: "um"})        # {'z': 1, 1: 'um'} chamada e número
 ```
 
 ```ps
-post({tls: true})              # NameError: name 'tls' is not defined
+post({tls: True})              # NameError: name 'tls' is not defined
 ```
 
 Bloco e dict se separam pela **posição** do `{`: em posição de instrução
@@ -160,7 +160,7 @@ segundo estas regras:
 | `str`/`byte` | não vazio (`len > 0`) |
 | `list`/`tup` | não vazia |
 | `dict` | tem ao menos uma entrada |
-| `Null`/`none` | **sempre falso** |
+| `Null` | **sempre falso** |
 | Entity/instância/função | **sempre verdadeiro** |
 
 ```ps
@@ -186,7 +186,7 @@ post([10, 20][True])  # 20  (índice 1)
 
 ## 2.5. `Null` — ausência de valor
 
-`Null` (e os sinônimos `null`/`None`/`none`) representa "sem valor". Regras:
+`Null` representa "sem valor". Regras:
 
 - **Não se ordena.** Qualquer `<`, `>`, `<=`, `>=` com `Null` de um dos lados
   **levanta** `TypeError: '<' not supported between instances of 'Null' and
@@ -195,12 +195,12 @@ post([10, 20][True])  # 20  (índice 1)
   **sem avisar**, enquanto `"abc" < 5` levantava. Eram duas políticas para o
   mesmo erro. Quem quer o teste sem levantar escreve `x != Null` antes.
 - Em igualdade, `Null == Null` é `True`; com **qualquer** outra coisa é
-  `False`, inclusive `Null == 0`, `Null == false` e `Null == ""`.
-- **Imprime como `Null`**, com inicial maiúscula, igual a `True` e `False`.
-  As quatro grafias (`Null`/`null`/`None`/`none`) valem na ESCRITA; a saída é
-  uma só. Em **JSON** continua `null` minúsculo, porque ali é a especificação
-  do formato, não a da linguagem: `json.stringify({"a": Null})` dá
-  `{"a": null}`.
+  `False`, inclusive `Null == 0`, `Null == False` e `Null == ""`.
+- **Escreve e imprime como `Null`**, com inicial maiúscula, igual a `True` e
+  `False`. É a única grafia: `null`, `None` e `none` não são literais (seção
+  1.6.4). Em **JSON** o nulo é `null` minúsculo, porque ali vale a
+  especificação do formato, não a da linguagem: `json.stringify({"a": Null})`
+  dá `{"a": null}`.
 
 ---
 

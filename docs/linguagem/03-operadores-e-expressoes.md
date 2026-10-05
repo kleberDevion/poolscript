@@ -233,8 +233,8 @@ SyntaxError: `===` nao existe nesta linguagem; use `==`
 ```
 
 **Por que saíram:** eles nunca foram igualdade estrita. Compilavam para o
-**mesmo opcode** do `==`, então `false === Null` respondia igualzinho a
-`false == Null`. Quem escrevia `x === Null` acreditando estar protegido da
+**mesmo opcode** do `==`, então `False === Null` respondia igualzinho a
+`False == Null`. Quem escrevia `x === Null` acreditando estar protegido da
 comparação frouxa estava rodando exatamente a comparação frouxa — o operador
 tinha nome de uma coisa e comportamento de outra, e isso custou tempo de
 depuração real.
@@ -244,21 +244,21 @@ Se você quer comparar **valor e tipo**, compare o tipo junto:
 ```ps
 x = 0
 if x == 0 and type(x) == "int" {
-    # só entra com int 0, não com 0.0 nem false
+    # só entra com int 0, não com 0.0 nem False
 }
 ```
 
 ### 3.3.2. Igualdade compara VALOR, entre tipos numéricos e por estrutura
 
 - Números de tipos diferentes se comparam pelo valor: `1 == 1.0` é `True`.
-- `bool` é subtipo de `int`: `1 == true` e `0 == false` são `True`
-  (`2 == true` é `False`).
+- `bool` é subtipo de `int`: `1 == True` e `0 == False` são `True`
+  (`2 == True` é `False`).
 - Listas, tuplas e **dicts** comparam por **conteúdo** (igualdade estrutural),
   não por identidade. Em dict a ordem das chaves não importa.
 
 ```ps
 post(1 == 1.0)                          # True
-post(1 == true)                         # True
+post(1 == True)                         # True
 post([1, 2] == [1, 2])                  # True
 post({"a": 1, "b": 2} == {"b": 2, "a": 1})   # True
 post({"a": 1} == {"a": 2})              # False
@@ -266,31 +266,31 @@ post({"a": 1} == {"a": 2})              # False
 
 Tipos diferentes que não sejam numéricos nunca são iguais: `5 == "5"` é `False`.
 
-### 3.3.3. `null` na comparação
+### 3.3.3. `Null` na comparação
 
-`null` só é igual a `null`. Na **igualdade** ele não equivale a zero, a `false`
-nem a string vazia — `null == 0` é `False`. Nas comparações de **ordem** (`<`,
-`>`, `<=`, `>=`), qualquer lado `null` **levanta** `TypeError`: `null` não tem
+`Null` só é igual a `Null`. Na **igualdade** ele não equivale a zero, a `False`
+nem a string vazia — `Null == 0` é `False`. Nas comparações de **ordem** (`<`,
+`>`, `<=`, `>=`), qualquer lado `Null` **levanta** `TypeError`: `Null` não tem
 magnitude, e devolver `False` escondia o erro.
 
 ```ps
-post(null == null)   # True
-post(null == 0)      # False
-post(null < 5)       # TypeError: '<' not supported between instances of 'Null' and 'int'
-post(null >= 0)      # TypeError: '>=' not supported between instances of 'Null' and 'int'
+post(Null == Null)   # True
+post(Null == 0)      # False
+post(Null < 5)       # TypeError: '<' not supported between instances of 'Null' and 'int'
+post(Null >= 0)      # TypeError: '>=' not supported between instances of 'Null' and 'int'
 ```
 
-Para testar sem levantar, compare com `null` antes:
+Para testar sem levantar, compare com `Null` antes:
 
 ```ps
-x = null
-if x != null and x > 0 {
+x = Null
+if x != Null and x > 0 {
     post("positivo")
 }
 ```
 
-> Esta seção dizia que `null == 0` é `True` e que ordem com `null` devolve
-> `False`. As duas coisas mudaram: comparar `null` com `<` era o pior caso —
+> Esta seção dizia que `Null == 0` é `True` e que ordem com `Null` devolve
+> `False`. As duas coisas mudaram: comparar `Null` com `<` era o pior caso —
 > `if x > 0` com `x` nulo caía no `else` **sem avisar**, enquanto `"abc" < 5`
 > levantava. Duas políticas para o mesmo erro.
 
@@ -329,12 +329,12 @@ Isso vale para efeitos colaterais: no exemplo, `f()` só roda no último caso.
 ```ps
 funct f() {
     post("  f() rodou")
-    return true
+    return True
 }
 
-r1 = true or f()      # f() NÃO roda
-r2 = false and f()    # f() NÃO roda
-r3 = false or f()     # f() roda
+r1 = True or f()      # f() NÃO roda
+r2 = False and f()    # f() NÃO roda
+r3 = False or f()     # f() roda
 ```
 
 ### 3.4.2. Resultado é sempre `bool`
@@ -376,7 +376,7 @@ post(x is not dict)   # True
 `json` e `dict` são o mesmo tipo, então `d is json` e `d is dict` coincidem
 (ver seção 2). Para obter o nome do tipo como texto, use `type(x)`.
 
-**`x is Null`** vale, e é o idioma pro teste de ausência. `type(null)` é
+**`x is Null`** vale, e é o idioma pro teste de ausência. `type(Null)` é
 literalmente `"Null"`, então ali o nome ocupa a posição de tipo com sentido.
 
 ### `is` com literal à direita é erro
@@ -426,12 +426,12 @@ post(9 not in [1, 2, 3])    # True
 ```
 
 A chave **não** é comparada por tipo exato: número e bool se encontram entre si,
-pela mesma igualdade de 3.3 (`1 == 1.0 == true`). Texto é que nunca casa com
+pela mesma igualdade de 3.3 (`1 == 1.0 == True`). Texto é que nunca casa com
 número:
 
 ```ps
 d = {1: "a"}
-post(1 in d, 1.0 in d, true in d, "1" in d)   # True True True False
+post(1 in d, 1.0 in d, True in d, "1" in d)   # True True True False
 ```
 
 ---
@@ -451,11 +451,11 @@ post(~5)        # -6      (~x == -x-1)
 ```
 
 **`bool` entra nos binários como 0/1**, igual ao resto da aritmética
-(`true + 1` é 2). O unário `~` é a exceção, e recusa:
+(`True + 1` é 2). O unário `~` é a exceção, e recusa:
 
 ```ps
-post(true & 1, true | false, true ^ 1, true << 1)   # 1 1 0 2
-post(~true)     # TypeError: bad operand type for unary ~: 'bool'
+post(True & 1, True | False, True ^ 1, True << 1)   # 1 1 0 2
+post(~True)     # TypeError: bad operand type for unary ~: 'bool'
 ```
 
 Precedência entre eles (do mais forte pro mais fraco): `<<`/`>>` (9), `&` (8),

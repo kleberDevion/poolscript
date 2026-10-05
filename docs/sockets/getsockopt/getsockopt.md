@@ -24,7 +24,7 @@ Um exemplo do formato cru: `SO_REUSEADDR` ligado, lido com `buflen=4` numa
 máquina little-endian, é `b'\x01\x00\x00\x00'` — 4 bytes, e o `1` está no
 primeiro.
 
-Booleana ligada devolve `1`, desligada devolve `0` — nunca `true`/`false`.
+Booleana ligada devolve `1`, desligada devolve `0` — nunca `True`/`False`.
 
 ## Erros
 

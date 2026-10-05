@@ -1,4 +1,4 @@
-# Jinga v16.2.6
+# Jinga v16.2.7
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 jinga --version
-# Jinga 16.2.6 [PSVM] (2026-09-24) Runtime standalone
+# Jinga 16.2.7 [PSVM] (2026-09-24) Runtime standalone
 #                       ^ a data da compilação DESTE binário: duas
 #                         cópias da mesma versão se distinguem por ela
 ```
@@ -166,7 +166,7 @@ de bloco
 str nome = "joao"
 int idade = 17
 flo altura = 1.75
-bool ativo = true
+bool ativo = True
 ```
 
 Variável sem tipo declarado:
@@ -235,7 +235,7 @@ post(nomes)         # ['joao', 'leo', 'bia']
 ## Dicionário
 
 ```
-data = {"nome": "ana", "idade": 20, "ativo": true}
+data = {"nome": "ana", "idade": 20, "ativo": True}
 post(data["nome"])    # ana
 post(data["idade"])   # 20
 post(len(data))       # 3
@@ -523,7 +523,7 @@ model Usuario() {
     ativo: bool
 }
 
-data = {"nome": "ana", "email": "ana@email.com", "idade": 20, "ativo": true}
+data = {"nome": "ana", "email": "ana@email.com", "idade": 20, "ativo": True}
 
 if (data == Usuario) {
     post("Dados válidos!")
@@ -539,13 +539,13 @@ Campos disponíveis:
 | `str(length=N)` | `nome: str(length=60)` | texto com máx N caracteres |
 | `int(length=N)` | `idade: int(length=3)` | inteiro com máx N dígitos |
 | `flo` | `altura: flo` | número decimal |
-| `bool` | `ativo: bool` | true ou false |
+| `bool` | `ativo: bool` | `True` ou `False` |
 | `list`, `dict` | `tags: list(of=str)` · `extras: dict` | lista (cada item do tipo `of`) · objeto JSON |
 | outro model | `endereco: Endereco` | dict que passa naquele model (aninhado) |
 
 Parâmetros que validam o **dado** (qualquer ordem, valores literais):
 `regex="…"` (str), `in=[…]` e `not_in=[…]` (valores aceitos/proibidos),
-`min=N`/`max=N` (int, flo), `optional=true` (pode faltar ou vir null),
+`min=N`/`max=N` (int, flo), `optional=True` (pode faltar ou vir `Null`),
 `of=T` (item da lista). Na rota do jinker com `model=`, o 422 diz o campo e o
 motivo — `campo 'idade': no minimo 18, veio 12`. Detalhe em
 [08-model-e-enum](linguagem/08-model-e-enum.md).
@@ -735,7 +735,7 @@ x = 1
 if x is int {
     post("é inteiro")
 }
-if x not is none {
+if x not is Null {
     post("tem valor")
 }
 ```
@@ -746,7 +746,7 @@ registrar, não é o tipo em si:
 ```jinga
 post(type(200))     # int
 post(type("a"))     # str
-post(type(none))    # Null
+post(type(Null))    # Null
 post(type(1.5))     # flo
 ```
 
@@ -894,5 +894,5 @@ public funct dados() {
 }
 
 if __name__ == "main":
-    app(debug=False, host="0.0.0.0", port=7700, reload=true)
+    app(debug=False, host="0.0.0.0", port=7700, reload=True)
 ```

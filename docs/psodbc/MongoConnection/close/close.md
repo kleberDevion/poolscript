@@ -3,7 +3,7 @@
 Fecha a conexão com o MongoDB.
 
 ```
-conn.close() -> None
+conn.close() -> Null
 ```
 
 ---

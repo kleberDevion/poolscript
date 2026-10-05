@@ -76,11 +76,11 @@ funct recuo(linha) {
 # Cada bloco: linha da cerca, código e se é o CONTEXTO da página.
 funct blocos_ps(txt) {
     b_blocos = []
-    b_dentro = false
+    b_dentro = False
     b_atual = []
     b_ini = 0
     b_margem = 0
-    b_contexto = false
+    b_contexto = False
     b_n = 0
     for each linha in txt.splitlines() {
         b_n = b_n + 1
@@ -88,7 +88,7 @@ funct blocos_ps(txt) {
         if b_dentro {
             if limpa == "```" {
                 addEnd(b_blocos, {"linha": b_ini, "codigo": "\n".join(b_atual), "contexto": b_contexto})
-                b_dentro = false
+                b_dentro = False
                 b_atual = []
             }
             else {
@@ -101,7 +101,7 @@ funct blocos_ps(txt) {
             }
         }
         elif limpa == "```ps" or limpa == "```jinga" or limpa == "```ps contexto" {
-            b_dentro = true
+            b_dentro = True
             b_ini = b_n
             b_margem = recuo(linha)
             b_atual = []
@@ -118,7 +118,7 @@ funct blocos_ps(txt) {
 # simples não é aspa (o programa procurado virava `'C:\...\pool.exe'`, com as
 # aspas no nome).
 #
-# Os dois canais, e não o `capture=true`: ele devolve o stdout e só cai pro
+# Os dois canais, e não o `capture=True`: ele devolve o stdout e só cai pro
 # stderr quando o stdout vem vazio. O `--check` que não abre o arquivo escreve
 # nos DOIS (medido: "jinga: nao consegui abrir '...'" no stderr e o JSON de
 # IOError no stdout), e só com o stdout um bloco que cita IOError passaria
@@ -183,16 +183,16 @@ funct confere(codigo) {
 # named" conta como exemplo válido — e vai pra uma lista impressa no fim, pra
 # ninguém descobrir isso por acaso.
 funct so_modulo_de_exemplo(resposta) {
-    if not resposta.startswith("{") { return false }
+    if not resposta.startswith("{") { return False }
     r = json.parse(resposta)
-    if r["ok"] { return false }
-    if r["tipo"] != "ImportError" { return false }
+    if r["ok"] { return False }
+    if r["tipo"] != "ImportError" { return False }
     erros = r.get("erros")
     if erros == Null { return "No module named" in r["msg"] }
     for each e in erros {
-        if not "No module named" in e["msg"] { return false }
+        if not "No module named" in e["msg"] { return False }
     }
-    return true
+    return True
 }
 
 
@@ -210,7 +210,7 @@ funct tipo_do_erro(resposta) {
 }
 
 
-os.mkdir(TMP, exist_ok=true)
+os.mkdir(TMP, exist_ok=True)
 lista = "--lista" in sys.argv
 
 # os nomes de erro da linguagem — do motor, não de lista digitada. O stderr do
@@ -279,7 +279,7 @@ for each md in lista_md(RAIZ) {
 
 # A pasta de trabalho sai aqui: nada abaixo a usa, e o `sys.exit` do fim não
 # passa por limpeza nenhuma.
-os.rmdir(TMP, force=true)
+os.rmdir(TMP, force=True)
 
 post("blocos ```ps conferidos:", total)
 post("  dos quais mostram um erro de proposito, e o motor da ESSE erro:", anunciados)

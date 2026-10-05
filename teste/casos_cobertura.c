@@ -321,21 +321,21 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "", NULL, 0 },
 { "matriz: char em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    char c = 64\n"
   "    post(c)\n"
   "}\n"
   "\n",
   "@", NULL, 0 },
 { "matriz: char_texto em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    char c = \"ç\"\n"
   "    post(c, len(c))\n"
   "}\n"
   "\n",
   "ç 1", NULL, 0 },
 { "matriz: closure em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    a = 1\n"
   "    funct inc() {\n"
   "        a = a + 1\n"
@@ -346,7 +346,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "2 3", NULL, 0 },
 { "matriz: closure_self em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    x = 5\n"
   "    funct le() {\n"
   "        return x\n"
@@ -356,71 +356,71 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "5", NULL, 0 },
 { "matriz: startswith em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    post(\"abc\".startswith((\"z\", \"a\")))\n"
   "}\n"
   "\n",
   "True", NULL, 0 },
 { "matriz: index_faixa em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    l = [1, 2, 3, 2]\n"
   "    post(l.index(2, 2))\n"
   "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: encode em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    post(\"café\".encode(\"latin-1\"))\n"
   "}\n"
   "\n",
   "b'caf\\xe9'", NULL, 0 },
 { "matriz: decode em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
   "}\n"
   "\n",
   "café", NULL, 0 },
 { "matriz: num_base em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    post(0x1F, 0b101, 1_000, 1e3)\n"
   "}\n"
   "\n",
   "31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    post(\"Ω\".lower(), \"ß\".upper())\n"
   "}\n"
   "\n",
   "ω SS", NULL, 0 },
 { "matriz: isdigit em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    post(\"²\".isdigit(), \"²\".isdecimal())\n"
   "}\n"
   "\n",
   "True False", NULL, 0 },
 { "matriz: regex_split em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    import regex\n"
   "    post(regex.split(r\"(,)\", \"a,b\"))\n"
   "}\n"
   "\n",
   "['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    import regex\n"
   "    post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
   "}\n"
   "\n",
   "a[1]", NULL, 0 },
 { "matriz: json_par_surrogate em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    import json\n"
   "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "}\n"
   "\n",
   "{'a': '𠮷'}", NULL, 0 },
 { "matriz: await_lista em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    async funct d(n) {\n"
   "        return n * 2\n"
   "    }\n"
@@ -429,7 +429,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "[2, 4]", NULL, 0 },
 { "matriz: int_inf em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    try {\n"
   "        post(int(flo(\"inf\")))\n"
   "    } catch(e) {\n"
@@ -439,103 +439,103 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "ok-erro", NULL, 0 },
 { "matriz: nul em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    post(len(\"a\\x00b\"))\n"
   "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: fatia em bloco_if",
-  "if true {\n"
+  "if True {\n"
   "    post(\"abcdef\"[999999999999999999999:])\n"
   "}\n"
   "\n",
   "", NULL, 0 },
 { "matriz: char em bloco_chaves",
-  "if (true) {\n"
+  "if (True) {\n"
   "    char c = 64\n"
   "    post(c)\n"
   "}\n"
   "\n",
   "@", NULL, 0 },
 { "matriz: char_texto em bloco_chaves",
-  "if (true) {\n"
+  "if (True) {\n"
   "    char c = \"ç\"\n"
   "    post(c, len(c))\n"
   "}\n"
   "\n",
   "ç 1", NULL, 0 },
 { "matriz: startswith em bloco_chaves",
-  "if (true) {\n"
+  "if (True) {\n"
   "    post(\"abc\".startswith((\"z\", \"a\")))\n"
   "}\n"
   "\n",
   "True", NULL, 0 },
 { "matriz: index_faixa em bloco_chaves",
-  "if (true) {\n"
+  "if (True) {\n"
   "    l = [1, 2, 3, 2]\n"
   "    post(l.index(2, 2))\n"
   "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: encode em bloco_chaves",
-  "if (true) {\n"
+  "if (True) {\n"
   "    post(\"café\".encode(\"latin-1\"))\n"
   "}\n"
   "\n",
   "b'caf\\xe9'", NULL, 0 },
 { "matriz: decode em bloco_chaves",
-  "if (true) {\n"
+  "if (True) {\n"
   "    post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
   "}\n"
   "\n",
   "café", NULL, 0 },
 { "matriz: num_base em bloco_chaves",
-  "if (true) {\n"
+  "if (True) {\n"
   "    post(0x1F, 0b101, 1_000, 1e3)\n"
   "}\n"
   "\n",
   "31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em bloco_chaves",
-  "if (true) {\n"
+  "if (True) {\n"
   "    post(\"Ω\".lower(), \"ß\".upper())\n"
   "}\n"
   "\n",
   "ω SS", NULL, 0 },
 { "matriz: isdigit em bloco_chaves",
-  "if (true) {\n"
+  "if (True) {\n"
   "    post(\"²\".isdigit(), \"²\".isdecimal())\n"
   "}\n"
   "\n",
   "True False", NULL, 0 },
 { "matriz: regex_split em bloco_chaves",
-  "if (true) {\n"
+  "if (True) {\n"
   "    import regex\n"
   "    post(regex.split(r\"(,)\", \"a,b\"))\n"
   "}\n"
   "\n",
   "['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em bloco_chaves",
-  "if (true) {\n"
+  "if (True) {\n"
   "    import regex\n"
   "    post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
   "}\n"
   "\n",
   "a[1]", NULL, 0 },
 { "matriz: json_par_surrogate em bloco_chaves",
-  "if (true) {\n"
+  "if (True) {\n"
   "    import json\n"
   "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "}\n"
   "\n",
   "{'a': '𠮷'}", NULL, 0 },
 { "matriz: nul em bloco_chaves",
-  "if (true) {\n"
+  "if (True) {\n"
   "    post(len(\"a\\x00b\"))\n"
   "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: fatia em bloco_chaves",
-  "if (true) {\n"
+  "if (True) {\n"
   "    post(\"abcdef\"[999999999999999999999:])\n"
   "}\n"
   "\n",

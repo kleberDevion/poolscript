@@ -4,7 +4,7 @@ Confirma (salva no disco) as alterações feitas na conexão — INSERT, UPDATE,
 DELETE. **Sem `commit`, as mudanças se perdem** ao fechar.
 
 ```
-conn.commit() -> None
+conn.commit() -> Null
 ```
 
 ---

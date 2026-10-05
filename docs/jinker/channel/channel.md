@@ -31,9 +31,9 @@ if (app.channel.status == "Success") {
 não alcança nenhuma conexão é `Error` — inclusive quando não há nenhuma conexão aberta,
 ou quando as que existem não estão no canal.
 
-> **A armadilha mais comum:** `@app.socket("/chat")` **sem** `channel=true` não
+> **A armadilha mais comum:** `@app.socket("/chat")` **sem** `channel=True` não
 > põe a conexão no broadcast. O cliente conecta, o handler roda, e todo `emit`
-> devolve `Error` porque não há alvo. Com `debug=true` o servidor diz isso em
+> devolve `Error` porque não há alvo. Com `debug=True` o servidor diz isso em
 > texto: `emit sem alvo: N conexao(oes) aberta(s), nenhuma no canal`.
 
 ---
@@ -46,7 +46,7 @@ Os dois emitem, com uma diferença de padrão:
 |---|---|---|
 | Broadcast | `app.channel(forAll=msg)` | `emit(payload=msg)` |
 | Pra sala | `app.channel.emit(msg, room_id="x")` | `emit(payload=msg, room_id="x")` |
-| Ecoa pro remetente? | **sim** (manda pra todos) | **não** por padrão (`exclude_self=true`) |
+| Ecoa pro remetente? | **sim** (manda pra todos) | **não** por padrão (`exclude_self=True`) |
 
 Use `app.socket()` dentro do handler quando **não** quer que o remetente receba
 o próprio eco; use `app.channel` quando quer mandar pra todos, incluindo quem
@@ -57,7 +57,7 @@ disparou (ou quando emite de fora de um handler).
 ## Exemplo dentro de um socket
 
 ```
-@app.socket("/chat/<sala>", channel=true)
+@app.socket("/chat/<sala>", channel=True)
 funct mensagem() {
     sala = request.path_param("sala")
     msg  = request.get_json()

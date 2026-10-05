@@ -4,7 +4,7 @@ Autentica na caixa de e-mail (IMAP). Chame depois de
 [`.conn()`](../conn/conn.md).
 
 ```
-r.login(user: str, password: str) -> None
+r.login(user: str, password: str) -> Null
 ```
 
 ---

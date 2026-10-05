@@ -199,11 +199,11 @@ funct tema_cobre(tema, esc) {
         }
         for each s in escopos {
             if s == esc or esc.startswith(s + ".") {
-                return true
+                return True
             }
         }
     }
-    return false
+    return False
 }
 
 
@@ -226,9 +226,9 @@ if __name__ == "main" {
     # temporário. Ia pra "/tmp/ps_realce_meta.json" com `>` no `os.cmd`, e no
     # Windows (lá o shell é o cmd.exe) "/tmp" é `<drive>:\tmp`, pasta que só
     # existe se alguém a criou. O caminho do motor vai como um argumento só:
-    # espaço nele não parte a linha. Sem stdout o `capture=true` devolve o
+    # espaço nele não parte a linha. Sem stdout o `capture=True` devolve o
     # stderr, e o json.parse reprova como reprovava o arquivo vazio.
-    meta = json.parse(os.run([sys.executable, "--metadata"], capture=true))
+    meta = json.parse(os.run([sys.executable, "--metadata"], capture=True))
     listas = nomes_de(meta)
     apelidos = []
     for each ap in meta["tipos_apelidos"].keys() {
@@ -255,10 +255,10 @@ if __name__ == "main" {
             }
             tema = json.parse(os.readFile("editor/vscode/themes/" + e["name"]))
             for each alternativas in escopos_da_gramatica(linhas) {
-                coberto = false
+                coberto = False
                 for each esc in alternativas {
                     if tema_cobre(tema, esc) {
-                        coberto = true
+                        coberto = True
                     }
                 }
                 if not coberto {

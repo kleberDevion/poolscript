@@ -10,8 +10,8 @@ import os
 p = os.run(["jinga", "prog.pr"], capture="live")
 ```
 
-Os outros dois modos do [`os.run`](../run/run.md) não fazem isso: `capture=false`
-dispara e esquece, `capture=true` só devolve o texto no fim.
+Os outros dois modos do [`os.run`](../run/run.md) não fazem isso: `capture=False`
+dispara e esquece, `capture=True` só devolve o texto no fim.
 
 ---
 
@@ -28,7 +28,7 @@ dispara e esquece, `capture=true` só devolve o texto no fim.
 | `p.read_err(n=4096)` | `str` | o mesmo, do stderr |
 | `p.wait()` | `int` | espera o filho terminar e devolve o código |
 | `p.kill(sinal=15)` | `bool` | manda um sinal (15 = SIGTERM, 9 = SIGKILL) |
-| `p.resize(colunas, linhas)` | `bool` | muda o tamanho do terminal (só com `pty=true`) |
+| `p.resize(colunas, linhas)` | `bool` | muda o tamanho do terminal (só com `pty=True`) |
 
 ---
 
@@ -63,7 +63,7 @@ using os.run(["sort"], capture="live") as p {
 }
 ```
 
-`close()` é o que diz "acabou a entrada". Com `pty=true` ele manda o caractere
+`close()` é o que diz "acabou a entrada". Com `pty=True` ele manda o caractere
 de fim (o mesmo `Ctrl+D` do teclado; no Windows, `Ctrl+Z` e Enter, o fim do
 teclado de lá) e o canal continua aberto pra leitura.
 
@@ -87,10 +87,10 @@ pergunta se ele ainda existe.
 `wait()` cede enquanto espera: numa rota do jinker, as outras requisições
 continuam sendo atendidas.
 
-## Terminal (`pty=true`)
+## Terminal (`pty=True`)
 
 ```
-p = os.run(["htop"], capture="live", pty=true)
+p = os.run(["htop"], capture="live", pty=True)
 p.resize(120, 40)
 ```
 
@@ -105,7 +105,7 @@ pseudoconsole que avisa).
 Os canais fecham sozinhos quando o objeto é coletado, e o `using` os fecha no
 fim do bloco. O filho **não** é morto junto: se ele ainda estiver rodando, seu
 código de saída é recolhido pelo motor quando ele terminar, sem virar zumbi.
-Com `pty=true`, fechar é fechar o terminal, e o filho perde a sessão (o mesmo
+Com `pty=True`, fechar é fechar o terminal, e o filho perde a sessão (o mesmo
 nos três sistemas).
 
 ---

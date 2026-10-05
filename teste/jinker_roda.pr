@@ -62,7 +62,7 @@ funct cru_em(porta, bytes_pedido)
     erro = ""
     try
     {
-        while true
+        while True
         {
             pedaco = s.recv(4096)
             # `len(x)`, não `x.len()`: `bytes` é o único tipo embutido SEM o
@@ -110,12 +110,12 @@ funct espera_porta(prazo_decimos)
         s.close()
         if rc_con == 0
         {
-            return true
+            return True
         }
         sleep(0.1)
         i = i + 1
     }
-    return false
+    return False
 }
 
 # Tudo o que um processo do teste escreveu, lido ate ele terminar: o `read`
@@ -143,11 +143,11 @@ funct saida_de(p)
 # o `sh -c "... & echo $!"` de antes nao existe no `cmd.exe` do Windows, e o
 # `setsid` nao existe no macOS. O `Process` devolvido e quem mata (`kill`) e
 # guarda a saida no cano; `close()` fecha a entrada, como o `< /dev/null`.
-os.mkdir(PASTA, exist_ok=true)
+os.mkdir(PASTA, exist_ok=True)
 srv_alvo = os.run([sys.executable, "teste/jinker_alvo.pr"], capture="live")
 srv_alvo.close()
 
-if espera_porta(100) == false
+if espera_porta(100) == False
 {
     post("o servidor-alvo nao abriu a porta " + str(PORTA))
     srv_alvo.kill(9)
@@ -157,7 +157,7 @@ if espera_porta(100) == false
 
 # ── métodos e corpo ─────────────────────────────────────────────────────────
 r = get(RAIZ + "/ok")
-confere("GET responde 200 com JSON", r.status_code == 200 and r.get_json("ok") == true)
+confere("GET responde 200 com JSON", r.status_code == 200 and r.get_json("ok") == True)
 confere("o servidor enxerga o método", r.get_json("metodo") == "GET")
 
 r = http_post(RAIZ + "/eco", body="corpo-do-post")
@@ -182,7 +182,7 @@ confere("status customizado chega inteiro", r.status_code == 418)
 # ── query, path param e cabeçalho ───────────────────────────────────────────
 r = get(RAIZ + "/consulta?q=abc")
 confere("query string chega", r.get_json("q") == "abc")
-confere("parâmetro ausente vira null", r.get_json("faltando") == null)
+confere("parâmetro ausente vira Null", r.get_json("faltando") == Null)
 
 r = get(RAIZ + "/consulta?q=a%20b%2Bc")
 confere("query percent-encoded é decodificada", r.get_json("q") == "a b+c")
@@ -256,7 +256,7 @@ confere("`%00` no path e 400, nao outra rota", "HTTP/1.1 400" in bruto)
 
 r = get(RAIZ + "/cabecalho", headers={"X-Chave": "valor"})
 confere("cabeçalho do cliente chega", r.get_json("chave") == "valor")
-confere("a lista de cabeçalhos não vem vazia", r.get_json("todos") == true)
+confere("a lista de cabeçalhos não vem vazia", r.get_json("todos") == True)
 
 # ── JSON ────────────────────────────────────────────────────────────────────
 r = http_post(RAIZ + "/json", body={"nome": "ana", "n": 2})
@@ -268,7 +268,7 @@ r = http_post(RAIZ + "/subir", file={"arquivo": {"name": PASTA + "/enviar.txt"}}
 confere("upload chega com nome, tamanho e conteúdo",
         r.get_json("nome") == "enviar.txt" and r.get_json("tamanho") == 16
         and r.get_json("conteudo") == "conteudo enviado")
-confere("upload é gravado no disco pelo save()", r.get_json("salvou") == true)
+confere("upload é gravado no disco pelo save()", r.get_json("salvou") == True)
 confere("files() enxerga o arquivo", r.get_json("quantos") >= 1)
 
 r = http_post(RAIZ + "/subir", body="sem arquivo nenhum")
@@ -278,22 +278,22 @@ confere("POST sem arquivo devolve 400, não 500", r.status_code == 400)
 r = get(RAIZ + "/protegida")
 confere("middleware barra sem a chave (401)", r.status_code == 401)
 r = get(RAIZ + "/protegida", headers={"X-Chave": "abre"})
-confere("middleware libera com a chave", r.status_code == 200 and r.get_json("entrou") == true)
+confere("middleware libera com a chave", r.status_code == 200 and r.get_json("entrou") == True)
 
 # ── handlers em classe com decorador que envolve (uso real) ─────────────────
 r = http_post(RAIZ + "/cls/login", body="{}")
 confere("classe: middleware=app.middleware barra a rota-metodo sem a chave (401)", r.status_code == 401)
 r = http_post(RAIZ + "/cls/login", body="{}", headers={"X-Chave": "abre"})
 confere("classe: rota-metodo envolvida por lock responde 200 e roda travada",
-        r.status_code == 200 and r.get_json("ok") == true and r.get_json("travado") == true)
+        r.status_code == 200 and r.get_json("ok") == True and r.get_json("travado") == True)
 r = get(RAIZ + "/cls/item/42")
 confere("classe: path param chega no metodo (self, str id)", r.status_code == 200 and r.get_json("id") == "42")
 r = get(RAIZ + "/cls/lock/7")
 confere("classe: path param atravessa o wrapper (*args, **kwargs) e a rota roda travada",
-        r.status_code == 200 and r.get_json("id") == "7" and r.get_json("travado") == true)
+        r.status_code == 200 and r.get_json("id") == "7" and r.get_json("travado") == True)
 r = get(RAIZ + "/cls/lock/8")
 confere("classe: o lock foi solto no finally da requisicao anterior",
-        r.status_code == 200 and r.get_json("travado") == true)
+        r.status_code == 200 and r.get_json("travado") == True)
 r = get(RAIZ + "/cls/mw_erra")
 confere("classe: middleware que levanta erro responde 500, nao deixa a rota rodar", r.status_code == 500)
 
@@ -512,7 +512,7 @@ funct handshake_em(porta, extra)
     resposta = ""
     try
     {
-        while true
+        while True
         {
             pedaco = s.recv(4096)
             if len(pedaco) == 0
@@ -559,15 +559,15 @@ confere("HTTP: 127.evil.com NAO passa como local", bruto.startswith("HTTP/1.1 40
 bruto = cru("GET /ok HTTP/1.1\r\nHost: x\r\nOrigin: http://[::1]:5\r\nConnection: close\r\n\r\n")
 confere("HTTP: [::1] e local no modo padrao", bruto.startswith("HTTP/1.1 200"))
 r = get(RAIZ + "/cors-info")
-confere("cors.local() e true no modo padrao", r.get_json("local") == true)
+confere("cors.local() e True no modo padrao", r.get_json("local") == True)
 
-# ── modo estrito: cors(app, ..., local=false) ───────────────────────────────
+# ── modo estrito: cors(app, ..., local=False) ───────────────────────────────
 # Servidor A PARTE (teste/jinker_alvo_estrito.pr): a config e do servidor
 # inteiro. So a lista vale — nem localhost, nem cliente sem Origin.
 ESTRITO = 28962
 srv_estrito = os.run([sys.executable, "teste/jinker_alvo_estrito.pr"], capture="live")
 srv_estrito.close()
-estrito_subiu = false
+estrito_subiu = False
 i = 0
 while i < 100
 {
@@ -577,7 +577,7 @@ while i < 100
     s.close()
     if rc_con == 0
     {
-        estrito_subiu = true
+        estrito_subiu = True
         break
     }
     sleep(0.1)
@@ -592,7 +592,7 @@ if estrito_subiu
     confere("estrito: localhost fora da lista e 403", bruto.startswith("HTTP/1.1 403"))
     confere("estrito: o 403 sai sem Access-Control-Allow-Origin", not "Access-Control-Allow-Origin" in bruto)
     bruto = cru_em(ESTRITO, "GET /ok HTTP/1.1\r\nHost: x\r\nOrigin: http://permitido.test\r\nConnection: close\r\n\r\n")
-    confere("estrito: Origin da lista e 200 e cors.local() e false",
+    confere("estrito: Origin da lista e 200 e cors.local() e False",
             bruto.startswith("HTTP/1.1 200") and "\"local\": false" in bruto)
     confere("estrito: a resposta ecoa a origem da lista", "Access-Control-Allow-Origin: http://permitido.test" in bruto)
     bruto = cru_em(ESTRITO, "GET /ok HTTP/1.1\r\nHost: x\r\nOrigin: null\r\nConnection: close\r\n\r\n")
@@ -608,7 +608,7 @@ if estrito_subiu
 
     # para o alvo estrito (o /__parar tambem exige a origem)
     cru_em(ESTRITO, "GET /__parar HTTP/1.1\r\nHost: x\r\nOrigin: http://permitido.test\r\nConnection: close\r\n\r\n")
-    estrito_parou = false
+    estrito_parou = False
     i = 0
     while i < 50
     {
@@ -618,7 +618,7 @@ if estrito_subiu
         s.close()
         if fechou
         {
-            estrito_parou = true
+            estrito_parou = True
             break
         }
         sleep(0.1)
@@ -784,7 +784,7 @@ funct cadastro(muda)
 r = cadastro({})
 confere("model com todos os parametros: dado bom passa", r.status_code == 200 and r.get_json("ok") == "ana")
 r = cadastro({"apelido": Null})
-confere("optional=true aceita null", r.status_code == 200)
+confere("optional=True aceita Null", r.status_code == 200)
 r = cadastro({"nome": "ana1"})
 confere("regex que nao casa: 422 com o padrao",
         r.status_code == 422 and "campo 'nome': nao casa com o padrao ^[A-Za-z ]+$" in r.text)
@@ -844,13 +844,13 @@ os.writeFile(PASTA + "/cru_http.pr",
     + "srv.close()\n")
 srv_cru = os.run([sys.executable, PASTA + "/cru_http.pr"], capture="live")
 srv_cru.close()
-cru_ouve = false
+cru_ouve = False
 i = 0
 while i < 50
 {
     if os.exists(PASTA + "/cru_pronto")
     {
-        cru_ouve = true
+        cru_ouve = True
         break
     }
     sleep(0.1)
@@ -895,12 +895,12 @@ for each l in bruto.split("\r\n")
 confere("os DOIS cookies saem, um Set-Cookie cada", n_set == 2)
 confere("o padrao e seguro: HttpOnly e SameSite", "HttpOnly" in bruto and "SameSite=Lax" in bruto)
 confere("max_age vira Max-Age", "Max-Age=3600" in bruto)
-confere("httponly=false e respeitado",
+confere("httponly=False e respeitado",
         "tema=escuro; Path=/x; SameSite=Lax\r\n" in bruto)
 
 # Nomear UM parametro nao pode apagar o default de outro. Era bug: o slot
-# pulado chega UNSET e `val_truthy(UNSET)` e falso, entao `secure=true`,
-# `samesite=` e `domain=` derrubavam o `httponly=true` do default.
+# pulado chega UNSET e `val_truthy(UNSET)` e falso, entao `secure=True`,
+# `samesite=` e `domain=` derrubavam o `httponly=True` do default.
 bruto = cru("GET /cookie-defaults HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
 confere("secure= nomeado mantem o HttpOnly do default",
         "Set-Cookie: d_secure=1; Path=/; SameSite=Lax; HttpOnly; Secure\r\n" in bruto)
@@ -968,7 +968,7 @@ confere("204: .size 0 e nenhum arquivo do motor", v.size == 0 and sobra_temp() =
 r = get(RAIZ + "/cookie-le", headers={"Cookie": "sid=abc123; tema=escuro"})
 confere("request.cookie le o valor", r.get_json("sid") == "abc123")
 confere("...e o segundo par depois do ponto e virgula", r.get_json("tema") == "escuro")
-confere("cookie inexistente e null", r.get_json("nao") == null)
+confere("cookie inexistente e Null", r.get_json("nao") == Null)
 
 # logout = o cookie reescrito com vida zero, mesmo path — a linha exata que
 # a doc do cookie promete na tabela de `POST /sair`
@@ -1118,7 +1118,7 @@ confere("tarefa criada antes do servidor termina a I/O dela",
 #
 # Fica por ÚLTIMO de propósito: são 60 conexões de WebSocket abertas e fechadas,
 # e esse tanto no meio da suíte atrapalha as medições de tempo que vêm depois.
-lote_ok = true
+lote_ok = True
 rodada = 0
 while rodada < 6
 {
@@ -1134,7 +1134,7 @@ while rodada < 6
         }
         catch (e)
         {
-            lote_ok = false
+            lote_ok = False
         }
         i = i + 1
     }
@@ -1155,12 +1155,12 @@ while rodada < 6
         rl = get(RAIZ + "/ok", timeout=5)
         if rl.status_code != 200
         {
-            lote_ok = false
+            lote_ok = False
         }
     }
     catch (e)
     {
-        lote_ok = false
+        lote_ok = False
     }
     rodada = rodada + 1
 }
@@ -1172,7 +1172,7 @@ confere("dez conexoes WS caindo juntas nao derrubam o servidor", lote_ok)
 # só o laço abaixo, vendo a porta recusar conexão. A versão antiga marcava
 # `parou = true` no catch: qualquer erro (DNS, timeout, bug do cliente HTTP)
 # aprovava a checagem sem o servidor ter parado.
-parou = false
+parou = False
 try
 {
     get(RAIZ + "/__parar")
@@ -1190,7 +1190,7 @@ while i < 50
     s.close()
     if fechou
     {
-        parou = true
+        parou = True
         break
     }
     sleep(0.1)
@@ -1229,17 +1229,17 @@ if len(sem_destino) > 0
 # O cliente da linguagem NÃO serve aqui: ele valida o certificado, e o do teste
 # é self-signed, então `request.get` recusa (corretamente). Quem fala é o
 # `curl -k`. Sem curl, PULA — e diz que pulou.
-# O curl roda pelo `os.run` com `capture=true`, sem shell (o `command -v`, o
+# O curl roda pelo `os.run` com `capture=True`, sem shell (o `command -v`, o
 # `2>/dev/null` e o `; true` eram do `sh`): ele devolve o que o curl escreveu,
 # e programa que nao existe e `IOError`.
-tem_curl = true
+tem_curl = True
 try
 {
-    os.run(["curl", "--version"], capture=true)
+    os.run(["curl", "--version"], capture=True)
 }
 catch (IOError e)
 {
-    tem_curl = false
+    tem_curl = False
 }
 if not tem_curl
 {
@@ -1254,19 +1254,19 @@ else
     PASTA_TLS = "/tmp/ps_jinker_tls"
     if os.exists(PASTA_TLS)
     {
-        os.rmdir(PASTA_TLS, force=true)
+        os.rmdir(PASTA_TLS, force=True)
     }
     srv_tls = os.run([sys.executable, "teste/jinker_alvo_tls.pr"], capture="live")
     srv_tls.close()
 
-    subiu = false
+    subiu = False
     i = 0
     while i < 60
     {
-        txt = os.run(["curl", "-sk", "--max-time", "2", "https://127.0.0.1:28953/ok"], capture=true)
+        txt = os.run(["curl", "-sk", "--max-time", "2", "https://127.0.0.1:28953/ok"], capture=True)
         if "\"ok\"" in txt
         {
-            subiu = true
+            subiu = True
             break
         }
         sleep(0.25)
@@ -1278,7 +1278,7 @@ else
 
     if subiu
     {
-        txt = os.run(["curl", "-sk", "--max-time", "3", "https://127.0.0.1:28953/ok"], capture=true)
+        txt = os.run(["curl", "-sk", "--max-time", "3", "https://127.0.0.1:28953/ok"], capture=True)
         confere("a resposta atravessa o TLS inteira", "\"protocolo\": \"https\"" in txt)
 
         # O cliente HTTPS DA LINGUAGEM (`request.get("https://...")`) nao tinha
@@ -1301,8 +1301,8 @@ else
 
         # parada limpa pelo MESMO motivo do alvo HTTP: morto por sinal, o
         # servidor não grava o `.gcda` e a medição perde o lado TLS.
-        os.run(["curl", "-sk", "--max-time", "3", "https://127.0.0.1:28953/__parar"], capture=true)
-        parou_tls = false
+        os.run(["curl", "-sk", "--max-time", "3", "https://127.0.0.1:28953/__parar"], capture=True)
+        parou_tls = False
         i = 0
         while i < 50
         {
@@ -1312,7 +1312,7 @@ else
             s.close()
             if fechou
             {
-                parou_tls = true
+                parou_tls = True
                 break
             }
             sleep(0.1)

@@ -1,11 +1,11 @@
-# `@app.socket(path=None, channel=false)`
+# `@app.socket(path=Null, channel=False)`
 
 Registra um handler de **WebSocket** — conexão persistente de mão-dupla, boa
 pra chat, notificações, dados ao vivo. A `funct` logo abaixo roda
 **a cada mensagem recebida** naquela conexão.
 
 ```
-@app.socket(path, channel=true)
+@app.socket(path, channel=True)
 funct nome() {
     # request disponível; roda a cada mensagem que chega
 }
@@ -27,14 +27,14 @@ Se o caminho tem parâmetro (`/chat/<sala>`), cada conexão entra automaticament
 na **sala** = valor do parâmetro. `/chat/geral` → sala `"geral"`.
 
 ```
-@app.socket("/chat/<sala>", channel=true)
+@app.socket("/chat/<sala>", channel=True)
 funct mensagem() {
     sala = request.path_param("sala")     # "geral"
     msg  = request.get_json()             # a mensagem que chegou (dict)
 
     # reenvia pra todo mundo na MESMA sala
     send = app.socket()
-    send.emit(payload=msg, room_id=sala, exclude_self=false)
+    send.emit(payload=msg, room_id=sala, exclude_self=False)
 }
 ```
 
@@ -48,7 +48,7 @@ manda para recusa.
 `403` (`{"error": true, "code": 403, "message": "Origem não autorizada:
 https://outro.com"}`, sem `Access-Control-Allow-Origin`) e a conexão fecha.
 No modo padrão origem local e cliente sem `Origin` (um programa, outro
-backend) passam; com `cors(app, ..., local=false)` só a lista vale, e sem
+backend) passam; com `cors(app, ..., local=False)` só a lista vale, e sem
 `Origin` é `403`. Sem `cors(app, ...)`, qualquer origem abre o socket. Ver
 [`cors`](../cors/cors.md).
 
@@ -61,13 +61,13 @@ Dentro do handler, `app.socket()` (sem argumentos) devolve um **emissor**:
 ```
 send = app.socket()
 send.emit(payload=msg, room_id=sala)                    # manda pra sala
-send.emit(payload=msg, room_id=sala, exclude_self=false) # inclui o remetente
+send.emit(payload=msg, room_id=sala, exclude_self=False) # inclui o remetente
 state = send.status_send()                               # status do envio
 ```
 
 - `payload` — o que enviar (dict vira JSON automaticamente);
 - `room_id` — a sala alvo (omitir = broadcast pra todos);
-- `exclude_self` — por padrão `true` (não ecoa pro remetente); `false` inclui.
+- `exclude_self` — por padrão `True` (não ecoa pro remetente); `False` inclui.
 
 Também dá pra chamar direto: `app.socket.emit(payload=msg, room_id=sala)`.
 
@@ -85,11 +85,11 @@ funct eco() {
 }
 ```
 
-É o único jeito de responder num socket **sem** `channel=true`, porque o `emit`
+É o único jeito de responder num socket **sem** `channel=True`, porque o `emit`
 só alcança conexão que está no canal. Devolver `Null` (ou não devolver nada)
 não manda coisa alguma.
 
-Cuidado com o eco dobrado: se o handler faz `emit(..., exclude_self=false)`
+Cuidado com o eco dobrado: se o handler faz `emit(..., exclude_self=False)`
 **e** devolve algo, o remetente recebe as duas mensagens.
 
 ---

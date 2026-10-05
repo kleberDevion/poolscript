@@ -1,7 +1,7 @@
 # `regex.match(pattern, string)`
 
-Testa se o texto **inteiro** casa com o padrão. Devolve **`bool`** — `true` se
-o padrão consome a string do começo ao fim, `false` caso contrário.
+Testa se o texto **inteiro** casa com o padrão. Devolve **`bool`** — `True` se
+o padrão consome a string do começo ao fim, `False` caso contrário.
 
 ```
 regex.match(pattern: str, string: str) -> bool
@@ -25,9 +25,9 @@ if (regex.match("\\d{3}-\\d{4}", "123-4567")) {
 ```
 
 ```
-regex.match("Olá", "Olá mundo")      # false — sobrou " mundo"
-regex.match("Olá.*", "Olá mundo")    # true  — o .* consome o resto
-regex.match("mundo", "Olá mundo")    # false
+regex.match("Olá", "Olá mundo")      # False — sobrou " mundo"
+regex.match("Olá.*", "Olá mundo")    # True  — o .* consome o resto
+regex.match("mundo", "Olá mundo")    # False
 ```
 
 ---
@@ -41,8 +41,8 @@ regex.match("mundo", "Olá mundo")    # false
 | serve pra | **validar** um formato | **encontrar** algo dentro |
 
 ```
-regex.match("mundo", "Olá mundo")     # false
-regex.search("mundo", "Olá mundo")    # true
+regex.match("mundo", "Olá mundo")     # False
+regex.search("mundo", "Olá mundo")    # True
 ```
 
 Pra validar (CPF, e-mail, data), `match` é o certo: garante que não sobrou

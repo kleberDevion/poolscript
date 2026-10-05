@@ -6,7 +6,7 @@
 
 app.socket — dupla função:
 
-1. Decorator de registro:  @sk.socket("/sala:id", channel=true)
+1. Decorator de registro:  @sk.socket("/sala:id", channel=True)
 2. Emissor em runtime, com ou sem instância:
      send = sk.socket()               # instancia um emissor
      send.emit(payload=msg, room_id=identify["id"])
@@ -18,7 +18,7 @@ app.socket — dupla função:
 
 | Acesso | O que faz |
 |---|---|
-| `.emit(payload=None, room_id=None, exclude_self=True)` |  |
+| `.emit(payload=Null, room_id=Null, exclude_self=True)` |  |
 | `.status_send()` |  |
 
 [← índice](objetos-internos.md)

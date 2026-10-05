@@ -30,7 +30,7 @@ Trazer o corpo de **todos** os e-mails no `search` é pesado. O padrão é o
 `search` trazer só os cabeçalhos (from/subject/date) — rápido — e você pedir o
 corpo com `.body(id)` só dos que interessam.
 
-> Se você **sabe** que vai querer o corpo de todos, passe `include_body=true`
+> Se você **sabe** que vai querer o corpo de todos, passe `include_body=True`
 > direto no [`.search()`](../search/search.md) e pule o `.body()`.
 
 ---

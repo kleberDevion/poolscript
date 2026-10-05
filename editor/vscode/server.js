@@ -249,7 +249,7 @@ function linksAbsolutos(texto, arq) {
 }
 
 /* A assinatura de um tipo do motor como a doc a apresenta no título da
- * página (`Jinker(name="main", oauth=None, …)`), sem as crases. */
+ * página (`Jinker(name="main", oauth=Null, …)`), sem as crases. */
 function tituloDaPagina(pg) {
   return pg && pg.titulo ? pg.titulo.split('`').join('') : '';
 }
@@ -284,9 +284,24 @@ function paginaDoTipo(t, via) {
   return pg;
 }
 
-/* O que o hover diz de um TIPO: `class Nome` + quantos membros + a página
- * (resumo e exemplo). Entity do arquivo: a cabeça dela e os membros. Vale
- * pra tudo que tem tipo — variável, campo, retorno. */
+/* Tipo primitivo da linguagem: o que abre declaração (`list l = []`,
+ * `json d = {}`) E é tipo de valor — o que o `type()` devolve (str, int, flo,
+ * bool, list, dict, tup, byte). `long`, `char` e `Object` abrem declaração mas
+ * não são tipo de valor (`type()` de um `long` dá `int`, de um `char` dá
+ * `str`), então não se dizem primitivos. Primitivo não é class nem objeto:
+ * `class` é só a classe escrita em Jinga (ele, 2026-10-05: "quando eu fizer
+ * objetos próprios, como no java que tem a classe String, aí vai ser outra
+ * história"). */
+function ehPrimitivo(t) {
+  const real = (META.tipos_apelidos || {})[t] || t;
+  return (META.tipos_declaraveis || []).includes(t) && (META.tipos_valor || []).includes(real);
+}
+
+/* O que o hover diz de um TIPO: o nome com o que ele é (`list   # tipo
+ * primitivo`; o tipo do motor com a assinatura do construtor e `# tipo
+ * nativo`) + quantos membros + a página (resumo e exemplo). Entity do
+ * arquivo: `class X { … }` com os membros — a única que é class. Vale pra
+ * tudo que tem tipo — variável, campo, retorno. */
 function apresentaTipo(doc, alvo) {
   if (!alvo) return '';
   if (alvo.tipo === 'entity') {
@@ -328,10 +343,16 @@ function apresentaTipo(doc, alvo) {
   if (!nome) return '';
   const pg = paginaDoTipo(nome, alvo.via);
   const n = (META.tipos[nome] || []).length;
-  /* a cabeça: a assinatura do construtor como a doc a apresenta
-   * (`Jinker(name="main", …)`), o nome do tipo, ou o tipo básico */
+  /* a cabeça: o primitivo pelo nome; o tipo do motor pela assinatura do
+   * construtor como a doc a apresenta (`Jinker(name="main", …)`) ou pelo
+   * nome. Nenhum dos dois é `class`: nenhum foi escrito como classe Jinga. */
   const tit = tituloDaPagina(pg);
-  const cab = tit && tit.startsWith(nome + '(') ? 'class ' + tit : (n ? 'class ' + nome : nome + '   # tipo basico');
+  /* `long`, `char`, `Object`: abrem declaração mas não são tipo de valor —
+   * sem rótulo; a seção da linguagem diz o que são */
+  const soDeclaracao = (META.tipos_declaraveis || []).includes(nome) && !ehPrimitivo(nome);
+  const cab = ehPrimitivo(nome) ? nome + '   # tipo primitivo'
+            : soDeclaracao ? nome
+            : (tit && tit.startsWith(nome + '(') ? tit : nome) + '   # tipo nativo';
   let s = '\n\n---\n\n```ps\n' + cab + '\n```';
   if (pg && pg.resumo) s += '\n\n' + linksAbsolutos(pg.resumo, pg.arq);
   else {
@@ -1876,7 +1897,7 @@ function valorDeParamTxt(v) {
   if (!v) return '';
   if (v.k === 'Literal') {
     if (v.lit === 'str') return JSON.stringify(v.texto || '');
-    if (v.lit === 'bool') return v.i ? 'true' : 'false';
+    if (v.lit === 'bool') return v.i ? 'True' : 'False';
     if (v.lit === 'int' || v.lit === 'flo') return String(v.lit === 'int' ? v.i : v.d);
     return v.texto || '…';
   }
@@ -2104,7 +2125,7 @@ function completa(doc, p) {
   for (const x of META.excecoes || []) {
     poe(x.nome, CompletionItemKind.Class, 'exceção · ' + (x.pai ? 'filha de ' + x.pai : 'raiz da árvore'), '3');
   }
-  /* `true`, `false` e `Null` são LITERAIS no lexer (tokens BOOL e NULL), não
+  /* `True`, `False` e `Null` são LITERAIS no lexer (tokens BOOL e NULL), não
    * entradas de `KEYWORDS[]` — por isso não chegavam aqui pelo `--metadata` e
    * o editor nunca sugeria booleano nenhum. `__name__` é global que o
    * compilador liga, não palavra reservada, e some pelo mesmo motivo. */
@@ -2200,10 +2221,11 @@ const MODIFICADORES = ['static', 'nonnull', 'NonNull'];
 
 /* Os literais da linguagem. O lexer os entrega como token próprio (BOOL e
  * NULL), não como palavra reservada, então não estão na `KEYWORDS[]` que o
- * `--metadata` publica — e sem esta lista o editor não sugeria nem `true`. */
+ * `--metadata` publica — e sem esta lista o editor não sugeria nem `True`.
+ * Só essa grafia: `true`, `false`, `null`, `None` e `none` são nomes comuns. */
 const LITERAIS = [
-  ['true',  'literal booleano'],
-  ['false', 'literal booleano'],
+  ['True',  'literal booleano'],
+  ['False', 'literal booleano'],
   ['Null',  'literal de ausência de valor'],
 ];
 
@@ -2410,6 +2432,10 @@ conexao.onHover((p) => {
   const toksAqui = tokensDe(doc);
   const antes = tok ? toksAqui[toksAqui.indexOf(tok) - 1] : null;
   const aposPonto = !!(antes && antes.t === 'DOT' && antes.l0 === tok.l0);
+  /* `json.parse`: o nome antes do `.` que é MÓDULO do motor é o módulo, não
+   * o tipo de mesmo nome (`json` solto é o dict) */
+  const depois = tok ? toksAqui[toksAqui.indexOf(tok) + 1] : null;
+  const receptorDeModulo = !!(depois && depois.t === 'DOT' && depois.l0 === tok.l0 && META.modulos[tok.v]);
   /* `static`/`nonnull` chegam como IDENT (não são reservadas), então não
    * passam pela porta de palavra-chave abaixo: sem esta exceção, o hover em
    * cima do modificador colado devolvia nada. */
@@ -2419,7 +2445,7 @@ conexao.onHover((p) => {
   /* `String`, `Integer`…: apelidos de tipo, que o lexer entrega como IDENT
    * (não são reservados). Respondem como o tipo que designam — antes o
    * hover ficava mudo neles ("String e seus irmãos estão ofuscados"). */
-  if (tok && !aposPonto && (META.tipos_apelidos || {})[tok.v]) {
+  if (tok && !aposPonto && !receptorDeModulo && (META.tipos_apelidos || {})[tok.v]) {
     const real = META.tipos_apelidos[tok.v];
     return md('```ps\n' + tok.v + ' = ' + real + '\n```\n\napelido de tipo'
               + apresentaTipo(doc, META.tipos[real] ? { tipo: 'tipo_motor', nome: real } : { tipo: 'escalar', nome: real }));
@@ -2617,6 +2643,8 @@ conexao.onHover((p) => {
   }
   const alvo = alvoDoImport(doc, nome, p.position.line);
   if (alvo) return hoverDoImportado(doc, alvo, nome, p.position.line);
+  const daLinguagem = hoverDaLinguagem(doc, nome, receptorDeModulo);
+  if (daLinguagem) return daLinguagem;
   /* nome que nada liga: dizer isso é melhor que um hover em branco — e se
    * um `import *` o deixou de fora por ser `private`, dizer de onde */
   const priv = privadoNaEstrela(doc, nome);
@@ -2626,6 +2654,39 @@ conexao.onHover((p) => {
   }
   return md('```ps\n' + nome + '\n```\n\nnome não definido neste arquivo nem por import (rodando dá `NameError`)');
 });
+
+/* O nome que a LINGUAGEM liga sozinha, depois do escopo e dos imports (que o
+ * sombreiam, como no motor): builtin (`len`, `range`), tipo (`PoolFile`,
+ * `byte`, `Object`, `json`) e o nome de tipo do motor (`Response`), que vale
+ * na posição de tipo. Antes todos caíam no "nome não definido (rodando dá
+ * NameError)" — o contrário do que o motor faz (ele, 2026-10-05). O `json.`
+ * sem `import json` é o módulo, e aí o NameError é de verdade. */
+function hoverDaLinguagem(doc, nome, receptorDeModulo) {
+  if (receptorDeModulo) {
+    return md('```ps\nimport ' + nome + '\n```\n\nmódulo `' + nome + '` — falta `import ' + nome
+              + '` neste arquivo (rodando dá `NameError`)');
+  }
+  const b = (META.builtins || []).find((x) => x.nome === nome);
+  if (b) {
+    const pg = paginaDe('builtins', nome);
+    const cab = pg.titulo ? pg.titulo.split('`').join('')
+              : assinatura(b) + (retornoVisivel(b.retorna) ? ' -> ' + b.retorna : '');
+    return md('```ps\n' + cab + '\n```\n\nbuiltin' + (pg.resumo ? ' · ' + pg.resumo : '')
+              + (pg.arq ? '\n\n' + linkDoc(pg.arq) : ''));
+  }
+  const real = (META.tipos_apelidos || {})[nome] || nome;
+  /* `__universal__` é a tabela dos métodos que todo valor tem, não tipo */
+  const tipoDoMotor = META.tipos[real] && !real.startsWith('__');
+  if (ehPrimitivo(nome) || tipoDoMotor || (META.tipos_nomes || []).includes(nome)) {
+    /* `Response` solto não é valor (o motor dá NameError), mas é o tipo na
+     * declaração e no parâmetro (`Response r`) */
+    const soTipo = !ehPrimitivo(nome) && !(META.tipos_nomes || []).includes(nome)
+      ? '\n\nnome de tipo: vale na declaração e no parâmetro (`' + nome + ' r`), não como valor' : '';
+    return md('```ps\n' + nome + '\n```' + soTipo
+              + apresentaTipo(doc, tipoDoMotor ? { tipo: 'tipo_motor', nome: real } : { tipo: 'escalar', nome: real }));
+  }
+  return null;
+}
 
 /* `from m import *` deixa o `private` de fora; o hover no nome diz isso em
  * vez de "não definido". Devolve a declaração e o módulo, ou null. */

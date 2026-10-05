@@ -16,7 +16,7 @@ o item removido
 
 - **TypeError** — o argumento não é `list`: `removeStart() argument 1 must be list, not int`
 
-Lista vazia **não** é erro: devolve `null`.
+Lista vazia **não** é erro: devolve `Null`.
 
 ## Exemplos
 

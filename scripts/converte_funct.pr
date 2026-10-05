@@ -27,7 +27,7 @@ ANTIGAS = ["action", "reaction"]
 
 
 funct roda_motor(bandeira, fonte) {
-    os.mkdir(TMP, exist_ok=true)
+    os.mkdir(TMP, exist_ok=True)
     alvo = TMP + "/e.pr"
     using open(alvo, "w") as f {
         f.write(fonte)
@@ -158,7 +158,7 @@ if __name__ == "main" {
     grava = lote
     for each a in args {
         if a == "--grava" {
-            grava = true
+            grava = True
         }
     }
     alvos = []

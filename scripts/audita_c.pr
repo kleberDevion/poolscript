@@ -55,10 +55,10 @@ ACEITOS = ["malloc(sizeof(PSString) +"]
 funct aceito(linha) {
     for each a in ACEITOS {
         if a in linha {
-            return true
+            return True
         }
     }
-    return false
+    return False
 }
 
 
@@ -276,10 +276,10 @@ ACEITOS_FORA = ["REMOVI ESSE COMENTARIO EM MENÇÃO A FLASK"]
 funct acha_tecnologia_de_fora(caminho, linhas, achados) {
     i = 0
     while i < len(linhas) {
-        aceita = false
+        aceita = False
         for each a in ACEITOS_FORA {
             if a in linhas[i] {
-                aceita = true
+                aceita = True
             }
         }
         if not aceita and regex.search(FORA, linhas[i]) {
@@ -306,10 +306,10 @@ funct arquivos_vm_todos() {
 
 
 if __name__ == "main" {
-    lista = false
+    lista = False
     for each a in sys.argv {
         if a == "--lista" {
-            lista = true
+            lista = True
         }
     }
 

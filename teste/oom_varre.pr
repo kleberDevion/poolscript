@@ -115,7 +115,7 @@ funct roda(caminho, falha_em, contando) {
 BASE = os.cwd()
 
 if __name__ == "main" {
-    os.mkdir(TMP, exist_ok=true)
+    os.mkdir(TMP, exist_ok=True)
 
     so_um = -1
     if len(sys.argv) > 1 {
@@ -147,7 +147,7 @@ if __name__ == "main" {
         }
 
         # 1) quantas alocações NOSSAS este programa faz?
-        roda(nome + ".pr", 0, true)
+        roda(nome + ".pr", 0, True)
         bruto = open(TMP + "/n.txt").read().strip()
         if bruto == "" {
             post("  ", nome, "-> nao consegui contar as alocacoes")
@@ -166,7 +166,7 @@ if __name__ == "main" {
         k = 1
         while k <= n {
             visitados = visitados + 1
-            r = roda(nome + ".pr", k, false)
+            r = roda(nome + ".pr", k, False)
             rc = r[0]
             # >128 = morreu de sinal; 124 = o `timeout` matou (travou)
             if rc > 128 or rc == 124 {

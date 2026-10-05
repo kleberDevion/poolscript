@@ -42,7 +42,7 @@ protegidas passando `middleware=app.middleware`:
 # rota livre — sem middleware
 @app.route("/api/login", methods=cors.options(["POST"]))
 funct login() {
-    return jsonify({"ok": true})
+    return jsonify({"ok": True})
 }
 
 # rota protegida — o middleware roda primeiro
@@ -68,7 +68,7 @@ Nos dois casos a funct é chamada **sem argumentos** — a requisição vem do
 
 | Devolve | Efeito |
 |---|---|
-| `pass` / nada / `null` | libera: a rota roda |
+| `pass` / nada / `Null` | libera: a rota roda |
 | `jsonify(...), <status>` (tupla) | barra: essa é a resposta |
 | `JinkerResponse` | barra: essa é a resposta |
 | levanta erro | barra: `500`, e o erro vai pro stderr (`[jinker] erro no middleware /rota: ...`) |

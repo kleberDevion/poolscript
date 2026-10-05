@@ -1115,12 +1115,14 @@ static void le_ident(Lexer *lx)
     PSTokType tipo;
     int64_t valor_bool = 0;
 
-    if ((n == 4 && strncmp(txt, "True", 4) == 0) || (n == 4 && strncmp(txt, "true", 4) == 0)) {
+    /* Uma grafia só, com a inicial maiúscula: a mesma que o motor imprime.
+     * `true`, `false`, `null`, `None` e `none` são nomes comuns (sem
+     * definição, o NameError sugere a grafia certa pelo "Did you mean"). */
+    if (n == 4 && strncmp(txt, "True", 4) == 0) {
         tipo = T_BOOL; valor_bool = 1;
-    } else if ((n == 5 && strncmp(txt, "False", 5) == 0) || (n == 5 && strncmp(txt, "false", 5) == 0)) {
+    } else if (n == 5 && strncmp(txt, "False", 5) == 0) {
         tipo = T_BOOL; valor_bool = 0;
-    } else if ((n == 4 && strncmp(txt, "Null", 4) == 0) || (n == 4 && strncmp(txt, "null", 4) == 0)
-            || (n == 4 && strncmp(txt, "None", 4) == 0) || (n == 4 && strncmp(txt, "none", 4) == 0)) {
+    } else if (n == 4 && strncmp(txt, "Null", 4) == 0) {
         tipo = T_NULL;
     } else if (esta_na_lista(txt, n, KEYWORDS)) {
         tipo = T_KW;

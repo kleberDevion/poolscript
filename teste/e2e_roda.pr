@@ -137,7 +137,7 @@ async funct vigia(proc, prazo, estado) {
     if estado["acabou"] {
         return
     }
-    estado["estourou"] = true
+    estado["estourou"] = True
     proc.kill()
     fim = date.monotonic() + 6
     while not estado["acabou"] and date.monotonic() < fim {
@@ -152,10 +152,10 @@ async funct vigia(proc, prazo, estado) {
 # Espera `proc` terminar e devolve [código, estourou]. A `vigia` corre durante
 # o `wait()`: a espera do principal é o ponto em que as tarefas andam.
 funct espera_sair(proc, prazo) {
-    estado = {"acabou": false, "estourou": false}
+    estado = {"acabou": False, "estourou": False}
     guarda = vigia(proc, prazo, estado)
     rc = proc.wait()
-    estado["acabou"] = true
+    estado["acabou"] = True
     await guarda
     return [rc, estado["estourou"]]
 }
@@ -176,7 +176,7 @@ funct espera_sair(proc, prazo) {
 funct sobe(srv) {
     proc = os.run([sys.executable, PASTA + "/" + srv], capture="live")
     proc.close()
-    return [proc, [drena(proc, false), drena(proc, true)]]
+    return [proc, [drena(proc, False), drena(proc, True)]]
 }
 
 
@@ -222,7 +222,7 @@ funct derruba(servidor) {
 funct roda(caminho) {
     proc = os.run([sys.executable, caminho], capture="live")
     proc.close()
-    canais = [drena(proc, false), drena(proc, true)]
+    canais = [drena(proc, False), drena(proc, True)]
     fim = espera_sair(proc, TEMPO)
     textos = await canais
     saida = textos[0] + "\n" + textos[1]
@@ -273,7 +273,7 @@ if __name__ == "main" {
         casa = filtro == "" or filtro in srv
         for each cl in clientes {
             if filtro in cl {
-                casa = true
+                casa = True
             }
         }
         if not casa {

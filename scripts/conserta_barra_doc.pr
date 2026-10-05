@@ -57,7 +57,7 @@ funct junta_md(dir, acc) {
 # terminava — travou este script por meia hora, sem erro nenhum.
 funct acha_barra(L, inicio_b) {
     de = inicio_b
-    while true {
+    while True {
         p = L.find("//", de)
         if p < 0 {
             return -1
@@ -87,8 +87,8 @@ if __name__ == "main" {
 
     for each caminho in arquivos {
         linhas = os.readFile(caminho).split("\n")
-        dentro = false
-        mudou = false
+        dentro = False
+        mudou = False
         i = 0
         while i < len(linhas) {
             L = linhas[i]
@@ -105,8 +105,8 @@ if __name__ == "main" {
             # `t = 7 // 2  // comentario` a divisão ia pra lista de conferir à
             # mão e o `//` de comentário passava pelo portão.
             desde = 0
-            listada = false
-            while true {
+            listada = False
+            while True {
                 b = acha_barra(L, desde)
                 if b < 0 {
                     break
@@ -115,7 +115,7 @@ if __name__ == "main" {
                 eh_comentario = so_espaco_antes(L, b)
                 if not eh_comentario and b >= 2 {
                     if L[b - 1] == " " and L[b - 2] == " " {
-                        eh_comentario = true
+                        eh_comentario = True
                     }
                 }
                 # Um espaço só antes: decide pelo que vem DEPOIS. Divisão inteira
@@ -127,7 +127,7 @@ if __name__ == "main" {
                     if depois[0:1] == " " {
                         c = depois[1:2]
                         if c != "" and not (c >= "0" and c <= "9") and c != "-" and c != "(" {
-                            eh_comentario = true
+                            eh_comentario = True
                         }
                     }
                 }
@@ -136,12 +136,12 @@ if __name__ == "main" {
                     L = L[0:b] + "#" + L[b + 2:]
                     linhas[i] = L
                     trocadas = trocadas + 1
-                    mudou = true
+                    mudou = True
                     break
                 }
                 if not listada {
                     addEnd(ambiguas, caminho + ":" + str(i + 1) + "  " + L.strip())
-                    listada = true
+                    listada = True
                 }
                 desde = b + 2
             }

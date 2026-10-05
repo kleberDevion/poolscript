@@ -5,7 +5,7 @@ Anexa um arquivo ao e-mail. Aceita um **caminho** (string), um
 `PoolFileUpload` (arquivo recebido num upload).
 
 ```
-m.attach(file_or_path) -> None
+m.attach(file_or_path) -> Null
 ```
 
 ---

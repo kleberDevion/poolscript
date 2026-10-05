@@ -137,7 +137,7 @@ const Caso CASOS_LIBS[] = {
   "Null", NULL, 0 },
 { "jwt com payload trocado e recusado",
   "import jwt\nimport hash\n"
-  "t = jwt.gen({\"admin\": false}, \"k\", \"HS256\")\n"
+  "t = jwt.gen({\"admin\": False}, \"k\", \"HS256\")\n"
   "p = t.split(\".\")\n"
   "outro = hash.b64encode(\"{\\\"admin\\\": true}\").replace(\"=\", \"\")\n"
   "post(jwt.check(p[0] + \".\" + outro + \".\" + p[2], \"k\"))\n",
@@ -354,7 +354,7 @@ const Caso CASOS_LIBS[] = {
    * linha a mais em dado binário */
   "import bytes\n"
   "post(\"a\\nb\\r\\nc\".encode().splitlines())\n"
-  "post(\"a\\nb\".encode().splitlines(true))\n"
+  "post(\"a\\nb\".encode().splitlines(True))\n"
   "post(bytes.fromhex(\"610b620c63\").splitlines())\n",
   "[b'a', b'b', b'c']\n[b'a\\n', b'b']\n[b'a\\x0bb\\x0cc']", NULL, 0 },
 { "bytes: partition, rpartition e o lado em que sobra",
@@ -484,10 +484,10 @@ const Caso CASOS_LIBS[] = {
   "porfind = [resp.find(0) >= 0, limpa.find(0) >= 0]\n"
   "porlaco = []\n"
   "for each alvo in [resp, limpa] {\n"
-  "    achou = false\n"
+  "    achou = False\n"
   "    for each x in alvo {\n"
   "        if x == 0 {\n"
-  "            achou = true\n"
+  "            achou = True\n"
   "        }\n"
   "    }\n"
   "    addEnd(porlaco, achou)\n"
@@ -631,7 +631,7 @@ const Caso CASOS_LIBS[] = {
   "k = d.cursor()\nk.execute(\"select a from t\")\n"
   "post(fora, k.fetchall())\nd.close()\n",
   "[] [{'a': 7}]", NULL, 0 },
-/* O cursor mandava todo parametro como TEXTO: `true` virava 'True', e
+/* O cursor mandava todo parametro como TEXTO: `True` virava 'True', e
  * `WHERE ativo = ?` nao casava com linha nenhuma. O atalho `psodbc.query` ja
  * ligava com tipo; o cursor passou a ligar igual. */
 { "psodbc sqlite cursor: parametro liga com o tipo do valor",
@@ -639,7 +639,7 @@ const Caso CASOS_LIBS[] = {
   "c = psodbc.connect(driver=\"sqlite\", base=\"tp.db\")\n"
   "cur = c.cursor()\n"
   "cur.execute(\"SELECT typeof(?) AS a, typeof(?) AS b, typeof(?) AS c, typeof(?) AS d, typeof(?) AS e\","
-  " (1, 2.5, true, \"x\", Null))\n"
+  " (1, 2.5, True, \"x\", Null))\n"
   "post(cur.fetchone())\nc.close()\n",
   "{'a': 'integer', 'b': 'real', 'c': 'integer', 'd': 'text', 'e': 'null'}", NULL, 0 },
 { "psodbc sqlite cursor: bool casa com a coluna booleana",
@@ -647,12 +647,12 @@ const Caso CASOS_LIBS[] = {
   "c = psodbc.connect(driver=\"sqlite\", base=\"tb.db\")\n"
   "cur = c.cursor()\n"
   "cur.execute(\"CREATE TABLE t (id INTEGER, ativo BOOLEAN)\")\n"
-  "cur.execute(\"INSERT INTO t VALUES (?, ?)\", (1, true))\n"
-  "cur.execute(\"INSERT INTO t VALUES (?, ?)\", (2, false))\n"
+  "cur.execute(\"INSERT INTO t VALUES (?, ?)\", (1, True))\n"
+  "cur.execute(\"INSERT INTO t VALUES (?, ?)\", (2, False))\n"
   "c.commit()\n"
-  "cur.execute(\"SELECT id FROM t WHERE ativo = ?\", (true,))\n"
+  "cur.execute(\"SELECT id FROM t WHERE ativo = ?\", (True,))\n"
   "a = cur.fetchall()\n"
-  "cur.execute(\"SELECT id FROM t WHERE ativo = ?\", (false,))\n"
+  "cur.execute(\"SELECT id FROM t WHERE ativo = ?\", (False,))\n"
   "post(a, cur.fetchall())\nc.close()\n",
   "[{'id': 1}] [{'id': 2}]", NULL, 0 },
 { "psodbc sqlite cursor: int em LIMIT e em conta continua int",
@@ -740,7 +740,7 @@ const Caso CASOS_LIBS[] = {
   "os.writeFile(\"d/x.txt\", \"1\")\n"
   "itens = os.ls(\"d\")\n"
   "post(itens.len(), itens[0][\"name\"], itens[0][\"type\"])\n"
-  "os.rmdir(\"d\", force=true)\n"
+  "os.rmdir(\"d\", force=True)\n"
   "post(os.exists(\"d\"))\n",
   "1 x.txt file\nFalse", NULL, 0 },
 { "os: ler arquivo inexistente levanta",
@@ -757,7 +757,7 @@ const Caso CASOS_LIBS[] = {
 /* ── json: o teto de profundidade é contrato, nos DOIS sentidos ──────────── */
 { "json ida e volta",
   "import json\n"
-  "post(json.stringify({\"a\": [1, 2], \"b\": null}))\n"
+  "post(json.stringify({\"a\": [1, 2], \"b\": Null}))\n"
   "post(json.parse(\"{\\\"a\\\": [1, 2], \\\"b\\\": null}\"))\n",
   /* A primeira linha e JSON e mantem `null` minusculo — e a especificacao do
    * formato. A segunda e o `post` da LINGUAGEM, que imprime `Null`. Este caso
@@ -814,7 +814,7 @@ const Caso CASOS_LIBS[] = {
   /* `true - "a"` respondia `int - str`. O bool vira int antes da mensagem, e
    * quem lia procurava um int que nao existe no codigo. */
   "try {\n"
-  "    post(true - \"a\")\n"
+  "    post(True - \"a\")\n"
   "} catch (e) {\n"
   "    post(\"bool\" in str(e))\n"
   "}\n", "True", NULL, 0 },
@@ -945,7 +945,7 @@ const Caso CASOS_LIBS[] = {
   "import sys\n"
   "n = 0\n"
   "for each m in [\"db\", \"qr\", \"mp\", \"requests\", \"sqlite\"] {\n"
-  "    r = os.run([sys.executable, \"-e\", \"import \" + m], true)\n"
+  "    r = os.run([sys.executable, \"-e\", \"import \" + m], True)\n"
   "    if \"No module named\" in r { n = n + 1 }\n"
   "}\n"
   "post(n)\n", "5", NULL, 0 },
@@ -1032,9 +1032,9 @@ const Caso CASOS_LIBS[] = {
  * ARIDADE ("takes at most 2 arguments (2 given)") e a string truncava calada
  * em 62 palavras / 4096 bytes. O vetor cresce; nenhum teto. */
 { "os.run aceita lista com mais de 62 itens",
-  "import os\nl = [\"echo\"]\nfor each i in range(70) { l.append(str(i)) }\npost(os.run(l, true).strip().split(\" \").len())\n", "70", NULL, 0 },
+  "import os\nl = [\"echo\"]\nfor each i in range(70) { l.append(str(i)) }\npost(os.run(l, True).strip().split(\" \").len())\n", "70", NULL, 0 },
 { "os.run em string nao trunca em 62 palavras nem em 4096 bytes",
-  "import os\ns = \"echo\"\nfor each i in range(3000) { s = s + \" x\" }\npost(os.run(s, true).strip().split(\" \").len())\n", "3000", NULL, 0 },
+  "import os\ns = \"echo\"\nfor each i in range(3000) { s = s + \" x\" }\npost(os.run(s, True).strip().split(\" \").len())\n", "3000", NULL, 0 },
 
 /* ── relogio com fracao ──────────────────────────────────────────────────
  *
@@ -1101,7 +1101,7 @@ const Caso CASOS_LIBS[] = {
   "p = os.run([\"sleep\", \"0.2\"], capture=\"live\")\n"
   "post(p.pid > 0)\n"
   "post(p.wait())\n", "True\n0", NULL, 0 },
-/* Com `pty=true` o filho acha que esta num terminal: `input()`, cor e
+/* Com `pty=True` o filho acha que esta num terminal: `input()`, cor e
  * programa interativo passam a funcionar — e o que o terminal integrado pede.
  * O canal do terminal nao e so o texto do filho: no Windows o pseudoconsole
  * abre a sessao com os pedidos dele ao terminal (modo de teclado, foco) e
@@ -1111,7 +1111,7 @@ const Caso CASOS_LIBS[] = {
  * codigo e 1; sem o canal unico, a marca do stderr nao chega no `read`. */
 { "run live com pty: o filho ve um terminal",
   "import os\n"
-  "p = os.run([\"sh\", \"-c\", \"test -t 0 && echo tem-terminal\"], capture=\"live\", pty=true)\n"
+  "p = os.run([\"sh\", \"-c\", \"test -t 0 && echo tem-terminal\"], capture=\"live\", pty=True)\n"
   "s = \"\"\n"
   "parte = p.read(100)\n"
   "while parte != \"\" {\n"
@@ -1122,7 +1122,7 @@ const Caso CASOS_LIBS[] = {
   "post(p.wait())\n", "True\n0", NULL, 0 },
 { "run live com pty: o stderr chega junto, como num terminal",
   "import os\n"
-  "p = os.run([\"sh\", \"-c\", \"echo pelo-stderr 1>&2\"], capture=\"live\", pty=true)\n"
+  "p = os.run([\"sh\", \"-c\", \"echo pelo-stderr 1>&2\"], capture=\"live\", pty=True)\n"
   "s = \"\"\n"
   "parte = p.read(100)\n"
   "while parte != \"\" {\n"
@@ -1140,13 +1140,13 @@ const Caso CASOS_LIBS[] = {
   "import sys\n"
   "os.cmd(\"echo oi> o.txt\")\n"
   "post(os.readFile(\"o.txt\").strip())\n"
-  "post(os.cmd(\"\\\"\" + sys.executable + \"\\\" -e \\\"post(1+1)\\\"\", true))\n"
+  "post(os.cmd(\"\\\"\" + sys.executable + \"\\\" -e \\\"post(1+1)\\\"\", True))\n"
   "os.cmd(\"\\\"\" + sys.executable + \"\\\" -e \\\"post(3)\\\" > r.txt 2>&1\")\n"
   "post(os.readFile(\"r.txt\").strip())\n",
   "oi\n2\n3", NULL, 0 },
-{ "run com pty exige capture live ou true",
-  "import os\nos.run([\"echo\", \"oi\"], capture=false, pty=true)\n", "",
-  "ValueError: run(): pty=true precisa de capture=\"live\" ou capture=true (ninguem leria o terminal)", 1 },
+{ "run com pty exige capture live ou True",
+  "import os\nos.run([\"echo\", \"oi\"], capture=False, pty=True)\n", "",
+  "ValueError: run(): pty=True precisa de capture=\"live\" ou capture=True (ninguem leria o terminal)", 1 },
 /* Um caractere de 4 bytes cortado entre duas leituras nao pode sair pela
  * metade. O `read` espera o resto da sequencia chegar: devolver "" com o
  * processo ainda escrevendo diria "acabou" no meio da palavra. */
@@ -1194,7 +1194,7 @@ const Caso CASOS_LIBS[] = {
   "b = sockets.socket()\n"
   "s = sockets.socket()\n"
   "n = str(s.fileno())\n"
-  "post(os.run([\"sh\", \"-c\", \"test -e /dev/fd/2 && echo 2:herdou; test -e /dev/fd/\" + n + \" && echo socket:herdou || echo socket:limpo\"], capture=true).strip())\n"
+  "post(os.run([\"sh\", \"-c\", \"test -e /dev/fd/2 && echo 2:herdou; test -e /dev/fd/\" + n + \" && echo socket:herdou || echo socket:limpo\"], capture=True).strip())\n"
   "a.close()\n"
   "b.close()\n"
   "s.close()\n", "2:herdou\nsocket:limpo", NULL, 0 },
@@ -1219,8 +1219,8 @@ const Caso CASOS_LIBS[] = {
 /* assert(cond, mensagem=) — o nome publicado pela tabela — transformava
  * condicao verdadeira em falha ("veio True, esperava Null"). */
 { "assert honra mensagem= pelo nome publicado",
-  "post(assert(true, mensagem=\"tudo certo\"))\npost(assert(1, esperado=1))\n"
-  "try { assert(false, mensagem=\"deu ruim\") } catch (AssertionError e) { post(\"pegou:\", e) }\n"
+  "post(assert(True, mensagem=\"tudo certo\"))\npost(assert(1, esperado=1))\n"
+  "try { assert(False, mensagem=\"deu ruim\") } catch (AssertionError e) { post(\"pegou:\", e) }\n"
   "try { assert(1, esperado=2, mensagem=\"nota\") } catch (AssertionError e) { post(\"pegou:\", e) }\n"
   "try { assert(1, 2, \"nota\") } catch (AssertionError e) { post(\"pegou:\", e) }\n",
   "True\nTrue\npegou: deu ruim (linha 3)\npegou: nota — veio 1, esperava 2 (linha 4)\npegou: nota — veio 1, esperava 2 (linha 5)", NULL, 0 },

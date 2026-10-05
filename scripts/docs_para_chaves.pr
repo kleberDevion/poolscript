@@ -73,11 +73,11 @@ if __name__ == "main" {
         post("uso: jinga scripts/docs_para_chaves.pr <arquivo.md> [--grava]")
         sys.exit(1)
     }
-    grava = false
+    grava = False
     alvos = []
     for each a in args {
         if a == "--grava" {
-            grava = true
+            grava = True
         }
         else {
             alvos.append(a)

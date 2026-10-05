@@ -71,8 +71,8 @@ funct fontes_dos_casos(caminho) {
 
 
 if __name__ == "main" {
-    os.mkdir(DESTINO, exist_ok=true)
-    os.mkdir(ACHADOS, exist_ok=true)
+    os.mkdir(DESTINO, exist_ok=True)
+    os.mkdir(ACHADOS, exist_ok=True)
 
     sementes = []
 

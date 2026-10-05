@@ -1,4 +1,4 @@
-# `s.index(sub, inicio=0, fim=null)`
+# `s.index(sub, inicio=0, fim=Null)`
 
 Como find, mas ERRA quando não acha.
 
@@ -8,7 +8,7 @@ Como find, mas ERRA quando não acha.
 |---|---|---|---|
 | `sub` | str | — |  |
 | `inicio` | int | 0 | posição (em caracteres) onde começa a procurar |
-| `fim` | int | null | onde para (exclusivo); `null` = até o fim |
+| `fim` | int | `Null` | onde para (exclusivo); `Null` = até o fim |
 
 ## Retorno
 

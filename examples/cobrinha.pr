@@ -91,7 +91,7 @@ funct desenha() {
 rodando = True
 
 if __name__ == "main" {
-    sys.stdin.raw(true)
+    sys.stdin.raw(True)
     sys.stdout.write("\x1b[?25l\x1b[2J")          # esconde cursor, limpa
     try {
         desenha()
@@ -114,7 +114,7 @@ if __name__ == "main" {
             }
         }
     } finally {
-        sys.stdin.raw(false)                      # o motor também faz sozinho
+        sys.stdin.raw(False)                      # o motor também faz sozinho
         sys.stdout.write("\x1b[?25h\n")           # mostra o cursor de volta
         post("fim — pontos:", pontos)
     }

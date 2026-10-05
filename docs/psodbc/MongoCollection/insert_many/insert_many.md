@@ -3,7 +3,7 @@
 Insere **vários** documentos de uma vez, a partir de uma lista.
 
 ```
-col.insert_many(documents: list) -> None
+col.insert_many(documents: list) -> Null
 ```
 
 ---

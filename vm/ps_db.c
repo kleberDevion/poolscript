@@ -199,7 +199,7 @@ static void cel_bool(PSCel *cel, int v)       { cel->tipo = PS_CEL_BOOL; cel->b 
 
 /* ── sqlite ─────────────────────────────────────────────────────────────── */
 /* O parâmetro com o tipo do valor, como o atalho `psodbc.query` já ligava: bool
- * e int viram inteiro, flo vira real, o resto texto. Tudo como texto, `true`
+ * e int viram inteiro, flo vira real, o resto texto. Tudo como texto, `True`
  * era 'True' e `WHERE ativo = ?` não casava com linha nenhuma. Inteiro que não
  * cabe em 64 bits (bignum) segue como texto. */
 static void sqlite_liga(sqlite3_stmt *st, int i, const char *pv, char tipo)

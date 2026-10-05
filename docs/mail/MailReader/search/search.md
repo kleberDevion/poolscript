@@ -1,23 +1,23 @@
-# `MailReader.search(criterion_type="ALL", term=None, limit=None, include_body=false)`
+# `MailReader.search(criterion_type="ALL", term=Null, limit=Null, include_body=False)`
 
 Busca e-mails na pasta selecionada. Devolve uma **lista de dicts**, um por
 e-mail encontrado.
 
 ```
-r.search(criterion_type="ALL", term=None, limit=None, include_body=false) -> list
+r.search(criterion_type="ALL", term=Null, limit=Null, include_body=False) -> list
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
 | `criterion_type` | `"ALL"` | o filtro (ver tabela abaixo) |
-| `term` | `None` | o termo de busca (exigido por alguns critérios) |
-| `limit` | `None` | máximo de e-mails a trazer (os mais recentes) |
+| `term` | `Null` | o termo de busca (exigido por alguns critérios) |
+| `limit` | `Null` | máximo de e-mails a trazer (os mais recentes) |
 
 > **Use `limit`.** Cada e-mail do resultado custa um `FETCH` ao servidor (é de
 > lá que saem `from`, `subject` e `date`). Numa caixa com milhares de
 > mensagens, `search("ALL")` sem limite faz milhares de idas e vindas e
 > demora minutos. `search("ALL", limit=20)` traz os 20 mais recentes e pronto.
-| `include_body` | `false` | `true` = já traz o corpo de cada e-mail |
+| `include_body` | `False` | `True` = já traz o corpo de cada e-mail |
 
 ---
 
@@ -41,7 +41,7 @@ Cada item é um dict:
 {"id": "42", "from": "ana@x.com", "subject": "Olá", "date": "Mon, 25 Jul..."}
 ```
 
-Com `include_body=true`, ganha também a chave `"body"` com o texto do e-mail.
+Com `include_body=True`, ganha também a chave `"body"` com o texto do e-mail.
 
 ---
 
@@ -58,7 +58,7 @@ novos = r.search("UNSEEN")
 faturas = r.search("SUBJECT", term="fatura")
 
 # de um remetente, já com o corpo
-de_ana = r.search("FROM", term="ana@x.com", include_body=true)
+de_ana = r.search("FROM", term="ana@x.com", include_body=True)
 for each e in de_ana {
     post(e["subject"])
     post(e["body"])

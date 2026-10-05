@@ -114,7 +114,7 @@ funct literais(L) {
 # arquivo com o fim de linha dele.
 funct digital(nome, corpo) {
     tudo = ""
-    em_com = false
+    em_com = False
     for each L in corpo {
         if L.endswith("\r") {
             L = L[:len(L) - 1]
@@ -124,7 +124,7 @@ funct digital(nome, corpo) {
         while z < len(L) {
             if em_com {
                 if L[z:z+2] == "*/" {
-                    em_com = false
+                    em_com = False
                     z = z + 2
                     continue
                 }
@@ -132,7 +132,7 @@ funct digital(nome, corpo) {
                 continue
             }
             if L[z:z+2] == "/*" {
-                em_com = true
+                em_com = True
                 z = z + 2
                 continue
             }
@@ -151,10 +151,10 @@ funct digital(nome, corpo) {
 
 
 if __name__ == "main" {
-    remove = false
+    remove = False
     for each a in sys.argv {
         if a == "--remove" {
-            remove = true
+            remove = True
         }
     }
 
@@ -188,7 +188,7 @@ if __name__ == "main" {
         caminho = PASTA + "/" + n
         blocos = fatia(caminho)
         mantidos = []
-        mudou = false
+        mudou = False
         for each b in blocos {
             if b[0] == "" {
                 mantidos.append(b)
@@ -197,7 +197,7 @@ if __name__ == "main" {
             d = digital(b[0], b[1])
             if d in vistos {
                 copias.append([caminho, b[0], vistos[d]])
-                mudou = true
+                mudou = True
                 continue
             }
             vistos[d] = n + ": " + b[0]

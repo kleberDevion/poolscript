@@ -1,4 +1,4 @@
-# `cors.options(subset=None)`
+# `cors.options(subset=Null)`
 
 Resolve a lista de métodos HTTP de uma rota. Usado no `methods=` do
 `@app.route(...)`.
@@ -48,7 +48,7 @@ Pra rota de **um** método só, o verbo pode ir no nome e a lista some:
 @app.route("/api/login", methods=cors.options(["POST"]))
 funct login() {
     # só responde POST /api/login
-    return jsonify({"ok": true})
+    return jsonify({"ok": True})
 }
 ```
 

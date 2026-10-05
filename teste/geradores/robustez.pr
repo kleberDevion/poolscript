@@ -53,7 +53,7 @@ funct prologo(tipo) {
 # e devolve [rc, stdout, stderr]. Sem shell: `os.run` com lista.
 funct roda_em_pasta_nova(fonte, pasta) {
     if os.exists(pasta) {
-        os.rmdir(pasta, force=true)
+        os.rmdir(pasta, force=True)
     }
     os.mkdir(pasta)
     volta = os.cwd()
@@ -114,10 +114,10 @@ funct chamadas(meta, tipo, recv) {
             ps = []
         }
         # falta argumento obrigatório
-        tem_obrig = false
+        tem_obrig = False
         for each p in ps {
             if p.get("default") == Null {
-                tem_obrig = true
+                tem_obrig = True
             }
         }
         if tem_obrig {
@@ -203,8 +203,8 @@ funct cstr(s) {
 
 
 if __name__ == "main" {
-    os.mkdir(TMP, exist_ok=true)
-    meta = json.parse(os.run([sys.executable, "--metadata"], capture=true))
+    os.mkdir(TMP, exist_ok=True)
+    meta = json.parse(os.run([sys.executable, "--metadata"], capture=True))
 
     out = ["/*",
            " * GERADO por teste/geradores/robustez.pr — nao edite na mao.",

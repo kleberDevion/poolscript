@@ -20,10 +20,10 @@ código diferente. `.status(...)` ajusta sem precisar da tupla `(resp, codigo)`:
 
 ```
 # com tupla:
-return jsonify({"criado": true}), 201
+return jsonify({"criado": True}), 201
 
 # com .status() — dispensa a tupla:
-return jsonify({"criado": true}).status(201)
+return jsonify({"criado": True}).status(201)
 ```
 
 As duas produzem `201 Created`. Escolha a que ficar mais legível — quando já
@@ -38,7 +38,7 @@ está encadeando `.header(...)`, `.status()` costuma ler melhor.
 | `200` | OK | sucesso padrão (é o default) |
 | `201` | Created | criou um recurso (POST que insere) |
 | `202` | Accepted | recebido, vai processar depois |
-| `204` | No Content | sucesso sem corpo (é o que `return None` gera) |
+| `204` | No Content | sucesso sem corpo (é o que `return Null` gera) |
 | `400` | Bad Request | dados inválidos que o cliente mandou |
 | `401` | Unauthorized | falta autenticação/token |
 | `403` | Forbidden | autenticado, mas sem permissão |

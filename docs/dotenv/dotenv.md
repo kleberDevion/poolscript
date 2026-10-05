@@ -9,7 +9,7 @@ from dotenv import load
 
 | Membro | O que faz | Página |
 |---|---|---|
-| `load(path=None)` | carrega o `.env` pro ambiente | [load/load.md](load/load.md) |
+| `load(path=Null)` | carrega o `.env` pro ambiente | [load/load.md](load/load.md) |
 
 ---
 

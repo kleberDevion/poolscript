@@ -72,11 +72,11 @@ funct confere(nome, cond) {
 # dele levantava, e o teste caía antes de dizer PULOU.
 funct tem(cmd) {
     try {
-        os.run([cmd, "--version"], capture=true)
-        return true
+        os.run([cmd, "--version"], capture=True)
+        return True
     }
     catch (IOError e) {
-        return false
+        return False
     }
 }
 
@@ -97,7 +97,7 @@ funct tem(cmd) {
 # SYN), e cada tentativa pode gastar o 1 s inteiro do `settimeout`.
 funct sobe() {
     if os.exists(RAIZ) {
-        os.rmdir(RAIZ, force=true)
+        os.rmdir(RAIZ, force=True)
     }
     os.mkdir(RAIZ + "/db")
     servidor = os.run(["mongod", "--dbpath", RAIZ + "/db", "--port", str(PORTA),
@@ -111,11 +111,11 @@ funct sobe() {
         rc = sk.connect_ex(("127.0.0.1", PORTA))
         sk.close()
         if rc == 0 {
-            return true
+            return True
         }
         sleep(0.1)
     }
-    return false
+    return False
 }
 
 
@@ -133,7 +133,7 @@ funct derruba() {
     servidor.kill()
     servidor.wait()
     if os.exists(RAIZ) {
-        os.rmdir(RAIZ, force=true)
+        os.rmdir(RAIZ, force=True)
     }
 }
 
@@ -208,13 +208,13 @@ if __name__ == "main" {
     confere("e find nela devolve vazio", len(outra.find({})) == 0)
 
     # ── tipos variados no documento ─────────────────────────────────────────
-    col.insert({"txt": "acentuação ção", "int": -7, "flo": 1.5, "bool": true,
+    col.insert({"txt": "acentuação ção", "int": -7, "flo": 1.5, "bool": True,
                 "nulo": Null, "lista": [1, 2, 3], "dict": {"a": 1}})
     d = col.find_one({"int": -7})
     confere("texto com acento volta igual", d["txt"] == "acentuação ção")
     confere("inteiro negativo volta igual", d["int"] == -7)
     confere("float volta igual", d["flo"] == 1.5)
-    confere("bool volta igual", d["bool"] == true)
+    confere("bool volta igual", d["bool"] == True)
     confere("lista volta igual", d["lista"] == [1, 2, 3])
     confere("dict aninhado volta igual", d["dict"]["a"] == 1)
     col.remove({})
@@ -223,14 +223,14 @@ if __name__ == "main" {
 
     # ── depois do close, e com a porta fechada ──────────────────────────────
     derruba()
-    caiu = false
+    caiu = False
     try {
         c2 = psodbc.connect(driver="mongo", host="127.0.0.1", port=PORTA,
                             database="ps_teste")
         c2.collection("t").count({})
     }
     catch (e) {
-        caiu = true
+        caiu = True
     }
     confere("conectar em porta fechada falha em vez de travar", caiu)
 

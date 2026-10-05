@@ -33,7 +33,7 @@ m = mail.MailMessage()
 m.fromAddress(os.getenv("MAIL_USER"))
 m.toAddress("cliente@email.com")
 m.subject("Sua fatura")
-m.body("<h1>Olá!</h1><p>Segue sua fatura.</p>", is_html=true)
+m.body("<h1>Olá!</h1><p>Segue sua fatura.</p>", is_html=True)
 m.attach("fatura.pdf")
 
 # ... envia com MailServer.send(m) ...

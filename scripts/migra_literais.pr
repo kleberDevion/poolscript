@@ -1,0 +1,859 @@
+# Migrador dos literais (2026-10-05): a Jinga passa a aceitar SÓ `True`,
+# `False` e `Null`, com a inicial maiúscula — a mesma grafia que o motor
+# imprime.
+#
+#     true  -> True       false -> False
+#     null  -> Null       None  -> Null       none -> Null
+#
+# A troca é pelo TOKEN, não pelo texto: o arquivo passa pelo `--tokens` do
+# próprio motor, e só muda o que é literal (ou, num motor que já não aceita a
+# forma antiga, o nome solto com essa grafia que não vem depois de um `.`).
+# Texto entre aspas e comentário nunca mudam: o `{"a": true}` de um JSON
+# dentro de uma string continua minúsculo, que é como o JSON escreve.
+#
+# Onde ele procura:
+#   - `.pr`: o arquivo inteiro;
+#   - `.md`: só dentro dos blocos de código Jinga (```ps, ```jinga, ou sem
+#     marca, sem cara de terminal ou JSON e que o motor lê sem erro de
+#     sintaxe). Bloco de outra linguagem e
+#     texto corrido NUNCA mudam: os que citam a forma antiga saem na lista
+#     do que conferir à mão;
+#   - `teste/casos_*.c`: o PROGRAMA de cada caso (o 2º campo de cada `{ }`
+#     do vetor), decodificado da string C, com a troca feita na posição certa
+#     do arquivo. As saídas esperadas nunca mudam.
+# O que mostra o erro da forma antiga de propósito fica como está (e sai na
+# lista): a linha de exemplo cujo comentário anuncia o erro citando a
+# palavra (`x = true   # NameError: name 'true' ...`), e o caso cujo stderr
+# esperado cita a palavra. Por isso rodar de novo não desfaz nada.
+# A string que PARECE programa (um teste que escreve um `.pr` num arquivo, ou
+# um caso que monta outro programa) não dá pra separar de um texto qualquer
+# só pelo token: ela sai na lista do que conferir à mão.
+#
+#     jinga scripts/migra_literais.pr <pasta|arquivo>...                # só mostra
+#     jinga scripts/migra_literais.pr <pasta|arquivo>... --aplica       # grava
+#     jinga scripts/migra_literais.pr --libs --aplica                   # libs instaladas
+#     jinga scripts/migra_literais.pr <pasta> --aplica --confere        # e roda --check nos .pr
+import os
+import sys
+import json
+
+dict ANTIGAS = {"true": "True", "false": "False", "null": "Null", "None": "Null", "none": "Null"}
+list PULA_PASTA = [".git", "node_modules", "dist", "__pycache__", ".venv", "fuzz_corpus",
+                   "scratchpad", "cob"]
+# este arquivo cita as grafias antigas nas strings da tabela acima
+list PULA_ARQUIVO = ["migra_literais.pr"]
+
+
+bool funct char_de_nome(str c) {
+    if c == "" {
+        return False
+    }
+    if c >= "a" and c <= "z" {
+        return True
+    }
+    if c >= "A" and c <= "Z" {
+        return True
+    }
+    if c >= "0" and c <= "9" {
+        return True
+    }
+    return c == "_"
+}
+
+
+# Alguma grafia antiga aparece no texto? Filtro barato antes de chamar o
+# `--tokens`: arquivo sem nenhuma delas não precisa passar pelo motor.
+bool funct tem_palavra(str texto) {
+    for each p in ANTIGAS.keys() {
+        if texto.find(p) >= 0 {
+            return True
+        }
+    }
+    return False
+}
+
+
+# A grafia antiga aparece como PALAVRA (com borda dos dois lados)? É o
+# critério da lista do que conferir à mão.
+bool funct tem_palavra_isolada(str texto) {
+    int n = len(texto)
+    for each p in ANTIGAS.keys() {
+        int m = len(p)
+        int i = texto.find(p)
+        while i >= 0 {
+            str antes = ""
+            if i > 0 {
+                antes = texto[i - 1]
+            }
+            str depois = ""
+            if i + m < n {
+                depois = texto[i + m]
+            }
+            if not char_de_nome(antes) and not char_de_nome(depois) {
+                return True
+            }
+            i = texto.find(p, i + 1)
+        }
+    }
+    return False
+}
+
+
+# Os dois canais do filho, lidos JUNTOS, cada um numa tarefa: lendo o stdout
+# até o fim antes do stderr, um filho que enche o cano do stderr fica parado
+# esperando alguém ler.
+async funct le_saida(Process p) {
+    str texto = ""
+    str parte = p.read()
+    while parte != "" {
+        texto = texto + parte
+        parte = p.read()
+    }
+    return texto
+}
+
+
+async funct le_erro(Process p) {
+    str texto = ""
+    str parte = p.read_err()
+    while parte != "" {
+        texto = texto + parte
+        parte = p.read_err()
+    }
+    return texto
+}
+
+
+# Roda um programa SEM shell, com `entrada` no stdin, e devolve
+# [stdout, stderr, código de saída]. O `--tokens` lê a entrada inteira antes
+# de escrever, então escrever tudo primeiro não trava.
+list funct roda(list args, str entrada) {
+    Process p = os.run(args, capture="live")
+    list canais = []
+    int rc = 0
+    using p as filho {
+        if entrada != "" {
+            filho.write(entrada)
+        }
+        filho.close()
+        canais = gather(le_saida(filho), le_erro(filho))
+        rc = filho.wait()
+    }
+    return [canais[0], canais[1], rc]
+}
+
+
+list funct le_tokens(str saida) {
+    try {
+        dict d = json.parse(saida)
+        return d["tokens"]
+    } catch (Exception e) {
+        return []
+    }
+}
+
+
+list funct tokens_do_arquivo(str caminho) {
+    return le_tokens(roda([sys.executable, "--tokens", caminho], "")[0])
+}
+
+
+list funct tokens_do_texto(str texto) {
+    return le_tokens(roda([sys.executable, "--tokens"], texto)[0])
+}
+
+
+# Os tokens a trocar, como [linha, coluna, tamanho, grafia nova, grafia
+# velha]: o literal com a grafia antiga (motor de antes) ou o nome com ela
+# (motor de agora, onde a grafia antiga já é só um nome). Depois de um `.` é
+# nome de MEMBRO e fica (`d.none`), nos dois motores. Colado depois de uma
+# `/` é pedaço de caminho (`2>/dev/null` num exemplo) e fica também.
+list funct alvos_de(list toks) {
+    list lista = []
+    dict ant = {"t": "", "v": "", "l2": 0, "c2": 0}
+    for each t in toks {
+        str tipo = t["t"]
+        str v = t["v"]
+        bool caminho = ant["t"] == "OP" and ant["v"] == "/" and ant["l2"] == t["l"] and ant["c2"] == t["c"]
+        if v in ANTIGAS and ant["t"] != "DOT" and not caminho {
+            # no motor de agora `None` chega como IDENT_UPPER (nome com
+            # maiúscula), e os outros como IDENT
+            if tipo == "BOOL" or tipo == "NULL" or tipo == "IDENT" or tipo == "IDENT_UPPER" {
+                addEnd(lista, [t["l"], t["c"], t["n"], ANTIGAS[v], v])
+            }
+        }
+        if tipo != "NEWLINE" and tipo != "COMMENT" {
+            ant = t
+        }
+    }
+    return lista
+}
+
+
+# As linhas (relativas ao texto tokenizado) cujo comentário anuncia um erro
+# citando a grafia antiga (`# NameError: name 'true' is not defined`): ali
+# a forma antiga é o próprio exemplo do erro e fica. É a convenção do
+# `audita_exemplos_doc.pr` pra bloco que mostra erro de propósito.
+list funct linhas_do_erro_de_proposito(list toks) {
+    list linhas = []
+    for each t in toks {
+        if t["t"] == "COMMENT" and t["v"].find("Error") >= 0 and tem_palavra_isolada(t["v"]) {
+            addEnd(linhas, t["l"])
+        }
+    }
+    return linhas
+}
+
+
+# As strings do programa que citam a grafia antiga como palavra: candidatas a
+# programa dentro de string, pra conferir à mão. Devolve as linhas (relativas
+# ao texto tokenizado).
+list funct suspeitas_de(list toks) {
+    list linhas = []
+    for each t in toks {
+        if (t["t"] == "STR" or t["t"] == "FSTRING") and tem_palavra_isolada(t["v"]) {
+            addEnd(linhas, t["l"])
+        }
+    }
+    return linhas
+}
+
+
+# Troca os alvos em `linhas` (lista de linhas do arquivo; a linha 1 dos
+# tokens é `linhas[linha0]`). As grafias velha e nova têm o mesmo tamanho,
+# então nenhuma troca mexe na coluna de outra; mesmo assim vai do fim pro
+# começo. Antes de trocar, confere que o texto naquela posição é a grafia
+# velha. Devolve [trocas, posições que não conferiram].
+list funct aplica_em_linhas(list linhas, list alvos, int linha0) {
+    int trocas = 0
+    int ruins = 0
+    int k = len(alvos) - 1
+    while k >= 0 {
+        list a = alvos[k]
+        k = k - 1
+        int li = linha0 + a[0] - 1
+        if li < 0 or li >= len(linhas) {
+            ruins = ruins + 1
+            continue
+        }
+        str linha = linhas[li]
+        int ini = a[1] - 1
+        int fim = ini + a[2]
+        if fim > len(linha) or linha[ini:fim] != a[4] {
+            ruins = ruins + 1
+            continue
+        }
+        linhas[li] = linha[0:ini] + a[3] + linha[fim:]
+        trocas = trocas + 1
+    }
+    return [trocas, ruins]
+}
+
+
+# `.pr`: o arquivo inteiro. Devolve [texto novo, trocas, ruins, avisos].
+list funct migra_pr(str caminho, str texto) {
+    list avisos = []
+    if not tem_palavra(texto) {
+        return [texto, 0, 0, avisos]
+    }
+    list toks = tokens_do_arquivo(caminho)
+    for each l in suspeitas_de(toks) {
+        addEnd(avisos, "string que cita a grafia antiga, linha " + str(l))
+    }
+    list al = alvos_de(toks)
+    if len(al) == 0 {
+        return [texto, 0, 0, avisos]
+    }
+    list linhas = texto.split("\n")
+    list r = aplica_em_linhas(linhas, al, 0)
+    return ["\n".join(linhas), r[0], r[1], avisos]
+}
+
+
+# O bloco é código Jinga? Marcado `ps`/`jinga` (com ou sem mais palavras
+# depois, como `ps contexto`), ou SEM linguagem e sem cara de terminal ou de
+# JSON: a doc usa bloco sem marca pra assinatura no topo da página e pra
+# exemplo. Bloco de terminal (`$ jinga ...`), JSON e saída ficam de fora.
+bool funct bloco_e_jinga(str info, str bloco) {
+    str primeira = info.split(" ")[0]
+    if primeira == "ps" or primeira == "jinga" {
+        return True
+    }
+    if info != "" {
+        return False
+    }
+    for each l in bloco.split("\n") {
+        str t = l.strip()
+        if t == "" {
+            continue
+        }
+        return not (t.startswith("$") or t.startswith("{") or t.startswith("["))
+    }
+    return False
+}
+
+
+# O bloco SEM marca só conta como Jinga se o motor o lê como programa: erro de
+# sintaxe (JSON solto como `"allDay": false,`, cabeçalho HTTP como
+# `Origin: null -> 200`, saída de terminal) tira ele da troca e manda pra lista.
+bool funct le_como_jinga(str bloco) {
+    list r = roda([sys.executable, "--check"], bloco)
+    return r[0].find("\"SyntaxError\"") < 0
+}
+
+
+# Um trecho entre crases no texto corrido com cara de JSON (`{"a": true}`):
+# esse é formato de dado e fica minúsculo.
+bool funct parece_json(str trecho) {
+    return trecho.find("\":") >= 0 or trecho.strip().startswith("{\"")
+}
+
+
+# Uma linha do texto corrido da doc cita a grafia antiga como palavra? Ela
+# NUNCA muda: só entra na lista do que conferir à mão. Entre crases pode
+# estar código Jinga (`raw(true)`), mas também caminho (`/dev/null`),
+# cabeçalho HTTP (`Origin: null`), valor de outro formato (o `alg` `none`
+# do JWT) ou a própria grafia antiga citada numa regra ("`null` não é
+# literal"), e só lendo dá pra saber qual. O trecho com cara de JSON fica
+# de fora da conta.
+bool funct prosa_cita(str linha) {
+    str resto = ""
+    int i = 0
+    int n = len(linha)
+    while i < n {
+        int a = linha.find("`", i)
+        if a < 0 {
+            resto = resto + linha[i:]
+            break
+        }
+        int b = linha.find("`", a + 1)
+        if b < 0 {
+            resto = resto + linha[i:]
+            break
+        }
+        resto = resto + linha[i:a] + " "
+        str trecho = linha[a + 1:b]
+        if not parece_json(trecho) {
+            resto = resto + trecho + " "
+        }
+        i = b + 1
+    }
+    return tem_palavra_isolada(resto)
+}
+
+
+# `.md`: só os blocos de código Jinga (ver `bloco_e_jinga`). O resto que
+# cita a grafia antiga vai pros avisos: bloco de terminal, JSON ou saída,
+# texto corrido (ver `prosa_cita`), comentário dentro de exemplo, string,
+# linha que mostra o erro da forma antiga — lá ela pode ser dado de fora ou
+# o próprio assunto, e só lendo dá pra saber.
+list funct migra_md(str texto) {
+    list avisos = []
+    if not tem_palavra(texto) {
+        return [texto, 0, 0, avisos]
+    }
+    list linhas = texto.split("\n")
+    int trocas = 0
+    int ruins = 0
+    int i = 0
+    while i < len(linhas) {
+        str t = linhas[i].strip()
+        if t.startswith("```") {
+            str info = t[3:].strip()
+            int fim = i + 1
+            while fim < len(linhas) and not linhas[fim].strip().startswith("```") {
+                fim = fim + 1
+            }
+            str bloco = "\n".join(linhas[i + 1:fim])
+            if tem_palavra(bloco) {
+                if bloco_e_jinga(info, bloco) and (info != "" or le_como_jinga(bloco)) {
+                    list toks = tokens_do_texto(bloco)
+                    for each l in suspeitas_de(toks) {
+                        addEnd(avisos, "string que cita a grafia antiga, linha " + str(i + 1 + l))
+                    }
+                    list do_erro = linhas_do_erro_de_proposito(toks)
+                    for each tk in toks {
+                        if tk["t"] == "COMMENT" and tem_palavra_isolada(tk["v"]) and not (tk["l"] in do_erro) {
+                            addEnd(avisos, "comentario de exemplo cita a grafia antiga, linha " + str(i + 1 + tk["l"]))
+                        }
+                    }
+                    list al = []
+                    for each a in alvos_de(toks) {
+                        if a[0] in do_erro {
+                            addEnd(avisos, "exemplo mostra o erro da grafia antiga (fica), linha " + str(i + 1 + a[0]))
+                        } else {
+                            addEnd(al, a)
+                        }
+                    }
+                    list r = aplica_em_linhas(linhas, al, i + 1)
+                    trocas = trocas + r[0]
+                    ruins = ruins + r[1]
+                } elif tem_palavra_isolada(bloco) {
+                    addEnd(avisos, "bloco ```" + info + " (terminal, JSON ou saida) cita a grafia antiga, linha " + str(i + 1))
+                }
+            }
+            i = fim + 1
+            continue
+        }
+        if tem_palavra(linhas[i]) and prosa_cita(linhas[i]) {
+            addEnd(avisos, "texto corrido cita a grafia antiga (nao muda), linha " + str(i + 1))
+        }
+        i = i + 1
+    }
+    return ["\n".join(linhas), trocas, ruins, avisos]
+}
+
+
+bool funct eh_hex(str c) {
+    return (c >= "0" and c <= "9") or (c >= "a" and c <= "f") or (c >= "A" and c <= "F")
+}
+
+
+int funct valor_hex(str c) {
+    if c >= "0" and c <= "9" {
+        return ord(c) - ord("0")
+    }
+    if c >= "a" and c <= "f" {
+        return ord(c) - ord("a") + 10
+    }
+    return ord(c) - ord("A") + 10
+}
+
+
+# O `{` em `pos` abre um vetor de casos? O que vem antes dele (pulando
+# espaço) é `=`, e antes do `=` um `]`: `CASOS_X[] = {`.
+bool funct abre_vetor(str raw, int pos) {
+    int j = pos - 1
+    while j >= 0 and (raw[j] == " " or raw[j] == "\n" or raw[j] == "\t" or raw[j] == "\r") {
+        j = j - 1
+    }
+    if j < 0 or raw[j] != "=" {
+        return False
+    }
+    j = j - 1
+    while j >= 0 and (raw[j] == " " or raw[j] == "\t") {
+        j = j - 1
+    }
+    return j >= 0 and raw[j] == "]"
+}
+
+
+# Os programas dos casos de um `teste/casos_*.c`: o 2º campo de cada `{ }`
+# de um vetor `NOME[] = { ... }`, que é uma ou mais strings C coladas.
+# Devolve a lista de [programa decodificado, mapa, linha do caso no
+# arquivo, stderr esperado decodificado (4º campo)]: mapa[i] é a posição,
+# no arquivo, do caractere i do programa.
+list funct programas_dos_casos(str raw) {
+    list progs = []
+    int n = len(raw)
+    int i = 0
+    int prof = 0
+    bool em_vetor = False
+    int campo = 0
+    list dec = []
+    list mapa = []
+    list err = []
+    int linha = 1
+    int linha_caso = 1
+    while i < n {
+        str c = raw[i]
+        if c == "\n" {
+            linha = linha + 1
+            i = i + 1
+            continue
+        }
+        if c == "/" and i + 1 < n and raw[i + 1] == "*" {
+            int fimc = raw.find("*/", i + 2)
+            if fimc < 0 {
+                break
+            }
+            linha = linha + raw[i:fimc].count("\n")
+            i = fimc + 2
+            continue
+        }
+        if c == "/" and i + 1 < n and raw[i + 1] == "/" {
+            int fiml = raw.find("\n", i)
+            if fiml < 0 {
+                break
+            }
+            i = fiml
+            continue
+        }
+        if c == "'" {
+            int j = i + 1
+            while j < n and raw[j] != "'" {
+                if raw[j] == "\\" {
+                    j = j + 1
+                }
+                j = j + 1
+            }
+            i = j + 1
+            continue
+        }
+        if c == "\"" {
+            bool guarda = em_vetor and prof == 2 and campo == 1
+            bool guarda_err = em_vetor and prof == 2 and campo == 3
+            int j = i + 1
+            while j < n and raw[j] != "\"" {
+                if raw[j] != "\\" {
+                    if guarda {
+                        addEnd(dec, raw[j])
+                        addEnd(mapa, j)
+                    }
+                    if guarda_err {
+                        addEnd(err, raw[j])
+                    }
+                    j = j + 1
+                    continue
+                }
+                str e = ""
+                if j + 1 < n {
+                    e = raw[j + 1]
+                }
+                str ch = e
+                int prox = j + 2
+                if e == "n" {
+                    ch = "\n"
+                } elif e == "t" {
+                    ch = "\t"
+                } elif e == "r" {
+                    ch = "\r"
+                } elif e == "a" {
+                    ch = chr(7)
+                } elif e == "b" {
+                    ch = chr(8)
+                } elif e == "f" {
+                    ch = chr(12)
+                } elif e == "v" {
+                    ch = chr(11)
+                } elif e == "x" {
+                    int k = j + 2
+                    int v = 0
+                    while k < n and eh_hex(raw[k]) {
+                        v = v * 16 + valor_hex(raw[k])
+                        k = k + 1
+                    }
+                    ch = chr(v)
+                    prox = k
+                } elif e >= "0" and e <= "7" {
+                    int k = j + 1
+                    int v = 0
+                    int quantos = 0
+                    while k < n and quantos < 3 and raw[k] >= "0" and raw[k] <= "7" {
+                        v = v * 8 + ord(raw[k]) - ord("0")
+                        k = k + 1
+                        quantos = quantos + 1
+                    }
+                    ch = chr(v)
+                    prox = k
+                }
+                if guarda {
+                    addEnd(dec, ch)
+                    addEnd(mapa, j)
+                }
+                if guarda_err {
+                    addEnd(err, ch)
+                }
+                j = prox
+            }
+            i = j + 1
+            continue
+        }
+        if c == "{" {
+            if prof == 0 {
+                em_vetor = abre_vetor(raw, i)
+            }
+            prof = prof + 1
+            if prof == 2 {
+                campo = 0
+                dec = []
+                mapa = []
+                err = []
+                linha_caso = linha
+            }
+        } elif c == "}" {
+            if prof == 2 and em_vetor and len(dec) > 0 {
+                addEnd(progs, ["".join(dec), mapa, linha_caso, "".join(err)])
+            }
+            prof = prof - 1
+        } elif c == "," and prof == 2 {
+            campo = campo + 1
+        }
+        i = i + 1
+    }
+    return progs
+}
+
+
+# `teste/casos_*.c`. Devolve [texto novo, trocas, ruins, avisos].
+list funct migra_c(str texto) {
+    list avisos = []
+    if not tem_palavra(texto) {
+        return [texto, 0, 0, avisos]
+    }
+    int trocas = 0
+    int ruins = 0
+    # posições, no arquivo, onde entra a grafia nova: [pos, tamanho, nova, velha]
+    list pontos = []
+    for each prog in programas_dos_casos(texto) {
+        str fonte = prog[0]
+        list mapa = prog[1]
+        if not tem_palavra(fonte) {
+            continue
+        }
+        # o caso espera que o motor fale da grafia antiga no erro: ela é o
+        # assunto do teste e fica
+        if tem_palavra_isolada(prog[3]) {
+            addEnd(avisos, "caso testa o erro da grafia antiga (fica), linha " + str(prog[2]))
+            continue
+        }
+        list toks = tokens_do_texto(fonte)
+        if len(suspeitas_de(toks)) > 0 {
+            addEnd(avisos, "caso com string que cita a grafia antiga, linha " + str(prog[2]))
+        }
+        # onde começa cada linha do programa decodificado
+        list inicios = [0]
+        int p = fonte.find("\n")
+        while p >= 0 {
+            addEnd(inicios, p + 1)
+            p = fonte.find("\n", p + 1)
+        }
+        for each a in alvos_de(toks) {
+            if a[0] - 1 >= len(inicios) {
+                ruins = ruins + 1
+                continue
+            }
+            int off = inicios[a[0] - 1] + a[1] - 1
+            if off < 0 or off + a[2] > len(mapa) {
+                ruins = ruins + 1
+                continue
+            }
+            int pos = mapa[off]
+            if texto[pos:pos + a[2]] != a[4] or mapa[off + a[2] - 1] != pos + a[2] - 1 {
+                ruins = ruins + 1
+                continue
+            }
+            addEnd(pontos, [pos, a[2], a[3], a[4]])
+        }
+    }
+    if len(pontos) == 0 {
+        return [texto, 0, ruins, avisos]
+    }
+    # os pontos saem na ordem do arquivo (casos em ordem, tokens em ordem)
+    list pedacos = []
+    int ini = 0
+    for each pt in pontos {
+        addEnd(pedacos, texto[ini:pt[0]])
+        addEnd(pedacos, pt[2])
+        ini = pt[0] + pt[1]
+        trocas = trocas + 1
+    }
+    addEnd(pedacos, texto[ini:])
+    return ["".join(pedacos), trocas, ruins, avisos]
+}
+
+
+str funct nome_base(str caminho) {
+    int barra = caminho.rfind("/")
+    if barra < 0 {
+        return caminho
+    }
+    return caminho[barra + 1:]
+}
+
+
+str funct tipo_do_arquivo(str caminho) {
+    str nome = nome_base(caminho)
+    for each p in PULA_ARQUIVO {
+        if nome == p {
+            return ""
+        }
+    }
+    if nome.endswith(".pr") {
+        return "pr"
+    }
+    if nome.endswith(".md") {
+        return "md"
+    }
+    if nome.startswith("casos_") and nome.endswith(".c") {
+        return "c"
+    }
+    return ""
+}
+
+
+funct varre(str dir, list arquivos) {
+    list itens = []
+    try {
+        itens = os.ls(dir)
+    } catch (Exception e) {
+        post("  (nao deu pra ler " + dir + ")")
+        return
+    }
+    for each ent in itens {
+        str nome = ent["name"]
+        str caminho = dir + "/" + nome
+        if ent["type"] == "dir" {
+            bool pula = False
+            for each p in PULA_PASTA {
+                if nome == p {
+                    pula = True
+                }
+            }
+            if not pula {
+                varre(caminho, arquivos)
+            }
+            continue
+        }
+        if tipo_do_arquivo(caminho) != "" {
+            addEnd(arquivos, caminho)
+        }
+    }
+}
+
+
+# Devolve [arquivos tocados, trocas, ruins, avisos].
+funct migra(list arquivos, bool aplica, bool confere) {
+    int tocados = 0
+    int total = 0
+    int total_ruins = 0
+    int total_avisos = 0
+    for each caminho in arquivos {
+        str conteudo = ""
+        try {
+            conteudo = os.readFile(caminho)
+        } catch (Exception e) {
+            continue
+        }
+        if conteudo.find(chr(0)) >= 0 {
+            continue
+        }
+        str tipo = tipo_do_arquivo(caminho)
+        list r = [conteudo, 0, 0, []]
+        if tipo == "pr" {
+            r = migra_pr(caminho, conteudo)
+        } elif tipo == "md" {
+            r = migra_md(conteudo)
+        } elif tipo == "c" {
+            r = migra_c(conteudo)
+        }
+        if r[1] == 0 and r[2] == 0 and len(r[3]) == 0 {
+            continue
+        }
+        if r[1] > 0 {
+            tocados = tocados + 1
+        }
+        total = total + r[1]
+        total_ruins = total_ruins + r[2]
+        total_avisos = total_avisos + len(r[3])
+        post("  " + str(r[1]).rjust(4) + " troca(s)  " + caminho)
+        if r[2] > 0 {
+            post("       " + str(r[2]) + " posicao(oes) nao conferiram: nada trocado ali")
+        }
+        for each av in r[3] {
+            post("       conferir a mao: " + av)
+        }
+        if aplica and r[1] > 0 {
+            os.writeFile(caminho, r[0])
+            if confere and tipo == "pr" {
+                str saida = ""
+                str erro = ""
+                try {
+                    list checado = roda([sys.executable, "--check", caminho], "")
+                    saida = checado[0]
+                    erro = checado[1]
+                } catch (IOError e) {
+                    erro = str(e)
+                }
+                if erro != "" or not saida.startswith("{\"ok\":true") {
+                    post("    --check REPROVOU:", (erro + saida).strip())
+                }
+            }
+        }
+    }
+    return [tocados, total, total_ruins, total_avisos]
+}
+
+
+# A pasta do usuário, a MESMA do motor (`PS_HOME_VAR` em vm/ps_so.h): HOME no
+# Linux e no macOS, USERPROFILE no Windows.
+str funct pasta_usuario() {
+    if sys.platform() == "windows" {
+        return os.getenv("USERPROFILE", "")
+    }
+    return os.getenv("HOME", "")
+}
+
+
+# As libs instaladas, na ordem do motor: `JINGA_HOME`, `POOLSCRIPT_HOME`,
+# `~/.jinga` (ou `~/.poolscript` que o `jpkg` ainda não moveu).
+str funct pasta_libs() {
+    str home = os.getenv("JINGA_HOME", "")
+    if home == "" {
+        home = os.getenv("POOLSCRIPT_HOME", "")
+    }
+    if home == "" {
+        str casa = pasta_usuario()
+        home = casa + "/.jinga"
+        str velha = casa + "/.poolscript"
+        if not os.exists(home) and os.exists(velha) {
+            home = velha
+        }
+    }
+    return home + "/libs"
+}
+
+
+funct principal() {
+    list alvos = []
+    bool aplica = False
+    bool confere = False
+    bool libs = False
+    int i = 1
+    while i < len(sys.argv) {
+        str a = sys.argv[i]
+        if a == "--aplica" {
+            aplica = True
+        } elif a == "--confere" {
+            confere = True
+        } elif a == "--libs" {
+            libs = True
+        } else {
+            addEnd(alvos, a)
+        }
+        i = i + 1
+    }
+    if libs {
+        addEnd(alvos, pasta_libs())
+    }
+    if len(alvos) == 0 {
+        post("uso: jinga scripts/migra_literais.pr <pasta|arquivo>... [--aplica] [--confere] [--libs]")
+        sys.exit(64)
+    }
+    list arquivos = []
+    for each alvo in alvos {
+        if not os.exists(alvo) {
+            post("nao existe: " + alvo)
+            continue
+        }
+        if os.isfile(alvo) {
+            addEnd(arquivos, alvo)
+        } else {
+            varre(alvo, arquivos)
+        }
+    }
+    str modo = "so mostrando (nada gravado)"
+    if aplica {
+        modo = "gravando"
+    }
+    post("migra_literais: " + str(len(arquivos)) + " arquivo(s), " + modo)
+    list r = migra(arquivos, aplica, confere)
+    post("")
+    post("arquivos com troca: " + str(r[0]) + "  trocas: " + str(r[1])
+         + "  posicoes que nao conferiram: " + str(r[2]) + "  pra conferir a mao: " + str(r[3]))
+}
+
+
+if __name__ == "main" {
+    principal()
+}

@@ -150,7 +150,7 @@ post(type(E(1, 2)))                      # E
 
 A Entity também vale como função que se passa adiante: `map([1, 2], Ponto)`
 cria uma instância por item. O `__init__` não pode ser `async` nem gerador
-(`TypeError: __init__() should return None, not 'future'`).
+(`TypeError: __init__() should return Null, not 'future'`).
 
 ---
 
@@ -234,7 +234,7 @@ class App {
     }
 
     public static funct run() {
-        mapp(debug=true, port=3003, host="127.0.0.1")
+        mapp(debug=True, port=3003, host="127.0.0.1")
     }
 }
 App.run()

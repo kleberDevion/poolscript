@@ -237,10 +237,10 @@ funct gerado(nome)
 
 if os.exists(PASTA)
 {
-    os.rmdir(PASTA, force=true)
+    os.rmdir(PASTA, force=True)
 }
-os.mkdir(PASTA, exist_ok=true)
-os.mkdir(HOME, exist_ok=true)
+os.mkdir(PASTA, exist_ok=True)
+os.mkdir(HOME, exist_ok=True)
 POOL = sys.executable
 
 # ── superfície da CLI (vm/main.c) ───────────────────────────────────────────
@@ -264,20 +264,20 @@ confere("-V é o mesmo que --version", "Jinga" in r["saida"] and r["rc"] == 0)
 # ainda importa, e a pasta antiga vira `~/.jinga` na primeira chamada do `jpkg`
 # — com aviso, porque mover pasta calado é o tipo de coisa que some. A pasta
 # do usuário (o `~`) é a HOME no Linux e no macOS e a USERPROFILE no Windows.
-os.mkdir(PASTA + "/home_antigo/libs", exist_ok=true)
+os.mkdir(PASTA + "/home_antigo/libs", exist_ok=True)
 os.writeFile(PASTA + "/home_antigo/libs/velha.pr", "V = \"da pasta antiga\"\n")
 os.writeFile(PASTA + "/usa_velha.pr",
              "import velha\nimport poolscript.libs.velha as p\nimport jinga.libs.velha as j\npost(velha.V, p.V, j.V)\n")
 r = roda([POOL, "usa_velha.pr"], amb={"POOLSCRIPT_HOME": PASTA + "/home_antigo"})
 confere("POOLSCRIPT_HOME ainda e lida, e import poolscript.libs.x e jinga.libs.x acham a mesma lib",
         r["rc"] == 0 and r["saida"].strip() == "da pasta antiga da pasta antiga da pasta antiga")
-os.mkdir(PASTA + "/home_novo/libs", exist_ok=true)
+os.mkdir(PASTA + "/home_novo/libs", exist_ok=True)
 os.writeFile(PASTA + "/home_novo/libs/velha.pr", "V = \"da pasta nova\"\n")
 r = roda([POOL, "usa_velha.pr"],
          amb={"JINGA_HOME": PASTA + "/home_novo", "POOLSCRIPT_HOME": PASTA + "/home_antigo"})
 confere("com as duas variaveis, JINGA_HOME ganha",
         r["rc"] == 0 and r["saida"].strip() == "da pasta nova da pasta nova da pasta nova")
-os.mkdir(PASTA + "/casa/.poolscript/libs", exist_ok=true)
+os.mkdir(PASTA + "/casa/.poolscript/libs", exist_ok=True)
 os.writeFile(PASTA + "/casa/.poolscript/libs/velha.pr", "V = \"migrada\"\n")
 r = roda([POOL, "list"], amb={VAR_CASA: PASTA + "/casa"})
 confere("jpkg move ~/.poolscript pra ~/.jinga na primeira chamada e avisa",
@@ -319,6 +319,28 @@ confere("--check reprova fonte torto com linha e coluna",
         "\"ok\":false" in r["saida"] and "\"linha\":" in r["saida"] and "\"coluna\":" in r["saida"])
 r = roda([POOL, "--check"], entrada="post(1)\n")
 confere("--check lê da entrada padrão", "\"ok\":true" in r["saida"])
+
+# `return`/`yield` fora de funct: o `--check` reprova, com a linha e a coluna
+# do comando (antes dizia ok e o programa acabava calado com rc 0).
+r = roda([POOL, "--check"], entrada="post(1)\nreturn 5\n")
+confere("--check: return no topo é SyntaxError na linha dele",
+        "\"ok\":false" in r["saida"] and "\"tipo\":\"SyntaxError\"" in r["saida"]
+        and "'return' fora de funct" in r["saida"] and "\"linha\":2,\"coluna\":1" in r["saida"])
+r = roda([POOL, "--check"], entrada="int i = 0\nwhile i < 2 {\n    i = i + 1\n    yield i\n}\n")
+confere("--check: yield em laço do topo é SyntaxError na linha dele",
+        "\"ok\":false" in r["saida"] and "'yield' fora de funct" in r["saida"]
+        and "\"linha\":4,\"coluna\":5" in r["saida"])
+# Só `True`, `False` e `Null`: a grafia antiga é nome não definido, com a dica
+r = roda([POOL, "--check"], entrada="bool b = true\n")
+confere("--check: true minúsculo é NameError com a dica True, na coluna dele",
+        "\"tipo\":\"NameError\"" in r["saida"] and "Did you mean: 'True'?" in r["saida"]
+        and "\"linha\":1,\"coluna\":10" in r["saida"])
+r = roda([POOL, "--bytecode"], entrada="bool b = True\n")
+confere("--bytecode mostra o booleano como True", "; True" in r["saida"] and not ("; true" in r["saida"]))
+# `json.parse` sem `import json`: o check acusa o que rodando dava NameError
+r = roda([POOL, "--check"], entrada="post(json.parse(\"[1]\"))\n")
+confere("--check: json.parse sem import json é NameError",
+        "\"tipo\":\"NameError\"" in r["saida"] and "name 'json' is not defined" in r["saida"])
 
 # Método sem `self`: UM erro, na linha do `funct` (5) — não um NameError no
 # `self` do corpo (6) nem um TypeError na chamada (10). O editor sublinha a
@@ -390,7 +412,7 @@ confere("--contexto de arquivo vazio não quebra", "\"contexto\"" in r["saida"])
 # e o BUFFER não salvo (stdin). Antes, `--tokens`/`--ast`/`--contexto`
 # ignoravam o argumento calados e liam o stdin — com o terminal herdado, o
 # comando TRAVAVA esperando entrada que ninguém ia mandar.
-os.mkdir(PASTA + "/proj", exist_ok=true)
+os.mkdir(PASTA + "/proj", exist_ok=True)
 os.writeFile(PASTA + "/proj/util.pr", "funct soma(a, b)\n{\n    return a + b\n}\n")
 os.writeFile(PASTA + "/proj/main.pr", "import util\npost(util.soma(1, 2))\n")
 
@@ -524,7 +546,7 @@ confere("--ast diz a coluna final do nó", "\"c2\":" in r["saida"])
 funct opcodes_de(saida, proto)
 {
     nomes = []
-    dentro = false
+    dentro = False
     for each l in saida.split("\n")
     {
         if l.startswith("== proto ")
@@ -1019,7 +1041,7 @@ confere("continuacao valida dentro de `(` continua passando no --check",
 # `cmd_build` varre o diretório, filtra pela extensão da linguagem (`.pr`),
 # ORDENA e roda um por um. Nada disso tinha teste: 26 ramos, incluindo a pasta
 # sem nada pra rodar e o arquivo que falha no meio.
-os.mkdir(PASTA + "/obra", exist_ok=true)
+os.mkdir(PASTA + "/obra", exist_ok=True)
 os.writeFile(PASTA + "/obra/b_segundo.pr", "post(\"SEGUNDO\")\n")
 os.writeFile(PASTA + "/obra/a_primeiro.pr", "post(\"PRIMEIRO\")\n")
 os.writeFile(PASTA + "/obra/nao_e_fonte.txt", "isto nao roda\n")
@@ -1040,7 +1062,7 @@ confere("build reprova quando um arquivo falha", r["rc"] != 0)
 os.loadFile(PASTA + "/obra/c_quebra.pr", mode="rb").delete()
 
 # pasta sem nenhum fonte: caso de borda do coletor
-os.mkdir(PASTA + "/vazia", exist_ok=true)
+os.mkdir(PASTA + "/vazia", exist_ok=True)
 r = roda([POOL, "build"], pasta=PASTA + "/vazia")
 confere("build em pasta vazia não quebra", r["rc"] == 0 or r["saida"].strip().len() > 0)
 
@@ -1071,7 +1093,7 @@ confere("opção desconhecida é recusada citando a opção",
         r["rc"] != 0 and "opcao-que-nao-existe" in r["saida"])
 
 # `build` roda todos os .pr da pasta — inclusive os que já criamos
-os.mkdir(PASTA + "/b", exist_ok=true)
+os.mkdir(PASTA + "/b", exist_ok=True)
 os.writeFile(PASTA + "/b/um.pr", "post(\"um\")\n")
 r = roda([POOL, "build"], pasta=PASTA + "/b")
 confere("build roda os .pr da pasta", "um" in r["saida"])
@@ -1092,7 +1114,7 @@ r = roda_atalho("hello")
 confere("o atalho instalado executa o pacote", "oi do pacote" in r["saida"])
 
 r = com_home([POOL, "uninstall", "hello"])
-confere("jpkg uninstall remove", r["rc"] == 0 and os.exists(HOME + "/commands/hello.pr") == false)
+confere("jpkg uninstall remove", r["rc"] == 0 and os.exists(HOME + "/commands/hello.pr") == False)
 
 os.writeFile(PASTA + "/minhalib.pr", "#!lib\nfunct dobro(x) {\n    return x * 2\n}\n")
 r = com_home([POOL, "install", "minhalib.pr", "-asLib"])
@@ -1112,7 +1134,7 @@ r = roda([POOL, "usa_exc.pr"])
 confere("exceção é valor dentro de módulo importado", r["saida"].strip() == "True ValueError")
 
 r = com_home([POOL, "uninstall", "minhalib", "-asLib"])
-confere("jpkg uninstall -asLib remove a lib", os.exists(HOME + "/libs/minhalib.pr") == false)
+confere("jpkg uninstall -asLib remove a lib", os.exists(HOME + "/libs/minhalib.pr") == False)
 
 # nome instalado como comando E como lib: sem flag, o uninstall dizia "Erro:"
 # e removia o comando mesmo assim. Comando destrutivo sob "Erro:" para.
@@ -1126,7 +1148,7 @@ confere("uninstall ambiguo nao remove nada",
         os.isfile(HOME + "/commands/dup.pr") and os.isfile(HOME + "/libs/dup.pr"))
 com_home([POOL, "uninstall", "dup", "-asLib"])
 r = com_home([POOL, "uninstall", "dup"])
-confere("desambiguado, o comando sai", r["rc"] == 0 and os.exists(HOME + "/commands/dup.pr") == false)
+confere("desambiguado, o comando sai", r["rc"] == 0 and os.exists(HOME + "/commands/dup.pr") == False)
 
 r = com_home([POOL, "uninstall", "nao_instalado"])
 confere("uninstall do que não existe não finge sucesso",
@@ -1148,7 +1170,7 @@ confere("registry em http inseguro é recusado",
 
 # ── registry DE VERDADE, servido pelo próprio jinker em loopback ────────────
 os.writeFile(PASTA + "/estatico/pacote.pr", "")
-os.mkdir(PASTA + "/estatico", exist_ok=true)
+os.mkdir(PASTA + "/estatico", exist_ok=True)
 os.writeFile(PASTA + "/estatico/pacote.pr",
              "#!cmd\nfunct main() {\n    post(\"vim do registry\")\n}\nmain()\n")
 
@@ -1164,7 +1186,7 @@ os.writeFile(PASTA + "/estatico/index.json", indice)
 srv_src = "import jinker\n"
 srv_src = srv_src + "app = jinker.Jinker(name=\"registry\", static_folder=\"" + PASTA + "/estatico\", static_url=\"/\")\n"
 srv_src = srv_src + "if __name__ == \"main\" {\n"
-srv_src = srv_src + "    app(debug=false, host=\"127.0.0.1\", port=" + str(PORTA) + ")\n"
+srv_src = srv_src + "    app(debug=False, host=\"127.0.0.1\", port=" + str(PORTA) + ")\n"
 srv_src = srv_src + "}\n"
 os.writeFile(PASTA + "/registry_srv.pr", srv_src)
 
@@ -1177,15 +1199,15 @@ leitura_srv = [junta_saida(srv), junta_erro(srv)]
 
 # espera a porta ABRIR, em vez de dormir no escuro
 import sockets
-subiu = false
+subiu = False
 tentativa = 0
-while (tentativa < 50 and subiu == false)
+while (tentativa < 50 and subiu == False)
 {
     s = sockets.socket()
     s.settimeout(0.2)
     if s.connect_ex(("127.0.0.1", PORTA)) == 0
     {
-        subiu = true
+        subiu = True
     }
     s.close()
     tentativa = tentativa + 1
@@ -1206,7 +1228,7 @@ if subiu
 
     r = com_home([POOL, "install", "torto"])
     confere("sha256 que não confere ABORTA a instalação",
-            r["rc"] != 0 and os.exists(HOME + "/commands/torto.pr") == false)
+            r["rc"] != 0 and os.exists(HOME + "/commands/torto.pr") == False)
 
     r = com_home([POOL, "install", "simples"])
     confere("entrada sem sha256 instala (integridade é OPCIONAL — ver auditoria)",
@@ -1317,8 +1339,8 @@ confere("`-o` sem nome de saida diz o uso", r["rc"] == 64 and "uso:" in r["saida
 # Medido numa pasta longe, com os fontes RENOMEADOS (nao existem mais no
 # caminho de origem) e a pasta de libs apontando pro vazio.
 EMB = PASTA + "/emb"
-os.mkdir(EMB + "/sub", exist_ok=true)
-os.mkdir(HOME + "/libs", exist_ok=true)
+os.mkdir(EMB + "/sub", exist_ok=True)
+os.mkdir(HOME + "/libs", exist_ok=True)
 os.writeFile(HOME + "/libs/minhalib.pr", "funct de_lib() {\n    return \"lib\"\n}\n")
 os.writeFile(EMB + "/banco.pr",
              "funct reais(v) {\n    return \"R$ \" + str(v)\n}\nfunct quebra() {\n    return 1 / 0\n}\n")
@@ -1335,7 +1357,7 @@ confere("`-o` embute os modulos alcancados e diz quantos (vizinho, subpasta, rel
         r["rc"] == 0 and "5 modulos embutidos" in r["saida"])
 
 LONGE = PASTA + "/longe"
-os.mkdir(LONGE, exist_ok=true)
+os.mkdir(LONGE, exist_ok=True)
 # o executável vai MOVIDO pra lá: o `move` leva a permissão de execução junto,
 # e o `os.copy` grava o destino como arquivo comum, sem ela
 os.move(EMB + "/app" + EXE, LONGE + "/app" + EXE)
@@ -1375,7 +1397,7 @@ confere("`-o` com erro de tipo num modulo recusa, com a mesma frase do --check",
 # aqui nos dois momentos. Fica de fora o que so se sabe rodando: funct
 # decorada por decorador geral, variavel do modulo e modulo em ciclo.
 IMP = PASTA + "/imp5"
-os.mkdir(IMP + "/sub", exist_ok=true)
+os.mkdir(IMP + "/sub", exist_ok=True)
 os.writeFile(IMP + "/util.pr",
              "funct soma(int a, int b=1) {\n    return a + b\n}\n"
              + "class Conta {\n    funct __init__(self, int saldo) {\n        self.saldo = saldo\n    }\n"
@@ -1492,7 +1514,7 @@ confere("import de caminho com extensao velha ensina a nova",
 # Sem `--aplica` ele não pode encostar em nada: é essa promessa que faz alguém
 # aceitar rodá-lo no projeto inteiro.
 MIG = PASTA + "/obra_migra"
-os.mkdir(MIG + "/sub", exist_ok=true)
+os.mkdir(MIG + "/sub", exist_ok=True)
 os.writeFile(MIG + "/util.ps", "funct f() {\n    return 7\n}\n")
 os.writeFile(MIG + "/sub/usa.psl", "import '../util.ps'\npost(util.f())\n")
 os.writeFile(MIG + "/leiame.md", "roda com `pool sub/usa.psl`\n")
@@ -1521,9 +1543,9 @@ confere("o programa migrado roda", r["rc"] == 0 and "7" in r["saida"])
 MIGC = PASTA + "/obra_classe"
 if os.exists(MIGC)
 {
-    os.rmdir(MIGC, force=true)
+    os.rmdir(MIGC, force=True)
 }
-os.mkdir(MIGC, exist_ok=true)
+os.mkdir(MIGC, exist_ok=True)
 MIGRADOR_C = os.cwd() + "/scripts/migra_classe.pr"
 os.writeFile(MIGC + "/velho.pr",
     "Entity A() {\n    funct __init__(self, x) { self.x = x }\n}\n"
@@ -1566,7 +1588,7 @@ confere("o programa migrado roda com a sintaxe nova", r["rc"] == 0 and "1 3" in 
 # tipagem, com o quadro da declaração) e RODANDO (o alias `m = lib` o
 # checador não segue: aí é a VM, com a nota "'x' e private: declarada em").
 PRIV = PASTA + "/priv"
-os.mkdir(PRIV, exist_ok=true)
+os.mkdir(PRIV, exist_ok=True)
 os.writeFile(PRIV + "/lib.pr",
     "private funct f() {\n    return 1\n}\n"
     + "private x = 5\n"
@@ -1650,7 +1672,7 @@ if pulou.len() > 0
         post("  " + x)
     }
 }
-os.rmdir(PASTA, force=true)
+os.rmdir(PASTA, force=True)
 if falhas.len() > 0
 {
     post("FALHARAM:", falhas.len())

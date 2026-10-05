@@ -44,7 +44,7 @@ amostras = {
     "byte": "\"oi\".encode()"
 }
 
-bruto = os.run([POOL, "--metadata"], true)
+bruto = os.run([POOL, "--metadata"], True)
 meta = bruto.get_json()
 if meta == Null {
     post(f"FALHA — o binario nao devolveu o metadata em JSON. Resposta:\n {bruto}")
@@ -82,7 +82,7 @@ for each tipo in tipos.keys() {
         # Agora o que se procura e o que a mensagem de aridade SEMPRE tem, nas
         # duas grafias: um tipo de erro, e a palavra argumento em pt ou en.
         fonte = "post(" + alvo + "." + metodo + "())"
-        saida = os.run([POOL, "-e", fonte], true)
+        saida = os.run([POOL, "-e", fonte], True)
         exigiu = (saida.contains("Error")
                   and (saida.contains("argument") or saida.contains("argumento")))
 
@@ -127,14 +127,14 @@ else {
 tipos_conhecidos = tipos.keys() + meta["tipos_valor"]
 funct retorno_conhecido(r) {
     if r == "*" {
-        return true
+        return True
     }
     for each lado in r.split("|") {
         if not tipos_conhecidos.contains(lado) {
-            return false
+            return False
         }
     }
-    return true
+    return True
 }
 retornos_orfaos = []
 for each t in tipos.keys() {
@@ -189,7 +189,7 @@ import sockets
 # DENTRO do fonte do `pool -e` filho, e o absoluto do Windows traz `\`, que no
 # literal vira escape.
 TMP = "ps_cm_tmp"
-os.mkdir(TMP, exist_ok=true)
+os.mkdir(TMP, exist_ok=True)
 
 # PNG de verdade pra construir o PoolFile — o motor só o cria a partir de
 # arquivo com extensão binária.
@@ -281,8 +281,8 @@ for each tipo in tipos.keys() {
     # como conferido: erro que não seja "has no attribute" (um `import` que
     # falta no filho, um caminho que o sistema não tem) passava como campo
     # presente. Construída uma vez por tipo, na primeira propriedade dele.
-    provada = false
-    nasceu = false
+    provada = False
+    nasceu = False
     for each m in tipos[tipo] {
         # método comum não traz a chave "kind"; só propriedade traz
         if not m.has("kind") {
@@ -292,10 +292,10 @@ for each tipo in tipos.keys() {
             continue
         }
         if not provada {
-            provada = true
+            provada = True
             fonte_prova = CABECA_FILHO + "_v = " + amostras_fonte[tipo]
             fonte_prova = fonte_prova + "\npost(\"amostra construida\")"
-            prova = os.run([POOL, "-e", fonte_prova], true)
+            prova = os.run([POOL, "-e", fonte_prova], True)
             nasceu = prova.contains("amostra construida")
             if not nasceu {
                 addEnd(amostras_quebradas, tipo + " -> " + prova.split("\n")[0])
@@ -306,7 +306,7 @@ for each tipo in tipos.keys() {
         }
         campos_conferidos = campos_conferidos + 1
         fonte = CABECA_FILHO + "_v = " + amostras_fonte[tipo] + "\npost(_v." + m["nome"] + ")"
-        saida = os.run([POOL, "-e", fonte], true)
+        saida = os.run([POOL, "-e", fonte], True)
         # O motor diz "'T' object has no attribute 'x'" (AttributeError) — a
         # frase antiga era "membro inexistente". Enquanto casou a antiga, esta
         # checagem ficou VERDE PARA SEMPRE: campo fantasma declarado no
@@ -360,7 +360,7 @@ if len(nao_conferidos) > 0 {
 # sem sinal), e o filho não sobra rodando depois do portão.
 PROC.kill()
 PROC.wait()
-os.rmdir(TMP, force=true)
+os.rmdir(TMP, force=True)
 
 # ── exceções: cada nome publicado É um valor no motor, e todo pai existe ──
 # A chave "excecoes" alimenta completion/hover/realce do editor; nome que o
@@ -372,7 +372,7 @@ for each x in exc {
 }
 fantasmas_exc = []
 for each x in exc {
-    saida = os.run([POOL, "-e", "post(" + x["nome"] + ")"], true)
+    saida = os.run([POOL, "-e", "post(" + x["nome"] + ")"], True)
     if saida.strip() != x["nome"] {
         addEnd(fantasmas_exc, x["nome"] + " -> publicado, mas o motor responde: " + saida.strip())
     }

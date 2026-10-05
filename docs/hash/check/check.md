@@ -1,7 +1,7 @@
 # `hash.check(senha_hash, senha_digitada)`
 
 Confere se a senha que o usuário **digitou** bate com o **hash** guardado no
-banco. Devolve `true`/`false`.
+banco. Devolve `True`/`False`.
 
 ```
 hash.check(senha_hash: str, senha_digitada: str) -> bool
@@ -45,7 +45,7 @@ funct login() {
     senha = request.get("senha")
     # senha_hash você busca no banco pelo usuário...
     if (hash.check(senha_hash, senha)) {
-        return jsonify({"ok": true})
+        return jsonify({"ok": True})
     }
     return jsonify({"erro": "credenciais inválidas"}), 401
 }

@@ -3,7 +3,7 @@
 Redimensiona a imagem do QR Code pra um tamanho específico, em pixels.
 
 ```
-img.resize(width: int, height: int) -> None
+img.resize(width: int, height: int) -> Null
 ```
 
 ---

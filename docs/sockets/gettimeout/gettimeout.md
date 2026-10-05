@@ -12,8 +12,8 @@ Nenhum. `gettimeout(1)` é `gettimeout() takes no arguments (1 given)`.
 
 | retorno | modo |
 |---|---|
-| `Null` | **bloqueante**: nunca foi posto prazo, ou foi `settimeout(null)` |
-| `0.0` | **não-bloqueante** (`settimeout(0)` ou `setblocking(false)`) |
+| `Null` | **bloqueante**: nunca foi posto prazo, ou foi `settimeout(Null)` |
+| `0.0` | **não-bloqueante** (`settimeout(0)` ou `setblocking(False)`) |
 | `> 0.0` | o prazo em segundos |
 
 O número sai sempre como `flo`, mesmo tendo entrado como `int`:
@@ -35,7 +35,7 @@ s = sockets.socket()
 post(s.gettimeout())              # nasce bloqueante
 s.settimeout(5)
 post(s.gettimeout(), type(s.gettimeout()))
-s.setblocking(false)
+s.setblocking(False)
 post(s.gettimeout())
 s.close()
 post(s.gettimeout())              # fechado: continua respondendo
@@ -53,7 +53,7 @@ Null
 - `Null` e `0.0` são coisas **opostas** — `Null` espera para sempre, `0.0` não
   espera nada. Testar com `if s.gettimeout()` confunde os dois
 - [`getblocking()`](../getblocking/getblocking.md) responde a mesma pergunta em
-  `bool`: é `true` para `Null` e para prazo `> 0`
+  `bool`: é `True` para `Null` e para prazo `> 0`
 - o socket que sai do [`accept`](../accept/accept.md) e do
   [`dup`](../dup/dup.md) herda esse valor
 
