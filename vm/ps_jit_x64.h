@@ -19,7 +19,11 @@
  *     o `ip` da instrução em que parou (já com o +2, como o interpretador
  *     conta);
  *   - a compilação é PREGUIÇOSA: um proto vira código de máquina na
- *     primeira vez que roda. Funct nunca chamada não custa nada.
+ *     primeira vez que roda. Funct nunca chamada não custa nada;
+ *   - o GC só coleta nos pontos seguros do interpretador, e o nativo passa
+ *     pelos mesmos: o salto de recuo de laço e a entrada de cada chamada,
+ *     inclusive a chamada direta entre functs nativas (`jit_chama`). Com a
+ *     coleta devida, os dois viram ilha e quem coleta é o interpretador.
  *
  * Registradores (System V): r12 = vm, r13 = base da pilha de valores,
  * r14 = locals + lbase, r15 = JitCtx, rbx = próximo slot LIVRE da pilha
@@ -670,6 +674,13 @@ static __attribute__((noinline)) JitCtx jit_roda(VM *vm, Proto *p, int fp, int l
  *       nativo sai sem tocar nele e o interpretador o adota. */
 static int jit_chama(VM *vm, JitCtx *cx, int n)
 {
+    /* A entrada de cada CALL é ponto seguro do GC (o `PONTO_SEGURO` do
+     * interpretador). Chamando direto daqui, a recursão nativa nunca passava
+     * por um: uma funct recursiva que aloca crescia sem coletar até o fim
+     * (medido: `g(22)` alocando uma lista por chamada, 2118 page-faults com o
+     * código de máquina contra 662 sem). Com a coleta devida, o CALL vira a
+     * ilha e o interpretador coleta e chama. */
+    if (vm->alocado > vm->proximo_gc) return 1;
     Value *stack = vm->stack;
     int32_t sp = cx->sp;
     Value alvo = stack[sp - n - 1];

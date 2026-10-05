@@ -1409,6 +1409,7 @@ Um estouro é **erro explícito**, nunca escrita fora do vetor. A recursão prof
 | `jinga --sem-jit ...` | igual a `JINGA_JIT=0`: o `main` faz `setenv("JINGA_JIT","0")` e tira a flag do argv; vale em qualquer posição |
 | `JINGA_JIT_LOG=1` | escreve no stderr cada proto compilado |
 | `JINGA_JIT_FALHA=1` | simula a recusa do `mmap`/`mprotect`; o programa segue interpretado |
+| `JINGA_GC_LOG=1` | escreve no stderr cada coleta de lixo (`[gc] coleta N`); com e sem JIT o número tem de ser o mesmo |
 | `-DPS_SEM_JIT` | compila o binário sem o JIT |
 
 ```
@@ -1694,6 +1695,7 @@ Variáveis de ambiente lidas pelo motor:
 | `JINGA_JIT=0` | desliga o JIT |
 | `JINGA_JIT_LOG=1` | registra cada proto compilado |
 | `JINGA_JIT_FALHA=1` | simula a recusa da memória executável |
+| `JINGA_GC_LOG=1` | escreve no stderr cada coleta de lixo |
 | `PS_HASH_SEED=<n>` | fixa a semente do hash de dict. O padrão é sorteada de `/dev/urandom` a cada processo |
 | `PS_MAIL_TLS_INSEGURO=1` | desliga a verificação de certificado no mail (servidor de teste) |
 | `JINGA_HOME` (ou `POOLSCRIPT_HOME`) | pasta de pacotes e libs; o padrão é `~/.jinga` |
@@ -2850,6 +2852,7 @@ Itens da trilha já fechados: 2 (Pyrite) foi superado pelo rename pra Jinga; 4 (
 | 09-30 | 16.2.3 | ver `git log` | O `make check` inteiro portado pra macOS e Windows (os drivers sobem e derrubam processo pelo `Process`, sem shell; pastas de trabalho relativas); o CI Linux (`ci.yml`) vermelho desde 26/09 (atalho do `jpkg` testava o `jinga` instalado, fibra pequena demais sob ASan, erro do `lcov` escondido); motor no Windows: caminho `C:\` absoluto, separador `\` (`vm/ps_caminho.h`), `realpath` que não resolvia link (o static do jinker servia arquivo de fora), erro do Winsock no connect com prazo, aspas pro metacaractere do `cmd.exe` no `os.run`; `delete()` que não apagava dizia True; o F5 do VS Code não depurava (a sonda da extensão gastava a única conexão); `attach(pasta)` com o mesmo erro nos 3 sistemas; verdes falsos fechados em `unidade`, `audita_c`, `audita_exemplos_doc`, `conserta_barra_doc`, `e2e_roda` e `leis` |
 | 09-30 | 16.2.4 | ver `git log` | O que o CI do 16.2.3 achou: a nota do `private` no traceback saía com lixo da pilha em todo erro de runtime (as três entradas do motor limpavam o erro campo a campo e esqueciam a nota; no Linux a pilha vinha zerada por acaso, no Mac não); o mongo no Windows não achava as `bson_*` (o `GetProcAddress` só olha a própria DLL; agora procura também nas que ela importa, como o `dlsym`); `make cobertura` com contador atômico (as threads do pool deixavam contador negativo e o `lcov` recusava a medição) |
 | 10-01 | 16.2.5 | ver `git log` | O que o CI do 16.2.4 achou: no macOS a conexão aceita pelo jinker herdava o não-bloqueante da escuta (o BSD herda, o Linux não; só o Windows desligava), e a leitura do pedido do WebSocket e o handshake do TLS, feitos na thread do pool, voltavam EAGAIN e fechavam a conexão (10 falhas do `jinker_roda`); o `-fanalyzer` do gcc 16 (Windows) acusa um falso "leak of 'nv'" no lexer (aceito com o motivo); o `make analisa ANALISA_TUDO=1` do noturno nunca rodou desde 26/08 (um `;` sozinho na receita), e com a receita certa o teto de 12000 MB passava da RAM do runner privado (7,9 GB) e o derrubava: agora 6000; o fuzzer não compilava desde que o `ps_verifica_fonte` ganhou os avisos |
+| 10-05 | 16.2.6 | ver `git log` | Etapa 0 do plano "JIT nunca pior que o interpretador": a chamada direta entre functs nativas (`jit_chama`) passa a ser ponto seguro do GC, como a entrada do CALL no interpretador. Uma recursão que aloca não coletava no código de máquina: `g(22)` com uma lista por chamada ia a 2045 page-faults, contra 609 agora (98,6 M -> 82,9 M instruções). A conferência custa 3 instruções por chamada (fib +0,74%, chamada +0,57%). `JINGA_GC_LOG=1` diz cada coleta no stderr, e o teste exige o mesmo número de coletas com e sem JIT (sem a correção: 1 contra 2) |
 | 09-28 | 16.1.8 | ec711c7 | Folga da pilha medida rodando (o clang põe o dobro de pilha no laço da VM); nome do sinal pelo `strsignal` no runner |
 | 09-28 | 16.1.7 | c669a78 | macOS: resolução de nomes do módulo `sockets` pela camada de sistema |
 | 09-28 | 16.1.6 | 6980c40 | Pacote macOS, `instalar.sh` com ramo Darwin, `build.yml` (Linux + macOS Intel) |
@@ -3892,7 +3895,9 @@ O plano é o `~/.claude/plans/steady-weaving-pine.md`, com um motor só (o mesmo
   - também com JIT, ficam PIORES que o próprio interpretador: `lista_indice` +22%, `dict` +12%, `metodo` +8%, `objeto` +5%, `closure` +5% e `gc` +3%.
   - No `lista_indice`, o `jit_roda` leva 47% das instruções, e `nome_do_tipo_valor` e `strcmp` aparecem no laço quente.
   - A razão contra a régua mistura os dois efeitos (a régua é o `aritmetica`, que o JIT acelerou), mas o portão reprovou certo. Regravar esconderia a piora; o conserto é no JIT, uma tarefa com plano próprio.
-- **Falta**: ler o CI do 16.2.5 e tratar o que sobrar; a piora do JIT acima (o noturno fica vermelho no `bench` até ela ser consertada).
+- **CI do 16.2.5 / `49f5c39`:** verde nos 3 sistemas, com o `make check` inteiro no Mac e no Windows.
+- **Conserto do JIT:** plano aprovado em 2026-10-02, com 13 etapas (Etapa 0 no 16.2.6). Objetivo: o código de máquina nunca fica mais caro que o interpretador no mesmo programa, e o portão do bench passa a comparar cada caso com ele mesmo (JIT contra interpretador, e os dois contra um binário de referência), por contagem de instruções. O noturno fica vermelho no `bench` até a Etapa 2.
+- **Falta**: as Etapas 1 a 12 do conserto do JIT; o release `v*`.
 - **Portão do Windows, pelo plano:**
   - a suíte inteira no job `windows-latest`/MSYS2;
   - cada falha separada em bug do porte (corrige) ou diferença real do sistema (`cmd.exe` no lugar de `sh`, `\r\n`), que ganha a expectativa do Windows;

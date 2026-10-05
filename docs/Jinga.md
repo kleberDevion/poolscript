@@ -1,4 +1,4 @@
-# Jinga v16.2.5
+# Jinga v16.2.6
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 jinga --version
-# Jinga 16.2.5 [PSVM] (2026-09-24) Runtime standalone
+# Jinga 16.2.6 [PSVM] (2026-09-24) Runtime standalone
 #                       ^ a data da compilação DESTE binário: duas
 #                         cópias da mesma versão se distinguem por ela
 ```
@@ -57,7 +57,9 @@ executa exatamente aquela instrução com a regra de sempre e volta pro
 nativo na seguinte. Por isso não existe uma segunda semântica: erro,
 `try`, gerador, fibra e depurador continuam sendo os do interpretador, e a
 mensagem de erro é a mesma. `jinga --sem-jit arquivo.pr` (ou
-`JINGA_JIT=0`) desliga; `JINGA_JIT_LOG=1` diz no stderr o que compilou. Sob
+`JINGA_JIT=0`) desliga; `JINGA_JIT_LOG=1` diz no stderr o que compilou, e
+`JINGA_GC_LOG=1`, cada coleta de lixo (o nativo coleta nos mesmos pontos que
+o interpretador: na volta de cada laço e na entrada de cada chamada). Sob
 `--debug` nada é compilado. Se o sistema recusar memória executável, o
 programa segue interpretado. Fora do x86-64 é só o interpretador.
 

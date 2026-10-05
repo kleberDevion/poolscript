@@ -2462,6 +2462,16 @@ static void gc_coleta(VM *vm)
     vm->ciclos_gc++;
     vm->proximo_gc = vm->alocado * 2;
     if (vm->proximo_gc < GC_INICIAL) vm->proximo_gc = GC_INICIAL;
+
+    /* `JINGA_GC_LOG=1`: cada coleta escreve uma linha no stderr. É o que deixa
+     * um teste ver que a coleta aconteceu (o programa não enxerga o GC), e que
+     * ela acontece igual com e sem o código de máquina. */
+    static int gc_log = -1;
+    if (gc_log < 0) {
+        const char *s = getenv("JINGA_GC_LOG");
+        gc_log = s && s[0] && s[0] != '0';
+    }
+    if (gc_log) fprintf(stderr, "[gc] coleta %ld\n", vm->ciclos_gc);
 }
 
 static void libera_objetos(VM *vm)

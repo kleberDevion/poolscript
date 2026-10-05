@@ -591,6 +591,21 @@ os.writeFile(PASTA + "/jit_erro.pr", "int n = 9223372036854775807\nwhile n < 922
 r = roda([POOL, "jit_erro.pr"])
 confere("estouro dentro do nativo: o erro e o do interpretador, na linha certa",
         r["rc"] != 0 and "declare como 'long n'" in r["saida"] and "linha 5" in r["saida"])
+# A chamada direta entre functs nativas e ponto seguro do GC, como a entrada
+# do CALL no interpretador. Antes a recursao nativa nunca passava por um: a
+# funct que aloca crescia sem coletar (g(22): 2118 page-faults com o codigo de
+# maquina, 662 sem). O programa nao enxerga o GC; o JINGA_GC_LOG=1 diz cada
+# coleta, e o numero tem de ser o mesmo nos dois modos (sem a correcao: 1
+# contra 2). A lista e lida DEPOIS das chamadas: tem de sobreviver as coletas.
+os.writeFile(PASTA + "/jit_gc.pr",
+             "funct g(int n) {\n    l = [n, n + 1, n + 2, n + 3]\n    if n < 2 { return l[1] - n }\n"
+             + "    return g(n - 1) + g(n - 2) + l[3] - l[0] - 3\n}\npost(g(20))\n")
+com = roda([POOL, "jit_gc.pr"], amb={"JINGA_GC_LOG": "1"})
+sem = roda([POOL, "--sem-jit", "jit_gc.pr"], amb={"JINGA_GC_LOG": "1"})
+confere("recursao que aloca coleta igual com e sem codigo de maquina",
+        com["rc"] == 0 and sem["rc"] == 0 and "10946" in com["saida"] and "10946" in sem["saida"]
+        and com["saida"].count("[gc] coleta") > 0
+        and com["saida"].count("[gc] coleta") == sem["saida"].count("[gc] coleta"))
 r = roda([POOL, "--bytecode"], entrada="x = = 1\n")
 confere("--bytecode com erro de sintaxe sai como ao rodar", r["rc"] != 0 and "SyntaxError" in r["saida"])
 

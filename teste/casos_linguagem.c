@@ -1087,6 +1087,17 @@ const Caso CASOS_LINGUAGEM[] = {
   "for each x in g() { s = s + x }\n"
   "post(usa(5), s)\n",
   "20 3", NULL, 0 },
+/* A chamada direta e ponto seguro do GC: a coleta acontece no meio da
+ * recursao nativa, e a lista de cada chamada, lida depois das chamadas
+ * filhas, tem de sobreviver a ela. */
+{ "recursao que aloca coleta no meio e a lista de cada chamada sobrevive",
+  "funct g(int n) {\n"
+  "    l = [n, n + 1, n + 2, n + 3]\n"
+  "    if n < 2 { return l[1] - n }\n"
+  "    return g(n - 1) + g(n - 2) + l[3] - l[0] - 3\n"
+  "}\n"
+  "post(g(20))\n",
+  "10946", NULL, 0 },
 /* O future de uma `tarefa()` solta nao e alcancavel pelo programa: o aviso do
  * fim procurava no heap, e o GC o levava antes. Agora ele e raiz ate o erro ser
  * lido ou avisado. As duas listas grandes forcam coleta. */
