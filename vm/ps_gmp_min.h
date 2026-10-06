@@ -142,4 +142,16 @@ static inline int     ps_mpz_cabe_i64(mpz_srcptr z)        { return __gmpz_fits_
 static inline int64_t ps_mpz_get_i64(mpz_srcptr z)         { return (int64_t)__gmpz_get_si(z); }
 #endif
 
+/* Compara o mpz com um int64 SEM mpz temporário. É o `y < x` do laço com
+ * `long`: a comparação copiava os dois lados pra dois mpz novos (init, set,
+ * cmp, clear) a cada volta — 760 instruções, contra 57 de `int` com `int`.
+ * Um bignum fora da faixa do int64 se decide pelo sinal; o que cabe compara
+ * como int64. Devolve -1, 0 ou 1: o sinal de (z - v). */
+static inline int ps_mpz_cmp_i64(mpz_srcptr z, int64_t v)
+{
+    if (!ps_mpz_cabe_i64(z)) return mpz_sgn(z) < 0 ? -1 : 1;
+    int64_t w = ps_mpz_get_i64(z);
+    return (w > v) - (w < v);
+}
+
 #endif /* PS_GMP_MIN_H */

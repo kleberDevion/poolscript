@@ -7,6 +7,24 @@
 #include "ps_teste.h"
 
 const Caso CASOS_INTEIROS[] = {
+/* int com bignum, nos dois lados e nos dois sinais, com os extremos do int64:
+ * a comparacao passou a ser feita direto no mpz guardado (sem mpz temporario),
+ * e a resposta tem que ser a mesma do caminho antigo — este vetor e o oraculo,
+ * gravado com o binario de antes (2026-10-05). */
+{ "int com bignum: operadores, sorted, max, min, in, index",
+  "long g = 2 ** 64\nlong n = -(2 ** 64)\nint m = 9223372036854775807\nint k = -9223372036854775807 - 1\n"
+  "post(1 < g, g > 1, 1 > g, g < 1, g == 1, 1 == g, g != 1, 1 >= g, g <= 1)\n"
+  "post(1 < n, n < 1, n > -5, -5 > n, n <= n, g >= g, g > n, n < g, n == n, g != g)\n"
+  "post(m < g, k > n, g > m, n < k, m >= g, k <= n)\n"
+  "post(sorted([g, 1, n, 0, m, k]), max(1, g), min(1, n), max([n, k]), min([g, m]))\n"
+  "post(g < 2 ** 65, 2 ** 65 > g, g == 2 ** 64, g == 2 ** 64 + 0, n < n - 1)\n"
+  "list l = [g, n, 7]\nl.sort()\npost(l, 7 in [g], g in [7, g], l.index(g))\n",
+  "True True False False False False True False False\n"
+  "False True False True True True True True True False\n"
+  "True True True True False False\n"
+  "[-18446744073709551616, -9223372036854775808, 0, 1, 9223372036854775807, 18446744073709551616] 18446744073709551616 -18446744073709551616 -9223372036854775808 9223372036854775807\n"
+  "True True True True False\n"
+  "[-18446744073709551616, 7, 18446744073709551616] False True 2", NULL, 0 },
 { "shift 1<<62 (cabia no int64)",  "post(1 << 62)\n", "4611686018427387904", NULL, 0 },
 { "shift 1<<63 (dava negativo)",   "post(1 << 63)\n", "9223372036854775808", NULL, 0 },
 { "shift 1<<64 (dava 1)",          "post(1 << 64)\n", "18446744073709551616", NULL, 0 },

@@ -4420,10 +4420,10 @@ static int compara_valores_par(const Value *a, const Value *b,
     /* bignum é número: sem isto, `sorted([grande, 1])` dizia "tipos
      * incompativeis" para dois valores que o type() chama de `int`. */
     if (EH_INTEIRO(*a) && EH_INTEIRO(*b) && (EH_BIGINT(*a) || EH_BIGINT(*b))) {
-        mpz_t za, zb; mpz_init(za); mpz_init(zb);
-        mpz_de_val(za, *a); mpz_de_val(zb, *b);
-        int c = mpz_cmp(za, zb);
-        mpz_clear(za); mpz_clear(zb);
+        /* direto no mpz guardado, sem temporário (ps_mpz_cmp_i64) */
+        int c = (a->t == V_INT) ? -ps_mpz_cmp_i64(COMO_BIGINT(*b)->v, a->as.i)
+              : (b->t == V_INT) ?  ps_mpz_cmp_i64(COMO_BIGINT(*a)->v, b->as.i)
+              : mpz_cmp(COMO_BIGINT(*a)->v, COMO_BIGINT(*b)->v);
         return (c > 0) - (c < 0);
     }
     int an = (a->t == V_INT || a->t == V_FLOAT || a->t == V_BOOL || EH_BIGINT(*a));
@@ -25789,9 +25789,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (c == 0) c = (x->len > y->len) - (x->len < y->len);        \
                 r_ = (c C_OP 0);                                              \
             } else if (EH_INTEIRO(a) && EH_INTEIRO(b)) {                      \
-                mpz_t za, zb; mpz_init(za); mpz_init(zb);                     \
-                mpz_de_val(za, a); mpz_de_val(zb, b);                         \
-                int c = mpz_cmp(za, zb); mpz_clear(za); mpz_clear(zb);        \
+                /* int com bignum e bignum com bignum: direto no mpz          \
+                 * guardado, sem temporário (ps_mpz_cmp_i64) */               \
+                int c = (a.t == V_INT) ? -ps_mpz_cmp_i64(COMO_BIGINT(b)->v, a.as.i) \
+                      : (b.t == V_INT) ?  ps_mpz_cmp_i64(COMO_BIGINT(a)->v, b.as.i) \
+                      : mpz_cmp(COMO_BIGINT(a)->v, COMO_BIGINT(b)->v);        \
                 r_ = (c C_OP 0);                                              \
             } else if (EH_SEQ(a) && EH_SEQ(b)) {                              \
                 /* lista com lista (e tupla com tupla) compara elemento a      \
