@@ -2106,18 +2106,19 @@ language-servers = ["jinga"]
 
 ## 5. Build, testes, portões, VPS, CI, release e versão
 
-### 5.1 Estado de agora (medido em 2026-09-28)
+### 5.1 Estado de agora (medido em 2026-10-06)
 
 | item | valor |
 |---|---|
-| versão da linguagem | **16.1.9** (`vm/ps_versao.h`, bump no commit `3c245e7`); `main` e `origin/main` em `b180807` |
-| `./pool --version` | `Jinga 16.1.9 [PSVM] (2026-09-28) Runtime standalone` |
-| versão da extensão do VS Code | 8.6.8 |
-| binário `./pool` | 9.066.080 bytes |
-| esta máquina | Linux Mint 22.3, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 |
-| `gh` desta máquina | 2.101.0, com o token salvo **inválido** ("The token in keyring is invalid"); no Mac é preciso `gh auth login` |
+| versão da linguagem | **16.2.14** (`vm/ps_versao.h`, bump no commit `c73fec3`); `main` e `origin/main` em `c73fec3` |
+| `./pool --version` | `Jinga 16.2.14 [PSVM] (2026-10-06) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário (`cmp` igual) |
+| versão da extensão do VS Code | 8.6.10 |
+| binário `./pool` | 9.091.912 bytes |
+| esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
+| `gh` desta máquina | 2.101.0, logado como `kleberDevion` (token válido em 2026-10-06). Falta o escopo `user`: ler a cobrança do Actions pede `gh auth refresh -h github.com -s user`; no Mac é preciso `gh auth login` |
+| CI | o GitHub **recusa todos os jobs desde 2026-10-06 15:15 UTC** (cobrança ou cota da conta, ver 5.12 e 6.2). O portão de cada commit é a VPS (5.11 e 5.12) mais a suíte local |
 | repositório | `origin` = `https://github.com/kleberDevion/poolscript-lang`, que redireciona pro canônico `https://github.com/kleberDevion/poolscript`; em URL nova, escrever o canônico |
-| identidade do commit | `~/.gitconfig` existe desde 2026-09-27 (73 bytes) com `kleberDevion <klebersantanadeoliveira07@gmail.com>`; sem ele, `git -c user.name=kleberDevion -c user.email=klebersantanadeoliveira07@gmail.com commit ...`. Sempre com o trailer `Co-Authored-By: Regressão <noreply@anthropic.com>` |
+| identidade do commit | `~/.gitconfig` existe (254 bytes, de 2026-09-28) com `kleberDevion <klebersantanadeoliveira07@gmail.com>`; sem ele, `git -c user.name=kleberDevion -c user.email=klebersantanadeoliveira07@gmail.com commit ...`. Sempre com o trailer `Co-Authored-By: Regressão <noreply@anthropic.com>` |
 
 O Makefile, os fontes e o binário ficam todos na raiz do repositório: `make <alvo>` de lá, sem `-f`.
 
@@ -2433,51 +2434,61 @@ Ordem dele desde 2026-09-20: build e suíte pesada rodam na VPS, e depois de cad
 | acesso | `ssh -o BatchMode=yes tecsol-vps`: alias do `~/.ssh/config`, `HostName 10.8.0.1` (endereço pela VPN), `User root`, `IdentityFile ~/.ssh/vps_tecsol_hostinger`, `IdentitiesOnly yes` |
 | sem VPN | `tecsol-vps-pub` (`HostName 187.127.9.180`, mesma chave); só funciona enquanto a porta 22 pública estiver aberta. Em 2026-09-28 não conectou (`Connection timed out`): a 22 pública está fechada no firewall |
 | máquina | Ubuntu 24.04, 4 núcleos, 16 GB, node 22 e npm; dependências do `ci.yml` + `pkg-config` + `lcov` instaladas em 2026-09-20; sem Neovim e sem IDEA (esses portões PULAM lá) |
-| usuário da suíte | **`nobody`**, nunca root (`runuser -u nobody`, com `HOME` dentro da pasta da rodada) |
-| pasta | `/tmp/ps_ck_<nome>` (a nota da memória usa `/tmp/ps-lote-N`), com log fora dela |
+| usuário da suíte | **root, com `HOME` isolado dentro da pasta da rodada** (`export HOME="$PWD/home"`), por ordem sua de 2026-10-05 ("nada de nobody"). Até então era `nobody` |
+| pasta | `/tmp/ps-lote-<versão sem pontos>` (ex.: `/tmp/ps-lote-16214`), com a árvore em `arvore<versão>/` e o log ao lado (`log`) |
+| virtualização | a VPS é ela mesma uma convidada KVM e **não tem `/dev/kvm`** nem a flag `svm` (medido em 2026-10-06): máquina virtual lá dentro só por emulação |
+| vizinhos | a VPS é dividida. Containers que não são nossos e não se tocam: `n8n-traefik-1` (portas 80 e 443), `n8n-n8n-1`, `n8n-n8n-worker-2`, `n8n-postgres`, `redis`, `tecsol-web`; e há um Postgres do host em `127.0.0.1:5432` |
 
 Levar pro Mac `~/.ssh/config` e as chaves `~/.ssh/vps_tecsol_hostinger` (+ `.pub`). O conteúdo da chave não entra neste documento.
 
-Por que nunca como root: o caso `os.move("o.txt", "/dev/full")` faz `rename()` por cima do nó de dispositivo, que root consegue, e o transforma em arquivo comum. Aí 11 casos de disco cheio (ENOSPC) passam a falhar. Se só essa família falhar, restaurar com `rm -f /dev/full && mknod -m 666 /dev/full c 1 7`.
+Rodando como root, três cuidados medidos:
 
-Roteiro:
+- `/root/.poolscript/libs/swagger.pr` é uma cópia antiga que faz sombra à lib do repositório e reprova o auditor da doc. O `HOME` isolado resolve; não se mexe no arquivo.
+- `fs.protected_regular=2`: root não abre em `/tmp` arquivo criado por outro dono. Sobra de rodada antiga feita como `nobody` (`/tmp/ps_*`) tem que ser apagada antes, senão dezenas de casos de arquivo falham.
+- O caso `os.move("o.txt", "/dev/full")` não estraga o `/dev/full`: depois das rodadas de 16.2.8 a 16.2.14 como root ele segue dispositivo de caractere 1:7 (`stat -c "%F %t:%T" /dev/full`). Se um dia a família de disco cheio (ENOSPC) falhar inteira, conferir isso e restaurar com `rm -f /dev/full && mknod -m 666 /dev/full c 1 7`.
+
+Roteiro (o que rodou em cada lote do Plano 5):
 
 ```bash
-L=ps_ck_$(date +%m%d%H%M)
+V=16214                                   # a versão do lote, sem pontos
 REPO=~/poolscript-lang
+A=/tmp/arvore$V                           # árvore de trabalho descartável, fora do repo
 
-# 1. o /tmp de antes, pra saber o que a rodada criou
-ssh -o BatchMode=yes tecsol-vps 'ls /tmp > /tmp/.ps-antes'
+# 1. a árvore EXATA: o commit, mais o que ainda não entrou nele (se houver)
+git -C "$REPO" worktree add --detach "$A" HEAD
+git -C "$REPO" diff HEAD > /tmp/obra-$V.patch
+[ -s /tmp/obra-$V.patch ] && git -C "$A" apply /tmp/obra-$V.patch
 
-# 2. a árvore de trabalho, sem .git, dependências e binários
-rsync -a --exclude=.git --exclude=node_modules --exclude=dist --exclude=cob \
-  --exclude=/pool --exclude=/pool-asan --exclude=/pool-debug --exclude=/pool-oom \
-  --exclude=/pool-fuzz --exclude=/testar --exclude=/unidade \
-  "$REPO"/ tecsol-vps:/tmp/$L/
-
-# 3. o roteiro da rodada, dentro da pasta (HOME lá dentro: o cache do npm sai junto)
-cat > /tmp/roda_$L.sh <<'EOF'
+# 2. o roteiro da rodada, dentro da árvore (HOME lá dentro: o cache do npm sai junto)
+cat > "$A/roda.sh" <<'EOF'
 cd "$(dirname "$0")"
 export HOME="$PWD/home"; mkdir -p "$HOME"
+export PATH=/usr/local/bin:/usr/bin:/bin
 (cd editor/vscode && npm install --omit=dev --no-audit --no-fund)
-for alvo in "make pool testar" "make check" "make check-asan" "make oom"; do
-  echo "== $alvo"; $alvo; echo "rc=$?"
+for alvo in "make pool testar" "make install" "make check" "make check-asan" "make check-debug"; do
+  echo "== $alvo"; nice -n 10 $alvo; echo "rc=$?"
 done
+echo "== FIM"
 EOF
-scp /tmp/roda_$L.sh tecsol-vps:/tmp/$L/roda.sh && rm -f /tmp/roda_$L.sh
 
-# 4. dono nobody e execução desacoplada (o ssh pela VPN cai em rodada longa)
-ssh tecsol-vps "chown -R nobody:nogroup /tmp/$L && nohup setsid runuser -u nobody -- bash /tmp/$L/roda.sh > /tmp/$L.log 2>&1 < /dev/null &"
+# 3. envia e dispara desacoplado (o ssh pela VPN cai em rodada longa)
+(cd /tmp && tar --exclude=.git -czf arvore$V.tgz arvore$V)
+ssh -o BatchMode=yes tecsol-vps "mkdir -p /tmp/ps-lote-$V"
+scp -q /tmp/arvore$V.tgz tecsol-vps:/tmp/ps-lote-$V/
+ssh -o BatchMode=yes tecsol-vps "cd /tmp/ps-lote-$V && tar xzf arvore$V.tgz && rm arvore$V.tgz && cd arvore$V && (nohup setsid bash -c 'bash roda.sh > ../log 2>&1' < /dev/null > /dev/null 2>&1 &)"
 
-# 5. acompanhar
-ssh tecsol-vps "tail -n 20 /tmp/$L.log; grep -n 'rc=' /tmp/$L.log"
+# 4. acompanhar: uma linha por etapa e por falha
+ssh -o BatchMode=yes tecsol-vps "grep -E '^== |^rc=|FALHOU|falharam|INVARIANTE|SUMMARY|^make: \*\*\*' /tmp/ps-lote-$V/log"
 
-# 6. LIMPEZA TOTAL: ver o que a rodada deixou em /tmp e apagar tudo
-ssh tecsol-vps "comm -13 /tmp/.ps-antes <(ls /tmp)"
-ssh tecsol-vps "rm -rf /tmp/$L /tmp/$L.log /tmp/ps_* /tmp/.ps-antes"
+# 5. parar no meio, se preciso (o colchete evita matar a própria sessão ssh)
+ssh -o BatchMode=yes tecsol-vps 'pkill -f "bash rod[a].sh"'
+
+# 6. LIMPEZA TOTAL
+ssh -o BatchMode=yes tecsol-vps "rm -rf /tmp/ps-lote-$V"
+git -C "$REPO" worktree remove --force "$A"; rm -f /tmp/arvore$V.tgz /tmp/obra-$V.patch
 ```
 
-Depois do passo 6, apagar também o que o `comm` listou e que a rodada criou (as suítes deixam `/tmp/ps_*`, e o e2e deixa as pastas do `mongod`). Não se instala nada na VPS além do que o CI instala sem avisar.
+O `make install` do roteiro mantém o `jinga` da VPS na versão do lote (ordem sua de 2026-10-05). O `make check` de lá já inclui a passada com o binário de debug; o `check-asan` acha vazamento e leitura fora de faixa que a suíte normal não vê, e o `check-debug` confere as invariantes (a da pilha de valores achou três defeitos do compilador no 16.2.13). Não se instala nada na VPS além do que o CI instala sem avisar.
 
 **Reproduzir o CI.** O runner do GitHub não é uma Ubuntu limpa: a imagem `ubuntu-24.04` traz PostgreSQL e `libpq-dev` 18 do repositório do PostgreSQL. Em 20 a 22/09 isso quebrou o link, quando o libpq ainda era ligado estático. Hoje os clientes de banco não são mais ligados. Conferir mudança de `ci.yml` ou de dependência de link continua sendo:
 1. subir na VPS um container `ubuntu:24.04` com a preparação da imagem do GitHub;
@@ -2486,13 +2497,18 @@ Depois do passo 6, apagar também o que o `comm` listou e que a rodada criou (as
 
 ### 5.12 CI no GitHub
 
+**Estado em 2026-10-06: o GitHub recusa todos os jobs** desde o push do 16.2.11 (15:15 UTC), com "The job was not started because recent account payments have failed or your spending limit needs to be increased". É a conta (cobrança ou cota mensal de minutos — o job do Mac conta dez vezes), e se vê em Settings > Billing no GitHub. O último commit que rodou lá, e verde nos três sistemas, é o 16.2.10 (`92db70d`). Você mandou: "é só rodar na VPS". Então:
+
+- **Linux**: o portão de cada commit é a rodada de 5.11 na VPS (`make check`, `make check-asan`, `make check-debug`) mais a suíte inteira neste laptop. Os jobs `propriedade`, `cobertura` (com os três bancos) e `linux` do `build.yml` não rodaram na VPS de 16.2.11 a 16.2.14; em 2026-10-06 está em montagem um roteiro que roda cada job Linux dos dois workflows num container `ubuntu:24.04` novo na VPS, com os passos do yml letra por letra. Quando estiver validado ele entra em `scripts/` e esta seção passa a dizer o comando.
+- **macOS e Windows**: sem onde rodar por enquanto (6.2). Voltam quando o GitHub aceitar jobs de novo ou quando o seu MacBook estiver acessível.
+
 **`.github/workflows/ci.yml`** roda em push na `main`, em pull request e todo dia às 03:00 UTC:
 
 | job | quando | o que roda |
 |---|---|---|
 | `portao` | todo push e PR | apt, `make pool testar`, `make check` |
 | `propriedade` | todo push e PR | `make pool`; `make propriedade PROP_N=400 PROP_SEMENTE=$(date +%j)`; `make leis LEIS_N=5000 LEIS_SEMENTE=$(date +%j)`; `make leis LEIS_N=300 LEIS_SEMENTE=$(date +%j)` |
-| `robustez` | só no agendado | `make check-asan`, `make oom`, `make analisa ANALISA_TUDO=1 ANALISA_MB=12000`, `make avisos AVISOS_NIVEL=2` (`continue-on-error`), `make fuzz FUZZ_T=1800`, `make bench BENCH=--portao`, `./pool teste/fuzz_replay.pr`, artefato `fuzz-achados` |
+| `robustez` | só no agendado | `make check-asan`, `make oom`, `make analisa ANALISA_TUDO=1 ANALISA_MB=6000`, `make avisos AVISOS_NIVEL=2` (`continue-on-error`), `make fuzz FUZZ_T=1800`, `make bench BENCH=--portao`, `./pool teste/fuzz_replay.pr`, artefato `fuzz-achados` |
 | `cobertura` | todo push | serviços `postgres:16`, `mariadb:10.11` e `mongo:7` (27099), com as credenciais de 5.7; `make cobertura`; artefato `cobertura-html` |
 
 **`.github/workflows/build.yml`** roda em push na `main` e nas branches `porte-*`, em tag `v*`, e sob pedido (`workflow_dispatch` com `alvo` = `linux | mac | windows | todos`):
@@ -2708,30 +2724,28 @@ O que o código e o CI já mostram do macOS:
 - Cada item da trilha vira um lote com plano próprio, nunca "de brinde" dentro de outro lote.
 - Pendência de comportamento do motor entra em `teste/casos_pendentes.c`: o caso é escrito com o comportamento certo e o campo `pendente = 1`. Enquanto o motor não acertar, o caso falha. Quando acertar, o runner acusa "JA FUNCIONA" e manda tirar o caso de lá. Hoje a fila está vazia: nenhum caso tem o campo ligado, e o cabeçalho do arquivo diz isso.
 
-### 6.2 Estado medido em 2026-09-28 (fim do dia)
+### 6.2 Estado medido em 2026-10-06 (fim da tarde)
 
-- Versão da linguagem **16.1.9** no repo (`vm/ps_versao.h`, bump no commit `3c245e7`) e no binário instalado:
+- Versão da linguagem **16.2.14** no repo (`vm/ps_versao.h`, bump no commit `c73fec3`) e no binário instalado:
 
 ```
 $ ./pool --version
-Jinga 16.1.9 [PSVM] (2026-09-28) Runtime standalone
+Jinga 16.2.14 [PSVM] (2026-10-06) Runtime standalone
 $ jinga --version
-Jinga 16.1.9 [PSVM] (2026-09-28) Runtime standalone
+Jinga 16.2.14 [PSVM] (2026-10-06) Runtime standalone
 ```
 
-- Extensão do editor: **8.6.8** (`editor/vscode/package.json`).
-- `main` em `b180807`, igual a `origin/main`. A árvore de trabalho tem mudança sem commit em vários arquivos de `vm/` (o Windows em andamento; lista e horário em 9.10).
-- GitHub Actions, lido pela API (`api.github.com/repos/kleberDevion/poolscript/actions/runs`) quando o repositório ainda era público. Privado, essa leitura pede o `gh` logado:
-  - Workflow `build`, commit b180807 (run 36507856713):
-    - job `linux`: verde (compila, suíte com JIT ligado e desligado, empacota);
-    - job `mac`: dependências, compilação e `--version` verdes; cai nos dois passos da suíte (detalhe em 5.12 e 9.10); os passos `portao inteiro` e `empacota` foram pulados, e o job `release` também.
-    - Mais cedo, no commit 4aedf8b, o job `mac` tinha caído na suíte com 2 falhas (6.3).
-  - Workflow `ci`: **139 execuções registradas, nenhuma verde**. O `build` tem 13, nenhuma verde.
-    - No último push (b180807, run 36507856867), o job `portão (suíte, doc, padrões em C, analisador)` falha no `make check` com exit 2, e o `cobertura (catraca por arquivo)` falha no `make cobertura`.
-    - `teste de propriedade (semente do dia)` saiu verde.
-    - `ASan/UBSan, falha de alocação e fuzz` foi pulado.
-    - No 4aedf8b, o `cobertura` tinha saído verde.
-    - O log só se baixa logado com permissão de administrador. Do shell do assistente, o `gh` responde 401 porque não lê o token do chaveiro.
+- Extensão do editor: **8.6.10** (`editor/vscode/package.json`).
+- `main` em `c73fec3`, igual a `origin/main`. Árvore de trabalho limpa; o único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
+- **O Plano 5 está fechado** (os 16 defeitos da sonda 2 que derrubavam o processo, corrompiam memória, perdiam arquivo ou erravam o resultado calados), em cinco lotes: 16.2.10 `92db70d`, 16.2.11 `0a9347f`, 16.2.12 `fa22ab1`, 16.2.13 `96fbea6`, 16.2.14 `c73fec3`. Uma linha por versão na tabela de 6.6.
+- GitHub Actions, lido com o `gh` logado (`gh run list`, `gh run view <id> --json jobs`):
+  - **Último verde: 16.2.10, commit `92db70d`, 2026-10-06 13:52 UTC.** Workflow `build`: `linux`, `windows` e `mac` verdes (`release` pulado, não era tag). Workflow `ci`: portão, propriedade e cobertura verdes.
+  - **Desde o push do 16.2.11 (`0a9347f`, 15:15 UTC) todo job é recusado em segundos**, com "The job was not started because recent account payments have failed or your spending limit needs to be increased". É a conta do GitHub (cobrança ou cota de minutos), não o código. Ficaram sem rodada lá: `0a9347f` (16.2.11), `01d9bae` (seu, doc), `fa22ab1` (16.2.12), `96fbea6` (16.2.13) e `c73fec3` (16.2.14).
+  - O agendado de 2026-10-06 09:40 UTC (run 37444620481, commit `33d8504`, 16.2.9): portão, propriedade e cobertura verdes; `ASan/UBSan, falha de alocação e fuzz` vermelho no passo `make bench BENCH=--portao` — o bench acusa o JIT mais lento que o interpretador, que é o assunto do Plano 2 (`~/.claude/plans/steady-weaving-pine.md`).
+- **No lugar do GitHub, o portão é a VPS** (5.11 e 5.12): cada lote do Plano 5 passou lá em `make check`, `make check-asan` e `make check-debug`, na árvore exata do commit, além da suíte inteira neste laptop.
+- **macOS e Windows estão sem rodada desde o `92db70d`.** Medido em 2026-10-06: a VPS não tem virtualização aninhada (sem `/dev/kvm`, sem a flag `svm`), então uma VM lá é emulação pura; este laptop tem `/dev/kvm` mas não tem memória pra uma VM de Windows; e macOS só roda em hardware da Apple. O caminho é o seu MacBook Pro (o job `mac` direto nele, o job `windows` numa VM dentro dele), parado até você estar com ele: ligar Sessão Remota, autorizar a chave (`cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys`) e passar o endereço.
+- Do que entrou desde o `92db70d`, o único código com ramo por sistema é o `mesmo_caminho` do `-o` (`vm/main.c`), que tem o ramo do Windows (`_fullpath` + `_stricmp`). Lacuna só do Windows, anotada: `os.copy` de um arquivo sobre ele mesmo não é barrado lá (`ps_mesmo_arquivo` devolve "não sei" quando o `st_ino` é sempre 0).
+- Em andamento em 2026-10-06: a reconferência, no 16.2.14, dos 150 achados confirmados da sonda 2. Os que seguem vivos (mensagem de erro confusa, linha ou coluna errada, regra não imposta, doc que contradiz o motor) viram o Plano 6, que espera a sua aprovação.
 - `node --version` neste laptop: `v18.19.1`.
 
 ### 6.3 Em andamento: Jinga no macOS e no Windows
@@ -2797,6 +2811,11 @@ Ordem: **8 -> 5 -> 1 -> 3**.
    - Falta: cache de resolução de método por sítio de chamada; campo de instância sem passar por dict (`self.n` gasta dois `acha_slot` por volta, 7,6% + 6,3% do perfil de `p.mais()`).
    - Do JIT, ainda não feito: builtin chamado de código nativo segue como "ilha"; float em linha; membro e coleção passando por helper.
    - O lote entra com número antes e depois (`perf stat`), nunca "ficou mais rápido".
+
+5. **Item 9: comentário de documentação** (anotado em 2026-10-06, sem posição na ordem acima).
+   - Você escreveu: `<Comment::"Esta função valida CPF's">`, "o mesmo que o `<Summary>`" de outras linguagens, "pra documentar funções etc". O `-->` do seu exemplo não é sintaxe ("é só eu quis colocar mesmo").
+   - Onde pode ir, nas suas palavras: "dentro dos `()` de uma função ou model, ou instância de classe, ou dentro do corpo do objeto".
+   - O lote: lexer e parser, o nó no `--ast`, o servidor do editor (hover, completion, assinatura), realce nos três editores, doc da linguagem e casos. O que o texto vira em tempo de execução é **pergunta a você no plano**.
 
 Itens da trilha já fechados: 2 (Pyrite) foi superado pelo rename pra Jinga; 4 (`public`/`private`), 6 (IntelliJ) e 7 (regressão do LSP) estão feitos. Detalhes em 6.6.
 
