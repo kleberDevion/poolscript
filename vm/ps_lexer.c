@@ -1459,17 +1459,17 @@ static void lx_fim(Lexer *lx)
 {
     PSTokenList *out = lx->out;
     fecha_span(lx);
-    if (out->ok || lx->recupera) {
-        grupo_fim(lx);
-        while (lx->nindent > 1) {
-            lx->nindent--;
-            PSToken *tk = novo_token(lx, T_DEDENT, lx->linha, lx->col);
-            if (tk) tk->i = 0;
-        }
-        novo_token(lx, T_EOF, lx->linha, lx->col);
-    } else if (out->fluxo) {
-        novo_token(lx, T_EOF, lx->linha, lx->col);
+    if (out->ok || lx->recupera) grupo_fim(lx);
+    /* Os DEDENT e o T_EOF saem SEMPRE, com erro ou sem: o erro ja esta em
+     * `out->ok`. Sem o EOF, quem parseava a lista (o `--contexto`, que e o
+     * comando do completion) passava do fim do vetor — `$` sozinho derrubava o
+     * processo e `post(1 $ 2)` ficava a 100% de CPU. */
+    while (lx->nindent > 1) {
+        lx->nindent--;
+        PSToken *tk = novo_token(lx, T_DEDENT, lx->linha, lx->col);
+        if (tk) tk->i = 0;
     }
+    novo_token(lx, T_EOF, lx->linha, lx->col);
     free(lx->alvos);
     lx->alvos = NULL; lx->nalvos = 0;
 }

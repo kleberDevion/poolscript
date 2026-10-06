@@ -3,6 +3,12 @@
 #include <stdio.h>
 
 #include "ps_regex.h"
+#include "ps_pilha.h"
+
+/* Os dois motivos de parar: passos (retrocesso) e profundidade (pilha). Quem
+ * chama distingue pelo retorno: -1 e -3. */
+#define RX_ESTOUROU_PASSOS 1
+#define RX_ESTOUROU_FUNDO  2
 
 /* ── árvore do padrão ────────────────────────────────────────────────────
  *
@@ -353,6 +359,17 @@ static int larg_fixa_alt(const Alt *a);   /* largura fixa em codepoints, -1 = va
 static int le_atomo(Leitor *l, Atomo *a)
 {
     if (l->i >= l->n) return 0;
+    /* O leitor e recursivo (`le_alt -> le_seq -> le_atomo -> le_alt`) e so o
+     * grupo capturante tinha teto: `(?:` 20 mil vezes derrubava o processo.
+     * O freio e a folga medida da pilha, como no parser da linguagem. */
+    if (ps_pilha_apertada()) {
+        /* sem a posicao: ela e onde a PILHA apertou, que muda com o tamanho
+         * da pilha (fibra, ASan), e nao diz nada sobre o padrao */
+        if (!l->falhou && l->erro && l->erro_cap > 0)
+            snprintf(l->erro, (size_t)l->erro_cap, "regex: padrao aninhado demais");
+        l->falhou = 1;
+        return 0;
+    }
     char c = l->p[l->i];
     a->grupo = NULL;
     a->idx_grupo = -1;
@@ -547,11 +564,20 @@ static void le_seq(Leitor *l, Seq *s)
             else if (t == '{') {
                 /* `{` sem número é literal */
                 int salvo = l->i, j = l->i + 1, lo = 0, hi = -1, temlo = 0;
-                while (j < l->n && l->p[j] >= '0' && l->p[j] <= '9') { lo = lo * 10 + (l->p[j] - '0'); j++; temlo = 1; }
+                /* COM TETO: `a{4294967295}` transbordava o `int` e casava o
+                 * vazio; `{3,4294967297}` dizia "min maior que max", que e
+                 * falso. Acima de 9 digitos e o erro do proprio quantificador. */
+                while (j < l->n && l->p[j] >= '0' && l->p[j] <= '9') {
+                    if (lo > 99999999) { rerro_em(l, salvo + 1, "the repetition number is too large"); return; }
+                    lo = lo * 10 + (l->p[j] - '0'); j++; temlo = 1;
+                }
                 if (j < l->n && l->p[j] == ',') {
                     j++;
                     int temhi = 0, h = 0;
-                    while (j < l->n && l->p[j] >= '0' && l->p[j] <= '9') { h = h * 10 + (l->p[j] - '0'); j++; temhi = 1; }
+                    while (j < l->n && l->p[j] >= '0' && l->p[j] <= '9') {
+                        if (h > 99999999) { rerro_em(l, salvo + 1, "the repetition number is too large"); return; }
+                        h = h * 10 + (l->p[j] - '0'); j++; temhi = 1;
+                    }
                     hi = temhi ? h : -1;
                 } else {
                     hi = lo;
@@ -981,7 +1007,12 @@ static int m_rep_grupo(RepGrupo *rg, int feitos, int pos)
  * entrar e sair sempre fecham. */
 static int m_seq(Estado *e, const Seq *s, int i, int pos, const Cont *k)
 {
-    if (e->prof >= RX_MAX_PROF) { e->estourou = 1; return 0; }
+    /* Alem do contador, a FOLGA MEDIDA da pilha: o 6000 foi dimensionado pros
+     * 8 MB do processo, e dentro de uma fibra (256 KB) o casador derrubava o
+     * processo com ~800 repeticoes — num handler do jinker, o servidor
+     * inteiro. `ps_pilha_apertada` sabe em que pilha esta (a fibra remarca a
+     * base ao entrar). */
+    if (e->prof >= RX_MAX_PROF || ps_pilha_apertada()) { e->estourou = RX_ESTOUROU_FUNDO; return 0; }
     e->prof++;
     int r = m_seq_corpo(e, s, i, pos, k);
     e->prof--;
@@ -1047,7 +1078,7 @@ int ps_regex_busca(PSRegex *r, const char *s, int len, int de, RxCaptura *cap)
         cap->ngrupos = r->ngrupos;
         cap->inicio[0] = inicio;
         if (m_alt(&e, r->raiz, inicio, NULL)) return 1;
-        if (e.estourou) return -1;
+        if (e.estourou) return e.estourou == RX_ESTOUROU_FUNDO ? -3 : -1;
     }
     return 0;
 }
@@ -1059,6 +1090,6 @@ int ps_regex_casa_tudo(PSRegex *r, const char *s, int len, RxCaptura *cap)
     cap->ngrupos = r->ngrupos;
     cap->inicio[0] = 0;
     if (m_alt(&e, r->raiz, 0, NULL)) return 1;
-    if (e.estourou) return -1;
+    if (e.estourou) return e.estourou == RX_ESTOUROU_FUNDO ? -3 : -1;
     return 0;
 }

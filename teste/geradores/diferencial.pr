@@ -292,6 +292,14 @@ funct roda(fonte_bytes) {
             primeira = primeira[p + 2:]
         }
     }
+    # A linha gravada termina com `\n` quando o stderr continua depois dela
+    # (o traceback): o runner casa por substring, e sem o `\n` a expectativa
+    # "name 'x' is not defined" tambem aceitaria "... Did you mean: 'y'?" —
+    # e o `confere_assercoes` a reprova como prefixo de outra mensagem. E a
+    # mesma convencao dos casos escritos a mao.
+    if primeira != "" and err.strip().count("\n") > 0 {
+        primeira = primeira + "\n"
+    }
     return [rc, saida, primeira]
 }
 

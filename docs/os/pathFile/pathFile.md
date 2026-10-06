@@ -25,8 +25,11 @@ caminho absoluto, pra passar a outra função que precise dele.
 
 ## Não encontrou → erro
 
-Se o arquivo não existir em nenhuma das raízes de busca, levanta erro. Se
-quiser checar antes:
+Se o arquivo não existir em nenhuma das raízes de busca, levanta erro. A busca
+desce nas subpastas, mas **não entra em link simbólico pra pasta** (como o
+`find -P`): com `a -> .` na pasta, seguir o link era uma busca sem fim. Vale
+também pra `os.pathFolder`, `os.loadFile` e `sys.RelativePath`. Se quiser
+checar antes:
 
 ```
 if (os.exists("dados.json")) {

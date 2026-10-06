@@ -4477,6 +4477,12 @@ static int compara_valores_par(const Value *a, const Value *b,
 /* A frase do -3 do compara_valores_par, uma só pra todo chamador. */
 #define MSG_CMP_FUNDO "comparacao aninhada demais"
 
+/* Os dois motivos de o regex parar (ps_regex_busca: -1 passos, -3 fundo).
+ * Eram uma frase só, e o teto de profundidade saía como "backtracking" num
+ * padrão linear sem retrocesso nenhum. */
+#define MSG_RX_PASSOS "regex: backtracking demais"
+#define MSG_RX_FUNDO  "regex: padrao ou texto profundo demais pra pilha"
+
 
 /* Aponta `itens`/`n` para o conteúdo de uma sequência. String vira sequência
  * de caracteres, dict vira sequência de chaves — mas esses dois precisam
@@ -8700,6 +8706,32 @@ static int grava_e_fecha(FILE *f, const void *dados, size_t n)
     return 0;
 }
 
+/* Os dois `stat` apontam o mesmo arquivo? No Windows o `st_ino` do CRT e
+ * sempre 0, entao la a resposta e "nao sei" (0) — o `-o` e o `copy` comparam
+ * o caminho inteiro por fora nesse caso. */
+static int ps_mesmo_arquivo(const struct stat *a, const struct stat *b)
+{
+#if defined(PS_SO_WINDOWS)
+    (void)a; (void)b;
+    return 0;
+#else
+    return a->st_dev == b->st_dev && a->st_ino == b->st_ino;
+#endif
+}
+
+static int copia_arquivo(const char *de, const char *para, const char **culpa);
+
+/* `copia_arquivo` com o erro ja montado: -2 (mesmo arquivo) vira OSError
+ * dizendo a causa; o resto e o `[Errno N]` de sempre, no caminho culpado. */
+static int copia_ou_erro(VM *vm, const char *de, const char *para)
+{
+    const char *culpa = de;
+    int rc = copia_arquivo(de, para, &culpa);
+    if (rc == -2) MERRO(vm, "OSError", "origem e destino sao o mesmo arquivo: '%.120s'", para);
+    if (rc != 0) return erro_sistema(vm, errno, culpa, NULL);
+    return 0;
+}
+
 static int copia_arquivo(const char *de, const char *para, const char **culpa)
 {
     /* `fopen` de diretório abre no Linux e só falha no `read` — sem este
@@ -8710,6 +8742,13 @@ static int copia_arquivo(const char *de, const char *para, const char **culpa)
     if (culpa) *culpa = de;
     if (stat(de, &st) != 0) return -1;
     if (!S_ISREG(st.st_mode)) { errno = S_ISDIR(st.st_mode) ? EISDIR : EINVAL; return -1; }
+    /* Origem e destino sendo o MESMO arquivo (`os.copy("a", "./a")`): o
+     * `fopen(para, "wb")` abaixo truncava o arquivo antes de ler a origem,
+     * e o conteudo sumia sem erro. Devolve -2: quem chama levanta OSError. */
+    {
+        struct stat sd;
+        if (stat(para, &sd) == 0 && ps_mesmo_arquivo(&st, &sd)) { if (culpa) *culpa = para; return -2; }
+    }
     FILE *a = fopen(de, "rb");
     if (!a) return -1;
     if (culpa) *culpa = para;
@@ -8786,8 +8825,7 @@ static int met_pf_move(VM *vm, Value alvo, Value *args, int n, Value *out)
         const char *dst = COMO_STRING(args[0])->chars;
         cria_pais(dst);
         if (rename(orig, dst) != 0) {
-            const char *culpa = orig;
-            if (copia_arquivo(orig, dst, &culpa) != 0) return erro_sistema(vm, errno, culpa, NULL);
+            if (copia_ou_erro(vm, orig, dst) != 0) return -1;
             /* origem que não sai é erro (ver os.move) */
             if (remove(orig) != 0) return erro_sistema(vm, errno, orig, NULL);
         }
@@ -8800,9 +8838,7 @@ static int met_pf_move(VM *vm, Value alvo, Value *args, int n, Value *out)
     cria_pais(dest);
     /* rename falha entre sistemas de arquivo; aí copia e apaga */
     if (rename(f->caminho, dest) != 0) {
-        const char *culpa = f->caminho;
-        if (copia_arquivo(f->caminho, dest, &culpa) != 0)
-            return erro_sistema(vm, errno, culpa, NULL);
+        if (copia_ou_erro(vm, f->caminho, dest) != 0) return -1;
         /* origem que não sai é erro (ver os.move) */
         if (unlink(f->caminho) != 0) return erro_sistema(vm, errno, f->caminho, NULL);
     }
@@ -8825,9 +8861,7 @@ static int met_pf_copy(VM *vm, Value alvo, Value *args, int n, Value *out)
     const char *origem = pf_caminho(alvo);
     const char *dest = COMO_STRING(args[0])->chars;
     cria_pais(dest);
-    const char *culpa = origem;
-    if (copia_arquivo(origem, dest, &culpa) != 0)
-        return erro_sistema(vm, errno, culpa, NULL);
+    if (copia_ou_erro(vm, origem, dest) != 0) return -1;
     PSPoolFile *novo = novo_poolfile(vm, dest);
     if (!novo) return erro_sistema(vm, errno, dest, NULL);
     *out = MK_OBJ(novo);
@@ -10613,7 +10647,7 @@ static int rx_findall(VM *vm, PSRegex *r, const char *s, int len, Value *out)
     for (;;) {
         RxCaptura cap;
         int achou = ps_regex_busca(r, s, len, de, &cap);
-        if (achou < 0) { vm->sp--; BERRO(vm, "RuntimeError", "regex: backtracking demais"); }
+        if (achou < 0) { vm->sp--; BERRO(vm, "RuntimeError", "%s", achou == -3 ? MSG_RX_FUNDO : MSG_RX_PASSOS); }
         if (!achou) break;
         Value item;
         if (ng == 0) {
@@ -10699,8 +10733,16 @@ static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s,
             for (int t = 0; t < nlen; t++)
                 if (nome[t] < '0' || nome[t] > '9') { so_digito = 0; break; }
             if (so_digito) {
+                /* COM TETO: `\g<2147483648>` transbordava o `int`, virava
+                 * indice negativo e lia `cap->inicio[g]` fora do vetor
+                 * (falha de segmentacao). Um grupo tem no maximo 2 digitos. */
                 g = 0;
-                for (int t = 0; t < nlen; t++) g = g * 10 + (nome[t] - '0');
+                for (int t = 0; t < nlen && g <= RX_MAX_GRUPOS; t++) g = g * 10 + (nome[t] - '0');
+                if (nlen > 2 || g > RX_MAX_GRUPOS) {
+                    snprintf(erro, (size_t)erro_cap,
+                             "invalid group reference %.*s at position %d", nlen, nome, i + 3);
+                    return -2;
+                }
             } else {
                 g = ps_regex_grupo_por_nome(r, nome, nlen);
                 if (g < 0) {
@@ -10760,7 +10802,7 @@ static int rx_sub(VM *vm, PSRegex *r, const char *s, int len,
         if (limite > 0 && feitos >= limite) break;
         RxCaptura cap;
         int achou = ps_regex_busca(r, s, len, de, &cap);
-        if (achou < 0) BERRO(vm, "RuntimeError", "regex: backtracking demais");
+        if (achou < 0) BERRO(vm, "RuntimeError", "%s", achou == -3 ? MSG_RX_FUNDO : MSG_RX_PASSOS);
         if (!achou) break;
         if (sb_bytes(&b, s + de, cap.inicio[0] - de) != 0) BERRO(vm, "MemoryError", "sem memoria");
         {
@@ -10802,7 +10844,7 @@ static int regex_match_nome(VM *vm, Value *args, int n, Value *out, const char *
     RxCaptura cap;
     int v = ps_regex_casa_tudo(r, s->chars, s->len, &cap);
     ps_regex_free(r);
-    if (v < 0) BERRO(vm, "RuntimeError", "regex: backtracking demais");
+    if (v < 0) BERRO(vm, "RuntimeError", "%s", v == -3 ? MSG_RX_FUNDO : MSG_RX_PASSOS);
     *out = MK_BOOL(v);
     return 0;
 }
@@ -10820,7 +10862,7 @@ static int mod_regex_search(VM *vm, Value *args, int n, Value *out)
     RxCaptura cap;
     int v = ps_regex_busca(r, s->chars, s->len, 0, &cap);
     ps_regex_free(r);
-    if (v < 0) BERRO(vm, "RuntimeError", "regex: backtracking demais");
+    if (v < 0) BERRO(vm, "RuntimeError", "%s", v == -3 ? MSG_RX_FUNDO : MSG_RX_PASSOS);
     *out = MK_BOOL(v);
     return 0;
 }
@@ -10873,7 +10915,7 @@ static int rx_split(VM *vm, PSRegex *r, const char *src, int slen, int64_t maxsp
     while (de <= slen) {
         RxCaptura cap;
         int achou = ps_regex_busca(r, src, slen, de, &cap);
-        if (achou < 0) { vm->sp--; BERRO(vm, "RuntimeError", "regex: backtracking demais"); }
+        if (achou < 0) { vm->sp--; BERRO(vm, "RuntimeError", "%s", achou == -3 ? MSG_RX_FUNDO : MSG_RX_PASSOS); }
         if (!achou) break;
         if (maxsplit > 0 && cortes >= maxsplit) break;
         cortes++;
@@ -12191,6 +12233,16 @@ static int mod_sys_platform(VM *vm, Value *args, int n, Value *out)
 
 /* Busca recursiva a partir do diretório atual. Devolve o caminho absoluto,
  * ou Null — achar nada não é erro, é resposta. */
+/* Link simbolico pra pasta NAO e descido (o `find -P`): com `a -> .` e
+ * `b -> .` na mesma pasta, o teto de profundidade sozinho virava uma busca de
+ * 2^32 caminhos, e o processo ficava travado. Vale pras duas buscas. */
+static int pasta_de_verdade(const char *cam)
+{
+    int link_pasta;
+    struct stat st;
+    return !ps_e_link(cam, &link_pasta) && stat(cam, &st) == 0 && S_ISDIR(st.st_mode);
+}
+
 static int busca_recursiva(const char *base, const char *nome, char *saida, size_t cap, int prof)
 {
     if (prof > 32) return -1;                 /* corta link circular */
@@ -12207,9 +12259,7 @@ static int busca_recursiva(const char *base, const char *nome, char *saida, size
             achou = 0;
             break;
         }
-        struct stat st;
-        if (stat(cam, &st) == 0 && S_ISDIR(st.st_mode)
-                && busca_recursiva(cam, nome, saida, cap, prof + 1) == 0) {
+        if (pasta_de_verdade(cam) && busca_recursiva(cam, nome, saida, cap, prof + 1) == 0) {
             achou = 0;
             break;
         }
@@ -12993,7 +13043,7 @@ static int acha_em(const char *raiz, const char *nome, int quer_dir,
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
         char sub[2048];
         snprintf(sub, sizeof(sub), "%s/%s", raiz, e->d_name);
-        if (stat(sub, &st) != 0 || !S_ISDIR(st.st_mode)) continue;
+        if (!pasta_de_verdade(sub)) continue;
         if (acha_em(sub, nome, quer_dir, saida, cap, prof + 1) == 0) { achou = 0; break; }
     }
     closedir(d);
@@ -13350,9 +13400,7 @@ static int mod_os_copy(VM *vm, Value *args, int n, Value *out)
     EXIGE_ARGS(vm, "copy", 2);
     PSString *a, *b;
     if (os_str(vm, args[0], "copy", &a) != 0 || os_str(vm, args[1], "copy", &b) != 0) return -1;
-    const char *culpa = a->chars;
-    if (copia_arquivo(a->chars, b->chars, &culpa) != 0)
-        return erro_sistema(vm, errno, culpa, NULL);
+    if (copia_ou_erro(vm, a->chars, b->chars) != 0) return -1;
     *out = MK_NULL();
     return 0;
 }
@@ -13363,9 +13411,7 @@ static int mod_os_move(VM *vm, Value *args, int n, Value *out)
     PSString *a, *b;
     if (os_str(vm, args[0], "move", &a) != 0 || os_str(vm, args[1], "move", &b) != 0) return -1;
     if (rename(a->chars, b->chars) != 0) {
-        const char *culpa = a->chars;
-        if (copia_arquivo(a->chars, b->chars, &culpa) != 0)
-            return erro_sistema(vm, errno, culpa, NULL);
+        if (copia_ou_erro(vm, a->chars, b->chars) != 0) return -1;
         /* Mover é copiar E apagar a origem. Origem que não sai (pasta sem
          * escrita; no Windows, arquivo aberto em outro lugar) é erro: o
          * retorno era ignorado, o move dizia "ok" e o arquivo ficava nos dois
@@ -17013,9 +17059,7 @@ static int met_resp_save(VM *vm, Value alvo, Value *args, int n, Value *out)
         char dest_abs[2048];
         if (rp->temporario) {
             if (rename(rp->arquivo, caminho) != 0) {
-                const char *culpa = rp->arquivo;
-                if (copia_arquivo(rp->arquivo, caminho, &culpa) != 0)
-                    return erro_sistema(vm, errno, culpa, NULL);
+                if (copia_ou_erro(vm, rp->arquivo, caminho) != 0) return -1;
                 unlink(rp->arquivo);
             }
             caminho_abs(caminho, dest_abs, sizeof dest_abs);
@@ -17027,9 +17071,7 @@ static int met_resp_save(VM *vm, Value alvo, Value *args, int n, Value *out)
         } else {
             caminho_abs(caminho, dest_abs, sizeof dest_abs);
             if (strcmp(dest_abs, rp->arquivo) != 0) {      /* mesmo arquivo: nada a fazer */
-                const char *culpa = rp->arquivo;
-                if (copia_arquivo(rp->arquivo, caminho, &culpa) != 0)
-                    return erro_sistema(vm, errno, culpa, NULL);
+                if (copia_ou_erro(vm, rp->arquivo, caminho) != 0) return -1;
             }
         }
     }

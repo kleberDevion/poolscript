@@ -31,6 +31,21 @@
 
 const Caso CASOS_LIBS[] = {
 
+/* ── sonda 2, arquivos: perda de dado e travamento (2026-10-06) ─────────── */
+{ "os.copy no proprio arquivo e OSError e o conteudo fica (era zerado)",
+  "import os\nos.writeFile(\"c1.txt\", \"conteudo importante\")\n"
+  "try {\n    os.copy(\"c1.txt\", \"./c1.txt\")\n} catch (OSError e) {\n    post(\"erro:\", e)\n}\n"
+  "post(os.size(\"c1.txt\"), os.readFile(\"c1.txt\"))\nos.copy(\"c1.txt\", \"c2.txt\")\npost(os.readFile(\"c2.txt\"))\n"
+  "Object f = open(\"c2.txt\")\nf.close()\ntry {\n    f.copy(\"c2.txt\")\n} catch (OSError e) {\n    post(\"erro:\", e)\n}\npost(os.readFile(\"c2.txt\"))\n",
+  "erro: origem e destino sao o mesmo arquivo: './c1.txt' (linha 4)\n19 conteudo importante\nconteudo importante\n"
+  "erro: origem e destino sao o mesmo arquivo: 'c2.txt' (linha 14)\nconteudo importante", NULL, 0 },
+{ "os.pathFile e sys.RelativePath com links simbolicos em ciclo respondem na hora",
+  /* `a -> .` e `b -> .` na pasta: a busca que seguia link virava 2^prof
+   * caminhos e ficava travada ate o timeout. Link pra pasta nao e descido. */
+  "import os\nimport sys\nos.mkdir(\"ciclo\", exist_ok=True)\nos.run([\"ln\", \"-sf\", \".\", \"ciclo/a\"])\nos.run([\"ln\", \"-sf\", \".\", \"ciclo/b\"])\n"
+  "os.chdir(\"ciclo\")\ntry {\n    post(os.pathFile(\"nao_existe_xyz.txt\"))\n} catch (e) {\n    post(\"erro:\", e)\n}\npost(sys.RelativePath(\"nao_existe_xyz.txt\"))\n",
+  "erro: [Errno 2] No such file or directory: 'nao_existe_xyz.txt' (linha 8)\nNull", NULL, 0, NULL, 0, "linux" },
+
 /* ── save= : o corpo vai pro DISCO, nao pra memoria (2026-09-11) ───────────
  * `request.get(url)` guarda o corpo inteiro: baixar 237 MB custava 480 MB de
  * RSS, porque o corpo vira `char*` e depois vira string da linguagem — existe

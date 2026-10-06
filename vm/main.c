@@ -452,6 +452,24 @@ static int emb_carrega(const char *emb, size_t tam, char *main_textual, size_t c
     return *fonte_main ? 0 : -1;
 }
 
+/* Os dois caminhos sao o mesmo arquivo? Fora do Windows, pelo par
+ * (dispositivo, inode) do `stat`; no Windows o `st_ino` do CRT e sempre 0,
+ * entao e pelo caminho absoluto, sem distinguir caixa. Caminho que nao existe
+ * nao e igual a nada. */
+static int mesmo_caminho(const char *a, const char *b)
+{
+    if (!a || !b) return 0;
+#if defined(PS_SO_WINDOWS)
+    char fa[4096], fb[4096];
+    if (!_fullpath(fa, a, sizeof(fa)) || !_fullpath(fb, b, sizeof(fb))) return 0;
+    struct stat sa;
+    return stat(a, &sa) == 0 && _stricmp(fa, fb) == 0;
+#else
+    struct stat sa, sb;
+    return stat(a, &sa) == 0 && stat(b, &sb) == 0 && sa.st_dev == sb.st_dev && sa.st_ino == sb.st_ino;
+#endif
+}
+
 /* `jinga fonte.pr -o saida` */
 static int cmd_compila(const char *fonte_arq, const char *saida)
 {
@@ -496,6 +514,19 @@ static int cmd_compila(const char *fonte_arq, const char *saida)
         saida = saida_exe;
     }
 #endif
+    /* A saida nao pode ser o fonte, um modulo que ele embute nem o proprio
+     * jinga: `jinga p.pr -o p.pr` trocava o fonte pelo executavel, calado. */
+    {
+        const char *igual = NULL;
+        if (mesmo_caminho(saida, fonte_arq)) igual = fonte_arq;
+        if (!igual && mesmo_caminho(saida, meu)) igual = meu;
+        for (int32_t i = 0; !igual && i < ndeps; i++)
+            if (mesmo_caminho(saida, deps[i].real)) igual = deps[i].real;
+        if (igual) {
+            fprintf(stderr, "jinga: a saida '%s' e o proprio fonte, um modulo que ele embute ou o jinga: escolha outro nome\n", saida);
+            ps_embutidos_solta(deps, ndeps); free(fonte); return 64;
+        }
+    }
     long base = 0;
     char *velho = ps_payload(meu, NULL, &base, NULL);   /* corta payload anterior */
     free(velho);
@@ -520,6 +551,11 @@ static int cmd_compila(const char *fonte_arq, const char *saida)
         resta -= (long)lidos;
     }
     fclose(in);
+    if (resta > 0) {
+        /* o laco saia calado num `fread` curto: o executavel nascia pela metade */
+        fprintf(stderr, "jinga: leitura incompleta de %s\n", meu);
+        fclose(out); ps_embutidos_solta(deps, ndeps); free(fonte); return 70;
+    }
 
     /* payload v2: cabecalho + o principal + os modulos (ver o formato acima) */
     size_t total = PS_DIG_TAM
@@ -1530,15 +1566,17 @@ static int cmd_contexto(const char *pos, const char *arquivo)
     /* em que funct/classe o cursor está: vem da ÁRVORE, não dos tokens */
     char escopo[256] = "";
     {
-        PSTokenList *tp = ps_lexer_tokenize(fonte, tam);
-        if (tp) {
-            PSParseResult *r = ps_parse_lista(tp, 0);
-            if (r) {
-                escopo_no(r->programa, linha, escopo, sizeof(escopo));
-                ps_parse_free(r);
-            }
-            ps_lexer_free(tp);
+        /* Com RECUPERACAO, como o `--check`: e o arquivo pela metade que o
+         * editor manda pra ca. A tokenizacao sem recuperacao parava no erro
+         * (`$`) e a lista ia pro parser sem olhar `ok`: `$` sozinho derrubava
+         * o processo e `post(1 $ 2)` ficava a 100% de CPU. */
+        PSTokenList *tp = NULL;
+        PSParseResult *r = ps_parse_fonte(fonte, tam, 1, &tp);
+        if (r) {
+            if (r->programa) escopo_no(r->programa, linha, escopo, sizeof(escopo));
+            ps_parse_free(r);
         }
+        ps_lexer_free(tp);
     }
 
     printf("{\"contexto\":\"%s\"", s.ctx);

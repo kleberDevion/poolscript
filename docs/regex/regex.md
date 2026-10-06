@@ -70,6 +70,22 @@ regex.findall("\d+", texto)         # errado — vira "d+"
 
 ---
 
+## Limites
+
+O casador é recursivo e tem dois freios, cada um com a própria frase:
+
+- **passos** — `RuntimeError: regex: backtracking demais`: o padrão retrocede
+  demais sobre o texto (2 milhões de passos);
+- **profundidade** — `RuntimeError: regex: padrao ou texto profundo demais pra
+  pilha`: o padrão ou o texto é fundo demais pra pilha onde a busca roda
+  (6000 níveis no programa principal; dentro de uma `async funct` a pilha é
+  menor, e esse limite chega antes).
+
+O padrão também tem teto: grupos aninhados além da pilha dão `ValueError:
+regex: padrao aninhado demais`, e um número de repetição com mais de 9 dígitos
+(`a{4294967295}`) dá `the repetition number is too large`. Nenhum deles derruba
+o processo.
+
 ## Relacionados
 
 - Strings raw — ver a seção de strings em `../LANGUAGE.md`

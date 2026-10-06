@@ -213,7 +213,13 @@ static int tem(P *p, int32_t i)
 static PSToken *tok_eof(P *p)
 {
     static PSToken eof_vazio = { .type = T_EOF, .line = 1, .col = 1 };
-    if (!p->fl) return &p->toks[p->n - 1];
+    /* Modo lista: a mesma regra. Uma lista vazia (`n == 0`) ou sem EOF no fim
+     * (o lexer parou num erro) fazia o parser ler `toks[-1]` ou girar pra
+     * sempre num NEWLINE final. */
+    if (!p->fl) {
+        PSToken *u = p->n > 0 ? &p->toks[p->n - 1] : NULL;
+        return (u && u->type == T_EOF) ? u : &eof_vazio;
+    }
     PSToken *u = p->fl->n > 0 ? ps_lexer_tok(p->fl, p->fl->n - 1) : NULL;
     return (u && u->type == T_EOF) ? u : &eof_vazio;
 }
@@ -224,7 +230,7 @@ static PSToken *atual(P *p)
         PSToken *t = ps_lexer_tok(p->fl, p->pos);
         return t ? t : tok_eof(p);
     }
-    return &p->toks[p->pos < p->n ? p->pos : p->n - 1];
+    return p->pos < p->n ? &p->toks[p->pos] : tok_eof(p);
 }
 
 static PSToken *espia(P *p, int off)
@@ -234,8 +240,7 @@ static PSToken *espia(P *p, int off)
         PSToken *t = ps_lexer_tok(p->fl, i);
         return t ? t : tok_eof(p);
     }
-    if (i >= p->n) i = p->n - 1;
-    return &p->toks[i];
+    return i < p->n ? &p->toks[i] : tok_eof(p);
 }
 
 static int checa(P *p, PSTokType t)

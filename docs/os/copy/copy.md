@@ -28,6 +28,11 @@ Se a cópia falha no meio (disco cheio, erro de leitura), levanta o erro com o
 motivo, e o destino pela metade é apagado — só se ele é o arquivo comum que
 a cópia escreveu. Destino que é link ou dispositivo fica como estava.
 
+Origem e destino sendo o **mesmo arquivo** (`os.copy("a.txt", "./a.txt")`) é
+`OSError: origem e destino sao o mesmo arquivo: './a.txt'`, e o arquivo fica
+como estava — antes o destino era truncado antes de ler a origem, e o
+conteúdo sumia sem erro. Vale igual em `PoolFile.copy` e no `move`.
+
 ---
 
 ## `os.copy` vs `PoolFile.copy`

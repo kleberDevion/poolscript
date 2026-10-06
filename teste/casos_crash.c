@@ -37,6 +37,29 @@ const Caso CASOS_CRASH[] = {
   "str s = \"a\\tb\"\ntry {\n    s.expandtabs(1000000000000)\n} catch (MemoryError e) {\n    post(\"str:\", \"pediu largura 1000000000000\" in e)\n}\n"
   "byte b = b\"a\\tb\"\ntry {\n    b.expandtabs(4294967300)\n} catch (MemoryError e) {\n    post(\"byte:\", \"pediu largura 4294967300\" in e)\n}\npost(s.expandtabs(4), b.expandtabs(4))\n",
   "str: True\nbyte: True\na   b b'a   b'", NULL, 0 },
+
+/* ── sonda 2, regex: tres quedas do processo ─────────────────────────────── */
+{ "regex.sub: \\g<N> acima de 2^31 e invalid group reference, nao segfault",
+  "import regex\npost(regex.sub(\"(a)\", r\"[\\g<1>]\", \"xax\"))\n"
+  "try {\n    post(regex.sub(\"(a)\", r\"[\\g<2147483648>]\", \"xax\"))\n} catch (e) {\n    post(\"erro:\", e)\n}\n"
+  "try {\n    post(regex.sub(\"(a)\", r\"[\\g<4294967295>]\", \"xax\"))\n} catch (e) {\n    post(\"erro:\", e)\n}\n",
+  "x[a]x\nerro: invalid group reference 2147483648 at position 4 (linha 4)\nerro: invalid group reference 4294967295 at position 4 (linha 9)", NULL, 0 },
+{ "regex dentro de async funct (fibra de 256 KB) e erro de profundidade, nao segfault",
+  /* 1500 repeticoes (uns 4500 niveis, abaixo do RX_MAX_PROF de 6000): o
+   * casador na fibra mede a folga da pilha e responde — True aqui, ou o
+   * RuntimeError de profundidade numa pilha menor — em vez de derrubar o
+   * processo. O resultado da fibra tem que ser o do principal. */
+  "import regex\nasync funct valida(str texto) {\n    return regex.match(\"(?:[a-z]+,)*[a-z]+\", texto)\n}\n"
+  "str csv = \"ab,\" * 1500 + \"fim\"\npost(\"principal:\", regex.match(\"(?:[a-z]+,)*[a-z]+\", csv))\n"
+  "try {\n    post(\"async:\", await valida(csv))\n} catch (RuntimeError e) {\n    post(\"async:\", \"profundo demais\" in e)\n}\n",
+  "principal: True\nasync: True", NULL, 0 },
+{ "regex.compile com 20 mil grupos aninhados e ValueError, nao segfault",
+  "import regex\nint n = 20000\nstr p = \"(?:\" * n + \"a\" + \")\" * n\nObject c = regex.compile(p)\npost(\"compilou\")\n", "",
+  "ValueError: regex: padrao aninhado demais", 1 },
+{ "regex: quantificador {n} acima de 9 digitos e erro, nao estouro calado",
+  "import regex\ntry {\n    post(regex.match(\"a{4294967295}\", \"\"))\n} catch (e) {\n    post(\"erro:\", e)\n}\n"
+  "try {\n    regex.compile(\"a{3,4294967297}\")\n} catch (e) {\n    post(\"erro:\", e)\n}\npost(regex.match(\"a{2,3}\", \"aaa\"), regex.match(\"a{2}\", \"a\"))\n",
+  "erro: the repetition number is too large at position 2 (linha 3)\nerro: the repetition number is too large at position 2 (linha 8)\nTrue False", NULL, 0 },
 /* ── recursão sem teto: três SIGSEGV da auditoria de engenharia (27/08) ──────
  * Os três eram descida recursiva sem limite. O detector de CICLO existia e não
  * bastava: ele pega `l.append(l)`, e não pega profundidade sem ciclo nem ciclo

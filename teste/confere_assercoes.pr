@@ -140,7 +140,14 @@ if __name__ == "main" {
                 continue
             }
             resto = a2[len(a1):len(a2)]
-            if regex.findall("^ \\(linha \\d+\\)$", resto) != [] {
+            if regex.findall("^ \\(linha \\d+\\)(\\\\n)?$", resto) != [] {
+                continue
+            }
+            # O `\n` do fim é ANCORA, nao texto: "X" e "X\n" sao a mesma
+            # mensagem (a segunda so exige que a linha acabe ali). O gerador
+            # do diferencial grava com o `\n`; o caso escrito a mao pode nao
+            # ter — e nenhum dos dois aprova um erro diferente do outro.
+            if resto == "\\n" {
                 continue
             }
             ambiguas.append([a1, msgs[a1], a2])

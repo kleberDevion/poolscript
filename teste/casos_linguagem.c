@@ -2461,7 +2461,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "", "TypeError: s() takes 1 positional argument but 2 were given", 2 },
 { "metodo COMUM pelo nome solto nao existe: NameError antes de rodar (era so rodando)",
   "class A {\n    funct m(self) {\n        return 1\n    }\n    funct n(self) {\n        return m()\n    }\n}\npost(A().n())\n",
-  "", "NameError: name 'm' is not defined", 2 },
+  "", "NameError: name 'm' is not defined. Did you mean: 'A'?", 2 },
 { "parametro com o mesmo nome ganha do static (o nome solto e o parametro)",
   "class A {\n    public static int total = 1\n    funct n(self, total) {\n        return total\n    }\n}\npost(A().n(\"p\"))\n",
   "p", NULL, 0 },
@@ -2819,7 +2819,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "regex profundo demais e erro, nao morte",
   "import regex\n"
   "alvo = \"x\" * 60000\n"
-  "post(regex.findall(\"(?:a|(x))*\", alvo))\n", "", "backtracking demais", 1 },
+  "post(regex.findall(\"(?:a|(x))*\", alvo))\n", "", "regex: padrao ou texto profundo demais pra pilha", 1 },
 { "regex normal continua valendo",
   "import regex\n"
   "post(regex.findall(\"\\\\d+\", \"a1b22c333\"))\n"
@@ -3273,7 +3273,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "nome solto com letras invertidas acha a palavra (whlie, fro, riase)",
   "int i = 0\nwhlie i < 3 {\n    i += 1\n}\n", "", "NameError: name 'whlie' is not defined. Did you mean: 'while'?", 2 },
 { "nome solto de outra linguagem e NameError nele, nao na palavra seguinte",
-  "const int x = 1\n", "", "NameError: name 'const' is not defined", 2 },
+  "const int x = 1\n", "", "NameError: name 'const' is not defined. Did you mean: 'count'?", 2 },
 { "nome solto que e tipo: declaracao sem =",
   "class Conta { int v = 0 }\nConta c\n", "", "SyntaxError: declaracao de variavel exige '='", 2 },
 { "nome solto que existe seguido de comando sao dois comandos mesmo",
@@ -4276,7 +4276,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "from 'json' import *\npost(stringify([1]))\n", "[1]", NULL, 0 },
 { "import *: import m * nao liga o nome do modulo",
   "import regex *\npost(regex)\n",
-  "", "NameError: name 'regex' is not defined", 2 },
+  "", "NameError: name 'regex' is not defined. Did you mean: 'range'?", 2 },
 { "import *: modulo ausente e ImportError na linha do import",
   "post(1)\nfrom naoexiste import *\n", "1", "ImportError: No module named 'naoexiste'", 1 },
 { "import *: dentro de funct e recusado",

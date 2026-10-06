@@ -364,6 +364,19 @@ r = roda([POOL, "--check"], entrada="int x = 0\nwhile x < 10.000.000.000\n{\n   
 confere("--check: so o erro do numero, sem a cascata do dicionario no corpo",
         "separador de milhar" in r["saida"] and not ("dicionario" in r["saida"])
         and r["saida"].count("\"tipo\":") == 2)
+# `jinga p.pr -o p.pr` trocava o fonte pelo executável, calado (sonda 2)
+os.writeFile(PASTA + "/fonte_o.pr", "post(1)\n")
+r = roda([POOL, "fonte_o.pr", "-o", "fonte_o.pr"], pasta=PASTA)
+confere("-o em cima do proprio fonte e recusado (rc 64) e o fonte fica",
+        r["rc"] == 64 and os.readFile(PASTA + "/fonte_o.pr") == "post(1)\n")
+# `--contexto` com erro de lexer: `$` sozinho derrubava o processo e
+# `post(1 $ 2)` ficava a 100% de CPU — e é o comando do completion
+os.writeFile(PASTA + "/ctx_erro.pr", "post(1 $ 2)\n")
+r = roda([POOL, "--contexto", "1:3", "ctx_erro.pr"], pasta=PASTA)
+confere("--contexto com erro de lexer responde", r["rc"] == 0 and "\"contexto\":" in r["saida"])
+os.writeFile(PASTA + "/ctx_so.pr", "$")
+r = roda([POOL, "--contexto", "1:1", "ctx_so.pr"], pasta=PASTA)
+confere("--contexto num arquivo so com '$' responde", r["rc"] == 0 and "\"contexto\":" in r["saida"])
 # `json.parse` sem `import json`: o check acusa o que rodando dava NameError
 r = roda([POOL, "--check"], entrada="post(json.parse(\"[1]\"))\n")
 confere("--check: json.parse sem import json é NameError",
