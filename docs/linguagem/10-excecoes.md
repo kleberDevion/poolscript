@@ -137,6 +137,7 @@ A divisão entre eles: **`TypeError`** quando o TIPO está errado,
 | `ConversionError` | `char c = -1` — inteiro que não é um codepoint válido. (`int z = "abc"` NÃO é isto: declaração não converte, é `AttributedValueError`) |
 | `ImportError` | módulo não encontrado no `import` |
 | `MemoryError` | sem memória |
+| `RecursionError` | recursão além do teto de quadros (`maximum recursion depth exceeded`); comparação, `repr` ou regex aninhados demais; ou um quadro cujo código não cabe na pilha de valores nem vazia: `pilha de valores insuficiente (N valores)`, apontando a chamada ou o literal que chega a N (uma chamada com 70 mil argumentos; dentro de `async` a pilha é de 2048 valores). Literal de lista, tupla ou dict de qualquer tamanho cabe: acima de 256 itens ele é montado em lotes |
 | `RuntimeError` | `raise "texto"`, e o que só existe aqui: `private` e `nonnull` |
 
 ```ps
@@ -198,7 +199,7 @@ Observações:
 - **Tipos embutidos**: `TypeError`, `ValueError`, `NameError`,
   `AttributeError`, `IndexError`, `KeyError`, `ZeroDivisionError`,
   `OverflowError`, `AttributedValueError`, `ConversionError`, `ImportError`,
-  `MemoryError`, `RuntimeError`. `SyntaxError` não é capturável (é de
+  `MemoryError`, `RecursionError`, `RuntimeError`. `SyntaxError` não é capturável (é de
   compilação) — e o erro de tipo, de nome, de aridade ou de membro que o
   compilador já sabe também sai antes de rodar, sem `catch` (seção 10.4). Índice fora da faixa **levanta** `IndexError` — a linha que
   dizia "aviso não-fatal (→ `Null`)" contradizia a seção 10.4 desta mesma

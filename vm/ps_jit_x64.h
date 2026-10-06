@@ -691,7 +691,7 @@ static int jit_chama(VM *vm, JitCtx *cx, int n)
             || np->jit_estado == 2 || vm->dbg.ativo) return 1;
     if (np->jit_estado == 0 && jit_compila_proto(vm, np) != 0) return 1;
     if (cx->fp + 1 >= vm->frames_teto || cx->locals_top + np->nlocals >= vm->locals_teto
-            || sp + np->ncode / 2 + 8 >= vm->stack_teto || ps_pilha_apertada()) return 1;
+            || sp + np->pilha_max + 8 >= vm->stack_teto || ps_pilha_apertada()) return 1;
     if (np->param_cod && checa_param_tipos(vm, np, &stack[sp - n], n, 0) != 0) {
         /* tipo errado: quem levanta, com a frase e a posição, é o CALL do
          * interpretador ao refazer — o texto que a conferência deixou aqui

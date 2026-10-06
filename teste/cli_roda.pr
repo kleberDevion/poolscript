@@ -604,6 +604,9 @@ funct opcodes_de(saida, proto)
 os.writeFile(PASTA + "/laco.pr", "int n = 0\nwhile n < 1000000000 {\n    n++\n}\npost(n)\n")
 r = roda([POOL, "--bytecode", "laco.pr"])
 confere("--bytecode lista o proto do modulo", r["rc"] == 0 and "== proto 0 <module>" in r["saida"])
+# a cota de pilha de cada proto (16.2.13): a profundidade maxima que o codigo
+# alcanca, medida na compilacao — e o que a VM confere em toda entrada de frame
+confere("--bytecode mostra a cota de pilha do proto (pilha=N)", " pilha=" in r["saida"])
 confere("--bytecode diz o nome do global e o alvo do salto",
         "LOAD_GLOBAL      " in r["saida"] and "; n" in r["saida"] and "; -> " in r["saida"])
 confere("--bytecode mostra a constante", "; 1000000000" in r["saida"])

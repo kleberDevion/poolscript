@@ -3332,6 +3332,50 @@ const Caso CASOS_LINGUAGEM[] = {
   "using open(\"b.pr\", \"w\") as f { f.write(b) }\nusing open(\"e.pr\", \"w\") as f { f.write(e) }\n"
   "for each nome in [\"b.pr\", \"e.pr\"] {\n    Process p = os.run([sys.executable, nome], capture=\"live\")\n    str t = p.read(65536)\n    int rc = p.wait()\n    post(nome, rc, t.strip())\n}\n",
   "b.pr 0 3\ne.pr 0 outro", NULL, 0 },
+{ "literais de lista, tupla e dict nas bordas do lote (255, 256, 257, 512, 513 itens) e chave repetida entre lotes",
+  /* acima de 256 itens o literal e montado em lotes (emite_literal_seq): a
+   * ordem, o tipo, o tamanho e o "ultima chave repetida ganha" sao os mesmos */
+  "import os\nimport sys\n"
+  "str funct uns(int n) {\n    list p = []\n    for each i in range(1, n + 1) { p.append(str(i)) }\n    return \", \".join(p)\n}\n"
+  "str funct pares(int n) {\n    list p = []\n    for each i in range(1, n + 1) { p.append(\"\\\"k\" + str(i) + \"\\\": \" + str(i)) }\n    return \", \".join(p)\n}\n"
+  "str src = \"\"\n"
+  "for each n in [255, 256, 257, 512, 513] {\n"
+  "    str s = str(n)\n"
+  "    src = src + \"list a\" + s + \" = [\" + uns(n) + \"]\\n\"\n"
+  "    src = src + \"tup b\" + s + \" = (\" + uns(n) + \")\\n\"\n"
+  "    src = src + \"dict c\" + s + \" = {\" + pares(n) + \", \\\"k1\\\": -1}\\n\"\n"
+  "    src = src + \"post(len(a\" + s + \"), a\" + s + \"[\" + str(n - 1) + \"], type(b\" + s + \"), len(b\" + s + \"), b\" + s + \"[\" + str(n - 1) + \"], len(c\" + s + \"), c\" + s + \"[\\\"k\" + s + \"\\\"], c\" + s + \"[\\\"k1\\\"])\\n\"\n"
+  "}\n"
+  "src = src + \"tup tt = ((\" + uns(300) + \"), (\" + uns(300) + \"))\\npost(type(tt), len(tt), len(tt[1]), tt[1][299])\\n\"\n"
+  "using open(\"b.pr\", \"w\") as f { f.write(src) }\n"
+  "Process p = os.run([sys.executable, \"b.pr\"], capture=\"live\")\n"
+  "str t = p.read(65536)\nint rc = p.wait()\npost(rc)\npost(t.strip())\n",
+  "0\n255 255 tup 255 255 255 255 -1\n256 256 tup 256 256 256 256 -1\n257 257 tup 257 257 257 257 -1\n512 512 tup 512 512 512 512 -1\n513 513 tup 513 513 513 513 -1\ntup 2 300 300", NULL, 0 },
+/* ── a pilha de valores balanceada em todo caminho (16.2.13) ─────────────────
+ * O passo que mede `pilha_max` exige que dois caminhos cheguem a uma mesma
+ * instrucao com a mesma profundidade (invariante no binario de debug), e foi
+ * ele que achou estes: o `continue` num `case` deixava o sujeito do `match`
+ * em cima de [container, indice] e o ITER_NEXT lia lixo ("'int' object is
+ * not iterable"); `break`/`continue` dentro de um `finally` no caminho da
+ * excecao deixavam a mensagem e o tipo, e o `continue` perdia iteracoes. */
+{ "continue dentro de case num for each nao corrompe o laco (o sujeito do match sai da pilha)",
+  "for each i in [1, 2, 3] {\n    match i {\n        case 2 { continue }\n        case _ { post(i) }\n    }\n}\npost(\"fim\")\n",
+  "1\n3\nfim", NULL, 0 },
+{ "break dentro de case num for each sai limpo",
+  "for each i in [1, 2, 3] {\n    match i {\n        case 2 { break }\n        case _ { post(i) }\n    }\n}\npost(\"fim\")\n",
+  "1\nfim", NULL, 0 },
+{ "continue dentro de finally no caminho da excecao roda todas as iteracoes",
+  "for each i in [1, 2, 3] {\n    try {\n        raise Boom(\"e\")\n    } finally {\n        post(\"f\", i)\n        continue\n    }\n}\npost(\"fim\")\n",
+  "f 1\nf 2\nf 3\nfim", NULL, 0 },
+{ "break dentro de finally no caminho da excecao, so quando a excecao acontece",
+  "for each i in [1, 2, 3] {\n    try {\n        if i == 2 { raise Boom(\"e\") }\n    } finally {\n        if i == 2 { break }\n    }\n    post(\"i\", i)\n}\npost(\"fim\")\n",
+  "i 1\nfim", NULL, 0 },
+{ "break dentro de finally abandona o return do try, e a funct segue depois do laco",
+  "int funct g() {\n    for each i in [1, 2] {\n        try {\n            return 1\n        } finally {\n            break\n        }\n    }\n    return 5\n}\npost(g())\n",
+  "5", NULL, 0 },
+{ "break dentro de finally com um try aninhado por dentro, no caminho da excecao",
+  "for each i in [1, 2, 3] {\n    try {\n        try {\n            if i == 2 { raise Boom(\"e\") }\n        } finally {\n            post(\"in\", i)\n        }\n    } catch (e) {\n        post(\"c\", i)\n    } finally {\n        if i == 2 { break }\n    }\n}\npost(\"fim\")\n",
+  "in 1\nin 2\nc 2\nfim", NULL, 0 },
 { "f-string: o que sobra depois da expressao dentro de {} e erro, nao descarte calado",
   "str nome = \"Ana\"\nstr sobrenome = \"Lima\"\npost(f\"cliente: {nome sobrenome}\")\n", "",
   "SyntaxError: sobrou 'sobrenome' dentro de {} da f-string: cada {} leva uma expressao so", 2 },
@@ -4258,14 +4302,15 @@ const Caso CASOS_LINGUAGEM[] = {
  *
  * Teto da pilha de valores no `f(*lista)`: o CALL_EX confere
  * `sp + len + 2 >= stack_teto` (STACK_SIZE = 65536) e diz "argumentos demais
- * na chamada" sem nome da funct nem o limite; o que passa por essa conferencia
- * ainda esbarra na do frame (`sp + ncode/2 + 8`) e sai como RecursionError —
- * duas frases pro mesmo estouro, escolhidas pelo tamanho da lista. Dentro de
- * async o teto e o da fibra (FIB_STACK = 2048), entao 3000 itens ja estouram
- * onde no programa principal cabem 65 mil. */
-{ "espalhar: f(*lista) que cabe no CALL_EX mas nao no frame sai como RecursionError (fotografia)",
+ * na chamada" sem nome da funct nem o limite. O que passa por essa conferencia
+ * entra no frame: a cota dele e a profundidade exata do codigo do chamado
+ * (`pilha_max`, 16.2.13) — antes era `ncode/2`, e 65520 itens que cabiam na
+ * pilha saiam como RecursionError. Dentro de async o teto e o da fibra
+ * (FIB_STACK = 2048), entao 3000 itens ja estouram onde no programa principal
+ * cabem 65 mil. */
+{ "espalhar: f(*lista) com 65520 itens cabe no CALL_EX e no frame (a cota do frame e a profundidade exata)",
   "funct f(*args) {\n    return len(args)\n}\nl = list(range(65520))\npost(f(*l))\n",
-  "", "RecursionError: maximum recursion depth exceeded", 1 },
+  "65520", NULL, 0 },
 { "espalhar: f(*lista) acima do teto da pilha e RuntimeError sem nome nem limite (fotografia)",
   "funct f(*args) {\n    return len(args)\n}\nl = list(range(100000))\npost(f(*l))\n",
   "", "RuntimeError: argumentos demais na chamada", 1 },

@@ -25,6 +25,7 @@
 #include "ps_lexer.h"
 #include "ps_parser.h"
 #include "ps_pilha.h"
+#include "ps_assert.h"       /* invariante da pilha de valores medida por proto */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,7 +35,7 @@
  * A lista vive em `ps_opcodes.def` e é a MESMA que a VM inclui. Antes eram
  * dois enums escritos à mão, e nada no build conferia que batiam. */
 enum {
-#define PS_OP(nome, num, texto) OP_##nome = (num),
+#define PS_OP(nome, num, texto, tira, deixa) OP_##nome = (num),
 #include "ps_opcodes.def"
 #undef PS_OP
     OP__ULTIMO
@@ -45,7 +46,7 @@ enum {
 const char *ps_op_nome(int32_t op)
 {
     switch (op) {
-#define PS_OP(nome, num, texto) case OP_##nome: return texto;
+#define PS_OP(nome, num, texto, tira, deixa) case OP_##nome: return texto;
 #include "ps_opcodes.def"
 #undef PS_OP
         default: break;
@@ -89,9 +90,9 @@ void ps_desmonta(const PSPrograma *prog, FILE *f)
     if (!prog) return;
     for (int32_t pi = 0; pi < prog->nprotos; pi++) {
         const PSProto *p = &prog->protos[pi];
-        fprintf(f, "== proto %d %s nlocals=%d nparams=%d%s%s\n", pi,
+        fprintf(f, "== proto %d %s nlocals=%d nparams=%d pilha=%d%s%s\n", pi,
                 (p->nome && p->nome[0]) ? p->nome : "<modulo>", p->nlocals, p->nparams,
-                p->eh_gerador ? " gerador" : "", p->eh_async ? " async" : "");
+                p->pilha_max, p->eh_gerador ? " gerador" : "", p->eh_async ? " async" : "");
         for (int32_t ip = 0; ip + 1 < p->ncode; ip += 2) {
             int32_t op = p->code[ip], arg = p->code[ip + 1];
             fprintf(f, "%6d  %-16s %-8d", ip, ps_op_nome(op), arg);
@@ -365,6 +366,14 @@ typedef struct {
     int32_t inicio;                  /* alvo do `continue` */
     Saltos  saidas;                  /* saltos do `break`, a corrigir */
     Saltos  continues;               /* saltos do `continue`, a corrigir */
+    /* O `pilha_extra` do compilador quando o laço abriu. Um `break`/`continue`
+     * dentro de um construto que guarda valores na pilha POR CIMA do estado
+     * deste laço (o sujeito do `match`, a mensagem e o tipo da exceção numa
+     * cópia do `finally`, o valor de um `return` em cima da qual o finally
+     * roda) tem que descartar esses valores também: a diferença entre o
+     * `pilha_extra` de agora e este. Sem isso o `continue` num `case` deixava
+     * o sujeito em cima de [container, índice] e o ITER_NEXT lia lixo. */
+    int     extra_base;
     /* Quantos slots o laço mantém na pilha durante o corpo. `for each`
      * carrega (container, indice) — 2 slots — e o ITER_NEXT só os descarta
      * quando a iteração TERMINA. Um `break` sai por fora, então precisa
@@ -384,6 +393,12 @@ typedef struct {
     IdxNomes    ix_globais;     /* nome -> posição em `out->globais` */
     Laco        lacos[MAX_LACOS];
     int         nlacos;
+    /* Valores que os construtos abertos guardam na pilha durante o corpo
+     * deles, por cima do estado dos laços (ver `Laco.extra_base`): +1 no
+     * corpo de um `case` (o sujeito), +2 numa cópia do `finally` no caminho
+     * da exceção (mensagem e tipo), +1 na cópia que um `return` emite (o
+     * valor devolvido). */
+    int         pilha_extra;
     /* contador de compreensões de lista, pra o nome do acumulador ser único
      * quando uma está dentro da outra */
     int         n_listcomp;
@@ -4392,6 +4407,63 @@ static int fundo_demais(C *c, PSNode *n, int bloco)
     return 1;
 }
 
+/* Literal de lista, tupla ou dict em LOTES. Até LITERAL_LOTE itens, é a forma
+ * de sempre: todos na pilha e um BUILD_* os recolhe. Acima disso, a
+ * sequência nasce vazia (BUILD_LIST 0 / BUILD_DICT 0) e recebe um lote por
+ * vez (BUILD_LIST k + LIST_EXTEND; BUILD_DICT k + DICT_MERGE); a tupla nasce
+ * lista e vira tupla no fim (TUP_DE_LISTA). Um literal de 65537 itens
+ * empilhava 65537 valores de uma vez — mais que a pilha inteira — e escrevia
+ * fora do vetor; e a cota de cada frame é a profundidade máxima que o código
+ * dele alcança (`pilha_max`), que assim fica pequena mesmo com o literal
+ * grande, no topo, numa funct ou numa fibra. A ordem de avaliação dos itens é
+ * a mesma (da esquerda pra direita), e chave repetida no dict ganha da
+ * anterior nas duas formas. */
+#define LITERAL_LOTE 256
+static void emite_literal_seq(C *c, Unidade *u, PSNode *n, int tupla)
+{
+    int32_t total = n->lista.n;
+    if (total <= LITERAL_LOTE) {
+        for (int32_t i = 0; i < total; i++) expr(c, u, n->lista.itens[i]);
+        emite(c, u, tupla ? OP_BUILD_TUPLE : OP_BUILD_LIST, total);
+        return;
+    }
+    emite(c, u, OP_BUILD_LIST, 0);
+    for (int32_t i = 0; i < total; ) {
+        int32_t k = 0;
+        for (; k < LITERAL_LOTE && i + k < total; k++) expr(c, u, n->lista.itens[i + k]);
+        emite(c, u, OP_BUILD_LIST, k);
+        emite(c, u, OP_LIST_EXTEND, 0);
+        i += k;
+    }
+    if (tupla) emite(c, u, OP_TUP_DE_LISTA, 0);
+}
+
+static void emite_literal_dict(C *c, Unidade *u, PSNode *n)
+{
+    int32_t total = n->lista.n;
+    if (total <= LITERAL_LOTE) {
+        for (int32_t i = 0; i < total; i++) {
+            PSNode *e = n->lista.itens[i];
+            expr(c, u, e->a);
+            expr(c, u, e->b);
+        }
+        emite(c, u, OP_BUILD_DICT, total);
+        return;
+    }
+    emite(c, u, OP_BUILD_DICT, 0);
+    for (int32_t i = 0; i < total; ) {
+        int32_t k = 0;
+        for (; k < LITERAL_LOTE && i + k < total; k++) {
+            PSNode *e = n->lista.itens[i + k];
+            expr(c, u, e->a);
+            expr(c, u, e->b);
+        }
+        emite(c, u, OP_BUILD_DICT, k);
+        emite(c, u, OP_DICT_MERGE, 0);
+        i += k;
+    }
+}
+
 static void expr_no(C *c, Unidade *u, PSNode *n)
 {
     if (n && n->line) c->linha_atual = n->line;
@@ -4599,8 +4671,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             return;
 
         case N_LIST_LITERAL:
-            for (int32_t i = 0; i < n->lista.n; i++) expr(c, u, n->lista.itens[i]);
-            emite(c, u, OP_BUILD_LIST, n->lista.n);
+            emite_literal_seq(c, u, n, 0);
             return;
 
         case N_LIST_COMP: {
@@ -4683,12 +4754,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             /* A chave é expressão (parser): `{k: 1}` carrega a variável `k`,
              * e nome que o arquivo não liga é NameError antes de rodar, como
              * em qualquer expressão. Antes o Name virava a string "k" aqui. */
-            for (int32_t i = 0; i < n->lista.n; i++) {
-                PSNode *e = n->lista.itens[i];
-                expr(c, u, e->a);
-                expr(c, u, e->b);
-            }
-            emite(c, u, OP_BUILD_DICT, n->lista.n);
+            emite_literal_dict(c, u, n);
             return;
 
         case N_INDEX_ACCESS:
@@ -4698,8 +4764,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             return;
 
         case N_TUPLE_LITERAL:
-            for (int32_t i = 0; i < n->lista.n; i++) expr(c, u, n->lista.itens[i]);
-            emite(c, u, OP_BUILD_TUPLE, n->lista.n);
+            emite_literal_seq(c, u, n, 1);
             return;
 
         case N_INTERPOLATED_STRING:
@@ -4892,6 +4957,7 @@ static int abre_laco(C *c, PSNode *n, int32_t inicio, int slots_pilha)
     memset(&l->saidas, 0, sizeof(l->saidas));
     memset(&l->continues, 0, sizeof(l->continues));
     l->slots_pilha = slots_pilha;
+    l->extra_base = c->pilha_extra;
     return 0;
 }
 
@@ -5051,8 +5117,13 @@ static void bloco_stmts(C *c, Unidade *u, PSNode *b)
 /* Emite os blocos `finally` pendentes, do mais interno pro mais externo, que
  * a saída atual está atravessando. `ate_laco` < 0 = todos da função (return);
  * >= 0 = só os que estão DENTRO do laço indicado (break/continue). */
-static void emite_finallys(C *c, Unidade *u, int ate_laco)
+/* `extra` = valores que quem chama deixou na pilha por cima de tudo e que
+ * ficam lá enquanto as cópias rodam: 1 no `return` (o valor devolvido), 0 no
+ * `break`/`continue`. Um `break` dentro da cópia descarta esses também (ver
+ * `Laco.extra_base`). */
+static void emite_finallys(C *c, Unidade *u, int ate_laco, int extra)
 {
+    c->pilha_extra += extra;
     for (int i = c->nfinally - 1; i >= 0; i--) {
         if (c->fin_pend[i].unidade != (const void *)u) break;   /* outra função */
         if (ate_laco >= 0 && c->fin_pend[i].laco < ate_laco) break;
@@ -5070,6 +5141,7 @@ static void emite_finallys(C *c, Unidade *u, int ate_laco)
         escopo_fecha(c, u, M);
         c->nfinally = salvo;
     }
+    c->pilha_extra -= extra;
 }
 
 static void stmt_no(C *c, Unidade *u, PSNode *n);
@@ -5286,7 +5358,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 }
             }
             if (u->tipo_ret) emite(c, u, OP_COERCE_RET, u->tipo_ret);
-            emite_finallys(c, u, -1);   /* todos os finally abertos nesta função */
+            emite_finallys(c, u, -1, 1);   /* todos os finally abertos nesta função; o valor fica em cima */
             emite(c, u, OP_RETURN, 0);
             return;
 
@@ -6246,7 +6318,9 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     expr(c, u, caso->a->a);
                     falhou_guarda = emite(c, u, OP_JUMP_IF_FALSE, 0);
                 }
+                c->pilha_extra++;              /* o sujeito fica em cima durante o corpo */
                 bloco_stmts(c, u, caso->b);
+                c->pilha_extra--;
                 /* Os TRES caminhos (casou e rodou o corpo; padrão falhou;
                  * guarda falhou) convergem num ponto só, e a limpeza das
                  * variáveis do case (`escopo_fecha`) roda ali, pra todos.
@@ -6394,7 +6468,10 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                  * pode ter trocado o erro corrente da VM */
                 if (setup_cat >= 0) emite(c, u, OP_POP_TRY, 0);   /* não caia no próprio handler */
                 emite(c, u, OP_PUSH_ERR_TYPE, 0);
+                /* a cópia roda com [mensagem, tipo] em cima (ver `pilha_extra`) */
+                c->pilha_extra += 2;
                 if (n->c) { int32_t Mf = escopo_marca(u); bloco_stmts(c, u, n->c); escopo_fecha(c, u, Mf); }
+                c->pilha_extra -= 2;
                 emite(c, u, OP_RERAISE, 0);
             }
 
@@ -6409,7 +6486,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 /* handler: erro veio de dentro de um catch -> finally + repropaga */
                 UP(c, u)->code[setup_cat + 1] = UP(c, u)->ncode;
                 emite(c, u, OP_PUSH_ERR_TYPE, 0);
+                /* este handler foi armado com a mensagem do erro original já
+                 * na pilha: a cópia roda com [mensagem, mensagem2, tipo] em cima */
+                c->pilha_extra += 3;
                 { int32_t Mf = escopo_marca(u); bloco_stmts(c, u, n->c); escopo_fecha(c, u, Mf); }
+                c->pilha_extra -= 3;
                 emite(c, u, OP_RERAISE, 0);
             }
 
@@ -6451,10 +6532,13 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             Laco *l = &c->lacos[c->nlacos - 1];
             /* saindo do laço: apaga TUDO nascido nele até aqui (var do laço +
              * corpo + blocos aninhados abertos), pra nada vazar pra fora */
-            emite_finallys(c, u, c->nlacos);   /* finally aberto DENTRO deste laço */
+            emite_finallys(c, u, c->nlacos, 0);   /* finally aberto DENTRO deste laço */
             escopo_emite_clears(c, u, l->escopo_marca);
-            /* limpa o estado do iterador antes de sair do laço */
-            for (int k = 0; k < l->slots_pilha; k++) emite(c, u, OP_POP_TOP, 0);
+            /* limpa o estado do iterador antes de sair do laço — e o que os
+             * construtos abertos desde o laço guardam por cima dele (ver
+             * `Laco.extra_base`) */
+            for (int k = 0; k < l->slots_pilha + (c->pilha_extra - l->extra_base); k++)
+                emite(c, u, OP_POP_TOP, 0);
             saltos_push(c, &l->saidas, emite(c, u, OP_JUMP, 0));
             return;
         }
@@ -6469,8 +6553,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             Laco *l = &c->lacos[c->nlacos - 1];
             /* próxima iteração começa limpa: apaga só o escopo do CORPO (o que é
              * do laço — var/ self/_count — é re-atribuído no topo ou persiste) */
-            emite_finallys(c, u, c->nlacos);   /* finally aberto DENTRO deste laço */
+            emite_finallys(c, u, c->nlacos, 0);   /* finally aberto DENTRO deste laço */
             escopo_emite_clears(c, u, l->escopo_marca_body);
+            /* o topo do laço espera só o estado dele: o que os construtos
+             * abertos desde o laço guardam por cima sai antes do salto */
+            for (int k = 0; k < c->pilha_extra - l->extra_base; k++) emite(c, u, OP_POP_TOP, 0);
             saltos_push(c, &l->continues, emite(c, u, OP_JUMP, 0));
             return;
         }
@@ -7460,6 +7547,124 @@ PSPrograma *ps_compila_fonte(const char *fonte, size_t len, int recupera,
     return out;
 }
 
+/* ── a cota de pilha de cada proto ──────────────────────────────────────── */
+/* Quantos valores MAKE_CLASS tira da pilha: os pais da classe `arg`. */
+static int32_t pilha_npais(const PSPrograma *prog, int32_t arg)
+{
+    return (arg >= 0 && arg < prog->nclasses) ? prog->classes[arg].npais : 0;
+}
+
+/* Quantos valores MAKE_ENUM tira: os membros com valor explícito. */
+static int32_t pilha_nenum(const PSPrograma *prog, int32_t arg)
+{
+    if (arg < 0 || arg >= prog->nenums) return 0;
+    int32_t n = 0;
+    for (int32_t i = 0; i < prog->enums[arg].nmembros; i++)
+        if (prog->enums[arg].membros[i].tem_valor) n++;
+    return n;
+}
+
+/* O efeito de um opcode sobre a pilha no caminho que SEGUE: a coluna
+ * tira/deixa de `ps_opcodes.def`, que é onde ela mora de propósito. */
+static void efeito_pilha(const PSPrograma *prog, int32_t op, int32_t arg,
+                         int32_t *tira, int32_t *deixa)
+{
+    (void)prog;
+    switch (op) {
+#define PS_OP(nome, num, texto, t, d) case OP_##nome: *tira = (t); *deixa = (d); return;
+#include "ps_opcodes.def"
+#undef PS_OP
+        default: *tira = 0; *deixa = 0; return;
+    }
+}
+
+/* Marca a profundidade `d` na instrução `i` e a põe na fila se é a primeira
+ * vez. Duas chegadas com profundidades diferentes são o compilador
+ * desbalanceado (um ramo deixa um valor que o outro não deixa): invariante
+ * no binário de debug; no normal a cota só cresce (vale a maior, e ela é
+ * repropagada, com um teto de passadas pra não girar). */
+static void pilha_chega(int32_t *prof, int32_t *fila, int32_t *nf, int32_t n,
+                        int32_t i, int32_t d, int32_t *maximo, int32_t *maximo_i, int32_t *repro)
+{
+    if (i < 0 || i >= n || d < 0) return;
+    if (prof[i] < 0) { prof[i] = d; fila[(*nf)++] = i; return; }
+    if (prof[i] == d) return;
+    PS_ASSERT_MSG(prof[i] == d, "pilha desbalanceada na instrucao %d: %d e %d", (int)i, (int)prof[i], (int)d);
+    if (d > prof[i] && *repro < 8 * n) { prof[i] = d; fila[(*nf)++] = i; (*repro)++; }
+    if (d > *maximo) { *maximo = d; *maximo_i = i; }
+}
+
+/* Profundidade máxima da pilha de valores que `code` alcança, medida do
+ * início do frame: um passo sobre o código pronto, com o efeito de cada
+ * opcode e fila de trabalho pelos alvos de salto. Cada instrução entra na
+ * fila uma vez (e o `pilha_chega` explica a exceção), então custa o tamanho
+ * do código. É a cota EXATA que a VM confere em toda entrada de frame, no
+ * lugar da antiga `ncode/2` ("cada instrução empilha no máximo um valor"),
+ * que valia só pra chamada de funct e recusava funct grande sem motivo. */
+static int32_t ps_pilha_max_do_codigo(const PSPrograma *prog, const int32_t *code, int32_t ncode,
+                                      int32_t *ip_max)
+{
+    int32_t n = ncode / 2;
+    *ip_max = 0;
+    if (n <= 0 || !code) return 0;
+    int32_t *prof = malloc(sizeof(int32_t) * (size_t)n);
+    int32_t *fila = malloc(sizeof(int32_t) * (size_t)(9 * (size_t)n + 1));
+    if (!prof || !fila) { free(prof); free(fila); return n + 8; }   /* sem memória: a cota antiga, folgada */
+    for (int32_t i = 0; i < n; i++) prof[i] = -1;
+    int32_t nf = 0, maximo = 0, maximo_i = 0, repro = 0;
+    prof[0] = 0; fila[nf++] = 0;
+    while (nf > 0) {
+        int32_t i = fila[--nf];
+        int32_t d = prof[i], op = code[2 * i], arg = code[2 * i + 1];
+        /* o máximo é medido na ENTRADA da instrução: a que o alcança é a que
+         * consome a pilha cheia (o CALL, o BUILD_*), e é nela que o erro de
+         * cota aponta — a chamada, não o último argumento */
+        if (d > maximo) { maximo = d; maximo_i = i; }
+        int32_t tira = 0, deixa = 0;
+        efeito_pilha(prog, op, arg, &tira, &deixa);
+        PS_ASSERT_MSG(d - tira >= 0, "pilha vazia demais na instrucao %d (%s): tem %d, tira %d",
+                      (int)i, ps_op_nome(op), (int)d, (int)tira);
+        int32_t d2 = d - tira + deixa;
+        if (d2 < 0) d2 = 0;
+        switch (op) {
+            case OP_JUMP:
+                pilha_chega(prof, fila, &nf, n, arg / 2, d2, &maximo, &maximo_i, &repro);
+                break;
+            case OP_JUMP_IF_FALSE: case OP_JUMP_IF_TRUE: case OP_JUMP_IF_SET:
+            case OP_JF_LT: case OP_JF_GT: case OP_JF_LE: case OP_JF_GE: case OP_JF_EQ: case OP_JF_NE:
+            case OP_SKIP_IF_IMPORT:
+                pilha_chega(prof, fila, &nf, n, i + 1, d2, &maximo, &maximo_i, &repro);
+                pilha_chega(prof, fila, &nf, n, arg / 2, d2, &maximo, &maximo_i, &repro);
+                break;
+            case OP_ITER_NEXT:        /* saída do laço: tira [cont, idx] */
+                pilha_chega(prof, fila, &nf, n, i + 1, d2, &maximo, &maximo_i, &repro);
+                pilha_chega(prof, fila, &nf, n, arg / 2, d - 2, &maximo, &maximo_i, &repro);
+                break;
+            case OP_ITER_RANGE:       /* saída do laço: tira [ini, quant, passo, i] */
+                pilha_chega(prof, fila, &nf, n, i + 1, d2, &maximo, &maximo_i, &repro);
+                pilha_chega(prof, fila, &nf, n, arg / 2, d - 4, &maximo, &maximo_i, &repro);
+                break;
+            case OP_JUMP_SE_UNSET:    /* quando salta, tira o UNSET */
+                pilha_chega(prof, fila, &nf, n, i + 1, d2, &maximo, &maximo_i, &repro);
+                pilha_chega(prof, fila, &nf, n, arg / 2, d - 1, &maximo, &maximo_i, &repro);
+                break;
+            case OP_SETUP_TRY:        /* o handler entra com a mensagem no topo */
+                pilha_chega(prof, fila, &nf, n, i + 1, d2, &maximo, &maximo_i, &repro);
+                pilha_chega(prof, fila, &nf, n, arg / 2, d + 1, &maximo, &maximo_i, &repro);
+                break;
+            case OP_RETURN: case OP_HALT: case OP_RAISE: case OP_RERAISE:
+                break;                /* sem caminho que segue */
+            default:
+                pilha_chega(prof, fila, &nf, n, i + 1, d2, &maximo, &maximo_i, &repro);
+                break;
+        }
+    }
+    free(prof);
+    free(fila);
+    *ip_max = maximo_i;
+    return maximo;
+}
+
 static void compila_termina(C *c, Unidade *u)
 {
     PSPrograma *out = c->out;
@@ -7517,6 +7722,14 @@ static void compila_termina(C *c, Unidade *u)
     for (int32_t i = 0; i < c->nglobais_gravados; i++) free(c->globais_gravados[i]);
     free(c->globais_gravados);
     proto_encolhe(c, u);
+
+    /* a cota de pilha de CADA proto, com o código pronto (ver `pilha_max`):
+     * aqui, e não por unidade, pra nenhum proto ficar sem ela. Só com a
+     * compilação inteira: código de compilação que parou no meio é
+     * desbalanceado por natureza, e não vai rodar. */
+    if (out->ok) for (int32_t i = 0; i < out->nprotos; i++)
+        out->protos[i].pilha_max = ps_pilha_max_do_codigo(out, out->protos[i].code, out->protos[i].ncode,
+                                                          &out->protos[i].pilha_max_ip);
 
     vardbg_fecha(c, u, 0);
     for (int32_t i = 0; i < u->nlocais; i++) free(u->locais[i]);

@@ -141,9 +141,10 @@ if __name__ == "main" {
     # A geração é de MIGRAÇÃO, uma vez só. Depois dela o `.def` é a fonte e é
     # editado à mão (opcode novo entra no fim, com o próximo número livre), e
     # regerar por reflexo apagaria os comentários que explicam cada família.
-    if os.exists(DESTINO) and not "--forca" in sys.argv {
+    if os.exists(DESTINO) {
         post(DESTINO, "ja existe — ele é a fonte agora, edite-o à mão.")
-        post("(--forca regera do zero, PERDENDO os comentários de lá)")
+        post("(desde o 16.2.13 cada linha carrega as colunas tira/deixa, o efeito")
+        post(" do opcode na pilha de valores, escritas à mão: regerar as perderia)")
         sys.exit(0)
     }
 

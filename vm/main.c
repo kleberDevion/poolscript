@@ -179,6 +179,11 @@ static void mostra_linha(const char *buf, size_t l, int col, const char *nome)
             break;
         }
     }
+    /* o cursor nunca passa do fim do que foi mostrado: a linha é cortada
+     * (4096 bytes) e a coluna pode estar muito além — uma chamada com 70 mil
+     * argumentos punha o cursor na coluna 478 mil, e o quadro eram 478 KB de
+     * espaço antes do `^^^` */
+    if (sp > l) sp = l;
     fprintf(stderr, "  | %.*s\n  | %*s^^^\n", (int)l, buf, (int)sp, "");
 }
 

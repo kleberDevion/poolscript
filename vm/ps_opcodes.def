@@ -7,145 +7,156 @@
  * trocado num dos lados não dá erro de compilação: dá bytecode que executa
  * outra instrução, e o defeito aparece longe da causa.
  *
- *     PS_OP(NOME, NUMERO, "TEXTO DO DESMONTADOR")
+ *     PS_OP(NOME, NUMERO, "TEXTO DO DESMONTADOR", TIRA, DEIXA)
  *
  * O NÚMERO é explícito de propósito: ele está gravado em todo bytecode já
  * emitido, então renumerar não é refatorar, é quebrar. Opcode novo entra
  * no FIM, com o próximo número livre. Nenhum número se reaproveita.
  *
+ * TIRA e DEIXA são o efeito da instrução sobre a pilha de valores no caminho
+ * que SEGUE: quantos valores ela consome do topo e quantos deixa no lugar,
+ * como expressão de `arg` (o operando) e, pra MAKE_CLASS e MAKE_ENUM, do
+ * programa (`prog`). É o que o compilador usa pra medir a profundidade máxima
+ * de pilha de cada proto (`pilha_max`, a cota exata de toda entrada de frame
+ * na VM). Instrução que salta tem o efeito do ramo que segue aqui, e o do
+ * alvo no passo que mede (`ps_pilha_max_do_codigo`): ITER_NEXT/ITER_RANGE
+ * tiram o estado do laço na saída, SETUP_TRY entrega a mensagem ao handler,
+ * JUMP_SE_UNSET tira o valor quando salta. Quem muda o que um opcode faz com
+ * a pilha muda a coluna junto — é o mesmo arquivo de propósito.
+ *
  * `scripts/audita_c.pr` reprova qualquer `OP_X = <número>` escrito fora
  * daqui, que é o que impede a lista de se duplicar de novo.
  */
 #ifndef PS_OP
-#error "inclua ps_opcodes.def com PS_OP(nome, numero, texto) definido"
+#error "inclua ps_opcodes.def com PS_OP(nome, numero, texto, tira, deixa) definido"
 #endif
 
-PS_OP(LOAD_CONST, 0, "LOAD_CONST")
-PS_OP(LOAD_LOCAL, 1, "LOAD_LOCAL")
-PS_OP(STORE_LOCAL, 2, "STORE_LOCAL")
-PS_OP(LOAD_GLOBAL, 3, "LOAD_GLOBAL")
-PS_OP(STORE_GLOBAL, 4, "STORE_GLOBAL")
-PS_OP(ADD, 5, "ADD")
-PS_OP(SUB, 6, "SUB")
-PS_OP(MUL, 7, "MUL")
-PS_OP(DIV, 8, "DIV")
-PS_OP(MOD, 9, "MOD")
-PS_OP(NEG, 10, "NEG")
-PS_OP(LT, 11, "LT")
-PS_OP(GT, 12, "GT")
-PS_OP(LE, 13, "LE")
-PS_OP(GE, 14, "GE")
-PS_OP(EQ, 15, "EQ")
-PS_OP(NE, 16, "NE")
-PS_OP(JUMP, 17, "JUMP")
-PS_OP(JUMP_IF_FALSE, 18, "JUMP_IF_FALSE")
-PS_OP(POP_TOP, 19, "POP_TOP")
-PS_OP(CALL, 20, "CALL")
-PS_OP(RETURN, 21, "RETURN")
-PS_OP(MAKE_FUNCTION, 22, "MAKE_FUNCTION")
-PS_OP(BIT_OR, 23, "BIT_OR")
-PS_OP(BIT_XOR, 24, "BIT_XOR")
-PS_OP(BIT_AND, 25, "BIT_AND")
-PS_OP(LSHIFT, 26, "LSHIFT")
-PS_OP(RSHIFT, 27, "RSHIFT")
-PS_OP(BIT_NOT, 28, "BIT_NOT")
-PS_OP(HALT, 29, "HALT")
-PS_OP(BUILD_LIST, 30, "BUILD_LIST")
-PS_OP(BUILD_DICT, 31, "BUILD_DICT")
-PS_OP(INDEX_GET, 32, "INDEX_GET")
-PS_OP(INDEX_SET, 33, "INDEX_SET")
-PS_OP(ITER_NEXT, 34, "ITER_NEXT")
-PS_OP(DUP, 35, "DUP")
-PS_OP(BUILD_STR, 36, "BUILD_STR")
-PS_OP(BUILD_TUPLE, 37, "BUILD_TUPLE")
-PS_OP(SLICE, 38, "SLICE")
-PS_OP(JUMP_IF_SET, 39, "JUMP_IF_SET")
-PS_OP(LOAD_NAME, 40, "LOAD_NAME")
-PS_OP(STORE_NAME, 41, "STORE_NAME")
-PS_OP(CALL_KW, 42, "CALL_KW")
-PS_OP(SETUP_TRY, 43, "SETUP_TRY")
-PS_OP(POP_TRY, 44, "POP_TRY")
-PS_OP(RAISE, 45, "RAISE")
-PS_OP(PUSH_ERR_TYPE, 46, "PUSH_ERR_TYPE")
-PS_OP(JUMP_IF_TRUE, 47, "JUMP_IF_TRUE")
-PS_OP(LEN, 48, "LEN")
-PS_OP(HAS_KEY, 49, "HAS_KEY")
-PS_OP(MAKE_CLASS, 50, "MAKE_CLASS")
-PS_OP(GET_MEMBER, 51, "GET_MEMBER")
-PS_OP(SET_MEMBER, 52, "SET_MEMBER")
-PS_OP(LOAD_SELF, 53, "LOAD_SELF")
-PS_OP(CALL_BASE, 54, "CALL_BASE")
-PS_OP(DUP2, 55, "DUP2")
-PS_OP(IMPORT_MOD, 56, "IMPORT_MOD")
+PS_OP(LOAD_CONST, 0, "LOAD_CONST", 0, 1)
+PS_OP(LOAD_LOCAL, 1, "LOAD_LOCAL", 0, 1)
+PS_OP(STORE_LOCAL, 2, "STORE_LOCAL", 1, 0)
+PS_OP(LOAD_GLOBAL, 3, "LOAD_GLOBAL", 0, 1)
+PS_OP(STORE_GLOBAL, 4, "STORE_GLOBAL", 1, 0)
+PS_OP(ADD, 5, "ADD", 2, 1)
+PS_OP(SUB, 6, "SUB", 2, 1)
+PS_OP(MUL, 7, "MUL", 2, 1)
+PS_OP(DIV, 8, "DIV", 2, 1)
+PS_OP(MOD, 9, "MOD", 2, 1)
+PS_OP(NEG, 10, "NEG", 1, 1)
+PS_OP(LT, 11, "LT", 2, 1)
+PS_OP(GT, 12, "GT", 2, 1)
+PS_OP(LE, 13, "LE", 2, 1)
+PS_OP(GE, 14, "GE", 2, 1)
+PS_OP(EQ, 15, "EQ", 2, 1)
+PS_OP(NE, 16, "NE", 2, 1)
+PS_OP(JUMP, 17, "JUMP", 0, 0)
+PS_OP(JUMP_IF_FALSE, 18, "JUMP_IF_FALSE", 1, 0)      /* consome nos dois ramos */
+PS_OP(POP_TOP, 19, "POP_TOP", 1, 0)
+PS_OP(CALL, 20, "CALL", arg + 1, 1)                  /* [f, a1..a_arg] -> [resultado] */
+PS_OP(RETURN, 21, "RETURN", 1, 0)                    /* sem caminho que segue */
+PS_OP(MAKE_FUNCTION, 22, "MAKE_FUNCTION", 0, 1)
+PS_OP(BIT_OR, 23, "BIT_OR", 2, 1)
+PS_OP(BIT_XOR, 24, "BIT_XOR", 2, 1)
+PS_OP(BIT_AND, 25, "BIT_AND", 2, 1)
+PS_OP(LSHIFT, 26, "LSHIFT", 2, 1)
+PS_OP(RSHIFT, 27, "RSHIFT", 2, 1)
+PS_OP(BIT_NOT, 28, "BIT_NOT", 1, 1)
+PS_OP(HALT, 29, "HALT", 0, 0)                        /* sem caminho que segue */
+PS_OP(BUILD_LIST, 30, "BUILD_LIST", arg, 1)
+PS_OP(BUILD_DICT, 31, "BUILD_DICT", 2 * arg, 1)      /* pares [k, v] */
+PS_OP(INDEX_GET, 32, "INDEX_GET", 2, 1)
+PS_OP(INDEX_SET, 33, "INDEX_SET", 3, 0)              /* [alvo, indice, valor] */
+PS_OP(ITER_NEXT, 34, "ITER_NEXT", 0, 1)              /* [cont, idx] ficam; segue com o item; na saida tira os 2 */
+PS_OP(DUP, 35, "DUP", 0, 1)
+PS_OP(BUILD_STR, 36, "BUILD_STR", arg, 1)
+PS_OP(BUILD_TUPLE, 37, "BUILD_TUPLE", arg, 1)
+PS_OP(SLICE, 38, "SLICE", 4, 1)                      /* [alvo, ini, fim, passo] */
+PS_OP(JUMP_IF_SET, 39, "JUMP_IF_SET", 1, 0)          /* tira o indice do slot nos dois ramos */
+PS_OP(LOAD_NAME, 40, "LOAD_NAME", 1, 1)              /* indice do slot -> valor */
+PS_OP(STORE_NAME, 41, "STORE_NAME", 2, 0)            /* [valor, indice do slot] */
+PS_OP(CALL_KW, 42, "CALL_KW", arg + 2, 1)            /* [f, v1..v_arg, tupla de nomes] -> [resultado] */
+PS_OP(SETUP_TRY, 43, "SETUP_TRY", 0, 0)              /* o handler (alvo) entra com a mensagem: +1 */
+PS_OP(POP_TRY, 44, "POP_TRY", 0, 0)
+PS_OP(RAISE, 45, "RAISE", 1, 0)                      /* sem caminho que segue */
+PS_OP(PUSH_ERR_TYPE, 46, "PUSH_ERR_TYPE", 0, 1)
+PS_OP(JUMP_IF_TRUE, 47, "JUMP_IF_TRUE", 1, 0)        /* consome nos dois ramos */
+PS_OP(LEN, 48, "LEN", 1, 1)
+PS_OP(HAS_KEY, 49, "HAS_KEY", 2, 1)
+PS_OP(MAKE_CLASS, 50, "MAKE_CLASS", pilha_npais(prog, arg), 1)   /* os pais da classe `arg` */
+PS_OP(GET_MEMBER, 51, "GET_MEMBER", 1, 1)
+PS_OP(SET_MEMBER, 52, "SET_MEMBER", 2, 0)            /* [alvo, valor] */
+PS_OP(LOAD_SELF, 53, "LOAD_SELF", 0, 1)
+PS_OP(CALL_BASE, 54, "CALL_BASE", arg + 2, 1)        /* [pai, self, a1..a_arg] -> [resultado] */
+PS_OP(DUP2, 55, "DUP2", 0, 2)
+PS_OP(IMPORT_MOD, 56, "IMPORT_MOD", 0, 1)
 
 /* IS/IN saem no desmontador como IS_OP/IN_OP: "IS" e "IN" sozinhos leriam
  * como palavra solta no meio da listagem. */
-PS_OP(IS, 57, "IS_OP")
-PS_OP(IN, 58, "IN_OP")
-PS_OP(LOAD_TIPO, 59, "LOAD_TIPO")
-PS_OP(COUNT, 60, "COUNT")
-PS_OP(COUNT_PARES, 61, "COUNT_PARES")
-PS_OP(CHECK_NONNULL, 62, "CHECK_NONNULL")
-PS_OP(MAKE_MODEL, 63, "MAKE_MODEL")
-PS_OP(UNPACK, 64, "UNPACK")
-PS_OP(YIELD, 65, "YIELD")
-PS_OP(CLOSE_SE_TEM, 66, "CLOSE_SE_TEM")
-PS_OP(NOT, 67, "NOT")
-PS_OP(TO_BOOL, 68, "TO_BOOL")
-PS_OP(COERCE_DECL, 69, "COERCE_DECL")
-PS_OP(COERCE_RET, 70, "COERCE_RET")
-PS_OP(RERAISE, 71, "RERAISE")
+PS_OP(IS, 57, "IS_OP", 2, 1)
+PS_OP(IN, 58, "IN_OP", 2, 1)
+PS_OP(LOAD_TIPO, 59, "LOAD_TIPO", 0, 1)
+PS_OP(COUNT, 60, "COUNT", 2, 1)                      /* [cont, valor ou Null] */
+PS_OP(COUNT_PARES, 61, "COUNT_PARES", 2, 1)
+PS_OP(CHECK_NONNULL, 62, "CHECK_NONNULL", 0, 0)
+PS_OP(MAKE_MODEL, 63, "MAKE_MODEL", 0, 1)
+PS_OP(UNPACK, 64, "UNPACK", 1, arg & 0xFF)           /* o valor -> um por alvo (arg & 0xFF alvos) */
+PS_OP(YIELD, 65, "YIELD", 1, 0)                      /* a retomada nao empilha nada */
+PS_OP(CLOSE_SE_TEM, 66, "CLOSE_SE_TEM", 1, 0)
+PS_OP(NOT, 67, "NOT", 1, 1)
+PS_OP(TO_BOOL, 68, "TO_BOOL", 1, 1)
+PS_OP(COERCE_DECL, 69, "COERCE_DECL", 1, 1)
+PS_OP(COERCE_RET, 70, "COERCE_RET", 1, 1)
+PS_OP(RERAISE, 71, "RERAISE", 2, 0)                  /* [msg, tipo]; sem caminho que segue */
 
 /* pula o bloco de run_selfwith_ quando importando */
-PS_OP(SKIP_IF_IMPORT, 72, "SKIP_IF_IMPORT")
+PS_OP(SKIP_IF_IMPORT, 72, "SKIP_IF_IMPORT", 0, 0)
 
 /* `enum Nome { ... }` — descritor em vm->enum_* */
-PS_OP(MAKE_ENUM, 73, "MAKE_ENUM")
+PS_OP(MAKE_ENUM, 73, "MAKE_ENUM", pilha_nenum(prog, arg), 1)     /* os membros com valor explicito */
 
 /* Fim de bloco: apaga (V_UNSET) os locais/globais nascidos DENTRO do bloco,
  * pra variável de bloco não vazar pro escopo de fora (paridade com o interp). */
-PS_OP(CLEAR_LOCAL, 74, "CLEAR_LOCAL")
-PS_OP(CLEAR_GLOBAL, 75, "CLEAR_GLOBAL")
-PS_OP(AWAIT, 76, "AWAIT")
+PS_OP(CLEAR_LOCAL, 74, "CLEAR_LOCAL", 0, 0)
+PS_OP(CLEAR_GLOBAL, 75, "CLEAR_GLOBAL", 0, 0)
+PS_OP(AWAIT, 76, "AWAIT", 1, 1)
 
 /* `base(nome=v)`: troca a classe pai no topo pelo `__init__` dela LIGADO ao
  * self, pra a chamada seguir pelo OP_CALL_KW normal. */
-PS_OP(LOAD_BASE_INIT, 77, "LOAD_BASE_INIT")
+PS_OP(LOAD_BASE_INIT, 77, "LOAD_BASE_INIT", 1, 1)
 
 /* Closure: variável de fora capturada por action aninhada.
  * MAKE_CELL põe uma célula no slot local (guardando o que já estava lá, que
  * pode ser o argumento); CELL_GET/CELL_SET acessam o valor DENTRO da célula;
  * LOAD/STORE_UPVAL acessam a célula que veio de fora; MAKE_CLOSURE monta o
  * valor de função já com as células capturadas. */
-PS_OP(MAKE_CELL, 78, "MAKE_CELL")
-PS_OP(CELL_GET, 79, "CELL_GET")
-PS_OP(CELL_SET, 80, "CELL_SET")
-PS_OP(LOAD_UPVAL, 81, "LOAD_UPVAL")
-PS_OP(STORE_UPVAL, 82, "STORE_UPVAL")
-PS_OP(MAKE_CLOSURE, 83, "MAKE_CLOSURE")
+PS_OP(MAKE_CELL, 78, "MAKE_CELL", 0, 0)
+PS_OP(CELL_GET, 79, "CELL_GET", 0, 1)
+PS_OP(CELL_SET, 80, "CELL_SET", 1, 0)
+PS_OP(LOAD_UPVAL, 81, "LOAD_UPVAL", 0, 1)
+PS_OP(STORE_UPVAL, 82, "STORE_UPVAL", 1, 0)
+PS_OP(MAKE_CLOSURE, 83, "MAKE_CLOSURE", 0, 1)
 
 /* Variantes com o mesmo contrato do LOAD_NAME/STORE_NAME (slot na pilha,
  * índice do global no arg): valem pros nomes atribuídos sem tipo, que ainda
  * podem estar falando de uma global. */
-PS_OP(CELL_GET_NAME, 84, "CELL_GET_NAME")
-PS_OP(CELL_SET_NAME, 85, "CELL_SET_NAME")
+PS_OP(CELL_GET_NAME, 84, "CELL_GET_NAME", 1, 1)
+PS_OP(CELL_SET_NAME, 85, "CELL_SET_NAME", 2, 0)
 
 /* `for each i in range(...)` sem construir lista: a pilha carrega
  * [ini, fim, passo, i] e o item sai por aritmética. */
-PS_OP(ITER_RANGE, 86, "ITER_RANGE")
+PS_OP(ITER_RANGE, 86, "ITER_RANGE", 0, 1)            /* os 4 ficam; segue com o item; na saida tira os 4 */
 
 /* `from mod import x`: MESMA busca do GET_MEMBER, erro diferente. Sao dois
  * erros — `mod.x` inexistente e AttributeError "module 'mod' has no
  * attribute 'x'"; `from mod import x` e ImportError "cannot import name 'x'
  * from 'mod' (arquivo)". Sem opcode proprio a VM nao sabe qual dos dois. */
-PS_OP(IMPORT_FROM, 87, "IMPORT_FROM")
+PS_OP(IMPORT_FROM, 87, "IMPORT_FROM", 1, 1)
 
 /* I11 — potencia e divisao inteira. A linguagem tinha `/` sempre real e nada
  * pra quociente inteiro nem pra potencia: num idioma com inteiro de precisao
  * arbitraria, isso perdia precisao calado na unica divisao que existia
  * (`int(10000000000000001 / 1)` dava 10000000000000000). */
-PS_OP(POW, 88, "POW")
-PS_OP(FLOORDIV, 89, "FLOORDIV")
+PS_OP(POW, 88, "POW", 2, 1)
+PS_OP(FLOORDIV, 89, "FLOORDIV", 2, 1)
 
 /* Reordenar o topo da pilha. Existem por causa de `l[i], l[j] = l[j], l[i]`:
  * o UNPACK deixa o VALOR no topo, mas `INDEX_SET` quer [container, indice,
@@ -155,15 +166,15 @@ PS_OP(FLOORDIV, 89, "FLOORDIV")
  * inteira duplicada (lista x dict, as frases de erro, o corte de private).
  * Duas copias da mesma regra e' o que garante que uma delas envelhece
  * sozinha; girar a pilha em tres linhas reusa a original inteira. */
-PS_OP(SWAP, 90, "SWAP")      /* [.., a, b]    -> [.., b, a]    */
-PS_OP(ROT3, 91, "ROT3")      /* [.., a, b, c] -> [.., b, c, a] */
+PS_OP(SWAP, 90, "SWAP", 0, 0)      /* [.., a, b]    -> [.., b, a]    */
+PS_OP(ROT3, 91, "ROT3", 0, 0)      /* [.., a, b, c] -> [.., b, c, a] */
 
 /* `catch (Tipo e)` casa o tipo levantado contra o pedido, CONSULTANDO A
  * HIERARQUIA DE EXCECOES. Substitui o `OP_EQ` que o catch usava: comparar os
  * dois nomes por igualdade literal e' o que deixava `catch (Exception e)` sem
  * pegar nada e `catch (OSError e)` sem pegar FileNotFoundError — enquanto o
  * motor emitia esses nomes de subclasse de proposito. */
-PS_OP(EXC_CASA, 92, "EXC_CASA")
+PS_OP(EXC_CASA, 92, "EXC_CASA", 2, 1)
 
 /* O protocolo do decorador, num lugar so. `arg` = 0 (funct solta):
  * [.., decorador, funct, nome] -> [.., resultado], e o nome passa a valer o
@@ -173,7 +184,7 @@ PS_OP(EXC_CASA, 92, "EXC_CASA")
  * resultado = a funct (no metodo com `self`, o registrador recebe o metodo
  * ligado a instancia da classe); senao chamavel -> resultado =
  * decorador(funct) (Null mantem a funct); senao TypeError. */
-PS_OP(DECORA, 93, "DECORA")
+PS_OP(DECORA, 93, "DECORA", arg ? 5 : 3, 1)
 
 /* Espalhamento na chamada: `f(*lista, **dict)`. Com estrela em algum
  * argumento o compilador monta UMA lista com os posicionais e UM dict com os
@@ -184,17 +195,17 @@ PS_OP(DECORA, 93, "DECORA")
  * O CALL_EX so reorganiza a pilha e salta pro CALL/CALL_KW: nativa, tipo,
  * jinker, Entity e "not callable" ficam servidos sem uma segunda copia da
  * regra de chamada. */
-PS_OP(LIST_EXTEND, 94, "LIST_EXTEND")
-PS_OP(DICT_MERGE,  95, "DICT_MERGE")
-PS_OP(CALL_EX,     96, "CALL_EX")
+PS_OP(LIST_EXTEND, 94, "LIST_EXTEND", 2, 1)
+PS_OP(DICT_MERGE,  95, "DICT_MERGE", 2, 1)
+PS_OP(CALL_EX,     96, "CALL_EX", 3, 1)
 
 /* A tabela de metodos da classe (nome -> valor), pro decorador de metodo:
  *   LOAD_METODO  [.., classe]        -> [.., valor do metodo consts[arg]]
  *   SET_METODO   [.., classe, valor] -> [..]  (a entrada do metodo consts[arg])
  * O compilador aplica os decoradores de um metodo em cadeia entre os dois —
  * igual a funct solta, so que o resultado mora na classe, nao num nome. */
-PS_OP(LOAD_METODO, 97, "LOAD_METODO")
-PS_OP(SET_METODO,  98, "SET_METODO")
+PS_OP(LOAD_METODO, 97, "LOAD_METODO", 1, 1)
+PS_OP(SET_METODO,  98, "SET_METODO", 2, 0)
 
 /* `import *`: o compilador já expandiu o `*` nos nomes que o módulo exporta,
  * e cada nome vira
@@ -205,8 +216,8 @@ PS_OP(SET_METODO,  98, "SET_METODO")
  *     em ciclo: o `*` pula o nome, sem erro). Com consts[arg] == "*" o `*` não
  *     foi resolvido na compilação e o módulo apareceu só em runtime: ImportError.
  *   JUMP_SE_UNSET [.., v] -> [.., v] ou salta pra `arg` tirando o UNSET. */
-PS_OP(IMPORT_FROM_ESTRELA, 99, "IMPORT_FROM_ESTRELA")
-PS_OP(JUMP_SE_UNSET,      100, "JUMP_SE_UNSET")
+PS_OP(IMPORT_FROM_ESTRELA, 99, "IMPORT_FROM_ESTRELA", 1, 1)
+PS_OP(JUMP_SE_UNSET,      100, "JUMP_SE_UNSET", 0, 0)   /* quando salta, tira 1 */
 
 /* Tipagem estatica: o que o compilador NAO consegue saber antes de rodar
  * (`json.parse`, `d["k"]`) e conferido aqui, no lugar tipado.
@@ -218,7 +229,7 @@ PS_OP(JUMP_SE_UNSET,      100, "JUMP_SE_UNSET")
  * AttributedValueError "<rotulo> esperava <tipo>, recebeu <tipo do valor>".
  * O OP_COERCE_DECL continua pros tipos da tabela (cabe em 4 bits e faz o
  * `char`). */
-PS_OP(CONFERE_TIPO,       101, "CONFERE_TIPO")
+PS_OP(CONFERE_TIPO,       101, "CONFERE_TIPO", 1, 1)
 
 /* `int funct` / `bool funct` pegaram um erro no corpo: o sentinela (500 /
  * False) continua saindo, mas o ERRO SAI JUNTO no stderr, no formato do
@@ -226,38 +237,41 @@ PS_OP(CONFERE_TIPO,       101, "CONFERE_TIPO")
  * dele. Antes o `try` implícito descartava a mensagem com um POP_TOP e o erro
  * sumia calado — a IDE mostrava "500 linhas".
  *   ENGOLE [.., msg] -> [..]   arg = 1 (int, 500) ou 2 (bool, False) */
-PS_OP(ENGOLE,             102, "ENGOLE")
+PS_OP(ENGOLE,             102, "ENGOLE", 1, 0)
 
 /* Comparação + desvio numa instrução só: `cond; JUMP_IF_FALSE` em que
  * `cond` acaba numa comparação. O bool não passa pela pilha, e um laço
  * `while a < b` gasta um despacho no lugar de dois. Mesmas regras e mesmas
  * frases de erro da comparação solta.
  *   JF_LT alvo [.., a, b] -> [..]   salta pra `alvo` se NÃO (a < b) */
-PS_OP(JF_LT,              103, "JF_LT")
-PS_OP(JF_GT,              104, "JF_GT")
-PS_OP(JF_LE,              105, "JF_LE")
-PS_OP(JF_GE,              106, "JF_GE")
-PS_OP(JF_EQ,              107, "JF_EQ")
-PS_OP(JF_NE,              108, "JF_NE")
+PS_OP(JF_LT,              103, "JF_LT", 2, 0)
+PS_OP(JF_GT,              104, "JF_GT", 2, 0)
+PS_OP(JF_LE,              105, "JF_LE", 2, 0)
+PS_OP(JF_GE,              106, "JF_GE", 2, 0)
+PS_OP(JF_EQ,              107, "JF_EQ", 2, 0)
+PS_OP(JF_NE,              108, "JF_NE", 2, 0)
 
 /* `x++`, `x--`, `x += 1`, `x -= 1` como statement numa variável DECLARADA
  * `int` (que por isso é sempre V_INT): uma instrução no lugar de sete
  * (carrega, DUP, const, soma, confere o tipo, guarda, POP_TOP). O estouro de
  * 64 bits dá o mesmo erro que o COERCE_DECL dava. `arg` = índice do global
  * ou slot do local. */
-PS_OP(INC_GLOBAL_INT,     109, "INC_GLOBAL_INT")
-PS_OP(DEC_GLOBAL_INT,     110, "DEC_GLOBAL_INT")
-PS_OP(INC_LOCAL_INT,      111, "INC_LOCAL_INT")
-PS_OP(DEC_LOCAL_INT,      112, "DEC_LOCAL_INT")
+PS_OP(INC_GLOBAL_INT,     109, "INC_GLOBAL_INT", 0, 0)
+PS_OP(DEC_GLOBAL_INT,     110, "DEC_GLOBAL_INT", 0, 0)
+PS_OP(INC_LOCAL_INT,      111, "INC_LOCAL_INT", 0, 0)
+PS_OP(DEC_LOCAL_INT,      112, "DEC_LOCAL_INT", 0, 0)
 
 /* `for each i in range(...)`: decodifica início/fim/passo UMA vez, antes do
  * laço, e deixa os três slots como [ini, quantidade, passo] em int — o
  * ITER_RANGE de cada volta vira só aritmética. Antes ele redecodificava os
  * três operandos e recalculava a quantidade a cada iteração.
  *   RANGE_PREPARA [.., ini, fim, passo, 0] -> [.., ini, quant, passo, 0] */
-PS_OP(RANGE_PREPARA,      113, "RANGE_PREPARA")
+PS_OP(RANGE_PREPARA,      113, "RANGE_PREPARA", 0, 0)
 /* `base(Pai).membro`: [pai] -> [membro], com o `self` do frame (slot 0).
  * Campo static do pai, método do pai ligado ao self (a versão DELE, achada a
  * partir do pai), ou campo da instância; respeita `private`. arg = índice da
  * const com o nome. O `__init__` posicional puro continua no CALL_BASE. */
-PS_OP(LOAD_BASE_MEMBRO,   114, "LOAD_BASE_MEMBRO")
+PS_OP(LOAD_BASE_MEMBRO,   114, "LOAD_BASE_MEMBRO", 1, 1)
+/* [.., lista] -> [.., tupla] com os mesmos itens: o fim de um literal de tupla
+ * montado em LOTES (ver `emite_literal_seq` no compilador). arg = 0. */
+PS_OP(TUP_DE_LISTA,       115, "TUP_DE_LISTA", 1, 1)

@@ -75,6 +75,13 @@ typedef struct {
     int32_t *colunas;   /* coluna do fonte de cada instrução (idem) — pro
                          * cursor `^^^` cair na posição certa */
     int32_t  ncode;
+    /* Profundidade máxima da pilha de valores que o código alcança, medida do
+     * início do frame: um passo sobre o código pronto
+     * (`ps_pilha_max_do_codigo`), com o efeito de cada opcode (a coluna
+     * `tira`/`deixa` de `ps_opcodes.def`) e fila de trabalho pelos alvos de
+     * salto. É a cota exata de toda entrada de frame na VM. */
+    int32_t  pilha_max;
+    int32_t  pilha_max_ip;  /* a instrução que chega a `pilha_max`: onde o erro de cota aponta */
     PSConst *consts;
     int32_t  nconsts;
     int32_t  nlocals;

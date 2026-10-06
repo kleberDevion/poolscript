@@ -107,7 +107,7 @@
  * A lista vive em `ps_opcodes.def` e é a MESMA que o compilador inclui. Antes eram
  * dois enums escritos à mão, e nada no build conferia que batiam. */
 enum {
-#define PS_OP(nome, num, texto) OP_##nome = (num),
+#define PS_OP(nome, num, texto, tira, deixa) OP_##nome = (num),
 #include "ps_opcodes.def"
 #undef PS_OP
     OP__ULTIMO
@@ -1025,6 +1025,15 @@ typedef struct {
                             * a da palavra `ip` é `linhas[ip / 2]`), ou NULL */
     int32_t  *colunas;     /* coluna do fonte de cada instrução (idem), ou NULL */
     int       ncode;
+    /* Profundidade máxima da pilha de valores que o código alcança, medida do
+     * início do frame (`ps_pilha_max_do_codigo`, na compilação). É a cota
+     * EXATA de toda entrada de frame: `sp + pilha_max + 8 < stack_teto`. A
+     * cota antiga (`ncode/2`, "cada instrução empilha no máximo um valor")
+     * valia só pra chamada de funct, recusava funct grande sem motivo e não
+     * existia no frame de base — um literal de 65537 itens no programa
+     * principal escrevia fora do vetor da pilha. */
+    int       pilha_max;
+    int       pilha_max_ip;  /* a instrução que chega a `pilha_max`: onde o erro de cota aponta */
     Value    *consts;
     int       nconsts;
     int       nlocals;
@@ -11313,8 +11322,13 @@ static int ger_retoma(VM *vm, PSGerador *g, Value *out)
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError"); return -1; }
     if (lb0 + pr->nlocals >= vm->locals_teto) { snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError"); return -1; }
-    if (sp0 + g->npilha + pr->ncode / 2 + 8 >= vm->stack_teto) {
-        snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
+    /* a pilha salva do gerador (`npilha`) já está dentro de `pilha_max`: é a
+     * profundidade que o código alcança a partir de `sp0` */
+    if (sp0 + pr->pilha_max + 8 >= vm->stack_teto) {
+        if (pr->pilha_max + 8 >= vm->stack_teto)
+            snprintf(vm->erro, sizeof(vm->erro), "pilha de valores insuficiente (%d valores)", pr->pilha_max);
+        else
+            snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError"); return -1;
     }
 
@@ -25343,6 +25357,23 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                          kw_nomes, kw_vals, nkw, ignora_kw0) != 0)
         goto erro_runtime;
 
+    /* A cota da pilha de valores deste frame, exata (`pilha_max`, ver
+     * `Proto`). Vale pra TODA entrada de frame de base — programa principal,
+     * módulo importado, corpo de fibra, callback — e não só pra chamada de
+     * funct (`chama_proto`): sem isto, um literal grande no topo do programa
+     * escrevia fora do vetor da pilha. O gerador já conferiu em `ger_retoma`
+     * (antes de mexer no estado dele). O erro sai na instrução que mais
+     * fundo chega — o literal ou a chamada —, que é a causa. */
+    if (nargs_in >= 0 && sp0 + p->pilha_max + 8 >= vm->stack_teto) {
+        if (p->pilha_max + 8 >= vm->stack_teto)
+            snprintf(vm->erro, sizeof(vm->erro), "pilha de valores insuficiente (%d valores)", p->pilha_max);
+        else
+            snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError");
+        ip = p->pilha_max_ip * 2 + 2;    /* o `erro_runtime` lê a instrução de `ip - 2` */
+        goto erro_runtime;
+    }
+
 #ifdef PS_GOTO
     /* A tabela de despacho, indexada pelo número do opcode. A segunda manda
      * TUDO pro depurador, que dá o passo e pula pro tratador de verdade:
@@ -25350,12 +25381,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
      * instrução. `despacho` é escolhida na entrada e de novo depois de cada
      * passo (o depurador pode se desligar de dentro do `dbg_serve`). */
     static const void *const TAB[] = {
-#define PS_OP(nome, num, texto) [num] = &&L_##nome,
+#define PS_OP(nome, num, texto, tira, deixa) [num] = &&L_##nome,
 #include "ps_opcodes.def"
 #undef PS_OP
     };
     static const void *const TAB_DBG[] = {
-#define PS_OP(nome, num, texto) [num] = &&L_dbg,
+#define PS_OP(nome, num, texto, tira, deixa) [num] = &&L_dbg,
 #include "ps_opcodes.def"
 #undef PS_OP
     };
@@ -25364,7 +25395,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
     /* Depois de uma instrução-ilha (a que o nativo devolveu), TODO despacho
      * cai em L_uma, que volta pro código de máquina do frame corrente. */
     static const void *const TAB_UMA[] = {
-#define PS_OP(nome, num, texto) [num] = &&L_uma,
+#define PS_OP(nome, num, texto, tira, deixa) [num] = &&L_uma,
 #include "ps_opcodes.def"
 #undef PS_OP
     };
@@ -26459,10 +26490,14 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             }
             if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
             if (locals_top + np->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
-            /* Cota da pilha do chamado: cada instrução empilha no máximo um
-             * valor, então ncode/2 é teto seguro. Sem esta checagem, recursão
-             * profunda escrevia fora do array. */
-            if (sp + np->ncode / 2 + 8 >= vm->stack_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+            /* Cota da pilha do chamado, EXATA: `pilha_max` é a profundidade
+             * máxima que o código dele alcança (ver `Proto`). Sem esta
+             * checagem, recursão profunda escrevia fora do array. */
+            if (sp + np->pilha_max + 8 >= vm->stack_teto) {
+                if (np->pilha_max + 8 >= vm->stack_teto)
+                    ERRO_TF(vm, "RecursionError", "pilha de valores insuficiente (%d valores)", np->pilha_max);
+                ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+            }
 
             /* O binding: receptor ou buraco do @static, posicionais, nomeados
              * (que SOBRESCREVEM posicional, `f(1, a=2)` devolve 2), `*args`,
@@ -27188,6 +27223,22 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             l->len = arg;
             sp -= arg;
             stack[sp++] = MK_OBJ(l);
+            break;
+        }
+
+        PS_CASE(TUP_DE_LISTA) {
+            /* [.., lista] -> [.., tupla] com os mesmos itens: o fim de um
+             * literal de tupla montado em lotes (`emite_literal_seq`). A
+             * lista fica na pilha até a tupla existir, pela coleta. */
+            Value lv = stack[sp - 1];
+            if (!EH_LIST(lv)) ERRO(vm, "TUP_DE_LISTA sem lista");
+            vm->sp = sp; vm->locals_top = locals_top;
+            PSList *l = COMO_LIST(lv);
+            PSList *t = nova_seq(vm, l->len > 0 ? l->len : 0, OBJ_TUPLE);
+            if (!t) ERRO(vm, "sem memoria ao criar tupla");
+            for (int32_t k = 0; k < l->len; k++) t->itens[k] = l->itens[k];
+            t->len = l->len;
+            stack[sp - 1] = MK_OBJ(t);
             break;
         }
 
@@ -29186,6 +29237,8 @@ static int proto_assume(Proto *p, PSProto *o)
     p->linhas = o->linhas;             o->linhas = NULL;
     p->colunas = o->colunas;           o->colunas = NULL;
     p->ncode = o->ncode;
+    p->pilha_max = o->pilha_max;
+    p->pilha_max_ip = o->pilha_max_ip;
     p->nlocals = o->nlocals;
     p->ndefaults = o->ndefaults;
     p->slot_vararg = o->slot_vararg;

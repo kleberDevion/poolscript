@@ -84,6 +84,43 @@ const Caso CASOS_CRASH[] = {
   "    Process p = os.run([sys.executable, \"--check\", nome], capture=\"live\")\n"
   "    str t = p.read(65536)\n    int rc = p.wait()\n"
   "    post(nome, rc, \"aninhado demais\" in t)\n}\n", "b.pr 1 True\nd.pr 1 True", NULL, 0 },
+{ "lista literal de 65537 itens no topo, em funct e em async funct roda e devolve o tamanho (antes corrompia o heap)",
+  /* 65537 > STACK_SIZE: o literal e montado em lotes de 256 (BUILD_LIST 0 +
+   * LIST_EXTEND) e a cota de cada frame e a profundidade exata (`pilha_max`),
+   * conferida em TODA entrada — programa, funct e fibra (2048 valores) */
+  "import os\nimport sys\n"
+  "list partes = []\nfor each i in range(1, 65538) { partes.append(str(i)) }\n"
+  "str itens = \", \".join(partes)\n"
+  "using open(\"t.pr\", \"w\") as f { f.write(\"list l = [\" + itens + \"]\\npost(len(l), l[0], l[65536])\\n\") }\n"
+  "using open(\"u.pr\", \"w\") as f { f.write(\"list funct faz() {\\n    list l = [\" + itens + \"]\\n    return l\\n}\\nlist r = faz()\\npost(len(r), r[0], r[65536])\\n\") }\n"
+  "using open(\"v.pr\", \"w\") as f { f.write(\"async list funct faz() {\\n    list l = [\" + itens + \"]\\n    return l\\n}\\nlist r = await faz()\\npost(len(r), r[0], r[65536])\\n\") }\n"
+  "for each nome in [\"t.pr\", \"u.pr\", \"v.pr\"] {\n"
+  "    Process p = os.run([sys.executable, nome], capture=\"live\")\n"
+  "    str t = p.read(65536)\n    int rc = p.wait()\n"
+  "    post(nome, rc, t.strip())\n}\n",
+  "t.pr 0 65537 1 65537\nu.pr 0 65537 1 65537\nv.pr 0 65537 1 65537", NULL, 0 },
+{ "chamada com 70000 argumentos e recusada na linha da chamada, com a conta, sem corromper (antes: heap corrompido)",
+  /* o frame do programa principal nao cabe nem na pilha vazia (65536): o erro
+   * sai antes de rodar, apontando a instrucao que chega ao maximo */
+  "import os\nimport sys\n"
+  "list partes = []\nfor each i in range(1, 70001) { partes.append(str(i)) }\n"
+  "using open(\"a.pr\", \"w\") as f { f.write(\"Null funct f(*a) { post(len(a)) }\\nf(\" + \", \".join(partes) + \")\\npost(\\\"depois\\\")\\n\") }\n"
+  "Process p = os.run([sys.executable, \"a.pr\"], capture=\"live\")\n"
+  "str e = \"\"\nwhile True {\n    str parte = p.read_err(65536)\n    if parte == \"\" { break }\n    e = e + parte\n}\nstr t = p.read(65536)\nint rc = p.wait()\n"
+  "post(rc, t.strip() == \"\", \"RecursionError: pilha de valores insuficiente (70001 valores)\" in e, \"linha 2\" in e)\n",
+  "1 True True True", NULL, 0 },
+{ "3000 argumentos dentro de async funct: a fibra tem 2048 valores, o erro diz a conta e 1000 cabem",
+  "import os\nimport sys\n"
+  "list partes = []\nfor each i in range(1, 3001) { partes.append(str(i)) }\n"
+  "using open(\"b.pr\", \"w\") as f { f.write(\"Null funct f(*a) { post(len(a)) }\\nasync Null funct g() {\\n    f(\" + \", \".join(partes) + \")\\n}\\nawait g()\\npost(\\\"depois\\\")\\n\") }\n"
+  "using open(\"c.pr\", \"w\") as f { f.write(\"Null funct f(*a) { post(len(a)) }\\nasync Null funct g() {\\n    f(\" + \", \".join(partes[0:1000]) + \")\\n}\\nawait g()\\npost(\\\"depois\\\")\\n\") }\n"
+  "Process p = os.run([sys.executable, \"b.pr\"], capture=\"live\")\n"
+  "str e = \"\"\nwhile True {\n    str parte = p.read_err(65536)\n    if parte == \"\" { break }\n    e = e + parte\n}\nstr t = p.read(65536)\nint rc = p.wait()\n"
+  "post(rc, t.strip() == \"\", \"pilha de valores insuficiente (3001 valores)\" in e)\n"
+  "Process q = os.run([sys.executable, \"c.pr\"], capture=\"live\")\n"
+  "str t2 = q.read(65536)\nint rc2 = q.wait()\n"
+  "post(rc2, t2.strip())\n",
+  "1 True True\n0 1000\ndepois", NULL, 0 },
 /* ── recursão sem teto: três SIGSEGV da auditoria de engenharia (27/08) ──────
  * Os três eram descida recursiva sem limite. O detector de CICLO existia e não
  * bastava: ele pega `l.append(l)`, e não pega profundidade sem ciclo nem ciclo
