@@ -111,6 +111,28 @@ se espalhar por várias linhas à vontade.
 
 Linhas em branco e linhas só com comentário não significam nada.
 
+Um comando termina no fim da linha. Dois comandos na mesma linha precisam de
+`;` entre eles; sem ele é erro de sintaxe, apontado no começo do segundo — a
+linha não se parte calada em pedaços que mudam o sentido (`int|str u = 1` não
+vira a expressão `int|str` mais um `u = 1` sem tipo):
+
+```ps
+int x = 1; int y = 2; post(x, y)    # vale
+int a = 1 int b = 2                 # SyntaxError: dois comandos na mesma linha: separe com ';' ou quebre a linha
+```
+
+O bloco de uma linha com chaves continua valendo: `if ok { post(1) }`. No
+corpo de uma classe a regra é a mesma, membro a membro: `class C { int x = 1;
+int y = 2 }` vale, e sem o `;` é `dois membros na mesma linha`. Decorador e
+funct na mesma linha (`@static funct s() { ... }`) são uma declaração só.
+
+Quando o primeiro "comando" é um nome solto, a causa não é o `;` que falta, e o
+erro cai no nome: `retrun x` é `NameError: name 'retrun' is not defined. Did
+you mean: 'return'?` (as palavras da linguagem entram na dica), `Conta c` sem
+valor é `declaracao de variavel exige '='`. Palavra de cláusula fora do lugar
+(`else`, `elif`, `catch`, `finally`, `case`, `each`) diz a construção a que
+pertence.
+
 ### 1.3.3. Continuação de linha por `.membro`
 
 Quando a próxima linha (ignorando espaços) começa com `.` seguido de letra ou
@@ -220,9 +242,15 @@ que 64 bits é promovido automaticamente a **inteiro de precisão arbitrária**
 (bignum) — `type()` continua devolvendo `"int"`.
 
 ```ps
-x = 42
-gigante = 99999999999999999999999999999999999999   # ainda é int
+int x = 42
+long gigante = 99999999999999999999999999999999999999   # ainda é int
+int milhao = 1_000_000                                    # `_` separa os milhares
 ```
+
+O separador de milhar é o `_`. Ponto não é: `10.000.000` é erro de sintaxe,
+com a grafia certa na mensagem — `numero nao usa '.' como separador de
+milhar: escreva 10000000 (ou 10_000_000)`. As bases `0x1F`, `0o17` e `0b1010`
+também valem, sempre inteiras.
 
 ### 1.6.2. Ponto flutuante (`flo`)
 

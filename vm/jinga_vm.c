@@ -23836,26 +23836,40 @@ static int vm_executa(VM *vm, int proto_inicial, Value *resultado)
  *
  * `params` terminado em `...` marca variádico (o `format` da string), e aí
  * não há teto. Devolve 0 se está bom, -1 se passou (com o erro já montado). */
-/* Distância de edição (Levenshtein) com teto: para de contar em `teto`, que é
- * tudo que interessa pra "você quis dizer". Duas linhas rolantes, sem malloc. */
+/* Distância de edição com PESO, pra "você quis dizer": trocar, pôr ou tirar
+ * uma letra custa 2; inverter duas letras vizinhas custa 1. A inversão é o
+ * erro de dedo mais comum (`retrun`, `whlie`, `fro`, `riase`), e na distância
+ * simples ela valia duas trocas — empatava com palavra que só divide letras, e
+ * o empate ia pra primeira da lista: `riase` dava 'case' (2 contra 2 de
+ * 'raise'), `fro` dava 'flo'. `teto` e a resposta estão na mesma escala (2
+ * por edição). Três linhas rolantes (a inversão olha duas atrás), sem malloc. */
 static int dist_edicao(const char *a, const char *b, int teto)
 {
     size_t la = strlen(a), lb = strlen(b);
     if (la > 64 || lb > 64) return teto + 1;
-    if ((int)(la > lb ? la - lb : lb - la) > teto) return teto + 1;
-    int ant[65], cur[65];
-    for (size_t j = 0; j <= lb; j++) ant[j] = (int)j;
+    if (2 * (int)(la > lb ? la - lb : lb - la) > teto) return teto + 1;
+    int pp[65], ant[65], cur[65];
+    for (size_t j = 0; j <= lb; j++) ant[j] = 2 * (int)j;
+    memcpy(pp, ant, (lb + 1) * sizeof(int));
     for (size_t i = 1; i <= la; i++) {
-        cur[0] = (int)i;
+        cur[0] = 2 * (int)i;
         int melhor = cur[0];
         for (size_t j = 1; j <= lb; j++) {
-            int troca = ant[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1);
-            int del = ant[j] + 1, ins = cur[j - 1] + 1;
-            int m = troca < del ? troca : del;
-            cur[j] = m < ins ? m : ins;
-            if (cur[j] < melhor) melhor = cur[j];
+            int m = ant[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 2);
+            if (ant[j] + 2 < m) m = ant[j] + 2;
+            if (cur[j - 1] + 2 < m) m = cur[j - 1] + 2;
+            if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1]
+                    && a[i - 1] != a[i - 2] && pp[j - 2] + 1 < m)
+                m = pp[j - 2] + 1;
+            cur[j] = m;
+            if (m < melhor) melhor = m;
         }
-        if (melhor > teto) return teto + 1;    /* linha toda estourou: sai */
+        /* duas linhas inteiras acima do teto: a inversão só alcança uma
+         * linha atrás da anterior, então daqui não desce mais */
+        int melhor_ant = ant[0];
+        for (size_t j = 1; j <= lb; j++) if (ant[j] < melhor_ant) melhor_ant = ant[j];
+        if (melhor > teto && melhor_ant > teto) return teto + 1;
+        memcpy(pp, ant, (lb + 1) * sizeof(int));
         memcpy(ant, cur, (lb + 1) * sizeof(int));
     }
     return ant[lb];
@@ -23886,7 +23900,7 @@ static const char *sugere_nome(const char *alvo, const char **nomes, int n)
 {
     const char *melhor = NULL;
     int md = 0;
-    int teto = (int)strlen(alvo) <= 4 ? 1 : 3;
+    size_t la = strlen(alvo);
     for (int i = 0; i < n; i++) {
         if (!nomes[i]) continue;
         /* NUNCA sugerir o próprio nome. O nome escrito está entre os
@@ -23896,6 +23910,12 @@ static const char *sugere_nome(const char *alvo, const char **nomes, int n)
          * — a frase acusava um erro de digitação que não houve e escondia a
          * causa de verdade. */
         if (strcmp(alvo, nomes[i]) == 0) continue;
+        /* Na escala do `dist_edicao` (2 por edição): 1 edição se uma das duas
+         * palavras tem até 4 letras, 3 acima. Pela mais CURTA: três edições
+         * numa palavra de três letras a reescrevem inteira — `Conta` ficava
+         * "parecido" com `not`, e `const` com `post`. */
+        size_t lb = strlen(nomes[i]);
+        int teto = (la <= 4 || lb <= 4) ? 2 : 6;
         int d = dist_edicao(alvo, nomes[i], teto);
         if (d <= teto && (!melhor || d < md)) { melhor = nomes[i]; md = d; }
     }

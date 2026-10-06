@@ -500,6 +500,9 @@ faixa = "alto" if n > 100 else "médio" if n > 10 else "baixo"
 
 O ramo não escolhido **não** é avaliado (curto-circuito, como o `and`/`or`).
 
+O `else` é obrigatório: `x if cond` sozinho é `SyntaxError: faltou 'else' no
+ternario: valor if condicao else outro`, apontado no `if`.
+
 ---
 
 ## 3.10. Contagem — `count`

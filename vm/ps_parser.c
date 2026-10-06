@@ -18,6 +18,7 @@
  */
 #include "ps_parser.h"
 #include "ps_pilha.h"
+#include "ps_retornos.h"
 #include "ps_tipos.h"
 
 #include <stdarg.h>
@@ -57,6 +58,17 @@ typedef struct {
      * não valem: o token nasce quando é pedido (`tok_i`, `tem`) e os de trás
      * são soltos a cada declaração de topo. */
     PSTokenList *fl;
+    /* O tipo do último comando completo DESTE bloco (0 no começo do bloco).
+     * Quem lê é a recusa do `else`/`elif` fora do lugar: depois do guard
+     * `if __name__ == "main"` a causa é outra (o guard não tem `else`). */
+    int        ult_kind;
+    /* O `statement()` foi chamado pra um MEMBRO de classe (método,
+     * decorador): a regra do separador fala de membros, não de comandos. Vale
+     * só pro próprio statement — quem lê zera. */
+    int        membro_classe;
+    /* Lendo o ITERÁVEL de uma compreensão: ali `l if c` sem `else` é o filtro
+     * da compreensão, não um ternário pela metade. */
+    int        comp_iteravel;
 } P;
 
 /* TETO DE PROFUNDIDADE do parser.
@@ -267,12 +279,23 @@ static int eh_grafia_morta(PSToken *t)
  * `private nonnull int funct f(v)`. Valem por POSICAO — so na cabeca, antes
  * de `funct` — entao NAO viram palavra reservada: variavel chamada `static`
  * continua valendo. `NonNull` casa junto, que e como o decorador se escreve. */
+static const char *const MODS_DE_POSICAO[] = { "static", "nonnull", "NonNull", NULL };
+
 static int eh_mod_funct(PSToken *t)
 {
     if (!t->texto) return 0;
     if (t->type != T_KW && t->type != T_IDENT && t->type != T_IDENT_UPPER) return 0;
-    return strcmp(t->texto, "static") == 0 || strcmp(t->texto, "nonnull") == 0
-        || strcmp(t->texto, "NonNull") == 0;
+    for (int i = 0; MODS_DE_POSICAO[i]; i++)
+        if (strcmp(t->texto, MODS_DE_POSICAO[i]) == 0) return 1;
+    return 0;
+}
+
+/* Os modificadores que valem por posição, pra quem precisa deles FORA do
+ * parser: o "Did you mean" do nome solto (`statc int x`) os põe entre os
+ * candidatos, junto das palavras-chave do lexer. */
+const char *const *ps_parser_mods_de_posicao(void)
+{
+    return MODS_DE_POSICAO;
 }
 
 
@@ -308,6 +331,11 @@ static int eh_tipo_de_retorno(PSToken *t)
     if (eh_mod_funct(t)) return 0;
     /* Nome do usuário: classe, Entity, model, apelido de tipo. */
     if (t->type == T_IDENT || t->type == T_IDENT_UPPER) return 1;
+    /* `Null funct f()`: a funct que não devolve valor. O
+     * `Null` é literal, não nome, e sem esta linha a cabeça não era
+     * reconhecida: `static Null funct main()` virava três comandos e o erro
+     * saía no `static`. */
+    if (t->type == T_NULL) return 1;
     if (t->type != T_KW) return 0;
     /* palavra-chave que é tipo declarável, pela tabela única (ps_tipos.def) */
     const PSTipoInfo *ti = ps_tipo_info(t->texto);
@@ -341,18 +369,259 @@ static const char *tipo_retorno_dup(P *p, PSToken *t)
  * ou -1 se ali nao comeca uma funcao. Um so lugar sabe a forma da cabeca: os
  * quatro pontos que precisavam dela tinham copias a mao, e a que esquecia um
  * modificador deixava a declaracao virar statement solto, calada. */
+static int eh_mod_de_cabeca(PSToken *t)
+{
+    return (t->type == T_KW && t->texto
+            && (strcmp(t->texto, "async") == 0 || strcmp(t->texto, "public") == 0
+                || strcmp(t->texto, "private") == 0))
+        || eh_mod_funct(t);
+}
+
 static int cabeca_de_funct(P *p, int off)
 {
     int j = off;
-    for (;;) {
-        PSToken *mk = espia(p, j);
-        if ((mk->type == T_KW && mk->texto
-             && (strcmp(mk->texto, "async") == 0
-              || strcmp(mk->texto, "public") == 0 || strcmp(mk->texto, "private") == 0))
-                || eh_tipo_de_retorno(mk) || eh_mod_funct(mk)) { j++; continue; }
-        break;
-    }
+    while (eh_mod_de_cabeca(espia(p, j)) || eh_tipo_de_retorno(espia(p, j))) j++;
     return eh_kw_funct(espia(p, j)) ? j : -1;
+}
+
+/* O que a cabeça de uma funct diz, lido por `le_cabeca`. */
+typedef struct {
+    int is_async, eh_static, eh_nonnull;
+    int is_priv;            /* -1 = não escrito, 0 = public, 1 = private */
+    const char *tipo;       /* tipo de retorno canônico, ou NULL */
+} Cabeca;
+
+/* Dois tipos de retorno na mesma cabeça (`Null int funct`, `int str funct`):
+ * não há leitura possível. Quando um dos dois é um nome que lembra um
+ * modificador (`pirvate Null funct`, `statc Null funct`), a causa é a palavra
+ * digitada errado, e a frase diz qual pelo "Did you mean" de sempre. */
+/* A palavra da cabeça de funct parecida com `x` (`funtc` -> 'funct',
+ * `pirvate` -> 'private', `statc` -> 'static'), pelo "Did you mean" de
+ * sempre. Só pra nome que não é tipo da linguagem. Acusa e devolve 1. */
+static int recusa_palavra_de_cabeca(P *p, PSToken *x)
+{
+    if ((x->type != T_IDENT && x->type != T_IDENT_UPPER) || !x->texto || ps_tipo_info(x->texto)
+            || eh_mod_de_cabeca(x)) return 0;
+    const char *cands[10];
+    int n = 0;
+    cands[n++] = "funct"; cands[n++] = "public"; cands[n++] = "private"; cands[n++] = "async";
+    for (int i = 0; MODS_DE_POSICAO[i]; i++) cands[n++] = MODS_DE_POSICAO[i];
+    const char *d = ps_sugere_nome(x->texto, cands, n);
+    if (!d) return 0;
+    if (strcmp(d, "funct") == 0)
+        perro_f(p, x, "'%s' nao existe. Did you mean: 'funct'?", x->texto);
+    else
+        perro_f(p, x, "modificador '%s' nao existe. Did you mean: '%s'?", x->texto, d);
+    return 1;
+}
+
+static void recusa_dois_tipos(P *p, PSToken *a, PSToken *b)
+{
+    if (recusa_palavra_de_cabeca(p, a) || recusa_palavra_de_cabeca(p, b)) return;
+    perro_f(p, b, "dois tipos de retorno na cabeca da funct: '%s' e '%s' (fica um so)",
+            a->texto ? a->texto : "?", b->texto ? b->texto : "?");
+}
+
+/* Lê os modificadores da cabeça a partir do cursor até o `funct` (que fica),
+ * na ordem de quem escreveu, e confere que cada um vale UMA vez — o tipo de
+ * retorno também. Antes valia o último escrito, calado: `Null int funct` virava
+ * `int funct`, `public private funct` virava private e `async async funct`
+ * passava. Quem chama já sabe (pela `cabeca_de_funct`) que ali há uma cabeça.
+ * Devolve 0, ou -1 com o erro no modificador que sobra. */
+static int le_cabeca(P *p, Cabeca *cb)
+{
+    PSToken *tipo = NULL, *visib = NULL, *asy = NULL, *sta = NULL, *nnu = NULL;
+    memset(cb, 0, sizeof(*cb));
+    cb->is_priv = -1;
+    for (;;) {
+        PSToken *cur = atual(p);
+        if (cur->type == T_KW && cur->texto && strcmp(cur->texto, "async") == 0) {
+            if (asy) { perro(p, "'async' repetido na cabeca da funct", cur); return -1; }
+            asy = cur;
+            cb->is_async = 1;
+        } else if (cur->type == T_KW && cur->texto
+                   && (strcmp(cur->texto, "public") == 0 || strcmp(cur->texto, "private") == 0)) {
+            if (visib) {
+                if (strcmp(visib->texto, cur->texto) == 0)
+                    perro_f(p, cur, "'%s' repetido na cabeca da funct", cur->texto);
+                else
+                    perro_f(p, cur, "'%s' e '%s' na mesma cabeca: a funct e uma ou a outra",
+                            visib->texto, cur->texto);
+                return -1;
+            }
+            visib = cur;
+            cb->is_priv = (strcmp(cur->texto, "private") == 0);
+        } else if (eh_mod_funct(cur)) {
+            int st = strcmp(cur->texto, "static") == 0;
+            PSToken **ja = st ? &sta : &nnu;
+            if (*ja) { perro_f(p, cur, "'%s' repetido na cabeca da funct", cur->texto); return -1; }
+            *ja = cur;
+            if (st) cb->eh_static = 1; else cb->eh_nonnull = 1;
+        } else if (eh_tipo_de_retorno(cur)) {
+            if (tipo) { recusa_dois_tipos(p, tipo, cur); return -1; }
+            tipo = cur;
+            cb->tipo = tipo_retorno_dup(p, cur);
+        } else {
+            return 0;
+        }
+        p->pos++;
+    }
+}
+
+static int eh_tipo_kw_decl(PSToken *t);
+
+/* `def` escrito onde `funct` deveria estar. Nunca foi da linguagem (é de
+ * outra), diferente de `action`/`reaction`, que saíram. */
+static int eh_def(PSToken *t)
+{
+    return (t->type == T_IDENT || t->type == T_IDENT_UPPER) && t->texto && strcmp(t->texto, "def") == 0;
+}
+
+/* Depois do `(` em `j`, o `)` que fecha e logo um `{` (a chave pode vir na
+ * linha de baixo): é um CORPO, então o que vem antes é cabeça de funct. */
+static int corpo_depois_dos_parenteses(P *p, int j)
+{
+    int prof = 0;
+    for (int k = j; ; k++) {
+        PSToken *t = espia(p, k);
+        if (t->type == T_EOF || t->type == T_SINC) return 0;
+        if (t->type == T_LPAREN || t->type == T_LBRACK || t->type == T_LBRACE) prof++;
+        else if (t->type == T_RPAREN || t->type == T_RBRACK || t->type == T_RBRACE) {
+            if (--prof == 0) {
+                int q = k + 1;
+                while (espia(p, q)->type == T_NEWLINE || espia(p, q)->type == T_INDENT) q++;
+                return espia(p, q)->type == T_LBRACE;
+            }
+        }
+    }
+}
+
+/* A cabeça de funct com o `funct` ESQUECIDO: os modificadores da
+ * `cabeca_de_funct`, em qualquer ordem, e logo um NOME seguido de `(`. Se for,
+ * acusa no nome (ou na palavra que ocupa o lugar do `funct`) com a linha
+ * montada, e devolve 1.
+ *
+ * Um só lugar decide o que é cabeça. A recusa tinha a própria lista — só
+ * `async` e tipo da tabela —, e `static Null f()`, `nonnull f(int x)`,
+ * `Null async f()` ou `Ponto f()` passavam por ela e viravam "dois comandos
+ * na mesma linha", no `Null` ou no `f`, com um conserto (`;`) que não
+ * conserta nada.
+ *
+ * Só nomes na frente (`Ponto f()`, classe como tipo de retorno) contam como
+ * cabeça quando o `)` é seguido do `{` do corpo: sem ele, `retrun f(x)` também
+ * seria "nome nome (", e ali a causa é a palavra digitada errado, que o nome
+ * solto acusa. Com modificador ou tipo da linguagem na frente basta o `(`:
+ * nada na linguagem começa assim. */
+static int recusa_funct_esquecida(P *p)
+{
+    int j = 0;
+    while (eh_mod_de_cabeca(espia(p, j)) || eh_tipo_de_retorno(espia(p, j))) j++;
+    if (j < 2) return 0;
+    PSToken *nm = espia(p, j - 1);
+    if ((nm->type != T_IDENT && nm->type != T_IDENT_UPPER) || !nm->texto
+            || eh_mod_funct(nm) || eh_grafia_morta(nm) || eh_def(nm)) return 0;
+    /* modificador, `Null` ou tipo da linguagem ANTES do nome; `async` nunca
+     * declara variável, então com ele nem o `(` precisa vir (`async x = 1`) */
+    int forte = 0, tem_async = 0;
+    for (int k = 0; k < j - 1; k++) {
+        PSToken *mk = espia(p, k);
+        if (eh_mod_de_cabeca(mk) || (mk->type != T_IDENT && mk->type != T_IDENT_UPPER)
+                || eh_tipo_kw_decl(mk)) forte = 1;
+        if (mk->type == T_KW && mk->texto && strcmp(mk->texto, "async") == 0) tem_async = 1;
+    }
+    if (espia(p, j)->type != T_LPAREN && !tem_async) return 0;
+    if (!forte && !corpo_depois_dos_parenteses(p, j)) return 0;
+    /* `funtc f() {`, `statc Null f()`: a palavra da cabeça digitada errado
+     * é a causa — não falta `funct` nenhum, ele está ali escrito torto */
+    for (int k = 0; k < j - 1; k++)
+        if (recusa_palavra_de_cabeca(p, espia(p, k))) return 1;
+    PSToken *lugar = espia(p, j - 2);
+    int morta = eh_grafia_morta(lugar) || eh_def(lugar);
+    char mods[96];
+    size_t w = 0;
+    mods[0] = '\0';
+    for (int k = 0; k < j - (morta ? 2 : 1); k++) {
+        const char *tx = espia(p, k)->texto ? espia(p, k)->texto : "?";
+        int n = snprintf(mods + w, sizeof(mods) - w, "%s ", tx);
+        if (n < 0 || (size_t)n >= sizeof(mods) - w) { mods[w] = '\0'; break; }
+        w += (size_t)n;
+    }
+    if (morta && eh_def(lugar))
+        perro_f(p, lugar, "'def' nao existe nesta linguagem; troque por 'funct': %sfunct %.40s(...)",
+                mods, nm->texto);
+    else if (morta)
+        perro_f(p, lugar, "'%s' saiu da linguagem; troque por 'funct': %sfunct %.40s(...)",
+                lugar->texto, mods, nm->texto);
+    else
+        perro_f(p, nm, "faltou 'funct' antes de '%.40s': %sfunct %.40s(...)", nm->texto, mods, nm->texto);
+    return 1;
+}
+
+/* `Null` só é tipo no RETORNO de funct (o void): variável, parâmetro e campo
+ * guardam valor, e um tipo que só aceita Null não guarda nada. `quem`: "a
+ * variavel", "o campo", "o parametro". */
+static void recusa_null_como_tipo(P *p, PSToken *t, const char *quem)
+{
+    perro_f(p, t, "'Null' so e tipo no retorno de funct (Null funct f() { ... }): %s leva um tipo de valor",
+            quem);
+}
+
+/* Onde acusar o que falta depois de `ant` (o `=` de `int x`): o token
+ * seguinte se ele está na mesma linha (`int x 1` aponta o `1`); se a linha
+ * acabou, o próprio `ant` — o fim de linha não tem coluna que o editor
+ * sublinhe, e o erro caía na coluna 1, no tipo. */
+static PSToken *onde_falta(P *p, PSToken *ant)
+{
+    PSToken *t = atual(p);
+    if (t->type == T_NEWLINE || t->type == T_EOF || t->type == T_SEMI || t->type == T_INDENT
+            || t->type == T_DEDENT || t->type == T_RBRACE || t->line != ant->line) return ant;
+    return t;
+}
+
+static int checa_op_em(P *p, int off, const char *op)
+{
+    PSToken *t = espia(p, off);
+    return t->type == T_OP && t->texto && strcmp(t->texto, op) == 0;
+}
+
+/* Um tipo escrito numa declaração: palavra de tipo, apelido, `Null` ou nome
+ * (de classe). */
+static int eh_tipo_escrito(PSToken *t)
+{
+    return t->type == T_NULL || t->type == T_IDENT || t->type == T_IDENT_UPPER || eh_tipo_kw_decl(t);
+}
+
+/* `int|str x = 1`: o tipo união não existe na declaração. Sem a recusa a
+ * linha se partia — `int|str` virava uma expressão (o `|` entre dois tipos)
+ * e o resto outro comando — e o erro saía no nome, com um `;` que não
+ * conserta. A frase cai no `|`, onde a declaração deixa de valer. `off` é o
+ * primeiro tipo. */
+static void recusa_uniao(P *p, int off)
+{
+    PSToken *a = espia(p, off), *bar = espia(p, off + 1), *b = espia(p, off + 2);
+    perro_f(p, bar, "tipo uniao ('%s|%s') nao vale na declaracao: declare um tipo so",
+            a->texto ? a->texto : "?", b->texto ? b->texto : "?");
+}
+
+/* No cursor começa uma declaração (variável, campo, parâmetro) com tipo
+ * que não guarda valor (`Null x`) ou com união (`int|str x`)? Acusa e devolve
+ * 1. `quem` entra na frase: "a variavel", "o campo", "o parametro". */
+static int recusa_tipo_de_valor(P *p, const char *quem)
+{
+    PSToken *t = atual(p);
+    if (!eh_tipo_escrito(t)) return 0;
+    if (checa_op_em(p, 1, "|")) {
+        int k = 0;                               /* tipo (| tipo)* nome */
+        while (checa_op_em(p, k + 1, "|") && eh_tipo_escrito(espia(p, k + 2))) k += 2;
+        PSToken *nm = espia(p, k + 1);
+        if (k > 0 && (nm->type == T_IDENT || nm->type == T_IDENT_UPPER)) { recusa_uniao(p, 0); return 1; }
+        return 0;
+    }
+    if (t->type == T_NULL && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
+        recusa_null_como_tipo(p, t, quem);
+        return 1;
+    }
+    return 0;
 }
 
 static int aceita(P *p, PSTokType t)
@@ -594,6 +863,7 @@ static int parse_parametros(P *p, PSNode *n, int lambda, PSToken *abre)
          * token é o próprio nome do parâmetro (`funct f(corpo)`). */
         const char *ptipo = NULL;
         PSToken *tt = atual(p);
+        if (recusa_tipo_de_valor(p, "o parametro")) return -1;
         if (!estrela && eh_tipo_de_retorno(tt)) {
             PSToken *op = espia(p, 1), *nx = espia(p, 2);
             if (op->type == T_OP && op->texto && (!strcmp(op->texto, "*") || !strcmp(op->texto, "**"))
@@ -710,12 +980,14 @@ static PSNode *lambda_apos_kw(P *p)
      * Herdado, ele fazia `if x == "" {` no corpo ser lido como a string `""`
      * interpolando `{...}` — "faltou '}' na interpolacao" em código válido, e
      * só quando a lambda era argumento (numa variável passava). */
-    int gd = p->grupo_depth, cab = p->chave_abre_bloco;
+    int gd = p->grupo_depth, cab = p->chave_abre_bloco, ci = p->comp_iteravel;
     p->grupo_depth = 0;
     p->chave_abre_bloco = 0;
+    p->comp_iteravel = 0;
     n->b = bloco(p);
     p->grupo_depth = gd;
     p->chave_abre_bloco = cab;
+    p->comp_iteravel = ci;
     if (FALHOU(p)) return NULL;
     return n;
 }
@@ -751,25 +1023,17 @@ static PSNode *primario(P *p)
     {
         int ifun = cabeca_de_funct(p, 0);
         if (ifun > 0 && espia(p, ifun + 1)->type == T_LPAREN) {
-            int is_async = 0, eh_static = 0, eh_nonnull = 0;
-            const char *tipo = NULL;
-            for (int k = 0; k < ifun; k++) {
-                PSToken *m = espia(p, k);
-                if (m->type == T_KW && m->texto && strcmp(m->texto, "async") == 0) is_async = 1;
-                else if (eh_tipo_de_retorno(m)) tipo = tipo_retorno_dup(p, m);
-                else if (eh_mod_funct(m)) {
-                    if (strcmp(m->texto, "static") == 0) eh_static = 1; else eh_nonnull = 1;
-                }
-                /* `public`/`private` numa lambda não ligam nada: não há dono
-                 * pra esconder. Consumidos e ignorados, sem erro. */
-            }
-            p->pos += ifun;                    /* consome os modificadores */
+            /* A mesma leitura da cabeça da declaração (um modificador por
+             * vez, um tipo só). `public`/`private` numa lambda não ligam nada:
+             * não há dono pra esconder — lidos e ignorados. */
+            Cabeca cb;
+            if (le_cabeca(p, &cb) != 0) return NULL;
             PSNode *n = lambda_apos_kw(p);
             if (!n) return NULL;
-            n->is_async = is_async;
-            n->texto2 = tipo;
-            n->is_static = eh_static;
-            n->is_nonnull = eh_nonnull;
+            n->is_async = cb.is_async;
+            n->texto2 = cb.tipo;
+            n->is_static = cb.eh_static;
+            n->is_nonnull = cb.eh_nonnull;
             return n;
         }
     }
@@ -970,7 +1234,10 @@ static PSNode *primario(P *p)
                         if (!lc) return NULL;
                         lc->texto = var;
                         lc->b = item;
+                        int ci = p->comp_iteravel;
+                        p->comp_iteravel = 1;
                         lc->a = expressao(p);
+                        p->comp_iteravel = ci;
                         if (FALHOU(p)) return NULL;
                         if (checa_kw(p, "if")) {
                             p->pos++;
@@ -1203,7 +1470,10 @@ static PSNode *posfixo(P *p)
                         if (!lc) return NULL;
                         lc->texto = cvar;
                         lc->b = valor;
+                        int ci = p->comp_iteravel;
+                        p->comp_iteravel = 1;
                         lc->a = expressao(p);
+                        p->comp_iteravel = ci;
                         if (FALHOU(p)) return NULL;
                         if (checa_kw(p, "if")) {
                             p->pos++;
@@ -1693,10 +1963,17 @@ static PSNode *expressao_no(P *p)
         p->pos++;                       /* consome 'if' */
         PSNode *cond = e_ou(p);         /* cond = nível or (sem ternário aninhado) */
         if (FALHOU(p)) return NULL;
-        /* O `else` desambigua: dentro de `{ }` não há NEWLINE entre statements,
-         * então `x = A` seguido de `if cond { ... }` chega como `A if cond {`.
-         * Só é ternário se vier `else`; senão o `if` inicia um statement e é
-         * devolvido intacto (backtrack) pro parser de bloco. */
+        /* O `else` desambigua: `x = A` seguido de `if cond { ... }` na mesma
+         * linha chega como `A if cond {`. Só é ternário se vier `else`; com o
+         * `{` do bloco, o `if` inicia um statement e é devolvido intacto
+         * (backtrack) — a regra do separador acusa os dois comandos colados.
+         * No iterável da compreensão o `if` é o filtro dela. Fora disso é o
+         * ternário pela metade: `x if c` sem o `else` virava "dois comandos"
+         * ou "faltou ')'", longe do que falta. */
+        if (!checa_kw(p, "else") && !checa(p, T_LBRACE) && !p->comp_iteravel) {
+            perro(p, "faltou 'else' no ternario: valor if condicao else outro", t);
+            return NULL;
+        }
         if (checa_kw(p, "else")) {
             p->pos++;                   /* consome 'else' */
             PSNode *bfalso = expressao(p);  /* else à direita: permite encadear */
@@ -1732,6 +2009,32 @@ static void pula_indent_solto(P *p)
  * quebra de linha jogava o resto do corpo de uma funct quebrada pro nível de
  * cima — `y = 2` aparecia como variável global na árvore, e o `}` da funct
  * virava um erro fantasma. */
+/* O BLOCO do cabeçalho quebrado, com a chave na linha de baixo (`while x <
+ * 10.000.000` e o `{` embaixo): é dele, e vai junto com o statement pulado.
+ * Deixado pra trás, o `{` virava um literal de dicionário e o corpo inteiro
+ * saía como "faltou ':' no dicionario" em cima de `x++;` — um erro em cascata
+ * que não tem nada a ver com o que a pessoa escreveu. `{` abrindo uma linha
+ * nunca é dicionário em código de verdade. Devolve o índice depois do `}`, ou
+ * `k` se não há bloco ali. */
+static int32_t pula_bloco_orfao(P *p, int32_t k)
+{
+    int32_t q = k;
+    while (tem(p, q) && (tok_i(p, q)->type == T_NEWLINE || tok_i(p, q)->type == T_INDENT
+                         || tok_i(p, q)->type == T_DEDENT)) q++;
+    if (!tem(p, q) || tok_i(p, q)->type != T_LBRACE) return k;
+    int pb = 0;
+    for (; tem(p, q); q++) {
+        PSTokType tq = tok_i(p, q)->type;
+        if (tq == T_EOF) return q;
+        if (tq == T_SINC) return q + 1;
+        if (tq == T_LPAREN || tq == T_LBRACK || tq == T_LBRACE) pb++;
+        else if (tq == T_RPAREN || tq == T_RBRACK || tq == T_RBRACE) {
+            if (--pb == 0) return q + 1;
+        }
+    }
+    return q;
+}
+
 static void pula_statement(P *p, int32_t ini)
 {
     int32_t falha = p->pos;
@@ -1741,7 +2044,7 @@ static void pula_statement(P *p, int32_t ini)
         PSTokType ty = tok_i(p, k)->type;
         if (ty == T_EOF) break;
         if (ty == T_SINC) {
-            if (k >= falha) { k++; break; }
+            if (k >= falha) { k = pula_bloco_orfao(p, k + 1); break; }
             prof = 0;
             continue;
         }
@@ -1751,7 +2054,10 @@ static void pula_statement(P *p, int32_t ini)
             if (ty == T_RBRACE && k >= falha) break;
             continue;
         }
-        if ((ty == T_NEWLINE || ty == T_SEMI || ty == T_DEDENT) && prof == 0 && k >= falha) break;
+        if ((ty == T_NEWLINE || ty == T_SEMI || ty == T_DEDENT) && prof == 0 && k >= falha) {
+            k = pula_bloco_orfao(p, k);
+            break;
+        }
     }
     p->pos = k;
 }
@@ -1805,6 +2111,7 @@ static PSNode *bloco_entrada(P *p)
     if (!b) return NULL;
     b->estilo = "colon";
     pula_separadores_com_dedent(p);
+    p->ult_kind = 0;
     while (!checa(p, T_DEDENT) && !checa(p, T_EOF)) {
         int32_t ini = p->pos;
         EstadoP e = estado_salva(p);
@@ -1878,6 +2185,7 @@ static PSNode *bloco_no(P *p)
          * são ignorados aqui; os que pertencem a um sub-bloco `:` são
          * consumidos pela chamada aninhada de bloco(). */
         pula_indent_solto(p);
+        p->ult_kind = 0;
         while (!checa(p, T_RBRACE) && !checa(p, T_EOF)) {
             int32_t ini = p->pos;
             EstadoP e = estado_salva(p);
@@ -2704,12 +3012,142 @@ const char *const *ps_parser_tipos_decl(void)
 
 static PSNode *statement_no(P *p);
 
+/* Depois de um comando, o próximo começa em OUTRA linha, ou depois de um `;`,
+ * ou é o fim do bloco/arquivo. Dois comandos colados na mesma linha se partiam
+ * calados: `static Null funct main()` virava `static`, `Null` e a funct, e o
+ * erro saía no `static`, longe da causa; `int|str u = 1` virava a expressão
+ * `int|str` e um `u = 1` sem tipo. O erro sai no começo do segundo comando. */
+/* `else`, `elif`, `catch`, `finally`, `case` e `each` só existem DENTRO da
+ * construção delas (o if, o try, o match, o laço), que as lê. Começando um
+ * comando, estão fora do lugar. */
+static int eh_palavra_de_clausula(PSToken *t)
+{
+    static const char *const CLAUSULAS[] = { "else", "elif", "catch", "finally", "case", "each", NULL };
+    if (t->type != T_KW || !t->texto) return 0;
+    for (int i = 0; CLAUSULAS[i]; i++)
+        if (strcmp(t->texto, CLAUSULAS[i]) == 0) return 1;
+    return 0;
+}
+
+/* A palavra de cláusula fora do lugar, com a construção a que ela pertence.
+ * Sem esta recusa ela caía no parser de expressão: o `{` de depois virava
+ * literal de dicionário ("faltou ':' no dicionario", na linha de baixo) ou a
+ * linha virava "dois comandos", com um conserto (`;`) que não conserta. */
+static void recusa_clausula_solta(P *p, PSToken *t)
+{
+    const char *w = t->texto;
+    if (strcmp(w, "else") == 0 || strcmp(w, "elif") == 0) {
+        if (p->ult_kind == N_RUN_SELFWITH_STMT)
+            perro_f(p, t, "o guard 'if __name__ == \"main\"' nao tem '%s'", w);
+        else
+            perro_f(p, t, "'%s' fora do lugar: vem logo depois do '}' de um if ou elif", w);
+    } else if (strcmp(w, "catch") == 0) {
+        perro(p, "'catch' fora do lugar: vem logo depois do '}' do try ou de outro catch", t);
+    } else if (strcmp(w, "finally") == 0) {
+        perro(p, "'finally' fora do lugar: vem uma vez so, depois do '}' do try ou do ultimo catch", t);
+    } else if (strcmp(w, "case") == 0) {
+        perro(p, "'case' fora do lugar: so vale dentro do bloco de um match", t);
+    } else {
+        perro(p, "'each' fora do lugar: o laco e 'for each x in ...' (ou 'count each')", t);
+    }
+}
+
+/* O primeiro comando da linha termina num NOME SOLTO e outro comando começa
+ * logo depois, na mesma linha: `retrun x`, `whlie i < 3 {`, `const int x =
+ * 1`, `Conta c`, `Conta c = new Conta()`, `post x`. A causa costuma estar no
+ * nome — palavra digitada errado, palavra de outra linguagem, declaração sem
+ * `=` —, não na falta de `;`, e o erro tem que cair nele. Mas só o compilador
+ * sabe se o nome existe e se é um tipo (`int x = y post(x)` são mesmo dois
+ * comandos). Então o comando vira um ExpressionStmt marcado: `a` = o nome,
+ * `b` = o comando lido, `e` = onde começa o segundo (um nó que nenhum passo lê
+ * como código), `i2` = 0 se o nome é o comando inteiro. O resto da linha é
+ * pulado (com o bloco que vier junto, pra não sobrar `}` órfão) e quem decide
+ * é o `tp_nome_solto`, que acusa SEMPRE: o resto não foi lido. */
+static PSNode *marca_nome_solto(P *p, PSNode *r, int32_t ini, PSToken *nome, PSToken *t)
+{
+    PSNode *w = ps_node_novo(p->arena, N_EXPRESSION_STMT, r->line, r->col);
+    PSNode *nm = ps_node_novo(p->arena, N_NAME, nome->line, nome->col);
+    PSNode *seg = ps_node_novo(p->arena, N_PASS_STMT, t->line, t->col);
+    if (!w || !nm || !seg) { perro(p, "sem memoria", t); return r; }
+    nm->texto = dup_tok(p, nome);
+    nm->linha_fim = nome->linha_fim ? nome->linha_fim : nome->line;
+    nm->col_fim = nome->col_fim ? nome->col_fim : nome->col + (nome->nchars > 0 ? nome->nchars : 1);
+    seg->linha_fim = t->linha_fim ? t->linha_fim : t->line;
+    seg->col_fim = t->col_fim ? t->col_fim : t->col + (t->nchars > 0 ? t->nchars : 1);
+    seg->i2 = (t->type == T_IDENT || t->type == T_IDENT_UPPER);   /* começa com um nome */
+    if (seg->i2) {
+        /* `Conta c Conta()`: onde faltaria o `=` (como `int x 1` aponta o `1`) */
+        p->pos++;
+        PSToken *dep = onde_falta(p, t);
+        p->pos--;
+        if (dep != t) {
+            seg->a = ps_node_novo(p->arena, N_PASS_STMT, dep->line, dep->col);
+            if (seg->a) {
+                seg->a->linha_fim = dep->linha_fim ? dep->linha_fim : dep->line;
+                seg->a->col_fim = dep->col_fim ? dep->col_fim : dep->col + (dep->nchars > 0 ? dep->nchars : 1);
+            }
+        }
+    }
+    w->a = nm;
+    w->b = r;
+    w->e = seg;
+    w->i2 = (p->pos == ini + 1) ? 0 : 1;
+    w->linha_fim = r->linha_fim;
+    w->col_fim = r->col_fim;
+    pula_statement(p, p->pos);
+    return w;
+}
+
+/* Devolve o comando (o mesmo, ou marcado pelo `marca_nome_solto`). */
+static PSNode *exige_fim_de_comando(P *p, int32_t ini, PSNode *r, int membro)
+{
+    if (FALHOU(p) || p->pos <= ini) return r;
+    PSToken *t = atual(p);
+    /* só o que COMEÇA um comando é "segundo comando": fechador solto, vírgula
+     * ou operador ali têm o erro próprio na leitura seguinte — e marcar o
+     * comando bom como falho o jogava fora (o remendo do editor fecha `f(`
+     * com `))` e a chamada sumia da árvore) */
+    switch (t->type) {
+        case T_KW: case T_IDENT: case T_IDENT_UPPER:
+        case T_INT: case T_FLO: case T_STR: case T_FSTRING: case T_BOOL:
+        case T_NULL: case T_COLOR: case T_BYTES: case T_AT:
+        case T_LPAREN: case T_LBRACK:
+            break;
+        default:
+            return r;
+    }
+    PSToken *ult = tok_i(p, p->pos - 1);
+    /* o comando que já consumiu a quebra de linha (o decorador, que lê até a
+     * funct de baixo) terminou nela */
+    if (ult->type == T_NEWLINE || ult->type == T_INDENT || ult->type == T_DEDENT
+        || ult->type == T_SEMI) return r;
+    int32_t lf = ult->linha_fim ? ult->linha_fim : ult->line;
+    if (t->line != lf) return r;
+    /* o decorador que não leu a funct (no corpo da classe ele não captura) e
+     * a funct da mesma linha são UMA declaração */
+    if (r && r->kind == N_DECORATOR_STMT && !r->b) return r;
+    /* o primeiro comando termina num nome solto (não `obj.nome`) */
+    if (!membro && r && (ult->type == T_IDENT || ult->type == T_IDENT_UPPER)
+            && (p->pos == ini + 1 || tok_i(p, p->pos - 2)->type != T_DOT))
+        return marca_nome_solto(p, r, ini, ult, t);
+    /* `} else {` depois do que não tem else, `finally` repetido, `} case`: a
+     * frase é a da palavra fora do lugar, que o próximo comando dá */
+    if (eh_palavra_de_clausula(t)) return r;
+    perro(p, membro ? "dois membros na mesma linha: separe com ';' ou quebre a linha"
+                    : "dois comandos na mesma linha: separe com ';' ou quebre a linha", t);
+    return r;
+}
+
 static PSNode *statement(P *p)
 {
+    int membro = p->membro_classe;
+    p->membro_classe = 0;
     pula_separadores(p);
     int32_t ini = p->pos;
     PSNode *r = statement_no(p);
     fecha_no(p, r, ini);
+    r = exige_fim_de_comando(p, ini, r, membro);
+    p->ult_kind = (r && !FALHOU(p)) ? r->kind : 0;
     return r;
 }
 
@@ -2719,6 +3157,8 @@ static PSNode *statement_no(P *p)
     PSToken *t = atual(p);
 
     if (t->type == T_EOF) return NULL;
+
+    if (eh_palavra_de_clausula(t)) { recusa_clausula_solta(p, t); return NULL; }
 
     /* `def f(x) { ... }` — quem vem de outra linguagem escreve isto, e a linguagem
      * respondia "faltou ':' no dicionario" apontando pra DENTRO do corpo.
@@ -2919,60 +3359,25 @@ static PSNode *statement_no(P *p)
             int32_t ini_m = p->pos;
             EstadoP e_m = estado_salva(p);
             PSToken *mt = atual(p);
-            /* modificador de visibilidade opcional antes de campo/método.
-             * `is_private` não entra na serialização do AST (não é código), então
-             * o diff de parser/bytecode continua batendo. */
-            /* Modificadores do membro, em qualquer ordem: `public`, `private`
-             * e `static`. O `static` em CAMPO é o que faz um atributo
-             * pertencer à classe (avaliado uma vez, na declaração) em vez de
-             * à instância — sem ele, `App.mapp` não existe e um método
-             * estático não tem como enxergar o campo. */
-            int membro_priv = 0, viu_visib = 0, campo_static = 0;
-            for (;;) {
-                if (mt->type == T_KW && mt->texto
-                        && (strcmp(mt->texto, "private") == 0 || strcmp(mt->texto, "public") == 0)) {
-                    membro_priv = (strcmp(mt->texto, "private") == 0);
-                    viu_visib = 1;
-                    p->pos++;
-                    mt = atual(p);
-                    continue;
-                }
-                if (mt->texto && strcmp(mt->texto, "static") == 0
-                        && (mt->type == T_IDENT || mt->type == T_KW)
-                        && espia(p, 1)->type != T_LPAREN) {
-                    campo_static = 1;
-                    p->pos++;
-                    mt = atual(p);
-                    continue;
-                }
-                break;
-            }
-            /* A grafia que saiu, escrita como método: aqui ela casaria com a
-             * regra de campo (`<tipo> <nome>`) e nasceria um campo chamado
-             * `action`, calado. A recusa vem antes, com a palavra certa. */
-            if (eh_grafia_morta(mt)) {
-                char m[200];
-                snprintf(m, sizeof(m),
-                         "'%s' saiu da linguagem; o metodo se declara com 'funct': funct %s(self) { ... }",
-                         mt->texto, espia(p, 1)->texto ? espia(p, 1)->texto : "nome");
-                perro(p, m, mt);
-                goto membro_falhou;
-            }
-            /* `pass` sozinho: corpo vazio de classe. Não vira
-             * membro nenhum — só ocupa o lugar pra a Entity poder existir sem
-             * campo nem método. */
-            if (mt->type == T_KW && mt->texto && strcmp(mt->texto, "pass") == 0) {
-                p->pos++;
-                pula_indent_solto(p);
-                continue;
-            }
+            /* DECORADOR e MÉTODO primeiro, com a cabeça INTEIRA: quem lê a
+             * cabeça (`le_cabeca`) confere cada modificador uma vez só, e não
+             * enxergaria os que o laço de modificadores abaixo tivesse
+             * consumido — `public private funct m()` passava calado.
+             *
+             * O decorador é lido sem a funct (dec_sem_captura): os dois viram
+             * entradas separadas do corpo, e a funct da mesma linha não é
+             * "segundo membro" (ver exige_fim_de_comando). */
             if (checa(p, T_AT)) {
                 int salvo_flag = p->dec_sem_captura;
                 p->dec_sem_captura = 1;
+                p->membro_classe = 1;
                 PSNode *d = statement(p);
                 p->dec_sem_captura = salvo_flag;
                 if (FALHOU(p)) goto membro_falhou;
                 if (ps_vec_push(p->arena, &n->lista, d) != 0) return NULL;
+                pula_indent_solto(p);
+                continue;
+            }
             /* MÉTODO: a cabeça inteira, com os modificadores em qualquer ordem
              * (`int static funct r()`, `static funct s()`, `async funct t()`).
              *
@@ -2983,17 +3388,82 @@ static PSNode *statement_no(P *p)
              * sem a marca de estática, e `Tipo.r(...)` respondia "nao tem
              * metodo estatico 'r' — instancie primeiro", com o `static`
              * escrito na tela. Um só lugar decide o que é cabeça de funct. */
-            } else if (cabeca_de_funct(p, 0) >= 0) {
+            if (cabeca_de_funct(p, 0) >= 0) {
+                p->membro_classe = 1;
                 PSNode *a = statement(p);
                 if (FALHOU(p)) goto membro_falhou;
-                /* Só sobrescreve se a visibilidade veio ANTES do resto: em
-                 * `static private funct m()` quem a leu foi a cabeça, e
-                 * carimbar 0 aqui apagaria o `private` da pessoa. */
-                if (a && viu_visib) a->is_private = membro_priv;
-                /* o `static` lido pelo laço de modificadores acima é do método */
-                if (a && campo_static) a->is_static = 1;
                 if (ps_vec_push(p->arena, &n->lista, a) != 0) return NULL;
-            } else if ((mt->type == T_IDENT || mt->type == T_IDENT_UPPER || mt->type == T_KW)
+                pula_indent_solto(p);
+                continue;
+            }
+            /* A grafia que saiu, escrita como método (`action m(self)`, com
+             * ou sem modificador na frente): aqui ela casaria com a regra de
+             * campo (`<tipo> <nome>`) e nasceria um campo chamado `action`,
+             * calado. A recusa vem antes, com a palavra certa e o `self`. */
+            {
+                int k = 0;
+                while (eh_mod_de_cabeca(espia(p, k))) k++;
+                PSToken *gm = espia(p, k);
+                if (eh_grafia_morta(gm)) {
+                    perro_f(p, gm, "'%s' saiu da linguagem; o metodo se declara com 'funct': funct %s(self) { ... }",
+                            gm->texto, espia(p, k + 1)->texto ? espia(p, k + 1)->texto : "nome");
+                    goto membro_falhou;
+                }
+            }
+            /* `static Null m() {`: o método com o `funct` esquecido */
+            if (recusa_funct_esquecida(p)) goto membro_falhou;
+            /* Modificadores do CAMPO, em qualquer ordem: `public`, `private`
+             * e `static`, cada um uma vez. O `static` em campo é o que faz um
+             * atributo pertencer à classe (avaliado uma vez, na declaração) em
+             * vez de à instância — sem ele, `App.mapp` não existe e um método
+             * estático não tem como enxergar o campo. `is_private` não entra
+             * na serialização do AST (não é código), então o diff de
+             * parser/bytecode continua batendo. */
+            int membro_priv = 0, campo_static = 0;
+            PSToken *visib = NULL, *sta = NULL;
+            for (;;) {
+                if (mt->type == T_KW && mt->texto
+                        && (strcmp(mt->texto, "private") == 0 || strcmp(mt->texto, "public") == 0)) {
+                    if (visib) {
+                        if (strcmp(visib->texto, mt->texto) == 0)
+                            perro_f(p, mt, "'%s' repetido no campo", mt->texto);
+                        else
+                            perro_f(p, mt, "'%s' e '%s' no mesmo campo: ele e um ou o outro",
+                                    visib->texto, mt->texto);
+                        goto membro_falhou;
+                    }
+                    visib = mt;
+                    membro_priv = (strcmp(mt->texto, "private") == 0);
+                    p->pos++;
+                    mt = atual(p);
+                    continue;
+                }
+                if (mt->texto && strcmp(mt->texto, "static") == 0
+                        && (mt->type == T_IDENT || mt->type == T_KW)
+                        && espia(p, 1)->type != T_LPAREN) {
+                    if (sta) { perro(p, "'static' repetido no campo", mt); goto membro_falhou; }
+                    sta = mt;
+                    campo_static = 1;
+                    p->pos++;
+                    mt = atual(p);
+                    continue;
+                }
+                break;
+            }
+            /* `Null campo = Null` e `int|str campo = 1`: as mesmas recusas da
+             * variável (ver recusa_tipo_de_valor) */
+            if (recusa_tipo_de_valor(p, "o campo")) goto membro_falhou;
+            /* `pass` sozinho: corpo vazio de classe. Não vira
+             * membro nenhum — só ocupa o lugar pra a Entity poder existir sem
+             * campo nem método. */
+            if (mt->type == T_KW && mt->texto && strcmp(mt->texto, "pass") == 0) {
+                p->pos++;
+                exige_fim_de_comando(p, ini_m, NULL, 1);
+                if (FALHOU(p)) goto membro_falhou;
+                pula_indent_solto(p);
+                continue;
+            }
+            if ((mt->type == T_IDENT || mt->type == T_IDENT_UPPER || mt->type == T_KW)
                        && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER
                            /* `object private static nome`: depois do tipo pode vir
                             * modificador antes do nome — o laço abaixo os lê */
@@ -3016,10 +3486,21 @@ static PSNode *statement_no(P *p)
                     if (md->texto && strcmp(md->texto, "static") == 0
                             && (md->type == T_IDENT || md->type == T_KW)
                             && espia(p, 1)->type != T_LPAREN) {
+                        if (sta) { perro(p, "'static' repetido no campo", md); goto membro_falhou; }
+                        sta = md;
                         campo_static = 1; p->pos++; continue;
                     }
                     if (md->type == T_KW && md->texto
                             && (strcmp(md->texto, "private") == 0 || strcmp(md->texto, "public") == 0)) {
+                        if (visib) {
+                            if (strcmp(visib->texto, md->texto) == 0)
+                                perro_f(p, md, "'%s' repetido no campo", md->texto);
+                            else
+                                perro_f(p, md, "'%s' e '%s' no mesmo campo: ele e um ou o outro",
+                                        visib->texto, md->texto);
+                            goto membro_falhou;
+                        }
+                        visib = md;
                         membro_priv = (strcmp(md->texto, "private") == 0);
                         p->pos++; continue;
                     }
@@ -3059,9 +3540,13 @@ static PSNode *statement_no(P *p)
                 if (checa(p, T_COLON)) {
                     p->pos++;
                     PSToken *tt = atual(p);
+                    if (tt->type == T_NULL) {
+                        recusa_null_como_tipo(p, tt, "o campo"); goto membro_falhou;
+                    }
                     if (tt->type != T_IDENT && tt->type != T_IDENT_UPPER && tt->type != T_KW) {
                         perro(p, "esperado tipo apos ':' no campo da Entity", tt); goto membro_falhou;
                     }
+                    if (checa_op_em(p, 1, "|")) { recusa_uniao(p, 0); goto membro_falhou; }
                     p->pos++;
                     f->texto2 = tipo_retorno_dup(p, tt);
                     if (checa_op(p, "=")) {
@@ -3084,6 +3569,11 @@ static PSNode *statement_no(P *p)
                 perro(p, "dentro de Entity entra 'funct', decorador ou campo: 'nome = valor', 'nome: tipo' ou 'tipo nome = valor'", mt);
                 goto membro_falhou;
             }
+            /* dois membros na mesma linha exigem `;`, como dois comandos: o
+             * campo não podia ser a exceção (`int x = 1 int y = 2` passava no
+             * corpo da classe e era erro em todo outro lugar) */
+            exige_fim_de_comando(p, ini_m, NULL, 1);
+            if (FALHOU(p)) goto membro_falhou;
             pula_indent_solto(p);
             continue;
         membro_falhou:
@@ -3721,38 +4211,18 @@ static PSNode *statement_no(P *p)
     {
         int is_priv = -1;
         if (cabeca_de_funct(p, 0) >= 0) {
-            int is_async = 0, eh_static = 0, eh_nonnull = 0; const char *tipo = NULL;
-            PSToken *cur;
-            for (;;) {
-                cur = atual(p);
-                if (cur->type == T_KW && cur->texto && strcmp(cur->texto, "async") == 0) is_async = 1;
-                else if (cur->type == T_KW && cur->texto && strcmp(cur->texto, "public") == 0) is_priv = 0;
-                else if (cur->type == T_KW && cur->texto && strcmp(cur->texto, "private") == 0) is_priv = 1;
-                else if (eh_tipo_de_retorno(cur)) tipo = tipo_retorno_dup(p, cur);
-                else if (eh_mod_funct(cur)) {
-                    if (strcmp(cur->texto, "static") == 0) eh_static = 1; else eh_nonnull = 1;
-                } else break;
-                p->pos++;
-            }
-            PSNode *ad = funct_decl(p, is_async, tipo);
-            if (ad && is_priv >= 0) ad->is_private = is_priv;
-            if (ad) { ad->is_static = eh_static; ad->is_nonnull = eh_nonnull; }
+            Cabeca cb;
+            if (le_cabeca(p, &cb) != 0) return NULL;
+            PSNode *ad = funct_decl(p, cb.is_async, cb.tipo);
+            if (ad && cb.is_priv >= 0) ad->is_private = cb.is_priv;
+            if (ad) { ad->is_static = cb.eh_static; ad->is_nonnull = cb.eh_nonnull; }
             return ad;
         }
 
-        /* A cabeça `{async|tipo}+ NOME` SEM action/reaction é UMA unidade: uma
-         * função com o `action` esquecido — nunca "uma variável chamada
-         * async". Sem isto, `int async LoginHandler(data)` caía na declaração
-         * tipada e o erro era "'async' e palavra reservada ... nome de
-         * variavel" (o parser tinha lido `int async` como `int <nome>`);
-         * `async f(x) {` virava chamada + literal de dict e o erro falava de
-         * dicionário; `int f(x) {` dizia "exige '='". Três mensagens pro
-         * mesmo esquecimento, e nenhuma com a palavra que faltava.
-         *
-         * `int x = 1` continua declaração tipada: só é função aqui se a cabeça
-         * tem `async` (que nunca declara variável) ou se o nome vem seguido
-         * de `(`, que declaração nenhuma tem. A mensagem devolve a linha
-         * montada com os modificadores que a pessoa escreveu. */
+        /* A cabeça com o `funct` esquecido (`int f(x) {`, `static Null f()`,
+         * `async f(x)`): ver `recusa_funct_esquecida`. */
+        if (recusa_funct_esquecida(p)) return NULL;
+
         /* Daqui pra baixo NÃO é funct: é o campo com visibilidade
          * (`private str x = v`) e as mensagens de cabeça mal escrita. A
          * visibilidade é relida do token, e não herdada do ramo da funct
@@ -3765,43 +4235,6 @@ static PSNode *statement_no(P *p)
                          && (strcmp(m0->texto, "public") == 0 || strcmp(m0->texto, "private") == 0));
         if (tem_visib) is_priv = (strcmp(m0->texto, "private") == 0);
         int off = tem_visib ? 1 : 0;
-        int j = off;
-        PSToken *mk;
-        /* O mesmo conjunto de tipos da declaração (`eh_tipo_kw_decl`): com só
-         * os quatro tipos-base, `list f(x) {` ou `char f(x) {` não caíam aqui
-         * e o erro saía sem a palavra `funct`. */
-        while ((mk = espia(p, j))->type == T_KW && mk->texto
-                && (strcmp(mk->texto, "async") == 0 || eh_tipo_kw_decl(mk))) j++;
-        PSToken *ap = espia(p, j);
-        if (j > off && (ap->type == T_IDENT || ap->type == T_IDENT_UPPER)) {
-            int tem_async = 0;
-            for (int k = off; k < j; k++)
-                if (strcmp(espia(p, k)->texto, "async") == 0) tem_async = 1;
-            if (tem_async || espia(p, j + 1)->type == T_LPAREN) {
-                char mods[64]; size_t w = 0; mods[0] = '\0';
-                for (int k = off; k < j; k++) {
-                    int n = snprintf(mods + w, sizeof(mods) - w, "%s ", espia(p, k)->texto);
-                    if (n < 0 || (size_t)n >= sizeof(mods) - w) { mods[w] = '\0'; break; }
-                    w += (size_t)n;
-                }
-                char m[240];
-                const char *nome = ap->texto ? ap->texto : "?";
-                /* `int async reaction h(a)`: o que está no lugar do nome é a
-                 * grafia que saiu. Dizer "faltou funct antes de 'reaction'"
-                 * mandaria escrever `funct reaction(...)`, que não é o
-                 * conserto — o conserto é trocar a palavra. */
-                if (eh_grafia_morta(ap))
-                    snprintf(m, sizeof(m),
-                             "'%s' saiu da linguagem; troque por 'funct': %sfunct %.40s(...)",
-                             nome, mods, espia(p, j + 1)->texto ? espia(p, j + 1)->texto : "nome");
-                else
-                    snprintf(m, sizeof(m),
-                             "faltou 'funct' antes de '%.40s': %sfunct %.40s(...)",
-                             nome, mods, nome);
-                perro(p, m, ap);
-                return NULL;
-            }
-        }
 
         /* `private str name = nome` — CAMPO DO OBJETO declarado dentro da
          * funct, com visibilidade. É a forma que ele pediu: o modificador
@@ -3885,7 +4318,7 @@ static PSNode *statement_no(P *p)
                 const char *nome = exige_nome(p, "campo");
                 if (FALHOU(p)) return NULL;
                 if (!checa_op(p, "=")) {
-                    perro(p, "campo declarado dentro de funct precisa de '=' e um valor", atual(p));
+                    perro(p, "campo declarado dentro de funct precisa de '=' e um valor", onde_falta(p, nt2));
                     return NULL;
                 }
                 p->pos++;
@@ -3906,6 +4339,39 @@ static PSNode *statement_no(P *p)
                            "(%s x = 1, %s int x = 1)", m0->texto, m0->texto, m0->texto);
             return NULL;
         }
+    }
+
+    /* `Null x = Null` e `int|str u = 1`: tipo que não guarda valor e tipo
+     * união. Sem a recusa a linha se partia em dois comandos e o erro caía no
+     * nome, com um `;` que não conserta. */
+    if (recusa_tipo_de_valor(p, "a variavel")) return NULL;
+
+    /* `str private name = n` — o modificador DEPOIS do tipo: a mesma
+     * declaração de `private str name = n` (a ordem é de quem escreve, como na
+     * cabeça de funct e no campo da classe). Sem isto o `str` virava um
+     * comando solto e o resto outro. */
+    if ((eh_tipo_kw_decl(t) || t->type == T_IDENT || t->type == T_IDENT_UPPER)
+            && espia(p, 1)->type == T_KW && espia(p, 1)->texto
+            && (strcmp(espia(p, 1)->texto, "private") == 0 || strcmp(espia(p, 1)->texto, "public") == 0)
+            && (espia(p, 2)->type == T_IDENT || espia(p, 2)->type == T_IDENT_UPPER)) {
+        int priv = strcmp(espia(p, 1)->texto, "private") == 0;
+        const char *tipo = tipo_retorno_dup(p, t);
+        p->pos += 2;                                    /* tipo e private/public */
+        PSToken *nt2 = atual(p);
+        const char *nome = exige_nome(p, "campo");
+        if (FALHOU(p)) return NULL;
+        if (!checa_op(p, "=")) {
+            perro(p, "campo declarado dentro de funct precisa de '=' e um valor", onde_falta(p, nt2));
+            return NULL;
+        }
+        p->pos++;
+        PSNode *n = ps_node_novo(p->arena, N_FIELD_DECL, nt2->line, nt2->col);
+        if (!n) return NULL;
+        n->texto = nome; n->texto2 = tipo;
+        n->is_private = priv;
+        n->a = expressao(p);
+        if (FALHOU(p)) return NULL;
+        return n;
     }
 
     /* tipo de retorno antes de funct: `int funct f()`; ou declaracao tipada
@@ -3931,7 +4397,7 @@ static PSNode *statement_no(P *p)
         PSToken *nt = atual(p);
         const char *nome = exige_nome(p, "variavel");
         if (FALHOU(p)) return NULL;
-        if (!(checa_op(p, "="))) { perro(p, "declaracao de variavel exige '='", atual(p)); return NULL; }
+        if (!(checa_op(p, "="))) { perro(p, "declaracao de variavel exige '='", onde_falta(p, nt)); return NULL; }
         p->pos++;
         PSNode *n = ps_node_novo(p->arena, N_VAR_DECL, nt->line, nt->col);
         if (!n) return NULL;

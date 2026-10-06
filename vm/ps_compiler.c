@@ -2021,7 +2021,8 @@ static int tp_conta_utf8(const char *s, int32_t n)
  * literal diz mais que o tipo (`int` promete 64 bits, `char` é um caractere). */
 static int tp_aceita_um(C *c, const char *d, const char *v, PSNode *no, int declarado)
 {
-    if (strcmp(v, "Null") == 0) return declarado ? T_NAO : T_SIM;
+    /* Null só serve declarado onde o tipo É `Null` (o retorno da `Null funct`) */
+    if (strcmp(v, "Null") == 0) return declarado && strcmp(d, "Null") != 0 ? T_NAO : T_SIM;
     if (strcmp(d, v) == 0) {
         if (declarado && strcmp(d, "int") == 0) {
             if (no && no->kind == N_LITERAL && no->lit == L_INT) return T_SIM;
@@ -2332,38 +2333,85 @@ static int tp_ligado_no_escopo(C *c, Unidade *u, const char *nome)
  * sozinha e o que o jinker injeta. Nome que nada disso liga é `NameError`
  * certo rodando — e sai antes: uma `int funct` engolia esse erro e o programa
  * terminava calado, com `rc=0`, sem nunca ter feito o que devia. */
-static void tp_confere_nome(C *c, Unidade *u, const char *nome, PSNode *onde)
+/* O nome não é ligado por nada: nem o escopo, nem a VM, nem o jinker. */
+static int tp_nome_inexistente(C *c, Unidade *u, const char *nome)
 {
-    if (!nome || !*nome || c->nomes_incertos) return;
-    if (tp_ligado_no_escopo(c, u, nome)) return;
-    if (ps_nome_pre_ligado(nome) || ps_tipo_info(nome)) return;
-    if (c->usa_jinker && (!strcmp(nome, "request") || !strcmp(nome, "channel"))) return;
-    /* O nome parecido que EXISTE aqui — do escopo, do arquivo ou dos que a VM
-     * liga sozinha (`__name` -> `__name__`, `vlaor` -> `valor`). Sem isto a
-     * frase so dizia que nao existe, e o erro de digitacao ficava por conta de
-     * quem le. */
+    if (tp_ligado_no_escopo(c, u, nome)) return 0;
+    if (ps_nome_pre_ligado(nome) || ps_tipo_info(nome)) return 0;
+    if (c->usa_jinker && (!strcmp(nome, "request") || !strcmp(nome, "channel"))) return 0;
+    return 1;
+}
+
+/* O NameError de `nome`, com o nome parecido que EXISTE aqui — do escopo, do
+ * arquivo ou dos que a VM liga sozinha (`__name` -> `__name__`, `vlaor` ->
+ * `valor`). Sem a dica a frase so dizia que nao existe, e o erro de digitacao
+ * ficava por conta de quem le. Com `palavras`, as palavras da linguagem entram
+ * entre os candidatos: e o nome solto no comeco do comando (`retrun x` ->
+ * 'return', `whlie` -> 'while'), onde uma palavra-chave cabe. */
+static void tp_acusa_nome(C *c, Unidade *u, const char *nome, PSNode *onde, int palavras)
+{
     const char *dica = NULL;
-    {
-        int32_t tot = c->nligados_mod + 1;
-        for (Unidade *q = u; q; q = q->pai) tot += q->nligados;
-        const char **cands = malloc(sizeof(char *) * (size_t)tot);
-        if (cands) {
-            int n = 0;
-            for (Unidade *q = u; q; q = q->pai)
-                for (int32_t i = 0; i < q->nligados; i++) cands[n++] = q->ligados[i];
-            for (int32_t i = 0; i < c->nligados_mod; i++) cands[n++] = c->ligados_mod[i];
-            const char *pre = ps_sugere_pre_ligado(nome);
-            if (pre) cands[n++] = pre;
-            dica = ps_sugere_nome(nome, cands, n);
-            /* a dica aponta pra memoria de quem vive ate o fim da compilacao
-             * (listas de nomes / tabela da VM); o vetor em si morre aqui */
-            free(cands);
-        }
+    const char *const *kw = palavras ? ps_lexer_keywords() : NULL;
+    const char *const *mp = palavras ? ps_parser_mods_de_posicao() : NULL;
+    int32_t tot = c->nligados_mod + 1;
+    for (Unidade *q = u; q; q = q->pai) tot += q->nligados;
+    for (int i = 0; kw && kw[i]; i++) tot++;
+    for (int i = 0; mp && mp[i]; i++) tot++;
+    const char **cands = malloc(sizeof(char *) * (size_t)tot);
+    if (cands) {
+        int n = 0;
+        for (Unidade *q = u; q; q = q->pai)
+            for (int32_t i = 0; i < q->nligados; i++) cands[n++] = q->ligados[i];
+        for (int32_t i = 0; i < c->nligados_mod; i++) cands[n++] = c->ligados_mod[i];
+        const char *pre = ps_sugere_pre_ligado(nome);
+        if (pre) cands[n++] = pre;
+        for (int i = 0; kw && kw[i]; i++) cands[n++] = kw[i];
+        for (int i = 0; mp && mp[i]; i++) cands[n++] = mp[i];
+        dica = ps_sugere_nome(nome, cands, n);
+        /* a dica aponta pra memoria de quem vive ate o fim da compilacao
+         * (listas de nomes / tabelas fixas); o vetor em si morre aqui */
+        free(cands);
     }
     if (dica)
         terro(c, onde, "NameError", "name '%s' is not defined. Did you mean: '%s'?", nome, dica);
     else
         terro(c, onde, "NameError", "name '%s' is not defined", nome);
+}
+
+static void tp_confere_nome(C *c, Unidade *u, const char *nome, PSNode *onde)
+{
+    if (!nome || !*nome || c->nomes_incertos) return;
+    if (!tp_nome_inexistente(c, u, nome)) return;
+    tp_acusa_nome(c, u, nome, onde, 0);
+}
+
+/* `retrun x`, `whlie i < 3 {`, `const int x = 1`, `Conta c`, `Conta c = new
+ * Conta()`, `post x`: o primeiro comando da linha termina num nome solto e
+ * outro começa logo depois. O parser marcou (ver `marca_nome_solto`: `a` = o
+ * nome, `e` = onde começa o segundo, `i2` = 0 se o nome é o comando inteiro)
+ * e pulou o resto da linha. A causa costuma estar no nome, e só aqui se sabe o
+ * que ele é:
+ *   - não existe: o NameError dele — no começo do comando, com as palavras da
+ *     linguagem na dica (`retrun` -> 'return');
+ *   - é o comando inteiro e é um tipo: a declaração sem `=` (`Conta c`, como
+ *     `int x`);
+ *   - existe: são mesmo dois comandos colados.
+ * Sai erro SEMPRE: o resto da linha não foi lido, e o programa não pode rodar
+ * sem ele. */
+static void tp_nome_solto(C *c, Unidade *u, PSNode *n)
+{
+    const char *nome = n->a->texto;
+    PSNode *seg = n->e;
+    int no_comeco = (n->i2 == 0);
+    if (nome && *nome && !c->nomes_incertos && tp_nome_inexistente(c, u, nome)) {
+        tp_acusa_nome(c, u, nome, n->a, no_comeco);
+        return;
+    }
+    if (no_comeco && seg->i2 && nome && tp_tipo_existe(c, u, nome)) {
+        cerro_sx(c, seg->a ? seg->a : seg, "declaracao de variavel exige '='");
+        return;
+    }
+    cerro_sx(c, seg, "dois comandos na mesma linha: separe com ';' ou quebre a linha");
 }
 
 /* O programa liga `nome` a alguma coisa? Slot reservado só pela leitura
@@ -3751,7 +3799,9 @@ static int tp_arg_de_saida(C *c, Unidade *u, PSNode *call)
 static void tp_confere_saida(C *c, Unidade *u, PSNode *n)
 {
     c->saida_tipo = NULL;
-    if (!u->tipo_ret_nome) return;
+    /* `Null funct` não devolve valor: a regra da saída é de funct que devolve
+     * (decisão dele, 2026-10-05: `post` de qualquer coisa vale nela) */
+    if (!u->tipo_ret_nome || !strcmp(u->tipo_ret_nome, "Null")) return;
     int idx = tp_arg_de_saida(c, u, n);
     if (idx == -1) return;
     int pos = 0, talvez = 0;
@@ -5050,6 +5100,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
         }
 
         case N_EXPRESSION_STMT:
+            if (n->e) { tp_nome_solto(c, u, n); return; }
             expr(c, u, n->a);
             emite(c, u, OP_POP_TOP, 0);
             funde_incremento(c, u);          /* `x++` em int declarado */
@@ -5070,7 +5121,8 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             /* funct tipada: todo `return` devolve o tipo dela */
             if (u->tipo_ret_nome && !(!n->a && c->dentro_count_each > 0)) {
                 if (!n->a) {
-                    if (!u->tipo_ret)
+                    /* na `Null funct` o `return` seco é o jeito de sair */
+                    if (!u->tipo_ret && strcmp(u->tipo_ret_nome, "Null") != 0)
                         terro(c, n, "AttributedValueError",
                               "%s() devolve %s, e `return` sem valor devolveria Null",
                               u->nome_funct ? u->nome_funct : "?", u->tipo_ret_nome);
@@ -6620,9 +6672,10 @@ static int32_t compila_funct(C *c, PSNode *n, Unidade *pai)
 
     bloco_stmts(c, &u, n->b);
     /* Chegar ao fim devolve Null, e Null não é valor de nenhum tipo escrito
-     * — a não ser `int`/`bool`, cujo fim é o sentinela 0/True. Gerador
-     * devolve o gerador. */
-    if (u.tipo_ret_nome && !u.tipo_ret && !tp_tem_yield(n->b) && !tp_termina(n->b))
+     * — a não ser `int`/`bool`, cujo fim é o sentinela 0/True, e a própria
+     * `Null funct`, que não devolve valor. Gerador devolve o gerador. */
+    if (u.tipo_ret_nome && !u.tipo_ret && strcmp(u.tipo_ret_nome, "Null") != 0
+            && !tp_tem_yield(n->b) && !tp_termina(n->b))
         terro(c, n, "AttributedValueError",
               "%s() devolve %s e pode chegar ao fim sem return (o fim devolveria Null)",
               nome_f, u.tipo_ret_nome);

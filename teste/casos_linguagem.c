@@ -3208,6 +3208,120 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(json.parse(\"[1]\"))\n", "", "NameError: name 'json' is not defined", 2 },
 { "json solto continua sendo o tipo dict, sem import",
   "post(json)\njson d = {\"a\": 1}\npost(d)\n", "dict\n{'a': 1}", NULL, 0 },
+
+/* ── `Null funct`: a funct que nao devolve valor (2026-10-05) ───────────────
+ * `static Null funct main()` virava tres comandos (`static`, `Null` e a funct
+ * sem tipo) e o erro saia no `static`. Decisao dele: a funct que nao devolve
+ * — return seco ou `return Null`, o fim devolve Null, devolver valor e erro, e
+ * o `post` de qualquer coisa vale (a regra da saida e de funct com valor). */
+{ "static Null funct main vale (o arquivo dele)",
+  "import os\n\n\nstatic Null funct main(){\n    \n}\n", "", NULL, 0 },
+{ "Null funct: post de qualquer coisa e return seco",
+  "Null funct main() {\n    post(\"rodando\", 1)\n    return\n}\nmain()\n", "rodando 1", NULL, 0 },
+{ "Null funct: o fim e o return Null devolvem Null",
+  "Null funct f() {\n    int x = 1\n}\nNull funct g() {\n    return Null\n}\npost(f(), g())\n", "Null Null", NULL, 0 },
+{ "Null funct: devolver valor e erro antes de rodar",
+  "Null funct f() {\n    return 1\n}\npost(f())\n", "", "AttributedValueError: retorno de f() esperava Null, recebeu int", 2 },
+{ "Null funct: valor que so se sabe rodando e conferido no return",
+  "Null funct f(list l) {\n    return l[0]\n}\nf([1])\n", "", "AttributedValueError: retorno de f() esperava Null, recebeu int", 1 },
+{ "Null funct em metodo, static e async",
+  "class C {\n    Null funct m(self) {\n        post(\"m\")\n    }\n    static Null funct s() {\n        post(\"s\")\n    }\n}\n"
+  "Null async funct a() {\n    post(\"a\")\n}\nC().m()\nC.s()\nawait a()\n", "m\ns\na", NULL, 0 },
+
+/* ── dois comandos na mesma linha exigem `;` (2026-10-05) ───────────────────
+ * Sem separador a linha se partia calada e o erro caia longe da causa
+ * (`int|str u = 1` virava `int|str` e um `u = 1` sem tipo). O erro sai no
+ * comeco do segundo comando. */
+{ "dois comandos na mesma linha sao erro no segundo",
+  "int x = 1 int y = 2\npost(x, y)\n", "", "SyntaxError: dois comandos na mesma linha: separe com ';' ou quebre a linha", 2 },
+{ "uniao na declaracao nao se parte calada: o erro cai no | e diz o que nao vale",
+  "int|str u = 1\n", "", "SyntaxError: tipo uniao ('int|str') nao vale na declaracao: declare um tipo so", 2 },
+{ "com ; dois comandos na mesma linha valem",
+  "int x = 1; int y = 2; post(x, y)\n", "1 2", NULL, 0 },
+{ "bloco de uma linha com chaves continua valendo",
+  "int funct f() { return 1 }\nif True { post(f()) }\n", "1", NULL, 0 },
+{ "decoradores em linhas seguidas nao sao comandos colados",
+  "Object funct marca(Object f) {\n    return f\n}\n@marca\n@marca\nint funct g() {\n    return 7\n}\npost(g())\n", "7", NULL, 0 },
+
+/* ── o que a regra do separador quebrou na primeira versao (2026-10-05) ──────
+ * A sonda achou 13 regressoes: tudo que se partia calado antes passou a dar
+ * "dois comandos" numa palavra que nao era a causa, com um `;` que nao
+ * conserta nada. A regra agora: o erro cai na causa (o nome solto, a palavra
+ * de clausula, o segundo tipo da cabeca), e "dois comandos" so quando sao
+ * mesmo dois. */
+{ "decorador e metodo na mesma linha dentro da classe sao uma declaracao",
+  "class A {\n    @static funct s() { post(\"s\") }\n}\nA.s()\n", "s", NULL, 0 },
+{ "decorador com argumento e cabeca inteira na mesma linha, na classe",
+  "Object funct marca(str n) {\n    return funct(Object f) { return f }\n}\n"
+  "class A {\n    @marca(\"x\") public static str funct h(str d) { return d }\n}\npost(A.h(\"ok\"))\n", "ok", NULL, 0 },
+{ "dois membros na mesma linha da classe exigem ; (campo depois de campo tambem)",
+  "class C { int x = 1 int y = 2 }\n", "", "SyntaxError: dois membros na mesma linha: separe com ';' ou quebre a linha", 2 },
+{ "membros na mesma linha com ; valem, metodo no meio",
+  "class C { int x = 1; int funct a(self) { return self.x }; str s = \"z\" }\nC c = C()\npost(c.a(), c.s)\n", "1 z", NULL, 0 },
+{ "funct esquecido com static e Null diz a linha montada, no nome",
+  "static Null f() { post(1) }\n", "", "SyntaxError: faltou 'funct' antes de 'f': static Null funct f(...)", 2 },
+{ "funct esquecido com Null async e com nonnull",
+  "Null async f() { post(1) }\n", "", "faltou 'funct' antes de 'f': Null async funct f(...)", 2 },
+{ "funct esquecido com classe como tipo de retorno",
+  "class Ponto { int x = 0 }\nPonto f() { return Ponto() }\n", "", "faltou 'funct' antes de 'f': Ponto funct f(...)", 2 },
+{ "funct esquecido dentro da classe",
+  "class C {\n    static Null f() {\n        post(1)\n    }\n}\n", "", "faltou 'funct' antes de 'f': static Null funct f(...)", 2 },
+{ "palavra da cabeca digitada errado diz a certa",
+  "funtc f() {\n    post(1)\n}\n", "", "SyntaxError: 'funtc' nao existe. Did you mean: 'funct'?", 2 },
+{ "nome solto digitado errado e NameError nele, com a palavra-chave na dica",
+  "int funct f(int x) {\n    retrun x\n}\npost(f(1))\n", "", "NameError: name 'retrun' is not defined. Did you mean: 'return'?", 2 },
+{ "nome solto com letras invertidas acha a palavra (whlie, fro, riase)",
+  "int i = 0\nwhlie i < 3 {\n    i += 1\n}\n", "", "NameError: name 'whlie' is not defined. Did you mean: 'while'?", 2 },
+{ "nome solto de outra linguagem e NameError nele, nao na palavra seguinte",
+  "const int x = 1\n", "", "NameError: name 'const' is not defined", 2 },
+{ "nome solto que e tipo: declaracao sem =",
+  "class Conta { int v = 0 }\nConta c\n", "", "SyntaxError: declaracao de variavel exige '='", 2 },
+{ "nome solto que existe seguido de comando sao dois comandos mesmo",
+  "int x = 1\nint retrun = 2\nint funct f() {\n    retrun x\n}\n", "", "SyntaxError: dois comandos na mesma linha: separe com ';' ou quebre a linha", 2 },
+{ "uniao no parametro e no campo: a mesma frase, no |",
+  "Null funct f(int|str x) { post(x) }\n", "", "tipo uniao ('int|str') nao vale na declaracao", 2 },
+{ "else depois do guard diz que o guard nao tem else",
+  "if __name__ == \"main\" {\n    post(\"main\")\n} else {\n    post(\"importado\")\n}\n", "", "SyntaxError: o guard 'if __name__ == \"main\"' nao tem 'else'", 2 },
+{ "elif depois do else e clausula fora do lugar",
+  "if True {\n} else {\n}\nelif False {\n}\n", "", "SyntaxError: 'elif' fora do lugar: vem logo depois do '}' de um if ou elif", 2 },
+{ "finally repetido e case fora de match",
+  "try {\n    post(1)\n} finally {\n    post(2)\n} finally {\n    post(3)\n}\n", "", "'finally' fora do lugar: vem uma vez so", 2 },
+{ "each sem for",
+  "each x in [1, 2] {\n    post(x)\n}\n", "", "'each' fora do lugar: o laco e 'for each x in ...' (ou 'count each')", 2 },
+{ "ternario sem else e erro no if",
+  "int x = 1\nint y = x if True\npost(y)\n", "", "SyntaxError: faltou 'else' no ternario: valor if condicao else outro", 2 },
+{ "o if da compreensao continua sendo o filtro",
+  "list l = [x for each x in [1, 2, 3] if x > 1]\npost(l)\n", "[2, 3]", NULL, 0 },
+{ "modificador depois do tipo na declaracao de campo dentro do construtor",
+  "class P {\n    funct __init__(self, str n) {\n        str private name = n\n    }\n    str funct nome(self) { return self.name }\n}\npost(P(\"ana\").nome())\n", "ana", NULL, 0 },
+{ "dois tipos de retorno na cabeca e erro no segundo (o Null nao some calado)",
+  "Null int funct f() { return 1 }\npost(f())\n", "", "SyntaxError: dois tipos de retorno na cabeca da funct: 'Null' e 'int' (fica um so)", 2 },
+{ "dois tipos na lambda tambem",
+  "Object h = Null int funct() { return 1 }\n", "", "dois tipos de retorno na cabeca da funct: 'Null' e 'int'", 2 },
+{ "modificador digitado errado na cabeca diz o certo",
+  "pirvate Null funct m() { post(1) }\n", "", "SyntaxError: modificador 'pirvate' nao existe. Did you mean: 'private'?", 2 },
+{ "modificador repetido na cabeca",
+  "static static funct f() { post(1) }\n", "", "SyntaxError: 'static' repetido na cabeca da funct", 2 },
+{ "public e private na mesma cabeca",
+  "public private funct f() { post(1) }\n", "", "SyntaxError: 'public' e 'private' na mesma cabeca: a funct e uma ou a outra", 2 },
+{ "Null so e tipo no retorno: variavel",
+  "Null x = Null\npost(x)\n", "", "SyntaxError: 'Null' so e tipo no retorno de funct (Null funct f() { ... }): a variavel leva um tipo de valor", 2 },
+{ "Null so e tipo no retorno: parametro e campo",
+  "Null funct f(Null x) { post(x) }\n", "", "'Null' so e tipo no retorno de funct (Null funct f() { ... }): o parametro leva um tipo de valor", 2 },
+{ "Null so e tipo no retorno: campo da classe nas duas grafias",
+  "class C { campo: Null = Null }\n", "", "'Null' so e tipo no retorno de funct (Null funct f() { ... }): o campo leva um tipo de valor", 2 },
+
+/* ── o arquivo dele de 2026-10-05: `while x < 10.000.000.000` com o `{` na
+ * linha de baixo. O numero com ponto de milhar virava `10.000` + `.000` e o
+ * erro saia "esperado nome do membro apos '.'"; e o `{` orfao do cabecalho
+ * quebrado virava DICIONARIO, com "faltou ':' no dicionario" em cima do
+ * `x++;` — a cascata que ele nao aceita. */
+{ "numero com ponto de milhar diz as grafias que valem, no numero inteiro",
+  "int x = 10.000.000\n", "", "SyntaxError: numero nao usa '.' como separador de milhar: escreva 10000000 (ou 10_000_000)", 2 },
+{ "numero com _ de milhar, float e expoente continuam valendo",
+  "int x = 10_000_000\nflo f = 1.5\npost(x, f, 1e3)\n", "10000000 1.5 1000.0", NULL, 0 },
+{ "cabecalho quebrado com a chave embaixo: o bloco vai junto, sem erro de dicionario no corpo",
+  "int x = 0\nwhile x < 10.000.000\n{\n    x++;\n}\npost(x)\n", "", "separador de milhar", 2 },
 { "base() com posicional depois de nomeado e SyntaxError, rc 2 (era rc 3)",
   "Entity A { int x\n    funct __init__(self, x, b) { self.x = x } }\n"
   "Entity B(A) {\n    funct __init__(self) { base().__init__(1, b=2, 3) }\n}\nB()\n", "",

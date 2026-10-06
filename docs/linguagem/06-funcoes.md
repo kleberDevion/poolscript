@@ -294,6 +294,30 @@ int funct conta() {
 O que só se sabe rodando (o valor de `json.parse`, de `d["k"]`) é conferido
 rodando, no `return` — o mesmo erro, no outro momento.
 
+### 6.4.1. `Null funct` — a funct que não devolve valor
+
+`Null funct` é a funct que **não devolve nada**. O
+`return` dela é seco (ou `return Null`), chegar ao fim devolve `Null`, e
+devolver um valor é erro. A regra da saída não vale aqui — ela é de funct que
+devolve valor —, então o `post` de qualquer coisa continua valendo. Junta com
+os modificadores como os outros tipos (`static Null funct`, `Null async
+funct`, método):
+
+```ps
+static Null funct main() {
+    post("rodando", 1)
+    return
+}
+main()
+```
+
+```ps
+Null funct grava() {
+    return 1
+}
+# AttributedValueError: retorno de grava() esperava Null, recebeu int
+```
+
 `int funct` e `bool funct` têm, além disso, o **sentinela de erro**: o corpo
 vira um `try` implícito e a funct nunca propaga exceção. É pensado para
 handlers que precisam sempre devolver algo (um status, um sim/não).
@@ -457,8 +481,21 @@ nada — e é erro (`'private' aqui nao tem efeito: so vale no topo do arquivo
 Vale igual com um [decorador](14-decoradores.md) em cima: `@app.post("/x")`
 seguido de `int async funct h()` registra `h` como qualquer outra ordem.
 
-Esquecer o `funct` é erro de sintaxe, e a mensagem devolve a linha montada:
-`int async f(x)` dá `faltou 'funct' antes de 'f': int async funct f(...)`.
+Cada prefixo vale **uma vez**. Dois tipos de retorno (`Null int funct f()`),
+um modificador repetido (`static static funct`) ou `public` com `private` na
+mesma cabeça são erro de sintaxe no segundo — antes o último escrito ganhava
+calado. Prefixo digitado errado diz a palavra certa: `pirvate Null funct m()`
+dá `modificador 'pirvate' nao existe. Did you mean: 'private'?`.
+
+Esquecer o `funct` é erro de sintaxe, e a mensagem devolve a linha montada,
+com qualquer prefixo na frente: `int async f(x)` dá `faltou 'funct' antes de
+'f': int async funct f(...)`; `static Null f()` dá `faltou 'funct' antes de
+'f': static Null funct f(...)`. `funtc f()` dá `'funtc' nao existe. Did you
+mean: 'funct'?`.
+
+`Null` só é tipo **no retorno**: `Null x = Null`, `funct f(Null x)` e o campo
+`Null c` são erro (`'Null' so e tipo no retorno de funct`), e `int|str x = 1`
+também (`tipo uniao ('int|str') nao vale na declaracao: declare um tipo so`).
 
 ---
 

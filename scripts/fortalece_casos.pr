@@ -51,12 +51,12 @@ funct des_c(s) {
         c = s[i]
         if c == "\\" and i + 1 < len(s) {
             d = s[i + 1]
-            if d == "n" { addEnd(out, 10) i = i + 2 continue }
-            if d == "t" { addEnd(out, 9) i = i + 2 continue }
-            if d == "r" { addEnd(out, 13) i = i + 2 continue }
-            if d == "0" { addEnd(out, 0) i = i + 2 continue }
-            if d == "\\" { addEnd(out, 92) i = i + 2 continue }
-            if d == "\"" { addEnd(out, 34) i = i + 2 continue }
+            if d == "n" { addEnd(out, 10); i = i + 2; continue }
+            if d == "t" { addEnd(out, 9); i = i + 2; continue }
+            if d == "r" { addEnd(out, 13); i = i + 2; continue }
+            if d == "0" { addEnd(out, 0); i = i + 2; continue }
+            if d == "\\" { addEnd(out, 92); i = i + 2; continue }
+            if d == "\"" { addEnd(out, 34); i = i + 2; continue }
             if d == "x" and i + 3 < len(s) {
                 addEnd(out, hex2(s[i+2]) * 16 + hex2(s[i+3]))
                 i = i + 4
@@ -235,11 +235,11 @@ if __name__ == "main" {
                 emc = False
                 while z < len(cabeca) {
                     if emc {
-                        if cabeca[z:z+2] == "*/" { emc = False z = z + 2 continue }
+                        if cabeca[z:z+2] == "*/" { emc = False; z = z + 2; continue }
                         z = z + 1
                         continue
                     }
-                    if cabeca[z:z+2] == "/*" { emc = True z = z + 2 continue }
+                    if cabeca[z:z+2] == "/*" { emc = True; z = z + 2; continue }
                     lim = lim + cabeca[z]
                     z = z + 1
                 }

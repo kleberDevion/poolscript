@@ -253,6 +253,10 @@ class Config {
 post(Config.a, Config.d)             # 1 4
 ```
 
+Cada modificador vale uma vez (`static static int a` e `public private int
+b` são erro), e dois membros na mesma linha precisam de `;` entre eles, como
+dois comandos: `class C { int x = 1; int y = 2 }`.
+
 Sem inicializador o campo nasce `Null`.
 
 Quem enxerga o campo, e como:
@@ -290,7 +294,7 @@ soltos, e o hover/definição num nome solto vai no campo ou método.
 
 É **um só** valor, compartilhado: `K.n = K.n + 1` num método muda o que toda
 instância lê em `self.n`. E ele **não entra** no construtor sintetizado —
-`class P { static int total = 0  str nome }` continua sendo `P("ana")`.
+`class P { static int total = 0; str nome }` continua sendo `P("ana")`.
 
 Por que existe: sem ele, `App.mapp` não existia, um método `static` não tinha
 como enxergar o campo, e o decorador no corpo da classe rodava antes de haver

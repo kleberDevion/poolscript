@@ -79,4 +79,8 @@ void           ps_parse_inc_fecha(PSParserInc *pi, PSTokenList **lexer);
  * única: a tabela que o próprio parser consulta; o `--metadata` a publica. */
 const char *const *ps_parser_tipos_decl(void);
 
+/* `static`, `nonnull`, `NonNull`: modificadores da cabeça de funct que não
+ * são palavra reservada (valem por posição). Terminada em NULL. */
+const char *const *ps_parser_mods_de_posicao(void);
+
 #endif /* PS_PARSER_H */

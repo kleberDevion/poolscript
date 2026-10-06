@@ -1046,6 +1046,38 @@ static void le_numero(Lexer *lx)
         lx->pos++; lx->col++;
         corre_digitos(lx, 10);
     }
+    /* `10.000.000`: o ponto de milhar não existe. Sem esta recusa o lexer
+     * entregava o float `10.000` e depois `.000`, e o erro saía no parser
+     * como "esperado nome do membro apos '.'" — nada a ver com o que a pessoa
+     * escreveu. A frase diz as duas grafias que valem (dígitos juntos, ou `_`
+     * de separador), e o erro cobre o número inteiro. */
+    if (flutuante && lx->pos < lx->len && lx->src[lx->pos] == '.'
+            && lx->pos + 1 < lx->len && eh_digito(lx->src[lx->pos + 1])) {
+        size_t q = lx->pos;
+        for (;;) {
+            if (q < lx->len && (eh_digito(lx->src[q]) || lx->src[q] == '_')) { q++; continue; }
+            if (q + 1 < lx->len && lx->src[q] == '.' && eh_digito(lx->src[q + 1])) { q++; continue; }
+            break;
+        }
+        char junto[80], sep[80];
+        int a = 0, b = 0;
+        for (size_t i = ini; i < q && a < (int)sizeof(junto) - 1 && b < (int)sizeof(sep) - 1; i++) {
+            char ch = lx->src[i];
+            if (eh_digito(ch)) { junto[a++] = ch; sep[b++] = ch; }
+            else sep[b++] = '_';
+        }
+        junto[a] = '\0'; sep[b] = '\0';
+        char msg[256];
+        snprintf(msg, sizeof(msg), "numero nao usa '.' como separador de milhar: escreva %s (ou %s)", junto, sep);
+        lx->col += (int32_t)(q - lx->pos);
+        lx->pos = q;
+        erro_em(lx, msg, lx->linha, c0);
+        /* O lugar do número fica marcado: o parser falha CALADO nele (ver
+         * perro_na_lista), em vez de somar um "expressao invalida" no
+         * `while` — o erro é um só, e é este. */
+        novo_token(lx, T_SINC, lx->linha, c0);
+        return;
+    }
     /* Expoente `1e30`, `2.5E-3`. Só consome o `e` se vier dígito depois
      * (com sinal opcional), senão `1e` seria número seguido de nada. */
     if (lx->pos < lx->len && (lx->src[lx->pos] == 'e' || lx->src[lx->pos] == 'E')) {

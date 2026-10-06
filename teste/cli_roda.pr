@@ -337,6 +337,33 @@ confere("--check: true minúsculo é NameError com a dica True, na coluna dele",
         and "\"linha\":1,\"coluna\":10" in r["saida"])
 r = roda([POOL, "--bytecode"], entrada="bool b = True\n")
 confere("--bytecode mostra o booleano como True", "; True" in r["saida"] and not ("; true" in r["saida"]))
+# Dois comandos na mesma linha: o erro sai no começo do segundo, não numa
+# palavra do primeiro (`static Null funct main()` acusava o `static`)
+r = roda([POOL, "--check"], entrada="int x = 1 int y = 2\n")
+confere("--check: dois comandos colados é SyntaxError no começo do segundo",
+        "dois comandos na mesma linha" in r["saida"] and "\"linha\":1,\"coluna\":11" in r["saida"])
+r = roda([POOL, "--check"], entrada="static Null funct main() {\n    post(1)\n}\n")
+confere("--check: static Null funct passa", "\"ok\":true" in r["saida"])
+# O erro cai na CAUSA: o `f` sem funct, o `retrun` digitado errado (NameError
+# na linha dele, com a palavra-chave na dica), o `Null` usado como tipo de
+# variável — nunca "dois comandos" numa palavra que não é a causa
+r = roda([POOL, "--check"], entrada="static Null f() { post(1) }\n")
+confere("--check: funct esquecido aponta o nome, nao o Null",
+        "faltou 'funct' antes de 'f'" in r["saida"] and "\"linha\":1,\"coluna\":13" in r["saida"])
+r = roda([POOL, "--check"], entrada="int funct f(int x) {\n    retrun x\n}\n")
+confere("--check: nome solto digitado errado e NameError na palavra, com a dica",
+        "\"tipo\":\"NameError\"" in r["saida"] and "Did you mean: 'return'" in r["saida"]
+        and "\"linha\":2,\"coluna\":5" in r["saida"])
+r = roda([POOL, "--check"], entrada="Null x = Null\n")
+confere("--check: Null como tipo de variavel e erro no Null",
+        "so e tipo no retorno de funct" in r["saida"] and "\"linha\":1,\"coluna\":1" in r["saida"])
+# O cabeçalho quebrado com o `{` na linha de baixo: UM erro, no número; o
+# corpo do bloco não vira dicionário (o editor marcava `x++;` com "faltou ':'
+# no dicionario")
+r = roda([POOL, "--check"], entrada="int x = 0\nwhile x < 10.000.000.000\n{\n    x++;\n}\npost(x)\n")
+confere("--check: so o erro do numero, sem a cascata do dicionario no corpo",
+        "separador de milhar" in r["saida"] and not ("dicionario" in r["saida"])
+        and r["saida"].count("\"tipo\":") == 2)
 # `json.parse` sem `import json`: o check acusa o que rodando dava NameError
 r = roda([POOL, "--check"], entrada="post(json.parse(\"[1]\"))\n")
 confere("--check: json.parse sem import json é NameError",

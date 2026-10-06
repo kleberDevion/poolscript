@@ -48,7 +48,7 @@ casos = [{"veio": 4, "esperado": 4, "nome": "soma"}, {"veio": 5, "esperado": 4, 
 falhas = 0
 for each caso in casos {
     try { assert(caso["veio"], caso["esperado"], caso["nome"]) }
-    catch (e) { falhas = falhas + 1  post("  " + str(e)) }
+    catch (e) { falhas = falhas + 1; post("  " + str(e)) }
 }
 post(falhas, "falharam")
 ```
