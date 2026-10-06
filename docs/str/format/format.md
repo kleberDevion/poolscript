@@ -22,6 +22,10 @@ str
 - **KeyError** — o formato cita um **nome**: `"{x}".format(1)` → `'x'`
 - **TypeError** — argumento nomeado: `"{nome}".format(nome="ana")` →
   `'nome' is an invalid keyword argument for format()`
+- **MemoryError** — largura ou precisão acima de 256 MB no spec
+  (`"{:.999999999f}"`): `memória insuficiente: format() pediu precisao N`.
+  O índice posicional não tem teto de dígitos: `"{2147483648}".format(1)` é o
+  IndexError de sempre, com o número como foi escrito.
 
 ## Exemplos
 

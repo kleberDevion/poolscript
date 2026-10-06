@@ -9,6 +9,34 @@
 #include "ps_teste.h"
 
 const Caso CASOS_CRASH[] = {
+/* ── sonda 2 (2026-10-06), texto e comparacao: 4 quedas/vazamentos ──────────
+ * Cada um derrubava o processo, lia fora do buffer ou comia a memoria da
+ * maquina; o conserto e um mecanismo geral (teto conferido na leitura,
+ * identidade antes de descer, folga da pilha medida). */
+{ "format: indice posicional acima de 2^31 e IndexError, nao segfault",
+  "str t = \"{2147483648}\"\npost(t.format(\"primeiro\"))\n", "",
+  "IndexError: Replacement index 2147483648 out of range for positional args tuple", 1 },
+{ "format_map com indice gigante (args NULL) e IndexError, nao segfault",
+  "dict d = {\"a\": 1}\nstr t = \"{2147483648}\"\npost(t.format_map(d))\n", "",
+  "IndexError: Replacement index 2147483648 out of range for positional args tuple", 1 },
+{ "format: indice que dava a volta em 2^32 nao le o argumento errado",
+  "str t = \"{4294967296}|{4294967297}\"\npost(t.format(\"A\", \"B\"))\n", "",
+  "IndexError: Replacement index 4294967296 out of range for positional args tuple", 1 },
+{ "lista ciclica: l < l responde False sem recursar (identidade)",
+  "list l = []\nl.append(l)\nbool r = l < l\npost(r, l <= l, l > l)\n", "False True False", NULL, 0 },
+{ "lista ciclica: sort e sorted com o mesmo item nao caem",
+  "list l = []\nl.append(l)\nlist m = [l, l]\nm.sort()\npost(len(m), len(sorted(m)))\n", "2 2", NULL, 0 },
+{ "listas ciclicas distintas: max e < dao RecursionError, nao segfault",
+  "list x = [1]\nlist y = [1]\nx.append(x)\ny.append(y)\ntry {\n    post(len(max([x, y])))\n} catch (RecursionError e) {\n    post(\"max:\", \"comparacao aninhada demais\" in e)\n}\npost(x < y)\n", "max: True",
+  "RecursionError: comparacao aninhada demais", 1 },
+{ "format {:f} de 1e300 nao le fora do buffer: 308 digitos, sem lixo",
+  "str r = \"{:f}\".format(1e300)\npost(len(r), r.startswith(\"10000000000000000525\"), r.endswith(\".000000\"), r.count(\"\\x00\"))\n"
+  "post(len(\"{:.200f}\".format(0.1)), \"{:>12.3f}|\".format(3.14159), \"{:08.2f}\".format(2.5))\n",
+  "308 True True 0\n202        3.142| 00002.50", NULL, 0 },
+{ "expandtabs: largura acima do teto e MemoryError na hora, em str e em bytes",
+  "str s = \"a\\tb\"\ntry {\n    s.expandtabs(1000000000000)\n} catch (MemoryError e) {\n    post(\"str:\", \"pediu largura 1000000000000\" in e)\n}\n"
+  "byte b = b\"a\\tb\"\ntry {\n    b.expandtabs(4294967300)\n} catch (MemoryError e) {\n    post(\"byte:\", \"pediu largura 4294967300\" in e)\n}\npost(s.expandtabs(4), b.expandtabs(4))\n",
+  "str: True\nbyte: True\na   b b'a   b'", NULL, 0 },
 /* ── recursão sem teto: três SIGSEGV da auditoria de engenharia (27/08) ──────
  * Os três eram descida recursiva sem limite. O detector de CICLO existia e não
  * bastava: ele pega `l.append(l)`, e não pega profundidade sem ciclo nem ciclo

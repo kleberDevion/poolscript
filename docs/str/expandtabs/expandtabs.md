@@ -25,5 +25,8 @@ a   bc  d
 ## Bordas
 
 - o número de espaços varia com a posição: o tab alinha na próxima parada, não insere `tabsize` espaços fixos
+- `tabsize` tem o mesmo teto de `ljust` (256 MB): acima dele é `MemoryError:
+  memória insuficiente: expandtabs() pediu largura N`, antes de alocar
+  qualquer coisa. Vale igual em `byte`.
 
 [← índice](../str.md)

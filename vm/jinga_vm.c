@@ -4454,10 +4454,18 @@ static int compara_valores_par(const Value *a, const Value *b,
     }
     if (EH_SEQ(*a) && EH_SEQ(*b)) {
         PSList *x = COMO_LIST(*a), *y = COMO_LIST(*b);
+        /* A mesma lista dos dois lados é igual sem descer: é o que faz
+         * `l < l` de uma lista cíclica responder False em vez de recursar
+         * até derrubar o processo (o `val_iguais` já tinha este atalho). E a
+         * descida mede a folga da pilha do C, como o repr: ao apertar devolve
+         * -3, que os chamadores levantam como RecursionError — `max([x, y])`
+         * com x = [1, x] e y = [1, y] não tem fundo. */
+        if (x == y) return 0;
+        if (ps_pilha_apertada()) return -3;
         int m = x->len < y->len ? x->len : y->len;
         for (int i = 0; i < m; i++) {
             int c = compara_valores_par(&x->itens[i], &y->itens[i], ma, mb);
-            if (c == -2) return -2;
+            if (c == -2 || c == -3) return c;
             if (c) return c;
         }
         return (x->len > y->len) - (x->len < y->len);
@@ -4465,6 +4473,9 @@ static int compara_valores_par(const Value *a, const Value *b,
     if (ma) { *ma = a; *mb = b; }
     return -2;
 }
+
+/* A frase do -3 do compara_valores_par, uma só pra todo chamador. */
+#define MSG_CMP_FUNDO "comparacao aninhada demais"
 
 
 /* Aponta `itens`/`n` para o conteúdo de uma sequência. String vira sequência
@@ -4851,10 +4862,12 @@ static int extremo(VM *vm, Value *args, int n, Value *out, const char *nome, int
             if (iteravel_item(vm, &args[0], i, &item) != 0) BERRO(vm, "MemoryError", "sem memoria");
             const Value *ma = &item, *mb = &melhor;
             int c = compara_valores_par(&item, &melhor, &ma, &mb);
-            if (c == -2)
+            if (c < -1) {
+                if (c == -3) BERRO(vm, "RecursionError", MSG_CMP_FUNDO);
                 BERRO(vm, "TypeError",
                       "'%s' not supported between instances of '%s' and '%s'",
                       maior ? ">" : "<", nome_do_tipo_valor(*ma), nome_do_tipo_valor(*mb));
+            }
             if (maior ? (c > 0) : (c < 0)) melhor = item;
         }
         *out = melhor;
@@ -4864,10 +4877,12 @@ static int extremo(VM *vm, Value *args, int n, Value *out, const char *nome, int
     for (int i = 1; i < n; i++) {
         const Value *ma = &args[i], *mb = &melhor;
         int c = compara_valores_par(&args[i], &melhor, &ma, &mb);
-        if (c == -2)
+        if (c < -1) {
+            if (c == -3) BERRO(vm, "RecursionError", MSG_CMP_FUNDO);
             BERRO(vm, "TypeError",
                   "'%s' not supported between instances of '%s' and '%s'",
                   maior ? ">" : "<", nome_do_tipo_valor(*ma), nome_do_tipo_valor(*mb));
+        }
         if (maior ? (c > 0) : (c < 0)) melhor = args[i];
     }
     *out = melhor;
@@ -4900,10 +4915,12 @@ static int nativa_sorted(VM *vm, Value *args, int n, Value *out)
         while (j >= 0) {
             const Value *ma = &l->itens[j], *mb = &chave;
             int c = compara_valores_par(&l->itens[j], &chave, &ma, &mb);
-            if (c == -2)
+            if (c < -1) {
+                if (c == -3) BERRO(vm, "RecursionError", MSG_CMP_FUNDO);
                 BERRO(vm, "TypeError",
                       "'<' not supported between instances of '%s' and '%s'",
                       nome_do_tipo_valor(*mb), nome_do_tipo_valor(*ma));
+            }
             if (c <= 0) break;
             l->itens[j + 1] = l->itens[j];
             j--;
@@ -6153,15 +6170,20 @@ static int met_expandtabs(VM *vm, Value alvo, Value *args, int n, Value *out)
                                      nome_do_tipo_valor(args[0]));
         passo = args[0].as.i;
     }
+    /* o mesmo teto do ljust: sem ele, `expandtabs(10**12)` escrevia espaco
+     * a espaco ate comer a memoria da maquina */
+    if (passo > PS_STR_MAX)
+        MERRO(vm, "MemoryError", "memória insuficiente: expandtabs() pediu largura %lld",
+              (long long)passo);
     SBUF_AUTO b = {0};
-    int coluna = 0;
+    int64_t coluna = 0;
     for (int i = 0; i < s->len; i++) {
         char c = s->chars[i];
         if (c == '\t') {
             int64_t ate = passo > 0 ? passo - (coluna % passo) : 0;
             for (int64_t k = 0; k < ate; k++)
                 if (sb_bytes(&b, " ", 1) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
-            coluna += (int)ate;
+            coluna += ate;
         } else {
             if (sb_bytes(&b, &c, 1) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
             if (c == '\n' || c == '\r') coluna = 0;
@@ -6236,8 +6258,27 @@ static int formata_um(VM *vm, SBuf *saida, const Value *v, const char *spec, int
     if (tipo == 'f') {
         double d = (v->t == V_INT) ? (double)v->as.i : (v->t == V_FLOAT) ? v->as.d : 0;
         if (v->t != V_INT && v->t != V_FLOAT) { snprintf(vm->erro, sizeof(vm->erro), "format: 'f' espera numero"); return -1; }
+        if (prec > PS_STR_MAX) {
+            snprintf(vm->erro, sizeof(vm->erro), "memória insuficiente: format() pediu precisao %d", prec);
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+            return -1;
+        }
         ntxt = snprintf(num, sizeof(num), "%.*f", prec < 0 ? 6 : prec, d);
         txt = num;
+        if (ntxt >= (int)sizeof(num)) {
+            /* O snprintf devolve o tamanho que TERIA escrito: `{:f}` de 1e300
+             * sao 308 caracteres, e copiar `ntxt` bytes de `num` lia a pilha
+             * do C alem do buffer — o lixo (ponteiros, zeros) ia parar dentro
+             * da str, diferente a cada execucao. Formata de novo num buffer
+             * do tamanho certo. */
+            char *g = malloc((size_t)ntxt + 1);
+            if (!g) { snprintf(vm->erro, sizeof(vm->erro), "sem memoria"); snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError"); return -1; }
+            snprintf(g, (size_t)ntxt + 1, "%.*f", prec < 0 ? 6 : prec, d);
+            int rc_g = txt_put(&t, g, ntxt);
+            free(g);
+            if (rc_g != 0) { snprintf(vm->erro, sizeof(vm->erro), "sem memoria"); snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError"); return -1; }
+            txt = t.b; ntxt = t.n;
+        }
     } else if (tipo == 'd' || tipo == 'x' || tipo == 'X' || tipo == 'o' || tipo == 'b') {
         if (v->t != V_INT && v->t != V_BOOL) { snprintf(vm->erro, sizeof(vm->erro), "format: '%c' espera int", tipo); return -1; }
         int64_t x = (v->t == V_BOOL) ? (v->as.b ? 1 : 0) : v->as.i;
@@ -6330,8 +6371,13 @@ static int met_format_geral(VM *vm, Value alvo, Value *args, int n, Value *out, 
             for (int k = 0; k < ncampo; k++)
                 if (campo[k] < '0' || campo[k] > '9') { so_digito = 0; break; }
             if (so_digito) {
-                int idx = 0;
-                for (int k = 0; k < ncampo; k++) idx = idx * 10 + (campo[k] - '0');
+                /* COM TETO: `{2147483648}` transbordava o `int`, ficava
+                 * negativo, passava no `idx < n` e lia `args[idx]` fora do
+                 * vetor (no format_map `args` e NULL) — falha de segmentacao.
+                 * A soma para assim que passa de `n`; o que passou e "fora
+                 * da faixa", e o erro abaixo diz o numero como foi escrito. */
+                int64_t idx = 0;
+                for (int k = 0; k < ncampo && idx <= n; k++) idx = idx * 10 + (campo[k] - '0');
                 if (idx < n) { v = args[idx]; achou = 1; }
             } else if (EH_DICT(mapa)) {
                 PSString *ch = nova_string(vm, campo, ncampo);
@@ -6345,18 +6391,18 @@ static int met_format_geral(VM *vm, Value alvo, Value *args, int n, Value *out, 
              * sobrando, ou `{5}`) é IndexError com o índice; campo por NOME é
              * KeyError com o nome, e só ele. Nos dois o TIPO do argumento está
              * certo — o que falta é o VALOR —, então nenhum é TypeError. */
-            int pos = 1, idx = auto_idx;
-            if (ncampo > 0) {
-                idx = 0;
-                for (int k = 0; k < ncampo; k++) {
-                    if (campo[k] < '0' || campo[k] > '9') { pos = 0; break; }
-                    idx = idx * 10 + (campo[k] - '0');
-                }
-            }
+            int pos = 1;
+            for (int k = 0; k < ncampo; k++)
+                if (campo[k] < '0' || campo[k] > '9') { pos = 0; break; }
+            /* o indice sai como foi ESCRITO (sem reconta-lo num int) */
+            if (pos && ncampo > 0)
+                MERRO(vm, "IndexError",
+                      "Replacement index %.*s out of range for positional args tuple",
+                      ncampo, campo);
             if (pos)
                 MERRO(vm, "IndexError",
                       "Replacement index %d out of range for positional args tuple",
-                      idx);
+                      auto_idx);
             MERRO(vm, "KeyError", "'%.*s'", ncampo, campo);
         }
         if (formata_um(vm, &b, &v, spec, nspec) != 0) {
@@ -6670,10 +6716,12 @@ static int met_l_sort(VM *vm, Value alvo, Value *args, int n, Value *out)
         while (j >= 0) {
             const Value *ma = &l->itens[j], *mb = &chave;
             int c = compara_valores_par(&l->itens[j], &chave, &ma, &mb);
-            if (c == -2)
+            if (c < -1) {
+                if (c == -3) MERRO(vm, "RecursionError", MSG_CMP_FUNDO);
                 MERRO(vm, "TypeError",
                       "'<' not supported between instances of '%s' and '%s'",
                       nome_do_tipo_valor(*mb), nome_do_tipo_valor(*ma));
+            }
             if (c <= 0) break;
             l->itens[j + 1] = l->itens[j];
             j--;
@@ -8422,12 +8470,17 @@ static int met_b_expandtabs(VM *vm, Value alvo, Value *args, int n, Value *out)
                   nome_do_tipo_valor(args[0]));
         tam = args[0].as.i;
     }
+    /* o mesmo teto do ljust; e a conta em int64: `(int)(tam - col % tam)`
+     * truncava, e expandtabs(2**32 + 4) virava expandtabs(4) calado */
+    if (tam > PS_STR_MAX)
+        MERRO(vm, "MemoryError", "memória insuficiente: expandtabs() pediu largura %lld",
+              (long long)tam);
     SBUF_AUTO b = {0};
-    int col = 0;
+    int64_t col = 0;
     for (int i = 0; i < slen; i++) {
         if (s[i] == '\t') {
-            int quantos = tam > 0 ? (int)(tam - col % tam) : 0;
-            for (int k = 0; k < quantos; k++)
+            int64_t quantos = tam > 0 ? tam - col % tam : 0;
+            for (int64_t k = 0; k < quantos; k++)
                 if (sb_bytes(&b, " ", 1) != 0) MERRO(vm, "MemoryError", "sem memoria");
             col += quantos;
             continue;
@@ -25804,8 +25857,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * acusaria "list e list", que se comparam sem problema. */    \
                 const Value *ma = &a, *mb = &b;                               \
                 int c = compara_valores_par(&a, &b, &ma, &mb);                \
-                if (c == -2)                                                  \
+                if (c < -1) {                                                 \
+                    if (c == -3) ERRO_T(vm, "RecursionError", MSG_CMP_FUNDO); \
                     CMP_RECUSA(C_OP, *ma, ma->t, *mb, mb->t);                 \
+                }                                                             \
                 r_ = (c C_OP 0);                                              \
             } else {                                                          \
                 if (!(EH_INTEIRO(a) || a.t == V_FLOAT) ||                     \
