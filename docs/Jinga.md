@@ -172,7 +172,7 @@ bool ativo = True
 Variável sem tipo declarado:
 
 ```
-x = 10
+int x = 10
 dados = {"nome": "ana"}
 lista = [1, 2, 3]
 ```
@@ -278,7 +278,7 @@ post(nums[1:])     # [2, 3, 4, 5]
 ## Operadores
 
 ```
-x = 10
+int x = 10
 x += 5    # 15
 x -= 2    # 13
 x *= 3    # 39
@@ -488,7 +488,7 @@ Tipos disponíveis:
 ## funct
 
 ```
-funct somar(a, b) {
+public static funct somar(a, b) {
     return a + b
 }
 
@@ -498,11 +498,11 @@ post(somar(3, 4))   # 7
 Funct chamando outra:
 
 ```
-funct dobro(n) {
+public static funct dobro(n) {
     return n * 2
 }
 
-funct quadruplo(n) {
+public static funct quadruplo(n) {
     return dobro(dobro(n))
 }
 
@@ -516,7 +516,7 @@ post(quadruplo(3))  # 12
 Valida estrutura de dados JSON:
 
 ```
-model Usuario() {
+public model Usuario() {
     nome: str(length=60)
     email: str(length=100)
     idade: int(length=3)
@@ -557,7 +557,7 @@ motivo — `campo 'idade': no minimo 18, veio 12`. Detalhe em
 Namespace de constantes nomeadas. `Cor.RED` devolve o valor do membro:
 
 ```
-enum Cor { RED, GREEN, BLUE }
+public enum Cor { RED, GREEN, BLUE }
 
 post(Cor.RED)     # 0
 post(Cor.GREEN)   # 1
@@ -568,7 +568,7 @@ A auto-numeração começa em `0`. Cada membro pode receber um valor explícito 
 inclusive string:
 
 ```
-enum Hex {
+public enum Hex {
     RED   = "#f00",
     GREEN = "#0f0",
     BLUE  = "#00f"
@@ -582,7 +582,7 @@ Auto e explícito se misturam. Um valor **int** explícito reancora a sequência
 contador:
 
 ```
-enum Mix { A, B = 10, C, D = "x", E }
+public enum Mix { A, B = 10, C, D = "x", E }
 # A=0  B=10  C=11  D="x"  E=12
 ```
 
@@ -664,7 +664,7 @@ veja [manpu.md](manpu.md).
 ## Ponto de entrada
 
 ```
-funct iniciar() {
+public static funct iniciar() {
     post("Servidor iniciando...")
 }
 
@@ -693,7 +693,7 @@ Importar de outro arquivo `.pr`:
 
 ```
 # utils.pr
-funct somar(a, b) {
+public static funct somar(a, b) {
     return a + b
 }
 str VERSAO = "1.0"
@@ -770,8 +770,8 @@ Para instância de Entity, `is` compara a **classe exata** — ele não sobe pel
 herança:
 
 ```jinga
-Entity Animal { }
-Entity Gato(Animal) { }
+public Entity Animal { }
+public Entity Gato(Animal) { }
 g = Gato()
 
 post(type(g))            # Gato
