@@ -329,6 +329,16 @@ struct Unidade {
     char   **mod_criados;
     int32_t  n_mod_criados;
     int32_t  cap_mod_criados;
+    /* O que um bloco protegido (`try`) criou, pra apagar no alvo do handler
+     * (ver `limpa_no_handler`): na funct, o PICO de slots locais que a
+     * região alcançou — os blocos de dentro já devolveram os deles, mas o
+     * valor continua no slot; no módulo, o índice global de cada nome criado,
+     * em ordem, sem truncar (o `mod_criados` solta o nome quando o bloco
+     * fecha). */
+    int32_t  pico_locais;
+    int32_t *mod_hist;
+    int32_t  n_mod_hist;
+    int32_t  cap_mod_hist;
     IdxNomes ix_mod;      /* nome -> posição em `mod_criados` */
     /* Tipagem estática: um SimInfo por slot (junto dos vetores de slot) e um
      * por nome de `mod_criados` (mesmo índice, mesma vida). */
@@ -899,6 +909,7 @@ static int32_t idx_local(C *c, Unidade *u, const char *nome)
      * bloco), e o frame precisa caber o pico, não o valor do momento. */
     if (u->nlocais + 1 > UP(c, u)->nlocals) UP(c, u)->nlocals = u->nlocais + 1;
     vardbg_abre(c, u, nome, u->nlocais);
+    if (u->nlocais + 1 > u->pico_locais) u->pico_locais = u->nlocais + 1;
     return u->nlocais++;
 }
 
@@ -984,6 +995,34 @@ static void mod_criados_add(C *c, Unidade *u, const char *nome)
     }
     memset(&u->mod_sim[u->n_mod_criados], 0, sizeof(SimInfo));
     u->mod_criados[u->n_mod_criados++] = copia;
+    /* o histórico, pro handler de um `try` saber o que o bloco criou */
+    if (u->n_mod_hist + 1 > u->cap_mod_hist) {
+        int32_t novo = u->cap_mod_hist < 16 ? 16 : u->cap_mod_hist * 2;
+        int32_t *nh = realloc(u->mod_hist, sizeof(int32_t) * (size_t)novo);
+        if (!nh) { cerro(c, "sem memoria", NULL); return; }
+        u->mod_hist = nh;
+        u->cap_mod_hist = novo;
+    }
+    u->mod_hist[u->n_mod_hist++] = idx_global(c, copia);
+}
+
+/* No alvo de um handler: apaga o que o bloco protegido criou. Os CLEAR do fim
+ * do bloco só existem no caminho normal; o salto pro handler os pula, e o slot
+ * que um nome de depois reaproveita (a variável do catch, a dica de uma global
+ * lida) ainda guardava o valor do local do try — `return padrao` devolvia o
+ * `sobrenome` do try, o `post` do catch chamava um valor velho, e no topo a
+ * variável do try sobrevivia ao bloco. Funct: os slots de `marca` até o pico
+ * que a região alcançou (inclusive os de blocos de dentro, já fechados).
+ * Módulo: os nomes criados desde `hist0`. */
+static void limpa_no_handler(C *c, Unidade *u, int32_t marca, int32_t hist0)
+{
+    if (u->eh_modulo) {
+        for (int32_t k = u->n_mod_hist - 1; k >= hist0; k--)
+            emite(c, u, OP_CLEAR_GLOBAL, u->mod_hist[k]);
+    } else {
+        for (int32_t i = u->pico_locais - 1; i >= marca; i--)
+            emite(c, u, OP_CLEAR_LOCAL, i);
+    }
 }
 
 /* ── operador do AST → opcode ───────────────────────────────────────────── */
@@ -6395,6 +6434,10 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             c->fin_pend[fin_meu].unidade = (const void *)u;
             c->nfinally++;
             int32_t Mt = escopo_marca(u);
+            /* o que o corpo (e depois os catches) criar é apagado no alvo de
+             * cada handler: os CLEAR do fim do bloco só rodam no caminho normal */
+            int32_t pico_fora = u->pico_locais, hist0 = u->n_mod_hist;
+            u->pico_locais = u->nlocais;
             bloco_stmts(c, u, n->a);
             escopo_fecha(c, u, Mt);            /* vars do try não vazam (saída normal) */
             c->dentro_try--;
@@ -6402,6 +6445,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             int32_t pula_catches = emite(c, u, OP_JUMP, 0);
 
             if (setup >= 0) UP(c, u)->code[setup + 1] = UP(c, u)->ncode;
+            limpa_no_handler(c, u, Mt, hist0);
 
             /* Erro levantado DENTRO de um catch também tem que passar pelo
              * finally. O bloco inline só cobre a saída normal e o "nenhum
@@ -6485,6 +6529,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 fins.n = 0;
                 /* handler: erro veio de dentro de um catch -> finally + repropaga */
                 UP(c, u)->code[setup_cat + 1] = UP(c, u)->ncode;
+                limpa_no_handler(c, u, Mt, hist0);     /* o erro saiu de um catch: o `e` e o corpo dele */
                 emite(c, u, OP_PUSH_ERR_TYPE, 0);
                 /* este handler foi armado com a mensagem do erro original já
                  * na pilha: a cópia roda com [mensagem, mensagem2, tipo] em cima */
@@ -6501,6 +6546,8 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             saltos_solta(&fins);
 
             if (n->c) { int32_t Mf = escopo_marca(u); bloco_stmts(c, u, n->c); escopo_fecha(c, u, Mf); }  /* finally */
+            /* o pico volta a valer pra região de fora (um try que envolve este) */
+            if (pico_fora > u->pico_locais) u->pico_locais = pico_fora;
             return;
         }
 
@@ -6720,6 +6767,7 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
     free(u.ligados);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
     free(u.mod_criados);
+    free(u.mod_hist);
     ix_solta(&u.ix_mod);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
     free(u.globais_decl);
@@ -6964,6 +7012,7 @@ static int32_t compila_funct(C *c, PSNode *n, Unidade *pai)
     free(u.ligados);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
     free(u.mod_criados);
+    free(u.mod_hist);
     ix_solta(&u.ix_mod);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
     free(u.globais_decl);
@@ -7740,6 +7789,7 @@ static void compila_termina(C *c, Unidade *u)
     free(u->ligados);
     for (int32_t i = 0; i < u->n_mod_criados; i++) free(u->mod_criados[i]);
     free(u->mod_criados);
+    free(u->mod_hist);
     ix_solta(&u->ix_mod);
     for (int32_t i = 0; i < u->nglobais_decl; i++) free(u->globais_decl[i]);
     free(u->globais_decl);

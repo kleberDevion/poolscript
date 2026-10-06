@@ -343,6 +343,7 @@ Boom: x
 | `return Null` / sem return | `0` |
 | erro/exceção no corpo | `500` |
 | `return <outro tipo>` | erro de tipo — que o `try` implícito transforma em `500` |
+| `RecursionError` (a recursão passou do teto) | **não** vira `500`: propaga até um `catch` escrito, ou encerra o programa. Devolver o sentinela e seguir a conta com ele daria um número errado |
 
 ```ps
 int funct status() {
@@ -718,8 +719,10 @@ modelo é *stackful* (cada task tem pilha própria): escala bem até a casa das
   no máximo 256 parâmetros fixos, conferido na declaração.
 - `return` sem valor / ausência de `return` → `Null`.
 - **`int funct` / `bool funct`**: nunca propagam erro (int→`500`, bool→`False`
-  no erro, e o erro sai junto no stderr) e tratam `Null` (int→`0`,
-  bool→`True`); não coagem o valor retornado.
+  no erro, e o erro sai junto no stderr) — menos `RecursionError`, que
+  atravessa — e tratam `Null` (int→`0`, bool→`True`); não coagem o valor
+  retornado. A recursão delas vai até o teto de frames, como a de qualquer
+  funct.
 - **`static`** e **`nonnull`** vêm colados na cabeça, em qualquer ordem com os
   outros modificadores, e valem só para a funct em que estão escritos.
 - Funções são **valores** (first-class); há **recursão** (sem fim, inclusive

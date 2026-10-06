@@ -1440,7 +1440,15 @@ typedef struct Handler_ {
      * "upvalue fora da faixa". */
     PSClosure *cl;
 } Handler;
-#define MAX_HANDLERS 256
+/* Os `try` ativos de uma execução (`vm_executa_base`) moram num vetor que
+ * CRESCE: os primeiros HANDLERS_FIXO ficam na pilha do C (é o que a quase
+ * totalidade dos frames usa, sem alocar nada), e daí em diante o vetor vai
+ * pro heap, dobrando, até o teto de frames. Eram 256 fixos pra execução
+ * inteira — e cada `int funct`/`bool funct` ativa gasta um (a rede dela):
+ * a recursão de 257 níveis saía "try aninhado demais", que a rede do
+ * chamador engolia, e a conta seguia com 500 no meio. */
+#define HANDLERS_FIXO 16
+#define HANDLERS_SOLTA() do { if (handlers != h_fixo) free(handlers); } while (0)
 typedef struct VM_ VM;
 
 /* ── alocação e coleta ──────────────────────────────────────────────────── */
@@ -25320,22 +25328,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         vm->frames[fp0].ip = ip;
     }
 
-    Handler handlers[MAX_HANDLERS];
-    int     nh = 0;            /* `try` ativos, do mais externo ao mais interno */
-
-    /* Retomada de gerador: devolve os `try` que estavam abertos no yield,
-     * rebaseando pra posição atual dos pools. Sem isso o `catch` de um
-     * `try` que envolve o `yield` nunca dispararia. */
-    if (nargs_in < 0 && vm->ger_nh > 0) {
-        nh = vm->ger_nh < MAX_HANDLERS ? vm->ger_nh : MAX_HANDLERS;
-        for (int k = 0; k < nh; k++) {
-            handlers[k] = vm->ger_handlers[k];
-            handlers[k].fp         += fp0;
-            handlers[k].sp         += sp0;
-            handlers[k].locals_top += locals0;
-            handlers[k].lbase      += locals0;
-        }
-    }
+    Handler  h_fixo[HANDLERS_FIXO];
+    Handler *handlers = h_fixo;    /* cresce pro heap (ver HANDLERS_FIXO) */
+    int      cap_h = HANDLERS_FIXO;
+    int      nh = 0;               /* `try` ativos, do mais externo ao mais interno */
 
     Value *stack  = vm->stack;
     Value *locals = vm->locals;
@@ -25356,6 +25352,27 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             && liga_args(vm, p, &locals[locals0], self0, desloca0, args, nargs_in,
                          kw_nomes, kw_vals, nkw, ignora_kw0) != 0)
         goto erro_runtime;
+
+    /* Retomada de gerador: devolve os `try` que estavam abertos no yield,
+     * rebaseando pra posição atual dos pools. Sem isso o `catch` de um
+     * `try` que envolve o `yield` nunca dispararia. Todos voltam (o vetor
+     * cresce): com o teto antigo de 256 os de fora se perdiam calados. Fica
+     * depois das declarações porque a falta de memória sai pelo `goto`. */
+    if (nargs_in < 0 && vm->ger_nh > 0) {
+        if (vm->ger_nh > cap_h) {
+            Handler *nv = malloc(sizeof(Handler) * (size_t)vm->ger_nh);
+            if (!nv) ERRO(vm, "sem memoria ao retomar o gerador");
+            handlers = nv; cap_h = vm->ger_nh;
+        }
+        nh = vm->ger_nh;
+        for (int k = 0; k < nh; k++) {
+            handlers[k] = vm->ger_handlers[k];
+            handlers[k].fp         += fp0;
+            handlers[k].sp         += sp0;
+            handlers[k].locals_top += locals0;
+            handlers[k].lbase      += locals0;
+        }
+    }
 
     /* A cota da pilha de valores deste frame, exata (`pilha_max`, ver
      * `Proto`). Vale pra TODA entrada de frame de base — programa principal,
@@ -26756,6 +26773,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (vm->ger_ativo) vm->ger_cedeu = 0;   /* acabou, não cedeu */
                 *resultado = r;
                 vm->sp = sp0; vm->locals_top = locals0;
+                HANDLERS_SOLTA();
                 return 0;
             }
             /* Entity: devolve a instância (guardada no slot da Entity pelo
@@ -27420,7 +27438,17 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         }
 
         PS_CASE(SETUP_TRY)
-            if (nh >= MAX_HANDLERS) ERRO(vm, "try aninhado demais");
+            if (nh >= cap_h) {
+                /* cada `try` ativo é de um frame vivo: o teto é o de frames, e
+                 * quem chega nele é recursão (ver HANDLERS_FIXO) */
+                if (nh >= MAX_FRAMES) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+                int ncap = cap_h * 2;
+                Handler *nv = handlers == h_fixo ? malloc(sizeof(Handler) * (size_t)ncap)
+                                                 : realloc(handlers, sizeof(Handler) * (size_t)ncap);
+                if (!nv) ERRO(vm, "sem memoria ao abrir o try");
+                if (handlers == h_fixo) memcpy(nv, h_fixo, sizeof(Handler) * (size_t)nh);
+                handlers = nv; cap_h = ncap;
+            }
             handlers[nh].ip = arg;
             handlers[nh].fp = fp;
             handlers[nh].sp = sp;
@@ -28457,6 +28485,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             vm->ger_nh = nh;
             vm->ger_cedeu = 1;
             vm->sp = sp0; vm->locals_top = locals0;
+            HANDLERS_SOLTA();
             return 0;
         }
 
@@ -28909,6 +28938,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             vm->sp = sp;
             vm->locals_top = locals_top;
             *resultado = MK_NULL();
+            HANDLERS_SOLTA();
             return 0;
 
         default:
@@ -28939,6 +28969,14 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         /* Procura o `try` mais interno ainda ativo. Restaurar fp/sp/
          * locals_top é o que permite capturar erro levantado vários frames
          * abaixo: a máquina volta exatamente ao estado do `try`. */
+        /* A rede da `int funct`/`bool funct` (o handler que cai num ENGOLE)
+         * não pega RecursionError: a pilha acabou, e devolver o sentinela e
+         * seguir fazendo conta com ele dava um resultado errado calado — a
+         * recursão sem fim devolvia 500 mais o que os níveis de cima somassem.
+         * Esse erro atravessa as redes e só para num `catch` escrito. */
+        if (nh > 0 && strcmp(vm->erro_tipo, "RecursionError") == 0)
+            while (nh > 0 && vm->protos[handlers[nh - 1].proto].code[handlers[nh - 1].ip] == OP_ENGOLE)
+                nh--;
         if (nh == 0) {
             /* Depurador: é AQUI que o gráfico ganha o ponto vermelho, e é aqui
              * que o editor precisa parar. Depois deste ponto a VM desmonta os
@@ -29016,6 +29054,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     vm->ntb++;
                 }
             }
+            HANDLERS_SOLTA();
             return -1;
         }
         {

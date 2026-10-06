@@ -48,6 +48,9 @@ try {
   (um `return` no `finally` ganha do `return` do `try`), e só atravessam os
   `finally` **de fora** — o próprio nunca roda duas vezes.
 
+- As variáveis declaradas no bloco do `try` são **do bloco**: não existem no
+  `catch`, no `finally` nem depois — tenha havido erro ou não (seção 4.6).
+
 > **`try` + `finally` sem `catch` vale.** É a forma "faça isto aconteça o que
 > acontecer, sem tratar o erro" — fechar arquivo, soltar trava, derrubar um
 > servidor. O `finally` roda e a exceção, se houver, **propaga depois dele**:

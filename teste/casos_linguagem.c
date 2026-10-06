@@ -3376,6 +3376,56 @@ const Caso CASOS_LINGUAGEM[] = {
 { "break dentro de finally com um try aninhado por dentro, no caminho da excecao",
   "for each i in [1, 2, 3] {\n    try {\n        try {\n            if i == 2 { raise Boom(\"e\") }\n        } finally {\n            post(\"in\", i)\n        }\n    } catch (e) {\n        post(\"c\", i)\n    } finally {\n        if i == 2 { break }\n    }\n}\npost(\"fim\")\n",
   "in 1\nin 2\nc 2\nfim", NULL, 0 },
+/* ── o handler limpa o que o bloco do try criou (16.2.14) ────────────────────
+ * Os CLEAR do fim do bloco so rodavam no caminho normal: o salto pro handler
+ * os pulava, e o slot reaproveitado depois (a variavel do catch, a dica de uma
+ * global lida) ainda guardava o valor do local do try. */
+{ "global lida no catch vale o que tem, nao o valor de um local do try",
+  "str padrao = \"desconhecido\"\nfunct nome_do_usuario(dict d) {\n    try {\n        str prefixo = \"sr. \"\n        str sobrenome = \"silva\"\n        str nome = d[\"nome\"]\n        return prefixo + nome + \" \" + sobrenome\n    } catch (KeyError e) {\n        return padrao\n    }\n}\npost(nome_do_usuario({\"nome\": \"ana\"}))\npost(nome_do_usuario({}))\n",
+  "sr. ana silva\ndesconhecido", NULL, 0 },
+{ "global int lida no catch depois de dois locais do try",
+  "int limite = 10\nint funct f() {\n    try {\n        int a = 1\n        int b = 99\n        raise Boom(\"x\")\n    } catch (e) {\n        return limite\n    }\n}\npost(f())\n",
+  "10", NULL, 0 },
+{ "globais lidas DEPOIS do try/catch valem o que tem",
+  "int limite = 10\nint extra = 1\nint funct f() {\n    try {\n        int a = 1000\n        int b = 77\n        raise Boom(\"x\")\n    } catch (e) {\n    }\n    return limite + extra\n}\npost(f())\n",
+  "11", NULL, 0 },
+{ "global lida no catch dentro de metodo",
+  "int piso = 3\nclass K {\n    int funct m(self) {\n        try {\n            int v = 50\n            raise Boom(\"x\")\n        } catch (e) {\n            return piso\n        }\n    }\n}\npost(K().m())\n",
+  "3", NULL, 0 },
+{ "post no catch chama o post, nao o valor que um local do try deixou no slot",
+  "Null funct f() {\n    try {\n        Object o = len\n        raise Boom(\"x\")\n    } catch (e) {\n        post(\"pegou\")\n    }\n}\nf()\n",
+  "pegou", NULL, 0 },
+{ "erro saindo do catch pro finally: o post do finally e o post, e o erro novo propaga",
+  "Null funct f() {\n    try {\n        raise Quebrou(\"a\")\n    } catch (Quebrou e) {\n        raise Outro(\"do catch\")\n    } finally {\n        post(\"finally\")\n    }\n}\ntry {\n    f()\n} catch (Outro e) {\n    post(\"fora\")\n}\n",
+  "finally\nfora", NULL, 0 },
+{ "no topo, a variavel do try nao existe depois do bloco quando houve erro",
+  "try {\n    int vazou = 5\n    raise Quebrou(\"x\")\n} catch (Quebrou e) {\n    post(\"pegou\")\n}\npost(vazou)\n",
+  "pegou", "NameError: name 'vazou' is not defined\n", 1 },
+{ "local de um bloco de dentro do try tambem e limpo no handler",
+  "int g = 7\nint funct f(bool c) {\n    try {\n        if c {\n            int dentro = 123\n            str outro = \"zzz\"\n        }\n        raise Boom(\"x\")\n    } catch (e) {\n        return g\n    }\n}\npost(f(True))\n",
+  "7", NULL, 0 },
+/* ── os try ativos crescem (16.2.14) ─────────────────────────────────────────
+ * Eram 256 por execucao, e cada `int funct`/`bool funct` ativa gasta um (a
+ * rede dela): a recursao de 257 niveis saia "try aninhado demais", a rede do
+ * chamador engolia e a conta seguia com 500 no meio. */
+{ "int funct e bool funct recursivas passam de 256 niveis com o resultado certo",
+  "int funct soma(int n) {\n    if n == 0 { return 0 }\n    return n + soma(n - 1)\n}\npost(soma(300))\nbool funct todos_pares(list l, int i) {\n    if i == len(l) { return True }\n    if l[i] % 2 != 0 { return False }\n    return todos_pares(l, i + 1)\n}\nlist pares = []\nfor each k in range(300) { pares.append(k * 2) }\npost(todos_pares(pares, 0))\npost(soma(5000))\n",
+  "45150\nTrue\n12502500", NULL, 0 },
+{ "recursao sem fim em int funct e RecursionError que o catch pega (a rede do int nao a engole)",
+  "int funct f(int n) {\n    if n == 0 { return 0 }\n    return 1 + f(n - 1)\n}\ntry {\n    post(f(1000000))\n} catch (RecursionError e) {\n    post(\"pego:\", e)\n}\npost(\"segue\")\n",
+  "pego: maximum recursion depth exceeded (linha 3)\nsegue", NULL, 0 },
+{ "recursao sem fim em int funct sem catch encerra com RecursionError, nao com um numero errado",
+  "int funct f(int n) {\n    return 1 + f(n + 1)\n}\npost(f(0))\npost(\"nunca\")\n",
+  "", "RecursionError: maximum recursion depth exceeded\n", 1 },
+{ "300 try aninhados e um gerador com 20 try em volta do yield (os handlers crescem e voltam todos na retomada)",
+  "import os\nimport sys\n"
+  "using open(\"t.pr\", \"w\") as f { f.write(\"try {\\n\" * 300 + \"post(1)\\nraise Boom(\\\"x\\\")\\n\" + \"} catch (Outro e) { post(2) }\\n\" * 299 + \"} catch (Boom e) { post(\\\"pego\\\") }\\n\") }\n"
+  "using open(\"g.pr\", \"w\") as f { f.write(\"funct g() {\\n\" + \"try {\\n\" * 20 + \"yield 1\\nyield 2\\n\" + \"} finally { post(\\\"f\\\") }\\n\" * 20 + \"}\\nfor each x in g() { post(x) }\\n\") }\n"
+  "for each nome in [\"t.pr\", \"g.pr\"] {\n"
+  "    Process p = os.run([sys.executable, nome], capture=\"live\")\n"
+  "    str t = p.read(65536)\n    int rc = p.wait()\n"
+  "    post(nome, rc, t.strip().replace(\"\\n\", \" \"))\n}\n",
+  "t.pr 0 1 pego\ng.pr 0 1 2 f f f f f f f f f f f f f f f f f f f f", NULL, 0 },
 { "f-string: o que sobra depois da expressao dentro de {} e erro, nao descarte calado",
   "str nome = \"Ana\"\nstr sobrenome = \"Lima\"\npost(f\"cliente: {nome sobrenome}\")\n", "",
   "SyntaxError: sobrou 'sobrenome' dentro de {} da f-string: cada {} leva uma expressao so", 2 },
