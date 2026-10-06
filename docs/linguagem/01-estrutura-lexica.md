@@ -277,7 +277,7 @@ fechada antes da quebra de linha`), a menos que seja multi-linha.
 |---|---|---|
 | Simples/dupla | `"oi"` / `'oi'` | equivalentes |
 | Multi-linha | `''' ... '''` | aspas **simples** triplas (as duplas triplas são comentário) |
-| f-string | `f"olá {nome}"` | interpola expressões entre `{ }` |
+| f-string | `f"olá {nome}"` | interpola expressões entre `{ }` — **uma** expressão por `{}`; o que sobrar depois dela (`{nome sobrenome}`, `{x = }`) é `SyntaxError: sobrou '...' dentro de {} da f-string` |
 | f-string multi-linha | `f''' ... {x} ... '''` | |
 | raw | `r"\n literal"` | não processa escapes |
 | raw multi-linha | `r''' ... '''` | |

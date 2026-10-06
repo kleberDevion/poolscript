@@ -3322,6 +3322,25 @@ const Caso CASOS_LINGUAGEM[] = {
   "int x = 10_000_000\nflo f = 1.5\npost(x, f, 1e3)\n", "10000000 1.5 1000.0", NULL, 0 },
 { "cabecalho quebrado com a chave embaixo: o bloco vai junto, sem erro de dicionario no corpo",
   "int x = 0\nwhile x < 10.000.000\n{\n    x++;\n}\npost(x)\n", "", "separador de milhar", 2 },
+
+/* ── sonda 2, lote 3: vetores de salto sem teto e f-string inteira ────────── */
+{ "65 breaks no mesmo laco e 65 elifs compilam (os vetores de salto crescem)",
+  "import os\nimport sys\nstr b = \"int x = 0\\nwhile True {\\n\"\nfor each k in range(65) { b = b + \"    if x == \" + str(k + 100) + \" { break }\\n\" }\n"
+  "b = b + \"    x++\\n    if x == 3 { break }\\n}\\npost(x)\\n\"\n"
+  "str e = \"int y = 70\\nif y == 0 { post(0) }\\n\"\nfor each k in range(65) { e = e + \"elif y == \" + str(k + 1) + \" { post(\" + str(k + 1) + \") }\\n\" }\n"
+  "e = e + \"else { post(\\\"outro\\\") }\\n\"\n"
+  "using open(\"b.pr\", \"w\") as f { f.write(b) }\nusing open(\"e.pr\", \"w\") as f { f.write(e) }\n"
+  "for each nome in [\"b.pr\", \"e.pr\"] {\n    Process p = os.run([sys.executable, nome], capture=\"live\")\n    str t = p.read(65536)\n    int rc = p.wait()\n    post(nome, rc, t.strip())\n}\n",
+  "b.pr 0 3\ne.pr 0 outro", NULL, 0 },
+{ "f-string: o que sobra depois da expressao dentro de {} e erro, nao descarte calado",
+  "str nome = \"Ana\"\nstr sobrenome = \"Lima\"\npost(f\"cliente: {nome sobrenome}\")\n", "",
+  "SyntaxError: sobrou 'sobrenome' dentro de {} da f-string: cada {} leva uma expressao so", 2 },
+{ "f-string: `{x = }`, `{x)}` e nome que nao existe depois da expressao",
+  "flo preco = 2.5\npost(f\"debug: {preco = }\")\n", "", "sobrou '= ' dentro de {} da f-string", 2 },
+{ "f-string: parentese sobrando dentro das chaves",
+  "int qtd = 4\npost(f\"fecha: {qtd)}\")\n", "", "sobrou ')' dentro de {} da f-string", 2 },
+{ "f-string: segundo nome dentro das chaves nao some (antes nem NameError dava)",
+  "str nome = \"Ana\"\npost(f\"nada: {nome naoexiste}\")\n", "", "sobrou 'naoexiste' dentro de {} da f-string", 2 },
 { "base() com posicional depois de nomeado e SyntaxError, rc 2 (era rc 3)",
   "Entity A { int x\n    funct __init__(self, x, b) { self.x = x } }\n"
   "Entity B(A) {\n    funct __init__(self) { base().__init__(1, b=2, 3) }\n}\nB()\n", "",

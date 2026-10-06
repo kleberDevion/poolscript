@@ -47,4 +47,15 @@ void ps_pilha_repoe(const char *base, size_t tam);
  * 24 KB fixos a recursão ainda estourava numa pilha de 8 MB. */
 int ps_pilha_apertada(void);
 
+/* A mesma pergunta com o DOBRO da margem: é o freio dos blocos (statement
+ * dentro de statement), enquanto `ps_pilha_apertada` é o das expressões.
+ *
+ * Os dois freios descem juntos: 4000 `if` aninhados passam por `bloco` e pela
+ * condição de cada um. Com uma margem só, qual dos dois dispara depende do
+ * tamanho do quadro (a mesma entrada dava "bloco aninhado demais" num binário
+ * -O2 e "expressao aninhada demais" sob ASan, parado na condição `True`). Com
+ * o dobro, o freio do bloco dispara antes que a expressão de dentro chegue na
+ * margem simples — e "expressao" só sai quando é a expressão que desce. */
+int ps_pilha_apertada_bloco(void);
+
 #endif /* PS_PILHA_H */

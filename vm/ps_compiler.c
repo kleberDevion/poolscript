@@ -24,6 +24,7 @@
 
 #include "ps_lexer.h"
 #include "ps_parser.h"
+#include "ps_pilha.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -349,14 +350,21 @@ struct Unidade {
  * do laço só é conhecido DEPOIS de compilar o corpo, então os saltos ficam
  * pendentes aqui e são corrigidos (backpatch) no fechamento. */
 #define MAX_LACOS 32
-#define MAX_SAIDAS 64
+
+/* Saltos pendentes (backpatch), em vetor que CRESCE. Eram vetores fixos —
+ * 64 no laço, 64 no if e no match, 32 no catch e nos padrões — e cada um
+ * tratava o estouro do seu jeito: o laço recusava (65 `break` no mesmo laço
+ * era "limite do compilador"), os outros DESCARTAVAM o salto calados e
+ * deixavam um JUMP com alvo 0 no bytecode. */
+typedef struct { int32_t *v; int32_t n, cap; } Saltos;
+
+/* Um `finally` pendente: o bloco e em que laço/função o try foi aberto. */
+struct FinPend { PSNode *bloco; int laco; const void *unidade; };
 
 typedef struct {
     int32_t inicio;                  /* alvo do `continue` */
-    int32_t saidas[MAX_SAIDAS];      /* saltos do `break`, a corrigir */
-    int32_t nsaidas;
-    int32_t continues[MAX_SAIDAS];   /* saltos do `continue`, a corrigir */
-    int32_t ncontinues;
+    Saltos  saidas;                  /* saltos do `break`, a corrigir */
+    Saltos  continues;               /* saltos do `continue`, a corrigir */
     /* Quantos slots o laço mantém na pilha durante o corpo. `for each`
      * carrega (container, indice) — 2 slots — e o ITER_NEXT só os descarta
      * quando a iteração TERMINA. Um `break` sai por fora, então precisa
@@ -394,10 +402,11 @@ typedef struct {
      * do try, mas `return`, `break` e `continue` saltam por fora — sem isto o
      * finally simplesmente NÃO rodava nesses três caminhos. Cada entrada
      * guarda o bloco e em que laço/função ele estava, pra saber quais rodar. */
-    PSNode     *fin_bloco[32];
-    int         fin_laco[32];     /* c->nlacos no momento em que entrou */
-    const void *fin_unidade[32];  /* qual Unidade (função) abriu o try */
+    struct FinPend *fin_pend;     /* vetor que cresce: o 33º try aninhado não
+                                   * era registrado e o finally dele não rodava
+                                   * em return/break */
     int         nfinally;
+    int         cap_finally;
     /* profundidade de `try` aberto — `yield` dentro de um é recusado */
     int         dentro_try;
     /* profundidade de `count each` aberto — muda o que `return;` devolve */
@@ -560,6 +569,8 @@ static void cerro_sx(C *c, PSNode *n, const char *fmt, ...)
     c->out->erro_do_programa = 1;
 }
 
+static int fundo_demais(C *c, PSNode *n, int bloco);
+
 /* ── emissão ────────────────────────────────────────────────────────────── */
 static int32_t emite(C *c, Unidade *u, int32_t op, int32_t arg)
 {
@@ -587,6 +598,30 @@ static int32_t emite(C *c, Unidade *u, int32_t op, int32_t arg)
     UP(c, u)->code[UP(c, u)->ncode++] = op;
     UP(c, u)->code[UP(c, u)->ncode++] = arg;
     return pos;
+}
+
+/* ── saltos pendentes (backpatch) ───────────────────────────────────────── */
+static void saltos_push(C *c, Saltos *s, int32_t pos)
+{
+    if (s->n >= s->cap) {
+        int32_t nc = s->cap ? s->cap * 2 : 8;
+        int32_t *nv = realloc(s->v, sizeof(int32_t) * (size_t)nc);
+        if (!nv) { cerro(c, "sem memoria", NULL); return; }
+        s->v = nv; s->cap = nc;
+    }
+    s->v[s->n++] = pos;
+}
+
+/* Aponta todos os saltos pendentes pra `alvo`. */
+static void saltos_corrige(C *c, Unidade *u, Saltos *s, int32_t alvo)
+{
+    for (int32_t i = 0; i < s->n; i++) UP(c, u)->code[s->v[i] + 1] = alvo;
+}
+
+static void saltos_solta(Saltos *s)
+{
+    free(s->v);
+    s->v = NULL; s->n = s->cap = 0;
 }
 
 /* ── superinstruções: o que o laço quente vira ───────────────────────────
@@ -1115,7 +1150,16 @@ static int nome_bate(const PSNode *x, const char *alvo)
  * Sobrar aqui só desliga o atalho; faltar troca o que o programa faz. */
 static int liga_o_nome(C *c, PSNode *n, const char *alvo)
 {
-    if (!n) return 0;
+    if (!n || fundo_demais(c, n, 1)) return 0;
+    /* `a + b + c + …` é uma cadeia pelo ->a, um nó por termo: todo caminhante
+     * da árvore desce a cadeia em LAÇO (só o ->b de cada nó é recursão). Em
+     * recursão pura, uma soma plana de 8000 termos (código gerado) eram 8000
+     * quadros, e o freio da pilha disparava num programa correto. */
+    while (n->kind == N_BINARY_OP) {
+        if (liga_o_nome(c, n->b, alvo)) return 1;
+        n = n->a;
+        if (!n) return 0;
+    }
     switch (n->kind) {
         case N_ASSIGNMENT: case N_VAR_DECL: case N_FOR_EACH_STMT: case N_LIST_COMP:
         case N_ENTITY_DECL: case N_MODEL_DECL: case N_ENUM_DECL:
@@ -1243,7 +1287,12 @@ static void junta_nomes(C *c, char ***v, int32_t *n, int32_t *cap, const char *n
 
 static void varre_nomes(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
 {
-    if (!n) return;
+    if (!n || fundo_demais(c, n, 1)) return;
+    while (n->kind == N_BINARY_OP) {      /* cadeia `a + b + …` em laço (ver liga_o_nome) */
+        varre_nomes(c, n->b, v, cnt, cap);
+        n = n->a;
+        if (!n) return;
+    }
     switch (n->kind) {
         case N_NAME: case N_ASSIGNMENT: case N_VAR_DECL: case N_FOR_EACH_STMT:
             junta_nomes(c, v, cnt, cap, n->texto);
@@ -1271,7 +1320,12 @@ static void varre_nomes(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
  * nomeada. */
 static void acha_aninhadas(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
 {
-    if (!n) return;
+    if (!n || fundo_demais(c, n, 1)) return;
+    while (n->kind == N_BINARY_OP) {      /* cadeia `a + b + …` em laço (ver liga_o_nome) */
+        acha_aninhadas(c, n->b, v, cnt, cap);
+        n = n->a;
+        if (!n) return;
+    }
     if (n->kind == N_FUNCT_DECL || n->kind == N_LAMBDA_EXPR) { varre_nomes(c, n, v, cnt, cap); return; }
     acha_aninhadas(c, n->a, v, cnt, cap);
     acha_aninhadas(c, n->b, v, cnt, cap);
@@ -1286,7 +1340,12 @@ static void acha_aninhadas(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *ca
  * nas functs aninhadas — o que elas ligam é escopo delas. */
 static void binda_nomes(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
 {
-    if (!n) return;
+    if (!n || fundo_demais(c, n, 1)) return;
+    while (n->kind == N_BINARY_OP) {      /* cadeia `a + b + …` em laço (ver liga_o_nome) */
+        binda_nomes(c, n->b, v, cnt, cap);
+        n = n->a;
+        if (!n) return;
+    }
     switch (n->kind) {
         case N_ASSIGNMENT: case N_VAR_DECL: case N_FOR_EACH_STMT:
         case N_UNPACK_TARGET:
@@ -1721,7 +1780,12 @@ static int tipo_topo_de(C *c, const char *nome)
  * dentro ou fora de bloco). A primeira declaracao de cada nome vence. */
 static void coleta_tipos_topo(C *c, PSNode *n)
 {
-    if (!n) return;
+    if (!n || fundo_demais(c, n, 1)) return;
+    while (n->kind == N_BINARY_OP) {      /* cadeia `a + b + …` em laço (ver liga_o_nome) */
+        coleta_tipos_topo(c, n->b);
+        n = n->a;
+        if (!n) return;
+    }
     if (n->kind == N_FUNCT_DECL) return;       /* o corpo dela e outro escopo */
     if (n->kind == N_VAR_DECL && n->texto && !tipo_topo_de(c, n->texto))
         tipo_topo_poe(c, n->texto, cod_tipo_decl(n->texto2));
@@ -1966,7 +2030,12 @@ static PSNode *tp_tipo_arq(C *c, const char *nome)
 
 static void tp_coleta_tipos_arq(C *c, PSNode *n)
 {
-    if (!n) return;
+    if (!n || fundo_demais(c, n, 1)) return;
+    while (n->kind == N_BINARY_OP) {      /* cadeia `a + b + …` em laço (ver liga_o_nome) */
+        tp_coleta_tipos_arq(c, n->b);
+        n = n->a;
+        if (!n) return;
+    }
     if ((n->kind == N_ENTITY_DECL || n->kind == N_MODEL_DECL || n->kind == N_ENUM_DECL) && n->texto
             && !tp_tipo_arq(c, n->texto)) {
         if (c->ntipos_arq + 1 > c->cap_tipos_arq) {
@@ -2219,7 +2288,12 @@ static void tp_sombra_devolve(C *c, Unidade *u, const char *nome, int posto, con
  * (`e` do catch sem nome, `self`/`_count`/`_index`/`_match` do `count each`). */
 static void tp_junta_ligados(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
 {
-    if (!n) return;
+    if (!n || fundo_demais(c, n, 1)) return;
+    while (n->kind == N_BINARY_OP) {      /* cadeia `a + b + …` em laço (ver liga_o_nome) */
+        tp_junta_ligados(c, n->b, v, cnt, cap);
+        n = n->a;
+        if (!n) return;
+    }
     switch (n->kind) {
         case N_ASSIGNMENT: case N_VAR_DECL: case N_FOR_EACH_STMT: case N_LIST_COMP:
         case N_USING_STMT:
@@ -2299,7 +2373,12 @@ static void tp_junta_ligados(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *
 /* `global x` em qualquer funct do arquivo: a escrita cria o nome no arquivo. */
 static void tp_junta_globais(C *c, PSNode *n)
 {
-    if (!n) return;
+    if (!n || fundo_demais(c, n, 1)) return;
+    while (n->kind == N_BINARY_OP) {      /* cadeia `a + b + …` em laço (ver liga_o_nome) */
+        tp_junta_globais(c, n->b);
+        n = n->a;
+        if (!n) return;
+    }
     if (n->kind == N_GLOBAL_STMT)
         for (int32_t i = 0; i < n->lista.n; i++)
             junta_nomes(c, &c->ligados_mod, &c->nligados_mod, &c->cap_ligados_mod, n->lista.itens[i]->texto);
@@ -2426,7 +2505,7 @@ static int tp_nome_ligado(C *c, Unidade *u, const char *nome)
 /* ── o tipo de uma expressão ── */
 static int tp_tem_yield(PSNode *n)
 {
-    if (!n) return 0;
+    if (!n || ps_pilha_apertada()) return 0;   /* fundo demais: quem acusa e o stmt_no */
     if (n->kind == N_YIELD_STMT) return 1;
     if (n->kind == N_FUNCT_DECL || n->kind == N_LAMBDA_EXPR) return 0;
     if (tp_tem_yield(n->a) || tp_tem_yield(n->b) || tp_tem_yield(n->c) || tp_tem_yield(n->e)) return 1;
@@ -2803,6 +2882,7 @@ static const char *base_pai(C *c, Unidade *u, PSNode *n)
 static const char *tp_de(C *c, Unidade *u, PSNode *n)
 {
     if (!n) return NULL;
+    if (ps_pilha_apertada()) { cerro_sx(c, n, "expressao aninhada demais"); return NULL; }
     switch (n->kind) {
         /* `base(Pai)` VALE o pai pra quem confere o `.membro` em cima dele:
          * campo/método/aridade saem pelo mesmo caminho de `p.membro` */
@@ -2825,7 +2905,22 @@ static const char *tp_de(C *c, Unidade *u, PSNode *n)
             if (n->texto && strcmp(n->texto, "__name__") == 0) return "str";
             return NULL;
         }
-        case N_BINARY_OP: return tp_binario(c, n->texto, tp_de(c, u, n->a), tp_de(c, u, n->b));
+        case N_BINARY_OP: {
+            /* cadeia à esquerda em laço (ver o mesmo em expr_no): 8000 termos
+             * não podem ser 8000 quadros */
+            int32_t fundo = 0;
+            PSNode *q = n;
+            while (q->kind == N_BINARY_OP) { fundo++; q = q->a; }
+            if (fundo < 32) return tp_binario(c, n->texto, tp_de(c, u, n->a), tp_de(c, u, n->b));
+            PSNode **cadeia = malloc(sizeof(PSNode *) * (size_t)fundo);
+            if (!cadeia) return NULL;
+            int32_t k = fundo;
+            for (q = n; k > 0; q = q->a) cadeia[--k] = q;
+            const char *t = tp_de(c, u, q);
+            for (k = 0; k < fundo; k++) t = tp_binario(c, cadeia[k]->texto, t, tp_de(c, u, cadeia[k]->b));
+            free(cadeia);
+            return t;
+        }
         case N_UNARY_OP: {
             if (!n->texto) return NULL;
             if (!strcmp(n->texto, "not") || !strcmp(n->texto, "Not") || !strcmp(n->texto, "!")) return "bool";
@@ -2895,7 +2990,7 @@ static const char *tp_de(C *c, Unidade *u, PSNode *n)
  * sem `break`. É o que decide se uma funct tipada pode chegar ao fim. */
 static int tp_tem_break(PSNode *n)
 {
-    if (!n) return 0;
+    if (!n || ps_pilha_apertada()) return 0;   /* fundo demais: quem acusa e o stmt_no */
     if (n->kind == N_BREAK_STMT) return 1;
     if (n->kind == N_WHILE_STMT || n->kind == N_FOR_EACH_STMT || n->kind == N_COUNT_EACH_STMT
             || n->kind == N_FUNCT_DECL || n->kind == N_LAMBDA_EXPR) return 0;
@@ -4194,7 +4289,17 @@ static void compila_fstring(C *c, Unidade *u, PSNode *n)
                 return;
             }
             PSNode *st = r->programa->lista.itens[0];
-            PSNode *alvo = (st->kind == N_EXPRESSION_STMT) ? st->a : st;
+            /* UMA expressão, inteira: o que sobrar depois dela (`{nome
+             * sobrenome}`, `{x = }`) e o que não é expressão (`{x = 1}`)
+             * eram descartados calados — este caminho usava só o primeiro
+             * statement. O parser já acusa com a posição exata quando lê o
+             * arquivo inteiro; aqui é a rede de baixo. */
+            if (r->programa->lista.n > 1 || st->kind != N_EXPRESSION_STMT || st->e) {
+                ps_parse_free(r); free(e); free(buf);
+                cerro_sx(c, n, "dentro de {} da f-string vai uma expressao so (sobrou texto, ou e um comando)");
+                return;
+            }
+            PSNode *alvo = st->a;
             carimba_pos(alvo, n->line, n->col);
             /* O trecho é compilado como expressão NORMAL: se estourar (nome
              * fora de escopo, método inexistente...), o erro SOBE. Antes cada
@@ -4273,11 +4378,26 @@ static void expr(C *c, Unidade *u, PSNode *n)
     c->linha_atual = l; c->coluna_atual = co;
 }
 
+/* FREIO da descida pela árvore. O parser tem o dele (`expressao`/`bloco`),
+ * mas 4000 blocos aninhados ou 5000 decoradores passam por ele e derrubavam
+ * o compilador e o checador, que descem a mesma árvore com quadros maiores e
+ * sem freio nenhum. A medida é a folga da pilha do C, como no parser. */
+static int fundo_demais(C *c, PSNode *n, int bloco)
+{
+    /* dois freios, como no parser: o do bloco tem o dobro da margem do da
+     * expressão (ver `ps_pilha.h`), pra 4000 `if` aninhados acusarem o bloco
+     * e não a condição de dentro, em qualquer binário */
+    if (!(bloco ? ps_pilha_apertada_bloco() : ps_pilha_apertada())) return 0;
+    cerro_sx(c, n, "%s", bloco ? "bloco aninhado demais" : "expressao aninhada demais");
+    return 1;
+}
+
 static void expr_no(C *c, Unidade *u, PSNode *n)
 {
     if (n && n->line) c->linha_atual = n->line;
     if (n && n->col)  c->coluna_atual = n->col;
     if (CFALHOU(c) || !n) return;
+    if (fundo_demais(c, n, 0)) return;
 
     switch (n->kind) {
         case N_LITERAL:
@@ -4402,9 +4522,29 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             }
             int32_t op = op_binario(n->texto);
             if (op < 0) { cerro(c, "operador binario ainda nao compila na VM", n); return; }
-            expr(c, u, n->a);
-            expr(c, u, n->b);
-            emite(c, u, op, 0);
+            /* CADEIA À ESQUERDA SEM RECURSÃO. `0 + 1 + 1 + ...` com 8000
+             * termos é uma árvore de 8000 níveis pelo `->a` (associatividade
+             * à esquerda), que o parser monta em laço; descer um quadro por
+             * termo aqui derrubava o processo. Os nós da cadeia são
+             * recolhidos em laço e emitidos da esquerda pra direita; só o que
+             * não é cadeia (o termo da ponta e os lados direitos) desce. */
+            {
+                int32_t fundo = 0;
+                PSNode *q = n;
+                while (q->kind == N_BINARY_OP && q->texto && op_binario(q->texto) >= 0) { fundo++; q = q->a; }
+                PSNode **cadeia = malloc(sizeof(PSNode *) * (size_t)fundo);
+                if (!cadeia) { cerro(c, "sem memoria", n); return; }
+                int32_t k = fundo;
+                for (q = n; k > 0; q = q->a) cadeia[--k] = q;
+                expr(c, u, q);                           /* o termo mais à esquerda */
+                for (k = 0; k < fundo && !CFALHOU(c); k++) {
+                    expr(c, u, cadeia[k]->b);
+                    if (cadeia[k]->line) c->linha_atual = cadeia[k]->line;
+                    if (cadeia[k]->col)  c->coluna_atual = cadeia[k]->col;
+                    emite(c, u, op_binario(cadeia[k]->texto), 0);
+                }
+                free(cadeia);
+            }
             return;
         }
 
@@ -4749,8 +4889,8 @@ static int abre_laco(C *c, PSNode *n, int32_t inicio, int slots_pilha)
     if (c->nlacos >= MAX_LACOS) { cerro(c, "limite do compilador: lacos aninhados demais", n); return -1; }
     Laco *l = &c->lacos[c->nlacos++];
     l->inicio = inicio;
-    l->nsaidas = 0;
-    l->ncontinues = 0;
+    memset(&l->saidas, 0, sizeof(l->saidas));
+    memset(&l->continues, 0, sizeof(l->continues));
     l->slots_pilha = slots_pilha;
     return 0;
 }
@@ -4760,10 +4900,10 @@ static void fecha_laco(C *c, Unidade *u, int32_t inicio)
     if (c->nlacos == 0) return;
     Laco *l = &c->lacos[--c->nlacos];
     int32_t fim = UP(c, u)->ncode;
-    for (int32_t i = 0; i < l->nsaidas; i++)
-        UP(c, u)->code[l->saidas[i] + 1] = fim;
-    for (int32_t i = 0; i < l->ncontinues; i++)
-        UP(c, u)->code[l->continues[i] + 1] = inicio;
+    saltos_corrige(c, u, &l->saidas, fim);
+    saltos_corrige(c, u, &l->continues, inicio);
+    saltos_solta(&l->saidas);
+    saltos_solta(&l->continues);
 }
 
 /* ── padrões de match ───────────────────────────────────────────────────── */
@@ -4821,53 +4961,49 @@ static void padrao_testa(C *c, Unidade *u, PSNode *pat)
          * A última não é duplicada: o booleano dela já é o resultado final,
          * então cai direto no fim. Os dois caminhos precisam terminar com
          * exatamente um booleano na pilha. */
-        int32_t acertos[32];
-        int nac = 0;
-        int32_t fim_ok[32];
-        int nfo = 0;
+        Saltos acertos = {0}, fim_ok = {0};
         for (int32_t i = 0; i < pat->lista.n && !CFALHOU(c); i++) {
             int ultimo = (i == pat->lista.n - 1);
             if (!ultimo) {
                 emite(c, u, OP_DUP, 0);
                 padrao_testa(c, u, pat->lista.itens[i]);
-                if (nac < 32) acertos[nac++] = emite(c, u, OP_JUMP_IF_TRUE, 0);
+                saltos_push(c, &acertos, emite(c, u, OP_JUMP_IF_TRUE, 0));
             } else {
                 padrao_testa(c, u, pat->lista.itens[i]);
-                if (nfo < 32) fim_ok[nfo++] = emite(c, u, OP_JUMP, 0);
+                saltos_push(c, &fim_ok, emite(c, u, OP_JUMP, 0));
             }
         }
         /* alvo dos acertos: ainda resta a cópia original pra descartar */
-        int32_t alvo_acerto = UP(c, u)->ncode;
-        for (int i = 0; i < nac; i++) UP(c, u)->code[acertos[i] + 1] = alvo_acerto;
+        saltos_corrige(c, u, &acertos, UP(c, u)->ncode);
         emite(c, u, OP_POP_TOP, 0);
         emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_BOOL, 1, 0, NULL, 0));
 
-        int32_t fim = UP(c, u)->ncode;
-        for (int i = 0; i < nfo; i++) UP(c, u)->code[fim_ok[i] + 1] = fim;
+        saltos_corrige(c, u, &fim_ok, UP(c, u)->ncode);
+        saltos_solta(&acertos);
+        saltos_solta(&fim_ok);
         return;
     }
     if (!strcmp(k, "list")) {
         /* tamanho tem que bater, depois cada item */
-        int32_t falhas[64];
-        int nf = 0;
+        Saltos falhas = {0};
         emite(c, u, OP_DUP, 0);
         emite(c, u, OP_LEN, 0);
         emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, pat->lista.n, 0, NULL, 0));
         emite(c, u, OP_EQ, 0);
-        if (nf < 64) falhas[nf++] = emite(c, u, OP_JUMP_IF_FALSE, 0);
+        saltos_push(c, &falhas, emite(c, u, OP_JUMP_IF_FALSE, 0));
 
         for (int32_t i = 0; i < pat->lista.n && !CFALHOU(c); i++) {
             emite(c, u, OP_DUP, 0);
             emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, i, 0, NULL, 0));
             emite(c, u, OP_INDEX_GET, 0);
             padrao_testa(c, u, pat->lista.itens[i]);
-            if (nf < 64) falhas[nf++] = emite(c, u, OP_JUMP_IF_FALSE, 0);
+            saltos_push(c, &falhas, emite(c, u, OP_JUMP_IF_FALSE, 0));
         }
         emite(c, u, OP_POP_TOP, 0);
         emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_BOOL, 1, 0, NULL, 0));
         int32_t fim = emite(c, u, OP_JUMP, 0);
-        int32_t alvo_falha = UP(c, u)->ncode;
-        for (int i = 0; i < nf; i++) UP(c, u)->code[falhas[i] + 1] = alvo_falha;
+        saltos_corrige(c, u, &falhas, UP(c, u)->ncode);
+        saltos_solta(&falhas);
         emite(c, u, OP_POP_TOP, 0);
         emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_BOOL, 0, 0, NULL, 0));
         UP(c, u)->code[fim + 1] = UP(c, u)->ncode;
@@ -4875,8 +5011,7 @@ static void padrao_testa(C *c, Unidade *u, PSNode *pat)
     }
     if (!strcmp(k, "dict")) {
         /* cada chave precisa existir E o valor casar */
-        int32_t falhas[64];
-        int nf = 0;
+        Saltos falhas = {0};
         for (int32_t i = 0; i < pat->lista2.n && !CFALHOU(c); i++) {
             const char *chave = pat->lista2.itens[i]->texto;
             int32_t kc = idx_const(c, u, K_STR, 0, 0, chave ? chave : "",
@@ -4884,18 +5019,18 @@ static void padrao_testa(C *c, Unidade *u, PSNode *pat)
             emite(c, u, OP_DUP, 0);
             emite(c, u, OP_LOAD_CONST, kc);
             emite(c, u, OP_HAS_KEY, 0);
-            if (nf < 64) falhas[nf++] = emite(c, u, OP_JUMP_IF_FALSE, 0);
+            saltos_push(c, &falhas, emite(c, u, OP_JUMP_IF_FALSE, 0));
             emite(c, u, OP_DUP, 0);
             emite(c, u, OP_LOAD_CONST, kc);
             emite(c, u, OP_INDEX_GET, 0);
             padrao_testa(c, u, pat->lista.itens[i]);
-            if (nf < 64) falhas[nf++] = emite(c, u, OP_JUMP_IF_FALSE, 0);
+            saltos_push(c, &falhas, emite(c, u, OP_JUMP_IF_FALSE, 0));
         }
         emite(c, u, OP_POP_TOP, 0);
         emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_BOOL, 1, 0, NULL, 0));
         int32_t fim = emite(c, u, OP_JUMP, 0);
-        int32_t alvo_falha = UP(c, u)->ncode;
-        for (int i = 0; i < nf; i++) UP(c, u)->code[falhas[i] + 1] = alvo_falha;
+        saltos_corrige(c, u, &falhas, UP(c, u)->ncode);
+        saltos_solta(&falhas);
         emite(c, u, OP_POP_TOP, 0);
         emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_BOOL, 0, 0, NULL, 0));
         UP(c, u)->code[fim + 1] = UP(c, u)->ncode;
@@ -4919,13 +5054,21 @@ static void bloco_stmts(C *c, Unidade *u, PSNode *b)
 static void emite_finallys(C *c, Unidade *u, int ate_laco)
 {
     for (int i = c->nfinally - 1; i >= 0; i--) {
-        if (c->fin_unidade[i] != (const void *)u) break;   /* outra função */
-        if (ate_laco >= 0 && c->fin_laco[i] < ate_laco) break;
-        PSNode *bloco = c->fin_bloco[i];
+        if (c->fin_pend[i].unidade != (const void *)u) break;   /* outra função */
+        if (ate_laco >= 0 && c->fin_pend[i].laco < ate_laco) break;
+        PSNode *bloco = c->fin_pend[i].bloco;
         if (!bloco) continue;
+        /* Enquanto ESTA entrada compila, ela e as de dentro dela saem de
+         * pendente: um `return` (ou break/continue) dentro do próprio finally
+         * achava o finally pendente e o recompilava sem fim
+         * (`stmt_no <- emite_finallys <- stmt_no`, até derrubar o processo).
+         * Um finally nunca envolve a si mesmo. */
+        int salvo = c->nfinally;
+        c->nfinally = i;
         int32_t M = escopo_marca(u);
         bloco_stmts(c, u, bloco);
         escopo_fecha(c, u, M);
+        c->nfinally = salvo;
     }
 }
 
@@ -4944,6 +5087,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
     if (CFALHOU(c) || !n) return;
     if (n->line) c->linha_atual = n->line;
     if (n->col)  c->coluna_atual = n->col;
+    if (fundo_demais(c, n, 1)) return;
 
     switch (n->kind) {
         case N_FUNCT_DECL: {
@@ -5154,8 +5298,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
         }
 
         case N_IF_STMT: {
-            int32_t fins[64];
-            int nfins = 0;
+            Saltos fins = {0};
             for (int32_t i = 0; i < n->lista.n && !CFALHOU(c); i++) {
                 PSNode *ramo = n->lista.itens[i];
                 if (!ramo->a) {                        /* else */
@@ -5169,10 +5312,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 int32_t M = escopo_marca(u);
                 bloco_stmts(c, u, ramo->b);
                 escopo_fecha(c, u, M);
-                if (nfins < 64) fins[nfins++] = emite(c, u, OP_JUMP, 0);
+                saltos_push(c, &fins, emite(c, u, OP_JUMP, 0));
                 if (salto_falso >= 0) UP(c, u)->code[salto_falso + 1] = UP(c, u)->ncode;
             }
-            for (int k = 0; k < nfins; k++) UP(c, u)->code[fins[k] + 1] = UP(c, u)->ncode;
+            saltos_corrige(c, u, &fins, UP(c, u)->ncode);
+            saltos_solta(&fins);
             return;
         }
 
@@ -6089,8 +6233,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
 
         case N_MATCH_STMT: {
             expr(c, u, n->a);                  /* sujeito fica na pilha */
-            int32_t fins[64];
-            int nfins = 0;
+            Saltos fins = {0};
             for (int32_t i = 0; i < n->lista.n && !CFALHOU(c); i++) {
                 PSNode *caso = n->lista.itens[i];
                 emite(c, u, OP_DUP, 0);        /* cada teste consome uma cópia */
@@ -6123,10 +6266,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_BOOL, 0, 0, NULL, 0));
                 UP(c, u)->code[casou + 1] = UP(c, u)->ncode;
                 escopo_fecha(c, u, Mc);        /* captura/vars do case não vazam — nos 3 caminhos */
-                if (nfins < 64) fins[nfins++] = emite(c, u, OP_JUMP_IF_TRUE, 0);
+                saltos_push(c, &fins, emite(c, u, OP_JUMP_IF_TRUE, 0));
             }
             int32_t fim = UP(c, u)->ncode;
-            for (int k = 0; k < nfins; k++) UP(c, u)->code[fins[k] + 1] = fim;
+            saltos_corrige(c, u, &fins, fim);
+            saltos_solta(&fins);
             emite(c, u, OP_POP_TOP, 0);        /* descarta o sujeito */
             return;
         }
@@ -6165,13 +6309,17 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * PENDENTE: `return`/`break`/`continue` lá dentro emitem o bloco
              * antes de saltar, senão ele não roda nesses caminhos. */
             int fin_meu = -1;
-            if (c->nfinally < 32) {
-                fin_meu = c->nfinally;
-                c->fin_bloco[fin_meu]   = n->c;      /* pode ser NULL (sem finally) */
-                c->fin_laco[fin_meu]    = c->nlacos;
-                c->fin_unidade[fin_meu] = (const void *)u;
-                c->nfinally++;
+            if (c->nfinally >= c->cap_finally) {
+                int nc = c->cap_finally ? c->cap_finally * 2 : 16;
+                struct FinPend *nv = realloc(c->fin_pend, sizeof(struct FinPend) * (size_t)nc);
+                if (!nv) { cerro(c, "sem memoria", n); return; }
+                c->fin_pend = nv; c->cap_finally = nc;
             }
+            fin_meu = c->nfinally;
+            c->fin_pend[fin_meu].bloco   = n->c;      /* pode ser NULL (sem finally) */
+            c->fin_pend[fin_meu].laco    = c->nlacos;
+            c->fin_pend[fin_meu].unidade = (const void *)u;
+            c->nfinally++;
             int32_t Mt = escopo_marca(u);
             bloco_stmts(c, u, n->a);
             escopo_fecha(c, u, Mt);            /* vars do try não vazam (saída normal) */
@@ -6190,8 +6338,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
 
             /* Cada catch: se tem tipo, compara; senão captura tudo.
              * A mensagem já está no topo quando chegamos aqui. */
-            int32_t fins[32];
-            int nfins = 0;
+            Saltos fins = {0};
             int32_t prox_falha = -1;
             for (int32_t i = 0; i < n->lista.n && !CFALHOU(c); i++) {
                 PSNode *cl = n->lista.itens[i];
@@ -6223,7 +6370,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 guarda_nome_modo(c, u, cl->texto ? cl->texto : "e", 1);
                 bloco_stmts(c, u, cl->b);
                 escopo_fecha(c, u, Mcat);      /* var do catch (e) + corpo não vazam */
-                if (nfins < 32) fins[nfins++] = emite(c, u, OP_JUMP, 0);
+                saltos_push(c, &fins, emite(c, u, OP_JUMP, 0));
             }
 
             /* Nenhum catch casou: o erro CONTINUA. Engolir aqui fazia
@@ -6235,6 +6382,12 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * RERAISE nenhum e a exceção sumia CALADA: o finally rodava, o
              * programa saía com rc=0 e o erro nunca aparecia. Trocar um
              * `SyntaxError` por um erro engolido teria sido piorar. */
+            /* Daqui em diante só se emitem cópias do PRÓPRIO finally: ele sai
+             * de pendente ANTES delas. A primeira cópia (abaixo) vinha antes
+             * desta linha, e um `return` dentro do finally a recompilava sem
+             * fim. */
+            if (fin_meu >= 0) c->nfinally = fin_meu;   /* sai de pendente */
+
             if (prox_falha >= 0 || n->lista.n == 0) {
                 if (prox_falha >= 0) UP(c, u)->code[prox_falha + 1] = UP(c, u)->ncode;
                 /* tipo junto da mensagem: o `finally` roda antes do RERAISE e
@@ -6245,16 +6398,14 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 emite(c, u, OP_RERAISE, 0);
             }
 
-            if (fin_meu >= 0) c->nfinally = fin_meu;   /* sai de pendente */
-
             int32_t pula_handler = -1;
             if (setup_cat >= 0) {
                 /* fim normal de um catch: fecha o try interno e segue */
                 int32_t pos_pop = UP(c, u)->ncode;
                 emite(c, u, OP_POP_TRY, 0);
                 pula_handler = emite(c, u, OP_JUMP, 0);
-                for (int k = 0; k < nfins; k++) UP(c, u)->code[fins[k] + 1] = pos_pop;
-                nfins = 0;
+                saltos_corrige(c, u, &fins, pos_pop);
+                fins.n = 0;
                 /* handler: erro veio de dentro de um catch -> finally + repropaga */
                 UP(c, u)->code[setup_cat + 1] = UP(c, u)->ncode;
                 emite(c, u, OP_PUSH_ERR_TYPE, 0);
@@ -6265,7 +6416,8 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             int32_t fim_catches = UP(c, u)->ncode;
             if (pula_catches >= 0) UP(c, u)->code[pula_catches + 1] = fim_catches;
             if (pula_handler >= 0) UP(c, u)->code[pula_handler + 1] = fim_catches;
-            for (int k = 0; k < nfins; k++) UP(c, u)->code[fins[k] + 1] = fim_catches;
+            saltos_corrige(c, u, &fins, fim_catches);
+            saltos_solta(&fins);
 
             if (n->c) { int32_t Mf = escopo_marca(u); bloco_stmts(c, u, n->c); escopo_fecha(c, u, Mf); }  /* finally */
             return;
@@ -6297,14 +6449,13 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
         case N_BREAK_STMT: {
             if (c->nlacos == 0) { cerro_sx(c, n, "'break' fora de laco"); return; }
             Laco *l = &c->lacos[c->nlacos - 1];
-            if (l->nsaidas >= MAX_SAIDAS) { cerro(c, "limite do compilador: 'break' demais no mesmo laco", n); return; }
             /* saindo do laço: apaga TUDO nascido nele até aqui (var do laço +
              * corpo + blocos aninhados abertos), pra nada vazar pra fora */
             emite_finallys(c, u, c->nlacos);   /* finally aberto DENTRO deste laço */
             escopo_emite_clears(c, u, l->escopo_marca);
             /* limpa o estado do iterador antes de sair do laço */
             for (int k = 0; k < l->slots_pilha; k++) emite(c, u, OP_POP_TOP, 0);
-            l->saidas[l->nsaidas++] = emite(c, u, OP_JUMP, 0);
+            saltos_push(c, &l->saidas, emite(c, u, OP_JUMP, 0));
             return;
         }
 
@@ -6316,12 +6467,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
         case N_CONTINUE_STMT: {
             if (c->nlacos == 0) { cerro_sx(c, n, "'continue' fora de laco"); return; }
             Laco *l = &c->lacos[c->nlacos - 1];
-            if (l->ncontinues >= MAX_SAIDAS) { cerro(c, "limite do compilador: 'continue' demais no mesmo laco", n); return; }
             /* próxima iteração começa limpa: apaga só o escopo do CORPO (o que é
              * do laço — var/ self/_count — é re-atribuído no topo ou persiste) */
             emite_finallys(c, u, c->nlacos);   /* finally aberto DENTRO deste laço */
             escopo_emite_clears(c, u, l->escopo_marca_body);
-            l->continues[l->ncontinues++] = emite(c, u, OP_JUMP, 0);
+            saltos_push(c, &l->continues, emite(c, u, OP_JUMP, 0));
             return;
         }
 
@@ -6992,7 +7142,12 @@ static int poda_poe(C *c, PSNode *bloco, PSNode *k)
  * aninhada: elas viram nós podados próprios. */
 static void colhe_fatos(C *c, PSNode *n, PSNode *bloco, int *viu_yield)
 {
-    if (!n || CFALHOU(c)) return;
+    if (!n || CFALHOU(c) || fundo_demais(c, n, 1)) return;
+    while (n->kind == N_BINARY_OP) {      /* cadeia `a + b + …` em laço (ver liga_o_nome) */
+        colhe_fatos(c, n->b, bloco, viu_yield);
+        n = n->a;
+        if (!n) return;
+    }
     switch (n->kind) {
         case N_FUNCT_DECL: case N_LAMBDA_EXPR:
             poda_poe(c, bloco, poda_funct(c, n));
@@ -7077,7 +7232,28 @@ static PSNode *poda_funct(C *c, PSNode *n)
 
 static PSNode *poda(C *c, PSNode *n)
 {
-    if (!n || CFALHOU(c)) return NULL;
+    if (!n || CFALHOU(c) || fundo_demais(c, n, 1)) return NULL;
+    if (n->kind == N_BINARY_OP) {
+        /* cadeia `a + b + …` em laço (ver liga_o_nome): copia nó a nó pelo
+         * ->a, e o ->a do último recebe a cópia do termo da ponta */
+        PSNode *raiz = NULL, **ponta = &raiz;
+        while (n && n->kind == N_BINARY_OP) {
+            if (CFALHOU(c)) return NULL;
+            PSNode *k = copia_raso(c, n);
+            if (!k) return NULL;
+            k->b = poda(c, n->b);
+            k->c = poda(c, n->c);
+            k->e = poda(c, n->e);
+            poda_vec(c, &n->lista, &k->lista);
+            poda_vec(c, &n->lista2, &k->lista2);
+            poda_vec(c, &n->lista2_alias, &k->lista2_alias);
+            *ponta = k;
+            ponta = &k->a;
+            n = n->a;
+        }
+        *ponta = poda(c, n);
+        return raiz;
+    }
     if (n->kind == N_FUNCT_DECL || n->kind == N_LAMBDA_EXPR) return poda_funct(c, n);
     PSNode *k = copia_raso(c, n);
     if (!k) return NULL;
@@ -7317,6 +7493,14 @@ static void compila_termina(C *c, Unidade *u)
     for (int32_t i = 0; i < c->ntpool; i++) free(c->tpool[i]);
     free(c->tpool);
     free(c->topo);
+    free(c->fin_pend);
+    /* laço que ficou aberto (a compilação parou no meio dele) ainda tem os
+     * vetores de salto; o fechamento normal é `fecha_laco` */
+    for (int32_t i = 0; i < c->nlacos; i++) {
+        saltos_solta(&c->lacos[i].saidas);
+        saltos_solta(&c->lacos[i].continues);
+    }
+    c->nlacos = 0;
     ix_solta(&c->ix_topo);
     for (int32_t i = 0; i < c->nligados_mod; i++) free(c->ligados_mod[i]);
     free(c->ligados_mod);

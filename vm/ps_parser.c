@@ -1632,6 +1632,9 @@ static PSNode *unario(P *p)
     if (t->type == T_OP && t->texto
             && (strcmp(t->texto, "-") == 0 || strcmp(t->texto, "+") == 0
                 || strcmp(t->texto, "~") == 0)) {
+        /* `- - - ... 1` recursa sem passar pela casca `expressao`: o mesmo
+         * freio dela, pela folga da pilha */
+        if (ps_pilha_apertada()) { perro(p, "expressao aninhada demais", t); return NULL; }
         p->pos++;
         PSNode *operando = unario(p);
         if (FALHOU(p)) return NULL;
@@ -1825,6 +1828,7 @@ static PSNode *nao(P *p)
 {
     PSToken *t = atual(p);
     if (checa_kw(p, "not") || checa_kw(p, "Not") || op_eh(t, "!")) {
+        if (ps_pilha_apertada()) { perro(p, "expressao aninhada demais", t); return NULL; }
         p->pos++;
         PSNode *operando = nao(p);
         if (FALHOU(p)) return NULL;
@@ -1937,6 +1941,20 @@ static void fstring_filhos(P *p, PSNode *n, int32_t i_tok)
          * decide a frase, e ele refaz este caminho */
         p->out->nerros = erros_antes;
         p->out->ok = ok_antes;
+        /* ...menos o que SOBROU depois da expressão: `{nome sobrenome}`,
+         * `{preco = }`, `{qtd)}` eram lidos como `nome`, `preco` e `qtd`, e o
+         * resto sumia calado — até um nome que não existe. Aqui a posição do
+         * token que sobrou é exata. */
+        if (e && atual(&sp)->type != T_EOF) {
+            PSToken *sob = atual(&sp);
+            PSToken tk = *sob;
+            tk.line = p->tl->interps[k].linha + (sob->line - 1);
+            tk.col = sob->line == 1 ? p->tl->interps[k].col + sob->col - 1 : sob->col;
+            const char *resto = (sob->line == 1 && sob->col >= 1 && (size_t)(sob->col - 1) <= strlen(txt))
+                                ? txt + sob->col - 1 : "?";
+            perro_f(p, &tk, "sobrou '%.40s' dentro de {} da f-string: cada {} leva uma expressao so", resto);
+            e = NULL;
+        }
         ps_lexer_free(sub);
         if (!e) continue;
         fstring_pos(e, p->tl->interps[k].linha, p->tl->interps[k].col);
@@ -2144,7 +2162,10 @@ static PSNode *bloco_no(P *p);
  * mesmo jeito que o parêntese aninhado. */
 static PSNode *bloco(P *p)
 {
-    if (p->prof >= PS_PARSE_PROF_MAX || ps_pilha_apertada()) {
+    /* o freio do bloco tem o dobro da margem do da expressão (ver
+     * `ps_pilha.h`): é o que faz 4000 `if` aninhados acusarem o bloco, e não a
+     * condição `True` de dentro, em qualquer binário */
+    if (p->prof >= PS_PARSE_PROF_MAX || ps_pilha_apertada_bloco()) {
         perro(p, "bloco aninhado demais", atual(p));
         return NULL;
     }
@@ -3156,6 +3177,54 @@ static PSNode *statement(P *p)
     return r;
 }
 
+/* A cabeça de um decorador, `@caminho[.membro](args)`, com o cursor no `@`:
+ * devolve o N_DECORATOR_STMT com o `a` (a chamada) posto e o `b` (o que ele
+ * decora) ainda vazio — quem decide o `b` é o laço do statement. */
+static PSNode *decorador_cabeca(P *p)
+{
+    PSToken *ta = atual(p);
+    p->pos++;
+    PSNode *n = ps_node_novo(p->arena, N_DECORATOR_STMT, ta->line, ta->col);
+    if (!n) return NULL;
+    PSNode *dc = ps_node_novo(p->arena, N_DECORATOR_CALL, ta->line, ta->col);
+    if (!dc) return NULL;
+    if (caminho_modulo(p, &dc->lista) != 0) return NULL;
+    if (aceita(p, T_LPAREN)) {
+        dc->i2 = 1;   /* teve parênteses: é chamada (mesmo sem args) */
+        pula_separadores(p);
+        if (!checa(p, T_RPAREN)) {
+            for (;;) {
+                pula_separadores(p);
+                PSToken *at = atual(p);
+                const char *nome_arg = NULL;
+                int estrela = estrela_de_argumento(p);   /* `@app.route("/x", **opts)` */
+                if (!estrela
+                        && (at->type == T_IDENT || at->type == T_IDENT_UPPER || at->type == T_KW)
+                        && espia(p, 1)->type == T_OP && espia(p, 1)->texto
+                        && strcmp(espia(p, 1)->texto, "=") == 0) {
+                    nome_arg = dup_tok(p, at);
+                    p->pos += 2;
+                }
+                PSNode *v = expressao(p);
+                if (FALHOU(p)) return NULL;
+                PSNode *arg = ps_node_novo(p->arena, N_CALL_ARG, at->line, at->col);
+                if (!arg) return NULL;
+                arg->a = v; arg->texto = nome_arg; arg->i2 = estrela;
+                if (ps_vec_push(p->arena, &dc->lista2, arg) != 0) return NULL;
+                pula_separadores(p);
+                if (!aceita(p, T_COMMA)) break;
+                pula_separadores(p);
+                if (checa(p, T_RPAREN)) break;
+            }
+        }
+        pula_separadores(p);
+        if (!exige(p, T_RPAREN, "faltou ')' no decorador")) return NULL;
+    }
+    n->a = dc;
+    pula_separadores(p);
+    return n;
+}
+
 static PSNode *statement_no(P *p)
 {
     pula_separadores(p);
@@ -3708,50 +3777,32 @@ static PSNode *statement_no(P *p)
 
     /* @decorador[.metodo](args) [bloco | funct] */
     if (checa(p, T_AT)) {
-        p->pos++;
-        PSNode *n = ps_node_novo(p->arena, N_DECORATOR_STMT, t->line, t->col);
-        if (!n) return NULL;
-        PSNode *dc = ps_node_novo(p->arena, N_DECORATOR_CALL, t->line, t->col);
-        if (!dc) return NULL;
-        if (caminho_modulo(p, &dc->lista) != 0) return NULL;
-        if (aceita(p, T_LPAREN)) {
-            dc->i2 = 1;   /* teve parênteses: é chamada (mesmo sem args) */
-            pula_separadores(p);
-            if (!checa(p, T_RPAREN)) {
-                for (;;) {
-                    pula_separadores(p);
-                    PSToken *at = atual(p);
-                    const char *nome_arg = NULL;
-                    int estrela = estrela_de_argumento(p);   /* `@app.route("/x", **opts)` */
-                    if (!estrela
-                            && (at->type == T_IDENT || at->type == T_IDENT_UPPER || at->type == T_KW)
-                            && espia(p, 1)->type == T_OP && espia(p, 1)->texto
-                            && strcmp(espia(p, 1)->texto, "=") == 0) {
-                        nome_arg = dup_tok(p, at);
-                        p->pos += 2;
-                    }
-                    PSNode *v = expressao(p);
-                    if (FALHOU(p)) return NULL;
-                    PSNode *arg = ps_node_novo(p->arena, N_CALL_ARG, at->line, at->col);
-                    if (!arg) return NULL;
-                    arg->a = v; arg->texto = nome_arg; arg->i2 = estrela;
-                    if (ps_vec_push(p->arena, &dc->lista2, arg) != 0) return NULL;
-                    pula_separadores(p);
-                    if (!aceita(p, T_COMMA)) break;
-                    pula_separadores(p);
-                    if (checa(p, T_RPAREN)) break;
-                }
+        /* Decorador EMPILHADO (`@a` em cima de `@b`): o de baixo vira o bloco
+         * do de cima — antes o de cima ficava sem bloco e o compilador o
+         * descartava calado. A pilha é lida em LAÇO, não com um `statement()`
+         * dentro do outro: 5000 empilhados (gerados) eram 5000 quadros do
+         * parser, e estouravam a pilha antes de qualquer freio. */
+        PSNode *primeiro = NULL, *de_cima = NULL, *n = NULL;
+        int32_t ini_dec = p->pos;
+        for (;;) {
+            n = decorador_cabeca(p);
+            if (!n) return NULL;
+            if (!primeiro) primeiro = n;
+            if (de_cima) {
+                PSNode *b = ps_node_novo(p->arena, N_BLOCK, n->line, n->col);
+                if (!b) return NULL;
+                b->estilo = "brace";
+                if (ps_vec_push(p->arena, &b->lista, n) != 0) return NULL;
+                de_cima->b = b;
             }
-            pula_separadores(p);
-            if (!exige(p, T_RPAREN, "faltou ')' no decorador")) return NULL;
-        }
-        n->a = dc;
-        pula_separadores(p);
-
-        if (checa(p, T_COLON) || checa(p, T_LBRACE)) {
-            n->b = bloco(p);
-            if (FALHOU(p)) return NULL;
-        } else if (!p->dec_sem_captura) {
+            if (checa(p, T_COLON) || checa(p, T_LBRACE)) {
+                n->b = bloco(p);
+                if (FALHOU(p)) return NULL;
+                break;
+            }
+            if (p->dec_sem_captura) break;
+            PSToken *nt = atual(p);
+            if (nt->type == T_AT) { de_cima = n; continue; }
             /* `@NonNull funct f()` — a funct vira um bloco de um nó só.
              *
              * A cabeça da funct é UMA unidade: `[public|private] {async|tipo}*
@@ -3763,7 +3814,6 @@ static PSNode *statement_no(P *p)
              * `int async funct handler()` compilava limpo, a funct
              * virava um statement solto SEM decorator, a rota nunca era
              * registrada, e o cliente recebia 404 — sem um aviso sequer. */
-            PSToken *nt = atual(p);
             int eh_funct_cabeca = (cabeca_de_funct(p, 0) >= 0);
             /* @app.route(...) class Nome { ... } — handler baseado em classe.
              * O decorador captura a classe (com prefixo private/public opcional)
@@ -3778,27 +3828,29 @@ static PSNode *statement_no(P *p)
                              && (strcmp(n2->texto,"Entity")==0 || strcmp(n2->texto,"class")==0
                                  || strcmp(n2->texto,"Class")==0));
             }
-            /* decorador EMPILHADO (`@a` em cima de `@b`): o de baixo vira o
-             * bloco deste — antes o de cima ficava sem bloco e o compilador
-             * o descartava calado */
-            int eh_outro_dec = (nt->type == T_AT);
-            if (eh_funct_cabeca || eh_classe || eh_outro_dec) {
-                PSNode *acao = statement(p);
-                if (FALHOU(p)) return NULL;
-                PSNode *b = ps_node_novo(p->arena, N_BLOCK, acao->line, acao->col);
-                if (!b) return NULL;
-                b->estilo = "brace";
-                if (ps_vec_push(p->arena, &b->lista, acao) != 0) return NULL;
-                n->b = b;
-            } else {
+            if (!eh_funct_cabeca && !eh_classe) {
                 /* `@x` seguido de qualquer outra coisa: não há o que decorar.
                  * Era ignorado ("recusar quebrava script válido" — o único
                  * caso coberto era o empilhamento acima, descartado calado). */
                 perro(p, "decorador sem funct ou Entity embaixo", nt);
                 return NULL;
             }
+            PSNode *acao = statement(p);
+            if (FALHOU(p)) return NULL;
+            PSNode *b = ps_node_novo(p->arena, N_BLOCK, acao->line, acao->col);
+            if (!b) return NULL;
+            b->estilo = "brace";
+            if (ps_vec_push(p->arena, &b->lista, acao) != 0) return NULL;
+            n->b = b;
+            break;
         }
-        return n;
+        /* cada um acaba onde a pilha inteira acaba — era o que o `statement()`
+         * de dentro fazia por eles */
+        for (PSNode *d = primeiro; ; d = d->b->lista.itens[0]) {
+            fecha_no(p, d, ini_dec);
+            if (d == n) break;
+        }
+        return primeiro;
     }
 
     /* model Nome() { campo: tipo(length=N) } */

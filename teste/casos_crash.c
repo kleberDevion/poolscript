@@ -60,6 +60,30 @@ const Caso CASOS_CRASH[] = {
   "import regex\ntry {\n    post(regex.match(\"a{4294967295}\", \"\"))\n} catch (e) {\n    post(\"erro:\", e)\n}\n"
   "try {\n    regex.compile(\"a{3,4294967297}\")\n} catch (e) {\n    post(\"erro:\", e)\n}\npost(regex.match(\"a{2,3}\", \"aaa\"), regex.match(\"a{2}\", \"a\"))\n",
   "erro: the repetition number is too large at position 2 (linha 3)\nerro: the repetition number is too large at position 2 (linha 8)\nTrue False", NULL, 0 },
+/* ── sonda 2, parser e compilador: recursao e tetos (lote 3) ──────────────── */
+{ "return dentro de finally nao recompila o finally sem fim (era segfault)",
+  "Null funct f() {\n    try {\n        post(\"corpo\")\n    } finally {\n        return\n    }\n}\nf()\npost(\"depois\")\n", "corpo\ndepois", NULL, 0 },
+{ "return no try e no finally, break no finally dentro de laco",
+  "int funct g() {\n    try {\n        return 1\n    } finally {\n        return 2\n    }\n}\npost(g())\n"
+  "for each i in [1, 2] {\n    try {\n        post(\"tenta\", i)\n    } finally {\n        break\n    }\n}\npost(\"fim\")\n", "2\ntenta 1\nfim", NULL, 0 },
+{ "return no try com finally roda o finally uma vez, e o fim normal tambem",
+  "Null funct h(int n) {\n    try {\n        if n > 0 {\n            post(\"ret\", n)\n            return\n        }\n    } finally {\n        post(\"finally\", n)\n    }\n    post(\"fim\", n)\n}\nh(5)\nh(0)\n",
+  "ret 5\nfinally 5\nfinally 0\nfim 0", NULL, 0 },
+{ "soma plana de 8000 termos compila e roda (a cadeia a esquerda nao e recursao)",
+  /* gerado pelo proprio programa: 8000 termos a mao nao cabem aqui */
+  "import os\nimport sys\nstr src = \"int s = 0\" + \" + 1\" * 8000 + \"\\npost(s)\\n\"\n"
+  "using open(\"soma.pr\", \"w\") as f { f.write(src) }\n"
+  "Process p = os.run([sys.executable, \"soma.pr\"], capture=\"live\")\nstr t = p.read(65536)\nint rc = p.wait()\npost(t.strip(), rc)\n", "8000 0", NULL, 0 },
+{ "4000 blocos aninhados e 5000 decoradores sao erro limpo no --check, nunca segfault",
+  "import os\nimport sys\n"
+  "str b = \"if True { \" * 4000 + \"post(1)\" + \" }\" * 4000 + \"\\n\"\n"
+  "using open(\"b.pr\", \"w\") as f { f.write(b) }\n"
+  "str d = \"funct a(Object f) { return f }\\n\" + \"@a\\n\" * 5000 + \"Null funct h() { post(1) }\\nh()\\n\"\n"
+  "using open(\"d.pr\", \"w\") as f { f.write(d) }\n"
+  "for each nome in [\"b.pr\", \"d.pr\"] {\n"
+  "    Process p = os.run([sys.executable, \"--check\", nome], capture=\"live\")\n"
+  "    str t = p.read(65536)\n    int rc = p.wait()\n"
+  "    post(nome, rc, \"aninhado demais\" in t)\n}\n", "b.pr 1 True\nd.pr 1 True", NULL, 0 },
 /* ── recursão sem teto: três SIGSEGV da auditoria de engenharia (27/08) ──────
  * Os três eram descida recursiva sem limite. O detector de CICLO existia e não
  * bastava: ele pega `l.append(l)`, e não pega profundidade sem ciclo nem ciclo

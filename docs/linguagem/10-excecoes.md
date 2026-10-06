@@ -44,6 +44,9 @@ try {
   10.3). `catch:` sem parênteses é erro de sintaxe.
 - **`finally:`** — opcional; roda **sempre**, tenha havido erro ou não (bom para
   fechar recursos). Roda tanto na saída normal quanto quando o erro vai propagar.
+  `return`, `break` e `continue` dentro do `finally` valem: saem dali na hora
+  (um `return` no `finally` ganha do `return` do `try`), e só atravessam os
+  `finally` **de fora** — o próprio nunca roda duas vezes.
 
 > **`try` + `finally` sem `catch` vale.** É a forma "faça isto aconteça o que
 > acontecer, sem tratar o erro" — fechar arquivo, soltar trava, derrubar um

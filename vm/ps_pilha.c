@@ -88,10 +88,10 @@ void ps_pilha_marca_processo(void)
 
 /* 1 = está perto do fim da pilha. A pilha cresce PARA BAIXO em toda plataforma
  * que este motor roda, então o consumido é `base - atual`. */
-int ps_pilha_apertada(void)
+/* embutida sempre: a pergunta roda por comparação no sort e por nó no repr,
+ * e um quadro a mais aqui seria um quadro a mais em cada uma */
+static inline __attribute__((always_inline)) int apertada_com(const char *aqui, size_t vezes)
 {
-    if (!ps_pilha_base || ps_pilha_tam == 0) return 0;
-    const char *aqui = (const char *)__builtin_frame_address(0);
     /* degrau: só descida, e só dentro da mesma pilha (a troca de fibra pula
      * pra outro mapeamento — distância que não é quadro nenhum) */
     if (ps_pilha_ultimo && aqui < ps_pilha_ultimo) {
@@ -103,7 +103,21 @@ int ps_pilha_apertada(void)
     if (usado < 0) usado = -usado;          /* pilha que cresce pra cima */
     size_t margem = ps_pilha_margem(ps_pilha_tam);
     if (margem < 2 * ps_pilha_passo) margem = 2 * ps_pilha_passo;
+    margem *= vezes;
     return (size_t)usado + margem >= ps_pilha_tam;
+}
+
+int ps_pilha_apertada(void)
+{
+    if (!ps_pilha_base || ps_pilha_tam == 0) return 0;
+    return apertada_com((const char *)__builtin_frame_address(0), 1);
+}
+
+/* O freio dos blocos: o dobro da margem (ver `ps_pilha.h`). */
+int ps_pilha_apertada_bloco(void)
+{
+    if (!ps_pilha_base || ps_pilha_tam == 0) return 0;
+    return apertada_com((const char *)__builtin_frame_address(0), 2);
 }
 
 void ps_pilha_le(const char **base, size_t *tam)

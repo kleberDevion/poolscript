@@ -265,6 +265,11 @@ funct casos_de(arq) {
 
 # Roda o programa e devolve [rc, stdout_bytes, primeira_linha_do_stderr].
 funct roda(fonte_bytes) {
+    # pasta LIMPA a cada programa: o que um deixa (pasta, link em ciclo) mudava
+    # o resultado gravado do seguinte, e de uma geracao pra outra (o `ln` do
+    # caso dos links em ciclo achava o link da geracao anterior e reclamava)
+    os.rmdir(TMP, force=True)
+    os.mkdir(TMP, exist_ok=True)
     using open(TMP + "/caso.pr", "wb") as f {
         f.write(bytes.new(fonte_bytes))
     }
