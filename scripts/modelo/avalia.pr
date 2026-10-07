@@ -1,0 +1,150 @@
+# A nota do modelo local, medida e não estimada. N casos de teste escolhidos
+# de forma fixa viram duas tarefas, cada uma feita SEM e COM a consulta ao
+# material:
+#   1. "o que este programa imprime?" — confere com a saída esperada do caso;
+#   2. "escreva em Jinga: <nome do caso>" — o programa que ele escreve passa
+#      no --check? roda até o fim? dá a mesma saída do caso?
+# Na consulta com material, o trecho do próprio caso é tirado da busca: senão
+# a resposta estaria no material.
+#
+# Uso: jinga scripts/modelo/avalia.pr [N]          (padrão 50)
+# Grava <pasta do índice>/avaliacao.txt (uma linha por tarefa e o resumo).
+import os
+import sys
+import json
+from "./comum.pr" import carrega_indice, pasta_do_indice, busca, trechos, mensagens, pergunta_ao_modelo
+
+int N = 50
+if len(sys.argv) > 1 { N = int(sys.argv[1]) }
+
+# Programa determinístico e curto: sem disco, rede, relógio, entrada nem sorteio.
+bool funct serve(dict c) {
+    if c["rc"] != 0 or c["erro"] != "" or c["saida"] == "" or c["so"] != "" { return False }
+    str p = c["programa"]
+    if len(p) > 600 { return False }
+    for each proibido in ["import os", "import sys", "import request", "import jinker", "import date",
+                          "import sockets", "import mail", "input(", "sleep(", "random", "open("] {
+        if proibido in p { return False }
+    }
+    return True
+}
+
+# A resposta sem as cercas de código (```), quando o modelo as põe.
+str funct sem_cercas(str r) {
+    str t = r.strip()
+    if not ("```" in t) { return t }
+    list ls = t.split("\n")
+    list dentro = []
+    bool em = False
+    bool achou = False
+    for each l in ls {
+        if l.strip().startswith("```") {
+            if em { break }
+            em = True
+            achou = True
+            continue
+        }
+        if em { dentro.append(l) }
+    }
+    if not achou { return t }
+    return "\n".join(dentro).strip()
+}
+
+str funct normaliza(str s) {
+    list ls = []
+    for each l in s.strip().split("\n") { ls.append(l.rstrip()) }
+    return "\n".join(ls)
+}
+
+# Grava o programa e roda o motor nele (o --check e a execução), deixando os
+# resultados em arquivos da pasta. É `Null funct` porque o valor do
+# os.writeFile e do os.cmd não é o tipo de quem os chamaria.
+Null funct grava_e_roda(str pasta, str prog) {
+    os.writeFile(pasta + "/p.pr", prog + "\n")
+    str j = sys.executable
+    os.cmd("cd '" + pasta + "' && timeout 10 '" + j + "' --check p.pr > c.txt 2>&1; echo $? > crc.txt; timeout 10 '" + j + "' p.pr > o.txt 2> e.txt < /dev/null; echo $? > rc.txt")
+}
+
+# Roda o motor no programa: [rc do --check, rc da execução, saída].
+list funct roda(str pasta, str prog) {
+    grava_e_roda(pasta, prog)
+    return [int(os.readFile(pasta + "/crc.txt").strip()), int(os.readFile(pasta + "/rc.txt").strip()), os.readFile(pasta + "/o.txt")]
+}
+
+list IND = carrega_indice()
+str PASTA = pasta_do_indice()
+str TMP = PASTA + "/avalia_tmp"
+os.mkdir(TMP, exist_ok=True)
+list TODOS = json.parse(os.readFile(PASTA + "/casos.json"))
+list BONS = []
+for each c in TODOS { if serve(c) { BONS.append(c) } }
+int PASSO = len(BONS) // N
+if PASSO < 1 { PASSO = 1 }
+list ESCOLHIDOS = []
+int I = 0
+while I < len(BONS) and len(ESCOLHIDOS) < N {
+    ESCOLHIDOS.append(BONS[I])
+    I = I + PASSO
+}
+dict ID_DO_CASO = {}
+int K = 0
+for each t in IND[1] {
+    ID_DO_CASO[t[0]] = str(K)
+    K = K + 1
+}
+
+list LINHAS = []
+dict CONTA = {}
+for each chave in ["prev_sem", "prev_com", "check_sem", "check_com", "roda_sem", "roda_com", "igual_sem", "igual_com"] { CONTA[chave] = 0 }
+flo SEGUNDOS = 0.0
+int FALHAS = 0
+int NUM = 0
+for each c in ESCOLHIDOS {
+    NUM = NUM + 1
+    dict excluir = {}
+    if c["fonte"] in ID_DO_CASO { excluir[ID_DO_CASO[c["fonte"]]] = True }
+    for each modo in ["sem", "com"] {
+        # tarefa 1: prever a saída
+        str q1 = "O que este programa Jinga imprime? Responda só com a saída exata do programa, sem explicação e sem cercas de código.\n\n" + c["programa"]
+        str mat1 = ""
+        if modo == "com" { mat1 = trechos(IND[1], busca(IND[0], c["programa"], 12, excluir), 7000)[0] }
+        dict r1 = pergunta_ao_modelo(mensagens(q1, mat1), 300)
+        SEGUNDOS = SEGUNDOS + r1["segundos"]
+        bool acertou = r1["ok"] and normaliza(sem_cercas(r1["texto"])) == normaliza(c["saida"])
+        if acertou { CONTA["prev_" + modo] = CONTA["prev_" + modo] + 1 }
+        str falha1 = ""
+        if not r1["ok"] { FALHAS = FALHAS + 1; falha1 = " FALHA: " + r1["texto"] }
+        LINHAS.append(str(NUM) + " " + modo + " prever " + str(acertou) + " " + str(round(r1["segundos"], 1)) + "s :: " + c["nome"] + falha1)
+
+        # tarefa 2: escrever o programa
+        str q2 = "Escreva um programa Jinga completo que faça o seguinte: " + c["nome"] + ". Responda só com o código, sem explicação."
+        str mat2 = ""
+        if modo == "com" { mat2 = trechos(IND[1], busca(IND[0], c["nome"], 12, excluir), 7000)[0] }
+        dict r2 = pergunta_ao_modelo(mensagens(q2, mat2), 500)
+        SEGUNDOS = SEGUNDOS + r2["segundos"]
+        str falha2 = ""
+        if not r2["ok"] { FALHAS = FALHAS + 1; falha2 = " FALHA: " + r2["texto"] }
+        list res = [1, 1, ""]
+        if r2["ok"] { res = roda(TMP, sem_cercas(r2["texto"])) }
+        bool ok_check = res[0] == 0
+        bool ok_roda = res[1] == 0
+        bool igual = r2["ok"] and normaliza(res[2]) == normaliza(c["saida"])
+        if ok_check { CONTA["check_" + modo] = CONTA["check_" + modo] + 1 }
+        if ok_roda { CONTA["roda_" + modo] = CONTA["roda_" + modo] + 1 }
+        if igual { CONTA["igual_" + modo] = CONTA["igual_" + modo] + 1 }
+        LINHAS.append(str(NUM) + " " + modo + " escrever check=" + str(ok_check) + " roda=" + str(ok_roda) + " mesma_saida=" + str(igual) + " " + str(round(r2["segundos"], 1)) + "s :: " + c["nome"] + falha2)
+    }
+    post(str(NUM) + "/" + str(len(ESCOLHIDOS)) + " " + c["nome"])
+}
+
+list RESUMO = ["",
+    "casos: " + str(len(ESCOLHIDOS)) + " (de " + str(len(BONS)) + " que servem, um a cada " + str(PASSO) + ")",
+    "prever a saída exata:     sem material " + str(CONTA["prev_sem"]) + "   com material " + str(CONTA["prev_com"]),
+    "escrever, passa no check: sem material " + str(CONTA["check_sem"]) + "   com material " + str(CONTA["check_com"]),
+    "escrever, roda até o fim: sem material " + str(CONTA["roda_sem"]) + "   com material " + str(CONTA["roda_com"]),
+    "escrever, mesma saída:    sem material " + str(CONTA["igual_sem"]) + "   com material " + str(CONTA["igual_com"]),
+    "pedidos sem resposta do servidor: " + str(FALHAS) + " (contam como erro)",
+    "tempo do modelo: " + str(round(SEGUNDOS / 60.0, 1)) + " min no total"]
+for each l in RESUMO { LINHAS.append(l) }
+os.writeFile(PASTA + "/avaliacao.txt", "\n".join(LINHAS) + "\n")
+for each l in RESUMO { post(l) }

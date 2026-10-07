@@ -1,0 +1,219 @@
+# Monta o índice do material da Jinga que o modelo local consulta
+# (scripts/modelo/pergunta.pr). Vira trecho:
+#   - cada seção dos .md de docs/ e do JINGA-TUDO.md (cortada pelos títulos,
+#     e em pedaços de até MAX caracteres quando a seção é grande);
+#   - cada caso de teste escrito à mão (nome, programa, saída esperada), dos
+#     teste/casos_*.c — menos o diferencial, que repete os outros, e os
+#     pendentes, que descrevem o que o motor ainda não faz;
+#   - cada .pr de examples/ que está no git.
+# A busca é por palavra, com a pontuação BM25.
+#
+# Uso, da raiz do repositório:
+#   jinga scripts/modelo/indice.pr [pasta]      (padrão: .modelo/, fora do git)
+# Grava textos.json ([fonte, texto] por trecho), termos.json (o índice) e
+# casos.json (os casos com os campos separados, pra avaliação).
+import os
+import sys
+import json
+from "./comum.pr" import palavras
+from "../../teste/geradores/diferencial.pr" import tokens, sem_comentario, des_c, texto_de
+
+int MAX = 1600
+list ARQS_CASOS = ["teste/casos_linguagem.c", "teste/casos_erros.c", "teste/casos_crash.c",
+                   "teste/casos_cobertura.c", "teste/casos_libs.c", "teste/casos_inteiros.c"]
+
+# Guarda `texto` como um ou mais trechos de até MAX caracteres, cortando
+# entre parágrafos; parágrafo maior que 2·MAX (código longo) é cortado seco.
+Null funct poe(list textos, str fonte, str texto) {
+    str t = texto.strip()
+    if t == "" { return }
+    if len(t) <= MAX {
+        textos.append([fonte, t])
+        return
+    }
+    str atual = ""
+    for each p in t.split("\n\n") {
+        if atual != "" and len(atual) + len(p) + 2 > MAX {
+            textos.append([fonte, atual])
+            atual = ""
+        }
+        if atual == "" { atual = p } else { atual = atual + "\n\n" + p }
+        while len(atual) > 2 * MAX {
+            textos.append([fonte, atual[0:MAX]])
+            atual = atual[MAX:]
+        }
+    }
+    if atual.strip() != "" { textos.append([fonte, atual]) }
+}
+
+# Os .md de uma pasta, recursivo, em ordem de nome.
+list funct lista_md(str dir) {
+    list saida = []
+    list nomes = []
+    for each item in os.ls(dir) { nomes.append(item["name"]) }
+    for each nome in sorted(nomes) {
+        str caminho = dir + "/" + nome
+        if os.isdir(caminho) {
+            for each f in lista_md(caminho) { saida.append(f) }
+        } elif nome.endswith(".md") {
+            saida.append(caminho)
+        }
+    }
+    return saida
+}
+
+# Uma seção por título do markdown; `#` dentro de bloco de código não é título.
+Null funct secoes_md(list textos, str arq) {
+    str titulo = ""
+    list corpo = []
+    bool em_codigo = False
+    for each l in os.readFile(arq).split("\n") {
+        if l.strip().startswith("```") { em_codigo = not em_codigo }
+        if not em_codigo and l.startswith("#") {
+            secao(textos, arq, titulo, corpo)
+            titulo = l.lstrip("#").strip()
+            corpo = []
+            continue
+        }
+        corpo.append(l)
+    }
+    secao(textos, arq, titulo, corpo)
+}
+
+# Uma seção vira trecho se tem texto (o que vem antes do 1º título costuma
+# ser vazio).
+Null funct secao(list textos, str arq, str titulo, list corpo) {
+    str texto = "\n".join(corpo).strip()
+    if texto == "" and titulo == "" { return }
+    poe(textos, arq + " :: " + titulo, "# " + titulo + "\n" + texto)
+}
+
+# O texto de um campo do caso: os literais dele decodificados, ou "" se o
+# campo é NULL ou não tem literal.
+str funct campo_texto(list toks) {
+    list bs = []
+    bool tem = False
+    for each t in toks {
+        if t[0] == "lit" {
+            tem = True
+            for each b in des_c(t[1]) { bs.append(b) }
+        }
+    }
+    if not tem { return "" }
+    return texto_de(bs)
+}
+
+# Os casos de um teste/casos_*.c, cada um com nome, programa, saída, erro,
+# rc e o sistema em que vale. A leitura é a do gerador do diferencial
+# (teste/geradores/diferencial.pr): campos separados pelas vírgulas de fora
+# dos literais, literais vizinhos concatenados como em C.
+list funct casos_de_arquivo(str arq) {
+    list ls = sem_comentario(os.readFile(arq)).split("\n")
+    list casos = []
+    int i = 0
+    while i < len(ls) {
+        if not ls[i].startswith("{ \"") {
+            i = i + 1
+            continue
+        }
+        list toks = []
+        int j = i
+        while j < len(ls) {
+            for each t in tokens(ls[j]) { toks.append(t) }
+            if ls[j].rstrip().endswith("},") { break }
+            j = j + 1
+        }
+        i = j + 1
+        list campos = [[]]
+        for each t in toks {
+            if t[0] == "pont" and (t[1] == "{" or t[1] == "}") { continue }
+            if t[0] == "pont" and t[1] == "," {
+                campos.append([])
+                continue
+            }
+            campos[len(campos) - 1].append(t)
+        }
+        if len(campos) < 5 or len(campos[0]) == 0 or campos[0][0][0] != "lit" { continue }
+        str nome = ""
+        for each t in campos[0] { if t[0] == "lit" { nome = nome + t[1] } }
+        str rc = "0"
+        for each t in campos[4] { if t[0] == "num" { rc = t[1] } }
+        str so = ""
+        if len(campos) > 7 { so = campo_texto(campos[7]) }
+        str prog = campo_texto(campos[1])
+        if prog == "" { continue }
+        casos.append({"fonte": arq + " :: " + nome, "nome": nome, "programa": prog,
+                      "saida": campo_texto(campos[2]), "erro": campo_texto(campos[3]),
+                      "rc": int(rc), "so": so})
+    }
+    return casos
+}
+
+# O texto de um caso como trecho de material.
+str funct caso_como_texto(dict c) {
+    str t = "Caso de teste: " + c["nome"] + "\nPrograma:\n" + c["programa"].strip() + "\n"
+    if c["saida"] != "" { t = t + "Saída esperada:\n" + c["saida"].strip() + "\n" }
+    if c["erro"] != "" { t = t + "Erro esperado: " + c["erro"].strip() + "\n" }
+    return t + "Código de saída: " + str(c["rc"])
+}
+
+if len(sys.argv) > 2 {
+    post("uso: jinga scripts/modelo/indice.pr [pasta]")
+    sys.exit(64)
+}
+str PASTA = ".modelo"
+if len(sys.argv) == 2 { PASTA = sys.argv[1] }
+os.mkdir(PASTA, exist_ok=True)
+
+list TEXTOS = []
+for each arq in lista_md("docs") { secoes_md(TEXTOS, arq) }
+int N_DOCS = len(TEXTOS)
+secoes_md(TEXTOS, "JINGA-TUDO.md")
+int N_TUDO = len(TEXTOS) - N_DOCS
+
+list CASOS = []
+for each arq in ARQS_CASOS {
+    for each c in casos_de_arquivo(arq) {
+        CASOS.append(c)
+        TEXTOS.append([c["fonte"], caso_como_texto(c)])
+    }
+}
+
+# exemplos: só os que estão no git (um .pr solto na pasta é de quem o pôs lá)
+int N_EXEMPLOS = 0
+str ARQS_GIT = os.run(["git", "ls-files", "examples"], capture=True)
+for each arq in ARQS_GIT.split("\n") {
+    if not arq.endswith(".pr") { continue }
+    poe(TEXTOS, arq, "Exemplo " + arq + ":\n" + os.readFile(arq))
+    N_EXEMPLOS = N_EXEMPLOS + 1
+}
+
+# o índice: comprimento de cada trecho e, por palavra, "id:vezes id:vezes ..."
+list DL = []
+dict LISTAS = {}
+int TOTAL = 0
+int ID = 0
+for each t in TEXTOS {
+    list ws = palavras(t[0] + " " + t[1])
+    DL.append(len(ws))
+    TOTAL = TOTAL + len(ws)
+    dict conta = {}
+    for each w in ws {
+        if w in conta { conta[w] = conta[w] + 1 } else { conta[w] = 1 }
+    }
+    for each par in conta.items() {
+        str item = str(ID) + ":" + str(par[1])
+        if par[0] in LISTAS { LISTAS[par[0]].append(item) } else { LISTAS[par[0]] = [item] }
+    }
+    ID = ID + 1
+}
+dict OCORRE = {}
+for each par in LISTAS.items() { OCORRE[par[0]] = " ".join(par[1]) }
+
+dict TERMOS = {"N": len(TEXTOS), "media": flo(TOTAL) / flo(len(TEXTOS)), "dl": DL, "post": OCORRE}
+os.writeFile(PASTA + "/termos.json", json.stringify(TERMOS))
+os.writeFile(PASTA + "/textos.json", json.stringify(TEXTOS))
+os.writeFile(PASTA + "/casos.json", json.stringify(CASOS))
+post("trechos:", len(TEXTOS), "(docs", N_DOCS, "| JINGA-TUDO", N_TUDO, "| casos", len(CASOS),
+     "| exemplos", N_EXEMPLOS, ")")
+post("palavras distintas:", len(OCORRE), "| média por trecho:", TOTAL / len(TEXTOS))

@@ -1,0 +1,56 @@
+# Pergunta ao modelo local sobre a Jinga. Junto da pergunta vão os trechos
+# do material (doc, JINGA-TUDO.md, casos de teste, exemplos) que mais casam
+# com ela; com --sem-material, vai só a pergunta.
+#
+# Uso:
+#   jinga scripts/modelo/pergunta.pr "como leio um arquivo linha a linha?"
+#   jinga scripts/modelo/pergunta.pr --sem-material "..."
+#   jinga scripts/modelo/pergunta.pr --trechos 6 "..."
+# O índice vem de JINGA_MODELO_INDICE (padrão .modelo/, montado pelo
+# indice.pr) e o servidor de JINGA_MODELO_URL (padrão o 127.0.0.1:18080 da
+# VPS; do laptop, por túnel: ssh -N -L 18080:127.0.0.1:18080 tecsol-vps).
+import sys
+from "./comum.pr" import carrega_indice, busca, trechos, mensagens, pergunta_ao_modelo
+
+str PERGUNTA = ""
+bool COM_MATERIAL = True
+int QUANTOS = 12
+int I = 1
+while I < len(sys.argv) {
+    str a = sys.argv[I]
+    if a == "--sem-material" {
+        COM_MATERIAL = False
+    } elif a == "--trechos" and I + 1 < len(sys.argv) {
+        QUANTOS = int(sys.argv[I + 1])
+        I = I + 1
+    } else {
+        PERGUNTA = (PERGUNTA + " " + a).strip()
+    }
+    I = I + 1
+}
+if PERGUNTA == "" {
+    post("uso: jinga scripts/modelo/pergunta.pr [--sem-material] [--trechos N] \"pergunta\"")
+    sys.exit(64)
+}
+
+str MATERIAL = ""
+list FONTES = []
+if COM_MATERIAL {
+    list IND = carrega_indice()
+    list ACHADOS = trechos(IND[1], busca(IND[0], PERGUNTA, QUANTOS, {}), 7000)
+    MATERIAL = ACHADOS[0]
+    FONTES = ACHADOS[1]
+}
+dict R = pergunta_ao_modelo(mensagens(PERGUNTA, MATERIAL), 700)
+post(R["texto"].strip())
+post("")
+if len(FONTES) > 0 {
+    post("-- trechos consultados:")
+    int K = 1
+    for each f in FONTES {
+        post("   [" + str(K) + "] " + f)
+        K = K + 1
+    }
+}
+post("-- " + str(round(R["segundos"], 1)) + " s; " + str(R["tokens_pedido"]) + " tokens no pedido, " + str(R["tokens_resposta"]) + " na resposta")
+if not R["ok"] { sys.exit(1) }

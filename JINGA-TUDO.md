@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `16.1.9` (bump no commit `3c245e7`). O `./pool` e o `/usr/local/bin/jinga` desta máquina respondem `16.1.9` (medido no fim de 2026-09-28). `make pool` e a instalação alinham os dois |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.0`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -1127,7 +1127,7 @@ Números do binário medidos neste laptop em 2026-09-28:
 | Bibliotecas estáticas (Linux, via `-Wl,-Bstatic`) | sqlite, OpenSSL (libssl/libcrypto), libpng, expat, zlib |
 | Bibliotecas estáticas (macOS) | os `.a` do Homebrew para OpenSSL e libpng; sqlite, expat e zlib vêm do próprio macOS; gmp vem do Homebrew (`-lgmp`); desde `3c245e7` também os frameworks Security e CoreFoundation (raízes TLS do Keychain) |
 | Carregadas só no primeiro `connect` (dlopen) | clientes do Postgres, do MariaDB/MySQL, do unixODBC e do Mongo (ver 3.13) |
-| Versão | constante `PS_VERSAO` em `vm/ps_versao.h` (hoje `"16.1.9"`) |
+| Versão | constante `PS_VERSAO` em `vm/ps_versao.h` (a de hoje está na 5.1) |
 | Data de build | `vm/ps_build.h`, gerado pelo Makefile |
 
 No repositório, `make pool` gera `./pool`. Instalado, o mesmo binário responde por `jinga` (roda programas) e `jpkg` (gerencia pacotes). Os nomes antigos `pool` e `psl` continuam como atalhos.
@@ -1951,8 +1951,8 @@ Extensão **Jinga**:
 | item | valor |
 |---|---|
 | fonte | `editor/vscode/` |
-| id instalado | `klebersantanadeoliveira.jinga-8.6.8` (em `~/.vscode/extensions/`) |
-| manifesto | `name` `jinga`, `publisher` `KleberSantanadeOliveira`, `version` 8.6.8 |
+| id instalado | `klebersantanadeoliveira.jinga-8.6.11` (em `~/.vscode/extensions/`, depois do `make instala-vsix`) <!-- bump ext --> |
+| manifesto | `name` `jinga`, `publisher` `KleberSantanadeOliveira`, `version` 8.6.11 <!-- bump ext --> |
 | versão | própria, separada da linguagem (4.3 e 5.15) |
 | linguagem | id `jinga`, extensão `.pr`, gramática `source.jinga` |
 | ativação | `onLanguage:jinga`, `onDebugResolve:jinga` |
@@ -1990,7 +1990,7 @@ make instala-vsix    # gera e roda: code --install-extension <vsix> --force
 - A vsix só precisa ser refeita quando muda o cliente (`extension.js`), a gramática ou os temas. O servidor vem do `make install`.
 - Depois de trocar a extensão: `Ctrl+Shift+P` (no Mac `Cmd+Shift+P`) -> *Developer: Reload Window*.
 - O `make instala-vsix` usa o comando `code`. No Mac ele entra no PATH pela paleta do VS Code, em *Shell Command: Install 'code' command in PATH*.
-- Hoje não existe nenhum `.vsix` gerado no repositório. Pra levar a extensão pro Mac sem Node 22, copiar a pasta instalada `~/.vscode/extensions/klebersantanadeoliveira.jinga-8.6.8` pra mesma pasta no Mac funciona. O cliente é JavaScript puro.
+- Hoje não existe nenhum `.vsix` gerado no repositório. Pra levar a extensão pro Mac sem Node 22, copiar a pasta instalada `~/.vscode/extensions/klebersantanadeoliveira.jinga-8.6.11` pra mesma pasta no Mac funciona. <!-- bump ext --> O cliente é JavaScript puro.
 
 Coisas da máquina atual que não estão no repositório:
 - A extensão **JinkerTls** (`klebersantanadeoliveira.jinkertls-1.0.1`, "JinkerTls Language Support") não tem fonte neste repositório. A cópia instalada está em `~/.vscode/extensions/klebersantanadeoliveira.jinkertls-1.0.1`.
@@ -2110,9 +2110,9 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.0** (`vm/ps_versao.h`): o `Parsing` virou lib (`import Parsing`). Major porque quebra programa que o usava sem import |
-| `./pool --version` | `Jinga 17.0.0 [PSVM] (2026-10-07) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário (`cmp` igual) |
-| versão da extensão do VS Code | 8.6.11 |
+| versão da linguagem | **17.0.0** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.0 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
 | `gh` desta máquina | 2.101.0, logado como `kleberDevion` (token válido em 2026-10-06). Falta o escopo `user`: ler a cobrança do Actions pede `gh auth refresh -h github.com -s user`; no Mac é preciso `gh auth login` |
@@ -2495,6 +2495,70 @@ O `make install` do roteiro mantém o `jinga` da VPS na versão do lote (ordem s
 2. rodar o passo do yml com o texto exato, sob `bash -eo pipefail`, e a suíte como usuário comum;
 3. no fim, apagar pasta, container e imagem.
 
+#### Modelo local de código (`jinga-modelo`)
+
+Pedido seu de 2026-10-06, "pra parar de usar os agents", com a opção 1 que você escolheu: um modelo pronto que, a cada pergunta, recebe junto os trechos do material da Jinga que tratam do assunto. Sem treino (a VPS não tem GPU).
+
+| item | valor |
+|---|---|
+| modelo | Qwen2.5-Coder 3B Instruct, comprimido Q4_K_M (2,1 GB), da Alibaba, licença Apache 2.0, em `/opt/jinga-modelo/` |
+| servidor | container `jinga-modelo`, imagem `ghcr.io/ggml-org/llama.cpp:server` (1,21 GB), só CPU. Escuta só em `127.0.0.1:18080` da VPS: nada aberto pra internet. `--cpus 3 --memory 3g`, e volta sozinho se a VPS reiniciar. A porta 8080 é do seu servidor Java e não se toca |
+| memória | ~1,7 GB parado; CPU só quando alguém pergunta |
+| cache de pedidos | desligado (`--cache-ram 0`). Ligado (padrão de 8 GB), ele passou do limite de 3 GB no 10º caso da primeira avaliação e o kernel matou o servidor |
+| checagem de saúde | `curl -fs http://localhost:18080/health` dentro do container. A da imagem procura a porta 8080 lá dentro e dava "unhealthy" o tempo todo |
+| índice | `scripts/modelo/indice.pr` junta cada seção dos `.md` de `docs/` e deste arquivo, cada caso de teste (nome, programa, saída esperada) e cada `.pr` de `examples/`: 4.238 trechos, 10.000 palavras, 3,4 s. Grava em `.modelo/`, que fica fora do git |
+| busca | por palavra, com a pontuação BM25, escrita em Jinga (`scripts/modelo/comum.pr`) |
+
+Tamanho escolhido pela medida de 2026-10-06 (pedido de 2.263 tokens, 3 CPUs): ficou o maior que responde em até ~60 s.
+
+| modelo | lê (tokens/s) | escreve (tokens/s) | memória |
+|---|---|---|---|
+| 0,5B | ~300 | ~52 | 245 MB |
+| 1,5B | ~145 a 176 | ~25 a 31 | 950 MB |
+| 3B (o instalado) | ~80 a 84 | ~16 | 1,7 GB |
+
+Avaliação de 2026-10-06 (`scripts/modelo/avalia.pr`): 50 casos de teste escolhidos de forma fixa, um a cada 17 dos 858 que servem (têm saída esperada e não dependem de rede, banco ou entrada). Cada um vira duas tarefas, feitas sem e com a consulta ao material; o próprio caso fica fora dos trechos consultados.
+
+| tarefa | sem material | com material |
+|---|---|---|
+| prever a saída exata do programa | 14 | 26 |
+| escrever o programa: passa no `jinga --check` | 2 | 39 |
+| escrever o programa: roda até o fim | 1 | 37 |
+| escrever o programa: mesma saída do caso | 0 | 9 |
+
+Tempo médio por pergunta: 25,1 s com material e 3,5 s sem. A avaliação inteira levou 47,7 min, sem nenhum pedido perdido.
+
+Como perguntar:
+
+```bash
+# do laptop, por túnel (deixe aberto num terminal)
+ssh -N -L 18080:127.0.0.1:18080 tecsol-vps
+# em outro terminal, na raiz do repositório
+jinga scripts/modelo/indice.pr                                  # monta .modelo/ (refazer quando a doc mudar)
+jinga scripts/modelo/pergunta.pr "como leio um arquivo linha a linha?"
+jinga scripts/modelo/pergunta.pr --sem-material "..."          # só a pergunta, sem os trechos
+jinga scripts/modelo/pergunta.pr --trechos 6 "..."             # menos trechos, resposta mais rápida
+
+# na VPS, com o índice de lá
+ssh tecsol-vps
+cd /opt/jinga-modelo && JINGA_MODELO_INDICE=/opt/jinga-modelo/indice jinga scripts/pergunta.pr "..."
+```
+
+O índice da VPS é uma cópia: depois de refazer o `.modelo/` aqui, `scp .modelo/*.json tecsol-vps:/opt/jinga-modelo/indice/`, e os scripts vão com `scp scripts/modelo/{comum,pergunta,avalia}.pr tecsol-vps:/opt/jinga-modelo/scripts/`. Avaliar de novo: na VPS, `JINGA_MODELO_INDICE=/opt/jinga-modelo/indice nohup setsid jinga scripts/avalia.pr 50 > avalia.log 2>&1 &`; o resultado fica em `indice/avaliacao.txt`. Não rodar junto com o CI em containers (os dois querem 3 CPUs).
+
+Recriar o servidor:
+
+```bash
+docker run -d --name jinga-modelo --restart unless-stopped --cpus 3 --memory 3g --memory-swap 3g \
+  --health-cmd "curl -fs http://localhost:18080/health" --health-interval 30s \
+  -p 127.0.0.1:18080:18080 -v /opt/jinga-modelo:/modelos:ro ghcr.io/ggml-org/llama.cpp:server \
+  -m /modelos/qwen2.5-coder-3b-instruct-q4_k_m.gguf --host 0.0.0.0 --port 18080 -c 8192 -t 3 --parallel 1 --cache-ram 0
+```
+
+Desinstalar: `docker rm -f jinga-modelo`, `docker rmi ghcr.io/ggml-org/llama.cpp:server` e `rm -rf /opt/jinga-modelo`.
+
+Fica pra decisão sua: usar o modelo pra gerar programas de sonda em volume, e treinar (na CPU de madrugada, ou numa GPU alugada).
+
 ### 5.12 CI no GitHub
 
 **Estado em 2026-10-06: o GitHub recusa todos os jobs** desde o push do 16.2.11 (15:15 UTC), com "The job was not started because recent account payments have failed or your spending limit needs to be increased". É a conta (cobrança ou cota mensal de minutos — o job do Mac conta dez vezes), e se vê em Settings > Billing no GitHub. O último commit que rodou lá, e verde nos três sistemas, é o 16.2.10 (`92db70d`). Você mandou: "é só rodar na VPS". Então:
@@ -2658,16 +2722,17 @@ Consequências:
 **Publicar um release novo** (o `latest/download` leva alguns minutos de CDN pra trocar; a URL por tag responde na hora):
 
 ```bash
-git tag v16.1.9 && git push origin v16.1.9     # build.yml: linux + mac + release com os dois pacotes
+V=$(./pool --version | cut -d' ' -f2)          # a versão do binário, que é a do vm/ps_versao.h
+git tag v$V && git push origin v$V             # build.yml: linux + mac + release com os dois pacotes
 # alternativa só Linux, à mão:
-make bundle && gh release create v16.1.9 dist/jinga-portable.tar.gz --title v16.1.9
+make bundle && gh release create v$V dist/jinga-portable.tar.gz --title v$V
 ```
 
 O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "16.1.9"` em `vm/ps_versao.h`. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.0"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2680,7 +2745,8 @@ jinga scripts/bump.pr ext patch       # só a extensão (patch|minor|major|X.Y.Z
 ```
 
 - Arquivos da linguagem que o bump troca: `vm/ps_versao.h`, `jinga.md`, `docs/Jinga.md`, `docs/os/cmd/cmd.md` e `docs/os/run/run.md`.
-- A extensão tem versão própria em `editor/vscode/package.json` e `package-lock.json`, hoje 8.6.8. Ela só sobe quando gramática, tema ou servidor da vsix mudam. Depois: `make vsix && make instala-vsix`.
+- **Neste arquivo**, a versão aparece como a de hoje (5.1, aqui, o editor, a máquina, o Mac) e como história (a tabela de commits, "desde o 17.0.0", as medições datadas). O bump troca só a linha marcada no fim com `<!-- bump -->` (versão da linguagem) ou `<!-- bump ext -->` (extensão); a história fica como foi escrita. Linha nova que diz a versão de hoje leva a marca; a marcada que não tem a versão de hoje sai na saída do `jinga scripts/bump.pr` como "marcadas sem a X.Y.Z, conferir: linha N". A marca não aparece no texto renderizado; dentro de bloco de código ela não vai (lá a versão sai do binário: `$(./pool --version | cut -d' ' -f2)`).
+- A extensão tem versão própria em `editor/vscode/package.json` e `package-lock.json`, hoje 8.6.11 <!-- bump ext -->. Ela só sobe quando gramática, tema ou servidor da vsix mudam. Depois: `make vsix && make instala-vsix`.
 - **Regra dele: toda alteração leva bump, no mesmo commit.** Ele usa o `--version` pra saber se o binário do PATH tem a mudança. Sem bump, roda o velho e conclui que não foi feito.
 - **Qual casa subir**, decidido pelo conteúdo e nunca pra agradar:
   - `patch`: correção sem mudar comportamento válido;
@@ -2744,28 +2810,23 @@ O que o código e o CI já mostram do macOS:
 - Cada item da trilha vira um lote com plano próprio, nunca "de brinde" dentro de outro lote.
 - Pendência de comportamento do motor entra em `teste/casos_pendentes.c`: o caso é escrito com o comportamento certo e o campo `pendente = 1`. Enquanto o motor não acertar, o caso falha. Quando acertar, o runner acusa "JA FUNCIONA" e manda tirar o caso de lá. Hoje a fila está vazia: nenhum caso tem o campo ligado, e o cabeçalho do arquivo diz isso.
 
-### 6.2 Estado medido em 2026-10-06 (fim da tarde)
+### 6.2 Estado medido em 2026-10-07 (madrugada)
 
-- Versão da linguagem **16.2.14** no repo (`vm/ps_versao.h`, bump no commit `c73fec3`) e no binário instalado:
-
-```
-$ ./pool --version
-Jinga 16.2.14 [PSVM] (2026-10-06) Runtime standalone
-$ jinga --version
-Jinga 16.2.14 [PSVM] (2026-10-06) Runtime standalone
-```
-
-- Extensão do editor: **8.6.10** (`editor/vscode/package.json`).
-- `main` em `c73fec3`, igual a `origin/main`. Árvore de trabalho limpa; o único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
+- Versão da linguagem **17.0.0** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.0 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
+- Último commit de código: `71e0a31` (17.0.0, o `Parsing` virou lib), igual a `origin/main` quando subiu; os commits depois dele são de doc e de ferramenta. O único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
+- **Plano 8 fechado** (`71e0a31`): `import Parsing` como qualquer lib, e lib do motor usada sem import diz qual import falta. Major porque quebra programa que usava o `Parsing` sem import. Verde na VPS em `make check`, `check-asan` e `check-debug`.
+- **Plano 7 fechado**: o modelo leve na VPS consultando o material da Jinga (5.11, "Modelo local de código"). Com a consulta, 39 de 50 programas escritos por ele passam no `--check`; sem ela, 2.
+- **Plano 6 escrito, esperando a sua aprovação**: os 129 achados restantes da sonda 2 (mensagem confusa, posição errada, regra não imposta, doc que contradiz o motor) em 10 lotes, com 9 decisões suas. Está em `~/.claude/plans/steady-weaving-pine.md`.
 - **O Plano 5 está fechado** (os 16 defeitos da sonda 2 que derrubavam o processo, corrompiam memória, perdiam arquivo ou erravam o resultado calados), em cinco lotes: 16.2.10 `92db70d`, 16.2.11 `0a9347f`, 16.2.12 `fa22ab1`, 16.2.13 `96fbea6`, 16.2.14 `c73fec3`. Uma linha por versão na tabela de 6.6.
 - GitHub Actions, lido com o `gh` logado (`gh run list`, `gh run view <id> --json jobs`):
   - **Último verde: 16.2.10, commit `92db70d`, 2026-10-06 13:52 UTC.** Workflow `build`: `linux`, `windows` e `mac` verdes (`release` pulado, não era tag). Workflow `ci`: portão, propriedade e cobertura verdes.
-  - **Desde o push do 16.2.11 (`0a9347f`, 15:15 UTC) todo job é recusado em segundos**, com "The job was not started because recent account payments have failed or your spending limit needs to be increased". É a conta do GitHub (cobrança ou cota de minutos), não o código. Ficaram sem rodada lá: `0a9347f` (16.2.11), `01d9bae` (seu, doc), `fa22ab1` (16.2.12), `96fbea6` (16.2.13) e `c73fec3` (16.2.14).
+  - **Desde o push do 16.2.11 (`0a9347f`, 15:15 UTC) todo job é recusado em segundos**, com "The job was not started because recent account payments have failed or your spending limit needs to be increased". É a conta do GitHub (cobrança ou cota de minutos), não o código. Ficaram sem rodada lá: `0a9347f` (16.2.11), `01d9bae` (seu, doc), `fa22ab1` (16.2.12), `96fbea6` (16.2.13), `c73fec3` (16.2.14), `71e0a31` (17.0.0) e os de doc entre eles.
   - O agendado de 2026-10-06 09:40 UTC (run 37444620481, commit `33d8504`, 16.2.9): portão, propriedade e cobertura verdes; `ASan/UBSan, falha de alocação e fuzz` vermelho no passo `make bench BENCH=--portao` — o bench acusa o JIT mais lento que o interpretador, que é o assunto do Plano 2 (`~/.claude/plans/steady-weaving-pine.md`).
-- **No lugar do GitHub, o portão é a VPS** (5.11 e 5.12): cada lote do Plano 5 passou lá em `make check`, `make check-asan` e `make check-debug`, na árvore exata do commit, além da suíte inteira neste laptop.
+- **No lugar do GitHub, o portão é a VPS** (5.11 e 5.12): cada lote do Plano 5 e o 17.0.0 passaram lá em `make check`, `make check-asan` e `make check-debug`, na árvore exata do commit, além do que roda neste laptop.
 - **macOS e Windows estão sem rodada desde o `92db70d`.** Medido em 2026-10-06: a VPS não tem virtualização aninhada (sem `/dev/kvm`, sem a flag `svm`), então uma VM lá é emulação pura; este laptop tem `/dev/kvm` mas não tem memória pra uma VM de Windows; e macOS só roda em hardware da Apple. O caminho é o seu MacBook Pro (o job `mac` direto nele, o job `windows` numa VM dentro dele), parado até você estar com ele: ligar Sessão Remota, autorizar a chave (`cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys`) e passar o endereço.
 - Do que entrou desde o `92db70d`, o único código com ramo por sistema é o `mesmo_caminho` do `-o` (`vm/main.c`), que tem o ramo do Windows (`_fullpath` + `_stricmp`). Lacuna só do Windows, anotada: `os.copy` de um arquivo sobre ele mesmo não é barrado lá (`ps_mesmo_arquivo` devolve "não sei" quando o `st_ino` é sempre 0).
-- Em andamento em 2026-10-06: a reconferência, no 16.2.14, dos 150 achados confirmados da sonda 2. Os que seguem vivos (mensagem de erro confusa, linha ou coluna errada, regra não imposta, doc que contradiz o motor) viram o Plano 6, que espera a sua aprovação.
+- A reconferência, no 16.2.14, dos 150 achados confirmados da sonda 2 terminou sem agentes: 18 consertados, 2 mudaram, 130 vivos (4 deles resolvidos pelo Plano 4). A lista, com o que cada um faz hoje, fica fora do repositório, na pasta de estado do assistente (`pausa-2026-10-05/sonda2_classificacao.txt`).
 - `node --version` neste laptop: `v18.19.1`.
 
 ### 6.3 Em andamento: Jinga no macOS e no Windows
@@ -2895,6 +2956,7 @@ Itens da trilha já fechados: 2 (Pyrite) foi superado pelo rename pra Jinga; 4 (
 | 10-01 | 16.2.5 | ver `git log` | O que o CI do 16.2.4 achou: no macOS a conexão aceita pelo jinker herdava o não-bloqueante da escuta (o BSD herda, o Linux não; só o Windows desligava), e a leitura do pedido do WebSocket e o handshake do TLS, feitos na thread do pool, voltavam EAGAIN e fechavam a conexão (10 falhas do `jinker_roda`); o `-fanalyzer` do gcc 16 (Windows) acusa um falso "leak of 'nv'" no lexer (aceito com o motivo); o `make analisa ANALISA_TUDO=1` do noturno nunca rodou desde 26/08 (um `;` sozinho na receita), e com a receita certa o teto de 12000 MB passava da RAM do runner privado (7,9 GB) e o derrubava: agora 6000; o fuzzer não compilava desde que o `ps_verifica_fonte` ganhou os avisos |
 | 10-05 | 16.2.6 | ver `git log` | Etapa 0 do plano "JIT nunca pior que o interpretador": a chamada direta entre functs nativas (`jit_chama`) passa a ser ponto seguro do GC, como a entrada do CALL no interpretador. Uma recursão que aloca não coletava no código de máquina: `g(22)` com uma lista por chamada ia a 2045 page-faults, contra 609 agora (98,6 M -> 82,9 M instruções). A conferência custa 3 instruções por chamada (fib +0,74%, chamada +0,57%). `JINGA_GC_LOG=1` diz cada coleta no stderr, e o teste exige o mesmo número de coletas com e sem JIT (sem a correção: 1 contra 2) |
 | 10-05 | 16.2.7 | ver `git log` | Regras do front-end: (1) só `True`, `False` e `Null`: `true`, `false`, `null`, `None` e `none` são nomes comuns, e usar um deles dá NameError antes de rodar com a dica pelo "Did you mean" (`True`/`False`/`Null` entraram nos candidatos); migrador `scripts/migra_literais.pr` (por token; `.pr`, blocos da doc e programas dos casos em C; 1465 trocas no repositório); mensagens e assinaturas do motor que mostravam a forma antiga (`pty=true`, `keepends=false`, `slice indices must be integers or None`, `nao pode ser null`, o 422 do model) passaram pra nova; (2) `return` e `yield` fora de funct são SyntaxError antes de rodar (o `return` no topo encerrava o programa calado, com rc 0 e `--check` ok); (3) `json.parse` sem `import json` passava no `--check` (o `json` também é nome de tipo) e quebrava rodando: agora é NameError no check; `tipos_apelidos` do `--metadata` sai do `ps_tipos.def` (a cópia digitada esquecia `json`, `JSON`, `object`, `Long`); (4) editor: os 27 builtins sem página de palavra-chave (`len`, `range`, `sum`…), `json`, `PoolFile` e `byte` diziam "rodando dá NameError" no hover, e `str`/`list`/`dict`/`tup` saíam como `class`: agora o builtin mostra a assinatura e a página, o tipo primitivo diz `tipo primitivo` e o tipo do motor `tipo nativo`; `class` só a classe escrita em Jinga |
+| 10-07 | 17.0.0 | `71e0a31` | Plano 8, pedido seu ("põe como lib"): o `Parsing` virou lib — `_Parsing` vira `Parsing` em `MODULOS[]` e sai o mecanismo de módulo pré-ligado, que só existia pra ele (`MODULOS_SEM_IMPORT`, as duas ligações na partida, a chave `modulos_sem_import` do `--metadata`, o ramo do servidor do editor). Lib do motor usada sem import dá `NameError: name 'X' is not defined. Did you forget to import 'X'?` (antes, `import regex *` seguido de `regex` sugeria `'range'`). O parser marca o fim de todo receptor de sufixo (`Parsing` em `Parsing.integer(...)`), que saía com l2/c2 0. Major porque quebra programa que usava o `Parsing` sem import. Doc das 10 páginas do Parsing, LANGUAGE.md, linguagem/02; casos em `casos_linguagem.c`, `cli_roda.pr` e `teste_servidor.js`; diferencial regerado (mudaram só esses casos) |
 | 10-06 | 16.2.14 | ver `git log` | Plano 5, lote 5 (VM e compilador), fecha o plano: (16) os `try` ativos de uma execução eram 256 fixos (`handlers[MAX_HANDLERS]`) e cada `int funct`/`bool funct` ativa gasta um (a rede dela): a recursão de 257 níveis saía "try aninhado demais", a rede do chamador engolia e a conta seguia com 500 no meio (resultado errado calado). O vetor cresce: 16 na pilha do C (`HANDLERS_FIXO`, sem alocar), depois heap dobrando até o teto de frames; o gerador devolve todos os handlers na retomada (antes cortava em 256). E a rede da funct tipada não engole mais `RecursionError` (o desenrolamento pula os handlers que caem num `ENGOLE`): recursão sem fim numa `int funct` é `RecursionError`, que o `catch` pega — antes devolvia 500 mais o que os níveis de cima somassem. (17) global lida depois do `catch` devolvia o valor de um LOCAL do `try` (`return padrao` devolvia "silva"), o `post` do catch chamava um valor velho, e no topo a variável do try sobrevivia ao bloco: os `CLEAR_LOCAL`/`CLEAR_GLOBAL` do fim do bloco só rodavam no caminho normal. O compilador emite no alvo de cada handler (o do try e o que pega erro saído de um catch) os clears de tudo que a região criou — na funct, os slots da marca até o pico (`Unidade.pico_locais`, inclusive os de blocos de dentro); no módulo, os nomes criados (`mod_hist`). Medido com `perf stat`: fib 25 (uma `int funct` recursiva, o pior caso) +0,5% de instruções. Casos em `casos_linguagem.c` (os 8 programas do achado, 300 níveis de int/bool funct, recursão sem fim com e sem catch, 300 try aninhados, gerador com 20 try em volta do yield); doc 06 (a exceção do RecursionError) e 10 (variável do try é do bloco) |
 | 10-06 | 16.2.13 | ver `git log` | Plano 5, lote 4 (VM e compilador): (14) literal de lista/tupla/dict de 65537 itens corrompia o heap — `BUILD_LIST` empilhava tudo de uma vez e só a chamada de funct conferia a pilha de valores, com a cota `ncode/2`. Cada proto ganha `pilha_max`: a profundidade máxima exata, medida na compilação por `ps_pilha_max_do_codigo` (a coluna tira/deixa nova do `ps_opcodes.def`, fila de trabalho pelos alvos de salto; `--bytecode` mostra `pilha=N`); TODA entrada de frame confere `sp + pilha_max + 8 < stack_teto` (`chama_proto`, o JIT, `vm_executa_base` do programa/módulo/fibra/callback, `ger_retoma`) e o erro cai na instrução que chega ao máximo: `RecursionError: pilha de valores insuficiente (N valores)` quando nem a pilha vazia serve, `maximum recursion depth exceeded` quando é a recursão. Literal acima de 256 itens compila em lotes (`BUILD_LIST 0` + `LIST_EXTEND`, `BUILD_DICT 0` + `DICT_MERGE`, tupla pela lista + opcode novo `TUP_DE_LISTA` 115), então 65537 itens rodam no topo, em funct e em fibra (2048 valores); `f(*lista)` com 65520 itens, que cabia na pilha e saía como RecursionError, roda. Medido com `perf stat`: fib 25 −0,3% de instruções, `post(1)` +0,2%, `--check` de cli_roda.pr +0,8% (o passo é linear no código). O passo exige que dois caminhos cheguem à mesma instrução com a mesma profundidade (invariante no binário de debug, `make check-debug`), e isso achou três defeitos do compilador: o `continue` num `case` deixava o sujeito do `match` em cima do estado do laço e o ITER_NEXT lia lixo (`'int' object is not iterable`, iterações perdidas), `break`/`continue` numa cópia do `finally` no caminho da exceção deixavam a mensagem e o tipo na pilha (o `continue` perdia iterações), e o `break` na cópia emitida pelo `return` deixava o valor; a regra geral: o compilador conta os valores que cada construto guarda na pilha por cima do estado dos laços (`pilha_extra`, com a base de cada laço em `Laco.extra_base`) e `break`/`continue` os descartam. O cursor `^^^` do quadro de erro nunca passa do fim da linha mostrada (uma chamada com 70 mil argumentos punha 478 KB de espaço antes dele). Casos em `casos_crash.c` (65537 itens nos 3 contextos, 70000 argumentos recusados na linha da chamada, 3000 numa fibra) e `casos_linguagem.c` (bordas 255/256/257/512/513, chave repetida entre lotes, tupla aninhada; `match` com break/continue no laço, break/continue/return com `finally` no caminho da exceção); doc 10 (RecursionError) |
 | 10-06 | 16.2.12 | ver `git log` | Plano 5, lote 3 (parser e compilador): (12) `return`/`break`/`continue` dentro de `finally` recompilavam o próprio finally sem fim até derrubar o processo — o finally ficava pendente enquanto a cópia inline dele era compilada; agora sai de pendente antes das cópias e `emite_finallys` tira a entrada que está emitindo (um finally nunca envolve a si mesmo); (13) soma plana de 8000 termos derrubava o checador (árvore de 8000 níveis pelo `->a`, descida de um quadro por termo): `expr_no` e `tp_de` compilam/conferem a cadeia à esquerda em laço; 4000 blocos aninhados e 5000 decoradores derrubavam os caminhantes da árvore (`tp_junta_ligados` e cia.), sem freio: todo caminhante do compilador e do checador mede a folga da pilha (`fundo_demais`, a regra do parser) e dá "bloco/expressao aninhada demais", e `unario`/`nao` do parser (que recursavam fora da casca `expressao`) ganharam o mesmo freio; (15) os vetores fixos de salto (`saidas[64]` do laço, `fins[64]` do if e do match, `fins[32]` do catch, os dos padrões `or`/list/dict e os 32 finally pendentes) viraram vetores que crescem (`Saltos`): 65 `break` deixam de ser "limite do compilador" e os outros deixam de descartar o salto calado (JUMP com alvo 0); (15b) f-string descartava tudo depois da primeira expressão nas chaves (`{nome sobrenome}`, `{preco = }`, `{qtd)}`, até nome inexistente): o parser acusa `sobrou 'X' dentro de {} da f-string: cada {} leva uma expressao so` no token que sobrou, e o caminho de reserva do compilador exige uma expressão só. A rodada ASan desta versão achou mais quatro: `fecha_laco` não soltava os vetores de salto (32 bytes por laço com `break`/`continue`); os decoradores empilhados eram lidos com um `statement()` dentro do outro (5000 gerados estouravam a pilha do parser antes de qualquer freio — agora é um laço, `decorador_cabeca`, com a mesma árvore, conferida pelo `--ast`); os outros caminhantes da árvore (`varre_nomes`, `poda`, `colhe_fatos` e cia.) ainda desciam a soma plana em recursão (todos descem a cadeia pelo `->a` em laço; 30000 termos compilam); e o freio do bloco ganhou o dobro da margem do da expressão (`ps_pilha_apertada_bloco`, no parser e no compilador), senão 4000 `if` aninhados acusavam "expressao aninhada demais" na condição `True` ou "bloco aninhado demais" conforme o tamanho do quadro do binário. O gerador do diferencial limpa a pasta antes de cada programa (o `ln` do caso dos links em ciclo achava o link da geração anterior e a expectativa gravada era o erro dele). Casos em `casos_crash.c` e `casos_linguagem.c` (os gerados — 8000 termos, 4000 blocos, 5000 decoradores, 65 breaks, 65 elifs — são escritos pelo próprio caso e rodados pelo `sys.executable`); doc 10 (finally) e 01 (f-string) |
@@ -3260,7 +3322,7 @@ jpkg list
 ### 7.10 Editores
 
 **VS Code 1.137.0**
-- Extensões dele: `klebersantanadeoliveira.jinga-8.6.8` (fonte em `editor/vscode`, `name: jinga`, `version: 8.6.8`) e `klebersantanadeoliveira.jinkertls-1.0.1` ("JinkerTls Language Support").
+- Extensões dele: `klebersantanadeoliveira.jinga-8.6.11` (fonte em `editor/vscode`, `name: jinga`, `version: 8.6.11`) e `klebersantanadeoliveira.jinkertls-1.0.1` ("JinkerTls Language Support"). <!-- bump ext -->
 - A extensão é cliente LSP e sobe o `jinga-lsp` instalado. Depois de reinstalar a Jinga, é preciso reiniciar o processo do servidor (item 7 da trilha).
 - `~/.config/Code/User/settings.json`, trechos da linguagem:
   ```json
@@ -3712,7 +3774,7 @@ O Makefile tem ramo Darwin:
    ```bash
    grep -v '^klebersantanadeoliveira\.' ~/extensoes-vscode.txt | xargs -n1 code --install-extension
    ```
-5. A extensão Jinga sai do repo. O `make instala-vsix` gera `editor/vscode/jinga-<versao>.vsix` (versão 8.6.8 da extensão) e instala; precisa do Node 22 ou mais. Depois, Cmd+Shift+P > "Developer: Reload Window".
+5. A extensão Jinga sai do repo. O `make instala-vsix` gera `editor/vscode/jinga-<versao>.vsix` (versão 8.6.11 da extensão <!-- bump ext -->) e instala; precisa do Node 22 ou mais. Depois, Cmd+Shift+P > "Developer: Reload Window".
    ```bash
    cd ~/poolscript-lang && make instala-vsix
    ```
@@ -3849,7 +3911,7 @@ Os timers da Tecsol (`~/.config/systemd/user`) não sobem no Mac, porque o macOS
 ### 9.9 Conferência final
 
 ```bash
-jinga --version                                  # Jinga 16.1.9 [PSVM] (<data da compilacao>) Runtime standalone
+jinga --version                                  # Jinga <a do vm/ps_versao.h> [PSVM] (<data da compilacao>) Runtime standalone
 jinga -e 'import sys; post(sys.platform())'      # darwin
 which jinga jpkg jinga-lsp                       # /usr/local/bin/...
 cd ~/poolscript-lang

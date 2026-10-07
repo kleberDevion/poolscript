@@ -7,6 +7,12 @@
 # significava lembrar dos cinco; o que acontecia era subir um e deixar os
 # outros mentindo.
 #
+# O JINGA-TUDO.md cita a versão de HOJE (5.1, 5.15, o editor, a máquina, o Mac)
+# e também versões passadas como HISTÓRIA ("desde o 17.0.0", a tabela de
+# commits), que não podem mudar. Nele só se troca a linha marcada com
+# `<!-- bump -->` (linguagem) ou `<!-- bump ext -->` (extensão); a marcada que
+# não tem a versão de hoje sai na lista, pra conferir — é ela que ficou pra trás.
+#
 # A extensão do VS Code tem versão PRÓPRIA (`editor/vscode/package.json`): ela
 # só muda quando gramática, tema ou servidor mudam. Até 2026-09-12 ela estava
 # na mesma lista e foi arrastada de 8.4.4 pra 15.90.x junto com a linguagem —
@@ -43,6 +49,87 @@ EXT_ARQUIVOS = [
     "editor/vscode/package.json",
     "editor/vscode/package-lock.json"
 ]
+
+# Arquivos em que só a linha marcada carrega a versão de hoje (ver o topo).
+list MARCADOS = ["JINGA-TUDO.md"]
+str MARCA = "<!-- bump -->"
+str MARCA_EXT = "<!-- bump ext -->"
+
+
+# A linha tem a marca de verdade, fora de crase: entre crases ela é o texto
+# que explica a marca (a 5.15 do JINGA-TUDO.md), não uma linha marcada.
+bool funct tem_marca(str linha, str marca) {
+    list partes = linha.split(marca)
+    int i = 1
+    while i < len(partes) {
+        str antes = partes[i - 1]
+        if not antes.endswith("`") { return True }
+        i = i + 1
+    }
+    return False
+}
+
+
+# Troca `velha` por `nova` nas linhas de `texto` que têm `marca`. Devolve
+# [texto novo, quantas linhas trocou, os números das marcadas sem `velha`].
+list funct troca_marcadas(str texto, str marca, str velha, str nova) {
+    list linhas = texto.split("\n")
+    int trocadas = 0
+    list sem = []
+    int i = 0
+    while i < len(linhas) {
+        str l = linhas[i]
+        if tem_marca(l, marca) {
+            if velha in l {
+                linhas[i] = l.replace(velha, nova)
+                trocadas = trocadas + 1
+            } else {
+                sem.append(str(i + 1))
+            }
+        }
+        i = i + 1
+    }
+    return ["\n".join(linhas), trocadas, sem]
+}
+
+
+# Aplica `troca_marcadas` em cada arquivo de MARCADOS e mostra quantas linhas
+# trocou e quais marcadas não tinham a versão. Devolve se trocou alguma.
+bool funct troca_nos_marcados(str marca, str velha, str nova) {
+    bool trocou = False
+    for each caminho in MARCADOS {
+        list r = troca_marcadas(os.readFile(caminho), marca, velha, nova)
+        int quantas = r[1]
+        if quantas > 0 {
+            grava(caminho, r[0])
+            trocou = True
+        }
+        mostra_marcadas(caminho, marca, quantas, r[2], velha)
+    }
+    return trocou
+}
+
+
+Null funct grava(str caminho, str texto) {
+    os.writeFile(caminho, texto)
+}
+
+
+Null funct mostra_marcadas(str caminho, str marca, int quantas, list sem, str velha) {
+    post("  " + str(quantas) + "x  " + caminho + " (linhas com " + marca + ")")
+    if len(sem) > 0 {
+        post("      marcadas sem a " + velha + ", conferir: linha " + ", ".join(sem))
+    }
+}
+
+
+# Só mostra, sem trocar: quantas linhas marcadas têm `versao` e quais não têm.
+Null funct mostra_onde(str marca, str versao) {
+    for each caminho in MARCADOS {
+        list r = troca_marcadas(os.readFile(caminho), marca, versao, versao)
+        mostra_marcadas(caminho, marca, r[1], r[2], versao)
+    }
+}
 
 
 # A versão da extensão, lida do manifesto (a primeira `"version": "..."`).
@@ -141,6 +228,10 @@ if __name__ == "main" {
             }
             post("  " + str(conta) + "x  " + caminho)
         }
+        mostra_onde(MARCA, atual)
+        post("")
+        post("onde a da extensão está, fora do package.json e do lock:")
+        mostra_onde(MARCA_EXT, versao_ext())
         post("")
         post("pra subir: jinga scripts/bump.pr patch|minor|major|X.Y.Z")
         post("extensão:  jinga scripts/bump.pr ext patch|minor|major|X.Y.Z")
@@ -180,6 +271,7 @@ if __name__ == "main" {
             os.writeFile(caminho, texto.replace(alvo, "\"version\": \"" + nova_ext + "\""))
             post("  " + str(quantas) + "x  " + caminho)
         }
+        troca_nos_marcados(MARCA_EXT, atual_ext, nova_ext)
         post("")
         post("agora: make vsix && make instala-vsix")
         sys.exit(0)
@@ -215,6 +307,9 @@ if __name__ == "main" {
         }
         os.writeFile(caminho, texto.replace(atual, nova))
         post("  " + str(quantas) + "x  " + caminho)
+        trocou_algo = True
+    }
+    if troca_nos_marcados(MARCA, atual, nova) {
         trocou_algo = True
     }
 

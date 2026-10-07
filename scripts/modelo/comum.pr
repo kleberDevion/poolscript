@@ -1,0 +1,168 @@
+# Peças comuns da consulta ao modelo local (scripts/modelo/): as palavras de
+# um texto, o logaritmo, a busca no índice e a chamada ao servidor do modelo.
+#
+# O servidor do modelo roda na VPS (JINGA-TUDO.md, 5.11, "Modelo local de código") e
+# escuta só no 127.0.0.1 de lá; do laptop se chega por túnel ssh. O endereço
+# vem de JINGA_MODELO_URL e a pasta do índice de JINGA_MODELO_INDICE.
+import os
+import json
+import regex
+import request
+import date
+
+str URL_PADRAO = "http://127.0.0.1:18080"
+str INDICE_PADRAO = ".modelo"
+
+# palavras que aparecem em quase todo trecho e não ajudam a achar nada
+list PARADAS_LISTA = ["a", "o", "e", "de", "do", "da", "dos", "das", "em", "no", "na", "nos", "nas",
+                      "um", "uma", "uns", "umas", "que", "se", "por", "para", "pra", "com", "sem",
+                      "ao", "aos", "as", "os", "como", "mais", "mas", "ou", "é", "ser", "são", "foi",
+                      "tem", "ter", "isso", "este", "esta", "esse", "essa", "isto", "ele", "ela",
+                      "eles", "elas", "seu", "sua", "seus", "suas", "não", "já", "só", "também",
+                      "quando", "onde", "qual", "quais", "muito", "pelo", "pela", "pelos", "pelas",
+                      "entre", "sobre", "até", "depois", "antes", "aqui", "lá", "então", "faz",
+                      "fazer", "eu", "você", "vc", "me", "minha", "meu", "há", "vai", "vira", "fica"]
+dict PARADAS = {}
+for each p in PARADAS_LISTA { PARADAS[p] = True }
+
+str funct url_do_modelo() {
+    return os.getenv("JINGA_MODELO_URL", URL_PADRAO)
+}
+
+str funct pasta_do_indice() {
+    return os.getenv("JINGA_MODELO_INDICE", INDICE_PADRAO)
+}
+
+# As palavras de um texto, em minúsculas, sem as de PARADAS e sem letra solta.
+# `os.readFile` vira "os" e "readfile": quem pergunta por readFile acha.
+list funct palavras(str texto) {
+    list saida = []
+    for each w in regex.findall("\\w+", texto.lower()) {
+        if len(w) < 2 { continue }
+        if w in PARADAS { continue }
+        saida.append(w)
+    }
+    return saida
+}
+
+# Logaritmo natural (x > 0): reduz x pra [1, 2) por potências de 2 e soma a
+# série de 2·atanh((x-1)/(x+1)), que nessa faixa converge rápido.
+flo funct ln(flo x) {
+    int k = 0
+    flo y = x
+    while y >= 2.0 { y = y / 2.0; k = k + 1 }
+    while y < 1.0 { y = y * 2.0; k = k - 1 }
+    flo t = (y - 1.0) / (y + 1.0)
+    flo t2 = t * t
+    flo termo = t
+    flo soma = 0.0
+    int n = 1
+    while n < 41 {
+        soma = soma + termo / flo(n)
+        termo = termo * t2
+        n = n + 2
+    }
+    return 2.0 * soma + flo(k) * 0.6931471805599453
+}
+
+# Os ids (texto, de "0" em diante) dos `quantos` trechos que mais casam com a
+# consulta, do melhor pro pior, pela pontuação BM25 (k1 = 1,2; b = 0,75). Os
+# ids em `excluir` não entram (a avaliação tira o próprio caso perguntado).
+list funct busca(dict termos, str consulta, int quantos, dict excluir) {
+    flo n_docs = flo(termos["N"])
+    flo media = termos["media"]
+    list dl = termos["dl"]
+    dict ocorre = termos["post"]
+    dict pontos = {}
+    dict vistos = {}
+    for each w in palavras(consulta) {
+        if w in vistos { continue }
+        vistos[w] = True
+        if not (w in ocorre) { continue }
+        list ps = ocorre[w].split(" ")
+        flo df = flo(len(ps))
+        flo idf = ln(1.0 + (n_docs - df + 0.5) / (df + 0.5))
+        for each p in ps {
+            int c = p.find(":")
+            str id = p[0:c]
+            if id in excluir { continue }
+            flo tf = flo(int(p[c + 1:]))
+            flo d = flo(dl[int(id)])
+            flo s = idf * tf * 2.2 / (tf + 1.2 * (0.25 + 0.75 * d / media))
+            if id in pontos { pontos[id] = pontos[id] + s } else { pontos[id] = s }
+        }
+    }
+    list melhores = []
+    for each par in pontos.items() {
+        flo s = par[1]
+        if len(melhores) == quantos and s <= melhores[len(melhores) - 1][0] { continue }
+        int i = 0
+        while i < len(melhores) and melhores[i][0] >= s { i = i + 1 }
+        melhores.insert(i, [s, par[0]])
+        if len(melhores) > quantos { removeEnd(melhores) }
+    }
+    list ids = []
+    for each m in melhores { ids.append(m[1]) }
+    return ids
+}
+
+# Os trechos achados, numerados e com a fonte, até `orcamento` caracteres.
+# Devolve [texto pro pedido, lista das fontes usadas].
+list funct trechos(list textos, list ids, int orcamento) {
+    list partes = []
+    list fontes = []
+    int usado = 0
+    for each id in ids {
+        list t = textos[int(id)]
+        str bloco = "[" + str(len(fontes) + 1) + "] fonte: " + t[0] + "\n" + t[1]
+        if usado + len(bloco) > orcamento and len(fontes) > 0 { break }
+        partes.append(bloco)
+        fontes.append(t[0])
+        usado = usado + len(bloco) + 2
+    }
+    return ["\n\n".join(partes), fontes]
+}
+
+str SISTEMA_COM = "Você é o assistente da linguagem de programação Jinga. A Jinga tem sintaxe própria: siga só a que aparece nos trechos (blocos com chaves, funções com `funct`, toda variável e todo parâmetro com o tipo escrito, como `int x = 1` e `list l = []`, `post(...)` pra imprimir, `True`, `False` e `Null`). Responda em português, curto. Use só o que está nos trechos; se eles não bastam, diga que não sabe."
+str SISTEMA_SEM = "Você é o assistente da linguagem de programação Jinga. A Jinga tem sintaxe própria: blocos com chaves, funções com `funct`, toda variável e todo parâmetro com o tipo escrito, como `int x = 1` e `list l = []`, `post(...)` pra imprimir, `True`, `False` e `Null`. Responda em português, curto."
+
+# Monta as mensagens do pedido: com os trechos (consulta ao material) ou sem.
+list funct mensagens(str pergunta, str material) {
+    if material == "" {
+        return [{"role": "system", "content": SISTEMA_SEM}, {"role": "user", "content": pergunta}]
+    }
+    return [{"role": "system", "content": SISTEMA_COM},
+            {"role": "user", "content": "Trechos do material da Jinga:\n\n" + material + "\n\nPergunta: " + pergunta}]
+}
+
+# Manda o pedido pro servidor do modelo. Devolve {"ok", "texto", "segundos",
+# "tokens_pedido", "tokens_resposta"}.
+dict funct pergunta_ao_modelo(list msgs, int max_tokens) {
+    flo t0 = date.monotonic()
+    dict corpo = {"messages": msgs, "temperature": 0.1, "max_tokens": max_tokens, "cache_prompt": True}
+    try {
+        Object r = request.post(url_do_modelo() + "/v1/chat/completions",
+                                headers={"Content-Type": "application/json"}, body=corpo, timeout=900)
+        flo segundos = date.monotonic() - t0
+        if not r.ok {
+            return {"ok": False, "texto": "erro " + str(r.status) + ": " + r.text, "segundos": segundos,
+                    "tokens_pedido": 0, "tokens_resposta": 0}
+        }
+        dict j = r.json()
+        dict uso = j["usage"]
+        return {"ok": True, "texto": j["choices"][0]["message"]["content"], "segundos": segundos,
+                "tokens_pedido": uso["prompt_tokens"], "tokens_resposta": uso["completion_tokens"]}
+    } catch (NetworkError e) {
+        # servidor fora do ar ou reiniciando: esta pergunta falha e quem chamou segue
+        return {"ok": False, "texto": "sem resposta do servidor do modelo: " + e,
+                "segundos": date.monotonic() - t0, "tokens_pedido": 0, "tokens_resposta": 0}
+    }
+}
+
+# O índice gravado pelo indice.pr: [termos, textos].
+list funct carrega_indice() {
+    str pasta = pasta_do_indice()
+    dict termos = json.parse(os.readFile(pasta + "/termos.json"))
+    list textos = json.parse(os.readFile(pasta + "/textos.json"))
+    return [termos, textos]
+}

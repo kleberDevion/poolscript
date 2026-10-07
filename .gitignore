@@ -127,3 +127,5 @@ editor/intellij/plugin/dist/
 /ps_leis_tmp/
 /ps_mongo_teste/
 /ps_unidade_zip_*.xlsx
+# o índice do material da Jinga que o modelo local consulta (scripts/modelo/indice.pr)
+/.modelo/
