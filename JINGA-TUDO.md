@@ -2110,7 +2110,7 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **16.2.14** (`vm/ps_versao.h`, bump no commit `c73fec3`); `main` e `origin/main` em `c73fec3` |
+| versão da linguagem | **16.2.14** (`vm/ps_versao.h`, bump no commit `c73fec3`, o último que mexe no motor); os commits depois dele são de doc e de ferramenta |
 | `./pool --version` | `Jinga 16.2.14 [PSVM] (2026-10-06) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário (`cmp` igual) |
 | versão da extensão do VS Code | 8.6.10 |
 | binário `./pool` | 9.091.912 bytes |
@@ -2437,7 +2437,7 @@ Ordem dele desde 2026-09-20: build e suíte pesada rodam na VPS, e depois de cad
 | usuário da suíte | **root, com `HOME` isolado dentro da pasta da rodada** (`export HOME="$PWD/home"`), por ordem sua de 2026-10-05 ("nada de nobody"). Até então era `nobody` |
 | pasta | `/tmp/ps-lote-<versão sem pontos>` (ex.: `/tmp/ps-lote-16214`), com a árvore em `arvore<versão>/` e o log ao lado (`log`) |
 | virtualização | a VPS é ela mesma uma convidada KVM e **não tem `/dev/kvm`** nem a flag `svm` (medido em 2026-10-06): máquina virtual lá dentro só por emulação |
-| vizinhos | a VPS é dividida. Containers que não são nossos e não se tocam: `n8n-traefik-1` (portas 80 e 443), `n8n-n8n-1`, `n8n-n8n-worker-2`, `n8n-postgres`, `redis`, `tecsol-web`; e há um Postgres do host em `127.0.0.1:5432` |
+| vizinhos | a VPS é dividida. Containers que não são nossos e não se tocam: `n8n-traefik-1` (portas 80 e 443), `n8n-n8n-1`, `n8n-n8n-worker-2`, `n8n-postgres`, `redis`, `tecsol-web`; há um Postgres de produção do host em `127.0.0.1:5432`; a porta 8080 é de um servidor Java seu ("não toque", 2026-10-06) e a 8081 da rede do docker também tem dono |
 
 Levar pro Mac `~/.ssh/config` e as chaves `~/.ssh/vps_tecsol_hostinger` (+ `.pub`). O conteúdo da chave não entra neste documento.
 
@@ -2499,8 +2499,28 @@ O `make install` do roteiro mantém o `jinga` da VPS na versão do lote (ordem s
 
 **Estado em 2026-10-06: o GitHub recusa todos os jobs** desde o push do 16.2.11 (15:15 UTC), com "The job was not started because recent account payments have failed or your spending limit needs to be increased". É a conta (cobrança ou cota mensal de minutos — o job do Mac conta dez vezes), e se vê em Settings > Billing no GitHub. O último commit que rodou lá, e verde nos três sistemas, é o 16.2.10 (`92db70d`). Você mandou: "é só rodar na VPS". Então:
 
-- **Linux**: o portão de cada commit é a rodada de 5.11 na VPS (`make check`, `make check-asan`, `make check-debug`) mais a suíte inteira neste laptop. Os jobs `propriedade`, `cobertura` (com os três bancos) e `linux` do `build.yml` não rodaram na VPS de 16.2.11 a 16.2.14; em 2026-10-06 está em montagem um roteiro que roda cada job Linux dos dois workflows num container `ubuntu:24.04` novo na VPS, com os passos do yml letra por letra. Quando estiver validado ele entra em `scripts/` e esta seção passa a dizer o comando.
+- **Linux**: os jobs Linux dos dois workflows rodam na VPS, cada um num container `ubuntu:24.04` novo, como um runner novo, com `scripts/ci_passos.pr` + `scripts/ci_vps.sh` (abaixo). Primeira rodada, em 2026-10-06, no `be5221e`: `cobertura`, `linux`, `portao` e `propriedade` verdes em ~35 min, pulando no `make check` exatamente o que o runner do GitHub pula (LSP sem `npm install`, Neovim, IntelliJ, mongod). O lote que mexe no motor continua passando também pela rodada de 5.11 (`check-asan` e `check-debug`).
 - **macOS e Windows**: sem onde rodar por enquanto (6.2). Voltam quando o GitHub aceitar jobs de novo ou quando o seu MacBook estiver acessível.
+
+**Rodar o CI na VPS** (o commit tem que estar no repositório; a árvore de trabalho não entra):
+
+```bash
+C=$(git rev-parse --short HEAD); P=/tmp/ps-ci-$C; L=/tmp/envio-$C
+mkdir -p $L
+git archive --format=tar.gz --prefix=fonte/ $C > $L/fonte.tar.gz
+jinga scripts/ci_passos.pr . $L/passos        # os passos de cada job, tirados dos .yml
+cp scripts/ci_vps.sh $L/
+ssh -o BatchMode=yes tecsol-vps "mkdir -p $P" && scp -q -r $L/. tecsol-vps:$P/ && rm -rf $L
+ssh -o BatchMode=yes tecsol-vps "(nohup setsid bash $P/ci_vps.sh $P > $P/ci.log 2>&1 < /dev/null &)"
+# jobs de push por padrão; o noturno é pedido pelo nome: ... ci_vps.sh $P robustez
+
+ssh -o BatchMode=yes tecsol-vps "cat $P/resumo.txt"   # um passo por linha; termina em "== FIM"
+ssh -o BatchMode=yes tecsol-vps "rm -rf $P"           # limpeza (containers e imagens o roteiro já limpou)
+```
+
+- `scripts/ci_passos.pr` lê `.github/workflows/*.yml` e grava uma pasta por job Linux com o texto de cada `run:` letra por letra, os serviços e o `timeout-minutes`. O que ele não sabe reproduzir (um `uses:` que não seja checkout ou upload-artifact, `${{ }}` num passo, `shell:`/`env:` no passo) faz ele parar dizendo o job e o passo. Os jobs que não são Linux vão pra `fora.txt` (hoje: `mac`, `windows`, e `release`, que depende deles).
+- `scripts/ci_vps.sh` roda como root na VPS. Cada job ganha um container novo, com usuário `runner` e sudo, os pacotes que a imagem do runner traz e os testes usam (incluindo o libpq 18 do repositório do PostgreSQL, como no runner), `--cpus 3 --memory 7g`, numa rede própria, sem porta publicada no host. Os serviços do job (os três bancos do `cobertura`) dividem o espaço de rede do container do job, como no runner, e o mongo escuta direto na 27099. Tudo leva o prefixo `psci-<pid>`; a limpeza, inclusive em erro e em sinal, só remove o que a execução criou. Se achar container `psci-*` de outra execução, ele para sem mexer nele.
+- Saída: `resumo.txt` (`== job`, `passo N rc=R :: nome`, `== fim job rc=R`, `== FIM`), `log/<job>.log` e `artefatos/<job>/` (o pacote do `linux`, o HTML da cobertura).
 
 **`.github/workflows/ci.yml`** roda em push na `main`, em pull request e todo dia às 03:00 UTC:
 

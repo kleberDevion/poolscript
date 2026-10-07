@@ -1,0 +1,366 @@
+# Extrai os jobs Linux dos workflows do GitHub (.github/workflows/*.yml) em
+# arquivos que o scripts/ci_vps.sh roda na VPS, um container novo por job.
+#
+# O texto de cada passo `run:` sai do .yml LETRA POR LETRA: a rodada da VPS é
+# o mesmo CI, e não uma cópia escrita à mão que envelhece calada quando o .yml
+# muda. O que este extrator não sabe reproduzir num job Linux (um `uses:` que
+# não seja checkout nem upload-artifact, `${{ }}` dentro de um passo, `shell:`,
+# `env:` ou `timeout-minutes` no passo, `env:` no job, `if:` de passo que não
+# seja `always()`) faz ele PARAR dizendo o job e o passo.
+#
+# Uso: jinga scripts/ci_passos.pr <raiz do repositório> <pasta de saída>
+#
+# Uma pasta por job, na saída:
+#   job.txt        workflow=, runs_on=, timeout= (minutos), padrao=1|0 (1 =
+#                  roda num push; 0 = só pedido pelo nome, como o noturno),
+#                  env=CHAVE=valor (o `env:` do workflow, uma linha cada) e
+#                  servico=nome|imagem|porta_host:porta_container|CHAVE=v,...|comando de saúde
+#   passo_NN.info  nome=, tipo=checkout|run|artefato, se=sucesso|sempre,
+#                  continua=1|0, caminho= (o `path:` do artefato)
+#   passo_NN.sh    o texto do `run:`
+# E fora.txt: os jobs que não rodam numa máquina Linux sozinhos, com o motivo.
+import os
+import sys
+
+int funct recuo(str l) {
+    return len(l) - len(l.lstrip())
+}
+
+bool funct vazia_ou_comentario(str l) {
+    str s = l.strip()
+    return s == "" or s.startswith("#")
+}
+
+# "chave: valor", com ou sem o "- " do item de lista -> a chave
+str funct chave(str l) {
+    str s = l.strip()
+    if s.startswith("- ") { s = s[2:].strip() }
+    int p = s.find(":")
+    if p < 0 { return "" }
+    return s[0:p].strip()
+}
+
+# "chave: valor" -> o valor, sem as aspas que envolvem o valor inteiro
+str funct valor(str l) {
+    str s = l.strip()
+    if s.startswith("- ") { s = s[2:].strip() }
+    int p = s.find(":")
+    str v = s[p + 1:].strip()
+    if len(v) >= 2 and v.startswith("'") and v.endswith("'") { v = v[1:len(v) - 1] }
+    if len(v) >= 2 and v.startswith("\"") and v.endswith("\"") { v = v[1:len(v) - 1] }
+    return v
+}
+
+Null funct para(str msg) {
+    post("ci_passos: " + msg)
+    sys.exit(1)
+}
+
+# O bloco de um "chave: |" (ou ">-") cuja primeira linha é a `i`: as linhas
+# mais recuadas que a chave, e as em branco no meio, sem o recuo da primeira
+# linha. Devolve [texto, índice da primeira linha depois do bloco].
+list funct bloco(list ls, int i, int recuo_chave) {
+    list corpo = []
+    int r = -1
+    int j = i
+    while j < len(ls) {
+        str l = ls[j]
+        if l.strip() == "" {
+            corpo.append("")
+            j = j + 1
+            continue
+        }
+        int rl = recuo(l)
+        if rl <= recuo_chave { break }
+        if r < 0 { r = rl }
+        if rl < r { para("bloco com recuo menor que a primeira linha, na linha " + str(j + 1)) }
+        corpo.append(l[r:])
+        j = j + 1
+    }
+    while len(corpo) > 0 and corpo[len(corpo) - 1] == "" {
+        removeEnd(corpo)
+    }
+    return ["\n".join(corpo), j]
+}
+
+# Os `servico=` de um bloco `services:` que começa na linha i (recuo 4).
+# Devolve [lista de linhas servico=..., índice depois do bloco].
+list funct servicos(list ls, int i) {
+    list saida = []
+    int j = i
+    str nome = ""
+    str imagem = ""
+    str portas = ""
+    str envs = ""
+    str saude = ""
+    bool em_env = False
+    while j < len(ls) {
+        str l = ls[j]
+        if vazia_ou_comentario(l) {
+            j = j + 1
+            continue
+        }
+        int rl = recuo(l)
+        if rl <= 4 { break }
+        if rl == 6 {
+            if nome != "" { saida.append("servico=" + nome + "|" + imagem + "|" + portas + "|" + envs + "|" + saude) }
+            nome = chave(l)
+            imagem = ""
+            portas = ""
+            envs = ""
+            saude = ""
+            em_env = False
+            j = j + 1
+            continue
+        }
+        if rl == 8 {
+            str k = chave(l)
+            em_env = k == "env"
+            if k == "image" { imagem = valor(l) }
+            if k == "ports" { portas = valor(l).replace("[", "").replace("]", "").replace("\"", "").strip() }
+            if k == "options" {
+                list b = bloco(ls, j + 1, 8)
+                str op = b[0].replace("\n", " ")
+                int p = op.find("--health-cmd \"")
+                if p >= 0 {
+                    str resto = op[p + len("--health-cmd \""):]
+                    saude = resto[0:resto.find("\"")]
+                }
+                j = b[1]
+                continue
+            }
+            j = j + 1
+            continue
+        }
+        if rl == 10 and em_env {
+            str par = chave(l) + "=" + valor(l)
+            if envs == "" { envs = par } else { envs = envs + "," + par }
+        }
+        j = j + 1
+    }
+    if nome != "" { saida.append("servico=" + nome + "|" + imagem + "|" + portas + "|" + envs + "|" + saude) }
+    return [saida, j]
+}
+
+# Os passos de um bloco `steps:` que começa na linha i (recuo 4): uma lista
+# de dicts com nome, uses, run, se, continua, caminho e extra (as chaves que
+# o roteiro da VPS não reproduz). Devolve [passos, índice depois do bloco].
+list funct passos(list ls, int i) {
+    list saida = []
+    dict p = {}
+    bool tem = False
+    bool em_with = False
+    int j = i
+    while j < len(ls) {
+        str l = ls[j]
+        if vazia_ou_comentario(l) {
+            j = j + 1
+            continue
+        }
+        int rl = recuo(l)
+        if rl <= 4 { break }
+        bool novo = rl == 6 and l.strip().startswith("- ")
+        if novo {
+            if tem { saida.append(p) }
+            p = {"nome": "", "uses": "", "run": "", "se": "", "continua": "0", "caminho": "", "extra": ""}
+            tem = True
+            em_with = False
+        }
+        if novo or rl == 8 {
+            str k = chave(l)
+            str v = valor(l)
+            em_with = k == "with"
+            if k == "name" { p["nome"] = v }
+            elif k == "uses" { p["uses"] = v }
+            elif k == "if" { p["se"] = v }
+            elif k == "continue-on-error" { if v == "true" { p["continua"] = "1" } }
+            elif k == "run" {
+                if v == "|" or v == "|-" or v == ">" or v == ">-" {
+                    list b = bloco(ls, j + 1, 8)
+                    str texto = b[0]
+                    if v == ">" or v == ">-" { texto = texto.replace("\n", " ") }
+                    p["run"] = texto + "\n"
+                    j = b[1]
+                    continue
+                }
+                p["run"] = v + "\n"
+            }
+            elif k != "with" {
+                # chave que o roteiro da VPS não reproduz (env:, shell:...):
+                # fica anotada, e o que estiver aninhado nela é pulado; só é
+                # erro se o job for rodar na VPS
+                p["extra"] = p["extra"] + k + " "
+                j = j + 1
+                while j < len(ls) and (vazia_ou_comentario(ls[j]) or recuo(ls[j]) > 8) { j = j + 1 }
+                continue
+            }
+            j = j + 1
+            continue
+        }
+        if rl == 10 and em_with {
+            str vw = valor(l)
+            if vw == "|" or vw == "|-" or vw == ">" or vw == ">-" {
+                # valor em bloco (o `install: >-` do msys2): não interessa aqui
+                list b = bloco(ls, j + 1, 10)
+                j = b[1]
+                continue
+            }
+            if chave(l) == "path" { p["caminho"] = vw }
+            j = j + 1
+            continue
+        }
+        para("linha fora do formato esperado num passo, linha " + str(j + 1) + ": " + l.strip())
+    }
+    if tem { saida.append(p) }
+    return [saida, j]
+}
+
+Null funct grava(str caminho, str texto) {
+    os.writeFile(caminho, texto)
+}
+
+# Lê um workflow e grava os jobs Linux dele em `saida`. `fora` e `gravados`
+# acumulam entre os workflows.
+Null funct le_workflow(str raiz, str arq, str saida, list fora, list gravados) {
+    list ls = os.readFile(raiz + "/.github/workflows/" + arq).split("\n")
+    list env_wf = []
+    int i = 0
+    int jobs = -1
+    while i < len(ls) {
+        str l = ls[i]
+        if l == "env:" {
+            int j = i + 1
+            while j < len(ls) and (vazia_ou_comentario(ls[j]) or recuo(ls[j]) > 0) {
+                if not vazia_ou_comentario(ls[j]) { env_wf.append(chave(ls[j]) + "=" + valor(ls[j])) }
+                j = j + 1
+            }
+        }
+        if l == "jobs:" { jobs = i }
+        i = i + 1
+    }
+    if jobs < 0 { para(arq + ": sem 'jobs:'") }
+
+    # o começo de cada job: recuo 2, "nome:"
+    list inicios = []
+    i = jobs + 1
+    while i < len(ls) {
+        str l = ls[i]
+        if not vazia_ou_comentario(l) and recuo(l) == 0 { break }
+        if not vazia_ou_comentario(l) and recuo(l) == 2 and l.strip().endswith(":") { inicios.append(i) }
+        i = i + 1
+    }
+    int fim_jobs = i
+    int k = 0
+    while k < len(inicios) {
+        int a = inicios[k]
+        int b = fim_jobs
+        if k + 1 < len(inicios) { b = inicios[k + 1] }
+        str job = chave(ls[a])
+        str runs_on = ""
+        str se_job = ""
+        str needs = ""
+        str extra_job = ""
+        int prazo = 360
+        list servs = []
+        list ps = []
+        int j = a + 1
+        while j < b {
+            str l = ls[j]
+            if vazia_ou_comentario(l) {
+                j = j + 1
+                continue
+            }
+            if recuo(l) == 4 {
+                str c = chave(l)
+                if c == "runs-on" { runs_on = valor(l) }
+                elif c == "if" { se_job = valor(l) }
+                elif c == "needs" { needs = valor(l) }
+                elif c == "timeout-minutes" { prazo = int(valor(l)) }
+                elif c == "services" {
+                    list r = servicos(ls, j + 1)
+                    servs = r[0]
+                    j = r[1]
+                    continue
+                }
+                elif c == "steps" {
+                    list r = passos(ls, j + 1)
+                    ps = r[0]
+                    j = r[1]
+                    continue
+                }
+                elif c != "name" { extra_job = extra_job + c + " " }
+            }
+            j = j + 1
+        }
+
+        if not runs_on.startswith("ubuntu") {
+            fora.append(job + " (" + arq + "): roda em " + runs_on + ", não numa máquina Linux")
+            k = k + 1
+            continue
+        }
+        if needs != "" {
+            fora.append(job + " (" + arq + "): depende de " + needs + " (" + se_job + ")")
+            k = k + 1
+            continue
+        }
+        if extra_job != "" { para(job + ": chave de job que o roteiro da VPS não reproduz: " + extra_job) }
+        if job in gravados { para("dois jobs com o nome " + job) }
+        gravados.append(job)
+
+        str dir = saida + "/" + job
+        os.mkdir(dir, exist_ok=True)
+        str padrao = "1"
+        if "schedule" in se_job or "refs/tags" in se_job { padrao = "0" }
+        list jt = ["workflow=" + arq, "runs_on=" + runs_on, "timeout=" + str(prazo), "padrao=" + padrao]
+        for each e in env_wf { jt.append("env=" + e) }
+        for each s in servs { jt.append(s) }
+        grava(dir + "/job.txt", "\n".join(jt) + "\n")
+
+        int n = 0
+        for each p in ps {
+            n = n + 1
+            str nn = str(n).zfill(2)
+            str onde = job + ", passo " + str(n)
+            if p["extra"] != "" { para(onde + ": chave que o roteiro da VPS não reproduz: " + p["extra"]) }
+            str se = "sucesso"
+            if p["se"] == "always()" { se = "sempre" }
+            elif p["se"] != "" { para(onde + ": if de passo que o roteiro da VPS não reproduz: " + p["se"]) }
+            str tipo = ""
+            str nome = p["nome"]
+            if p["uses"].startswith("actions/checkout@") {
+                tipo = "checkout"
+                if nome == "" { nome = "Checkout" }
+            } elif p["uses"].startswith("actions/upload-artifact@") {
+                tipo = "artefato"
+                if p["caminho"] == "" { para(onde + ": upload-artifact sem path") }
+                if nome == "" { nome = "Upload " + p["caminho"] }
+            } elif p["uses"] != "" {
+                para(onde + ": uses que o roteiro da VPS não reproduz: " + p["uses"])
+            } elif p["run"] != "" {
+                tipo = "run"
+                if "${{" in p["run"] { para(onde + ": expressão ${{ }} dentro do passo") }
+                if nome == "" { nome = "Run " + p["run"].split("\n")[0] }
+                grava(dir + "/passo_" + nn + ".sh", p["run"])
+            } else {
+                para(onde + ": passo sem uses nem run")
+            }
+            grava(dir + "/passo_" + nn + ".info", "nome=" + nome + "\ntipo=" + tipo + "\nse=" + se + "\ncontinua=" + p["continua"] + "\ncaminho=" + p["caminho"] + "\n")
+        }
+        post(job + " (" + arq + "): " + str(n) + " passos, " + str(len(servs)) + " serviços, padrao=" + padrao)
+        k = k + 1
+    }
+}
+
+if len(sys.argv) < 3 { para("uso: jinga scripts/ci_passos.pr <raiz do repositório> <pasta de saída>") }
+str RAIZ = sys.argv[1]
+str SAIDA = sys.argv[2]
+os.mkdir(SAIDA, exist_ok=True)
+list fora = []
+list gravados = []
+list arqs = []
+for each item in os.ls(RAIZ + "/.github/workflows") {
+    if item["name"].endswith(".yml") { arqs.append(item["name"]) }
+}
+for each arq in sorted(arqs) { le_workflow(RAIZ, arq, SAIDA, fora, gravados) }
+grava(SAIDA + "/fora.txt", "\n".join(fora) + "\n")
+for each f in fora { post("fora: " + f) }
