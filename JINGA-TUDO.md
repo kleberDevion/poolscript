@@ -2898,10 +2898,11 @@ Ordem: **8 -> 5 -> 1 -> 3**.
    - Onde pode ir, nas suas palavras: "dentro dos `()` de uma função ou model, ou instância de classe, ou dentro do corpo do objeto".
    - O lote: lexer e parser, o nó no `--ast`, o servidor do editor (hover, completion, assinatura), realce nos três editores, doc da linguagem e casos. O que o texto vira em tempo de execução é **pergunta a você no plano**.
 
-6. **Item 10: o nome do servidor como parâmetro do `Jinker`** (anotado em 2026-10-07, sem posição na ordem acima).
-   - Hoje toda resposta do jinker sai com o cabeçalho `Server: Jinker` escrito fixo em `ps_jk_responde` (`vm/ps_jinker.c`).
-   - Você pediu: o nome vai pra instância, como parâmetro `server` do construtor, junto dos que já existem (`Jinker(__name__, oauth={...}, server="...")`; hoje são `name`, `oauth`, `static_folder`, `static_url` e `route_prefix`).
-   - O lote: o parâmetro no `MOD_JINKER` e no app, o cabeçalho de toda resposta (inclusive a do aperto de mão do WebSocket e as de erro) saindo dele, valor sem quebra de linha (senão vira injeção de cabeçalho), doc `docs/jinker/`, casos no `teste/jinker_roda.pr`. Perguntado no plano: o padrão continua `Jinker`, e se `server=""` tira o cabeçalho.
+6. **Item 10: os cabeçalhos da resposta ficam com o `JinkerResponse`** (anotado em 2026-10-07, sem posição na ordem acima).
+   - Hoje toda resposta do jinker sai com `Server: Jinker` e `Date` escritos fixos em `ps_jk_responde` (`vm/ps_jinker.c`), mesmo quando o handler monta um `JinkerResponse` e põe cabeçalhos com `.header(...)`.
+   - A sua regra (primeiro você pensou num parâmetro `server` no `Jinker(...)`, e trocou por esta): **todo cabeçalho vai pelo `JinkerResponse`. Handler que não usa `JinkerResponse` recebe os cabeçalhos fixos de hoje; handler que usa, quem forma os cabeçalhos é o dev.**
+   - O lote: `ps_jk_responde` deixa de pôr `Server`/`Date` quando a resposta veio de um `JinkerResponse`; o resto continua igual; valor de cabeçalho sem quebra de linha (senão vira injeção de cabeçalho); doc `docs/jinker/JinkerResponse/` (a página do `header` hoje diz que o jinker "já define sozinho" alguns); casos no `teste/jinker_roda.pr`.
+   - Perguntado no plano: `Content-Length` e `Connection` são do protocolo (dizem onde o corpo acaba); a proposta é o servidor continuar calculando os dois sempre.
 
 Itens da trilha já fechados: 2 (Pyrite) foi superado pelo rename pra Jinga; 4 (`public`/`private`), 6 (IntelliJ) e 7 (regressão do LSP) estão feitos. Detalhes em 6.6.
 
