@@ -2898,6 +2898,11 @@ Ordem: **8 -> 5 -> 1 -> 3**.
    - Onde pode ir, nas suas palavras: "dentro dos `()` de uma função ou model, ou instância de classe, ou dentro do corpo do objeto".
    - O lote: lexer e parser, o nó no `--ast`, o servidor do editor (hover, completion, assinatura), realce nos três editores, doc da linguagem e casos. O que o texto vira em tempo de execução é **pergunta a você no plano**.
 
+6. **Item 10: o nome do servidor como parâmetro do `Jinker`** (anotado em 2026-10-07, sem posição na ordem acima).
+   - Hoje toda resposta do jinker sai com o cabeçalho `Server: Jinker` escrito fixo em `ps_jk_responde` (`vm/ps_jinker.c`).
+   - Você pediu: o nome vai pra instância, como parâmetro `server` do construtor, junto dos que já existem (`Jinker(__name__, oauth={...}, server="...")`; hoje são `name`, `oauth`, `static_folder`, `static_url` e `route_prefix`).
+   - O lote: o parâmetro no `MOD_JINKER` e no app, o cabeçalho de toda resposta (inclusive a do aperto de mão do WebSocket e as de erro) saindo dele, valor sem quebra de linha (senão vira injeção de cabeçalho), doc `docs/jinker/`, casos no `teste/jinker_roda.pr`. Perguntado no plano: o padrão continua `Jinker`, e se `server=""` tira o cabeçalho.
+
 Itens da trilha já fechados: 2 (Pyrite) foi superado pelo rename pra Jinga; 4 (`public`/`private`), 6 (IntelliJ) e 7 (regressão do LSP) estão feitos. Detalhes em 6.6.
 
 ### 6.5 A fazer, sem posição dada por você na fila
