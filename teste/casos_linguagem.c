@@ -3541,6 +3541,22 @@ const Caso CASOS_LINGUAGEM[] = {
 { "sys.exit(0) sai com 0 sem mensagem",
   "import sys\npost(\"ok\")\nsys.exit(0)\npost(\"nao chega\")\n", "ok", NULL, 0 },
 
+/* ── Plano 6, lote 10: o inteiro que não cabe em 64 bits ─────────────────────
+ * "esperava int, recebeu int" se contradizia (o type() do valor responde int):
+ * retorno, parâmetro e campo dizem o motivo e a palavra, como a variável. */
+{ "retorno de int funct com inteiro grande diz que nao cabe em 64 bits",
+  "int funct grande() {\n    return 2 ** 70\n}\npost(grande())\n", "500",
+  "AttributedValueError: retorno de grande() esperava int, e o valor nao cabe em 64 bits (declare como 'long' pra aceitar inteiro de qualquer tamanho)", 0 },
+{ "parametro int com inteiro grande diz que nao cabe em 64 bits",
+  "funct f(int n) {\n    return n\n}\npost(f(2 ** 70))\n", "",
+  "AttributedValueError: parâmetro n de f() esperava int, e o valor nao cabe em 64 bits (declare como 'long' pra aceitar inteiro de qualquer tamanho)", 1 },
+{ "campo int com inteiro grande diz que nao cabe em 64 bits",
+  "class C {\n    int x = 0\n}\nC c = C()\nc.x = 2 ** 70\n", "",
+  "AttributedValueError: campo x de C esperava int, e o valor nao cabe em 64 bits (declare como 'long' pra aceitar inteiro de qualquer tamanho)", 1 },
+{ "parametro int com texto continua dizendo o tipo recebido (rodando)",
+  "funct f(int n) {\n    return n\n}\nlist l = [\"a\"]\npost(f(l[0]))\n", "",
+  "AttributedValueError: parâmetro n de f() esperava int, recebeu str\n", 1 },
+
 /* ── sonda 2, lote 3: vetores de salto sem teto e f-string inteira ────────── */
 { "65 breaks no mesmo laco e 65 elifs compilam (os vetores de salto crescem)",
   "import os\nimport sys\nstr b = \"int x = 0\\nwhile True {\\n\"\nfor each k in range(65) { b = b + \"    if x == \" + str(k + 100) + \" { break }\\n\" }\n"

@@ -79,6 +79,9 @@ if ($origem -eq 'pacote') {
     $nm = Join-Path $aqui 'editor\vscode\node_modules'
     if (Test-Path $nm) { Copy-Item -Recurse -Force $nm (Join-Path $share 'lsp') }
     Copy-Item -Recurse -Force (Join-Path $aqui 'docs\*') (Join-Path $share 'docs')
+    # o migrador de extensão: a frase do arquivo `.ps` manda rodá-lo
+    New-Item -ItemType Directory -Force -Path (Join-Path $share 'scripts') | Out-Null
+    Copy-Item -Force (Join-Path $aqui 'scripts\migra_pr.pr') (Join-Path $share 'scripts')
     # os comandos: o jpkg é o próprio jinga (subcomandos install/list...), e
     # pool/psl são os nomes de antes do rename
     $lsp = "@echo off`r`nrem Servidor LSP da Jinga. Ver docs/lsp.md.`r`n" +

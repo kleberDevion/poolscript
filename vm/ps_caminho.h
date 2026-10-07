@@ -15,6 +15,12 @@
 
 #include <string.h>
 
+/* O maior caminho que o motor guarda: o do Linux (PATH_MAX). A pasta do
+ * script e a do módulo, os caminhos da busca do import e o arquivo do quadro
+ * do erro cabem nele. Eram 512 e 1024: numa pasta de 524 caracteres a pasta
+ * do script saía cortada, e o `import vizinho` dava "No module named". */
+#define PS_CAMINHO_MAX 4096
+
 static inline int ps_eh_sep(char c)
 {
 #if defined(_WIN32)

@@ -133,6 +133,11 @@ long z = x                            # aceita (outro nome: `y` já é int)
 `long` é a declaração sem essa promessa — inteiro de qualquer tamanho, como em
 C. Aceita os dois lados: `long b = 42` também vale (alarga, não converte).
 
+A mesma frase vale pro parâmetro (`parâmetro n de f() esperava int, e o valor
+nao cabe em 64 bits`), pro retorno de `int funct` e pro campo `int` de classe:
+o `type()` do valor responde `int`, e "esperava int, recebeu int" se
+contradiria.
+
 É **chamável** como os outros tipos, e converte igual ao `int`:
 
 ```ps

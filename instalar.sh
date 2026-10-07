@@ -91,10 +91,11 @@ if [ "$(uname -s)" = "Darwin" ]; then
         rm -rf "$PREFIXO/lib/jinga"
         mkdir -p "$PREFIXO/lib/jinga"
         cp -R lib/jinga/. "$PREFIXO/lib/jinga/"
-        echo "== servidor LSP e doc"
-        rm -rf "$PREFIXO/share/jinga/lsp" "$PREFIXO/share/jinga/docs"
+        echo "== servidor LSP, doc e o migrador de extensão"
+        rm -rf "$PREFIXO/share/jinga/lsp" "$PREFIXO/share/jinga/docs" "$PREFIXO/share/jinga/scripts"
         cp -R share/jinga/lsp "$PREFIXO/share/jinga/lsp"
         cp -R share/jinga/docs "$PREFIXO/share/jinga/docs"
+        cp -R share/jinga/scripts "$PREFIXO/share/jinga/scripts"
     else
         echo "== binário compilado nesta máquina"
         install -m755 pool "$PREFIXO/bin/jinga"
@@ -106,6 +107,9 @@ if [ "$(uname -s)" = "Darwin" ]; then
         [ -d editor/vscode/node_modules ] && cp -R editor/vscode/node_modules "$PREFIXO/share/jinga/lsp/"
         rm -rf "$PREFIXO/share/jinga/docs"
         cp -R docs "$PREFIXO/share/jinga/docs"
+        # o migrador de extensão (a frase do `.ps` manda rodá-lo)
+        mkdir -p "$PREFIXO/share/jinga/scripts"
+        install -m644 scripts/migra_pr.pr "$PREFIXO/share/jinga/scripts/"
     fi
     for atalho in jpkg pool psl; do ln -sf "$PREFIXO/bin/jinga" "$PREFIXO/bin/$atalho"; done
     printf '#!/bin/sh\n# Servidor LSP da Jinga. Ver docs/lsp.md.\nif ! command -v node >/dev/null 2>&1; then\n  echo "jinga-lsp precisa do node" >&2\n  exit 1\nfi\nexec node %s/share/jinga/lsp/server.js "${@:---stdio}"\n' \
@@ -381,6 +385,15 @@ if [ -d docs ]; then
 else
     echo "   (não veio documentação neste pacote)"
     INCOMPLETO=1
+fi
+
+echo "== migrador de extensão"
+# A frase do arquivo `.ps` manda rodar o migrador pelo caminho instalado
+# (`<prefixo>/share/jinga/scripts/migra_pr.pr`): sem ele aqui, quem instalou
+# recebia um comando que não abre.
+if [ -f scripts/migra_pr.pr ]; then
+    install -d "$PREFIXO/share/jinga/scripts"
+    install -m644 scripts/migra_pr.pr "$PREFIXO/share/jinga/scripts/"
 fi
 
 echo "== tipo MIME e ícone do .pr"

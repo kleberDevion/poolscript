@@ -218,12 +218,12 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Item | Fato |
 |---|---|
 | Nome | Jinga. Antes se chamava PoolScript. O rename foi em 2026-09-24 |
-| Extensão | `.pr`, e só ela. `.ps`, `.psl` e `.p` saíram. Para migrar: `jinga scripts/migra_pr.pr <pasta> --aplica --libs` |
+| Extensão | `.pr`, e só ela. `.ps`, `.psl` e `.p` saíram. Para migrar: `jinga scripts/migra_pr.pr <pasta> --aplica --libs` no repositório; instalado, o migrador fica em `<prefixo>/share/jinga/scripts/migra_pr.pr`, e a frase do arquivo `.ps` cita o caminho que existe na máquina (`ps_caminho_do_migrador`) |
 | Tipagem | Estática: tudo que tem tipo é conferido **antes de rodar**. Não existe conversão implícita |
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.4`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.5`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -2125,8 +2125,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.4** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.4 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.5** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.5 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2409,7 +2409,7 @@ Todos em Jinga, rodados com `./pool scripts/X.pr` (ou `jinga scripts/X.pr`). Os 
 | `gera_realce.pr` | listas do realce do VS Code e do Neovim a partir do `--metadata`; `--portao` |
 | `mede_retornos.pr` | mede o tipo de retorno de cada nativo chamando-o e grava `vm/retornos_medidos.inc`; `--confere` |
 | `migra_classe.pr` | `class Nome()` -> `class Nome`, `base(x)` -> `base().__init__(x)`; `--aplica`, `--libs`, `--confere` |
-| `migra_pr.pr` | `.ps`, `.psl` e `.p` -> `.pr` e as referências; `--aplica`, `--so-renome`, `--sem`, `--libs` |
+| `migra_pr.pr` | `.ps`, `.psl` e `.p` -> `.pr` e as referências; `--aplica`, `--so-renome`, `--sem`, `--libs`. É o único script instalado (`share/jinga/scripts/`, pelo `make install`, o `build_bundle.sh`, o `instalar.sh` e o `instalar.ps1`) |
 | `para_chaves.pr` | um fonte do estilo `:` pro `{ }`, pelo lexer |
 | `regrava_dif.pr` | regrava a expectativa de casos nomeados; só quando o comportamento mudou por decisão, caso a caso |
 | `remove_grafia_antiga.pr` | `action`/`reaction` -> `funct` como palavra, em texto qualquer |
@@ -2747,7 +2747,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.4"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.5"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2827,7 +2827,7 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-07 (madrugada)
 
-- Versão da linguagem **17.0.4** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.4 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.5** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.5 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: `71e0a31` (17.0.0, o `Parsing` virou lib), igual a `origin/main` quando subiu; os commits depois dele são de doc e de ferramenta. O único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
 - **Plano 8 fechado** (`71e0a31`): `import Parsing` como qualquer lib, e lib do motor usada sem import diz qual import falta. Major porque quebra programa que usava o `Parsing` sem import. Verde na VPS em `make check`, `check-asan` e `check-debug`.

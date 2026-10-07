@@ -16,6 +16,7 @@
 #include <stdio.h>
 
 #include "ps_lexer.h"   /* PSAviso: o `--check` devolve os avisos junto */
+#include "ps_caminho.h" /* PS_CAMINHO_MAX: o arquivo do quadro do erro */
 
 typedef enum {
     PS_ERRO_NENHUM = 0,
@@ -37,11 +38,11 @@ typedef enum {
 /* Um quadro do traceback: função, arquivo e linha. */
 typedef struct {
     char nome[64];      /* nome da função (ou "<module>") */
-    /* Arquivo-fonte do quadro (vazio = desconhecido). 1024 é o tamanho do
-     * `abspath` que alimenta este campo: cortar aqui produziria um caminho
-     * que não abre, e o quadro sairia sem a linha do fonte — sem dizer que
-     * cortou. */
-    char arquivo[1024];
+    /* Arquivo-fonte do quadro (vazio = desconhecido). O tamanho é o do
+     * `abspath` que alimenta este campo (PS_CAMINHO_MAX): cortar aqui
+     * produziria um caminho que não abre, e o quadro sairia sem a linha do
+     * fonte — sem dizer que cortou. */
+    char arquivo[PS_CAMINHO_MAX];
     int  linha;
     int  col;           /* coluna do cursor `^^^` (0 = 1ª não-branco da linha) */
 } PSQuadroTB;
@@ -64,14 +65,14 @@ typedef struct {
     /* `linha_fim`/`col_fim`: onde o trecho acusado termina (0 = não medido). */
     struct PSErroTipoExec { char msg[256]; char classe[32]; int linha; int col;
                             int linha_fim; int col_fim;
-                            char arquivo[1024]; int linha_arq; int col_arq;
+                            char arquivo[PS_CAMINHO_MAX]; int linha_arq; int col_arq;
                             char nome_arq[64]; } *tipos;
     int        ntipos;
     /* Nota do runtime depois do traceback: o acesso a um nome `private` de
      * módulo mostra ONDE ele foi declarado (`'f' e private: declarada em
      * lib.pr, linha 1` + a linha do fonte). Vazio = sem nota. */
     char       nota_nome[64];
-    char       nota_arquivo[1024];
+    char       nota_arquivo[PS_CAMINHO_MAX];
     int        nota_linha;
     int        nota_col;
     /* PS_ERRO_SAIDA: o código que o `sys.exit` pediu */
@@ -91,6 +92,13 @@ void ps_set_argv(int argc, char **argv);
 void ps_debug_porta(int porta);
 
 int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e);
+
+/* O migrador de extensão (`migra_pr.pr`) desta instalação: o instalado em
+ * `<prefixo>/share/jinga/scripts/` ou o do repositório ao lado do binário.
+ * 1 = achou (caminho absoluto em `buf`); 0 = não há. As frases da extensão
+ * antiga citam ESTE caminho: `scripts/migra_pr.pr` só existe no
+ * repositório, e quem instalou recebia um comando que não abre. */
+int ps_caminho_do_migrador(char *buf, size_t cap);
 
 /* `jinga --bytecode`: compila como pra rodar e imprime o bytecode de cada
  * proto em `saida`; NUNCA executa. 0 = ok; -1 preenche `e` como ao rodar. */
@@ -125,7 +133,7 @@ extern void (*ps_gancho_quadro)(const char *arquivo, int linha, int col);
  * não se acha, ou que não parseia, é erro (-1, mensagem em `erro`): um
  * executável que só descobre isso na máquina de quem roda nasce quebrado. O
  * chamador libera com ps_embutidos_solta. */
-typedef struct { char textual[1024]; char real[1024]; char *fonte; size_t tam; } PSEmbutido;
+typedef struct { char textual[PS_CAMINHO_MAX]; char real[PS_CAMINHO_MAX]; char *fonte; size_t tam; } PSEmbutido;
 int  ps_embute_deps(const char *caminho_main, PSEmbutido **lista, int32_t *n,
                     char *libs, size_t libs_cap, char *erro, size_t erro_cap);
 void ps_embutidos_solta(PSEmbutido *lista, int32_t n);

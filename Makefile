@@ -352,6 +352,11 @@ install: pool
 	    mkdir -p "$(PREFIXO)/share/jinga/docs/$$(dirname "$$f")"; \
 	    install -m644 "$$f" "$(PREFIXO)/share/jinga/docs/$$f"; \
 	  done
+	# O migrador de extensão vai junto: a frase do arquivo `.ps` manda rodá-lo
+	# (`jinga <prefixo>/share/jinga/scripts/migra_pr.pr <pasta> --aplica`), e o
+	# `scripts/` do repositório não existe na máquina de quem instalou.
+	install -d $(PREFIXO)/share/jinga/scripts
+	install -m644 scripts/migra_pr.pr $(PREFIXO)/share/jinga/scripts/
 	printf '#!/bin/sh\n# Servidor LSP da Jinga. Ver docs/lsp.md.\nif ! command -v node >/dev/null 2>&1; then\n  echo "jinga-lsp precisa do node (o servidor usa vscode-languageserver)" >&2\n  exit 1\nfi\nexec node %s/share/jinga/lsp/server.js "$${@:---stdio}"\n' \
 	        '$(PREFIXO)' > $(PREFIXO)/bin/jinga-lsp
 	chmod 755 $(PREFIXO)/bin/jinga-lsp

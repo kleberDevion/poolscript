@@ -1036,6 +1036,42 @@ r = roda([POOL, "build"], pasta=PASTA + "/build9ok")
 confere("build sem erro sai 0, com o sys.exit(0) contando como ok",
         r["rc"] == 0 and "2 arquivo(s) OK, 0 com erro(s)." in r["saida"])
 
+# Plano 6, lote 10: linha de comando.
+# O que vem depois do programa é dele: --utf16 e --sem-jit não somem do argv
+os.writeFile(PASTA + "/argv10.pr", "import sys\npost(sys.argv)\n")
+r = roda([POOL, "argv10.pr", "entrada.txt", "--utf16", "--sem-jit", "saida.txt"])
+confere("sys.argv recebe --utf16 e --sem-jit escritos depois do arquivo",
+        "['argv10.pr', 'entrada.txt', '--utf16', '--sem-jit', 'saida.txt']" in r["saida"])
+r = roda([POOL, "--sem-jit", "argv10.pr", "a"])
+confere("--sem-jit antes do arquivo continua sendo opcao do jinga", "['argv10.pr', 'a']" in r["saida"])
+r = roda([POOL, "-e", "import sys\npost(sys.argv)", "a", "b"])
+confere("-e passa os argumentos pro sys.argv", "['__main__', 'a', 'b']" in r["saida"])
+# a frase da extensão antiga cita o migrador desta instalação, num caminho que existe
+os.writeFile(PASTA + "/velho10.ps", "post(1)\n")
+r = roda([POOL, "velho10.ps"])
+migra = ""
+for each linha in r["saida"].split("\n")
+{
+    if "migra_pr.pr" in linha
+    {
+        migra = linha.strip().split(" ")[1]
+    }
+}
+confere("a frase do .ps cita o migrador por um caminho que existe",
+        r["rc"] == 66 and migra != "" and os.exists(migra))
+# pasta com caminho longo (mais de 1024 caracteres) acha o módulo vizinho
+if not WINDOWS
+{
+    longa = PASTA + "/" + "d" * 200 + "/" + "e" * 200 + "/" + "f" * 200 + "/" + "g" * 200 + "/" + "h" * 200
+    os.mkdir(longa, exist_ok=True)
+    os.writeFile(longa + "/vizinho.pr", "int funct um() {\n    return 1\n}\n")
+    os.writeFile(longa + "/principal.pr", "import vizinho\npost(vizinho.um())\n")
+    r = roda([POOL, "principal.pr"], pasta=longa)
+    confere("pasta de mais de 1024 caracteres acha o modulo vizinho", r["rc"] == 0 and r["saida"].strip() == "1")
+    r = roda([POOL, "--check", "principal.pr"], pasta=longa)
+    confere("--check numa pasta de mais de 1024 caracteres acha o vizinho", "{\"ok\":true}" in r["saida"])
+}
+
 os.writeFile(PASTA + "/corpo.pr",
              "funct a() {\n    x = = 1\n    y = 2\n}\nfunct b() {\n    return 3\n}\n")
 r = roda([POOL, "--ast", "corpo.pr"])

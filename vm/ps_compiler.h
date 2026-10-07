@@ -18,6 +18,7 @@
 
 #include "ps_ast.h"
 #include "ps_lexer.h"
+#include "ps_caminho.h"   /* PS_CAMINHO_MAX: o arquivo do erro de outro módulo */
 #include "ps_parser.h"
 
 /* Parâmetros FIXOS por funct (o `self` conta; `*args` e `**kwarg` não). O
@@ -205,7 +206,7 @@ typedef struct {
     /* Erro que na verdade está em OUTRO arquivo — o módulo importado que não
      * compila, acusado na linha do `import`: o arquivo e a linha de dentro
      * dele, pro quadro mostrar onde o defeito está (vazio = este arquivo). */
-    char    arquivo[1024];
+    char    arquivo[PS_CAMINHO_MAX];
     int32_t linha_arq;
     int32_t col_arq;
     /* O NOME que o quadro do outro arquivo aponta (`'f' e private`): o
@@ -299,7 +300,7 @@ typedef struct {
     int          falhou;
     char         erro_classe[32];
     char         erro_msg[256];
-    char         erro_arquivo[1024];   /* onde o erro está de verdade (pode ser mais fundo) */
+    char         erro_arquivo[PS_CAMINHO_MAX];   /* onde o erro está de verdade (pode ser mais fundo) */
     int32_t      erro_linha;
     int32_t      erro_col;
 } PSModuloAst;

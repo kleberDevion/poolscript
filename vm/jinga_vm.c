@@ -1335,16 +1335,16 @@ struct VM_ {
     int      cap_mods_ps;
     /* Diretório do ENTRY point — raiz do projeto, base do import absoluto
      * (`from pkg.mod import x`). Constante durante toda a execução. */
-    char     dir_script[512];
+    char     dir_script[PS_CAMINHO_MAX];
     /* Diretório do arquivo cujo corpo está rodando AGORA — base do import
      * RELATIVO (`from .mod import x`). Muda ao entrar/sair de cada módulo. */
-    char     dir_modulo[512];
+    char     dir_modulo[PS_CAMINHO_MAX];
     /* Argumentos do usuário: `pool arquivo.pr a b` -> {"a","b"}. */
     char   **argv_user;
     int      argc_user;
     /* Caminho do script, ou "__main__" quando não veio de arquivo. É o que
      * `sys.argv[0]` responde (o `__name__` do arquivo executado é "main"). */
-    char     nome_script[512];
+    char     nome_script[PS_CAMINHO_MAX];
 
     /* Transporte da retomada de gerador. Não é estado durável: vale só entre
      * `ger_retoma` e o YIELD/RETURN que devolve o controle. */
@@ -1414,12 +1414,12 @@ struct VM_ {
      * a linha do `import` de quem importou. O defeito está DENTRO da lib e o
      * usuário não tinha como saber onde. Estes três campos carregam o arquivo
      * e a posição reais até o quadro final do traceback. */
-    char    mod_erro_arquivo[1024];   /* mesmo tamanho do `abspath` que o alimenta */
+    char    mod_erro_arquivo[PS_CAMINHO_MAX];   /* mesmo tamanho do `abspath` que o alimenta */
     int     mod_erro_linha, mod_erro_col;
     /* Nota do traceback: `m.x` negado por `private` mostra ONDE `x` foi
      * declarado (arquivo do módulo, linha, coluna, nome). Vazio = sem nota;
      * o `catch` limpa. */
-    char    nota_arquivo[1024];
+    char    nota_arquivo[PS_CAMINHO_MAX];
     char    nota_nome[64];
     int     nota_linha, nota_col;
 };
@@ -8916,15 +8916,19 @@ static int met_pf_save(VM *vm, Value alvo, Value *args, int n, Value *out)
      * pasta do script em execução com o nome do próprio arquivo. */
     if (n > 1) return erro_aridade(vm, "save", 0, 1, n);
     PSPoolFile *f = COMO_PFILE(alvo);
-    char dest[2048];
+    char dest[PS_CAMINHO_MAX];
+    int nd;
     if (n == 1 && args[0].t != V_NULL) {   /* Null = ausente, como a tabela declara */
         if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "save() argument 1 must be str, not %s",
                                       nome_do_tipo_valor(args[0]));
-        snprintf(dest, sizeof(dest), "%s", COMO_STRING(args[0])->chars);
+        nd = snprintf(dest, sizeof(dest), "%s", COMO_STRING(args[0])->chars);
     } else {
         const char *base = vm->dir_script[0] ? vm->dir_script : ".";
-        snprintf(dest, sizeof(dest), "%s/%s", base, f->nome ? f->nome : "arquivo");
+        nd = snprintf(dest, sizeof(dest), "%s/%s", base, f->nome ? f->nome : "arquivo");
     }
+    /* cortado, o caminho seria OUTRO arquivo: o save gravaria nele calado */
+    if (nd < 0 || (size_t)nd >= sizeof(dest))
+        MERRO(vm, "OSError", "caminho longo demais (o limite e %d caracteres)", PS_CAMINHO_MAX - 1);
     cria_pais(dest);
     FILE *fp = fopen(dest, "wb");
     if (!fp) return erro_sistema(vm, errno, dest, NULL);
@@ -10273,6 +10277,23 @@ static const char *classe_tipo_campo(const PSClass *c, const char *nome)
     return NULL;
 }
 
+/* A frase do valor de tipo errado: "<quem> esperava <tipo>, recebeu <tipo do
+ * valor>", com AttributedValueError. Uma só pra parâmetro, retorno e campo. O
+ * inteiro que não cabe em 64 bits é `int` pro `type()`, e "esperava int,
+ * recebeu int" se contradizia: aí a frase diz o motivo e a palavra, como a da
+ * variável. Devolve -1. */
+static int erro_esperava(VM *vm, const char *quem, const char *tipo, Value v)
+{
+    if (tipo && !strcmp(tipo, "int") && EH_BIGINT(v))
+        snprintf(vm->erro, sizeof(vm->erro), "%s esperava int, e o valor nao cabe em 64 bits "
+                 "(declare como 'long' pra aceitar inteiro de qualquer tamanho)", quem);
+    else
+        snprintf(vm->erro, sizeof(vm->erro), "%s esperava %s, recebeu %s",
+                 quem, tipo ? tipo : "?", nome_do_tipo_valor(v));
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "AttributedValueError");
+    return -1;
+}
+
 /* Confere os tipos declarados dos parâmetros de uma chamada. `vals[k]` é o
  * valor do parâmetro de índice `base + k` — `base` é 1 quando o `self` foi
  * dropado (@static chamado na Entity) e os posicionais começam no slot 1.
@@ -10305,12 +10326,11 @@ static int checa_param_tipos(VM *vm, const Proto *np, const Value *vals, int n, 
             else if (cod == TIPO_BOOL) { if (v->t == V_BOOL) continue; }
             else if (cod >= 0 ? valor_eh_tipo(v, cod) : param_casa_tipo(v, t)) continue;
         } else if (param_casa_tipo(v, t)) continue;
-        snprintf(vm->erro, sizeof(vm->erro),
-                 "parâmetro %s de %s() esperava %s, recebeu %s",
+        char quem[192];
+        snprintf(quem, sizeof(quem), "parâmetro %s de %s()",
                  (np->param_nomes && np->param_nomes[idx]) ? np->param_nomes[idx] : "?",
-                 np->nome ? np->nome : "?", t, nome_do_tipo_valor(*v));
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "AttributedValueError");
-        return -1;
+                 np->nome ? np->nome : "?");
+        return erro_esperava(vm, quem, t, *v);
     }
     return 0;
 }
@@ -17365,18 +17385,20 @@ static int request_comum(VM *vm, const char *nome, const char *metodo, Value *ar
                           COMO_STRING(k)->chars);
                 }
                 /* arquivo de ONDE o usuário quiser: absoluto | pasta do script | cwd */
-                char cam[1024]; cam[0] = '\0';
+                /* o caminho que não cabe não é o arquivo pedido: fica "não achado" */
+                char cam[PS_CAMINHO_MAX]; cam[0] = '\0';
                 struct stat st;
                 if (ps_caminho_absoluto(caminho)) {
-                    if (stat(caminho, &st) == 0 && S_ISREG(st.st_mode))
-                        snprintf(cam, sizeof(cam), "%s", caminho);
+                    if (stat(caminho, &st) == 0 && S_ISREG(st.st_mode)
+                            && (size_t)snprintf(cam, sizeof(cam), "%s", caminho) >= sizeof(cam)) cam[0] = '\0';
                 } else {
                     if (vm->dir_script[0]) {
-                        snprintf(cam, sizeof(cam), "%s/%s", vm->dir_script, caminho);
-                        if (!(stat(cam, &st) == 0 && S_ISREG(st.st_mode))) cam[0] = '\0';
+                        int nc = snprintf(cam, sizeof(cam), "%s/%s", vm->dir_script, caminho);
+                        if (nc < 0 || (size_t)nc >= sizeof(cam)
+                                || !(stat(cam, &st) == 0 && S_ISREG(st.st_mode))) cam[0] = '\0';
                     }
-                    if (!cam[0] && stat(caminho, &st) == 0 && S_ISREG(st.st_mode))
-                        snprintf(cam, sizeof(cam), "%s", caminho);
+                    if (!cam[0] && stat(caminho, &st) == 0 && S_ISREG(st.st_mode)
+                            && (size_t)snprintf(cam, sizeof(cam), "%s", caminho) >= sizeof(cam)) cam[0] = '\0';
                 }
                 if (!cam[0]) {
                     free(mp.b);
@@ -21687,17 +21709,20 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
          * Quem roda de dentro da pasta do app (o caso normal) não vê
          * diferença: lá os dois diretórios são o mesmo. */
         if (strncmp(hr->path, "/static/", 8) == 0) {
-            char cam[1024];
-            char base[512];
+            char cam[PS_CAMINHO_MAX];
+            char base[PS_CAMINHO_MAX];
             if (vm->dir_script[0]) snprintf(base, sizeof(base), "%s", vm->dir_script);
             else if (!getcwd(base, sizeof(base))) snprintf(base, sizeof(base), ".");
-            snprintf(cam, sizeof(cam), "%s/%s", base, hr->path + 1);
+            /* o caminho que não cabe não é o arquivo pedido: 404 */
+            int ncam = snprintf(cam, sizeof(cam), "%s/%s", base, hr->path + 1);
             /* E o caminho tem que TERMINAR dentro dela — ver `jk_sob_a_raiz`.
              * Sem isto o `..` no path saía da pasta. */
-            char raiz[1024]; snprintf(raiz, sizeof(raiz), "%s/static", base);
-            char seguro[4096];
+            char raiz[PS_CAMINHO_MAX];
+            int nraiz = snprintf(raiz, sizeof(raiz), "%s/static", base);
+            char seguro[PS_CAMINHO_MAX];
             struct stat st;
-            if (jk_sob_a_raiz(raiz, cam, seguro, sizeof(seguro))
+            if (ncam >= 0 && (size_t)ncam < sizeof(cam) && nraiz >= 0 && (size_t)nraiz < sizeof(raiz)
+                && jk_sob_a_raiz(raiz, cam, seguro, sizeof(seguro))
                 && stat(seguro, &st) == 0 && S_ISREG(st.st_mode)) {
                 FILE *f = fopen(seguro, "rb");
                 if (f) {
@@ -27636,8 +27661,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 break;
             }
             if (valor_eh_tipo(&v, arg == 1 ? TIPO_INT : TIPO_BOOL)) break;
-            ERRO_TF(vm, "AttributedValueError", "retorno de %s() esperava %s, recebeu %s",
-                    p->nome ? p->nome : "?", arg == 1 ? "int" : "bool", nome_do_tipo_valor(v));
+            {
+                char quem[160];
+                snprintf(quem, sizeof(quem), "retorno de %s()", p->nome ? p->nome : "?");
+                erro_esperava(vm, quem, arg == 1 ? "int" : "bool", v);
+                goto erro_runtime;
+            }
         }
 
         PS_CASE(CONFERE_TIPO) {
@@ -28402,11 +28431,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                         COMO_STRING(nomev)->chars, inst->classe && inst->classe->nome ? inst->classe->nome : "?");
             if (EH_STRING(nomev)) {
                 const char *tc = classe_tipo_campo(inst->classe, COMO_STRING(nomev)->chars);
-                if (tc && !param_casa_tipo(&valor, tc))
-                    ERRO_TF(vm, "AttributedValueError", "campo %s de %s esperava %s, recebeu %s",
-                            COMO_STRING(nomev)->chars,
-                            inst->classe && inst->classe->nome ? inst->classe->nome : "?",
-                            tc, nome_do_tipo_valor(valor));
+                if (tc && !param_casa_tipo(&valor, tc)) {
+                    char quem[192];
+                    snprintf(quem, sizeof(quem), "campo %s de %s", COMO_STRING(nomev)->chars,
+                             inst->classe && inst->classe->nome ? inst->classe->nome : "?");
+                    erro_esperava(vm, quem, tc, valor);
+                    goto erro_runtime;
+                }
             }
             vm->sp = sp; vm->locals_top = locals_top;
             if (!inst->campos) {
@@ -29858,7 +29889,7 @@ static void pasta_libs(char *out, size_t cap)
     if (!h || !*h) { out[0] = '\0'; return; }
     snprintf(out, cap, "%s/.jinga/libs", h);
     if (access(out, F_OK) != 0) {
-        char velha[1024];
+        char velha[PS_CAMINHO_MAX];
         snprintf(velha, sizeof(velha), "%s/.poolscript/libs", h);
         if (access(velha, F_OK) == 0) snprintf(out, cap, "%s", velha);
     }
@@ -29886,7 +29917,7 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
             if (ps_ext_velha(spec)) return -1;
             /* como escrito, e depois com a extensão da linguagem */
             static const char *EXTS_C[] = { "", PS_EXT };
-            char base[1024];
+            char base[PS_CAMINHO_MAX];
             if (ps_caminho_absoluto(spec)) snprintf(base, sizeof(base), "%s", spec);
             else snprintf(base, sizeof(base), "%s/%s", dir_modulo[0] ? dir_modulo : ".", spec);
             for (size_t e = 0; e < sizeof(EXTS_C) / sizeof(EXTS_C[0]); e++) {
@@ -29905,8 +29936,8 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
     while (*p == '.') { nivel++; p++; }      /* pontos de nível relativo */
 
     /* caminho pontuado -> caminho de pasta (`a.b.c` -> `a/b/c`) */
-    char rel[512]; int rl = 0;
-    for (const char *q = p; *q && rl < 510; q++) rel[rl++] = (*q == '.') ? '/' : *q;
+    char rel[PS_CAMINHO_MAX]; int rl = 0;
+    for (const char *q = p; *q && rl < (int)sizeof(rel) - 1; q++) rel[rl++] = (*q == '.') ? '/' : *q;
     rel[rl] = '\0';
 
     /* a extensão da linguagem, tentada em cada local da ordem de resolução.
@@ -29915,7 +29946,7 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
     static const char *EXTS[] = { PS_EXT };
     const size_t N_EXTS = sizeof(EXTS) / sizeof(EXTS[0]);
     if (nivel > 0) {
-        char base[512];
+        char base[PS_CAMINHO_MAX];
         snprintf(base, sizeof(base), "%s", dir_modulo[0] ? dir_modulo : ".");
         for (int i = 0; i < nivel - 1; i++) {   /* cada ponto extra sobe uma pasta */
             char *barra = ps_ultimo_sep(base);
@@ -29923,7 +29954,8 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
             else { snprintf(base, sizeof(base), "%s", ".."); }
         }
         for (size_t e = 0; e < N_EXTS; e++) {
-            snprintf(saida, cap, "%s/%s%s", base, rel, EXTS[e]);
+            int ns = snprintf(saida, cap, "%s/%s%s", base, rel, EXTS[e]);
+            if (ns < 0 || (size_t)ns >= cap) continue;    /* cortado não é o arquivo */
             if (fonte_existe(saida)) return 0;
         }
         return -1;                              /* relativo não cai pras libs */
@@ -29932,7 +29964,7 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
     /* nível 0. LIB INSTALADA primeiro (~/.jinga/libs): `import random`
      * sempre acha a LIB, não importa como o usuário nomeou seus arquivos — o
      * nome de arquivo local nunca ofusca uma lib instalada. */
-    char libdir[600];
+    char libdir[PS_CAMINHO_MAX];
     pasta_libs(libdir, sizeof(libdir));
     if (libdir[0]) {
         /* `import jinga.libs.random`: o nome QUALIFICADO da lib instalada.
@@ -29950,7 +29982,8 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
             if (strncmp(p, PREFIXOS_LIBS[k], np) == 0 && p[np]) { nome_lib = p + np; break; }
         }
         for (size_t e = 0; e < N_EXTS; e++) {
-            snprintf(saida, cap, "%s/%s%s", libdir, nome_lib, EXTS[e]);
+            int ns = snprintf(saida, cap, "%s/%s%s", libdir, nome_lib, EXTS[e]);
+            if (ns < 0 || (size_t)ns >= cap) continue;
             if (fonte_existe(saida)) return 0;
         }
     }
@@ -29960,14 +29993,16 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
      * vizinho dava "No module named 'smtp'". */
     if (dir_modulo[0] && strcmp(dir_modulo, dir_script) != 0) {
         for (size_t e = 0; e < N_EXTS; e++) {
-            snprintf(saida, cap, "%s/%s%s", dir_modulo, rel, EXTS[e]);
+            int ns = snprintf(saida, cap, "%s/%s%s", dir_modulo, rel, EXTS[e]);
+            if (ns < 0 || (size_t)ns >= cap) continue;
             if (fonte_existe(saida)) return 0;
         }
     }
     /* depois: arquivo do projeto (raiz = dir do entry) */
     if (dir_script[0]) {
         for (size_t e = 0; e < N_EXTS; e++) {
-            snprintf(saida, cap, "%s/%s%s", dir_script, rel, EXTS[e]);
+            int ns = snprintf(saida, cap, "%s/%s%s", dir_script, rel, EXTS[e]);
+            if (ns < 0 || (size_t)ns >= cap) continue;
             if (fonte_existe(saida)) return 0;
         }
     }
@@ -30067,7 +30102,7 @@ int ps_embute_deps(const char *caminho_main, PSEmbutido **lista, int32_t *n,
     *lista = NULL; *n = 0; erro[0] = '\0';
     pasta_libs(libs, libs_cap);
 
-    char dir_script[1024];
+    char dir_script[PS_CAMINHO_MAX];
     dir_do_script(caminho_main, dir_script, sizeof(dir_script));
 
     int32_t cap = 16;
@@ -30112,7 +30147,7 @@ int ps_embute_deps(const char *caminho_main, PSEmbutido **lista, int32_t *n,
         }
         ps_lexer_free(toks);
         /* a pasta DESTE arquivo, pro import relativo e pro vizinho */
-        char dir_mod[1024];
+        char dir_mod[PS_CAMINHO_MAX];
         snprintf(dir_mod, sizeof(dir_mod), "%s", l[i].textual);
         { char *b = ps_ultimo_sep(dir_mod); if (b) *b = '\0'; else snprintf(dir_mod, sizeof(dir_mod), "."); }
 
@@ -30122,7 +30157,7 @@ int ps_embute_deps(const char *caminho_main, PSEmbutido **lista, int32_t *n,
             char enc[512];
             ps_import_modulo_codificado(imps[k], enc);
             if (!enc[0] || modulo_nativo_de(enc) >= 0) continue;
-            char achado[1024];
+            char achado[PS_CAMINHO_MAX];
             if (acha_modulo_ps_em(dir_mod, dir_script, enc, achado, sizeof(achado)) != 0) {
                 const char *escrito = enc[0] == '\x01' ? enc + 1 : enc;
                 snprintf(erro, erro_cap, "modulo '%s' (import em %s, linha %d) nao foi achado — "
@@ -30131,7 +30166,7 @@ int ps_embute_deps(const char *caminho_main, PSEmbutido **lista, int32_t *n,
                 ps_embutidos_solta(l, *n); *lista = NULL; *n = 0;
                 return -1;
             }
-            char real[1024];
+            char real[PS_CAMINHO_MAX];
             { char *rp = realpath(achado, NULL); snprintf(real, sizeof(real), "%s", rp ? rp : achado); free(rp); }
             if (emb_ja_tem(l, *n, achado, real)) continue;
             if (*n + 1 > cap) {
@@ -30240,10 +30275,30 @@ static void estrela_cache_solta(void)
     ast_cache_solta();
 }
 
+/* Os caminhos do import, do tamanho do sistema (PS_CAMINHO_MAX), no HEAP:
+ * quem resolve um import (o checador aqui, o `carrega_modulo_ps` rodando)
+ * compila ou roda o módulo por dentro e reentra a cada import aninhado, e na
+ * fibra a pilha é de 256 KB. Na pilha eram 512 e 1024, e a pasta de 524
+ * caracteres saía cortada: `import vizinho` dava "No module named". */
+typedef struct {
+    char caminho[PS_CAMINHO_MAX], abspath[PS_CAMINHO_MAX], dir_do_mod[PS_CAMINHO_MAX];
+    char dir_prev[PS_CAMINHO_MAX], moddir[PS_CAMINHO_MAX];
+} CaminhosImport;
+
+static int estrela_nomes_de_em(EstrelaCtx *ctx, const char *mod, char ***nomes, int32_t *n, CaminhosImport *cb);
+
 static int estrela_nomes_de(void *vctx, const char *mod, char ***nomes, int32_t *n)
 {
-    EstrelaCtx *ctx = (EstrelaCtx *)vctx;
     *nomes = NULL; *n = 0;
+    CaminhosImport *cb = malloc(sizeof(*cb));
+    if (!cb) return 0;
+    int r = estrela_nomes_de_em((EstrelaCtx *)vctx, mod, nomes, n, cb);
+    free(cb);
+    return r;
+}
+
+static int estrela_nomes_de_em(EstrelaCtx *ctx, const char *mod, char ***nomes, int32_t *n, CaminhosImport *cb)
+{
 
     int mi = modulo_nativo_de(mod);
     if (mi >= 0) {
@@ -30258,12 +30313,12 @@ static int estrela_nomes_de(void *vctx, const char *mod, char ***nomes, int32_t 
         return 1;
     }
 
-    char caminho[1024];
-    if (acha_modulo_ps_em(ctx->dir_modulo, ctx->dir_script, mod, caminho, sizeof(caminho)) != 0)
+    char *caminho = cb->caminho;
+    if (acha_modulo_ps_em(ctx->dir_modulo, ctx->dir_script, mod, caminho, PS_CAMINHO_MAX) != 0)
         return ctx->so_checa ? 3 : 0;
-    char abspath[1024];
+    char *abspath = cb->abspath;
     char *rp = realpath(caminho, NULL);
-    snprintf(abspath, sizeof(abspath), "%s", rp ? rp : caminho);
+    snprintf(abspath, PS_CAMINHO_MAX, "%s", rp ? rp : caminho);
     free(rp);
     for (int i = 0; i < g_estrela_ncache; i++) {         /* já expandido antes */
         if (strcmp(g_estrela_cache[i].caminho, abspath) != 0) continue;
@@ -30286,10 +30341,10 @@ static int estrela_nomes_de(void *vctx, const char *mod, char ***nomes, int32_t 
     char *fonte = le_fonte_modulo(caminho, &lidos);   /* embutido ou disco */
     if (!fonte) return 0;
 
-    char moddir[1024];
-    snprintf(moddir, sizeof(moddir), "%s", abspath);
+    char *moddir = cb->moddir;
+    snprintf(moddir, PS_CAMINHO_MAX, "%s", abspath);
     char *barra = ps_ultimo_sep(moddir);
-    if (barra) *barra = '\0'; else snprintf(moddir, sizeof(moddir), "%s", ".");
+    if (barra) *barra = '\0'; else snprintf(moddir, PS_CAMINHO_MAX, "%s", ".");
     EstrelaVisita aqui = { abspath, ctx->pilha };
     int cortou_aqui = 0;
     EstrelaCtx filho = { moddir, ctx->dir_script, &aqui, &cortou_aqui, ctx->so_checa };
@@ -30346,19 +30401,28 @@ static void ast_cache_solta(void)
     g_ast_cache = NULL; g_ast_n = 0; g_ast_cap = 0;
 }
 
+static int estrela_modulo_de_em(EstrelaCtx *ctx, const char *mod, const PSModuloAst **out, CaminhosImport *cb);
+
 static int estrela_modulo_de(void *vctx, const char *mod, const PSModuloAst **out)
 {
-    EstrelaCtx *ctx = (EstrelaCtx *)vctx;
     *out = NULL;
     if (modulo_nativo_de(mod) >= 0) return 0;
+    CaminhosImport *cb = malloc(sizeof(*cb));
+    if (!cb) return 0;
+    int r = estrela_modulo_de_em((EstrelaCtx *)vctx, mod, out, cb);
+    free(cb);
+    return r;
+}
 
-    char caminho[1024];
-    if (acha_modulo_ps_em(ctx->dir_modulo, ctx->dir_script, mod, caminho, sizeof(caminho)) != 0)
+static int estrela_modulo_de_em(EstrelaCtx *ctx, const char *mod, const PSModuloAst **out, CaminhosImport *cb)
+{
+    char *caminho = cb->caminho;
+    if (acha_modulo_ps_em(ctx->dir_modulo, ctx->dir_script, mod, caminho, PS_CAMINHO_MAX) != 0)
         return ctx->so_checa ? 3 : 0;
-    char abspath[1024];
+    char *abspath = cb->abspath;
     {
         char *rp = realpath(caminho, NULL);
-        snprintf(abspath, sizeof(abspath), "%s", rp ? rp : caminho);
+        snprintf(abspath, PS_CAMINHO_MAX, "%s", rp ? rp : caminho);
         free(rp);
     }
     for (int i = 0; i < g_ast_n; i++) {
@@ -30395,9 +30459,9 @@ static int estrela_modulo_de(void *vctx, const char *mod, const PSModuloAst **ou
     char *fonte = le_fonte_modulo(caminho, &lidos);
     if (!fonte) { a->info.falhou = 1; snprintf(a->info.erro_classe, sizeof(a->info.erro_classe), "ImportError");
                   snprintf(a->info.erro_msg, sizeof(a->info.erro_msg), "nao consegui abrir %.200s", caminho); return 2; }
-    char moddir[1024];
-    snprintf(moddir, sizeof(moddir), "%s", abspath);
-    { char *barra = ps_ultimo_sep(moddir); if (barra) *barra = '\0'; else snprintf(moddir, sizeof(moddir), "%s", "."); }
+    char *moddir = cb->moddir;
+    snprintf(moddir, PS_CAMINHO_MAX, "%s", abspath);
+    { char *barra = ps_ultimo_sep(moddir); if (barra) *barra = '\0'; else snprintf(moddir, PS_CAMINHO_MAX, "%s", "."); }
     EstrelaVisita aqui = { abspath, ctx->pilha };
     int cortou_aqui = 0;
     EstrelaCtx filho = { moddir, ctx->dir_script, &aqui, &cortou_aqui, ctx->so_checa };
@@ -30459,7 +30523,41 @@ static int estrela_modulo_de(void *vctx, const char *mod, const PSModuloAst **ou
 /* Compila e RODA o módulo, e devolve o namespace sobre as globais dele.
  * Rodar é necessário: as `funct` do módulo só existem depois que o corpo
  * dele executou. */
+int ps_caminho_do_migrador(char *buf, size_t cap)
+{
+    char eu[4096];
+    if (ps_meu_executavel(eu, sizeof(eu)) != 0) return 0;
+    char *barra = ps_ultimo_sep(eu);
+    if (!barra) return 0;
+    *barra = '\0';                                   /* a pasta do binário */
+    static const char *const ONDE[] = {
+        "/../share/jinga/scripts/migra_pr" PS_EXT,   /* <prefixo>/bin/jinga */
+        "/scripts/migra_pr" PS_EXT,                   /* ./pool no repositório */
+    };
+    for (size_t i = 0; i < sizeof(ONDE) / sizeof(ONDE[0]); i++) {
+        char tenta[4200];
+        snprintf(tenta, sizeof(tenta), "%s%s", eu, ONDE[i]);
+        char *rp = realpath(tenta, NULL);
+        if (!rp) continue;
+        int ok = (size_t)snprintf(buf, cap, "%s", rp) < cap;
+        free(rp);
+        if (ok) return 1;
+    }
+    return 0;
+}
+
+static int carrega_modulo_ps_em(VM *vm, const char *nome, Value *out, CaminhosImport *cb);
+
 static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
+{
+    CaminhosImport *cb = malloc(sizeof(*cb));
+    if (!cb) { snprintf(vm->erro, sizeof(vm->erro), "sem memoria ao importar"); return -1; }
+    int rc = carrega_modulo_ps_em(vm, nome, out, cb);
+    free(cb);
+    return rc;
+}
+
+static int carrega_modulo_ps_em(VM *vm, const char *nome, Value *out, CaminhosImport *cb)
 {
     /* resolve ANTES de olhar o cache: o mesmo nome relativo (".util") aponta
      * pra arquivos diferentes conforme quem importa, então a chave do cache é
@@ -30479,32 +30577,39 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     }
     char nome_vis[256];
     nome_visivel_modulo(nome, nome_vis, sizeof(nome_vis));
-    char caminho[1024];
-    if (acha_modulo_ps(vm, nome, caminho, sizeof(caminho)) != 0) {
+    char *caminho = cb->caminho;
+    if (acha_modulo_ps(vm, nome, caminho, PS_CAMINHO_MAX) != 0) {
         /* O TIPO fica `ImportError` de propósito, e não um
          * `ModuleNotFoundError` separado: aqui não há hierarquia de tipos de
          * erro — o catch compara o nome — e adotar um nome novo quebraria em
          * silêncio todo `catch (ImportError e)` que hoje pega módulo ausente. */
         const char *velha = ps_ext_velha(escrito);
-        if (velha)
+        if (velha) {
             /* `import './x.ps'`: o arquivo pode até existir ao lado, mas com o
              * nome de antes. "No module named" mandaria procurar o módulo
-             * errado — a resposta é o nome do arquivo, não a busca. */
-            snprintf(vm->erro, sizeof(vm->erro),
-                     "No module named '%.120s': %s e a extensao de antes, hoje o arquivo da "
-                     "linguagem e " PS_EXT " (pool scripts/migra_pr" PS_EXT " <pasta> --aplica)",
-                     escrito, velha);
-        else
+             * errado — a resposta é o nome do arquivo, não a busca. O
+             * comando é o do migrador DESTA instalação. */
+            char migra[4096];
+            if (ps_caminho_do_migrador(migra, sizeof(migra)))
+                snprintf(vm->erro, sizeof(vm->erro),
+                         "No module named '%.40s': %.8s e a extensao de antes, hoje o arquivo da "
+                         "linguagem e " PS_EXT " (jinga %.100s <pasta> --aplica)",
+                         escrito, velha, migra);
+            else
+                snprintf(vm->erro, sizeof(vm->erro),
+                         "No module named '%.120s': %s e a extensao de antes, hoje o arquivo da "
+                         "linguagem e " PS_EXT " (renomeie o arquivo)", escrito, velha);
+        } else
             snprintf(vm->erro, sizeof(vm->erro), "No module named '%.200s'", escrito);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ImportError");
         return -1;
     }
     /* realpath aloca (NULL) — passar buffer fixo < PATH_MAX estoura. Copio pro
-     * meu buffer (caminhos reais cabem de sobra em 1024). */
-    char abspath[1024];
+     * meu buffer, do tamanho do sistema. */
+    char *abspath = cb->abspath;
     char *rp = realpath(caminho, NULL);
-    if (rp) { snprintf(abspath, sizeof(abspath), "%s", rp); free(rp); }
-    else     snprintf(abspath, sizeof(abspath), "%s", caminho);
+    if (rp) { snprintf(abspath, PS_CAMINHO_MAX, "%s", rp); free(rp); }
+    else     snprintf(abspath, PS_CAMINHO_MAX, "%s", caminho);
 
     for (int i = 0; i < vm->nmods_ps; i++)          /* já importado antes */
         if (strcmp(vm->mods_ps[i].nome, abspath) == 0) { *out = vm->mods_ps[i].valor; return 0; }
@@ -30521,11 +30626,11 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
 
     /* `import *` dentro do módulo resolve a partir da pasta DELE — a mesma
      * que o corpo vai ter como `dir_modulo` quando rodar */
-    char dir_do_mod[1024];
-    snprintf(dir_do_mod, sizeof(dir_do_mod), "%s", abspath);
+    char *dir_do_mod = cb->dir_do_mod;
+    snprintf(dir_do_mod, PS_CAMINHO_MAX, "%s", abspath);
     {
         char *b = ps_ultimo_sep(dir_do_mod);
-        if (b) *b = '\0'; else snprintf(dir_do_mod, sizeof(dir_do_mod), "%s", ".");
+        if (b) *b = '\0'; else snprintf(dir_do_mod, PS_CAMINHO_MAX, "%s", ".");
     }
     EstrelaVisita vis_mod = { abspath, NULL };
     EstrelaCtx ectx_mod = { dir_do_mod, vm->dir_script, &vis_mod, NULL, 0 };   /* rodando */
@@ -30674,13 +30779,13 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     /* Enquanto o corpo do módulo roda, o dir do import RELATIVO é o dir DESTE
      * arquivo — assim `from .x import y` dentro dele resolve certo, e imports
      * aninhados também. Restaura ao sair (inclusive em erro). */
-    char dir_prev[512];
-    snprintf(dir_prev, sizeof(dir_prev), "%s", vm->dir_modulo);
-    char moddir[1024];
-    snprintf(moddir, sizeof(moddir), "%s", abspath);
+    char *dir_prev = cb->dir_prev;
+    snprintf(dir_prev, PS_CAMINHO_MAX, "%s", vm->dir_modulo);
+    char *moddir = cb->moddir;
+    snprintf(moddir, PS_CAMINHO_MAX, "%s", abspath);
     char *barra = ps_ultimo_sep(moddir);
-    if (barra) *barra = '\0'; else snprintf(moddir, sizeof(moddir), "%s", ".");
-    snprintf(vm->dir_modulo, sizeof(vm->dir_modulo), "%.511s", moddir);
+    if (barra) *barra = '\0'; else snprintf(moddir, PS_CAMINHO_MAX, "%s", ".");
+    snprintf(vm->dir_modulo, sizeof(vm->dir_modulo), "%s", moddir);
 
     /* roda o corpo: é o que faz as `funct` e Entity dele existirem */
     Value ignora;
@@ -31371,7 +31476,7 @@ int ps_desmonta_fonte(const char *fonte, size_t len, const char *caminho, FILE *
     erro_zera(e);
     char dir_script[sizeof(((VM *)0)->dir_script)];
     dir_do_script(caminho, dir_script, sizeof(dir_script));
-    char abs_script[1024];
+    char abs_script[PS_CAMINHO_MAX];
     abs_script[0] = '\0';
     if (caminho) {
         char *rp = realpath(caminho, NULL);
@@ -31429,7 +31534,7 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
      * caminho (buffer do editor) só restam as libs globais, como ao rodar. */
     char dir_script[sizeof(((VM *)0)->dir_script)];
     dir_do_script(caminho, dir_script, sizeof(dir_script));
-    char abs_script[1024];
+    char abs_script[PS_CAMINHO_MAX];
     abs_script[0] = '\0';
     if (caminho) {
         char *rp = realpath(caminho, NULL);
@@ -31584,7 +31689,7 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
      * os módulos com ele, exatamente como o import vai resolver em runtime. */
     char dir_script[sizeof(((VM *)0)->dir_script)];
     dir_do_script(ancora, dir_script, sizeof(dir_script));
-    char abs_script[1024];
+    char abs_script[PS_CAMINHO_MAX];
     abs_script[0] = '\0';
     if (ancora) {
         char *rp = realpath(ancora, NULL);

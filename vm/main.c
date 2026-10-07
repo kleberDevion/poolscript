@@ -94,12 +94,18 @@ static char *le_arquivo(const char *caminho, size_t *tam)
 {
     const char *velha = ps_ext_velha(caminho);
     if (velha) {
+        /* o migrador DESTA instalação, pelo caminho que abre: o
+         * `scripts/migra_pr.pr` de antes só existia no repositório */
+        char migra[4096];
         fprintf(stderr,
             "jinga: '%s' usa a extensao %s, que a linguagem nao usa mais.\n"
-            "      Hoje o arquivo da linguagem e " PS_EXT ".\n"
-            "      Pra converter uma pasta inteira (arquivos, referencias e libs):\n"
-            "          jinga scripts/migra_pr" PS_EXT " <pasta> --aplica --libs\n",
-            caminho, velha);
+            "      Hoje o arquivo da linguagem e " PS_EXT ".\n", caminho, velha);
+        if (ps_caminho_do_migrador(migra, sizeof(migra)))
+            fprintf(stderr,
+                "      Pra converter uma pasta inteira (arquivos, referencias e libs):\n"
+                "          jinga %s <pasta> --aplica --libs\n", migra);
+        else
+            fprintf(stderr, "      Renomeie o arquivo pra " PS_EXT ".\n");
         snprintf(g_falha_leitura, sizeof(g_falha_leitura),
                  "'%s' usa a extensao %s, que a linguagem nao usa mais: hoje o arquivo e " PS_EXT,
                  caminho, velha);
@@ -215,7 +221,7 @@ static void mostra_trecho(const char *origem, int linha, int col, const char *no
 
 static void imprime_quadro_nome(const char *origem, int linha, int col, const char *nome)
 {
-    char nome_buf[1024];
+    char nome_buf[PS_CAMINHO_MAX];
     fprintf(stderr, "  em %s, linha %d\n", limpa_arquivo(origem, nome_buf, sizeof(nome_buf)), linha);
     mostra_trecho(origem, linha, col, nome);
 }
@@ -229,7 +235,7 @@ static void imprime_quadro(const char *origem, int linha, int col)
  * declarado, com a linha do fonte e o cursor no nome. */
 static void imprime_nota_privado(const char *nome, const char *origem, int linha, int col)
 {
-    char nome_buf[1024];
+    char nome_buf[PS_CAMINHO_MAX];
     fprintf(stderr, "  '%s' e private: declarada em %s, linha %d\n",
             nome, limpa_arquivo(origem, nome_buf, sizeof(nome_buf)), linha);
     mostra_trecho(origem, linha, col, nome);
@@ -1767,6 +1773,16 @@ static int tem_flag(int argc, char **argv, int de, const char *flag)
     return 0;
 }
 
+/* O argumento é um SUBCOMANDO do `jinga` (e não o arquivo de um programa)? */
+static int eh_subcomando(const char *a)
+{
+    static const char *S[] = { "build", "compile", "check", "tokens", "ast", "bytecode", "contexto",
+                               "metadata", "help", "install", "uninstall", "list", "registry", "repl",
+                               "//doc", NULL };
+    for (int i = 0; S[i]; i++) if (!strcmp(a, S[i])) return 1;
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     /* Marca a base da pilha ANTES de tudo: é a referência da medição de folga
@@ -1822,24 +1838,28 @@ int main(int argc, char **argv)
 
     if (argc < 2) { ajuda(); return 0; }
 
-    /* `--utf16` vale pros comandos de editor, em qualquer posição: linha e
-     * coluna passam a ser contadas como o protocolo do editor conta. Sai do
-     * argv aqui pra cada comando não ter que tratá-lo. */
+    /* `--utf16` (linha e coluna contadas como o protocolo do editor conta) e
+     * `--sem-jit` (desliga o código de máquina, o mesmo que JINGA_JIT=0) saem
+     * do argv aqui, pra cada comando não ter que tratá-los. Mas o que vem
+     * DEPOIS do programa é dele (`sys.argv`): `jinga p.pr x --sem-jit`
+     * entregava ['p.pr', 'x']. Valem antes do programa, e em qualquer posição
+     * nos comandos que não rodam programa (os de editor, o `build`). */
+    int ate = argc;
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--utf16") != 0) continue;
-        g_utf16 = 1;
-        for (int k = i; k + 1 < argc; k++) argv[k] = argv[k + 1];
-        argc--;
-        i--;
+        if (!strcmp(argv[i], "--utf16") || !strcmp(argv[i], "--sem-jit")) continue;
+        if (!strcmp(argv[i], "-e")) ate = i + 2;                         /* o código */
+        else if (!strcmp(argv[i], "--debug") || !strcmp(argv[i], "debug")) ate = i + 3;  /* porta, arquivo */
+        else if (argv[i][0] != '-' && !eh_subcomando(argv[i])) ate = i + 1;           /* o arquivo */
+        break;
     }
-    /* `--sem-jit` desliga o código de máquina (o mesmo que JINGA_JIT=0):
-     * pra comparar, e pra provar que o interpretador continua sendo a
-     * referência. Sai do argv como o `--utf16`. */
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--sem-jit") != 0) continue;
-        setenv("JINGA_JIT", "0", 1);
+    if (ate > argc) ate = argc;
+    for (int i = 1; i < ate; i++) {
+        int utf16 = !strcmp(argv[i], "--utf16"), semjit = !strcmp(argv[i], "--sem-jit");
+        if (!utf16 && !semjit) continue;
+        if (utf16) g_utf16 = 1;
+        else setenv("JINGA_JIT", "0", 1);
         for (int k = i; k + 1 < argc; k++) argv[k] = argv[k + 1];
-        argc--;
+        argc--; ate--;
         i--;
     }
 
@@ -1963,6 +1983,9 @@ int main(int argc, char **argv)
 
     if (!strcmp(cmd, "-e")) {
         if (argc < 3) { ajuda(); return 64; }
+        /* os argumentos depois do código são do programa: `sys.argv` é
+         * ['__main__', a, b] (eles sumiam calados) */
+        ps_set_argv(argc - 3, argv + 3);
         if (ps_roda_fonte(argv[2], strlen(argv[2]), NULL, &e) != 0)
             return reporta(&e, "<-e>");
         return 0;

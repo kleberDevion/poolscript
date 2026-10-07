@@ -56,6 +56,8 @@ case "$(uname -s)" in *_NT*)
     done
     cp -r editor/vscode/node_modules "$SAIDA/share/jinga/lsp/" 2>/dev/null || true
     cp -r docs "$SAIDA/share/jinga/docs"
+    mkdir -p "$SAIDA/share/jinga/scripts"
+    cp scripts/migra_pr.pr "$SAIDA/share/jinga/scripts/"   # a frase do `.ps` manda rodá-lo
     cp instalar.ps1 "$SAIDA/"
     printf 'Jinga - pacote para Windows (x86-64)\r\n\r\n    bin\\jinga.exe programa.pr     roda sem instalar nada\r\n    powershell -ExecutionPolicy Bypass -File instalar.ps1\r\n                                   instala em %%LOCALAPPDATA%%\\Programs\\Jinga e poe no PATH\r\n    powershell -ExecutionPolicy Bypass -File instalar.ps1 -Remover\r\n\r\nO servidor do editor (jinga-lsp) usa o node: nodejs.org ou `winget install OpenJS.NodeJS`.\r\n' \
         > "$SAIDA/LEIAME.txt"
@@ -129,6 +131,8 @@ if [ "$(uname -s)" = "Darwin" ]; then
     done
     cp -R editor/vscode/node_modules "$SAIDA/share/jinga/lsp/" 2>/dev/null || true
     cp -R docs "$SAIDA/share/jinga/docs"
+    mkdir -p "$SAIDA/share/jinga/scripts"
+    cp scripts/migra_pr.pr "$SAIDA/share/jinga/scripts/"   # a frase do `.ps` manda rodá-lo
     cp instalar.sh "$SAIDA/"
     chmod +x "$SAIDA/instalar.sh"
     cat > "$SAIDA/LEIAME.txt" <<'TXT'
@@ -166,6 +170,8 @@ cp -r editor/vscode/node_modules "$SAIDA/lsp/" 2>/dev/null || true
 # bundle, a máquina instalada por ele tinha hover de palavra-chave vazio — ou
 # pior, uma cópia velha de outro `make install`, dizendo `action`.
 cp -r docs "$SAIDA/docs"
+mkdir -p "$SAIDA/scripts"
+cp scripts/migra_pr.pr "$SAIDA/scripts/"   # a frase do `.ps` manda rodá-lo
 cp dados/zz-jinga.xml "$SAIDA/dados/"
 cp dados/icones/text-jinga.svg "$SAIDA/dados/icones/"
 cp instalar.sh "$SAIDA/"

@@ -32,6 +32,12 @@ if (len(sys.argv) > 1) {
 | `argv[0]` | o nome do script (`app.pr`) — `__main__` quando o código vem de `jinga -e` |
 | `argv[1]`, `argv[2]`, … | os seus argumentos, na ordem |
 
+Tudo o que vem **depois** do arquivo é do programa, inclusive o que parece
+opção do `jinga`: `jinga app.pr a --sem-jit` entrega `['app.pr', 'a',
+'--sem-jit']`. Opção pro próprio `jinga` (`--sem-jit`, `--utf16`) vai antes do
+arquivo. Com `-e`, os argumentos vêm depois do código: `jinga -e
+'import sys; post(sys.argv)' a b` imprime `['__main__', 'a', 'b']`.
+
 Então **conte quantos você espera contando o script**: um programa que precisa
 de um argumento exige `len(sys.argv) >= 2` (o script + o argumento).
 

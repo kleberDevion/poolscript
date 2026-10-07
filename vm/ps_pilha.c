@@ -4,12 +4,16 @@
  * Em módulo próprio porque parser, VM e o teste de unidade precisam dele, e
  * porque medir folga não tem nada a ver com o que qualquer um dos três faz.
  */
+#if !defined(_WIN32) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE 1      /* pthread_getattr_np: os limites da pilha da thread */
+#endif
 #include <stddef.h>
 #include <stdint.h>
 #if defined(_WIN32)
 #include "ps_win.h"
 #else
 #include <sys/resource.h>
+#include <pthread.h>
 #endif
 
 #include "ps_pilha.h"
@@ -63,25 +67,47 @@ void ps_pilha_marca(size_t tam)
     ps_pilha_ultimo = NULL;          /* outra pilha: o degrau recomeça dela */
 }
 
-/* Entrada do processo: a pilha é a do sistema. `getrlimit` dá o tamanho real
- * (8 MB no padrão do Linux, mas `ulimit -s` muda o valor — por isso é medido,
- * não uma constante). */
+/* Entrada do processo: a pilha é a do sistema, e o tamanho é o que RESTA daqui
+ * até o limite baixo dela, perguntado ao sistema nos três. Era o `ulimit -s`
+ * inteiro no Linux e no macOS, como se a marca fosse o topo: o quadro do
+ * `main` fica acima dela, e quando ele cresceu (o `PSErroExec` com os caminhos
+ * do tamanho do sistema) a conta passou a errar por ~300 KB, mais da metade da
+ * margem — sob o ASan a recursão funda estourava antes do RecursionError. */
 void ps_pilha_marca_processo(void)
 {
     size_t tam = 8u * 1024 * 1024;
+    const char *aqui = (const char *)__builtin_frame_address(0);
 #if defined(_WIN32)
-    /* Windows: a pilha da thread é reservada no executável (-Wl,--stack); os
-     * limites dela o próprio sistema diz. O `usado` é medido do quadro atual,
-     * então o tamanho é o que resta daqui até o limite baixo. */
+    /* Windows: a pilha da thread é reservada no executável (-Wl,--stack) */
     ULONG_PTR baixo = 0, alto = 0;
     GetCurrentThreadStackLimits(&baixo, &alto);
-    const char *aqui = (const char *)__builtin_frame_address(0);
     if (baixo && (ULONG_PTR)aqui > baixo) tam = (size_t)((ULONG_PTR)aqui - baixo);
 #else
-    struct rlimit rl;
-    if (getrlimit(RLIMIT_STACK, &rl) == 0 && rl.rlim_cur != RLIM_INFINITY
-            && rl.rlim_cur > 64u * 1024)
-        tam = (size_t)rl.rlim_cur;
+    int medido = 0;
+#  if defined(__APPLE__)
+    /* macOS: o endereço dado é o TOPO (a pilha desce dele) */
+    const char *topo = (const char *)pthread_get_stackaddr_np(pthread_self());
+    size_t sz = pthread_get_stacksize_np(pthread_self());
+    if (topo && sz && aqui < topo && aqui > topo - sz) { tam = (size_t)(aqui - (topo - sz)); medido = 1; }
+#  else
+    /* Linux: a glibc mede a pilha da thread principal pelo `ulimit` e pelo
+     * mapeamento real (/proc/self/maps); `base` é o endereço mais baixo */
+    pthread_attr_t at;
+    if (pthread_getattr_np(pthread_self(), &at) == 0) {
+        void *base = NULL; size_t sz = 0;
+        if (pthread_attr_getstack(&at, &base, &sz) == 0 && base && sz) {
+            const char *baixo = (const char *)base;
+            if (aqui > baixo && aqui < baixo + sz) { tam = (size_t)(aqui - baixo); medido = 1; }
+        }
+        pthread_attr_destroy(&at);
+    }
+#  endif
+    if (!medido) {
+        struct rlimit rl;
+        if (getrlimit(RLIMIT_STACK, &rl) == 0 && rl.rlim_cur != RLIM_INFINITY
+                && rl.rlim_cur > 64u * 1024)
+            tam = (size_t)rl.rlim_cur;
+    }
 #endif
     ps_pilha_marca(tam);
 }
