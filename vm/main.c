@@ -21,6 +21,7 @@
 #include "ps_parser.h"  /* --ast: e pra ARVORE que ele pergunta, pelo mesmo motivo */
 #include "ps_pkg.h"
 #include "ps_ext.h"
+#include "ps_retornos.h" /* ps_sugere_nome: o "Did you mean" da opção que não existe */
 
 #include "ps_versao.h"
 /* A data desta compilação, gerada pelo Makefile. Dois binários da MESMA versão
@@ -1812,6 +1813,20 @@ int main(int argc, char **argv)
         return cmd_compila(cmd, argv[3]);
     if (argc == 3 && !strcmp(argv[2], "-o")) {
         fprintf(stderr, "uso: jinga %s -o <saida>\n", cmd);
+        return 64;
+    }
+
+    /* Opção que não existe (`--chek`, `-c`): virava nome de arquivo, e saía
+     * "nao consegui abrir '--chek'". A dica é a regra do "Did you mean" da
+     * linguagem, entre as opções que existem. */
+    if (cmd[0] == '-' && cmd[1]) {
+        static const char *OPCOES[] = {
+            "--check", "--contexto", "--tokens", "--ast", "--bytecode", "--metadata", "--debug",
+            "--sem-jit", "--utf16", "--version", "--help", "-e", "-h", "-v", "-V",
+        };
+        const char *d = ps_sugere_nome(cmd, OPCOES, (int)(sizeof(OPCOES) / sizeof(OPCOES[0])));
+        if (d) fprintf(stderr, "jinga: opcao desconhecida '%s'. Did you mean: '%s'?\n", cmd, d);
+        else fprintf(stderr, "jinga: opcao desconhecida '%s' (as opcoes estao em jinga --help)\n", cmd);
         return 64;
     }
 

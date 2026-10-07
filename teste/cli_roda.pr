@@ -946,6 +946,13 @@ os.writeFile(PASTA + "/fstr3.pr", "str x = \"a\"\npost(f'''linha1\n{x + }\nlinha
 r = roda([POOL, "fstr3.pr"])
 confere("rodando: erro dentro da f-string de tres aspas sai na linha dele",
         r["rc"] == 2 and "dentro da f-string\n  em fstr3.pr, linha 3" in r["saida"])
+# Plano 6, lote 3: opção que não existe não vira nome de arquivo
+r = roda([POOL, "--chek", "ordem.pr"])
+confere("opcao desconhecida sugere a parecida, rc 64",
+        r["rc"] == 64 and "opcao desconhecida '--chek'. Did you mean: '--check'?" in r["saida"])
+r = roda([POOL, "-c", "ordem.pr"])
+confere("opcao desconhecida sem parecida manda pro --help, rc 64",
+        r["rc"] == 64 and "opcao desconhecida '-c' (as opcoes estao em jinga --help)" in r["saida"])
 
 os.writeFile(PASTA + "/corpo.pr",
              "funct a() {\n    x = = 1\n    y = 2\n}\nfunct b() {\n    return 3\n}\n")

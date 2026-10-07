@@ -377,8 +377,10 @@ nome comum. Detalhes e o tipo em [bytes](../bytes/bytes.md).
 
 A grafia é uma só, com a inicial maiúscula: a mesma que o motor imprime.
 `true`, `false`, `null`, `None` e `none` não são literais, são nomes comuns.
-Usar um deles sem ter definido dá erro antes de rodar, com a dica da grafia
-certa:
+Usar um deles sem ter definido dá `NameError` antes de rodar. A dica é a
+regra geral do "Did you mean" (4.9): `true`, `false` e `null` trocam uma
+letra e ganham a grafia certa; `None` e `none` trocam metade das letras de
+`Null` ou mais, e saem sem dica.
 
 ```ps
 x = true      # NameError: name 'true' is not defined. Did you mean: 'True'?

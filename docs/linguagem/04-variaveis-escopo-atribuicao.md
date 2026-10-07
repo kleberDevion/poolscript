@@ -375,6 +375,17 @@ faz — são detalhadas na parte de bibliotecas.)
   o nome parecido que existe no escopo, no arquivo ou entre os que a
   linguagem liga sozinha: `valor = 1` e depois `vlaor` dá
   `NameError: name 'vlaor' is not defined. Did you mean: 'valor'?`.
+  Parecido é até uma letra trocada, posta ou tirada quando um dos dois nomes
+  tem até 4 letras, até três quando os dois são maiores (duas letras vizinhas
+  invertidas contam meia), e sempre menos da metade das letras do mais curto:
+  `valor` não vira `False`, que troca três de cinco. Sem nada parecido, a
+  frase fica sem dica.
+- Dentro de um método, o nome solto que é membro de instância da classe
+  (campo, método, `self.x` gravado, os dos pais) só se alcança por `self`, e
+  a dica diz isso: `post(saldo)` dá
+  `NameError: name 'saldo' is not defined. Did you mean: 'self.saldo'?`.
+  Vale também na funct e na lambda escritas dentro do método. O membro
+  `static` o nome solto alcança (seção 7).
 - Nomes seguem as regras léxicas da seção 1.4. A caixa MAIÚSCULA é
   **convenção** para libs/classes/tipos de erro, mas não é reserva: um nome
   maiúsculo pode ser variável comum (`MAX = 100`, `str NOME = "ana"`).

@@ -10,11 +10,12 @@ Lê uma linha do stdin; o prompt opcional é impresso antes, sem quebra.
 
 ## Retorno
 
-str
+str, ou `Null` no fim da entrada
 
 ## Bordas
 
-- SEMPRE devolve str — quem quer número converte com `int(x)`
+- devolve `str`: quem quer número converte, `int x = int(input("idade: "))`. Declarar o tipo não converte, e `int x = input()` é erro antes de rodar
+- no fim da entrada (stdin fechado, ou vazio) devolve `Null`
 - o `\r\n` do Windows não entra no texto lido
 
 [← índice](../builtins.md)

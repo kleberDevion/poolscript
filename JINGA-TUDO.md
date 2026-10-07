@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.2`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.3`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -1700,6 +1700,7 @@ O que o `main.c` aceita além do que o `--help` lista:
 | `check`, `tokens`, `ast`, `bytecode`, `contexto`, `metadata`, `debug` | as mesmas flags sem os dois traços |
 | `install`, `uninstall`, `list`, `registry` direto no `jinga` | o mesmo código do `jpkg` (`ps_pkg.c`) |
 | `--utf16` e `--sem-jit` | valem em qualquer posição e saem do argv antes do resto |
+| opção que não existe no lugar do arquivo (`--chek`, `-c`) | `jinga: opcao desconhecida '--chek'. Did you mean: '--check'?`, rc 64, pela regra do "Did you mean" da linguagem entre as opções acima; sem opção parecida, a frase manda pro `--help`. Antes virava nome de arquivo ("nao consegui abrir '--chek'") |
 
 Variáveis de ambiente lidas pelo motor:
 
@@ -2121,8 +2122,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.2** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.2 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.3** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.3 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2743,7 +2744,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.2"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.3"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2823,7 +2824,7 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-07 (madrugada)
 
-- Versão da linguagem **17.0.2** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.2 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.3** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.3 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: `71e0a31` (17.0.0, o `Parsing` virou lib), igual a `origin/main` quando subiu; os commits depois dele são de doc e de ferramenta. O único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
 - **Plano 8 fechado** (`71e0a31`): `import Parsing` como qualquer lib, e lib do motor usada sem import diz qual import falta. Major porque quebra programa que usava o `Parsing` sem import. Verde na VPS em `make check`, `check-asan` e `check-debug`.

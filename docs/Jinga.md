@@ -1,4 +1,4 @@
-# Jinga v17.0.2
+# Jinga v17.0.3
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 jinga --version
-# Jinga 17.0.2 [PSVM] (2026-09-24) Runtime standalone
+# Jinga 17.0.3 [PSVM] (2026-09-24) Runtime standalone
 #                       ^ a data da compilação DESTE binário: duas
 #                         cópias da mesma versão se distinguem por ela
 ```
@@ -25,6 +25,10 @@ do `jpkg` (com aviso).
 jinga meu_arquivo.pr
 jinga build          # roda todos os .pr da pasta atual
 ```
+
+Opção que não existe, no lugar do arquivo, é recusada com a opção parecida
+(rc 64): `jinga --chek a.pr` dá `jinga: opcao desconhecida '--chek'. Did you
+mean: '--check'?`. Sem nenhuma parecida, a frase manda pro `jinga --help`.
 
 O arquivo pode ter o tamanho que for. O motor não guarda o arquivo inteiro
 na memória: lê uma declaração de topo por vez, fica só com o que outra

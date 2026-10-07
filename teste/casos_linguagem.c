@@ -2481,7 +2481,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "", "TypeError: s() takes 1 positional argument but 2 were given", 2 },
 { "metodo COMUM pelo nome solto nao existe: NameError antes de rodar (era so rodando)",
   "class A {\n    funct m(self) {\n        return 1\n    }\n    funct n(self) {\n        return m()\n    }\n}\npost(A().n())\n",
-  "", "NameError: name 'm' is not defined. Did you mean: 'A'?", 2 },
+  "", "NameError: name 'm' is not defined. Did you mean: 'self.m'?", 2 },
 { "parametro com o mesmo nome ganha do static (o nome solto e o parametro)",
   "class A {\n    public static int total = 1\n    funct n(self, total) {\n        return total\n    }\n}\npost(A().n(\"p\"))\n",
   "p", NULL, 0 },
@@ -3489,6 +3489,30 @@ const Caso CASOS_LINGUAGEM[] = {
   "SyntaxError: expressao invalida dentro da f-string\n", 2 },
 { "erro do lexer dentro da f-string",
   "post(f\"{1 $ 2}\")\n", "", "SyntaxError: caractere inesperado: '$' dentro da f-string", 2 },
+
+/* ── Plano 6, lote 3: as dicas ───────────────────────────────────────────────
+ * Membro de instância pelo nome solto, dentro do método, sugere `self.x`; e a
+ * dica nunca troca metade das letras (`valor` virava 'False'). */
+{ "campo pelo nome solto no metodo sugere self.campo",
+  "class Conta {\n    int saldo = 0\n    Null funct ver(self) {\n        post(saldo)\n    }\n}\nConta c = Conta()\nc.ver()\n",
+  "", "NameError: name 'saldo' is not defined. Did you mean: 'self.saldo'?", 2 },
+{ "campo do pai, dentro de funct aninhada no metodo, sugere self.campo",
+  "class P {\n    int base_v = 1\n}\nclass F(P) {\n    Null funct ver(self) {\n        funct g() {\n            post(base_v)\n        }\n        g()\n    }\n}\nF().ver()\n",
+  "", "NameError: name 'base_v' is not defined. Did you mean: 'self.base_v'?", 2 },
+{ "self.x gravado em outro metodo tambem e membro: sugere self.x",
+  "class A {\n    Null funct __init__(self) {\n        self.total = 1\n    }\n    Null funct ver(self) {\n        post(total)\n    }\n}\nA().ver()\n",
+  "", "NameError: name 'total' is not defined. Did you mean: 'self.total'?", 2 },
+{ "metodo static nao tem self: o campo de instancia sai sem dica",
+  "class A {\n    int base_v = 1\n    @static\n    Null funct s() {\n        post(base_v)\n    }\n}\nA.s()\n",
+  "", "NameError: name 'base_v' is not defined\n", 2 },
+{ "dica nao troca metade das letras: valor nao vira False",
+  "post(valor)\n", "", "NameError: name 'valor' is not defined\n", 2 },
+{ "dica nao troca metade das letras: None nao vira Null",
+  "bool b = None\npost(b)\n", "", "NameError: name 'None' is not defined\n", 2 },
+{ "dica de letras invertidas continua",
+  "int valor = 1\npost(vlaor)\n", "", "NameError: name 'vlaor' is not defined. Did you mean: 'valor'?", 2 },
+{ "dica de uma letra a menos continua",
+  "int total = 1\npost(totl)\n", "", "NameError: name 'totl' is not defined. Did you mean: 'total'?", 2 },
 
 /* ── sonda 2, lote 3: vetores de salto sem teto e f-string inteira ────────── */
 { "65 breaks no mesmo laco e 65 elifs compilam (os vetores de salto crescem)",

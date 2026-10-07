@@ -14,7 +14,7 @@ Tudo aqui foi verificado rodando o fonte na VM em C.
 | Builtin | Assinatura | O que faz |
 |---|---|---|
 | `post` | `post(v1, v2, …)` | imprime os valores no stdout, separados por espaço, com quebra de linha; `post()` sem args é uma linha em branco vazia (na verdade nem imprime a quebra). `Null` sai como `Null`, dict como `{'k': v}`, bool como `True`/`False`. Devolve `Null`. |
-| `input` | `input(prompt)` | lê uma linha do stdin; o `prompt` (opcional, **só posicional**) é impresso antes, sem quebra. Devolve `str`, ou `Null` no fim do stdin — pra número, use `int(...)` ou declare o tipo. |
+| `input` | `input(prompt)` | lê uma linha do stdin; o `prompt` (opcional, **só posicional**) é impresso antes, sem quebra. Devolve `str`, ou `Null` no fim do stdin. Pra número, converta: `int x = int(input("idade: "))`. Declarar o tipo não converte (2.6): `int x = input()` é erro antes de rodar. |
 | `open` | `open(path, mode="r", encoding="utf-8")` | abre um arquivo e devolve o handle (`read`/`readline`/`readlines`/`write`/`writelines`/`close`). Combine com `using` pra fechar sozinho. Arquivo inexistente em leitura → `FileNotFoundError`. |
 | `load` | `load(caminho)` | carrega variáveis de um `.env` pro ambiente e **devolve um dict** com o que leu (`{ "CHAVE": "valor" }`); sem `.env`, dict vazio. O caminho é **só posicional**. Não sobrescreve variável já definida. Atalho de `dotenv.load`. |
 

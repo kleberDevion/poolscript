@@ -23986,11 +23986,15 @@ static const char *sugere_nome(const char *alvo, const char **nomes, int n)
         /* Na escala do `dist_edicao` (2 por edição): 1 edição se uma das duas
          * palavras tem até 4 letras, 3 acima. Pela mais CURTA: três edições
          * numa palavra de três letras a reescrevem inteira — `Conta` ficava
-         * "parecido" com `not`, e `const` com `post`. */
+         * "parecido" com `not`, e `const` com `post`. E nunca metade das
+         * letras ou mais (d < tamanho da mais curta, na mesma escala): três
+         * trocas em cinco letras não é erro de digitação, é outra palavra —
+         * `valor` e `saldo` viravam 'False'. */
         size_t lb = strlen(nomes[i]);
         int teto = (la <= 4 || lb <= 4) ? 2 : 6;
+        int curta = (int)(la < lb ? la : lb);
         int d = dist_edicao(alvo, nomes[i], teto);
-        if (d <= teto && (!melhor || d < md)) { melhor = nomes[i]; md = d; }
+        if (d <= teto && d < curta && (!melhor || d < md)) { melhor = nomes[i]; md = d; }
     }
     if (melhor) return melhor;
     const char *unico = NULL;

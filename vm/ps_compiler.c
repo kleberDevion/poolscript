@@ -2488,9 +2488,46 @@ static void tp_acusa_sem_import(C *c, PSNode *onde, const char *nome)
     terro(c, onde, "NameError", "name '%s' is not defined. Did you forget to import '%s'?", nome, nome);
 }
 
+static void tp_junta_membros_classe(C *c, const char *classe, const char **v, int *cnt, int prof);
+
+/* A classe do `self` que o código em `u` alcança: o método da classe em
+ * compilação, ou a funct e a lambda escritas dentro dele. NULL fora de
+ * método, e no método `static` (não tem `self`). */
+static const char *tp_classe_do_self(C *c, Unidade *u)
+{
+    if (!c->entity_no || !c->entity_no->texto) return NULL;
+    for (Unidade *q = u; q; q = q->pai)
+        for (int32_t i = 0; i < q->nlocais; i++) {
+            if (strcmp(q->locais[i], "self") != 0) continue;
+            const char *t = q->sim ? q->sim[i].tipo : NULL;
+            return (t && !strcmp(t, c->entity_no->texto)) ? t : NULL;
+        }
+    return NULL;
+}
+
+/* `nome` é membro de instância da classe (campo, método, `self.x` gravado,
+ * os dos pais)? O membro `static` não chega aqui: o nome solto já o alcança. */
+static int tp_membro_da_classe(C *c, const char *classe, const char *nome)
+{
+    const char *v[256];
+    int cnt = 0;
+    tp_junta_membros_classe(c, classe, v, &cnt, 0);
+    for (int i = 0; i < cnt; i++)
+        if (v[i] && !strcmp(v[i], nome)) return 1;
+    return 0;
+}
+
 static void tp_acusa_nome(C *c, Unidade *u, const char *nome, PSNode *onde, int palavras)
 {
     if (ps_nativo_eh_modulo(nome)) { tp_acusa_sem_import(c, onde, nome); return; }
+    /* Membro de instância lido pelo nome solto, dentro do método: só se
+     * alcança por `self`, e a dica é essa. Saía o nome parecido de outro
+     * lugar (`saldo` -> 'False', `m` -> 'A'), que não conserta nada. */
+    const char *cls = tp_classe_do_self(c, u);
+    if (cls && tp_membro_da_classe(c, cls, nome)) {
+        terro(c, onde, "NameError", "name '%s' is not defined. Did you mean: 'self.%s'?", nome, nome);
+        return;
+    }
     const char *dica = NULL;
     const char *const *kw = palavras ? ps_lexer_keywords() : NULL;
     const char *const *mp = palavras ? ps_parser_mods_de_posicao() : NULL;
