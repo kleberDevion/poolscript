@@ -3,8 +3,11 @@
  *
  * As regras que não são óbvias, e que os testes diferenciais cobrem:
  *
- *   - Indentação ESTRITA: só espaços (TAB é erro), múltiplo de 4, e sobe
- *     no máximo um nível por vez.
+ *   - Indentação é estética (espaço ou TAB, quanto quiser). Só depois de um
+ *     `:` no fim da linha (o guard `main`) o recuo é medido: INDENT na linha
+ *     mais recuada, DEDENT na que volta pra antes.
+ *   - O fonte é UTF-8: byte que não forma caractere é erro na posição dele,
+ *     e o BOM do começo é pulado.
  *   - Dentro de ( [ { a indentação é ignorada e NEWLINE não é emitido.
  *   - Linha que começa com `.membro` é continuação da anterior (method
  *     chaining multi-linha) — não emite NEWLINE nem mexe na pilha de indent.
@@ -84,7 +87,61 @@ static const char *MULTI_OPS[] = {
 
 static const char SINGLE_OPS[] = "+-*/%=<>!.,@|^&~";
 
-#define INDENT_UNIT 4
+int ps_utf8_le_estrito(const unsigned char *b, size_t len, size_t i, uint32_t *cp)
+{
+    if (i >= len) return -1;
+    unsigned char c = b[i];
+    int k;
+    uint32_t v;
+    if (c < 0x80)                { *cp = c; return 1; }
+    else if ((c & 0xE0) == 0xC0) { k = 2; v = c & 0x1F; }
+    else if ((c & 0xF0) == 0xE0) { k = 3; v = c & 0x0F; }
+    else if ((c & 0xF8) == 0xF0) { k = 4; v = c & 0x07; }
+    else return -1;                              /* 0x80-0xBF solto ou 0xF8+ */
+    if (i + (size_t)k > len) return -1;
+    for (int t = 1; t < k; t++) {
+        if ((b[i + (size_t)t] & 0xC0) != 0x80) return -1;
+        v = (v << 6) | (uint32_t)(b[i + (size_t)t] & 0x3F);
+    }
+    if ((k == 2 && v < 0x80) || (k == 3 && v < 0x800) || (k == 4 && v < 0x10000))
+        return -1;                               /* overlong */
+    if (v >= 0xD800 && v <= 0xDFFF) return -1;   /* surrogate solto */
+    if (v > 0x10FFFF) return -1;
+    *cp = v;
+    return k;
+}
+
+/* O primeiro byte a partir de `de` em que não começa um caractere UTF-8
+ * válido, ou `len` se não há nenhum. */
+static size_t proximo_invalido(const char *s, size_t len, size_t de)
+{
+    size_t i = de;
+    while (i < len) {
+        if ((unsigned char)s[i] < 0x80) { i++; continue; }
+        uint32_t cp;
+        int k = ps_utf8_le_estrito((const unsigned char *)s, len, i, &cp);
+        if (k < 0) return i;
+        i += (size_t)k;
+    }
+    return len;
+}
+
+/* Espaço da propriedade White_Space do Unicode fora do ASCII (o NBSP, os de
+ * largura fixa, o ideográfico): no editor parecem o espaço comum. */
+static int eh_espaco_unicode(uint32_t cp)
+{
+    return cp == 0x85 || cp == 0xA0 || cp == 0x1680 || (cp >= 0x2000 && cp <= 0x200A)
+        || cp == 0x2028 || cp == 0x2029 || cp == 0x202F || cp == 0x205F || cp == 0x3000;
+}
+
+/* Caractere de formato que não aparece na tela (largura zero, direção do
+ * texto, o BOM fora do começo, o hífen opcional). */
+static int eh_invisivel_unicode(uint32_t cp)
+{
+    return cp == 0xAD || cp == 0x61C || cp == 0x180E || (cp >= 0x200B && cp <= 0x200F)
+        || (cp >= 0x202A && cp <= 0x202E) || (cp >= 0x2060 && cp <= 0x2064)
+        || (cp >= 0x2066 && cp <= 0x206F) || cp == 0xFEFF || (cp >= 0xFFF9 && cp <= 0xFFFB);
+}
 
 /* ── estado ─────────────────────────────────────────────────────────────── */
 typedef struct {
@@ -94,14 +151,21 @@ typedef struct {
     int32_t     linha;
     int32_t     col;
 
+    /* Os níveis de recuo dos blocos de `:` abertos (o guard `main`, o
+     * `match:` e os `case` dele). Fora deles o recuo é estética e não entra. */
     int32_t     indent[128];
     int         nindent;
+    /* O tipo do último token que não é de leiaute (NEWLINE, INDENT, DEDENT,
+     * SINC, comentário): `:` no fim da linha é o que abre bloco de recuo. */
+    PSTokType   ult_tipo;
+    /* O próximo byte que não é UTF-8 válido (ou `len`): ao passar dele, sai o
+     * erro, na posição do byte. O fonte é texto UTF-8 (doc 1.1). */
+    size_t      invalido;
 
     int         paren_depth;   /* só ( e [ — ver trata_newline */
-    /* `{` abertos. Dentro de um bloco de chaves a indentação é LIVRE (1
-     * espaço, 2, tab): quem delimita é o `}`. Os INDENT/DEDENT continuam
-     * sendo emitidos, porque um sub-bloco `:` lá dentro precisa deles — o que
-     * cai é só a validação de "múltiplo de 4" e "avançou exatamente 4". */
+    /* `{` abertos. O recuo é livre em todo lugar (quem delimita bloco é o
+     * `}`); o contador decide só se a quebra de linha conta (ver
+     * trata_newline). */
     int         chave_depth;
     /* Que TIPO de `{` é cada um dos abertos: 1 = dicionário, 0 = bloco.
      *
@@ -315,6 +379,8 @@ static PSToken *novo_token(Lexer *lx, PSTokType t, int32_t linha, int32_t col)
     tk->type = t;
     tk->line = linha;
     tk->col = col;
+    if (t != T_NEWLINE && t != T_INDENT && t != T_DEDENT && t != T_SINC && t != T_COMMENT)
+        lx->ult_tipo = t;
     return tk;
 }
 
@@ -616,14 +682,15 @@ static void trata_newline(Lexer *lx)
         return;
     }
 
+    /* `:` no fim da linha que acabou (o NEWLINE não mexe no `ult_tipo`) */
+    int depois_de_dois_pontos = lx->ult_tipo == T_COLON;
     PSToken *nl = novo_token(lx, T_NEWLINE, lx->linha - 1, lx->col);
     if (!nl) return;
 
+    /* TAB conta como um espaço: o recuo só se compara com o do bloco de `:` */
     int32_t indent = 0;
-    int viu_tab = 0;
     while (lx->pos < lx->len && (lx->src[lx->pos] == ' ' || lx->src[lx->pos] == '\t')) {
-        if (lx->src[lx->pos] == '\t') viu_tab = 1;
-        else indent++;
+        indent++;
         lx->pos++;
         lx->col++;
     }
@@ -634,27 +701,14 @@ static void trata_newline(Lexer *lx)
      * de linha e `#`, e so. */
     if (lx->src[lx->pos] == '#') return;
 
-    /* Dentro de `{ }` a indentação é cosmética: nada de exigir múltiplo de 4
-     * nem avanço exato. Fora dela a regra continua estrita. */
-    int livre = lx->chave_depth > 0;
-    if (viu_tab && !livre) { erro(lx, "indentacao com TAB nao e permitida; use 4 espacos"); return; }
-    if (!livre && indent % INDENT_UNIT != 0) {
-        char m[128];
-        snprintf(m, sizeof(m), "indentacao deve ser multiplo de %d espacos (achou %d)",
-                 INDENT_UNIT, indent);
-        erro(lx, m);
-        return;
-    }
-
+    /* O recuo só conta logo depois de um `:` no fim da linha (o guard `main`,
+     * o `match:` e os `case` dele): a linha mais recuada abre o bloco (INDENT),
+     * e a primeira que volta pra antes dele o fecha (DEDENT). Em todo o resto
+     * ele é estética (doc 1.3): espaço ou TAB, quanto quiser, também fora de
+     * `{ }`. Era regra estrita fora das chaves (múltiplo de 4, sem TAB), e
+     * `int x = 1` seguido de `    post(x)` dava "expressao invalida". */
     int32_t topo = lx->indent[lx->nindent - 1];
-    if (indent > topo) {
-        if (!livre && indent != topo + INDENT_UNIT) {
-            char m[128];
-            snprintf(m, sizeof(m), "indentacao avancou %d espacos; esperado exatamente %d",
-                     indent - topo, INDENT_UNIT);
-            erro(lx, m);
-            return;
-        }
+    if (depois_de_dois_pontos && indent > topo) {
         if (lx->nindent >= (int)(sizeof(lx->indent) / sizeof(lx->indent[0]))) {
             erro(lx, "indentacao profunda demais");
             return;
@@ -662,18 +716,12 @@ static void trata_newline(Lexer *lx)
         lx->indent[lx->nindent++] = indent;
         PSToken *tk = novo_token(lx, T_INDENT, lx->linha, 1);
         if (tk) tk->i = indent;
-    } else {
-        while (indent < lx->indent[lx->nindent - 1]) {
-            lx->nindent--;
-            PSToken *tk = novo_token(lx, T_DEDENT, lx->linha, 1);
-            if (tk) tk->i = indent;
-        }
-        if (!livre && indent != lx->indent[lx->nindent - 1]) {
-            char m[128];
-            snprintf(m, sizeof(m), "indentacao inconsistente (esperado %d, achou %d)",
-                     lx->indent[lx->nindent - 1], indent);
-            erro(lx, m);
-        }
+        return;
+    }
+    while (lx->nindent > 1 && indent < lx->indent[lx->nindent - 1]) {
+        lx->nindent--;
+        PSToken *tk = novo_token(lx, T_DEDENT, lx->linha, 1);
+        if (tk) tk->i = indent;
     }
 }
 
@@ -745,6 +793,20 @@ static int decode_escape(Lexer *lx, Buf *bf, int bytes)
     char nxt = s[i + 1];
     int consumido = 2;
     unsigned long cp;
+
+    /* Barra no fim da linha. Só chega aqui de string tripla: a simples para
+     * antes, porque não cruza a quebra. A barra e a quebra ficam no texto,
+     * com aviso, e a LINHA conta — era contada como duas colunas, e todo
+     * erro dali pra baixo saía uma linha acima. */
+    if (nxt == '\n' || (nxt == '\r' && i + 2 < n && s[i + 2] == '\n')) {
+        aviso_em(lx, "barra no fim da linha: a barra e a quebra ficam no texto; "
+                     "use '\\\\' se a barra e mesmo pra estar ali", lx->linha, lx->col);
+        if (buf_push(bf, '\\') != 0 || buf_push(bf, '\n') != 0) return -1;
+        lx->pos = i + (nxt == '\r' ? 3 : 2);
+        lx->linha++;
+        lx->col = 1;
+        return 0;
+    }
 
     /* Guarda a barra e avisa: o chamador emite `nxt` logo em seguida. */
     #define ESCAPE_DESCONHECIDO()                                             \
@@ -874,11 +936,23 @@ static void le_string(Lexer *lx, char aspa, int fstring, int raw, int bytes, int
             }
         }
         if (!raw && c == '\\' && lx->pos + 1 < lx->len) {
+            /* Barra no fim da linha não continua a string simples: ela não
+             * cruza a quebra (doc 1.6.3). A barra fica no texto e a quebra,
+             * logo em seguida, dá o erro de string não fechada. Antes a
+             * string seguia calada na linha de baixo. */
+            char nx = lx->src[lx->pos + 1];
+            if (nx == '\n' || nx == '\r') {
+                if (buf_push(&bf, c) != 0) { free(bf.b); erro(lx, "sem memoria"); return; }
+                avanca1(lx);
+                continue;
+            }
             int rc = decode_escape(lx, &bf, bytes);
             if (rc == -2) { free(bf.b); return; }            /* erro ja registrado */
             if (rc != 0) { free(bf.b); erro(lx, "sem memoria"); return; }
             continue;
         }
+        /* `\r` do fim de linha do Windows (ou solto) não é texto (doc 1.1) */
+        if (c == '\r') { lx->pos++; continue; }
         if (c == aspa) {
             /* `{` aberto e nunca fechado (`f"a {b"`): o trecho vale até aqui.
              * Quem digita passa a maior parte do tempo neste estado, e sem o
@@ -962,6 +1036,10 @@ static void le_string_tripla(Lexer *lx, char aspa, int fstring, int raw, int byt
             if (rc != 0) { free(bf.b); erro(lx, "sem memoria"); return; }
             continue;
         }
+        /* `\r` do fim de linha do Windows (ou solto) não é texto (doc 1.1):
+         * o fonte salvo com CRLF dá a mesma string que o salvo com LF. Ele
+         * entrava no texto, e `len(a)` dava 4 no lugar de 3. */
+        if (c == '\r') { lx->pos++; continue; }
         if (c == '\n') {
             if (buf_push(&bf, c) != 0) { free(bf.b); erro(lx, "sem memoria"); return; }
             lx->pos++; lx->linha++; lx->col = 1;
@@ -995,6 +1073,49 @@ static int corre_digitos(Lexer *lx, int base)
     return d;
 }
 
+/* O número que acabou de ser lido (de `ini` até `lx->pos`) vem COLADO em
+ * letra, dígito que a base não aceita ou `_`: `0b102`, `0o78`, `0x1G`, `1e`,
+ * `2e+`, `1x`. O trecho inteiro é um erro só, com o motivo, e o lugar fica
+ * marcado (T_SINC) pro parser falhar calado nele. Antes o número era partido,
+ * e o resto virava "dois comandos na mesma linha", que nao conserta nada.
+ * 1 = era isso (o erro saiu). */
+static int numero_colado(Lexer *lx, size_t ini, int32_t c0, int base)
+{
+    size_t p = lx->pos;
+    if (p >= lx->len) return 0;
+    char c = lx->src[p];
+    if (!(eh_alpha(c) || eh_digito(c) || c == '_')) return 0;
+    int expo = base == 10 && (c == 'e' || c == 'E');
+    size_t q = p;
+    if (expo) {
+        q++;
+        if (q < lx->len && (lx->src[q] == '+' || lx->src[q] == '-')) q++;
+    }
+    size_t fim_expo = q;
+    while (q < lx->len && (eh_alpha(lx->src[q]) || eh_digito(lx->src[q]) || lx->src[q] == '_')) q++;
+    char trecho[64];
+    int n = (int)(q - ini);
+    if (n > (int)sizeof(trecho) - 1) n = (int)sizeof(trecho) - 1;
+    memcpy(trecho, lx->src + ini, (size_t)n);
+    trecho[n] = '\0';
+    char msg[200];
+    if (expo && q == fim_expo)
+        snprintf(msg, sizeof(msg), "expoente sem digito em '%s': escreva o expoente, como em 1e3 ou 2.5e-3", trecho);
+    else if (base == 2)
+        snprintf(msg, sizeof(msg), "'%c' nao vale em numero binario (0b), so 0 e 1: '%s'", c, trecho);
+    else if (base == 8)
+        snprintf(msg, sizeof(msg), "'%c' nao vale em numero octal (0o), so 0 a 7: '%s'", c, trecho);
+    else if (base == 16)
+        snprintf(msg, sizeof(msg), "'%c' nao vale em numero hexadecimal (0x), so 0 a 9 e a a f: '%s'", c, trecho);
+    else
+        snprintf(msg, sizeof(msg), "'%s' nao e numero nem nome: nome nao comeca com digito", trecho);
+    lx->col += (int32_t)(q - lx->pos);
+    lx->pos = q;
+    erro_em(lx, msg, lx->linha, c0);
+    novo_token(lx, T_SINC, lx->linha, c0);
+    return 1;
+}
+
 static void le_numero(Lexer *lx)
 {
     int32_t c0 = lx->col;
@@ -1012,9 +1133,11 @@ static void le_numero(Lexer *lx)
             lx->pos += 2; lx->col += 2;
             size_t d0 = lx->pos;
             if (corre_digitos(lx, base) == 0) {
+                if (numero_colado(lx, ini, c0, base)) return;   /* `0b2`, `0xG` */
                 erro_em(lx, "numero sem digito depois da base", lx->linha, c0);
                 return;
             }
+            if (numero_colado(lx, ini, c0, base)) return;
             char tmp[80];
             int n = (int)(lx->pos - d0), j = 0;
             for (int i = 0; i < n && j < (int)sizeof(tmp) - 1; i++)
@@ -1090,6 +1213,7 @@ static void le_numero(Lexer *lx)
             corre_digitos(lx, 10);
         }
     }
+    if (numero_colado(lx, ini, c0, 10)) return;
     int n = (int)(lx->pos - ini);
     /* Copia sem os `_`: o strtod/strtoll não conhece separador. */
     char tmp[80];
@@ -1354,11 +1478,43 @@ static void lx_inicia(Lexer *lx, PSTokenList *out, const char *fonte, size_t len
     }
     lx->sincroniza = lx->nalvos > 0;
 
+    /* O BOM do UTF-8 no começo do arquivo (EF BB BF) é marca de editor, não
+     * texto: muito editor do Windows salva com ele. Dava "nome so aceita letra
+     * sem acento" com um caractere invisível entre as aspas. */
+    if (lx->len >= 3 && memcmp(lx->src, "\xEF\xBB\xBF", 3) == 0) lx->pos = 3;
+    lx->invalido = proximo_invalido(lx->src, lx->len, lx->pos);
+
     /* espaços iniciais da primeira linha não geram INDENT */
     while (lx->pos < lx->len && (lx->src[lx->pos] == ' ' || lx->src[lx->pos] == '\t')) {
         lx->pos++; lx->col++;
     }
     lx->span_col0 = lx->col; lx->span_lin0 = lx->linha; lx->span_n0 = out->n;
+}
+
+/* O byte `lx->invalido` não é UTF-8: erro na linha e coluna dele (contadas
+ * como o lexer conta, caractere a caractere desde o começo da linha), e o
+ * próximo inválido depois de onde o lexer já está. Dentro de string o lexer
+ * passa do byte antes de perceber; a posição do erro é a do byte. */
+static void acusa_invalido(Lexer *lx)
+{
+    size_t b = lx->invalido, ini = 0;
+    int32_t linha = 1;
+    for (size_t i = 0; i < b; i++)
+        if (lx->src[i] == '\n') { linha++; ini = i + 1; }
+    if (ini == 0 && lx->len >= 3 && memcmp(lx->src, "\xEF\xBB\xBF", 3) == 0) ini = 3;
+    int32_t col = 1;
+    for (size_t i = ini; i < b; ) {
+        uint32_t cp;
+        int k = ps_utf8_le_estrito((const unsigned char *)lx->src, lx->len, i, &cp);
+        i += k > 0 ? (size_t)k : 1;
+        col++;
+    }
+    char m[120];
+    snprintf(m, sizeof(m), "o fonte nao e UTF-8 valido: byte 0x%02X (salve o arquivo como UTF-8)",
+             (unsigned char)lx->src[b]);
+    erro_em_ate(lx, m, linha, col, linha, col + 1);     /* o trecho é o byte */
+    if (lx->pos == b) { lx->pos++; lx->col++; }
+    lx->invalido = proximo_invalido(lx->src, lx->len, lx->pos > b ? lx->pos : b + 1);
 }
 
 /* Uma volta do laço principal. 0 = o laço acabou (fim do fonte, ou erro fora
@@ -1367,6 +1523,7 @@ static int lx_passo(Lexer *lx)
 {
     if (!(lx->pos < lx->len && (lx->out->ok || lx->recupera))) return 0;
     fecha_span(lx);
+    if (lx->pos >= lx->invalido) { acusa_invalido(lx); return 1; }
     char c = lx->src[lx->pos];
 
     if (c == '\n') { trata_newline(lx); return 1; }
@@ -1408,14 +1565,25 @@ static int lx_passo(Lexer *lx)
      *
      * Um byte de continuação (10xxxxxx) sozinho não forma caractere;
      * nesse caso mostra o valor numérico, que é a informação útil. */
-    char m[80];
+    char m[160];
     unsigned char b0 = (unsigned char)c;
     int nb = b0 < 0x80 ? 1 : (b0 & 0xE0) == 0xC0 ? 2
            : (b0 & 0xF0) == 0xE0 ? 3 : (b0 & 0xF8) == 0xF0 ? 4 : 0;
     char ch[5] = "";
+    uint32_t cp = 0;
     if (nb > 0 && lx->pos + (size_t)nb <= lx->len) {
         memcpy(ch, lx->src + lx->pos, (size_t)nb);
         ch[nb] = '\0';
+        ps_utf8_le_estrito((const unsigned char *)lx->src, lx->len, lx->pos, &cp);
+    }
+    if (ch[0] && nb > 1 && eh_espaco_unicode(cp)) {
+        /* Não se vê: dizer o código é o que deixa achar e trocar. Saía a
+         * frase do acento, com o espaço invisível entre as aspas. */
+        snprintf(m, sizeof(m), "espaco invisivel U+%04X (nao e o espaco comum) fora de texto: troque por um espaco",
+                 (unsigned)cp);
+    } else if (ch[0] && nb > 1 && eh_invisivel_unicode(cp)) {
+        snprintf(m, sizeof(m), "caractere invisivel U+%04X fora de texto: apague", (unsigned)cp);
+    } else if (ch[0]) {
         /* Letra fora do ASCII COLADA num nome (`ação`, `π`): a frase
          * de antes ("caractere inesperado") dizia o sintoma. A regra é
          * que nome só aceita letra sem acento — é isso que a pessoa
@@ -1459,6 +1627,9 @@ static void lx_fim(Lexer *lx)
 {
     PSTokenList *out = lx->out;
     fecha_span(lx);
+    /* o byte inválido dentro de uma string que foi até o fim do arquivo: o
+     * laço parou antes de passar por ele */
+    if (lx->invalido < lx->len && (out->ok || lx->recupera)) acusa_invalido(lx);
     if (out->ok || lx->recupera) grupo_fim(lx);
     /* Os DEDENT e o T_EOF saem SEMPRE, com erro ou sem: o erro ja esta em
      * `out->ok`. Sem o EOF, quem parseava a lista (o `--contexto`, que e o

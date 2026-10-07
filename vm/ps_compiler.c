@@ -2519,6 +2519,44 @@ static void tp_acusa_nome(C *c, Unidade *u, const char *nome, PSNode *onde, int 
         terro(c, onde, "NameError", "name '%s' is not defined", nome);
 }
 
+/* `x = 10 // comentario`: nome que não existe à direita de um `//` é
+ * comentário escrito do jeito antigo (antes do I11 o `//` comentava). A frase
+ * é a do `//` no começo da linha, no trecho do `//` (doc 1.2: o erro diz isso
+ * com todas as letras). Saía o NameError do nome, ou "dois comandos na mesma
+ * linha" quando o comentário tinha mais de uma palavra. */
+static void tp_acusa_barra2(C *c, PSNode *op)
+{
+    terro(c, op, "SyntaxError", "'//' e divisao inteira, nao comentario — comentario e '#' "
+                                "(ou bloco entre tres aspas)");
+}
+
+/* O `//` da ponta direita de `v` cujo lado direito é o nome em (l, col) — o
+ * nome solto de `1 // um comentario aqui` —, ou NULL. */
+static PSNode *tp_barra2_com_direita(PSNode *v, int32_t l, int32_t col)
+{
+    while (v && v->kind == N_BINARY_OP) {
+        if (v->texto && !strcmp(v->texto, "//") && v->b && v->b->kind == N_NAME
+                && v->b->line == l && v->b->col == col) return v;
+        v = v->b;
+    }
+    return NULL;
+}
+
+/* O lado direito do binário `op`, com a regra do `//` acima: o nome que não
+ * existe sai com a frase do comentário, e o código fica inteiro (o load do
+ * nome sai do mesmo jeito; quem não roda é o programa, pelo erro). */
+static void expr_direito(C *c, Unidade *u, PSNode *op)
+{
+    PSNode *b = op->b;
+    if (b && b->kind == N_NAME && b->texto && op->texto && !strcmp(op->texto, "//")
+            && !c->nomes_incertos && tp_nome_inexistente(c, u, b->texto)) {
+        tp_acusa_barra2(c, op);
+        carrega_nome(c, u, b->texto);
+        return;
+    }
+    expr(c, u, b);
+}
+
 static void tp_confere_nome(C *c, Unidade *u, const char *nome, PSNode *onde)
 {
     if (!nome || !*nome || c->nomes_incertos) return;
@@ -2545,6 +2583,8 @@ static void tp_nome_solto(C *c, Unidade *u, PSNode *n)
     PSNode *seg = n->e;
     int no_comeco = (n->i2 == 0);
     if (nome && *nome && !c->nomes_incertos && tp_nome_inexistente(c, u, nome)) {
+        PSNode *barra2 = n->b ? tp_barra2_com_direita(n->b->a, n->a->line, n->a->col) : NULL;
+        if (barra2) { tp_acusa_barra2(c, barra2); return; }
         tp_acusa_nome(c, u, nome, n->a, no_comeco);
         return;
     }
@@ -4656,7 +4696,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                 for (q = n; k > 0; q = q->a) cadeia[--k] = q;
                 expr(c, u, q);                           /* o termo mais à esquerda */
                 for (k = 0; k < fundo && !CFALHOU(c); k++) {
-                    expr(c, u, cadeia[k]->b);
+                    expr_direito(c, u, cadeia[k]);
                     if (cadeia[k]->line) c->linha_atual = cadeia[k]->line;
                     if (cadeia[k]->col)  c->coluna_atual = cadeia[k]->col;
                     emite(c, u, op_binario(cadeia[k]->texto), 0);

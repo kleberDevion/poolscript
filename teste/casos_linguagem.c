@@ -1400,8 +1400,21 @@ const Caso CASOS_LINGUAGEM[] = {
   "5", NULL, 0 },
 { "model de chaves continua valendo",
   "model M() {\n    a: str(length=3)\n}\npost(\"ok\")\n", "ok", NULL, 0 },
-{ "fora de chaves a regra dos 4 espacos vale",
-  "if True:\n  post(\"2 espacos\")\n", "", "multiplo de 4", 2 },
+/* O recuo só conta logo depois de um `:` no fim da linha (o guard `main`);
+ * no resto é estética, também fora de chaves (doc 1.3). Era regra estrita
+ * fora das chaves: `int x = 1` seguido de `    post(x)` dava "expressao
+ * invalida", 2 espaços "multiplo de 4", TAB "nao e permitida". */
+{ "if com ':' acusa o bloco de ':', nao o recuo",
+  "if True:\n  post(\"2 espacos\")\n", "", "SyntaxError: bloco com ':' nao existe mais — use '{ }'", 2 },
+{ "recuo fora de chaves e estetica: 4, 2, 8 espacos e TAB",
+  "int x = 1\n    post(x)\n  post(x + 1)\n        post(x + 2)\n\tpost(x + 3)\n", "1\n2\n3\n4", NULL, 0 },
+{ "recuo solto entre declaracoes do topo",
+  "# configuracao\nint porta = 8080\n    str host = \"x\"\npost(porta, host)\n", "8080 x", NULL, 0 },
+{ "guard main com ':' e recuo de 2, com linha mais recuada dentro",
+  "if __name__ == \"main\":\n  post(\"a\")\n      post(\"b\")\n  post(\"c\")\npost(\"fora\")\n",
+  "a\nb\nc\nfora", NULL, 0 },
+{ "guard main com ':' sem recuo na linha de baixo",
+  "if __name__ == \"main\":\npost(\"a\")\n", "", "SyntaxError: faltou indentacao apos ':'", 2 },
 
 /* ── `for each` sobre range não materializa a lista ──────────────────────
  * `range(20000000)` construía 20 milhões de itens (325 MB) só pra o laço
@@ -3329,6 +3342,57 @@ const Caso CASOS_LINGUAGEM[] = {
   "int x = 10_000_000\nflo f = 1.5\npost(x, f, 1e3)\n", "10000000 1.5 1000.0", NULL, 0 },
 { "cabecalho quebrado com a chave embaixo: o bloco vai junto, sem erro de dicionario no corpo",
   "int x = 0\nwhile x < 10.000.000\n{\n    x++;\n}\npost(x)\n", "", "separador de milhar", 2 },
+
+/* ── Plano 6, lote 1: o arquivo-fonte ────────────────────────────────────────
+ * Número colado em letra ou em dígito que a base não aceita é UM erro, no
+ * número inteiro, com o motivo. Antes o número era partido e o resto virava
+ * "dois comandos na mesma linha". */
+{ "numero binario com digito que nao vale",
+  "int x = 0b102\n", "", "SyntaxError: '2' nao vale em numero binario (0b), so 0 e 1: '0b102'", 2 },
+{ "numero octal com digito que nao vale",
+  "int x = 0o78\n", "", "SyntaxError: '8' nao vale em numero octal (0o), so 0 a 7: '0o78'", 2 },
+{ "numero hexadecimal com letra que nao vale",
+  "int x = 0x1G\n", "", "SyntaxError: 'G' nao vale em numero hexadecimal (0x), so 0 a 9 e a a f: '0x1G'", 2 },
+{ "expoente sem digito",
+  "flo f = 1.5e\n", "", "SyntaxError: expoente sem digito em '1.5e': escreva o expoente, como em 1e3 ou 2.5e-3", 2 },
+{ "expoente so com o sinal",
+  "flo f = 2e+\n", "", "SyntaxError: expoente sem digito em '2e+': escreva o expoente, como em 1e3 ou 2.5e-3", 2 },
+{ "nome que comeca com digito",
+  "int 1x = 2\n", "", "SyntaxError: '1x' nao e numero nem nome: nome nao comeca com digito", 2 },
+{ "numeros validos de toda base continuam valendo",
+  "post(0x1F, 0o17, 0b101, 1_000, 2.5e-3, 1e5)\n", "31 15 5 1000 0.0025 100000.0", NULL, 0 },
+/* String simples não cruza a quebra de linha (doc 1.6.3): a barra no fim da
+ * linha não a continua. Na tripla a barra e a quebra ficam no texto, e a
+ * linha conta (o erro de baixo saía uma linha acima). */
+{ "barra no fim da linha nao continua a string simples",
+  "str s = \"a\\\nb\"\npost(s)\n", "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
+{ "barra no fim da linha da string tripla: fica no texto e a linha conta",
+  "str t = '''a\\\nb'''\npost(len(t))\ntry {\n    list l = []\n    post(l[1])\n} catch (IndexError e) {\n    post(e)\n}\n",
+  "4\nlist index out of range (linha 6)", "barra no fim da linha", 0 },
+/* Arquivo salvo no Windows: a quebra CRLF dentro da string de várias linhas
+ * vale `\n` (doc 1.1), e o programa dá o mesmo que salvo com LF. */
+{ "CRLF dentro da string tripla vira \\n",
+  "str a = '''x\r\nY'''\r\npost(len(a), a == \"x\\nY\")\r\n", "3 True", NULL, 0 },
+/* O BOM do UTF-8 no começo é marca de editor; espaço e caractere invisível
+ * fora de texto dizem qual são; byte que não é UTF-8 é erro na posição. */
+{ "BOM no comeco do arquivo e aceito",
+  "\xEF\xBB\xBFint x = 1\npost(x)\n", "1", NULL, 0 },
+{ "espaco inquebravel fora de texto diz o codigo",
+  "int x\xC2\xA0= 1\n", "", "SyntaxError: espaco invisivel U+00A0 (nao e o espaco comum) fora de texto: troque por um espaco", 2 },
+{ "espaco de largura zero fora de texto diz o codigo",
+  "int x = 1\xE2\x80\x8B\n", "", "SyntaxError: caractere invisivel U+200B fora de texto: apague", 2 },
+{ "fonte em Latin-1 num nome",
+  "int a\xe7 = 1\n", "", "SyntaxError: o fonte nao e UTF-8 valido: byte 0xE7 (salve o arquivo como UTF-8)", 2 },
+{ "fonte em Latin-1 dentro de string",
+  "str s = \"\xe1\"\npost(len(s))\n", "", "SyntaxError: o fonte nao e UTF-8 valido: byte 0xE1 (salve o arquivo como UTF-8)", 2 },
+/* `//` depois de código com nome que não existe à direita é comentário do
+ * jeito antigo: a frase é a do `//` no começo da linha (doc 1.2). */
+{ "// com uma palavra depois de codigo",
+  "int x = 10 // comentario\npost(x)\n", "", "SyntaxError: '//' e divisao inteira, nao comentario — comentario e '#' (ou bloco entre tres aspas)", 2 },
+{ "// com varias palavras depois de codigo",
+  "int x = 1 // um comentario aqui\npost(x)\n", "", "SyntaxError: '//' e divisao inteira, nao comentario — comentario e '#' (ou bloco entre tres aspas)", 2 },
+{ "// com nome que existe e divisao inteira",
+  "int a = 7\nint b = 2\npost(a // b, 10 // b + 1)\n", "3 6", NULL, 0 },
 
 /* ── sonda 2, lote 3: vetores de salto sem teto e f-string inteira ────────── */
 { "65 breaks no mesmo laco e 65 elifs compilam (os vetores de salto crescem)",

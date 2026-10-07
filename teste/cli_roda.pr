@@ -899,6 +899,14 @@ confere("--check: l2/c2 do nome antes do ponto (lib sem import e nome que não e
         fins_do_check(r["saida"]) == [[1, 6, 1, 13], [2, 6, 2, 8], [3, 6, 3, 8]])
 confere("--check: lib do motor sem import diz qual import falta",
         "Did you forget to import 'Parsing'?" in r["saida"] and "Did you forget to import 'os'?" in r["saida"])
+# Plano 6, lote 1: o número mal escrito é um erro só, no número inteiro; o
+# `//` com nome que não existe à direita sublinha o `//` e o nome.
+r = roda([POOL, "--check"], entrada="int x = 0b102\n")
+confere("--check: numero com digito fora da base, l2/c2 do numero inteiro",
+        fins_do_check(r["saida"]) == [[1, 9, 1, 14]])
+r = roda([POOL, "--check"], entrada="int x = 10 // comentario\n")
+confere("--check: '//' de comentario antigo, l2/c2 do '//' ao nome",
+        fins_do_check(r["saida"]) == [[1, 12, 1, 25]] and "nao comentario" in r["saida"])
 
 os.writeFile(PASTA + "/corpo.pr",
              "funct a() {\n    x = = 1\n    y = 2\n}\nfunct b() {\n    return 3\n}\n")

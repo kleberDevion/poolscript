@@ -7448,29 +7448,12 @@ static int codec_args(VM *vm, Value *args, int n, const char *quem, int *codec, 
 }
 
 /* Decodifica um caractere UTF-8 VALIDANDO (sequência curta, continuação
- * errada, overlong, surrogate, acima de U+10FFFF). -1 se inválido. */
+ * errada, overlong, surrogate, acima de U+10FFFF). -1 se inválido. A regra é
+ * a do lexer (`ps_utf8_le_estrito`), a mesma que acusa fonte que não é UTF-8. */
 static int utf8_le_estrito(const unsigned char *b, int len, int i, uint32_t *cp)
 {
-    if (i >= len) return -1;
-    unsigned char c = b[i];
-    int k;
-    uint32_t v;
-    if (c < 0x80)            { *cp = c; return 1; }
-    else if ((c & 0xE0) == 0xC0) { k = 2; v = c & 0x1F; }
-    else if ((c & 0xF0) == 0xE0) { k = 3; v = c & 0x0F; }
-    else if ((c & 0xF8) == 0xF0) { k = 4; v = c & 0x07; }
-    else return -1;                              /* 0x80-0xBF solto ou 0xF8+ */
-    if (i + k > len) return -1;
-    for (int t = 1; t < k; t++) {
-        if ((b[i + t] & 0xC0) != 0x80) return -1;
-        v = (v << 6) | (uint32_t)(b[i + t] & 0x3F);
-    }
-    if ((k == 2 && v < 0x80) || (k == 3 && v < 0x800) || (k == 4 && v < 0x10000))
-        return -1;                               /* overlong */
-    if (v >= 0xD800 && v <= 0xDFFF) return -1;   /* surrogate solto */
-    if (v > 0x10FFFF) return -1;
-    *cp = v;
-    return k;
+    if (i < 0 || len < 0) return -1;
+    return ps_utf8_le_estrito(b, (size_t)len, (size_t)i, cp);
 }
 
 static int codec_por_16(int codec) { return codec == CODEC_UTF16LE || codec == CODEC_UTF16BE; }

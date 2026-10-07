@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.0`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.1`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -1166,7 +1166,10 @@ O `import` de um módulo `.pr` passa pelo mesmo `ps_compila_fonte`, que aparece 
 
 Depende só da libc. As regras que não são óbvias, tiradas do cabeçalho do arquivo:
 
-- A indentação é **estrita**: só espaços (TAB é erro), sempre múltiplo de 4, e sobe no máximo um nível por vez.
+- A indentação é estética (espaço ou TAB, quanto quiser, dentro e fora de `{ }`). O lexer só mede o recuo depois de um `:` no fim da linha (o guard `main`): a linha mais recuada abre o bloco (INDENT) e a que volta pra antes o fecha (DEDENT). Até o 17.0.0 era estrita fora das chaves (só espaços, múltiplo de 4, um nível por vez).
+- O fonte é UTF-8: byte que não forma caractere é erro na posição dele (`o fonte nao e UTF-8 valido: byte 0xE7`), o BOM do começo é pulado, e espaço ou caractere invisível fora de texto tem frase com o código (`espaco invisivel U+00A0`, `caractere invisivel U+200B`). O leitor estrito de UTF-8 é `ps_utf8_le_estrito`, o mesmo da VM e dos escritores de JSON do `main.c` (byte inválido sai como `�`).
+- O `\r` não entra em string (nem na de várias linhas): o arquivo com CRLF dá a mesma string que o com LF.
+- Número colado em letra ou em dígito fora da base (`0b102`, `0x1G`, `1e`, `1x`) é um erro só, no número inteiro, com o motivo, e o lugar fica marcado com `T_SINC` (o parser falha calado ali).
 - Dentro de `(`, `[` e `{` a indentação é ignorada e não sai NEWLINE.
 - Uma linha que começa com `.membro` continua a anterior (encadeamento de métodos em várias linhas).
 - `"""` é **comentário de bloco**, não string. String de várias linhas usa `'''`.
@@ -2110,8 +2113,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.0** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.0 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.1** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.1 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2732,7 +2735,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.0"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.1"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2812,7 +2815,7 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-07 (madrugada)
 
-- Versão da linguagem **17.0.0** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.0 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.1** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.1 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: `71e0a31` (17.0.0, o `Parsing` virou lib), igual a `origin/main` quando subiu; os commits depois dele são de doc e de ferramenta. O único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
 - **Plano 8 fechado** (`71e0a31`): `import Parsing` como qualquer lib, e lib do motor usada sem import diz qual import falta. Major porque quebra programa que usava o `Parsing` sem import. Verde na VPS em `make check`, `check-asan` e `check-debug`.

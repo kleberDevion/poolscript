@@ -160,6 +160,13 @@ typedef struct {
     int32_t  interps_total;
 } PSTokenList;
 
+/* Lê UM caractere UTF-8 em `b[i]` VALIDANDO (sequência curta, continuação
+ * errada, overlong, surrogate, acima de U+10FFFF): devolve quantos bytes ele
+ * ocupa (1 a 4) e o codepoint em `cp`, ou -1 se ali não começa caractere
+ * válido. Um lugar só pra regra: o lexer (fonte que não é UTF-8), os
+ * escritores de JSON do `main.c` e o `decode`/`readFile` da VM. */
+int ps_utf8_le_estrito(const unsigned char *b, size_t len, size_t i, uint32_t *cp);
+
 /* Imprime no stderr os avisos que a lista juntou, no formato
  * `<arquivo>:<linha>: SyntaxWarning: ...`. stderr, e nao stdout, porque
  * stdout e o canal de dado do programa e do JSON do `--check`. Definida em

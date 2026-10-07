@@ -16,9 +16,20 @@ mesmo fonte produz os mesmos tokens.
 - O fonte é **texto UTF-8**. Fora de strings, a linguagem usa apenas ASCII para
   palavras-chave, operadores e pontuação; dentro de strings qualquer caractere
   Unicode é válido.
+- Byte que não forma caractere UTF-8 (arquivo salvo em Latin-1, por exemplo) é
+  erro de sintaxe na posição dele, em qualquer lugar do arquivo, inclusive
+  dentro de string e de comentário: `o fonte nao e UTF-8 valido: byte 0xE7
+  (salve o arquivo como UTF-8)`.
+- A marca BOM do UTF-8 no começo do arquivo (que muito editor do Windows grava)
+  é aceita e ignorada.
+- Fora de texto, espaço e caractere que não aparecem na tela têm frase própria,
+  com o código: `espaco invisivel U+00A0 (nao e o espaco comum) fora de texto:
+  troque por um espaco` e `caractere invisivel U+200B fora de texto: apague`.
 - A varredura é **caractere a caractere**, mantendo `linha` e `coluna` (ambas
   1-based) para as mensagens de erro apontarem o lugar com o indicador `^^^`.
 - Quebras de linha `\n` e `\r\n` são reconhecidas; o `\r` isolado é ignorado.
+  Vale também dentro da string de várias linhas: o arquivo salvo com `\r\n` dá
+  a mesma string que o salvo com `\n`.
 
 ---
 
@@ -39,7 +50,9 @@ viram tokens, não afetam o programa):
 >
 > Código antigo com `// comentário` agora é erro de sintaxe, e o erro diz isso
 > com todas as letras: `'//' e divisao inteira, nao comentario — comentario e
-> '#' (ou bloco entre tres aspas)`. A troca é `#`.
+> '#' (ou bloco entre tres aspas)`. Vale com o `//` no começo da linha e depois
+> de código (`x = 10 // comentario`), quando o que vem depois dele não é nome
+> que exista. A troca é `#`.
 
 ```ps
 # isto é um comentário de linha
@@ -94,6 +107,11 @@ misturados no mesmo arquivo. Manter os dois saiu caro — praticamente
 toda regressão de parser vinha da interação entre indentação e chave — e o `:`
 saiu de vez.
 
+A única exceção é o guard de entrada `if __name__ == "main":` (5.7): ali o `:`
+no fim da linha seguido de uma linha mais recuada abre o bloco, e ele fecha na
+primeira linha que volta pro recuo de antes. É o único lugar em que o recuo é
+medido.
+
 O `:` continua com os outros três papéis, que **não** abrem bloco:
 
 ```ps
@@ -104,8 +122,10 @@ Entity P { nome: str }    # tipo de campo
 
 ### 1.3.2. Indentação e quebra de linha
 
-Sem bloco por indentação, o recuo é só estética: indente como quiser (o
-repositório usa 4 espaços por nível, por costume). Dentro de `(`, `[` e `{` as
+Sem bloco por indentação, o recuo é só estética: indente como quiser, com
+espaço ou TAB, dentro ou fora de `{ }` (o repositório usa 4 espaços por nível,
+por costume). Uma linha recuada no topo do arquivo é só uma linha recuada.
+Dentro de `(`, `[` e `{` as
 quebras de linha também não geram token estrutural, então uma expressão pode
 se espalhar por várias linhas à vontade.
 
@@ -252,6 +272,12 @@ com a grafia certa na mensagem — `numero nao usa '.' como separador de
 milhar: escreva 10000000 (ou 10_000_000)`. As bases `0x1F`, `0o17` e `0b1010`
 também valem, sempre inteiras.
 
+Número colado em letra, ou em dígito que a base não aceita, é erro no número
+inteiro, com o motivo: `'2' nao vale em numero binario (0b), so 0 e 1:
+'0b102'`, `'G' nao vale em numero hexadecimal (0x), so 0 a 9 e a a f: '0x1G'`,
+`expoente sem digito em '1e'`. Nome não começa com dígito: `int 1x = 2` dá
+`'1x' nao e numero nem nome: nome nao comeca com digito`.
+
 ### 1.6.2. Ponto flutuante (`flo`)
 
 Dígitos com um ponto decimal (`\d+\.\d+`) — o dígito antes do ponto é
@@ -306,6 +332,12 @@ vai pro **stderr** (não suja a saída do programa) e o `jinga --check` o devolv
 no JSON, então o editor sublinha.
 
 Aviso não é erro: o programa roda e sai com 0.
+
+A **barra no fim da linha** não continua a string simples: ela não cruza a
+quebra, e o erro é o de `string nao fechada antes da quebra de linha`. Na
+string multi-linha (`'''`), a barra e a quebra ficam no texto, com o aviso
+`barra no fim da linha: a barra e a quebra ficam no texto; use '\\' se a barra
+e mesmo pra estar ali`.
 
 O valor de `\033`, `\x1b` e `\e` é o **mesmo byte** ESC.
 

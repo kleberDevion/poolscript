@@ -649,20 +649,40 @@ static int cmd_build(void)
     return rc;
 }
 
+/* Quantos bytes do caractere em `s[i]` vão pro JSON como estão: o caractere
+ * UTF-8 válido inteiro, ou 0 quando ali não começa caractere válido (o byte
+ * sai como �). JSON com byte inválido é recusado por quem lê: o editor
+ * derrubava a resposta do `--check` de um fonte salvo em Latin-1. */
+static int json_utf8(const unsigned char *s, size_t n, size_t i)
+{
+    uint32_t cp;
+    int k = ps_utf8_le_estrito(s, n, i, &cp);
+    return k > 0 ? k : 0;
+}
+
 /* escreve `s` como string JSON (aspas + escapes) no stdout */
 static void json_str(const char *s)
 {
     putchar('"');
-    for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
-        switch (*p) {
+    size_t n = strlen(s);
+    const unsigned char *u = (const unsigned char *)s;
+    for (size_t i = 0; i < n; i++) {
+        unsigned char c = u[i];
+        switch (c) {
             case '"':  fputs("\\\"", stdout); break;
             case '\\': fputs("\\\\", stdout); break;
             case '\n': fputs("\\n", stdout);  break;
             case '\r': fputs("\\r", stdout);  break;
             case '\t': fputs("\\t", stdout);  break;
             default:
-                if (*p < 0x20) printf("\\u%04x", *p);
-                else putchar(*p);
+                if (c < 0x20) printf("\\u%04x", c);
+                else if (c < 0x80) putchar(c);
+                else {
+                    int k = json_utf8(u, n, i);
+                    if (k == 0) { fputs("\\ufffd", stdout); break; }
+                    fwrite(u + i, 1, (size_t)k, stdout);
+                    i += (size_t)k - 1;
+                }
         }
     }
     putchar('"');
@@ -1006,14 +1026,21 @@ static void jsonf(const char *chave, const char *valor)
  * boas continuam vindo, e `erros` (só quando há) diz o que sublinhar. */
 static int json_escapa(FILE *f, const char *s, int n)
 {
+    const unsigned char *u = (const unsigned char *)s;
     for (int i = 0; i < n; i++) {
-        unsigned char c = (unsigned char)s[i];
+        unsigned char c = u[i];
         if (c == '"' || c == '\\') fprintf(f, "\\%c", c);
         else if (c == '\n') fputs("\\n", f);
         else if (c == '\r') fputs("\\r", f);
         else if (c == '\t') fputs("\\t", f);
         else if (c < 0x20) fprintf(f, "\\u%04x", c);
-        else fputc(c, f);
+        else if (c < 0x80) fputc(c, f);
+        else {
+            int k = json_utf8(u, (size_t)n, (size_t)i);
+            if (k == 0) { fputs("\\ufffd", f); continue; }
+            fwrite(u + i, 1, (size_t)k, f);
+            i += k - 1;
+        }
     }
     return 0;
 }

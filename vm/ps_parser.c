@@ -665,8 +665,8 @@ static PSToken *exige_fecha(P *p, PSTokType t, const char *msg, PSToken *abre)
 static void pula_separadores(P *p)
 {
     /* Dentro de um grupo (`{ }` de dicionário, `[ ]`, `( )`) a indentação não
-     * significa nada: o lexer agora emite INDENT/DEDENT dentro de `{ }`
-     * (porque `{` também abre BLOCO), então é aqui que eles são ignorados. */
+     * significa nada. O lexer só emite INDENT/DEDENT depois de um `:` no fim
+     * da linha (o guard `main`); um que caia dentro de grupo é ignorado aqui. */
     for (;;) {
         if (checa(p, T_NEWLINE) || checa(p, T_SEMI)) { p->pos++; continue; }
         if (p->grupo_depth > 0 && (checa(p, T_INDENT) || checa(p, T_DEDENT))) {
@@ -689,7 +689,9 @@ static void pula_separadores(P *p)
          * Statement nenhum comeca com DEDENT: dentro de `{ }` a indentacao nao
          * significa nada (esta escrito em docs/linguagem/01, secao 1.3). O
          * INDENT continua guardado pelo `grupo_depth` porque o bloco `:` do
-         * `if __name__ == "main":` — o unico que sobrou — depende dele. */
+         * `if __name__ == "main":` — o unico que sobrou — depende dele. Desde
+         * o 17.0.1 o lexer so mede o recuo depois de `:`, e o DEDENT solto so
+         * aparece na saida de um bloco desses. */
         if (checa(p, T_DEDENT)) { p->pos++; continue; }
         break;
     }
@@ -1687,6 +1689,10 @@ static PSNode *bin_no(P *p, PSToken *op, PSNode *e, PSNode *d)
     if (!n) return NULL;
     n->texto = dup_tok(p, op);
     n->a = e; n->b = d;
+    /* o fim é o do lado direito, já lido: o binário de dentro de outro
+     * (`10 // zz` em `10 // zz + 1`) não passa pela `expressao`, onde o fim
+     * é marcado, e o erro apontado nele saía com l2/c2 0 */
+    fecha_no(p, n, p->pos - 1);
     return n;
 }
 
