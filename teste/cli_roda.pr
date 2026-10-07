@@ -907,6 +907,45 @@ confere("--check: numero com digito fora da base, l2/c2 do numero inteiro",
 r = roda([POOL, "--check"], entrada="int x = 10 // comentario\n")
 confere("--check: '//' de comentario antigo, l2/c2 do '//' ao nome",
         fins_do_check(r["saida"]) == [[1, 12, 1, 25]] and "nao comentario" in r["saida"])
+# Plano 6, lote 2: um erro só, na causa, com o trecho certo. Os sintomas
+# (o 2º erro numa linha que está certa, o grupo que a string engoliu, o
+# parêntese falso no topo) saem da lista.
+r = roda([POOL, "--check"], entrada="int x = 5\nif x > 3:\n    post(\"a\")\n")
+confere("--check: bloco de ':' recusado, sem erro inventado na linha de baixo",
+        fins_do_check(r["saida"]) == [[2, 9, 2, 10]])
+r = roda([POOL, "--check"], entrada="int x = 5\nif x > 3\n    post(\"a\")\n")
+confere("--check: cabecalho sem chave aponta o fim da linha dele",
+        fins_do_check(r["saida"]) == [[2, 9, 2, 10]])
+r = roda([POOL, "--check"], entrada="str s = '''abc\npost(s)\n")
+confere("--check: string tripla sem fecho, um erro so", len(fins_do_check(r["saida"])) == 1)
+r = roda([POOL, "--check"], entrada="post(b\"\\u1234\")\n")
+confere("--check: escape que nao vale em bytes, sem parentese falso no topo",
+        fins_do_check(r["saida"]) == [[1, 8, 1, 9]])
+r = roda([POOL, "--check"], entrada="int x = 0x\n")
+confere("--check: numero sem digito depois da base, um erro so", fins_do_check(r["saida"]) == [[1, 9, 1, 11]])
+r = roda([POOL, "--check"], entrada="int idade = 30\npost(\"voce tem \" + str(idade) + \" anos)\npost(\"fim\")\n")
+confere("--check: string sem fecho, um erro so, na aspa que abriu",
+        fins_do_check(r["saida"]) == [[2, 33, 2, 40]])
+r = roda([POOL, "--check"], entrada="str s = \"abc\nint x = = 2\n")
+confere("--check: o erro independente depois da string sem fecho continua",
+        fins_do_check(r["saida"]) == [[1, 9, 1, 13], [2, 9, 2, 10]])
+r = roda([POOL, "--check"], entrada="str nome = \"a\"\npost(f\"oi {nome sobrenome}\")\n")
+confere("--check: o fim do 'sobrou' da f-string em coordenada do arquivo",
+        fins_do_check(r["saida"]) == [[2, 17, 2, 26]])
+r = roda([POOL, "--check"], entrada="int x = 5\nif x => 5 {\n}\n")
+confere("--check: operador invertido sublinha os dois caracteres", fins_do_check(r["saida"]) == [[2, 6, 2, 8]])
+r = roda([POOL, "--check"], entrada="int x = 1\n")
+confere("--check: espaco invisivel, um erro so", len(fins_do_check(r["saida"])) == 1)
+# Rodando sai o primeiro erro da lista do --check, na linha dele (a frase
+# fica nos casos em C; a linha, aqui)
+os.writeFile(PASTA + "/ordem.pr", "post(1)\nint x = = 1\npost(2)\npost(3)\nint y = 1 $ 2\n")
+r = roda([POOL, "ordem.pr"])
+confere("rodando: o erro da linha 2 vem antes do caractere da linha 5",
+        r["rc"] == 2 and "SyntaxError: expressao invalida\n  em ordem.pr, linha 2" in r["saida"])
+os.writeFile(PASTA + "/fstr3.pr", "str x = \"a\"\npost(f'''linha1\n{x + }\nlinha3''')\n")
+r = roda([POOL, "fstr3.pr"])
+confere("rodando: erro dentro da f-string de tres aspas sai na linha dele",
+        r["rc"] == 2 and "dentro da f-string\n  em fstr3.pr, linha 3" in r["saida"])
 
 os.writeFile(PASTA + "/corpo.pr",
              "funct a() {\n    x = = 1\n    y = 2\n}\nfunct b() {\n    return 3\n}\n")

@@ -223,6 +223,20 @@ Devolvem sempre `bool`.
 | `!=` | diferente |
 | `<` `>` `<=` `>=` | ordem (magnitude) |
 
+### 3.3.0. `=` não compara
+
+`=` é atribuição; comparar é `==`. Num lugar em que só cabe expressão (a
+condição do `if`/`while`, dentro de parênteses, de um item, de um `return`), o
+`=` depois de um valor é erro, no próprio `=`, dizendo o que usar:
+
+```
+if x = 5 {        # SyntaxError: '=' e atribuicao; pra comparar use '=='
+if x += 5 {       # SyntaxError: '+=' e atribuicao; pra comparar use '=='
+```
+
+Os operadores escritos ao contrário (`=>`, `=<`, `=!`) não existem, e o erro
+diz qual vale: `'=>' nao existe: use '>='` (o mesmo pra `<=` e `!=`).
+
 ### 3.3.1. `===` e `!==` NÃO existem
 
 Foram removidos em 29/08. Escrever qualquer um dos dois é erro de sintaxe, com
@@ -539,6 +553,26 @@ precedência:
 
 Como ligam mais forte que os binários, `-a.b` é `-(a.b)` e `a + b[0]` é
 `a + (b[0])`.
+
+**Dentro dos argumentos de uma chamada e dos itens de lista, tupla ou
+dicionário, o `(` e o `[` vão colados no valor.** Ali um valor pode seguir
+outro sem vírgula (`post("a" b)` são dois argumentos), então `post("total:"
+(x + 1))` e `["a" ["b"]]` não dizem se o `(`/`[` é chamada, índice ou o
+próximo item. É erro, no `(`/`[`, que pede juntar ou separar com vírgula:
+
+```
+'(' separado por espaco dentro dos argumentos: junte ao valor de antes (chamada) ou separe com ',' (outro argumento)
+'[' separado por espaco dentro dos itens: junte ao valor de antes (indice) ou separe com ',' (outro item)
+```
+
+Fora disso (num comando, dentro de `( )` de agrupamento, no índice, no corpo
+de uma lambda), o espaço antes do `(`/`[` não muda nada.
+
+Vírgula esquecida entre itens é erro no item que ficou sem ela, na linha
+dele: `faltou ',' entre os itens da lista` (e `... da tupla`, `... entre os
+pares do dicionario`). Quando o fechador não existe mais adiante, é o grupo
+que ficou aberto, e o erro sai no abridor (`colchete '[' aberto nao foi
+fechado`).
 
 ---
 

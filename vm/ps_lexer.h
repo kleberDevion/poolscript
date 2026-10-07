@@ -47,6 +47,8 @@ typedef struct {
      *   T_FLO           -> d
      *   T_BOOL          -> i (0/1)
      *   T_INDENT/DEDENT -> i (nível de indentação)
+     *   T_RPAREN/T_RBRACK/T_RBRACE -> i = 1 quando o fechador não tem
+     *                     abridor (sobrou); o parser diz isso no erro
      *   demais textuais -> texto/texto_len */
     int64_t   i;
     double    d;
@@ -67,7 +69,8 @@ typedef struct {
 /* Um aviso do lexer: o programa compila, mas provavelmente não faz o que
  * parece. Ver o campo `avisos` de PSTokenList. */
 typedef struct {
-    char    msg[160];
+    char    msg[256];       /* o tamanho do `erro` do lexer e do parser: rodar
+                               mostra o primeiro desta lista, inteiro */
     int32_t linha;
     int32_t col;
     /* Onde o trecho acusado TERMINA (a posição logo depois do último
@@ -200,14 +203,6 @@ PSTokenList *ps_lexer_tokenize_modo(const char *fonte, size_t len,
 PSTokenList *ps_lexer_fluxo(const char *fonte, size_t len, int recupera,
                             const struct PSFechado *alvos, int32_t nalvos);
 
-/* Só os GRUPOS sem par de um fonte, sem guardar token nenhum: as duas
- * passadas do modo de recuperação (a segunda com os alvos da primeira), com
- * os blocos de tokens soltos conforme nascem. O resultado tem `fechados`
- * (e `ok`, `erros`) e nada mais. É o que o modo de RODAR usa quando o parser
- * falha, pra dizer o mesmo que o editor: o `(` esquecido, não o sintoma. */
-PSTokenList *ps_lexer_sonda_grupos(const char *fonte, size_t len);
-/* A frase do erro de um grupo sem par, pelo `tipo` gravado em `fechados`. */
-const char  *ps_lexer_grupo_msg(unsigned char tipo);
 /* O token `i` (índice absoluto), lendo o fonte até ele se preciso. NULL = o
  * arquivo acabou antes dele. Nas duas formas de lista. No modo fluxo, se o
  * lexer parar num erro sem o modo de recuperação, a lista ganha um EOF pra

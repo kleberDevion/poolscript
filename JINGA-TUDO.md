@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.1`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.2`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -1185,12 +1185,11 @@ Modos do lexer:
 | editor | `ps_lexer_tokenize_editor` | guarda os comentários como `T_COMMENT`; é o que o `--tokens` usa para o realce |
 | recuperação | `ps_lexer_tokenize_modo(..., comentarios, recupera=1)` | segue depois do erro e junta todos em `erros`. Um `(`, `[` ou `{` sem par vira erro **no abridor**, e o lexer fecha o grupo à força com `T_SINC` |
 | fluxo | `ps_lexer_fluxo` + `ps_lexer_tok` + `ps_lexer_solta_ate` | usado pelo compilador. Os tokens ficam em blocos fixos de `PS_TOK_BLOCO = 4096`, e os blocos de trás são soltos a cada declaração de topo. O vetor de tokens do arquivo inteiro nunca existe |
-| sonda | `ps_lexer_sonda_grupos` | só acha os grupos sem par, soltando os blocos conforme nascem; é usado quando o parser falha ao rodar |
 
 - **Segunda passada**: só roda no modo de recuperação e só quando a primeira achou grupo sem par. Ela mexe apenas nos grupos que a primeira apontou (os `alvos`). Fecha o grupo na linha que só pode ser começo de declaração (`funct nome`, `class Nome`, `@`, `import`...) ou na linha que volta à indentação do abridor sem começar com um fechador. Um arquivo válido nunca chega nessa regra, e por isso o `--check` não recusa código válido.
 - **Avisos**: um aviso (`SyntaxWarning`) não é erro. O programa roda, o aviso vai para o stderr no formato `<arquivo>:<linha>: SyntaxWarning: ...`, e o `--check` o devolve no JSON. Exemplo de aviso: `"C:\pasta"`, onde `\p` não é escape válido.
 - **f-string**: cada `{...}` é gravado com a posição **real** no fonte (`struct PSInterp`). Assim o editor enxerga as expressões de dentro da string.
-- **Erro na causa, rodando**: quando o parser falha, `sintaxe_na_causa` (em `jinga_vm.c`) chama `ps_lexer_sonda_grupos`. Se o erro caiu dentro de um grupo fechado à força, a frase e a posição passam a ser as do abridor. Rodar e editor dizem a mesma coisa. Medido em 2026-09-28:
+- **Erro na causa, rodando**: rodar compila sem recuperação; o lexer para no erro e o parser lê a lista cortada ali, então o que ele acusa pode cair antes da causa (`int x<U+00A0>= 1` dava "declaracao de variavel exige '='" no `x`). Quando a compilação falha por sintaxe, `primeiro_erro_de_sintaxe` (em `jinga_vm.c`) passa o fonte de novo pelo lexer e pelo parser com recuperação e mostra o primeiro da lista junta (`junta_erros_de_sintaxe`, a mesma do `--check`). Vale pro programa, o módulo importado, o `--bytecode` e o `-o`: o terminal e o editor dizem o mesmo primeiro erro. Medido em 2026-09-28:
 
 ```
 $ printf 'funct f(a {\n    return a\n}\npost(f(1))\n' > sint.pr && jinga sint.pr
@@ -1211,6 +1210,15 @@ SyntaxError: parentese '(' aberto nao foi fechado
   - `base` é reservada contextual: não vira nome, mas `base(...)` chama;
   - bloco aceita `{ }` ou `:` com INDENT/DEDENT, e as duas formas convivem;
   - nó que não é compilável para com erro explícito, nunca gera árvore errada em silêncio.
+- **Frases que apontam a causa** (17.0.2):
+  - `=` onde cabe comparação (`if x = 1`): `'=' e atribuicao; pra comparar use '=='`; os invertidos `=>`, `=<` e `=!` dão `'=>' nao existe: use '>='` (o trecho são os dois caracteres);
+  - dentro de argumentos e de itens (o campo `itens` do parser diz onde está), um valor colado no anterior sem vírgula dá `faltou ',' entre os itens da lista` (ou `da tupla`, `os pares do dicionario`) na linha do item, e um `(` ou `[` separado por espaço do valor de antes dá `'(' separado por espaco dentro dos argumentos: junte ao valor de antes (chamada) ou separe com ',' (outro argumento)`;
+  - fechador sem abridor (o lexer marca o token com `i = 1`): `')' sem '(' que abra: sobrou um ')'`;
+  - a aspa de dentro que fechou a string cedo: `a aspa de dentro fechou a string: use a outra aspa por fora, ou escape a de dentro com \`;
+  - palavra reservada como nome numa declaração com tipo (`int count = 0`, `dict post = {}`) dá a frase da palavra reservada, não "dois comandos na mesma linha";
+  - `@` sem nome: `esperado nome do decorador depois de '@'`;
+  - erro do lexer ou do parser dentro de `{...}` da f-string sai no ponto dele, com `dentro da f-string` no fim.
+- **Um erro só, na causa** (modo de recuperação): a string sem fecho apaga os erros que o parser achou no comando dela (`esquece_sintomas_da_string`), e o bloco de `:` recusado é pulado inteiro (`pula_bloco_orfao`), sem um 2º erro na linha recuada.
 - **Comentário desatualizado no topo de `ps_parser.c`**: ele ainda diz que chave de dict sem aspas vira string. Isso não vale mais. Medido em 2026-09-28: `d = {nome: 1}` com `nome` não definido dá `NameError: name 'nome' is not defined` antes de rodar (rc 2). Com `str nome = "k"` antes, sai `{'k': 1}`. A chave é expressão.
 - **AST** (`ps_ast.h`): union etiquetada em cima de uma **arena** (`ps_ast.c`, blocos de 64 KB, alinhados em 16). A árvore nasce no parse e morre quando a compilação termina, então não há GC nem `free` por nó. Um erro no meio do parse também não vaza memória. Os nomes dos nós (`N_PROGRAM`, `N_LITERAL`, `N_BINARY_OP`...) fazem parte do contrato do `--ast`.
 - **Modos**:
@@ -2113,8 +2121,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.1** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.1 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.2** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.2 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2735,7 +2743,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.1"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.2"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2815,7 +2823,7 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-07 (madrugada)
 
-- Versão da linguagem **17.0.1** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.1 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.2** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.2 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: `71e0a31` (17.0.0, o `Parsing` virou lib), igual a `origin/main` quando subiu; os commits depois dele são de doc e de ferramenta. O único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
 - **Plano 8 fechado** (`71e0a31`): `import Parsing` como qualquer lib, e lib do motor usada sem import diz qual import falta. Major porque quebra programa que usava o `Parsing` sem import. Verde na VPS em `make check`, `check-asan` e `check-debug`.

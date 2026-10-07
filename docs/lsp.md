@@ -436,7 +436,7 @@ comandos de editor **não param no primeiro erro**:
 
 - `--tokens` devolve os tokens das linhas boas; o trecho que o lexer não
   entendeu vira um token `ERRO`, e a lista `erros` diz o que sublinhar. String
-  sem fechar vale até o fim da linha.
+  sem fechar vale até o fim da linha (a tripla, até o fim do arquivo).
 - `--ast` devolve a árvore INTEIRA, com o que vem depois do erro: o statement
   quebrado é registrado em `erros` e o parser segue no próximo — no topo do
   arquivo **e dentro de bloco**. Uma linha quebrada no corpo de uma funct (ou
@@ -475,6 +475,22 @@ arquivo numa expressão só. Agora:
   também um "esperado nome de parametro" no `{`). O que vem **depois** do
   fecho fica: `x = = 2` na linha de baixo é um erro por si só e aparece.
 
+**String sem fechar é a causa.** A string que não fecha engole o que vinha
+depois da aspa — o `)`, a vírgula, o `{` de um cabeçalho. O erro sai **na
+aspa que abriu** (`string nao fechada antes da quebra de linha`, com o trecho
+até o fim da linha), e o que ela engoliu não vira erro: o grupo que ficou sem
+fechador não é acusado, e o que o parser acharia de errado no comando dela
+sai da lista. Se ela engoliu o `{` de um `if`, o corpo e o `}` vão junto. Um
+erro em outro comando continua aparecendo.
+
+**Um erro só, na causa.** Também saem da lista: o 2º erro inventado depois de
+um bloco de `:` recusado (`if x > 3:` e a linha recuada), o que o parser diria
+no mesmo ponto em que o lexer já acusou um caractere (o `$`, o espaço
+invisível, o acento num nome) e o parêntese "aberto" falso que um escape
+inválido dentro de string produzia. O erro no fim do arquivo cai no fim do
+último token, nunca numa linha que o arquivo não tem; e o de um cabeçalho sem
+`{` cai no fim da linha dele, não no começo.
+
 As duas regras (declaração e indentação) são palpite, e por isso só valem
 na segunda passada e só pros grupos que a primeira passada achou sem par:
 arquivo válido nunca passa por elas, um grupo que fecha direito nunca é
@@ -492,7 +508,15 @@ importado (`mq: parentese '(' aberto nao foi fechado`, com o quadro de
 dentro do módulo).
 
 Rodar o programa (`jinga arquivo.pr`) continua parando no primeiro erro — e o
-`(` esquecido também é acusado nele, não na linha de baixo.
+`(` esquecido também é acusado nele, não na linha de baixo. O erro de
+sintaxe que rodar mostra é **sempre o primeiro da lista do `--check`**:
+quando a compilação falha por sintaxe, o fonte passa de novo pelo lexer e
+pelo parser com recuperação, como no `--check`, e sai o primeiro da lista
+junta. Vale também pro módulo importado, o `--bytecode` e o `-o`. Antes, sem
+recuperação, o parser lia os tokens só até o erro do lexer e o terminal
+podia mostrar o sintoma: com um erro de sintaxe numa linha e um caractere
+inválido mais abaixo saía o de baixo, e `int x<U+00A0>= 1` dava "declaracao
+de variavel exige '='" no `x` em vez do espaço invisível.
 
 **Onde cada coisa TERMINA.** Todo token do `--tokens` e todo nó do `--ast`
 trazem `l2` e `c2`: a linha e a coluna logo depois do último caractere. Sem

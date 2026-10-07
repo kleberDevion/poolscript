@@ -204,7 +204,14 @@ variável, parâmetro, `funct`, `Entity`, `model`, campo, variável de loop, de
 if = 5                       # erro: 'if' é palavra reservada
 funct f(while) { ... }       # erro: 'while' é palavra reservada
 for each return in xs { }    # erro: 'return' é palavra reservada
+int count = 0                # erro: 'count' é palavra reservada (nome de variavel)
+dict post = {}               # erro: 'post' é palavra reservada (nome de variavel)
+funct f(int count) { ... }   # erro: 'count' é palavra reservada (nome de parametro)
 ```
+
+Com tipo na frente vale o mesmo, e o erro aponta o nome: `'count' e palavra
+reservada da linguagem e nao pode ser usada como nome de variavel` (antes
+saía "dois comandos na mesma linha", e no parâmetro o erro acusava o tipo).
 
 `base` entra na lista mesmo não sendo keyword: é o pai dentro de um método
 (`base().__init__(...)`, `base(Pai).metodo(...)`), então ligá-la a um nome
@@ -277,7 +284,9 @@ post(f'Clima: {grau} graus')     # mesma coisa
 
 **Concatenação com interpolação** (sem `f`, útil em `post(...)` com vários
 argumentos espaçados — chamadas em Jinga aceitam argumentos separados só
-por espaço, sem vírgula):
+por espaço, sem vírgula; o `(` e o `[` é que vão colados no valor, porque
+separados por espaço ali eles não dizem se são chamada, índice ou o próximo
+argumento, e isso é erro — ver linguagem 3.11):
 
 ```
 post("Clima: " {grau} " graus")

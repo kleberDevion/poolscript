@@ -69,6 +69,12 @@ typedef struct {
     /* Lendo o ITERÁVEL de uma compreensão: ali `l if c` sem `else` é o filtro
      * da compreensão, não um ternário pela metade. */
     int        comp_iteravel;
+    /* Lendo os ARGUMENTOS de uma chamada (1) ou os ITENS de uma lista, tupla
+     * ou dicionário (2): ali um `(` ou `[` separado por espaço do valor de
+     * antes não é chamada nem índice (decisão do dono, Plano 6) — é erro que
+     * pede juntar ou pôr a vírgula. `post("lista:" [1])` indexava a string e
+     * imprimia `i`. 0 = fora disso (comando, grupo `( )`, índice, corpo). */
+    int        itens;
 } P;
 
 /* TETO DE PROFUNDIDADE do parser.
@@ -144,6 +150,10 @@ static void perro_na_lista(P *p, const char *msg, PSToken *t)
      * sem par no abridor, que é a causa. O que o parser diria ali ("faltou
      * ')'", "esperado nome de parametro") é sintoma do mesmo esquecimento. */
     if (t && t->type == T_SINC) return;
+    /* T_ERRO é o trecho que o LEXER já acusou (caractere inesperado, nome
+     * com acento): o que o parser diria ali ("expressao invalida",
+     * "declaracao de variavel exige '='") é o mesmo erro, de novo. */
+    if (t && t->type == T_ERRO) return;
     if (o->nerros >= 64) return;             /* arquivo ruim não vira enxurrada */
     if (o->nerros >= o->cap_erros) {
         int32_t nc = o->cap_erros ? o->cap_erros * 2 : 8;
@@ -160,8 +170,23 @@ static void perro_na_lista(P *p, const char *msg, PSToken *t)
     o->nerros++;
 }
 
+/* O erro que cai num fechador SEM abridor (o lexer marca, `i = 1`) é ele:
+ * a frase diz que sobrou, no lugar da do que se esperava ali. `buf` guarda a
+ * frase nova; devolve a que vale. */
+static const char *frase_do_sobrando(PSToken *t, const char *msg, char *buf, size_t cap)
+{
+    if (!t || t->i != 1 || !(t->type == T_RPAREN || t->type == T_RBRACK || t->type == T_RBRACE))
+        return msg;
+    char f = t->type == T_RPAREN ? ')' : t->type == T_RBRACK ? ']' : '}';
+    char a = t->type == T_RPAREN ? '(' : t->type == T_RBRACK ? '[' : '{';
+    snprintf(buf, cap, "'%c' sem '%c' que abra: sobrou um '%c'", f, a, f);
+    return buf;
+}
+
 static void perro(P *p, const char *msg, PSToken *t)
 {
+    char sobra[80];
+    msg = frase_do_sobrando(t, msg, sobra, sizeof(sobra));
     perro_na_lista(p, msg, t);
     if (!p->out->ok) return;              /* preserva o primeiro erro */
     p->out->ok = 0;
@@ -177,11 +202,13 @@ static void perro(P *p, const char *msg, PSToken *t)
  * genérico que obriga a adivinhar de qual parâmetro se trata. */
 static void perro_f(P *p, PSToken *t, const char *fmt, ...)
 {
-    char msg[256];
+    char buf[256];
     va_list ap;
     va_start(ap, fmt);
-    vsnprintf(msg, sizeof(msg), fmt, ap);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
+    char sobra[80];
+    const char *msg = frase_do_sobrando(t, buf, sobra, sizeof(sobra));
     perro_na_lista(p, msg, t);
     if (!p->out->ok) return;              /* preserva o primeiro erro */
     p->out->ok = 0;
@@ -641,9 +668,138 @@ static int aceita_kw(P *p, const char *kw)
     return 0;
 }
 
+static int kw_abre_expr(const char *s);
+static int eh_kw_funct(PSToken *t);
+static int acusa_aspa_de_dentro(P *p, PSToken *ant, PSToken *t);
+static int pode_iniciar_expr(PSToken *t);
+
+/* A palavra na posição `k` (depois de um tipo) é o NOME da declaração,
+ * reservada ou não: nome comum sempre; palavra reservada quando logo depois
+ * vem `=` (ou, num parâmetro, `,` ou `)`). Quem recusa a reservada é o
+ * `exige_nome`, com a frase dela, apontando ela. Sem isto `int count = 0`
+ * virava dois comandos, `dict post = {}` também, e `int count` no parâmetro
+ * acusava o `int`. `int funct`, `list(x)` e `x is int` não entram: o que
+ * fecha a forma é o `=` ou o separador do parâmetro. */
+static int eh_nome_de_declaracao(P *p, int k, int parametro)
+{
+    PSToken *n = espia(p, k);
+    if (n->type == T_IDENT || n->type == T_IDENT_UPPER) return 1;
+    if (n->type != T_KW || eh_kw_funct(n)) return 0;
+    if (parametro && n->texto && !strcmp(n->texto, "self")) return 0;
+    PSToken *d = espia(p, k + 1);
+    if (d->type == T_OP && d->texto && d->texto[0] == '=' && !d->texto[1]) return 1;
+    return parametro && (d->type == T_COMMA || d->type == T_RPAREN);
+}
+
+/* O token que acaba um operando: nome, literal, `)` ou `]`, e as palavras
+ * que valem como valor (`self`, `post`...). */
+static int fecha_operando(PSToken *t)
+{
+    switch (t->type) {
+        case T_IDENT: case T_IDENT_UPPER: case T_INT: case T_FLO: case T_STR:
+        case T_FSTRING: case T_BYTES: case T_BOOL: case T_NULL: case T_COLOR:
+        case T_RPAREN: case T_RBRACK:
+            return 1;
+        case T_KW:
+            return kw_abre_expr(t->texto);
+        default:
+            return 0;
+    }
+}
+
+/* O token ENCONTRADO onde se esperava outra coisa, quando ele mesmo é a
+ * causa; quem exige um token pergunta isto antes de dizer o que esperava.
+ *   - `=` (ou `+=`...) logo depois de um operando: a comparação escrita com
+ *     atribuição (`if x = 5 {`). Saía "esperado inicio de bloco com '{'",
+ *     "faltou ')'" ou "expressao invalida", e nenhuma falava de `==`.
+ *   - `=` colado num `>`, `<` ou `!`: o operador invertido (`=>`), e a frase
+ *     diz qual vale.
+ * Em posição de expressão o `=` nunca vale depois de um operando: as
+ * atribuições de verdade são lidas antes (por lookahead). 1 = acusou. */
+static int acusa_encontrado(P *p, PSToken *t)
+{
+    if (!t || t != atual(p) || t->type != T_OP || !t->texto || !eh_op_atribuicao(t->texto)) return 0;
+    if (p->pos <= 0 || !fecha_operando(tok_i(p, p->pos - 1))) return 0;
+    PSToken *dep = espia(p, 1);
+    if (!strcmp(t->texto, "=") && dep->type == T_OP && dep->texto && dep->line == t->line
+            && dep->col == t->col + 1
+            && (!strcmp(dep->texto, ">") || !strcmp(dep->texto, "<") || !strcmp(dep->texto, "!"))) {
+        PSToken par = *t;               /* o trecho é o par inteiro */
+        par.linha_fim = t->line;
+        par.col_fim = t->col + 2;
+        perro_f(p, &par, "'=%s' nao existe: use '%s='", dep->texto, dep->texto);
+        return 1;
+    }
+    perro_f(p, t, "'%s' e atribuicao; pra comparar use '=='", t->texto);
+    return 1;
+}
+
+/* O token atual está SEPARADO do anterior (espaço ou quebra de linha)? */
+static int separado_do_anterior(P *p)
+{
+    if (p->pos <= 0) return 0;
+    PSToken *a = tok_i(p, p->pos - 1), *t = atual(p);
+    int32_t al = a->linha_fim ? a->linha_fim : a->line;
+    int32_t ac = a->col_fim ? a->col_fim : a->col + (a->nchars > 0 ? a->nchars : 1);
+    return !(al == t->line && ac == t->col);
+}
+
+/* Dentro de argumentos ou itens (`p->itens`), o `(` ou `[` separado por
+ * espaço do valor de antes não é chamada nem índice: é erro que pede juntar
+ * ou separar com vírgula (decisão do dono no Plano 6). `post("lista:" [1])`
+ * indexava a string, e `post("total:" (x + 1))` chamava a string. 1 = acusou. */
+static int acusa_sufixo_separado(P *p)
+{
+    if (!separado_do_anterior(p)) return 0;      /* quem chama já viu `p->itens` */
+    PSToken *t = atual(p);
+    int par = t->type == T_LPAREN;
+    perro_f(p, t, "'%c' separado por espaco dentro %s: junte ao valor de antes (%s) ou separe com ',' (%s)",
+            par ? '(' : '[', p->itens == 1 ? "dos argumentos" : "dos itens",
+            par ? "chamada" : "indice", p->itens == 1 ? "outro argumento" : "outro item");
+    return 1;
+}
+
+/* O fechador `t` do grupo atual existe mais adiante, com os grupos de dentro
+ * casados? Para no T_SINC e no fim do arquivo. É o que separa a vírgula
+ * esquecida (o fechador está lá) do fechador esquecido (não está). */
+static int fechador_adiante(P *p, PSTokType t)
+{
+    int prof = 0;
+    for (int32_t k = p->pos; tem(p, k); k++) {
+        PSTokType ty = tok_i(p, k)->type;
+        if (ty == T_EOF || ty == T_SINC) return 0;
+        if (ty == T_LPAREN || ty == T_LBRACK || ty == T_LBRACE) { prof++; continue; }
+        if (ty == T_RPAREN || ty == T_RBRACK || ty == T_RBRACE) {
+            if (prof == 0) return ty == t;
+            prof--;
+        }
+    }
+    return 0;
+}
+
+static PSToken *exige_fecha(P *p, PSTokType t, const char *msg, PSToken *abre);
+
+/* O fechador de um grupo de ITENS (lista, tupla, dicionário). Se no lugar
+ * dele vem algo que começa um item, e o fechador está mais adiante, faltou a
+ * VÍRGULA, e o erro é nesse item (`falta_virgula`). Saía a frase do fechador
+ * ("faltou ']' na lista"), apontando o ABRIDOR quando o item estava em outra
+ * linha. Sem o fechador adiante, a frase e o lugar de hoje. */
+static PSToken *exige_fecha_itens(P *p, PSTokType t, const char *msg, PSToken *abre, const char *falta_virgula)
+{
+    if (checa(p, t)) return tok_i(p, p->pos++);
+    PSToken *tk = atual(p);
+    if (tk->type != T_SINC && pode_iniciar_expr(tk) && fechador_adiante(p, t)) {
+        if (p->pos > 0 && acusa_aspa_de_dentro(p, tok_i(p, p->pos - 1), tk)) return NULL;
+        perro(p, falta_virgula, tk);
+        return NULL;
+    }
+    return exige_fecha(p, t, msg, abre);
+}
+
 static PSToken *exige(P *p, PSTokType t, const char *msg)
 {
     if (checa(p, t)) return tok_i(p, p->pos++);
+    if (acusa_encontrado(p, atual(p))) return NULL;
     perro(p, msg, atual(p));
     return NULL;
 }
@@ -658,6 +814,8 @@ static PSToken *exige_fecha(P *p, PSTokType t, const char *msg, PSToken *abre)
     PSToken *tk = atual(p);
     /* grupo que o lexer fechou à força: ele já acusou o abridor */
     if (tk->type == T_SINC) { perro(p, msg, tk); return NULL; }
+    if (acusa_encontrado(p, tk)) return NULL;
+    if (p->pos > 0 && acusa_aspa_de_dentro(p, tok_i(p, p->pos - 1), tk)) return NULL;
     perro(p, msg, (tk->line != abre->line) ? abre : tk);
     return NULL;
 }
@@ -878,8 +1036,7 @@ static int parse_parametros(P *p, PSNode *n, int lambda, PSToken *abre)
                     && (nx->type == T_IDENT || nx->type == T_IDENT_UPPER))
                 return recusa_tipo_em_estrela(p, tt, op->texto[1] ? 2 : 1, nx->texto);
         }
-        if (eh_tipo_de_retorno(tt)
-                && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
+        if (eh_tipo_de_retorno(tt) && eh_nome_de_declaracao(p, 1, 1)) {
             if (estrela) return recusa_tipo_em_estrela(p, tt, estrela, espia(p, 1)->texto);
             ptipo = tipo_retorno_dup(p, tt);
             p->pos++;
@@ -1191,6 +1348,8 @@ static PSNode *primario(P *p)
                 PSNode *n = ps_node_novo(p->arena, N_TUPLE_LITERAL, t->line, t->col);
                 return n;
             }
+            int itens_fora = p->itens;
+            p->itens = 0;                       /* agrupamento: uma expressão só */
             PSNode *e = expressao(p);
             if (FALHOU(p)) { p->grupo_depth--; return NULL; }
             /* vírgula depois da primeira expressão => tupla, não agrupamento */
@@ -1198,6 +1357,7 @@ static PSNode *primario(P *p)
                 PSNode *n = ps_node_novo(p->arena, N_TUPLE_LITERAL, t->line, t->col);
                 if (!n) return NULL;
                 if (ps_vec_push(p->arena, &n->lista, e) != 0) return NULL;
+                p->itens = 2;                   /* daqui pra frente, itens */
                 while (!checa(p, T_RPAREN)) {
                     PSNode *it = expressao(p);
                     if (FALHOU(p)) { p->grupo_depth--; return NULL; }
@@ -1205,10 +1365,13 @@ static PSNode *primario(P *p)
                     if (!aceita(p, T_COMMA)) break;
                 }
                 p->grupo_depth--;
-                if (!exige_fecha(p, T_RPAREN, "faltou ')' na tupla", t)) return NULL;
+                p->itens = itens_fora;
+                if (!exige_fecha_itens(p, T_RPAREN, "faltou ')' na tupla", t,
+                                       "faltou ',' entre os itens da tupla")) return NULL;
                 return n;
             }
             p->grupo_depth--;
+            p->itens = itens_fora;
             if (!exige_fecha(p, T_RPAREN, "faltou ')'", t)) return NULL;
             return e;
         }
@@ -1217,6 +1380,8 @@ static PSNode *primario(P *p)
             p->grupo_depth++;
             PSNode *n = ps_node_novo(p->arena, N_LIST_LITERAL, t->line, t->col);
             if (!n) { p->grupo_depth--; return NULL; }
+            int itens_fora = p->itens;
+            p->itens = 2;                       /* os itens da lista */
             pula_separadores(p);
             if (!checa(p, T_RBRACK)) {
                 for (;;) {
@@ -1268,7 +1433,9 @@ static PSNode *primario(P *p)
             }
             pula_separadores(p);
             p->grupo_depth--;
-            if (!exige_fecha(p, T_RBRACK, "faltou ']' na lista", t)) return NULL;
+            p->itens = itens_fora;
+            if (!exige_fecha_itens(p, T_RBRACK, "faltou ']' na lista", t,
+                                   "faltou ',' entre os itens da lista")) return NULL;
             return n;
         }
         case T_LBRACE: {
@@ -1276,6 +1443,8 @@ static PSNode *primario(P *p)
             p->grupo_depth++;
             PSNode *n = ps_node_novo(p->arena, N_DICT_LITERAL, t->line, t->col);
             if (!n) { p->grupo_depth--; return NULL; }
+            int itens_fora = p->itens;
+            p->itens = 2;                       /* as chaves e os valores */
             pula_separadores(p);
             if (!checa(p, T_RBRACE)) {
                 for (;;) {
@@ -1319,7 +1488,9 @@ static PSNode *primario(P *p)
             }
             pula_separadores(p);
             p->grupo_depth--;
-            if (!exige_fecha(p, T_RBRACE, "faltou '}' no dicionario", t)) return NULL;
+            p->itens = itens_fora;
+            if (!exige_fecha_itens(p, T_RBRACE, "faltou '}' no dicionario", t,
+                                   "faltou ',' entre os pares do dicionario")) return NULL;
             return n;
         }
         case T_COLOR: {
@@ -1420,6 +1591,7 @@ static PSNode *primario(P *p)
                          "(ou bloco entre tres aspas)", t);
                 return NULL;
             }
+            if (acusa_encontrado(p, t)) return NULL;          /* `return x = 5` */
             perro(p, "expressao invalida", t);
             return NULL;
     }
@@ -1440,11 +1612,14 @@ static PSNode *posfixo(P *p)
         PSToken *t = atual(p);
 
         if (checa(p, T_LPAREN)) {
+            if (p->itens && acusa_sufixo_separado(p)) return NULL;
             p->pos++;
             p->grupo_depth++;
             PSNode *c = ps_node_novo(p->arena, N_CALL, t->line, t->col);
             if (!c) { p->grupo_depth--; return NULL; }
             c->a = no;
+            int itens_fora = p->itens;
+            p->itens = 1;                       /* os argumentos */
             pula_separadores(p);
             if (!checa(p, T_RPAREN)) {
                 for (;;) {
@@ -1540,6 +1715,7 @@ static PSNode *posfixo(P *p)
             }
             pula_separadores(p);
             p->grupo_depth--;
+            p->itens = itens_fora;
             if (!exige_fecha(p, T_RPAREN, "faltou ')' na chamada", t)) return NULL;
             no = c;
             continue;
@@ -1562,11 +1738,14 @@ static PSNode *posfixo(P *p)
         }
 
         if (checa(p, T_LBRACK)) {
+            if (p->itens && acusa_sufixo_separado(p)) return NULL;
             p->pos++;
             /* Distingue índice de slice: `[i]` vs `[ini:fim:passo]`, com
              * qualquer parte podendo faltar (`[:2]`, `[::-1]`, `[1:]`). */
             PSNode *inicio = NULL, *fim = NULL, *passo = NULL;
             int eh_slice = 0;
+            int itens_fora = p->itens;
+            p->itens = 0;                       /* o índice é uma expressão só */
 
             if (checa(p, T_COLON)) {
                 eh_slice = 1;
@@ -1602,6 +1781,7 @@ static PSNode *posfixo(P *p)
                     inicio = primeiro;
                 }
             }
+            p->itens = itens_fora;
             if (!exige_fecha(p, T_RBRACK, "faltou ']' no indice", t)) return NULL;
 
             if (eh_slice) {
@@ -1912,16 +2092,23 @@ static void fecha_no(P *p, PSNode *n, int32_t pos_ini)
     }
 }
 
-/* Empurra a posição real pra sub-árvore de uma interpolação. O trecho foi
- * lexado sozinho, então os nós nascem na linha 1: a primeira linha soma a
- * coluna do `{`, as seguintes já vêm certas. */
+/* Um ponto (linha, coluna) DENTRO do trecho de uma interpolação, levado pro
+ * arquivo: o trecho foi lexado sozinho, e nasce na linha 1. A primeira linha
+ * soma a coluna do `{` (`col`), as seguintes já vêm certas. Um lugar só pra
+ * conta: os nós da sub-árvore e os erros acusados dentro das chaves (o fim
+ * do "sobrou" saía na coordenada do trecho, antes do começo). */
+static void fstring_ponto(int32_t *l, int32_t *c, int32_t linha, int32_t col)
+{
+    if (*l <= 0) return;
+    if (*l == 1 && *c) *c = col + *c - 1;
+    *l = linha + *l - 1;
+}
+
 static void fstring_pos(PSNode *n, int32_t linha, int32_t col)
 {
     if (!n) return;
-    if (n->line == 1) n->col = col + n->col - 1;
-    n->line = linha + n->line - 1;
-    if (n->linha_fim == 1 && n->col_fim) n->col_fim = col + n->col_fim - 1;
-    if (n->linha_fim) n->linha_fim = linha + n->linha_fim - 1;
+    fstring_ponto(&n->line, &n->col, linha, col);
+    if (n->col_fim) fstring_ponto(&n->linha_fim, &n->col_fim, linha, col);
     fstring_pos(n->a, linha, col);
     fstring_pos(n->b, linha, col);
     fstring_pos(n->c, linha, col);
@@ -1941,18 +2128,45 @@ static void fstring_filhos(P *p, PSNode *n, int32_t i_tok)
     for (int32_t k = 0; k < p->tl->ninterps; k++) {
         if (p->tl->interps[k].tok != i_tok || !p->tl->interps[k].txt) continue;
         const char *txt = p->tl->interps[k].txt;
+        int32_t il = p->tl->interps[k].linha, ic = p->tl->interps[k].col;
         PSTokenList *sub = ps_lexer_tokenize(txt, strlen(txt));
         if (!sub) continue;
-        if (!sub->ok) { ps_lexer_free(sub); continue; }
+        if (!sub->ok) {
+            /* erro de LEXER dentro das chaves (`{x $ y}`): sai no ponto dele,
+             * no arquivo — antes o compilador dizia "expressao invalida
+             * dentro da f-string" apontando o `f` */
+            PSToken tk = {0};
+            tk.line = sub->erro_linha; tk.col = sub->erro_col;
+            fstring_ponto(&tk.line, &tk.col, il, ic);
+            tk.linha_fim = tk.line; tk.col_fim = tk.col + 1;
+            perro_f(p, &tk, "%s dentro da f-string", sub->erro);
+            ps_lexer_free(sub);
+            continue;
+        }
         P sp = {0};
         sp.toks = sub->tokens; sp.n = sub->n; sp.arena = p->arena; sp.out = p->out;
         int32_t erros_antes = p->out->nerros;
         int ok_antes = p->out->ok;
         PSNode *e = expressao(&sp);
-        /* erro DENTRO do trecho não derruba o arquivo: o compilador é quem
-         * decide a frase, e ele refaz este caminho */
+        /* O erro do trecho (`{x + }`) foi registrado em coordenada do
+         * trecho: sai daqui e volta no ponto certo do arquivo, com a frase
+         * dele. Antes ele era descartado e o compilador dizia "expressao
+         * invalida dentro da f-string" no `f`, linhas acima de onde estava. */
+        PSAviso err = {0};
+        int falhou = !e && p->out->nerros > erros_antes;
+        if (falhou) err = p->out->erros[erros_antes];
         p->out->nerros = erros_antes;
         p->out->ok = ok_antes;
+        if (falhou) {
+            PSToken tk = {0};
+            tk.line = err.linha; tk.col = err.col;
+            tk.linha_fim = err.linha_fim; tk.col_fim = err.col_fim;
+            fstring_ponto(&tk.line, &tk.col, il, ic);
+            if (tk.col_fim) fstring_ponto(&tk.linha_fim, &tk.col_fim, il, ic);
+            perro_f(p, &tk, "%s dentro da f-string", err.msg);
+            ps_lexer_free(sub);
+            continue;
+        }
         /* ...menos o que SOBROU depois da expressão: `{nome sobrenome}`,
          * `{preco = }`, `{qtd)}` eram lidos como `nome`, `preco` e `qtd`, e o
          * resto sumia calado — até um nome que não existe. Aqui a posição do
@@ -1960,8 +2174,9 @@ static void fstring_filhos(P *p, PSNode *n, int32_t i_tok)
         if (e && atual(&sp)->type != T_EOF) {
             PSToken *sob = atual(&sp);
             PSToken tk = *sob;
-            tk.line = p->tl->interps[k].linha + (sob->line - 1);
-            tk.col = sob->line == 1 ? p->tl->interps[k].col + sob->col - 1 : sob->col;
+            tk.i = 0;              /* a frase é esta, não a do fechador sem par */
+            fstring_ponto(&tk.line, &tk.col, il, ic);
+            if (tk.col_fim) fstring_ponto(&tk.linha_fim, &tk.col_fim, il, ic);
             const char *resto = (sob->line == 1 && sob->col >= 1 && (size_t)(sob->col - 1) <= strlen(txt))
                                 ? txt + sob->col - 1 : "?";
             perro_f(p, &tk, "sobrou '%.40s' dentro de {} da f-string: cada {} leva uma expressao so", resto);
@@ -1969,7 +2184,7 @@ static void fstring_filhos(P *p, PSNode *n, int32_t i_tok)
         }
         ps_lexer_free(sub);
         if (!e) continue;
-        fstring_pos(e, p->tl->interps[k].linha, p->tl->interps[k].col);
+        fstring_pos(e, il, ic);
         ps_vec_push(p->arena, &n->lista, e);
     }
 }
@@ -2006,6 +2221,7 @@ static PSNode *expressao_no(P *p)
          * ternário pela metade: `x if c` sem o `else` virava "dois comandos"
          * ou "faltou ')'", longe do que falta. */
         if (!checa_kw(p, "else") && !checa(p, T_LBRACE) && !p->comp_iteravel) {
+            if (acusa_encontrado(p, atual(p))) return NULL;   /* `a if x = 5 else b` */
             perro(p, "faltou 'else' no ternario: valor if condicao else outro", t);
             return NULL;
         }
@@ -2053,6 +2269,24 @@ static void pula_indent_solto(P *p)
  * `k` se não há bloco ali. */
 static int32_t pula_bloco_orfao(P *p, int32_t k)
 {
+    /* O bloco de `:` do cabeçalho recusado (`if x > 3:` e a linha recuada,
+     * "bloco com ':' nao existe mais"): vai junto, até o DEDENT que o fecha.
+     * Deixado pra trás, o INDENT virava "expressao invalida" na linha de
+     * baixo, que está certa. */
+    if (k > 0 && tem(p, k) && tok_i(p, k)->type == T_NEWLINE && tok_i(p, k - 1)->type == T_COLON) {
+        int32_t q = k;
+        while (tem(p, q) && tok_i(p, q)->type == T_NEWLINE) q++;
+        if (tem(p, q) && tok_i(p, q)->type == T_INDENT) {
+            int nivel = 0;
+            for (; tem(p, q); q++) {
+                PSTokType tq = tok_i(p, q)->type;
+                if (tq == T_EOF) return q;
+                if (tq == T_INDENT) nivel++;
+                else if (tq == T_DEDENT && --nivel == 0) return q + 1;
+            }
+            return q;
+        }
+    }
     int32_t q = k;
     while (tem(p, q) && (tok_i(p, q)->type == T_NEWLINE || tok_i(p, q)->type == T_INDENT
                          || tok_i(p, q)->type == T_DEDENT)) q++;
@@ -2100,12 +2334,38 @@ static void pula_statement(P *p, int32_t ini)
 /* O que a descida do parser deixa pendurado quando um statement falha no meio.
  * Dentro de bloco, recuperar é voltar ao estado de ANTES do statement — zerar,
  * como o topo faz, perderia o `grupo_depth` do corpo de uma lambda. */
-typedef struct { int prof, grupo_depth, chave_abre_bloco, dec_sem_captura; } EstadoP;
+typedef struct { int prof, grupo_depth, chave_abre_bloco, dec_sem_captura; int32_t nerros; } EstadoP;
 
 static EstadoP estado_salva(P *p)
 {
-    EstadoP e = { p->prof, p->grupo_depth, p->chave_abre_bloco, p->dec_sem_captura };
+    EstadoP e = { p->prof, p->grupo_depth, p->chave_abre_bloco, p->dec_sem_captura, p->out->nerros };
     return e;
+}
+
+/* O comando pulado (de `ini` até o cursor) tem uma string sem fecho (o lexer
+ * marca, `i = 1`)? Ela é a causa de tudo que o parser achou de errado nele —
+ * o fechador, a vírgula ou o `{` que ela engoliu: esses erros saem da lista
+ * (`nerros` volta a `nerros0`), e fica o da string, na aspa que abriu. Se ela
+ * engoliu o `{` de um cabeçalho, o corpo e o `}` sem par que vêm depois são
+ * desse comando, e vão junto. */
+static void esquece_sintomas_da_string(P *p, int32_t ini, int32_t nerros0)
+{
+    int achou = 0, chave = 0;
+    for (int32_t k = ini; k < p->pos && tem(p, k); k++) {
+        PSToken *t = tok_i(p, k);
+        if ((t->type == T_STR || t->type == T_FSTRING || t->type == T_BYTES) && t->i == 1) {
+            achou = 1;
+            if (t->texto && memchr(t->texto, '{', (size_t)t->texto_len)) chave = 1;
+        }
+    }
+    if (!achou) return;
+    if (p->out->nerros > nerros0) p->out->nerros = nerros0;
+    if (!chave) return;
+    for (int32_t k = p->pos; tem(p, k); k++) {
+        PSToken *t = tok_i(p, k);
+        if (t->type == T_EOF) return;
+        if (t->type == T_RBRACE && t->i == 1) { p->pos = k + 1; return; }
+    }
 }
 
 /* Recupera o statement que falhou dentro de um bloco. Devolve 1 se dá pra
@@ -2120,6 +2380,7 @@ static int recupera_no_bloco(P *p, int32_t ini, EstadoP e)
     p->chave_abre_bloco = e.chave_abre_bloco;
     p->dec_sem_captura = e.dec_sem_captura;
     pula_statement(p, ini);
+    esquece_sintomas_da_string(p, ini, e.nerros);
     return 1;
 }
 
@@ -2263,6 +2524,7 @@ static PSNode *bloco_no(P *p)
         return NULL;
     }
 
+    if (acusa_encontrado(p, t)) return NULL;
     perro(p, "esperado inicio de bloco com '{'", t);
     return NULL;
 }
@@ -2481,7 +2743,10 @@ static int modulo_entre_aspas(P *p, PSNode *n)
     return 1;
 }
 
-static int caminho_modulo(P *p, PSNodeVec *v)
+/* `decorador` = 1 no caminho de um `@`: as frases dizem "decorador", não
+ * "import" (o `@` sozinho dava "esperado nome de modulo depois de 'import'"
+ * num arquivo sem import nenhum). */
+static int caminho_modulo(P *p, PSNodeVec *v, int decorador)
 {
     PSToken *ponto = NULL;      /* o `.` que exigiu esta parte, se houve */
     for (;;) {
@@ -2496,10 +2761,12 @@ static int caminho_modulo(P *p, PSNodeVec *v)
          * quebrava todo decorador cujo membro é keyword. */
         if (ponto && (t->type == T_NEWLINE || t->type == T_EOF
                       || t->type == T_INDENT || t->type == T_DEDENT)) {
-            perro(p, "faltou o nome do submodulo depois do '.'", ponto);
+            perro(p, decorador ? "faltou o nome depois do '.' no decorador"
+                               : "faltou o nome do submodulo depois do '.'", ponto);
             return -1;
         }
-        const char *n = nome_livre(p, "esperado nome de modulo depois de 'import'");
+        const char *n = nome_livre(p, decorador ? "esperado nome do decorador depois de '@'"
+                                                : "esperado nome de modulo depois de 'import'");
         if (FALHOU(p)) return -1;
         PSNode *no = ps_node_novo(p->arena, N_NAME, t->line, t->col);
         if (!no) return -1;
@@ -3137,6 +3404,22 @@ static PSNode *marca_nome_solto(P *p, PSNode *r, int32_t ini, PSToken *nome, PST
 }
 
 /* Devolve o comando (o mesmo, ou marcado pelo `marca_nome_solto`). */
+/* `"ele disse "oi" pra mim"`: a string `ant` acaba EXATAMENTE onde `t`
+ * começa, sem espaço — a aspa de dentro fechou a string antes da hora. O
+ * erro é nessa aspa, com o conserto; saía "dois comandos na mesma linha" (ou
+ * "faltou ']'") no `oi`, e seguir a dica não consertava nada. 1 = acusou. */
+static int acusa_aspa_de_dentro(P *p, PSToken *ant, PSToken *t)
+{
+    if (!ant || !t || !(ant->type == T_STR || ant->type == T_FSTRING || ant->type == T_BYTES)) return 0;
+    if (!ant->col_fim || ant->linha_fim != t->line || ant->col_fim != t->col) return 0;
+    PSToken aspa = *ant;                /* o trecho é a aspa que fechou */
+    aspa.line = ant->linha_fim;
+    aspa.col = ant->col_fim - 1;
+    perro(p, "a aspa de dentro fechou a string: use a outra aspa por fora, ou escape a de dentro com \\",
+          &aspa);
+    return 1;
+}
+
 static PSNode *exige_fim_de_comando(P *p, int32_t ini, PSNode *r, int membro)
 {
     if (FALHOU(p) || p->pos <= ini) return r;
@@ -3171,6 +3454,7 @@ static PSNode *exige_fim_de_comando(P *p, int32_t ini, PSNode *r, int membro)
     /* `} else {` depois do que não tem else, `finally` repetido, `} case`: a
      * frase é a da palavra fora do lugar, que o próximo comando dá */
     if (eh_palavra_de_clausula(t)) return r;
+    if (acusa_aspa_de_dentro(p, ult, t)) return r;
     perro(p, membro ? "dois membros na mesma linha: separe com ';' ou quebre a linha"
                     : "dois comandos na mesma linha: separe com ';' ou quebre a linha", t);
     return r;
@@ -3180,12 +3464,15 @@ static PSNode *statement(P *p)
 {
     int membro = p->membro_classe;
     p->membro_classe = 0;
+    int itens = p->itens;               /* comando (corpo de lambda) não é item */
+    p->itens = 0;
     pula_separadores(p);
     int32_t ini = p->pos;
     PSNode *r = statement_no(p);
     fecha_no(p, r, ini);
     r = exige_fim_de_comando(p, ini, r, membro);
     p->ult_kind = (r && !FALHOU(p)) ? r->kind : 0;
+    p->itens = itens;
     return r;
 }
 
@@ -3200,7 +3487,14 @@ static PSNode *decorador_cabeca(P *p)
     if (!n) return NULL;
     PSNode *dc = ps_node_novo(p->arena, N_DECORATOR_CALL, ta->line, ta->col);
     if (!dc) return NULL;
-    if (caminho_modulo(p, &dc->lista) != 0) return NULL;
+    /* `@` sem nome (fim de linha, número, texto): o erro é no `@`, que é o
+     * que está incompleto */
+    PSToken *t1 = atual(p);
+    if (t1->type != T_IDENT && t1->type != T_IDENT_UPPER && t1->type != T_KW) {
+        perro(p, "esperado nome do decorador depois de '@'", ta);
+        return NULL;
+    }
+    if (caminho_modulo(p, &dc->lista, 1) != 0) return NULL;
     if (aceita(p, T_LPAREN)) {
         dc->i2 = 1;   /* teve parênteses: é chamada (mesmo sem args) */
         pula_separadores(p);
@@ -3550,7 +3844,7 @@ static PSNode *statement_no(P *p)
                 continue;
             }
             if ((mt->type == T_IDENT || mt->type == T_IDENT_UPPER || mt->type == T_KW)
-                       && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER
+                       && (eh_nome_de_declaracao(p, 1, 0)
                            /* `object private static nome`: depois do tipo pode vir
                             * modificador antes do nome — o laço abaixo os lê */
                            || (espia(p, 1)->type == T_KW && espia(p, 1)->texto
@@ -3731,7 +4025,7 @@ static PSNode *statement_no(P *p)
             int aspas = modulo_entre_aspas(p, n);
             if (aspas < 0) return NULL;
             if (!aspas && checa(p, T_DOT)) { recusa_import_relativo(p, "import"); return NULL; }
-            if (!aspas && caminho_modulo(p, &n->lista) != 0) return NULL;
+            if (!aspas && caminho_modulo(p, &n->lista, 0) != 0) return NULL;
             if (aceita_kw(p, "as")) {
                 n->texto2 = nome_livre(p, "esperado nome apos 'as'");
                 if (FALHOU(p)) return NULL;
@@ -3753,7 +4047,7 @@ static PSNode *statement_no(P *p)
                 /* pontos iniciais = import relativo (`from .mod import x`) */
                 while (checa(p, T_DOT)) { p->pos++; n->i2++; }
                 if (!(n->i2 > 0 && checa_kw(p, "import"))) {
-                    if (caminho_modulo(p, &n->lista) != 0) return NULL;
+                    if (caminho_modulo(p, &n->lista, 0) != 0) return NULL;
                 }
             }
             if (checa_kw(p, "GET")) { recusa_palavra_trocada(p, "from"); return NULL; }
@@ -3769,7 +4063,7 @@ static PSNode *statement_no(P *p)
         int aspas_push = modulo_entre_aspas(p, n);
         if (aspas_push < 0) return NULL;
         if (!aspas_push && checa(p, T_DOT)) { recusa_import_relativo(p, "PUSH"); return NULL; }
-        if (!aspas_push && caminho_modulo(p, &n->lista) != 0) return NULL;
+        if (!aspas_push && caminho_modulo(p, &n->lista, 0) != 0) return NULL;
         if (aceita_kw(p, "as")) {
             n->texto2 = nome_livre(p, "esperado nome apos 'as'");
             if (FALHOU(p)) return NULL;
@@ -4422,7 +4716,7 @@ static PSNode *statement_no(P *p)
     if ((eh_tipo_kw_decl(t) || t->type == T_IDENT || t->type == T_IDENT_UPPER)
             && espia(p, 1)->type == T_KW && espia(p, 1)->texto
             && (strcmp(espia(p, 1)->texto, "private") == 0 || strcmp(espia(p, 1)->texto, "public") == 0)
-            && (espia(p, 2)->type == T_IDENT || espia(p, 2)->type == T_IDENT_UPPER)) {
+            && eh_nome_de_declaracao(p, 2, 0)) {
         int priv = strcmp(espia(p, 1)->texto, "private") == 0;
         const char *tipo = tipo_retorno_dup(p, t);
         p->pos += 2;                                    /* tipo e private/public */
@@ -4448,8 +4742,7 @@ static PSNode *statement_no(P *p)
      * um NOME — `list(x)`, `json.parse(s)`, `str(n)` como statement continuam
      * expressao (chamada/modulo), como o ramo de expressao ja tratava. */
     if (eh_tipo_kw_decl(t)
-            && (eh_kw_funct(espia(p, 1))
-                || espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
+            && (eh_kw_funct(espia(p, 1)) || eh_nome_de_declaracao(p, 1, 0))) {
         PSToken *nx = espia(p, 1);
         if (eh_kw_funct(nx)) {
             if (!eh_tipo_de_retorno(t)) {
@@ -4482,7 +4775,7 @@ static PSNode *statement_no(P *p)
      * solto e um `c = Conta()` sem tipo nenhum. Se o tipo existe é o
      * compilador que diz: ele conhece as classes do arquivo e dos imports. */
     if ((t->type == T_IDENT || t->type == T_IDENT_UPPER)
-            && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)
+            && eh_nome_de_declaracao(p, 1, 0)
             && espia(p, 2)->type == T_OP && espia(p, 2)->texto && strcmp(espia(p, 2)->texto, "=") == 0) {
         PSToken *nt = espia(p, 1);
         PSNode *n = ps_node_novo(p->arena, N_VAR_DECL, nt->line, nt->col);
@@ -4681,6 +4974,7 @@ static int proxima_topo(P *p, PSNode **out)
          * fluxo, os tokens de antes desta saem da memória. O de `antes - 1`
          * fica — `fecha_no` lê o último consumido. */
         if (p->fl) ps_lexer_solta_ate(p->fl, antes - 1);
+        int32_t nerros0 = r->nerros;
         PSNode *s = statement(p);
         if (!r->ok) {
             if (!p->recupera) return 0;
@@ -4694,6 +4988,7 @@ static int proxima_topo(P *p, PSNode **out)
             /* até o fim do statement contado desde o começo dele: um bloco
              * que ele abriu não despeja o resto do corpo aqui em cima */
             pula_statement(p, antes);
+            esquece_sintomas_da_string(p, antes, nerros0);
             /* no topo, `}` e DEDENT soltos são lixo: consome */
             if (checa(p, T_RBRACE) || checa(p, T_DEDENT)) p->pos++;
             if (p->pos == antes) p->pos++;      /* nunca ficar parado no mesmo token */

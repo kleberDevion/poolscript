@@ -297,7 +297,18 @@ pi = 3.14159
 
 Aspas **simples e duplas são equivalentes** — escolha uma; não há diferença de
 semântica. Uma string não pode cruzar a quebra de linha (erro `string nao
-fechada antes da quebra de linha`), a menos que seja multi-linha.
+fechada antes da quebra de linha`, na aspa que abriu), a menos que seja
+multi-linha.
+
+A aspa igual à de fora, **dentro** da string, fecha a string ali: em `str s =
+"ele disse "oi" pra mim"` a primeira string acaba antes do `oi`. O erro diz
+isso, na aspa que fechou cedo: `a aspa de dentro fechou a string: use a outra
+aspa por fora, ou escape a de dentro com \` — `'ele disse "oi"'` ou `"ele
+disse \"oi\""`.
+
+Um erro dentro das `{ }` de uma f-string sai no ponto dele, na linha dele (`{x
++ }` na terceira linha de uma f-string de três aspas acusa a terceira linha),
+com a frase do erro e `dentro da f-string` no fim.
 
 | Forma | Exemplo | Observação |
 |---|---|---|

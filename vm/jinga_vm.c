@@ -29998,6 +29998,10 @@ static int emb_ja_tem(const PSEmbutido *lista, int32_t n, const char *textual, c
     return 0;
 }
 
+static void primeiro_erro_de_sintaxe(const char *fonte, size_t len, const PSTokenList *lx,
+                                     const PSParseResult *r, char *msg, size_t cap,
+                                     int32_t *linha, int32_t *col);
+
 int ps_embute_deps(const char *caminho_main, PSEmbutido **lista, int32_t *n,
                    char *libs, size_t libs_cap, char *erro, size_t erro_cap)
 {
@@ -30035,22 +30039,19 @@ int ps_embute_deps(const char *caminho_main, PSEmbutido **lista, int32_t *n,
     for (int32_t i = 0; i < *n; i++) {
         PSTokenList *toks = NULL;
         PSParseResult *r = ps_parse_fonte(l[i].fonte, l[i].tam, 0, &toks);
-        if (!r || !toks || !toks->ok) {
-            snprintf(erro, erro_cap, "%s: %s (linha %d)", l[i].textual,
-                     toks ? toks->erro : "sem memoria", toks ? toks->erro_linha : 0);
+        if (!r || !toks || !toks->ok || !r->ok) {
+            /* o mesmo erro que rodar e o editor dão */
+            char causa[256];
+            int32_t lc = 0, cc = 0;
+            snprintf(causa, sizeof(causa), "sem memoria");
+            if (r && toks) primeiro_erro_de_sintaxe(l[i].fonte, l[i].tam, toks, r, causa, sizeof(causa), &lc, &cc);
+            snprintf(erro, erro_cap, "%s: %s (linha %d)", l[i].textual, causa, lc);
             ps_lexer_free(toks);
             if (r) ps_parse_free(r);
             ps_embutidos_solta(l, *n); *lista = NULL; *n = 0;
             return -1;
         }
         ps_lexer_free(toks);
-        if (!r->ok) {
-            snprintf(erro, erro_cap, "%s: %s (linha %d)", l[i].textual,
-                     r ? r->erro : "sem memoria", r ? r->erro_linha : 0);
-            if (r) ps_parse_free(r);
-            ps_embutidos_solta(l, *n); *lista = NULL; *n = 0;
-            return -1;
-        }
         /* a pasta DESTE arquivo, pro import relativo e pro vizinho */
         char dir_mod[1024];
         snprintf(dir_mod, sizeof(dir_mod), "%s", l[i].textual);
@@ -30258,9 +30259,6 @@ static int estrela_nomes_de(void *vctx, const char *mod, char ***nomes, int32_t 
     return cortou_aqui ? 2 : 1;
 }
 
-static void sintaxe_na_causa(const char *fonte, size_t len, char *msg, size_t cap,
-                             int32_t *linha, int32_t *col);
-
 /* ── o módulo `.pr` importado, pro checador estático (regra 5) ──────────────
  *
  * `import util` / `from util import soma`: o compilador pergunta aqui pela
@@ -30353,17 +30351,12 @@ static int estrela_modulo_de(void *vctx, const char *mod, const PSModuloAst **ou
     if (!fc.lexer || !fc.lexer->ok || !r || !r->ok) {
         a->info.falhou = 1;
         snprintf(a->info.erro_classe, sizeof(a->info.erro_classe), "SyntaxError");
-        int lex_ruim = fc.lexer && !fc.lexer->ok;
-        snprintf(a->info.erro_msg, sizeof(a->info.erro_msg), "%s",
-                 lex_ruim ? fc.lexer->erro : (r && !r->ok) ? r->erro : "sem memoria");
-        if (lex_ruim) { a->info.erro_linha = fc.lexer->erro_linha; a->info.erro_col = fc.lexer->erro_col; }
-        else if (r && !r->ok) {
-            a->info.erro_linha = r->erro_linha; a->info.erro_col = r->erro_col;
-            /* o mesmo erro que o editor daria no módulo: o `(` esquecido
-             * (o fonte ainda está vivo: é ele que a sonda relê) */
-            sintaxe_na_causa(fonte, lidos, a->info.erro_msg, sizeof(a->info.erro_msg),
-                             &a->info.erro_linha, &a->info.erro_col);
-        }
+        /* o mesmo erro que o editor daria no módulo (o fonte ainda está vivo:
+         * é ele que a passada com recuperação relê) */
+        if (fc.lexer && r)
+            primeiro_erro_de_sintaxe(fonte, lidos, fc.lexer, r, a->info.erro_msg, sizeof(a->info.erro_msg),
+                                     &a->info.erro_linha, &a->info.erro_col);
+        else snprintf(a->info.erro_msg, sizeof(a->info.erro_msg), "sem memoria");
         free(fonte);
         ps_lexer_free(fc.lexer);
         ps_parse_free(r);
@@ -30484,20 +30477,15 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     {
         PSTokenList *toks = fc.lexer;
         PSParseResult *r = fc.parse;
-        int lex_ruim = toks && !toks->ok, sint_ruim = r && !r->ok;
-        if (!toks || !r || lex_ruim || sint_ruim) {
-            const char *msg = lex_ruim ? toks->erro : sint_ruim ? r->erro : "sem memoria";
+        if (!toks || !r || !toks->ok || !r->ok) {
+            /* o mesmo erro que o editor, não o sintoma (o fonte ainda está
+             * vivo: é ele que a passada com recuperação relê) */
             char causa[256];
-            if (lex_ruim) { vm->mod_erro_linha = toks->erro_linha; vm->mod_erro_col = toks->erro_col; }
-            else if (sint_ruim) {
-                /* o mesmo erro que o editor: o `(` esquecido, não o sintoma
-                 * (o fonte ainda está vivo: é ele que a sonda relê) */
-                vm->mod_erro_linha = r->erro_linha; vm->mod_erro_col = r->erro_col;
-                snprintf(causa, sizeof(causa), "%s", r->erro);
-                sintaxe_na_causa(fonte, lidos, causa, sizeof(causa), &vm->mod_erro_linha, &vm->mod_erro_col);
-                msg = causa;
-            }
-            snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome_vis, msg);
+            snprintf(causa, sizeof(causa), "sem memoria");
+            if (toks && r)
+                primeiro_erro_de_sintaxe(fonte, lidos, toks, r, causa, sizeof(causa),
+                                         &vm->mod_erro_linha, &vm->mod_erro_col);
+            snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome_vis, causa);
             snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SyntaxError");
             snprintf(vm->mod_erro_arquivo, sizeof(vm->mod_erro_arquivo), "%s", abspath);
             free(fonte);
@@ -31245,30 +31233,63 @@ static void verifica_erros_sintaxe(PSErroExec *e, const PSAviso *erros, int32_t 
     e->ntipos = n;
 }
 
-/* Rodando (sem recuperação) o parser para no SINTOMA de um `(` esquecido:
- * `funct f( {` dava "esperado nome de parametro" no `{` (coluna 10), e o
- * `--check` dizia "parentese '(' aberto nao foi fechado" no `(` (coluna 8) —
- * o editor e o terminal se contradiziam na mesma linha. A sonda de grupos
- * (as duas passadas do modo de recuperação, sem guardar token) diz se a
- * posição do erro cai dentro de um grupo fechado à força; se cai, a frase e
- * a posição passam a ser as do abridor — as mesmas do editor. Vale pro
- * programa e pro módulo importado. */
-static void sintaxe_na_causa(const char *fonte, size_t len, char *msg, size_t cap,
-                             int32_t *linha, int32_t *col)
+/* Os erros do lexer e do parser numa lista só, na ordem do arquivo: a lista
+ * que o `--check` publica. Inserção: estável, e a lista é curta. NULL (e
+ * `*n` = 0) sem erro ou sem memória. */
+static PSAviso *junta_erros_de_sintaxe(const PSTokenList *tl, const PSParseResult *r, int32_t *n)
 {
-    PSTokenList *tl = ps_lexer_sonda_grupos(fonte, len);
-    if (!tl) return;
-    for (int32_t k = 0; k < tl->nfechados; k++) {
-        const struct PSFechado *f = &tl->fechados[k];
-        int no_abridor = (*linha == f->l1 && *col == f->c1);
-        int depois     = *linha > f->l1 || (*linha == f->l1 && *col > f->c1);
-        int antes      = *linha < f->l2 || (*linha == f->l2 && *col < f->c2);
-        if (no_abridor || (depois && antes)) {
-            snprintf(msg, cap, "%s", ps_lexer_grupo_msg(f->tipo));
-            *linha = f->l1; *col = f->c1;
-            break;
+    int32_t nlex = tl ? tl->nerros : 0, npar = r ? r->nerros : 0;
+    *n = 0;
+    if (nlex + npar <= 0) return NULL;
+    PSAviso *junto = malloc(sizeof(PSAviso) * (size_t)(nlex + npar));
+    if (!junto) return NULL;
+    if (nlex) memcpy(junto, tl->erros, sizeof(PSAviso) * (size_t)nlex);
+    if (npar) memcpy(junto + nlex, r->erros, sizeof(PSAviso) * (size_t)npar);
+    *n = nlex + npar;
+    for (int32_t a = 1; a < *n; a++) {
+        PSAviso x = junto[a];
+        int32_t b = a - 1;
+        while (b >= 0 && (junto[b].linha > x.linha
+                          || (junto[b].linha == x.linha && junto[b].col > x.col))) {
+            junto[b + 1] = junto[b]; b--;
         }
+        junto[b + 1] = x;
     }
+    return junto;
+}
+
+/* O erro de sintaxe de quem compila SEM recuperação (rodar, o módulo
+ * importado, `--bytecode`, `-o`): o primeiro da lista do `--check`. Sem
+ * recuperação o lexer para no erro e o parser lê a lista cortada ali, e o
+ * que ele acusa pode cair ANTES da causa: `int x<U+00A0>= 1` dava "declaracao
+ * de variavel exige '='" no `x`, e a causa é o espaço invisível depois dele;
+ * `funct f( {` dava "esperado nome de parametro" no `{`, e a causa é o `(`
+ * sem par. Pela posição dos dois erros não dá pra saber qual é sintoma. Então
+ * o fonte passa de novo pelo lexer e pelo parser COM recuperação, como no
+ * `--check`, e vale o primeiro da lista junta: o terminal e o editor dizem o
+ * mesmo por construção. Só código quebrado paga essa passada. Se ela não acha
+ * erro (o freio de aninhamento é pela folga da pilha, e ela parte de um ponto
+ * mais raso), vale o da passada que falhou (`lx`, `r`). */
+static void primeiro_erro_de_sintaxe(const char *fonte, size_t len, const PSTokenList *lx,
+                                     const PSParseResult *r, char *msg, size_t cap,
+                                     int32_t *linha, int32_t *col)
+{
+    PSTokenList *tl = NULL;
+    PSParseResult *rr = ps_parse_fonte(fonte, len, 1, &tl);
+    int32_t n = 0;
+    PSAviso *junto = (rr && tl) ? junta_erros_de_sintaxe(tl, rr, &n) : NULL;
+    if (n > 0) {
+        snprintf(msg, cap, "%s", junto[0].msg);
+        *linha = junto[0].linha; *col = junto[0].col;
+    } else if (lx && !lx->ok) {
+        snprintf(msg, cap, "%s", lx->erro);
+        *linha = lx->erro_linha; *col = lx->erro_col;
+    } else if (r && !r->ok) {
+        snprintf(msg, cap, "%s", r->erro);
+        *linha = r->erro_linha; *col = r->erro_col;
+    }
+    free(junto);
+    ps_parse_free(rr);
     ps_lexer_free(tl);
 }
 
@@ -31309,22 +31330,15 @@ int ps_desmonta_fonte(const char *fonte, size_t len, const char *caminho, FILE *
         ps_parse_free(r); ps_lexer_free(toks); ps_compila_free(prog);
         e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1;
     }
-    if (!toks->ok) {
+    if (!toks->ok || !r->ok) {
         e->tipo = PS_ERRO_SINTAXE;
-        snprintf(e->msg, sizeof(e->msg), "%s", toks->erro);
-        e->linha = toks->erro_linha; e->col = toks->erro_col;
+        int32_t l = 0, c = 0;
+        primeiro_erro_de_sintaxe(fonte, len, toks, r, e->msg, sizeof(e->msg), &l, &c);
+        e->linha = l; e->col = c;
         ps_lexer_free(toks); ps_parse_free(r); ps_compila_free(prog);
         return -1;
     }
     ps_lexer_free(toks);
-    if (!r->ok) {
-        e->tipo = PS_ERRO_SINTAXE;
-        snprintf(e->msg, sizeof(e->msg), "%s", r->erro);
-        e->linha = r->erro_linha; e->col = r->erro_col;
-        { int32_t l = e->linha, c = e->col; sintaxe_na_causa(fonte, len, e->msg, sizeof(e->msg), &l, &c); e->linha = l; e->col = c; }
-        ps_parse_free(r); ps_compila_free(prog);
-        return -1;
-    }
     ps_parse_free(r);
     if (!prog) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
     if (!prog->ok) {
@@ -31423,13 +31437,12 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
      * assim e os dois entram na mesma lista. Parar aqui escondia o resto — um
      * `(` sem par na linha 1 (que o lexer acusa) sumia com o erro de sintaxe da
      * linha 50. Com o grupo fechado à força (T_SINC), o parser segue são. */
-    int32_t nlex = toks->nerros;
-    PSAviso *lex = NULL;
-    if (nlex > 0) {
-        lex = malloc(sizeof(PSAviso) * (size_t)nlex);
-        if (!lex) { ps_lexer_free(toks); ps_parse_free(r); ps_compila_free(prog); e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
-        memcpy(lex, toks->erros, sizeof(PSAviso) * (size_t)nlex);
-    }
+    /* lexer + parser numa lista só, na ordem do arquivo (a mesma conta que
+     * rodar faz em `primeiro_erro_de_sintaxe`) */
+    int sintaxe = toks->nerros > 0 || !r->ok;
+    int32_t nj = 0, total = toks->nerros + r->nerros;
+    PSAviso *junto = sintaxe ? junta_erros_de_sintaxe(toks, r, &nj) : NULL;
+    if (total > 0 && !junto) { ps_lexer_free(toks); ps_parse_free(r); ps_compila_free(prog); e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
     /* os avisos saem ANTES do free: a lista morre logo abaixo. Quem pediu vira
      * dono do vetor. */
     if (avisos && navisos && toks->navisos > 0) {
@@ -31441,23 +31454,7 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
         }
     }
     ps_lexer_free(toks);
-    if (nlex > 0 || !r->ok) {
-        /* lexer + parser numa lista só, na ordem do arquivo */
-        int32_t nj = nlex + r->nerros;
-        PSAviso *junto = nj > 0 ? malloc(sizeof(PSAviso) * (size_t)nj) : NULL;
-        if (junto) {
-            if (nlex) memcpy(junto, lex, sizeof(PSAviso) * (size_t)nlex);
-            if (r->nerros) memcpy(junto + nlex, r->erros, sizeof(PSAviso) * (size_t)r->nerros);
-            for (int32_t a = 1; a < nj; a++) {            /* inserção: estável, e a lista é curta */
-                PSAviso x = junto[a];
-                int32_t b = a - 1;
-                while (b >= 0 && (junto[b].linha > x.linha
-                                  || (junto[b].linha == x.linha && junto[b].col > x.col))) {
-                    junto[b + 1] = junto[b]; b--;
-                }
-                junto[b + 1] = x;
-            }
-        } else nj = 0;
+    if (sintaxe) {
         e->tipo = PS_ERRO_SINTAXE;
         /* o PRIMEIRO da lista, não o último: recuperando, cada erro novo
          * sobrescreve o campo simples do parser */
@@ -31467,7 +31464,6 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
         e->col   = nj > 0 ? junto[0].col   : r->erro_col;
         verifica_erros_sintaxe(e, junto, nj);
         free(junto);
-        free(lex);
         /* A conferência de TIPO não roda com a sintaxe quebrada: o statement
          * descartado leva junto os nomes que ele ligava, e cada uso deles
          * viraria um "name is not defined" que não existe — erro na causa, não
@@ -31533,8 +31529,8 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
 
     /* Compilado direto do fonte, uma declaração de topo por vez
      * (ps_compila_fonte): nem os tokens nem a árvore do arquivo inteiro
-     * existem na memória. O erro do LEXER continua mandando: o parser pode
-     * ter tropeçado antes no mesmo trecho. */
+     * existem na memória. Com erro de sintaxe, sai o que o `--check` põe no
+     * topo (`primeiro_erro_de_sintaxe`). */
     PSFonteCompilado fc;
     PSPrograma *prog = ps_compila_fonte(fonte, len, 0, &res, &fc);
     PSTokenList *toks = fc.lexer;
@@ -31545,10 +31541,11 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         ps_compila_free(prog);
         e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1;
     }
-    if (!toks->ok) {
+    if (!toks->ok || !r->ok) {
         e->tipo = PS_ERRO_SINTAXE;
-        snprintf(e->msg, sizeof(e->msg), "%s", toks->erro);
-        e->linha = toks->erro_linha; e->col = toks->erro_col;
+        int32_t l = 0, c = 0;
+        primeiro_erro_de_sintaxe(fonte, len, toks, r, e->msg, sizeof(e->msg), &l, &c);
+        e->linha = l; e->col = c;
         ps_lexer_free(toks);
         ps_parse_free(r);
         ps_compila_free(prog);
@@ -31556,15 +31553,6 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
     }
     ps_avisos_para_stderr(toks, ancora);
     ps_lexer_free(toks);
-    if (!r->ok) {
-        e->tipo = PS_ERRO_SINTAXE;
-        snprintf(e->msg, sizeof(e->msg), "%s", r->erro);
-        e->linha = r->erro_linha; e->col = r->erro_col;
-        { int32_t l = e->linha, c = e->col; sintaxe_na_causa(fonte, len, e->msg, sizeof(e->msg), &l, &c); e->linha = l; e->col = c; }
-        ps_parse_free(r);
-        ps_compila_free(prog);
-        return -1;
-    }
     ps_parse_free(r);
     if (!prog) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
     if (!prog->ok) {

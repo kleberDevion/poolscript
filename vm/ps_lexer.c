@@ -161,6 +161,10 @@ typedef struct {
     /* O próximo byte que não é UTF-8 válido (ou `len`): ao passar dele, sai o
      * erro, na posição do byte. O fonte é texto UTF-8 (doc 1.1). */
     size_t      invalido;
+    /* Onde acaba o último token que não é de leiaute: é ali que o EOF nasce.
+     * Na posição do lexer (a linha depois do último `\n`), o erro "no fim do
+     * arquivo" caía numa linha que o arquivo não tem. */
+    int32_t     fim_l, fim_c;
 
     int         paren_depth;   /* só ( e [ — ver trata_newline */
     /* `{` abertos. O recuo é livre em todo lugar (quem delimita bloco é o
@@ -191,7 +195,10 @@ typedef struct {
      * fechava um `[`, e um `(` esquecido engolia o resto do arquivo sem que
      * ninguém dissesse onde ele estava. Com a pilha, o fechador que não casa e
      * o grupo aberto no fim do arquivo viram erro no ABRIDOR. */
-    struct { unsigned char tipo; int32_t linha, col; int32_t indent; } grupos[256];
+    /* `causa` = 1: o grupo estava aberto quando uma string ficou sem fecho e
+     * engoliu o resto da linha — o fechador dele foi junto. A causa é a
+     * string (já acusada na aspa); o grupo é fechado à força sem erro. */
+    struct { unsigned char tipo, causa; int32_t linha, col; int32_t indent; } grupos[256];
     int         ngrupos;
     /* 1 = segunda passada: a linha que só pode começar declaração, ou que
      * volta à indentação da linha do abridor, fecha o grupo de expressão
@@ -497,6 +504,7 @@ static void grupo_abre(Lexer *lx, unsigned char tipo, int32_t l, int32_t c)
      * recuperação fina, mas a pilha nunca mente sobre o que está abaixo */
     if (lx->ngrupos >= (int)(sizeof(lx->grupos) / sizeof(lx->grupos[0]))) return;
     lx->grupos[lx->ngrupos].tipo = tipo;
+    lx->grupos[lx->ngrupos].causa = 0;
     lx->grupos[lx->ngrupos].indent = lx->sincroniza ? lx_indent_da_linha(lx, lx->pos) : 0;
     lx->grupos[lx->ngrupos].linha = l;
     lx->grupos[lx->ngrupos].col = c;
@@ -512,13 +520,14 @@ static void grupo_forca(Lexer *lx, int ate, int32_t l, int32_t c)
 {
     if (ate < 0 || ate >= lx->ngrupos) return;
     unsigned char t0 = lx->grupos[ate].tipo;
+    int causa = lx->grupos[ate].causa;
     int32_t la = lx->grupos[ate].linha, ca = lx->grupos[ate].col;
     while (lx->ngrupos > ate) {
         unsigned char t = lx->grupos[--lx->ngrupos].tipo;
         if (t == G_PAREN || t == G_BRACK) { if (lx->paren_depth > 0) lx->paren_depth--; }
         else if (lx->chave_depth > 0) lx->chave_depth--;
     }
-    erro_em_ate(lx, grupo_msg(t0), la, ca, la, ca + 1);   /* o trecho é o abridor */
+    if (!causa) erro_em_ate(lx, grupo_msg(t0), la, ca, la, ca + 1);   /* o trecho é o abridor */
     grupo_anota(lx, t0, la, ca, l, c);
     novo_token(lx, T_SINC, l, c);
 }
@@ -555,8 +564,9 @@ static void grupo_fim(Lexer *lx)
         if (lx->grupos[k].tipo == G_BLOCO) { k--; continue; }
         int base = k;
         while (base - 1 >= 0 && lx->grupos[base - 1].tipo != G_BLOCO) base--;
-        erro_em_ate(lx, grupo_msg(lx->grupos[base].tipo), lx->grupos[base].linha, lx->grupos[base].col,
-                    lx->grupos[base].linha, lx->grupos[base].col + 1);
+        if (!lx->grupos[base].causa)
+            erro_em_ate(lx, grupo_msg(lx->grupos[base].tipo), lx->grupos[base].linha, lx->grupos[base].col,
+                        lx->grupos[base].linha, lx->grupos[base].col + 1);
         grupo_anota(lx, lx->grupos[base].tipo, lx->grupos[base].linha, lx->grupos[base].col, lx->linha, lx->col + 1);
         acusou = 1;
         k = base - 1;
@@ -625,6 +635,10 @@ static int lx_so_declaracao(const Lexer *lx, size_t p)
 /* ── quebra de linha + indentação ───────────────────────────────────────── */
 static void trata_newline(Lexer *lx)
 {
+    /* a coluna do próprio `\n`: é onde o NEWLINE fica (o fim da linha que
+     * acabou). Nascia com a coluna 1, e o erro "esperado inicio de bloco com
+     * '{'" de um cabeçalho sem chave apontava o COMEÇO da linha. */
+    int32_t col_nl = lx->col;
     lx->pos++;
     lx->linha++;
     lx->col = 1;
@@ -684,8 +698,10 @@ static void trata_newline(Lexer *lx)
 
     /* `:` no fim da linha que acabou (o NEWLINE não mexe no `ult_tipo`) */
     int depois_de_dois_pontos = lx->ult_tipo == T_COLON;
-    PSToken *nl = novo_token(lx, T_NEWLINE, lx->linha - 1, lx->col);
+    PSToken *nl = novo_token(lx, T_NEWLINE, lx->linha - 1, col_nl);
     if (!nl) return;
+    nl->linha_fim = lx->linha - 1;     /* o trecho é o próprio `\n` */
+    nl->col_fim = col_nl + 1;
 
     /* TAB conta como um espaço: o recuo só se compara com o do bloco de `:` */
     int32_t indent = 0;
@@ -901,6 +917,27 @@ static void interp_poe(Lexer *lx, size_t off, int32_t len, int32_t linha, int32_
     o->interps_total++;
 }
 
+/* RECUPERAÇÃO da string sem fecho: ela vira token até onde foi, marcado
+ * (`i = 1`), e os grupos abertos agora ficam com a causa conhecida — o
+ * fechador, a vírgula ou o `{` que vinham depois da aspa foram engolidos
+ * por ela. O lexer não acusa esses grupos, e o parser tira da lista o que
+ * achou de errado no comando dela: o erro que fica é o da string, na aspa
+ * que abriu (antes saía "parentese '(' aberto" no topo, e a string depois). */
+/* O erro da string que não fechou: na aspa que abriu (l0, c0), com o trecho
+ * até onde ela foi. */
+static void acusa_sem_fecho(Lexer *lx, const char *msg, int32_t l0, int32_t c0)
+{
+    erro_em_ate(lx, msg, l0, c0, lx->linha, lx->col);
+}
+
+static void string_sem_fecho(Lexer *lx, int fstring, int bytes, int32_t l0, int32_t c0, const Buf *bf)
+{
+    if (!lx->recupera) return;
+    PSToken *tk = novo_token(lx, bytes ? T_BYTES : fstring ? T_FSTRING : T_STR, l0, c0);
+    if (tk) { guarda_texto(lx, tk, bf->b ? bf->b : "", bf->n); tk->i = 1; }
+    for (int k = 0; k < lx->ngrupos; k++) lx->grupos[k].causa = 1;
+}
+
 static void le_string(Lexer *lx, char aspa, int fstring, int raw, int bytes, int32_t c_tok)
 {
     int32_t l0 = lx->linha, c0 = c_tok;
@@ -947,7 +984,11 @@ static void le_string(Lexer *lx, char aspa, int fstring, int raw, int bytes, int
                 continue;
             }
             int rc = decode_escape(lx, &bf, bytes);
-            if (rc == -2) { free(bf.b); return; }            /* erro ja registrado */
+            /* Escape que não vale (o `\u` em bytes): o erro já saiu, e a
+             * string SEGUE até a aspa dela. Parar aqui deixava o resto do
+             * texto virar código — `1234")` dava "caractere inesperado",
+             * "string nao fechada" e um "parentese aberto" falso no topo. */
+            if (rc == -2) { avanca1(lx); avanca1(lx); continue; }
             if (rc != 0) { free(bf.b); erro(lx, "sem memoria"); return; }
             continue;
         }
@@ -965,27 +1006,23 @@ static void le_string(Lexer *lx, char aspa, int fstring, int raw, int bytes, int
             return;
         }
         if (c == '\n') {
-            erro(lx, "string nao fechada antes da quebra de linha");
+            /* na aspa que abriu, com o trecho até o fim da linha: era no fim
+             * da linha, e no fim do arquivo era na aspa — duas regras */
+            acusa_sem_fecho(lx, "string nao fechada antes da quebra de linha", l0, c0);
             /* RECUPERAÇÃO: a string vale até o fim da linha e vira token. Sem
              * isto o realce perdia a linha inteira, e é assim que uma string
              * fica na maior parte do tempo em que se digita. */
-            if (lx->recupera) {
-                if (fstring && i_off) interp_poe(lx, i_off, (int32_t)(lx->pos - i_off), i_lin, i_col);
-                PSToken *tk = novo_token(lx, bytes ? T_BYTES : fstring ? T_FSTRING : T_STR, l0, c0);
-                if (tk) guarda_texto(lx, tk, bf.b ? bf.b : "", bf.n);
-            }
+            if (lx->recupera && fstring && i_off) interp_poe(lx, i_off, (int32_t)(lx->pos - i_off), i_lin, i_col);
+            string_sem_fecho(lx, fstring, bytes, l0, c0, &bf);
             free(bf.b);
             return;
         }
         if (buf_push(&bf, c) != 0) { free(bf.b); erro(lx, "sem memoria"); return; }
         avanca1(lx);
     }
-    erro_em(lx, "string nao fechada ate o fim do arquivo", l0, c0);
-    if (lx->recupera) {
-        if (fstring && i_off) interp_poe(lx, i_off, (int32_t)(lx->pos - i_off), i_lin, i_col);
-        PSToken *tk = novo_token(lx, bytes ? T_BYTES : fstring ? T_FSTRING : T_STR, l0, c0);
-        if (tk) guarda_texto(lx, tk, bf.b ? bf.b : "", bf.n);
-    }
+    acusa_sem_fecho(lx, "string nao fechada ate o fim do arquivo", l0, c0);
+    if (lx->recupera && fstring && i_off) interp_poe(lx, i_off, (int32_t)(lx->pos - i_off), i_lin, i_col);
+    string_sem_fecho(lx, fstring, bytes, l0, c0, &bf);
     free(bf.b);
 }
 
@@ -1032,7 +1069,7 @@ static void le_string_tripla(Lexer *lx, char aspa, int fstring, int raw, int byt
         }
         if (!raw && c == '\\' && lx->pos + 1 < lx->len) {
             int rc = decode_escape(lx, &bf, bytes);
-            if (rc == -2) { free(bf.b); return; }
+            if (rc == -2) { avanca1(lx); avanca1(lx); continue; }   /* idem: a string segue */
             if (rc != 0) { free(bf.b); erro(lx, "sem memoria"); return; }
             continue;
         }
@@ -1048,8 +1085,12 @@ static void le_string_tripla(Lexer *lx, char aspa, int fstring, int raw, int byt
         if (buf_push(&bf, c) != 0) { free(bf.b); erro(lx, "sem memoria"); return; }
         avanca1(lx);
     }
+    acusa_sem_fecho(lx, "string multi-linha nao foi fechada", l0, c0);
+    /* RECUPERAÇÃO: a string vale até o fim do arquivo e vira token, como na
+     * string simples. Sem o token, o comando ficava pela metade (`str s =`) e
+     * o parser somava "expressao invalida" numa linha depois do fim. */
+    string_sem_fecho(lx, fstring, bytes, l0, c0, &bf);
     free(bf.b);
-    erro_em(lx, "string multi-linha nao foi fechada", l0, c0);
 }
 
 /* ── números ────────────────────────────────────────────────────────────── */
@@ -1135,6 +1176,9 @@ static void le_numero(Lexer *lx)
             if (corre_digitos(lx, base) == 0) {
                 if (numero_colado(lx, ini, c0, base)) return;   /* `0b2`, `0xG` */
                 erro_em(lx, "numero sem digito depois da base", lx->linha, c0);
+                /* o parser falha calado no número (era "expressao invalida"
+                 * no começo da linha, no topo da lista do --check) */
+                novo_token(lx, T_SINC, lx->linha, c0);
                 return;
             }
             if (numero_colado(lx, ini, c0, base)) return;
@@ -1343,6 +1387,11 @@ static int le_punct(Lexer *lx)
     if (c == ')' || c == ']' || c == '}') grupo_fecha(lx, c);
     PSToken *tk = novo_token(lx, t, l0, c0);
     if (tk) guarda_texto(lx, tk, &c, 1);
+    /* Fechador sem abridor (`post(x))`, `[1, 2]]`, `}` a mais): marcado no
+     * token (`i = 1`), e o parser diz que ele sobrou, em vez da frase do que
+     * esperava ali ("expressao invalida", "esperado inicio de bloco"). */
+    if (tk && (((c == ')' || c == ']') && lx->paren_depth == 0) || (c == '}' && lx->chave_depth == 0)))
+        tk->i = 1;
 
     if (c == '(') grupo_abre(lx, G_PAREN, l0, c0);
     else if (c == '[') grupo_abre(lx, G_BRACK, l0, c0);
@@ -1442,15 +1491,21 @@ PSTokenList *ps_lexer_tokenize_modo(const char *fonte, size_t len, int comentari
 static void fecha_span(Lexer *lx)
 {
     PSTokenList *out = lx->out;
-    int32_t alvo = -1, quantos = 0;
-    for (int32_t k = lx->span_n0; k < out->n; k++)
-        if (tok_de(out, k)->type != T_SINC) { alvo = k; quantos++; }
-    if (quantos == 1) {
-        PSToken *t = tok_de(out, alvo);
+    PSToken *t = NULL;
+    int32_t quantos = 0;
+    for (int32_t k = lx->span_n0; k < out->n; k++) {
+        PSToken *x = tok_de(out, k);
+        if (x->type != T_SINC) { t = x; quantos++; }
+    }
+    if (quantos == 1 && t->type != T_NEWLINE) {   /* o NEWLINE já sabe onde acaba */
         if (lx->linha == lx->span_lin0 && lx->col > lx->span_col0)
             t->nchars = lx->col - lx->span_col0;
         t->linha_fim = lx->linha;
         t->col_fim = lx->col;
+        if (t->type != T_INDENT && t->type != T_DEDENT && t->type != T_COMMENT) {
+            lx->fim_l = lx->linha;
+            lx->fim_c = lx->col;
+        }
     }
     lx->span_col0 = lx->col; lx->span_lin0 = lx->linha; lx->span_n0 = out->n;
 }
@@ -1640,7 +1695,14 @@ static void lx_fim(Lexer *lx)
         PSToken *tk = novo_token(lx, T_DEDENT, lx->linha, lx->col);
         if (tk) tk->i = 0;
     }
-    novo_token(lx, T_EOF, lx->linha, lx->col);
+    /* Parado num erro (fora da recuperação), a lista acaba ONDE ele está: o
+     * que o parser disser no EOF é sintoma dele, e o erro que rodar mostra é
+     * o primeiro da lista do `--check` (`primeiro_erro_de_sintaxe`). */
+    int32_t el = lx->linha, ec = lx->col;
+    if (!out->ok && !lx->recupera && out->erro_linha > 0) { el = out->erro_linha; ec = out->erro_col; }
+    else if (lx->fim_l > 0) { el = lx->fim_l; ec = lx->fim_c; }
+    PSToken *eof = novo_token(lx, T_EOF, el, ec);
+    if (eof) { eof->linha_fim = el; eof->col_fim = ec; }
     free(lx->alvos);
     lx->alvos = NULL; lx->nalvos = 0;
 }
@@ -1671,36 +1733,6 @@ PSTokenList *ps_lexer_fluxo(const char *fonte, size_t len, int recupera,
     lx_inicia(lx, out, fonte, len, 0, recupera, alvos, nalvos);
     out->lexer = lx;
     return out;
-}
-
-const char *ps_lexer_grupo_msg(unsigned char tipo) { return grupo_msg(tipo); }
-
-static void fluxo_avanca(PSTokenList *o);
-
-/* Lê o fonte inteiro no modo de recuperação soltando os blocos de tokens
- * conforme nascem: o que sobra é `fechados` (e `ok`/`erros`). Segunda passada
- * com os alvos da primeira, como o parser faz. */
-static PSTokenList *sonda_passada(const char *fonte, size_t len,
-                                  const struct PSFechado *alvos, int32_t nalvos)
-{
-    PSTokenList *o = ps_lexer_fluxo(fonte, len, 1, alvos, nalvos);
-    if (!o) return NULL;
-    while (o->lexer) {
-        fluxo_avanca(o);
-        if (o->n >= (o->soltos + 2) * PS_TOK_BLOCO) ps_lexer_solta_ate(o, o->n - PS_TOK_BLOCO);
-    }
-    ps_lexer_solta_ate(o, o->n > 0 ? o->n - 1 : 0);
-    return o;
-}
-
-PSTokenList *ps_lexer_sonda_grupos(const char *fonte, size_t len)
-{
-    PSTokenList *l = sonda_passada(fonte, len, NULL, 0);
-    if (l && l->grupos_forcados > 0) {
-        PSTokenList *l2 = sonda_passada(fonte, len, l->fechados, l->nfechados);
-        if (l2) { ps_lexer_free(l); return l2; }
-    }
-    return l;
 }
 
 /* Uma volta a mais do lexer do fluxo; no fim do fonte fecha a lista. */

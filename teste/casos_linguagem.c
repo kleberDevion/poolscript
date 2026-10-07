@@ -3394,6 +3394,102 @@ const Caso CASOS_LINGUAGEM[] = {
 { "// com nome que existe e divisao inteira",
   "int a = 7\nint b = 2\npost(a // b, 10 // b + 1)\n", "3 6", NULL, 0 },
 
+/* ── Plano 6, lote 2: frases do parser que apontam a causa ───────────────────
+ * Quem exige um token olha primeiro QUE token encontrou: o `=` depois de um
+ * operando é a comparação escrita com atribuição; o operador invertido diz
+ * qual vale. */
+{ "= no lugar de == no if",
+  "int x = 5\nif x = 5 {\n    post(1)\n}\n", "", "SyntaxError: '=' e atribuicao; pra comparar use '=='", 2 },
+{ "= no lugar de == no while",
+  "int x = 5\nwhile x = 5 {\n}\n", "", "SyntaxError: '=' e atribuicao; pra comparar use '=='", 2 },
+{ "= no lugar de == depois de and",
+  "int x = 5\nint y = 3\nif x > 1 and y = 3 {\n}\n", "", "SyntaxError: '=' e atribuicao; pra comparar use '=='", 2 },
+{ "= no lugar de == entre parenteses",
+  "int x = 5\nif (x = 5) {\n}\n", "", "SyntaxError: '=' e atribuicao; pra comparar use '=='", 2 },
+{ "= no lugar de == no ternario",
+  "int x = 5\nstr s = \"a\" if x = 5 else \"b\"\n", "", "SyntaxError: '=' e atribuicao; pra comparar use '=='", 2 },
+{ "= no lugar de == no return",
+  "int x = 5\nbool funct f() {\n    return x = 5\n}\n", "", "SyntaxError: '=' e atribuicao; pra comparar use '=='", 2 },
+{ "+= no lugar de == no if",
+  "int x = 5\nif x += 5 {\n}\n", "", "SyntaxError: '+=' e atribuicao; pra comparar use '=='", 2 },
+{ "=> invertido diz >=",
+  "int x = 5\nif x => 5 {\n}\n", "", "SyntaxError: '=>' nao existe: use '>='", 2 },
+{ "=< invertido diz <=",
+  "int x = 5\nif x =< 5 {\n}\n", "", "SyntaxError: '=<' nao existe: use '<='", 2 },
+{ "=! invertido diz !=",
+  "int x = 5\nif x =! 5 {\n}\n", "", "SyntaxError: '=!' nao existe: use '!='", 2 },
+{ "= = segue expressao invalida (o = de antes nao e operando)",
+  "int x = = 1\n", "", "SyntaxError: expressao invalida\n", 2 },
+{ "comparacao e atribuicao a indice continuam valendo",
+  "int x = 5\nif x == 5 {\n    post(1)\n}\nlist l = [1]\nl[0] = 7\npost(l)\n", "1\n[7]", NULL, 0 },
+/* Vírgula esquecida entre itens: o erro é no item, na linha dele; sem o
+ * fechador adiante, o grupo é que ficou aberto (o erro no abridor). */
+{ "virgula esquecida em lista de varias linhas",
+  "list l = [\n    10,\n    20\n    30,\n    40\n]\n", "", "SyntaxError: faltou ',' entre os itens da lista", 2 },
+{ "virgula esquecida em dicionario",
+  "dict d = {\"a\": 1 \"b\": 2}\n", "", "SyntaxError: faltou ',' entre os pares do dicionario", 2 },
+{ "virgula esquecida em tupla",
+  "tup t = (1, 2 3)\n", "", "SyntaxError: faltou ',' entre os itens da tupla", 2 },
+{ "lista sem fechar continua acusando o abridor",
+  "list l = [1, 2\npost(l)\n", "", "SyntaxError: colchete '[' aberto nao foi fechado", 2 },
+/* Decisão do dono: dentro de argumentos ou itens, `(` ou `[` separado por
+ * espaço do valor de antes pede juntar ou a vírgula. */
+{ "( separado por espaco dentro dos argumentos",
+  "int x = 1\npost(\"total:\" (x + 1))\n", "",
+  "SyntaxError: '(' separado por espaco dentro dos argumentos: junte ao valor de antes (chamada) ou separe com ',' (outro argumento)", 2 },
+{ "[ separado por espaco dentro dos itens",
+  "list l = [\"a\" [\"b\"]]\n", "",
+  "SyntaxError: '[' separado por espaco dentro dos itens: junte ao valor de antes (indice) ou separe com ',' (outro item)", 2 },
+{ "juntos continuam chamada e indice; justaposicao com nome continua argumento",
+  "list l = [1, 2,]\nint x = 1\npost(\"total:\" x, len(l), l[0], (1 + 2))\n", "total: 1 2 1 3", NULL, 0 },
+/* String sem fecho: o erro é na aspa que abriu, e o que ela engoliu não vira
+ * erro (ver cli_roda.pr: um erro só na lista do --check). */
+{ "string sem fecho dentro de chamada: o erro e da string",
+  "int idade = 30\npost(\"voce tem \" + str(idade) + \" anos)\npost(\"fim\")\n", "",
+  "SyntaxError: string nao fechada antes da quebra de linha", 2 },
+{ "string sem fecho em lista (aspa que fechou cedo): o erro e da string",
+  "list l = [\"a\", \"b, \"c\"]\n", "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
+/* Palavra reservada como nome numa declaração com tipo: a frase da
+ * palavra reservada, no nome (era "dois comandos" ou o tipo acusado). */
+{ "palavra reservada como nome de variavel com tipo",
+  "int count = 0\n", "", "SyntaxError: 'count' e palavra reservada da linguagem e nao pode ser usada como nome de variavel", 2 },
+{ "post como nome de variavel com tipo",
+  "dict post = {}\n", "", "SyntaxError: 'post' e palavra reservada da linguagem e nao pode ser usada como nome de variavel", 2 },
+{ "in como nome de variavel com tipo",
+  "str in = \"a\"\n", "", "SyntaxError: 'in' e palavra reservada da linguagem e nao pode ser usada como nome de variavel", 2 },
+{ "palavra reservada como nome de parametro com tipo acusa o nome",
+  "Null funct f(int count) {\n}\n", "", "SyntaxError: 'count' e palavra reservada da linguagem e nao pode ser usada como nome de parametro", 2 },
+{ "palavra reservada como nome de campo",
+  "class C {\n    int count = 0\n}\n", "", "SyntaxError: 'count' e palavra reservada da linguagem e nao pode ser usada como nome de campo", 2 },
+/* A aspa de dentro fecha a string: a frase diz isso, na aspa. */
+{ "aspa de dentro fecha a string na declaracao",
+  "str s = \"ele disse \"oi\" pra mim\"\n", "",
+  "SyntaxError: a aspa de dentro fechou a string: use a outra aspa por fora, ou escape a de dentro com \\", 2 },
+{ "aspa de dentro fecha a string na lista",
+  "list l = [\"ele disse \"oi\"\", \"b\"]\n", "",
+  "SyntaxError: a aspa de dentro fechou a string: use a outra aspa por fora, ou escape a de dentro com \\", 2 },
+/* Fechador sem abridor: a frase diz que ele sobrou. */
+{ "parentese sobrando",
+  "str nome = \"ana\"\npost(\"ola, \" + nome))\n", "", "SyntaxError: ')' sem '(' que abra: sobrou um ')'", 2 },
+{ "colchete sobrando",
+  "list l = [1, 2, 3]]\n", "", "SyntaxError: ']' sem '[' que abra: sobrou um ']'", 2 },
+{ "parentese sobrando no if",
+  "int x = 5\nif x > 1) {\n    post(1)\n}\n", "", "SyntaxError: ')' sem '(' que abra: sobrou um ')'", 2 },
+{ "chave sobrando depois do bloco",
+  "funct f() {\n    post(1)\n}\n}\n", "", "SyntaxError: '}' sem '{' que abra: sobrou um '}'", 2 },
+/* Rodando sai o primeiro erro da lista do --check: o do parser na linha 2,
+ * não o do lexer na linha 5. A linha é conferida no cli_roda.pr: com ela na
+ * expectativa, a frase sem ela (a do diferencial) vira prefixo. */
+{ "rodando sai o primeiro erro da lista do --check",
+  "post(1)\nint x = = 1\npost(2)\npost(3)\nint y = 1 $ 2\n", "", "SyntaxError: expressao invalida\n", 2 },
+{ "decorador sem nome tem frase propria",
+  "@\nfunct f() {\n}\n", "", "SyntaxError: esperado nome do decorador depois de '@'", 2 },
+{ "erro dentro da f-string sai na linha dele",
+  "str x = \"a\"\npost(f'''linha1\n{x + }\nlinha3''')\n", "",
+  "SyntaxError: expressao invalida dentro da f-string\n", 2 },
+{ "erro do lexer dentro da f-string",
+  "post(f\"{1 $ 2}\")\n", "", "SyntaxError: caractere inesperado: '$' dentro da f-string", 2 },
+
 /* ── sonda 2, lote 3: vetores de salto sem teto e f-string inteira ────────── */
 { "65 breaks no mesmo laco e 65 elifs compilam (os vetores de salto crescem)",
   "import os\nimport sys\nstr b = \"int x = 0\\nwhile True {\\n\"\nfor each k in range(65) { b = b + \"    if x == \" + str(k + 100) + \" { break }\\n\" }\n"
