@@ -14,6 +14,8 @@ Parsing.Arrayformatt(value, to_type="list") -> list
 ## Uso
 
 ```
+import Parsing
+
 Parsing.Arrayformatt((1, 2, 3))      # [1, 2, 3]   (tupla → lista)
 Parsing.Arrayformatt("abc")          # ["a", "b", "c"]  (string → caracteres)
 Parsing.Arrayformatt({"a": 1, "b": 2}) # ["a", "b"]  (dict → chaves)

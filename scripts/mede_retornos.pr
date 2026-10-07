@@ -385,6 +385,7 @@ addEnd(GRUPOS, {
     "prep": '''import json
 import date
 import regex
+import Parsing
 mr_pat = regex.compile("a(b)")
 ''',
     "chamadas": [
@@ -1115,7 +1116,7 @@ funct mede_valores(meta, feitos) {
     imports = []
     chamadas = []
     for each mod in meta["modulos"].keys() {
-        if not ("." in mod) and mod != "Parsing" {
+        if not ("." in mod) {
             addEnd(imports, "import " + mod)
         }
         for each mb in meta["modulos"][mod] {

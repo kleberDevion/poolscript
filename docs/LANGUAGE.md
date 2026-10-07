@@ -1105,10 +1105,10 @@ Referência completa de cada lib
 | `qrcode` | [`docs/qrcode.md`](qrcode.md) |
 | `sys` | [`docs/sys.md`](sys.md) |
 | `datasentity` | [`docs/datasentity.md`](datasentity.md) |
-| `Parsing` (builtin global, sem import) | [`docs/parsing.md`](parsing.md) |
+| `Parsing` | [`docs/parsing.md`](parsing.md) |
 
-`Parsing` (conversões de tipo seguras) é builtin global, não precisa de
-`import` — ver `docs/parsing.md`.
+`Parsing` (conversões de tipo seguras) é lib como as outras: `import Parsing`
+(até a versão 16.2.14 ele nascia ligado, sem import) — ver `docs/parsing.md`.
 
 Não existem módulos "stub" (de fachada): módulo que não faz nada não é
 módulo. Importar um nome que não existe é `ImportError`.

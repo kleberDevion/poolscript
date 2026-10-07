@@ -4,12 +4,18 @@
 **tolerante**: limpa caracteres estranhos, entende separadores, e não quebra
 com entrada suja como um `int()` cru quebraria.
 
-`Parsing` é um **builtin global** — não precisa de `import`, está sempre
-disponível.
+`Parsing` é uma **lib**: entra com `import Parsing` no topo do arquivo, como
+`json` ou `os`. Sem o import, o nome não existe, e o erro sai antes de rodar:
+`NameError: name 'Parsing' is not defined. Did you forget to import 'Parsing'?`.
+Até a versão 16.2.14 ele nascia ligado, sem import.
 
 ```
-Parsing.integer("R$ 1.234")     # extrai o número
+import Parsing
+
+post(Parsing.integer("R$ 1.234"))     # 1234
 ```
+
+`import Parsing as P` e `from Parsing import integer` também valem.
 
 ---
 
@@ -42,8 +48,10 @@ incerta** (texto de usuário, planilha) e você quer o melhor esforço.
 ## Exemplo
 
 ```
+import Parsing
+
 # entrada suja de um formulário
-preco = Parsing.floating("R$ 19,90")     # 19.90 (entende vírgula BR)
-qtd   = Parsing.integer("12 unidades")   # 12
-ativo = Parsing.boolean("sim")           # True
+flo preco  = Parsing.floating("R$ 19,90")     # 19.9 (entende vírgula BR)
+int qtd    = Parsing.integer("12 unidades")   # 12
+bool ativo = Parsing.boolean("sim")           # True
 ```

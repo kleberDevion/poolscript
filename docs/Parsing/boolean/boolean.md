@@ -14,6 +14,8 @@ Parsing.boolean(value, to_type="bool") -> bool
 ## Uso
 
 ```
+import Parsing
+
 Parsing.boolean("sim")       # True
 Parsing.boolean("true")      # True
 Parsing.boolean("1")         # True

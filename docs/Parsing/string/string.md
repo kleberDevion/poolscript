@@ -12,6 +12,8 @@ Parsing.string(value, to_type="str")
 ## Uso
 
 ```
+import Parsing
+
 Parsing.string("  texto   com   espaços  ")   # "texto com espaços"
 Parsing.string(42)                            # "42"
 ```

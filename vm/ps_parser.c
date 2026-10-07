@@ -816,6 +816,7 @@ static PSNode *e_ou(P *p);
 static PSNode *unario(P *p);
 static PSNode *potencia(P *p);
 static PSNode *primario(P *p);
+static void    fecha_no(P *p, PSNode *n, int32_t pos_ini);
 static PSNode *soma(P *p);
 static int count_tipo_valor(P *p, const char **tipo, PSNode **valor);
 static int parece_unpack(P *p);
@@ -1425,10 +1426,15 @@ static PSNode *primario(P *p)
 /* ── posfixo: chamada, .membro, [índice] ────────────────────────────────── */
 static PSNode *posfixo(P *p)
 {
+    int32_t ini = p->pos;
     PSNode *no = primario(p);
     if (FALHOU(p)) return NULL;
 
     for (;;) {
+        /* O receptor de cada sufixo (`Parsing` em `Parsing.integer(...)`,
+         * `f()` em `f().x`) não passa pela `expressao`, que é onde o fim do
+         * nó é marcado: o erro apontado nele saía sem o fim (l2/c2 0). */
+        fecha_no(p, no, ini);
         PSToken *t = atual(p);
 
         if (checa(p, T_LPAREN)) {

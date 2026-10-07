@@ -15,6 +15,8 @@ Parsing.floating(value, to_type="flo") -> flo
 ## Uso
 
 ```
+import Parsing
+
 Parsing.floating("R$ 19,90")     # 19.90   (entende vírgula BR)
 Parsing.floating("3.14")         # 3.14
 Parsing.floating(10)             # 10.0

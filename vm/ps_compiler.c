@@ -2481,8 +2481,16 @@ static int tp_nome_inexistente(C *c, Unidade *u, const char *nome)
  * ficava por conta de quem le. Com `palavras`, as palavras da linguagem entram
  * entre os candidatos: e o nome solto no comeco do comando (`retrun x` ->
  * 'return', `whlie` -> 'while'), onde uma palavra-chave cabe. */
+/* Lib do motor usada sem `import` (`Parsing.integer`, `json.parse`): a causa
+ * é o import que falta, e a frase diz qual. */
+static void tp_acusa_sem_import(C *c, PSNode *onde, const char *nome)
+{
+    terro(c, onde, "NameError", "name '%s' is not defined. Did you forget to import '%s'?", nome, nome);
+}
+
 static void tp_acusa_nome(C *c, Unidade *u, const char *nome, PSNode *onde, int palavras)
 {
+    if (ps_nativo_eh_modulo(nome)) { tp_acusa_sem_import(c, onde, nome); return; }
     const char *dica = NULL;
     const char *const *kw = palavras ? ps_lexer_keywords() : NULL;
     const char *const *mp = palavras ? ps_parser_mods_de_posicao() : NULL;
@@ -2695,8 +2703,8 @@ static int tp_classe_tem(C *c, const char *classe, const char *nome, int prof)
     return incerto ? -1 : 0;
 }
 
-/* O módulo NATIVO que a expressão é — `os` (ligado por import), `Parsing`
- * (nasce ligado) ou `sys.stdout` — escrito em `buf`; NULL = não é módulo. */
+/* O módulo NATIVO que a expressão é — `os` ou `Parsing` (ligados por import)
+ * ou `sys.stdout` — escrito em `buf`; NULL = não é módulo. */
 static const char *tp_modulo_de(C *c, Unidade *u, PSNode *n, char *buf, size_t cap)
 {
     if (!n) return NULL;
@@ -2707,7 +2715,6 @@ static const char *tp_modulo_de(C *c, Unidade *u, PSNode *n, char *buf, size_t c
             snprintf(buf, cap, "%s", s->mod_nativo);
             return buf;
         }
-        if (strcmp(n->texto, "Parsing") == 0) { snprintf(buf, cap, "Parsing"); return buf; }
         return NULL;
     }
     if (n->kind == N_MEMBER_ACCESS && n->texto) {
@@ -3602,7 +3609,7 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
     if (n->a->kind == N_NAME && n->a->texto && !c->nomes_incertos
             && ps_tipo_info(n->a->texto) && ps_nativo_eh_modulo(n->a->texto)
             && !tp_ligado_no_escopo(c, u, n->a->texto)) {
-        terro(c, n->a, "NameError", "name '%s' is not defined", n->a->texto);
+        tp_acusa_sem_import(c, n->a, n->a->texto);
         return;
     }
     char buf[64];

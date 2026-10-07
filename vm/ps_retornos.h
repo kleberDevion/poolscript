@@ -34,8 +34,8 @@ int ps_nativo_tem_membro(const char *dono, const char *membro);
 int ps_nativo_eh_modulo(const char *nome);
 
 /* A VM liga `nome` sozinha, sem o programa escrever nada? Builtins,
- * `__name__`, `PoolFile`, `byte`, as exceções e os módulos que nascem sem
- * import (`Parsing`) — a mesma lista que a partida do programa usa. */
+ * `__name__`, `PoolFile`, `byte` e as exceções — a mesma lista que a partida
+ * do programa usa. */
 int ps_nome_pre_ligado(const char *nome);
 
 /* O membro mais parecido com `membro` num módulo nativo OU num tipo nativo

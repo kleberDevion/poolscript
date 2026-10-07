@@ -272,7 +272,9 @@ Há dois mecanismos, do mais direto ao mais tolerante:
    converte (continua string). Detalhada na seção de bibliotecas.
 
    ```ps
-   n = Parsing.integer("  127.abc ", to int)
+   import Parsing
+
+   int n = Parsing.integer("  127.abc ", to int)
    ```
 
 ---

@@ -3,10 +3,13 @@
 Conversões de tipo "seguras" — não quebram com lixo na string, e mantém o
 valor original intacto (não muta a variável de entrada).
 
-`Parsing` é um **builtin global** — não precisa de `import`, já está
-disponível em qualquer script:
+`Parsing` é uma **lib**: entra com `import Parsing` no topo do arquivo, como
+`json` ou `os` (até a versão 16.2.14 ele nascia ligado, sem import). Os
+exemplos abaixo pressupõem o import.
 
 ```
+import Parsing
+
 post(Parsing.integer("R$ 1.234"))   # 1234
 ```
 

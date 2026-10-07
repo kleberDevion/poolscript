@@ -1597,24 +1597,24 @@ async function main() {
     conf('membro inexistente numa Entity NAO vira candidato de outro tipo (k.upper diz que C nao tem)',
          txt(m, 41).includes('não tem `upper`') && !txt(m, 41).includes('str.upper'), txt(m, 41));
   }
-  /* `Parsing` nasce ligado, sem import (a VM liga o nome). O editor só
-   * resolvia `x.membro` com `x` vindo de import: `Parsing.` ficava mudo em
-   * todo lugar — no topo e dentro de classe, que foi onde ele viu. */
+  /* `Parsing` é lib (`import Parsing`, desde o 17.0.0). `Parsing.` tem que
+   * resolver no topo e dentro de classe, que foi onde ele viu ficar mudo. */
   {
-    const src = 'x = Parsing.integer("5", to int)\n'           // 0  integer@12
-              + 'class K {\n'                               // 1
-              + '    funct m(self) {\n'                       // 2
-              + '        return Parsing.integer("7", to int)\n' // 3  integer@23
-              + '    }\n'                                     // 4
-              + '}\n';                                        // 5
-    const m = await conversa(src, [hov(46, 0, 14), hov(47, 3, 25), hov(48, 3, 18)]);
-    conf('hover em `Parsing.integer` no topo, sem import',
+    const src = 'import Parsing\n'                              // 0
+              + 'x = Parsing.integer("5", to int)\n'           // 1  integer@12
+              + 'class K {\n'                               // 2
+              + '    funct m(self) {\n'                       // 3
+              + '        return Parsing.integer("7", to int)\n' // 4  integer@23
+              + '    }\n'                                     // 5
+              + '}\n';                                        // 6
+    const m = await conversa(src, [hov(46, 1, 14), hov(47, 4, 25), hov(48, 4, 18)]);
+    conf('hover em `Parsing.integer` no topo',
          valor(m, 46).includes('Parsing.integer('), valor(m, 46));
     conf('hover em `Parsing.integer` DENTRO de metodo de classe',
          valor(m, 47).includes('Parsing.integer('), valor(m, 47));
     conf('hover no proprio `Parsing` diz que e modulo',
          valor(m, 48).includes('Parsing'), valor(m, 48));
-    const mc = await conversa('class K {\n    funct m(self) {\n        Parsing.\n    }\n}\n', [compl(49, 2, 16)]);
+    const mc = await conversa('import Parsing\nclass K {\n    funct m(self) {\n        Parsing.\n    }\n}\n', [compl(49, 3, 16)]);
     const lc = rotulos(resp(mc, 49));
     conf('completion `Parsing.` dentro de metodo de classe lista os membros',
          lc.includes('integer') && lc.includes('TransientValue'), lc.slice(0, 8));

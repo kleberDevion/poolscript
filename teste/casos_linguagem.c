@@ -1543,13 +1543,20 @@ const Caso CASOS_LINGUAGEM[] = {
 { "long aceita int porque int E inteiro — nao e conversao",
   "long y = 5\npost(y)\n", "5", NULL, 0 },
 
-/* ── módulos sem `import` ────────────────────────────────────────────────
- * `Parsing` é namespace pré-ligado e `sys.stdout`/`sys.stderr` são atributos:
- * nenhum dos três se importa. O `--metadata` chegou a anunciá-los pelo nome de
- * REGISTRO (`_Parsing`, `_stdout`), e aí o editor sugeria `import _stdout`, que
- * só podia dar ImportError. */
-{ "Parsing existe sem import",
-  "post(type(Parsing), type(Parsing.integer))\n", "module funct", NULL, 0 },
+/* ── libs do motor e o `import` ─────────────────────────────────────────
+ * `Parsing` é lib como `json` (até o 16.2.14 nascia ligado, sem import), e
+ * `sys.stdout`/`sys.stderr` são atributos, que não se importam. O
+ * `--metadata` chegou a anunciá-los pelo nome de REGISTRO (`_stdout`), e aí o
+ * editor sugeria `import _stdout`, que só podia dar ImportError. */
+{ "Parsing é lib: import, import as e from import",
+  "import Parsing\n"
+  "import Parsing as P\n"
+  "from Parsing import integer\n"
+  "post(type(Parsing), Parsing.integer(\"R$ 1.234\"), P.floating(\"19,90\"), integer(\"12 unidades\"))\n",
+  "module 1234 19.9 12", NULL, 0 },
+{ "Parsing sem import: NameError com a dica do import",
+  "post(Parsing.integer(\"5\"))\n",
+  "", "NameError: name 'Parsing' is not defined. Did you forget to import 'Parsing'?", 2 },
 { "sys.stdout e sys.stderr são atributos de sys",
   "import sys\npost(type(sys.stdout), type(sys.stderr), type(sys.stdout.write))\n",
   "module module funct", NULL, 0 },
@@ -3204,8 +3211,8 @@ const Caso CASOS_LINGUAGEM[] = {
   "{\"a\": true, \"b\": null, \"c\": false}\n[True, False, Null]", NULL, 0 },
 /* `json` tambem e nome de TIPO (o dict), e a conferencia do nome solto
  * deixava `json.parse` sem import passar no --check; rodando dava NameError */
-{ "json.parse sem import json e NameError antes de rodar",
-  "post(json.parse(\"[1]\"))\n", "", "NameError: name 'json' is not defined", 2 },
+{ "json.parse sem import json e NameError antes de rodar, com a dica do import",
+  "post(json.parse(\"[1]\"))\n", "", "NameError: name 'json' is not defined. Did you forget to import 'json'?", 2 },
 { "json solto continua sendo o tipo dict, sem import",
   "post(json)\njson d = {\"a\": 1}\npost(d)\n", "dict\n{'a': 1}", NULL, 0 },
 
@@ -4390,7 +4397,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "from 'json' import *\npost(stringify([1]))\n", "[1]", NULL, 0 },
 { "import *: import m * nao liga o nome do modulo",
   "import regex *\npost(regex)\n",
-  "", "NameError: name 'regex' is not defined. Did you mean: 'range'?", 2 },
+  "", "NameError: name 'regex' is not defined. Did you forget to import 'regex'?", 2 },
 { "import *: modulo ausente e ImportError na linha do import",
   "post(1)\nfrom naoexiste import *\n", "1", "ImportError: No module named 'naoexiste'", 1 },
 { "import *: dentro de funct e recusado",

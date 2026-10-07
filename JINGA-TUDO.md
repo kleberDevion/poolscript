@@ -373,7 +373,7 @@ p.nome = 5       -> AttributedValueError: campo nome de P esperava str, recebeu 
 #### 2.4.3 Conversão explícita
 
 - Builtins `int()`, `flo()`, `str()`, `bool()`, `list()`, `tup()`, `dict()`, `long()`. Se não der para converter, estouram (`int("abc")` dá `ValueError`).
-- `Parsing` é global, sem import, e faz conversão tolerante com alvo `to <tipo>`: `Parsing.integer("  127.abc ", to int)` devolve `127`. `"7" to int` sozinho não converte nada.
+- `Parsing` é lib (`import Parsing`, desde o 17.0.0; antes nascia ligado, sem import) e faz conversão tolerante com alvo `to <tipo>`: `Parsing.integer("  127.abc ", to int)` devolve `127`. `"7" to int` sozinho não converte nada. Lib do motor usada sem import dá `NameError: name 'Parsing' is not defined. Did you forget to import 'Parsing'?`.
 - `input()` devolve `str`, ou `Null` no fim da entrada. Para número, escreva `int(input())`.
 
 #### 2.4.4 Dict: chave é expressão
@@ -986,7 +986,7 @@ Encodings aceitos em `encode`/`decode`: `utf-8`, `latin-1`, `ascii`, `utf-16-le/
 
 Em regex dentro de string, use `r"\d+"` ou `"\\d+"`. Com `"\d"` a barra fica no texto e sai um aviso de escape inválido.
 
-### 2.18 Biblioteca padrão (18 módulos com `import`, mais `Parsing` global)
+### 2.18 Biblioteca padrão (19 módulos, todos com `import`)
 
 A lista viva está em `jinga --help` e em `jinga --metadata` (`modulos`). Todos são nativos, embutidos na VM e carregados só no import.
 
@@ -1010,7 +1010,7 @@ A lista viva está em `jinga --help` e em `jinga --metadata` (`modulos`). Todos 
 | `qrcode` | `gen`, `make` (PNG), `QRCode`, `ERROR_CORRECT_L/M/Q/H` |
 | `manpu` | CSV, XLSX, XML, HTML, JSON e texto: `read load write remove src open` (use `open` com `using`) |
 | `datasentity` | `dataentity asdict astuple aslist asjson` |
-| `Parsing` (global) | Conversão tolerante: `string integer floating boolean TransientValue JSONformatt Arrayformatt Tuplasformatt`, com `to <tipo>` |
+| `Parsing` | Conversão tolerante: `string integer floating boolean TransientValue JSONformatt Arrayformatt Tuplasformatt`, com `to <tipo>`. Lib desde o 17.0.0; antes nascia ligado, sem import |
 
 Servidor mínimo (conferido: `curl /ola/ana` devolveu `{"msg": "ola ana"}`):
 
@@ -1746,7 +1746,7 @@ $ printf 'import os\nos.\n' > ctx.pr && jinga --contexto 2:4 ctx.pr
 {"contexto":"membro","parcial":"","receptor":"os"}
 ```
 
-**`--metadata`**: sai das próprias tabelas do motor (`MODULOS[]`, `METODOS_*`, `ps_tipos.def`, `retornos_medidos.inc`). As chaves de topo são `modulos`, `acesso`, `tipos`, `builtins`, `excecoes`, `tipos_nomes`, `tipos_valor`, `tipos_declaraveis`, `keywords`, `tipos_apelidos` e `modulos_sem_import` (`["Parsing"]`). Medido: 63.945 bytes, 256 entradas com `"kind"`. É o que o servidor LSP e `scripts/audita_doc.pr` consomem; `teste/confere_metadata.pr` confere no `make check`.
+**`--metadata`**: sai das próprias tabelas do motor (`MODULOS[]`, `METODOS_*`, `ps_tipos.def`, `retornos_medidos.inc`). As chaves de topo são `modulos`, `acesso`, `tipos`, `builtins`, `excecoes`, `tipos_nomes`, `tipos_valor`, `tipos_declaraveis`, `keywords` e `tipos_apelidos` (a `modulos_sem_import` saiu no 17.0.0, quando o `Parsing` virou lib; em `acesso` ele é `"import"`). Medido no 17.0.0: 63.985 bytes, 256 entradas com `"kind"`. É o que o servidor LSP e `scripts/audita_doc.pr` consomem; `teste/confere_metadata.pr` confere no `make check`.
 
 **`--bytecode [arq]`**: o desmontador (`ps_desmonta`), com uma linha por instrução no formato `ip  NOME  arg  ; significado` (exemplo em 3.6). O cabeçalho de cada proto mostra `nlocals`, `nparams`, `gerador` e `async`.
 
@@ -2106,14 +2106,14 @@ language-servers = ["jinga"]
 
 ## 5. Build, testes, portões, VPS, CI, release e versão
 
-### 5.1 Estado de agora (medido em 2026-10-06)
+### 5.1 Estado de agora (medido em 2026-10-07)
 
 | item | valor |
 |---|---|
-| versão da linguagem | **16.2.14** (`vm/ps_versao.h`, bump no commit `c73fec3`, o último que mexe no motor); os commits depois dele são de doc e de ferramenta |
-| `./pool --version` | `Jinga 16.2.14 [PSVM] (2026-10-06) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário (`cmp` igual) |
-| versão da extensão do VS Code | 8.6.10 |
-| binário `./pool` | 9.091.912 bytes |
+| versão da linguagem | **17.0.0** (`vm/ps_versao.h`): o `Parsing` virou lib (`import Parsing`). Major porque quebra programa que o usava sem import |
+| `./pool --version` | `Jinga 17.0.0 [PSVM] (2026-10-07) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário (`cmp` igual) |
+| versão da extensão do VS Code | 8.6.11 |
+| binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
 | `gh` desta máquina | 2.101.0, logado como `kleberDevion` (token válido em 2026-10-06). Falta o escopo `user`: ler a cobrança do Actions pede `gh auth refresh -h github.com -s user`; no Mac é preciso `gh auth login` |
 | CI | o GitHub **recusa todos os jobs desde 2026-10-06 15:15 UTC** (cobrança ou cota da conta, ver 5.12 e 6.2). O portão de cada commit é a VPS (5.11 e 5.12) mais a suíte local |

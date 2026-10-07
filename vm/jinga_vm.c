@@ -3356,7 +3356,7 @@ static void escreve_valor(const Value *v, int dentro)
             } else if (v->as.obj->type == OBJ_MODULO) {
                 {
                     /* módulo oculto sai sem o `_` de registro: o usuário
-                     * escreveu `Parsing`, não `_Parsing` */
+                     * escreveu `sys.stdout`, não `_stdout` */
                     const char *nm = MODULOS[((PSModulo *)v->as.obj)->idx].nome;
                     if (nm[0] == '_') printf("<%s>", nm + 1);
                     else              printf("<modulo %s>", nm);
@@ -23408,7 +23408,7 @@ static const ModuloNat MODULOS[] = {
     { "json", MOD_JSON, (int)(sizeof(MOD_JSON) / sizeof(MOD_JSON[0])) },
     { "date", MOD_DATE, (int)(sizeof(MOD_DATE) / sizeof(MOD_DATE[0])) },
     { "regex", MOD_REGEX, (int)(sizeof(MOD_REGEX) / sizeof(MOD_REGEX[0])) },
-    { "_Parsing", MOD_PARSING, (int)(sizeof(MOD_PARSING) / sizeof(MOD_PARSING[0])) },
+    { "Parsing", MOD_PARSING, (int)(sizeof(MOD_PARSING) / sizeof(MOD_PARSING[0])) },
     { "os", MOD_OS, (int)(sizeof(MOD_OS) / sizeof(MOD_OS[0])) },
     { "sys", MOD_SYS, (int)(sizeof(MOD_SYS) / sizeof(MOD_SYS[0])) },
     { "dotenv", MOD_DOTENV, (int)(sizeof(MOD_DOTENV) / sizeof(MOD_DOTENV[0])) },
@@ -23438,8 +23438,8 @@ static const ModuloNat MODULOS[] = {
 
 /* Os módulos que o `import` enxerga, separados por vírgula, pro `--help`.
  * Sai da MESMA tabela que o `import` e o `--metadata` usam — a lista digitada
- * no help já envelhecia (citava `Parsing`, que é interno, e não citava
- * `bytes`, `sockets`…). Quebra a linha perto da coluna 70. */
+ * no help já envelhecia (não citava `bytes`, `sockets`…). Quebra a linha
+ * perto da coluna 70. */
 const char *ps_modulos_publicos(void)
 {
     static char buf[1024];
@@ -23447,7 +23447,7 @@ const char *ps_modulos_publicos(void)
     buf[0] = '\0';
     for (int i = 0; i < N_MODULOS; i++) {
         const char *nome = MODULOS[i].nome;
-        if (nome[0] == '_') continue;             /* interno: `_stdout`, `_Parsing` */
+        if (nome[0] == '_') continue;             /* interno: `_stdout`, `_stderr`, `_stdin` */
         size_t tam = strlen(nome);
         if (j + tam + 6 >= sizeof(buf)) break;
         if (j) {
@@ -23460,33 +23460,6 @@ const char *ps_modulos_publicos(void)
         buf[j] = '\0';
     }
     return buf;
-}
-
-/* Busca inclusive os que o `import` não enxerga (`_stdout`, `_Parsing`). */
-static int acha_modulo_oculto(const char *nome)
-{
-    for (int i = 0; i < N_MODULOS; i++)
-        if (strcmp(MODULOS[i].nome, nome) == 0) return i;
-    return -1;
-}
-
-/* Módulos que NASCEM ligados, sem import: o nome que se escreve e o registro
- * oculto em MODULOS[] (com `_`, pra `import Parsing` seguir sendo erro).
- * Um lugar só: as duas ligações (arquivo executado e módulo importado) e o
- * `--metadata`, de onde o editor tira a lista. O nome estava cravado em cada
- * ligação, e o editor não sabia de nenhum: `Parsing.` não mostrava nada. */
-static const struct { const char *nome, *registro; } MODULOS_SEM_IMPORT[] = {
-    { "Parsing", "_Parsing" },
-};
-#define N_MODULOS_SEM_IMPORT ((int)(sizeof(MODULOS_SEM_IMPORT) / sizeof(MODULOS_SEM_IMPORT[0])))
-
-/* O índice em MODULOS[] do módulo que `nome` liga sem import, ou -1. */
-static int modulo_sem_import(const char *nome)
-{
-    for (int i = 0; i < N_MODULOS_SEM_IMPORT; i++)
-        if (strcmp(MODULOS_SEM_IMPORT[i].nome, nome) == 0)
-            return acha_modulo_oculto(MODULOS_SEM_IMPORT[i].registro);
-    return -1;
 }
 
 static int acha_modulo(const char *nome)
@@ -30606,19 +30579,6 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
             if (nm) vm->globals[bg + i] = MK_OBJ(nm);
             continue;
         }
-        {
-            int mi = modulo_sem_import(prog->globais[i]);
-            if (mi >= 0) {
-                PSModulo *pm = calloc(1, sizeof(PSModulo));
-                if (pm) {
-                    pm->obj.type = OBJ_MODULO; pm->obj.marked = 0;
-                    pm->obj.next = vm->objetos; vm->objetos = (Obj *)pm;
-                    pm->idx = mi;
-                    vm->alocado += sizeof(PSModulo);
-                    vm->globals[bg + i] = MK_OBJ(pm);
-                }
-            }
-        }
     }
 
     PSModuloPS *m = calloc(1, sizeof(PSModuloPS));
@@ -30899,21 +30859,17 @@ static const char *jm_rotulo_tabela(int t)
     }
 }
 
-/* O nome que o usuário ESCREVE pra um módulo registrado com `_` na frente:
- * `_Parsing` é namespace pré-ligado (escreve-se `Parsing`, sem import) e
- * `_stdout`/`_stderr`/`_stdin` só existem como `sys.stdout`/... . `acesso`
- * (opcional) diz como o nome chega: "import", "global" ou "atributo". */
+/* O nome que o usuário ESCREVE pra um módulo da tabela. Os registrados com
+ * `_` na frente (`_stdout`, `_stderr`, `_stdin`) não se importam: só existem
+ * como `sys.stdout`/... . `acesso` (opcional) diz como o nome chega:
+ * "import" ou "atributo". */
 static const char *modulo_nome_visivel(const char *nome, char *buf, size_t cap, const char **acesso)
 {
     if (acesso) *acesso = "import";
     if (nome[0] != '_') return nome;
-    if (!strcmp(nome, "_stdout") || !strcmp(nome, "_stderr") || !strcmp(nome, "_stdin")) {
-        snprintf(buf, cap, "sys.%s", nome + 1);
-        if (acesso) *acesso = "atributo";
-        return buf;
-    }
-    if (acesso) *acesso = "global";
-    return nome + 1;
+    snprintf(buf, cap, "sys.%s", nome + 1);
+    if (acesso) *acesso = "atributo";
+    return buf;
 }
 
 const char *ps_nativo_sugestao(const char *mod, const char *membro)
@@ -30975,8 +30931,7 @@ int ps_nome_pre_ligado(const char *nome)
     for (int b = 0; b < NBUILTINS; b++)
         if (strcmp(BUILTINS[b].nome, nome) == 0) return 1;
     if (!strcmp(nome, "__name__") || !strcmp(nome, "PoolFile") || !strcmp(nome, "byte")) return 1;
-    if (excecao_indice(nome) >= 0) return 1;
-    return modulo_sem_import(nome) >= 0;
+    return excecao_indice(nome) >= 0;
 }
 
 int ps_nativo_eh_modulo(const char *nome)
@@ -31242,14 +31197,7 @@ void ps_metadata_json(FILE *saida)
             jm_txt(f, TIPOS[AP[i].cod].nome);
         }
     }
-    /* Módulos que nascem ligados, sem import (`Parsing.integer(...)`): o editor
-     * resolve `Parsing.` por esta lista, não por uma cópia dela. */
-    fprintf(f, "\n },\n \"modulos_sem_import\": [");
-    for (int i = 0; i < N_MODULOS_SEM_IMPORT; i++) {
-        if (i) fputc(',', f);
-        jm_txt(f, MODULOS_SEM_IMPORT[i].nome);
-    }
-    fprintf(f, "]\n}\n");
+    fprintf(f, "\n }\n}\n");
 }
 
 /* Despeja os avisos do lexer no STDERR.
@@ -31690,10 +31638,6 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
                 break;
             }
         }
-        /* `Parsing` é namespace, não função: existe sem `import`, então entra
-         * como módulo pré-ligado. Registrado como `_Parsing` pra NÃO ser
-         * importável — `import Parsing` é erro no interpretador, e a VM não
-         * pode ser mais permissiva que a linguagem. */
         /* No arquivo executado, `__name__` vale "main" — o mesmo texto que o
          * guard compara, então `__name__ == "main"` é verdadeiro dentro e
          * fora do `if`. Valia o caminho do arquivo, e a mesma expressão dava
@@ -31722,19 +31666,6 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         if (!ligou) {
             int64_t k = excecao_indice(prog->globais[i]);
             if (k >= 0) { vm.globals[i] = MK_TIPO(TIPO_EXC_BASE + k); ligou = 1; }
-        }
-        if (!ligou) {
-            int mi = modulo_sem_import(prog->globais[i]);
-            if (mi >= 0) {
-                PSModulo *pm = malloc(sizeof(PSModulo));
-                if (!pm) { libera_vm(&vm); ps_compila_free(prog);
-                           e->tipo = PS_ERRO_MEMORIA; return -1; }
-                pm->obj.type = OBJ_MODULO; pm->obj.marked = 0;
-                pm->obj.next = vm.objetos; vm.objetos = (Obj *)pm;
-                pm->idx = mi;
-                vm.alocado += sizeof(PSModulo);
-                vm.globals[i] = MK_OBJ(pm);
-            }
         }
     }
     /* Nomes das globais sobrevivem ao prog: o jinker usa pra achar os slots

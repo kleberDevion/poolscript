@@ -688,8 +688,8 @@ confere("os tokens de dentro vêm marcados", "\"em\":\"fstring\"" in r["saida"])
 r = roda([POOL, "--ast"], entrada="post(f\"oi {n.upper()}\")\n")
 confere("--ast traz a expressão de dentro da f-string",
         "\"texto\":\"upper\"" in r["saida"])
-confere("o nó de dentro da f-string tem a coluna real",
-        "\"k\":\"Name\",\"l\":1,\"c\":12,\"texto\":\"n\"" in r["saida"])
+confere("o nó de dentro da f-string tem a coluna real e o fim",
+        "\"k\":\"Name\",\"l\":1,\"c\":12,\"l2\":1,\"c2\":13,\"texto\":\"n\"" in r["saida"])
 
 # o INTERVALO de cada `{...}` vem no token da f-string: é com ele que o editor
 # sabe que ali é código, inclusive no espaço entre os tokens de dentro
@@ -892,6 +892,13 @@ r = roda([POOL, "--check"], entrada="x = \"𠮷\" = 2\n")
 confere("--check sem --utf16: c2 em caractere", fins_do_check(r["saida"]) == [[1, 9, 1, 10]])
 r = roda([POOL, "--check", "--utf16"], entrada="x = \"𠮷\" = 2\n")
 confere("--check --utf16: c2 convertido como a coluna", fins_do_check(r["saida"]) == [[1, 10, 1, 11]])
+# O receptor do `.` também diz onde acaba: ele não passa pela `expressao`, e o
+# erro nele (lib usada sem import, nome que não existe) saía com l2/c2 0.
+r = roda([POOL, "--check"], entrada="post(Parsing.integer(\"5\"))\npost(os.getenv(\"X\"))\npost(zz.a.b)\n")
+confere("--check: l2/c2 do nome antes do ponto (lib sem import e nome que não existe)",
+        fins_do_check(r["saida"]) == [[1, 6, 1, 13], [2, 6, 2, 8], [3, 6, 3, 8]])
+confere("--check: lib do motor sem import diz qual import falta",
+        "Did you forget to import 'Parsing'?" in r["saida"] and "Did you forget to import 'os'?" in r["saida"])
 
 os.writeFile(PASTA + "/corpo.pr",
              "funct a() {\n    x = = 1\n    y = 2\n}\nfunct b() {\n    return 3\n}\n")
