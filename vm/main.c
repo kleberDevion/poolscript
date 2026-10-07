@@ -83,6 +83,13 @@ static void ajuda(void)
  * ainda existe no disco, então abrir e falhar lá dentro com "token inesperado"
  * ou "não achei o módulo" seria pior que dizer o conserto. Qualquer outra
  * extensão continua rodando como sempre — a recusa é só pras três de antes. */
+/* O motivo da última leitura que falhou (o arquivo que não abre, a extensão
+ * antiga, o erro de leitura, a entrada padrão ilegível, a memória): os
+ * comandos de editor o põem no JSON deles, cada um no seu formato. Saía
+ * "sem memoria" no `--contexto` e `[]` no `--tokens` pra arquivo que não
+ * existe, e o `--check` da entrada padrão ilegível aprovava o fonte vazio. */
+static char g_falha_leitura[512];
+
 static char *le_arquivo(const char *caminho, size_t *tam)
 {
     const char *velha = ps_ext_velha(caminho);
@@ -93,11 +100,15 @@ static char *le_arquivo(const char *caminho, size_t *tam)
             "      Pra converter uma pasta inteira (arquivos, referencias e libs):\n"
             "          jinga scripts/migra_pr" PS_EXT " <pasta> --aplica --libs\n",
             caminho, velha);
+        snprintf(g_falha_leitura, sizeof(g_falha_leitura),
+                 "'%s' usa a extensao %s, que a linguagem nao usa mais: hoje o arquivo e " PS_EXT,
+                 caminho, velha);
         return NULL;
     }
     FILE *f = fopen(caminho, "rb");
     if (!f) {
         fprintf(stderr, "jinga: nao consegui abrir '%s'\n", caminho);
+        snprintf(g_falha_leitura, sizeof(g_falha_leitura), "nao consegui abrir '%s'", caminho);
         return NULL;
     }
     /* Lê em laço, sem `fseek`. O tamanho de antes vinha de `fseek`+`ftell`, que
@@ -105,7 +116,7 @@ static char *le_arquivo(const char *caminho, size_t *tam)
      * de pipe caíam no `return NULL` e o binário saía 66 SEM dizer nada. */
     size_t cap = 65536, n = 0;
     char *buf = malloc(cap);
-    if (!buf) { fclose(f); fprintf(stderr, "jinga: sem memoria\n"); return NULL; }
+    if (!buf) { fclose(f); fprintf(stderr, "jinga: sem memoria\n"); snprintf(g_falha_leitura, sizeof(g_falha_leitura), "sem memoria"); return NULL; }
     for (;;) {
         size_t r = fread(buf + n, 1, cap - n - 1, f);
         n += r;
@@ -113,13 +124,18 @@ static char *le_arquivo(const char *caminho, size_t *tam)
         if (n + 1 >= cap) {
             cap *= 2;
             char *nb = realloc(buf, cap);
-            if (!nb) { free(buf); fclose(f); fprintf(stderr, "jinga: sem memoria\n"); return NULL; }
+            if (!nb) { free(buf); fclose(f); fprintf(stderr, "jinga: sem memoria\n"); snprintf(g_falha_leitura, sizeof(g_falha_leitura), "sem memoria"); return NULL; }
             buf = nb;
         }
     }
     int falhou = ferror(f);
     fclose(f);
-    if (falhou) { free(buf); fprintf(stderr, "jinga: erro lendo '%s'\n", caminho); return NULL; }
+    if (falhou) {
+        free(buf);
+        fprintf(stderr, "jinga: erro lendo '%s'\n", caminho);
+        snprintf(g_falha_leitura, sizeof(g_falha_leitura), "erro lendo '%s'", caminho);
+        return NULL;
+    }
     buf[n] = '\0';
     *tam = n;
     return buf;
@@ -134,11 +150,18 @@ static char *le_arquivo(const char *caminho, size_t *tam)
  * só o basename — espelha o `_clean_filename` do interpretador (a autoridade),
  * pra que os dois motores mostrem o MESMO nome no traceback. O caminho cheio
  * ainda é usado pra abrir o arquivo e ler o trecho. */
+/* A pasta de onde o comando foi rodado, guardada na partida: o caminho
+ * relativo do programa vale a partir dela, e não da pasta de depois de um
+ * `os.chdir` — o quadro reabria o nome na pasta nova e mostrava a linha de
+ * OUTRO arquivo de mesmo nome. Vazia = não deu pra ler (vale a de agora). */
+static char g_cwd_partida[4096];
+
 static const char *limpa_arquivo(const char *fn, char *buf, size_t cap)
 {
     if (!fn || !fn[0] || fn[0] == '<') return (fn && fn[0]) ? fn : "<script>";
-    char cwd[1024];
-    if (getcwd(cwd, sizeof(cwd))) {
+    char cwd[4096];
+    if (g_cwd_partida[0]) snprintf(cwd, sizeof(cwd), "%s", g_cwd_partida);
+    if (g_cwd_partida[0] || getcwd(cwd, sizeof(cwd))) {
         size_t lc = strlen(cwd);
         /* o prefixo é a pasta corrente com QUALQUER separador: no Windows o
          * getcwd dá `\` e o caminho resolvido do script dá `/` */
@@ -235,14 +258,23 @@ static void mostra_trecho(const char *origem, int linha, int col, const char *no
         mostra_linha(p, nl ? (size_t)(nl - p) : (size_t)(fim - p), col, nome);
         return;
     }
-    FILE *f = fopen(origem, "rb");
+    char cheio[8192];
+    const char *abrir = origem;
+    if (!ps_caminho_absoluto(origem) && g_cwd_partida[0]) {
+        snprintf(cheio, sizeof(cheio), "%s/%s", g_cwd_partida, origem);
+        abrir = cheio;
+    }
+    FILE *f = fopen(abrir, "rb");
     if (!f) return;
+    /* A linha conta pelo `\n`, não pelo pedaço lido: a linha de 5000 bytes
+     * vinha em dois pedaços de 4096, contados como duas linhas, e o quadro
+     * de baixo mostrava o fim dela. A linha mostrada é cortada no pedaço. */
     char buf[4096];
-    int atual = 0;
+    int atual = 1;
     while (fgets(buf, sizeof(buf), f)) {
-        if (++atual != linha) continue;
-        mostra_linha(buf, strlen(buf), col, nome);
-        break;
+        size_t n = strlen(buf);
+        if (atual == linha) { mostra_linha(buf, n, col, nome); break; }
+        if (n > 0 && buf[n - 1] == '\n') atual++;
     }
     fclose(f);
 }
@@ -288,6 +320,9 @@ static int reporta(PSErroExec *e, const char *origem)
         case PS_ERRO_TAREFA:
             /* o traceback da tarefa já saiu no fim do programa; só o código */
             return 1;
+        case PS_ERRO_SAIDA:
+            /* `sys.exit(n)`: os finally já rodaram; nada a dizer */
+            return e->codigo_saida;
         case PS_ERRO_NAO_SUPORTADO:
             fprintf(stderr, "NotImplementedError: %s\n", e->msg);
             imprime_quadro(origem, e->linha, e->col);
@@ -641,7 +676,12 @@ static int cmd_build(void)
         PSErroExec e;
         int r = ps_roda_fonte(fonte, tam, nomes[i], &e);
         free(fonte);
-        if (r != 0) { reporta(&e, nomes[i]); falhou++; rc = r; }
+        /* O código de cada arquivo é o que ele daria rodando sozinho: um
+         * `sys.exit(0)` é sucesso, e o `sys.exit` não encerra mais o build (os
+         * arquivos de depois não rodavam e o resumo não saía). O build sai
+         * com 1 se algum falhou — era o -1 do ps_roda_fonte, 255 no shell. */
+        int cod = r != 0 ? reporta(&e, nomes[i]) : 0;
+        if (cod != 0) { falhou++; rc = 1; }
         else ok++;
         free(nomes[i]);
     }
@@ -786,6 +826,59 @@ static int n_para_utf16(int linha, int col, int n)
     return u;
 }
 
+/* A mesma conta numa coluna de OUTRO arquivo — o módulo importado que não
+ * compila, no `coluna_arquivo` do `--check`: saía em caractere mesmo com
+ * `--utf16`. Lê o fonte dele; sem conseguir ler, a coluna fica como veio. */
+static int col_utf16_em_arquivo(const char *caminho, int linha, int col)
+{
+    if (!g_utf16 || col <= 1 || !caminho || !caminho[0]) return col;
+    FILE *f = fopen(caminho, "rb");
+    if (!f) return col;
+    size_t cap = 65536, n = 0, r;
+    char *buf = malloc(cap);
+    while (buf && (r = fread(buf + n, 1, cap - n, f)) > 0) {
+        n += r;
+        if (n == cap) { char *nb = realloc(buf, cap *= 2); if (!nb) { free(buf); buf = NULL; } else buf = nb; }
+    }
+    fclose(f);
+    if (!buf) return col;
+    const char *salvo = g_fonte;
+    size_t salvo_tam = g_fonte_tam;
+    g_fonte = buf; g_fonte_tam = n;
+    int u = col_para_utf16(linha, col);
+    g_fonte = salvo; g_fonte_tam = salvo_tam;
+    free(buf);
+    return u;
+}
+
+/* Um erro de lexer/parser na lista `erros` do `--tokens` e do `--ast`, com
+ * `--utf16` valendo também aqui (a coluna saía em caractere enquanto o token
+ * ERRO, ao lado, saía em UTF-16) e com o fim do trecho quando medido. */
+static void imprime_erro_json(const PSAviso *e)
+{
+    printf("{\"msg\":");
+    json_str(e->msg);
+    printf(",\"linha\":%d,\"coluna\":%d", e->linha, col_para_utf16(e->linha, e->col));
+    if (e->linha_fim > 0)
+        printf(",\"l2\":%d,\"c2\":%d", e->linha_fim, col_para_utf16(e->linha_fim, e->col_fim));
+    putchar('}');
+}
+
+/* Os avisos do lexer no JSON do `--check`, no caso ok e no de erro. */
+static void imprime_avisos(const PSAviso *avisos, int32_t n)
+{
+    if (n <= 0 || !avisos) return;
+    printf(",\"avisos\":[");
+    for (int32_t i = 0; i < n; i++) {
+        if (i) putchar(',');
+        printf("{\"msg\":");
+        json_str(avisos[i].msg);
+        printf(",\"linha\":%d,\"coluna\":%d}", avisos[i].linha,
+               col_para_utf16(avisos[i].linha, avisos[i].col));
+    }
+    putchar(']');
+}
+
 /* `jinga --check [arquivo.pr]` — lexer/parser/compilador da VM, SEM rodar, com
  * o resultado em JSON pro editor. Sem arquivo, lê o buffer do stdin (o editor
  * manda o conteúdo não salvo). NUNCA executa o código.
@@ -794,23 +887,34 @@ static int n_para_utf16(int linha, int col, int n)
  * motor não sabe onde o arquivo mora, não acha os módulos vizinhos e pula a
  * conferência entre arquivos CALADO — que é justamente o modo que o editor
  * usa. Com ele, `import util` ao lado resolve igual ao arquivo salvo. */
+static char *le_stdin_todo(size_t *tam);
+
+/* `jinga --check a.pr b.pr`: um JSON por linha, cada um com `"arquivo"` na
+ * frente. Conferia só o primeiro e aprovava o resto calado — `jinga --check
+ * *.pr` num CI passava com arquivo quebrado. Com um arquivo só, o JSON é o de
+ * sempre (é o que o editor lê). */
+static const char *g_check_arquivo = NULL;
+
+static void abre_json_check(void)
+{
+    putchar('{');
+    if (g_check_arquivo) { printf("\"arquivo\":"); json_str(g_check_arquivo); putchar(','); }
+}
+
 static int cmd_check(const char *arquivo, const char *como)
 {
     size_t tam = 0;
-    char *fonte = NULL;
-    if (arquivo) {
-        fonte = le_arquivo(arquivo, &tam);
-        if (!fonte) { printf("{\"ok\":false,\"tipo\":\"IOError\",\"msg\":\"nao consegui abrir o arquivo\",\"linha\":1,\"coluna\":1}\n"); return CHECK_RC_FALHA; }
-    } else {
-        size_t cap = 65536; tam = 0;
-        fonte = malloc(cap);
-        if (!fonte) { printf("{\"ok\":false,\"tipo\":\"MemoryError\",\"msg\":\"sem memoria\",\"linha\":1,\"coluna\":1}\n"); return CHECK_RC_FALHA; }
-        size_t r;
-        while ((r = fread(fonte + tam, 1, cap - tam, stdin)) > 0) {
-            tam += r;
-            if (tam == cap) { cap *= 2; char *nb = realloc(fonte, cap); if (!nb) { free(fonte); printf("{\"ok\":false,\"tipo\":\"MemoryError\",\"msg\":\"sem memoria\",\"linha\":1,\"coluna\":1}\n"); return CHECK_RC_FALHA; } fonte = nb; }
-        }
-        fonte[tam] = '\0';
+    char *fonte = arquivo ? le_arquivo(arquivo, &tam) : le_stdin_todo(&tam);
+    if (!fonte) {
+        /* o motivo de verdade: o arquivo que não abre, a extensão antiga, a
+         * entrada padrão ilegível (antes aprovada como fonte vazio) */
+        abre_json_check();
+        printf("\"ok\":false,\"tipo\":");
+        json_str(strcmp(g_falha_leitura, "sem memoria") ? "IOError" : "MemoryError");
+        printf(",\"msg\":");
+        json_str(g_falha_leitura);
+        printf(",\"linha\":1,\"coluna\":1}\n");
+        return CHECK_RC_FALHA;
     }
 
     PSErroExec e;
@@ -824,32 +928,25 @@ static int cmd_check(const char *arquivo, const char *como)
     /* Os AVISOS entram no mesmo JSON, e entram tanto no caso `ok` quanto no de
      * erro: um `\p` que nao e escape nao impede o programa de compilar, mas o
      * editor tem que poder sublinhar. Sem isto o aviso so existiria pra quem
-     * roda no terminal — e o editor e onde ele seria visto. */
+     * roda no terminal — e o editor e onde ele seria visto. No caso de erro
+     * eles eram soltos sem sair: com um erro de tipo na linha 3, o aviso da
+     * linha 1 sumia do editor e continuava saindo rodando. */
     if (rc == 0) {
-        printf("{\"ok\":true");
-        if (navisos > 0) {
-            printf(",\"avisos\":[");
-            for (int32_t i = 0; i < navisos; i++) {
-                if (i) putchar(',');
-                printf("{\"msg\":");
-                json_str(avisos[i].msg);
-                printf(",\"linha\":%d,\"coluna\":%d}", avisos[i].linha,
-                       col_para_utf16(avisos[i].linha, avisos[i].col));
-            }
-            putchar(']');
-        }
+        abre_json_check();
+        printf("\"ok\":true");
+        imprime_avisos(avisos, navisos);
         printf("}\n");
         free(avisos);
         free(fonte);
         return 0;
     }
-    free(avisos);
 
     const char *tipo = e.tipo == PS_ERRO_SINTAXE ? "SyntaxError"
                      : e.tipo == PS_ERRO_NAO_SUPORTADO ? "NotImplementedError"
                      : e.tipo == PS_ERRO_MEMORIA ? "MemoryError"
                      : e.tipo == PS_ERRO_TIPO && e.tipo_nome[0] ? e.tipo_nome : "RuntimeError";
-    printf("{\"ok\":false,\"tipo\":");
+    abre_json_check();
+    printf("\"ok\":false,\"tipo\":");
     json_str(tipo);
     printf(",\"msg\":");
     json_str(e.msg);
@@ -872,17 +969,22 @@ static int cmd_check(const char *arquivo, const char *como)
              * vez de estender ate o fim do token que comeca ali */
             printf(",\"l2\":%d,\"c2\":%d", e.tipos[i].linha_fim,
                    col_para_utf16(e.tipos[i].linha_fim, e.tipos[i].col_fim));
-            /* o erro esta em outro arquivo (modulo importado que nao compila) */
+            /* o erro esta em outro arquivo (modulo importado que nao compila);
+             * com `--utf16` a coluna de la tambem e convertida, pelo fonte
+             * DELE */
             if (e.tipos[i].arquivo[0]) {
                 printf(",\"arquivo\":");
                 json_str(e.tipos[i].arquivo);
-                printf(",\"linha_arquivo\":%d,\"coluna_arquivo\":%d", e.tipos[i].linha_arq, e.tipos[i].col_arq);
+                printf(",\"linha_arquivo\":%d,\"coluna_arquivo\":%d", e.tipos[i].linha_arq,
+                       col_utf16_em_arquivo(e.tipos[i].arquivo, e.tipos[i].linha_arq, e.tipos[i].col_arq));
             }
             putchar('}');
         }
         putchar(']');
     }
+    imprime_avisos(avisos, navisos);
     printf("}\n");
+    free(avisos);
     free(e.tipos);
     free(fonte);
     return CHECK_RC_FALHA;
@@ -908,20 +1010,28 @@ static int cmd_check(const char *arquivo, const char *como)
  *   {"contexto":"import","parcial":"os"}
  *
  * NUNCA executa o código — só tokeniza. */
+/* A entrada padrão inteira. Ilegível (pasta, fechada) é falha, não fonte
+ * vazio: o `--check` aprovava o vazio, e não conseguir conferir não é
+ * conferir e aprovar. */
 static char *le_stdin_todo(size_t *tam)
 {
     size_t cap = 65536; *tam = 0;
     char *b = malloc(cap);
-    if (!b) return NULL;
+    if (!b) { snprintf(g_falha_leitura, sizeof(g_falha_leitura), "sem memoria"); return NULL; }
     size_t r;
-    while ((r = fread(b + *tam, 1, cap - *tam, stdin)) > 0) {
+    while ((r = fread(b + *tam, 1, cap - *tam - 1, stdin)) > 0) {
         *tam += r;
-        if (*tam == cap) {
+        if (*tam + 1 >= cap) {
             cap *= 2;
             char *nb = realloc(b, cap);
-            if (!nb) { free(b); return NULL; }
+            if (!nb) { free(b); snprintf(g_falha_leitura, sizeof(g_falha_leitura), "sem memoria"); return NULL; }
             b = nb;
         }
+    }
+    if (ferror(stdin)) {
+        free(b);
+        snprintf(g_falha_leitura, sizeof(g_falha_leitura), "nao consegui ler a entrada padrao");
+        return NULL;
     }
     b[*tam] = '\0';
     return b;
@@ -1050,14 +1160,21 @@ static int cmd_tokens(const char *arquivo)
 {
     size_t tam = 0;
     char *fonte = le_fonte_editor(arquivo, &tam);
-    if (!fonte) { printf("[]\n"); return 1; }
+    if (!fonte) {
+        /* o formato de sempre, com o motivo em `erros` (era `[]`, o formato
+         * antigo, sem dizer que o arquivo não abriu) */
+        printf("{\"tokens\":[],\"erros\":[{\"msg\":");
+        json_str(g_falha_leitura);
+        printf(",\"linha\":1,\"coluna\":1,\"l2\":1,\"c2\":1}]}\n");
+        return 1;
+    }
     /* Modo de RECUPERAÇÃO: o trecho que o lexer não entendeu vira um token
      * `ERRO` e a análise segue. Antes, um caractere estranho no meio do
      * arquivo fazia isto devolver `[]` — e como o arquivo passa a maior parte
      * do tempo inválido enquanto se digita, a tela inteira perdia a cor. Os
      * erros saem em `erros`, depois da lista. */
     PSTokenList *tl = ps_lexer_tokenize_modo(fonte, tam, 1, 1);
-    if (!tl) { free(fonte); printf("[]\n"); return 1; }
+    if (!tl) { free(fonte); printf("{\"tokens\":[],\"erros\":[{\"msg\":\"sem memoria\",\"linha\":1,\"coluna\":1,\"l2\":1,\"c2\":1}]}\n"); return 1; }
 
     fputs("{\"tokens\":[", stdout);
     int primeiro = 1;
@@ -1077,10 +1194,14 @@ static int cmd_tokens(const char *arquivo)
                ps_tok_nome(t->type), t->line, col_para_utf16(t->line, t->col),
                n_para_utf16(t->line, t->col, nch));
         /* onde ele TERMINA: é o que permite sublinhar e dobrar string de
-         * várias linhas e comentário de bloco, que `n` não mede */
+         * várias linhas e comentário de bloco, que `n` não mede. Todo token
+         * traz (lsp.md): o que não ocupa texto (INDENT, DEDENT, SINC) acaba
+         * onde começa. */
         if (t->linha_fim)
             printf(",\"l2\":%d,\"c2\":%d",
                    t->linha_fim, col_para_utf16(t->linha_fim, t->col_fim));
+        else
+            printf(",\"l2\":%d,\"c2\":%d", t->line, col_para_utf16(t->line, t->col));
         /* O INTERVALO de cada `{...}` da f-string, no próprio token dela.
          * Sem ele o editor tem os tokens de dentro (abaixo) mas não o que
          * está ENTRE eles: o espaço depois do `{` e o pedaço ainda vazio
@@ -1137,10 +1258,16 @@ static int cmd_tokens(const char *arquivo)
                         for (int32_t z = 0; z < s->texto_len; z++)
                             if (((unsigned char)s->texto[z] & 0xC0) != 0x80) snch++;
                     }
+                    /* o fim, como o dos tokens de fora, na posição do arquivo */
+                    int lin2 = lin, col2 = col + snch;
+                    if (s->linha_fim > 0) {
+                        lin2 = tl->interps[k].linha + s->linha_fim - 1;
+                        col2 = (s->linha_fim == 1) ? tl->interps[k].col + s->col_fim - 1 : s->col_fim;
+                    }
                     fputc(',', stdout);
-                    printf("{\"t\":\"%s\",\"l\":%d,\"c\":%d,\"n\":%d,\"em\":\"fstring\",\"v\":\"",
+                    printf("{\"t\":\"%s\",\"l\":%d,\"c\":%d,\"n\":%d,\"l2\":%d,\"c2\":%d,\"em\":\"fstring\",\"v\":\"",
                            ps_tok_nome(s->type), lin, col_para_utf16(lin, col),
-                           n_para_utf16(lin, col, snch));
+                           n_para_utf16(lin, col, snch), lin2, col_para_utf16(lin2, col2));
                     if (s->texto) json_escapa(stdout, s->texto, s->texto_len);
                     fputs("\"}", stdout);
                 }
@@ -1153,9 +1280,7 @@ static int cmd_tokens(const char *arquivo)
         printf(",\"erros\":[");
         for (int32_t i = 0; i < tl->nerros; i++) {
             if (i) putchar(',');
-            printf("{\"msg\":");
-            json_str(tl->erros[i].msg);
-            printf(",\"linha\":%d,\"coluna\":%d}", tl->erros[i].linha, tl->erros[i].col);
+            imprime_erro_json(&tl->erros[i]);
         }
         putchar(']');
     }
@@ -1282,7 +1407,7 @@ static int cmd_bytecode(const char *arquivo)
 {
     size_t tam = 0;
     char *fonte = le_fonte_editor(arquivo, &tam);
-    if (!fonte) { fprintf(stderr, "jinga: sem entrada\n"); return 1; }
+    if (!fonte) { fprintf(stderr, "jinga: %s\n", g_falha_leitura); return 1; }
     PSErroExec e;
     int rc = ps_desmonta_fonte(fonte, tam, arquivo, stdout, &e);
     free(fonte);
@@ -1294,7 +1419,12 @@ static int cmd_ast(const char *arquivo)
 {
     size_t tam = 0;
     char *fonte = le_fonte_editor(arquivo, &tam);
-    if (!fonte) { printf("{\"ok\":false,\"msg\":\"sem entrada\"}\n"); return 1; }
+    if (!fonte) {
+        printf("{\"ok\":false,\"msg\":");
+        json_str(g_falha_leitura);
+        printf(",\"arvore\":null}\n");
+        return 1;
+    }
 
     /* Modo de RECUPERAÇÃO nos dois: o lexer não para no caractere estranho e o
      * parser não para no primeiro erro de sintaxe — o statement quebrado é
@@ -1303,10 +1433,13 @@ static int cmd_ast(const char *arquivo)
      * justamente enquanto se digita. Os erros saem em `erros`. */
     PSTokenList *tl = NULL;
     PSParseResult *r = ps_parse_fonte(fonte, tam, 1, &tl);
-    free(fonte);
+    /* o fonte fica vivo até o fim: com `--utf16` a coluna de cada nó e de
+     * cada erro é convertida por ele (era solto aqui, e a conversão lia
+     * memória já devolvida) */
     if (!r || !tl) {
         if (r) ps_parse_free(r);
         ps_lexer_free(tl);
+        free(fonte);
         printf("{\"ok\":false,\"msg\":\"sem memoria\",\"arvore\":null}\n"); return 1;
     }
 
@@ -1318,21 +1451,17 @@ static int cmd_ast(const char *arquivo)
         int32_t c = tl->nerros > 0 ? tl->erros[0].col : r->erros[0].col;
         printf("{\"ok\":false,\"tipo\":\"SyntaxError\",\"msg\":\"");
         json_escapa(stdout, msg, (int)strlen(msg));
-        printf("\",\"linha\":%d,\"coluna\":%d,\"erros\":[", l, c);
+        printf("\",\"linha\":%d,\"coluna\":%d,\"erros\":[", l, col_para_utf16(l, c));
         int primeiro = 1;
         for (int32_t i = 0; i < tl->nerros; i++) {
             if (!primeiro) putchar(',');
             primeiro = 0;
-            printf("{\"msg\":");
-            json_str(tl->erros[i].msg);
-            printf(",\"linha\":%d,\"coluna\":%d}", tl->erros[i].linha, tl->erros[i].col);
+            imprime_erro_json(&tl->erros[i]);
         }
         for (int32_t i = 0; i < r->nerros; i++) {
             if (!primeiro) putchar(',');
             primeiro = 0;
-            printf("{\"msg\":");
-            json_str(r->erros[i].msg);
-            printf(",\"linha\":%d,\"coluna\":%d}", r->erros[i].linha, r->erros[i].col);
+            imprime_erro_json(&r->erros[i]);
         }
         printf("],\"arvore\":");
     } else {
@@ -1343,6 +1472,7 @@ static int cmd_ast(const char *arquivo)
     int rc = nerros > 0 ? 1 : 0;
     ps_lexer_free(tl);
     ps_parse_free(r);
+    free(fonte);
     return rc;
 }
 
@@ -1555,7 +1685,12 @@ static int cmd_contexto(const char *pos, const char *arquivo)
     }
     size_t tam = 0;
     char *fonte = le_fonte_editor(arquivo, &tam);
-    if (!fonte) { printf("{\"contexto\":\"erro\",\"msg\":\"sem memoria\"}\n"); return 1; }
+    if (!fonte) {
+        printf("{\"contexto\":\"erro\",\"msg\":");
+        json_str(g_falha_leitura);
+        printf("}\n");
+        return 1;
+    }
     /* com `--utf16` a posição CHEGA na conta do editor: converte pra caractere,
      * que é como o lexer conta */
     col = col_de_utf16(linha, col);
@@ -1641,6 +1776,7 @@ int main(int argc, char **argv)
     /* o que o sistema pede antes de tudo (no Windows: Winsock, console em
      * UTF-8 com cores; no Linux e no macOS, nada) */
     ps_so_inicia();
+    if (!getcwd(g_cwd_partida, sizeof(g_cwd_partida))) g_cwd_partida[0] = '\0';
     /* o quadro do traceback é o MESMO pro erro que para o programa e pro que
      * só é avisado (o do `int funct` que devolveu 500) */
     ps_gancho_quadro = imprime_quadro;
@@ -1730,7 +1866,31 @@ int main(int argc, char **argv)
             fprintf(stderr, "uso: jinga --check --path <caminho" PS_EXT ">  (o fonte vem da entrada padrao)\n");
             return 64;
         }
+        /* vários arquivos: confere todos, um JSON por linha; o código de
+         * saída diz se algum falhou */
+        if (argc > 3) {
+            int rc = 0;
+            for (int i = 2; i < argc; i++) {
+                g_check_arquivo = argv[i];
+                if (cmd_check(argv[i], NULL) != 0) rc = CHECK_RC_FALHA;
+            }
+            g_check_arquivo = NULL;
+            return rc;
+        }
         return cmd_check(argc >= 3 ? argv[2] : NULL, NULL);
+    }
+    /* Os outros comandos de editor leem UM fonte: o arquivo a mais era
+     * ignorado calado (e a resposta parecia ser dos dois). */
+    if (!strcmp(cmd, "--tokens") || !strcmp(cmd, "tokens") || !strcmp(cmd, "--ast") || !strcmp(cmd, "ast")
+            || !strcmp(cmd, "--bytecode") || !strcmp(cmd, "bytecode")) {
+        if (argc > 3) {
+            fprintf(stderr, "uso: jinga %s [arquivo" PS_EXT "]  (um arquivo por vez; sem arquivo, a entrada padrao)\n", cmd);
+            return 64;
+        }
+    }
+    if ((!strcmp(cmd, "--contexto") || !strcmp(cmd, "contexto")) && argc > 4) {
+        fprintf(stderr, "uso: jinga --contexto <linha>:<coluna> [arquivo" PS_EXT "]  (um arquivo por vez)\n");
+        return 64;
     }
     /* modelo de tipos direto do motor — o editor e a auditoria de doc leem
      * daqui em vez de introspectar a stdlib do interpretador */

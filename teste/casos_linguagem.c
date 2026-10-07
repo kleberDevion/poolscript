@@ -3514,6 +3514,33 @@ const Caso CASOS_LINGUAGEM[] = {
 { "dica de uma letra a menos continua",
   "int total = 1\npost(totl)\n", "", "NameError: name 'totl' is not defined. Did you mean: 'total'?", 2 },
 
+/* ── Plano 6, lote 9: o sys.exit roda os finally (doc 10.2) ──────────────────
+ * Nenhum catch o pega (o sem tipo também não, nem a rede do int funct); os
+ * finally em volta rodam, e o programa sai com o código pedido. */
+{ "sys.exit no try roda o finally e o catch sem tipo nao pega",
+  "import sys\ntry {\n    post(\"antes\")\n    sys.exit(3)\n} catch (e) {\n    post(\"pegou\")\n} finally {\n    post(\"finally\")\n}\npost(\"depois\")\n",
+  "antes\nfinally", NULL, 3 },
+{ "sys.exit nao e pego por catch (Exception e)",
+  "import sys\ntry {\n    sys.exit(2)\n} catch (Exception e) {\n    post(\"pegou\")\n}\npost(\"depois\")\n",
+  "", NULL, 2 },
+{ "sys.exit atravessa a rede do int funct (nao vira 500)",
+  "import sys\nint funct f() {\n    try {\n        sys.exit(4)\n    } finally {\n        int z = 0\n    }\n    return 1\n}\nint r = f()\npost(\"nao chega\", r)\n",
+  "", NULL, 4 },
+{ "sys.exit dentro de callback roda o finally de fora",
+  "import sys\nint funct g(int x) {\n    if x == 2 {\n        sys.exit(5)\n    }\n    return x\n}\ntry {\n    list l = map([1, 2, 3], g)\n    post(l)\n} catch (Exception e) {\n    post(\"pegou\")\n} finally {\n    post(\"fin\")\n}\npost(\"depois\")\n",
+  "fin", NULL, 5 },
+{ "sys.exit dentro de gerador roda o finally dele",
+  "import sys\nfunct gen() {\n    try {\n        yield 1\n        sys.exit(6)\n    } finally {\n        post(\"fin gen\")\n    }\n}\nfor each v in gen() {\n    post(v)\n}\npost(\"nao chega\")\n",
+  "1\nfin gen", NULL, 6 },
+{ "sys.exit dentro de tarefa async roda o finally dela",
+  "import sys\nasync funct t() {\n    try {\n        sys.exit(7)\n    } finally {\n        post(\"fin tarefa\")\n    }\n}\nawait t()\npost(\"nao chega\")\n",
+  "fin tarefa", NULL, 7 },
+{ "sys.exit em tarefa que ninguem aguarda roda o finally dela e sai",
+  "import sys\nasync funct t() {\n    try {\n        sleep(0.05)\n        sys.exit(8)\n    } finally {\n        post(\"fin tarefa solta\")\n    }\n}\nt()\nsleep(0.5)\npost(\"nao chega\")\n",
+  "fin tarefa solta", NULL, 8 },
+{ "sys.exit(0) sai com 0 sem mensagem",
+  "import sys\npost(\"ok\")\nsys.exit(0)\npost(\"nao chega\")\n", "ok", NULL, 0 },
+
 /* ── sonda 2, lote 3: vetores de salto sem teto e f-string inteira ────────── */
 { "65 breaks no mesmo laco e 65 elifs compilam (os vetores de salto crescem)",
   "import os\nimport sys\nstr b = \"int x = 0\\nwhile True {\\n\"\nfor each k in range(65) { b = b + \"    if x == \" + str(k + 100) + \" { break }\\n\" }\n"

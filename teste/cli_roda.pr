@@ -954,6 +954,88 @@ r = roda([POOL, "-c", "ordem.pr"])
 confere("opcao desconhecida sem parecida manda pro --help, rc 64",
         r["rc"] == 64 and "opcao desconhecida '-c' (as opcoes estao em jinga --help)" in r["saida"])
 
+# Plano 6, lote 9: o quadro do erro, o --check e os comandos de editor.
+# O quadro conta a linha pelo `\n` (a linha de 5000 bytes vinha em dois
+# pedaços de 4096, contados como duas) e abre o arquivo pela pasta da partida
+# (depois do os.chdir ele mostrava a linha de outro arquivo de mesmo nome).
+os.writeFile(PASTA + "/longa1.pr", "str s = \"" + "a" * 5000 + "\"\nint x = \"abc\"\npost(x)\n")
+r = roda([POOL, "longa1.pr"])
+confere("quadro depois de linha longa mostra a linha certa",
+        r["rc"] == 2 and "em longa1.pr, linha 2\n  | int x = \"abc\"" in r["saida"])
+os.mkdir(PASTA + "/cdq/outra", exist_ok=True)
+os.writeFile(PASTA + "/cdq/prog.pr", "import os\nos.chdir(\"outra\")\nlist l = []\npost(l[9])\n")
+os.writeFile(PASTA + "/cdq/outra/prog.pr", "# 1\n# 2\n# 3\n# LINHA 4 DO OUTRO ARQUIVO\n")
+r = roda([POOL, "prog.pr"], pasta=PASTA + "/cdq")
+confere("quadro depois do os.chdir mostra a linha do programa que rodou",
+        r["rc"] == 1 and "| post(l[9])" in r["saida"] and not "OUTRO" in r["saida"])
+# --check com dois arquivos confere os dois: um JSON por linha, com o arquivo
+os.writeFile(PASTA + "/bom9.pr", "post(1)\n")
+os.writeFile(PASTA + "/ruim9.pr", "int x = \"a\"\n")
+r = roda([POOL, "--check", "bom9.pr", "ruim9.pr"])
+confere("--check com dois arquivos confere os dois, rc 1 se algum falhou",
+        r["rc"] == 1 and "{\"arquivo\":\"bom9.pr\",\"ok\":true}" in r["saida"]
+        and "{\"arquivo\":\"ruim9.pr\",\"ok\":false" in r["saida"])
+r = roda([POOL, "--tokens", "bom9.pr", "ruim9.pr"])
+confere("--tokens com dois arquivos e uso errado, rc 64", r["rc"] == 64 and "um arquivo por vez" in r["saida"])
+# arquivo que não abre: o motivo, no formato de cada comando
+r = roda([POOL, "--contexto", "1:1", "naoexiste9.pr"])
+confere("--contexto de arquivo que nao existe diz que nao abriu",
+        r["rc"] == 1 and "{\"contexto\":\"erro\",\"msg\":\"nao consegui abrir 'naoexiste9.pr'\"}" in r["saida"])
+r = roda([POOL, "--tokens", "naoexiste9.pr"])
+confere("--tokens de arquivo que nao existe no formato de objeto",
+        r["rc"] == 1 and "{\"tokens\":[],\"erros\":[{\"msg\":\"nao consegui abrir 'naoexiste9.pr'\"" in r["saida"])
+# entrada padrão ilegível (uma pasta) não é fonte vazio aprovado
+if not WINDOWS
+{
+    r = roda(["sh", "-c", "'" + POOL + "' --check < ."])
+    confere("--check com a entrada padrao ilegivel e IOError, rc 1",
+            r["rc"] == 1 and "nao consegui ler a entrada padrao" in r["saida"])
+}
+# os avisos saem também quando há erro em outra linha
+r = roda([POOL, "--check"], entrada="str s = \"C:\\pasta\"\npost(s)\nint x = \"a\"\n")
+confere("--check traz os avisos tambem com erro", "\"ok\":false" in r["saida"] and "\"avisos\":[" in r["saida"])
+# --utf16 vale nos erros do --tokens e do --ast (o emoji vale 2)
+r = roda([POOL, "--tokens", "--utf16"], entrada="str s = \"\U0001F600\U0001F600\"; int a\u00e7 = 1\n")
+confere("--tokens --utf16 converte a coluna dos erros", "\"erros\":[{\"msg\":" in r["saida"] and "\"coluna\":22" in r["saida"])
+r = roda([POOL, "--ast", "--utf16"], entrada="str s = \"\U0001F600\U0001F600\"; int a\u00e7 = 1\n")
+confere("--ast --utf16 converte a coluna do topo e dos erros",
+        "\"linha\":1,\"coluna\":22,\"erros\"" in r["saida"] and not "\"coluna\":20" in r["saida"])
+# todo token traz l2/c2: o de dentro da f-string e os de largura zero
+r = roda([POOL, "--tokens"], entrada="post(f\"oi {x}\")\n")
+confere("token de dentro da f-string traz l2/c2",
+        "{\"t\":\"IDENT\",\"l\":1,\"c\":12,\"n\":1,\"l2\":1,\"c2\":13,\"em\":\"fstring\"" in r["saida"])
+r = roda([POOL, "--tokens"], entrada="if True:\n    post(1)\npost(2)\n")
+confere("INDENT e DEDENT trazem l2/c2 (acabam onde comecam)",
+        "{\"t\":\"INDENT\",\"l\":2,\"c\":1,\"n\":0,\"l2\":2,\"c2\":1" in r["saida"]
+        and "{\"t\":\"DEDENT\",\"l\":3,\"c\":1,\"n\":0,\"l2\":3,\"c2\":1" in r["saida"])
+# import opcional: dentro de try cujo catch pega ImportError, o --check aprova
+r = roda([POOL, "--check"], entrada="try {\n    import naoexiste9\n} catch (ImportError e) {\n    post(\"sem\")\n}\n")
+confere("--check aprova o import opcional (try que pega ImportError)", "{\"ok\":true}" in r["saida"])
+r = roda([POOL, "--check"], entrada="try {\n    import naoexiste9\n} catch (ValueError e) {\n    post(\"sem\")\n}\n")
+confere("--check acusa o import ausente quando o catch nao pega ImportError", "No module named" in r["saida"])
+# rodando, o cursor do import ausente cai no NOME do módulo, como no --check
+os.writeFile(PASTA + "/imp9.pr", "import naoexiste9\n")
+r = roda([POOL, "imp9.pr"])
+confere("rodando, o cursor do import ausente fica no nome do modulo",
+        r["rc"] == 1 and "  | import naoexiste9\n  |        ^^^" in r["saida"])
+# --check pela entrada padrão sem --path acha o vizinho na pasta corrente
+r = roda([POOL, "--check"], entrada="import util\npost(util.soma(1, 2))\n", pasta=PASTA + "/proj")
+confere("--check da entrada padrao acha o vizinho na pasta corrente", "{\"ok\":true}" in r["saida"])
+# jinga build: o sys.exit de um arquivo não encerra o build, e o rc diz se houve erro
+os.mkdir(PASTA + "/build9", exist_ok=True)
+os.writeFile(PASTA + "/build9/a.pr", "post(\"a ok\")\n")
+os.writeFile(PASTA + "/build9/b.pr", "import sys\npost(\"b\")\nsys.exit(0)\n")
+os.writeFile(PASTA + "/build9/c.pr", "int x = \"z\"\n")
+r = roda([POOL, "build"], pasta=PASTA + "/build9")
+confere("build segue depois do sys.exit e sai 1 com erro",
+        r["rc"] == 1 and "=== c.pr ===" in r["saida"] and "2 arquivo(s) OK, 1 com erro(s)." in r["saida"])
+os.mkdir(PASTA + "/build9ok", exist_ok=True)
+os.writeFile(PASTA + "/build9ok/a.pr", "post(\"a ok\")\n")
+os.writeFile(PASTA + "/build9ok/b.pr", "import sys\npost(\"b\")\nsys.exit(0)\n")
+r = roda([POOL, "build"], pasta=PASTA + "/build9ok")
+confere("build sem erro sai 0, com o sys.exit(0) contando como ok",
+        r["rc"] == 0 and "2 arquivo(s) OK, 0 com erro(s)." in r["saida"])
+
 os.writeFile(PASTA + "/corpo.pr",
              "funct a() {\n    x = = 1\n    y = 2\n}\nfunct b() {\n    return 3\n}\n")
 r = roda([POOL, "--ast", "corpo.pr"])

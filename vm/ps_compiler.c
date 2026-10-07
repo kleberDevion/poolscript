@@ -434,6 +434,10 @@ typedef struct {
     int         cap_finally;
     /* profundidade de `try` aberto — `yield` dentro de um é recusado */
     int         dentro_try;
+    /* quantos `try` em volta têm um `catch` que pega o `ImportError` (o tipo,
+     * um pai dele ou o catch sem tipo): o módulo que não existe ali é o
+     * import opcional, e o erro é do programa rodando, não do `--check` */
+    int         import_protegido;
     /* profundidade de `count each` aberto — muda o que `return;` devolve */
     int         dentro_count_each;
     /* Nome do primeiro pai da Entity cujos métodos estão sendo compilados —
@@ -3338,6 +3342,19 @@ static PSNode *tp_no_do_import(PSNode *n, const char *membro)
     return n;
 }
 
+/* Os opcodes do import apontam o trecho que o `--check` aponta: o NOME do
+ * módulo (o IMPORT_MOD) e o do membro pedido (o IMPORT_FROM). O cursor do
+ * erro rodando caía no `import`, e o do editor no nome. */
+static int32_t emite_import(C *c, Unidade *u, PSNode *n, int32_t op, const char *nome, const char *membro)
+{
+    PSNode *onde = tp_no_do_import(n, membro);
+    int32_t l0 = c->linha_atual, c0 = c->coluna_atual;
+    if (onde && onde != n && onde->line > 0) { c->linha_atual = onde->line; c->coluna_atual = onde->col; }
+    int32_t r = emite(c, u, op, idx_const(c, u, K_STR, 0, 0, nome, (int32_t)strlen(nome)));
+    c->linha_atual = l0; c->coluna_atual = c0;
+    return r;
+}
+
 static void tp_grava_import(C *c, PSNode *n, const char *mod, const char *membro)
 {
     memset(&c->grava, 0, sizeof(c->grava));
@@ -3381,8 +3398,11 @@ static void tp_grava_import(C *c, PSNode *n, const char *mod, const char *membro
         /* O módulo não existe. A frase é a MESMA que o import daria rodando —
          * antes o `--check` dizia `{"ok":true}` e um typo no import só
          * aparecia na execução. O `terro` não repete a mesma linha/coluna, e
-         * por isso `from m import a, b, c` acusa uma vez só. */
-        terro(c, tp_no_do_import(n, NULL), "ImportError", "No module named '%s'", vis);
+         * por isso `from m import a, b, c` acusa uma vez só. Dentro de um
+         * `try` que pega o `ImportError` é o import OPCIONAL: o programa
+         * roda e o catch trata (doc 10.4), e o `--check` o reprovava. */
+        if (!c->import_protegido)
+            terro(c, tp_no_do_import(n, NULL), "ImportError", "No module named '%s'", vis);
         c->grava.tem_valor = 1;
         return;
     }
@@ -6288,8 +6308,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 }
                 int32_t e = -1;
                 for (int32_t k = 0; k < c->nestrelas; k++) if (mesmo_no(c->estrelas[k].no, n)) { e = k; break; }
-                int32_t cmod = idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod));
-                emite(c, u, OP_IMPORT_MOD, cmod);
+                emite_import(c, u, n, OP_IMPORT_MOD, mod, NULL);
                 if ((e < 0 || !c->estrelas[e].resolvido) && c->resolve && c->resolve->nomes_de)
                     c->out->estrela_incompleta = 1;
                 if (e < 0 || !c->estrelas[e].resolvido) {
@@ -6340,7 +6359,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             if (strcmp(n->texto, "push") == 0) {
                 if (n->lista2.n == 0) {
                     if (!simples) { cerro_sx(c, n, "import de modulo pontuado/relativo precisa de 'from ... import ...'"); return; }
-                    emite(c, u, OP_IMPORT_MOD, idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod)));
+                    emite_import(c, u, n, OP_IMPORT_MOD, mod, NULL);
                     tp_grava_import(c, n, mod, NULL);
                     guarda_nome(c, u, n->texto2 ? n->texto2 : ultimo);
                     return;
@@ -6349,8 +6368,8 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     const char *membro = n->lista2.itens[i]->texto;
                     const char *apelido = (i < n->lista2_alias.n && n->lista2_alias.itens[i])
                                         ? n->lista2_alias.itens[i]->texto : membro;
-                    emite(c, u, OP_IMPORT_MOD, idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod)));
-                    emite(c, u, OP_IMPORT_FROM, idx_const(c, u, K_STR, 0, 0, membro, (int32_t)strlen(membro)));
+                    emite_import(c, u, n, OP_IMPORT_MOD, mod, NULL);
+                    emite_import(c, u, n, OP_IMPORT_FROM, membro, membro);
                     tp_grava_import(c, n, mod, membro);
                     guarda_nome(c, u, apelido);
                 }
@@ -6359,7 +6378,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
 
             if (strcmp(n->texto, "import") == 0) {
                 if (!simples) { cerro_sx(c, n, "import de modulo pontuado/relativo precisa de 'from ... import ...'"); return; }
-                emite(c, u, OP_IMPORT_MOD, idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod)));
+                emite_import(c, u, n, OP_IMPORT_MOD, mod, NULL);
                 tp_grava_import(c, n, mod, NULL);
                 guarda_nome(c, u, n->texto2 ? n->texto2 : ultimo);
                 return;
@@ -6369,8 +6388,8 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 const char *membro = n->lista2.itens[i]->texto;
                 const char *apelido = (i < n->lista2_alias.n && n->lista2_alias.itens[i])
                                     ? n->lista2_alias.itens[i]->texto : membro;
-                emite(c, u, OP_IMPORT_MOD, idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod)));
-                emite(c, u, OP_IMPORT_FROM, idx_const(c, u, K_STR, 0, 0, membro, (int32_t)strlen(membro)));
+                emite_import(c, u, n, OP_IMPORT_MOD, mod, NULL);
+                emite_import(c, u, n, OP_IMPORT_FROM, membro, membro);
                 tp_grava_import(c, n, mod, membro);
                 guarda_nome(c, u, apelido);
             }
@@ -6522,7 +6541,14 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * cada handler: os CLEAR do fim do bloco só rodam no caminho normal */
             int32_t pico_fora = u->pico_locais, hist0 = u->n_mod_hist;
             u->pico_locais = u->nlocais;
+            int pega_import = 0;
+            for (int32_t i = 0; i < n->lista.n; i++) {
+                PSNode *cl = n->lista.itens[i];
+                if (cl && (!cl->texto2 || ps_excecao_eh("ImportError", cl->texto2))) pega_import = 1;
+            }
+            c->import_protegido += pega_import;
             bloco_stmts(c, u, n->a);
+            c->import_protegido -= pega_import;
             escopo_fecha(c, u, Mt);            /* vars do try não vazam (saída normal) */
             c->dentro_try--;
             emite(c, u, OP_POP_TRY, 0);
@@ -6562,6 +6588,16 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                      * pegava nada. */
                     emite(c, u, OP_EXC_CASA, 0);
                     prox_falha = emite(c, u, OP_JUMP_IF_FALSE, 0);
+                } else {
+                    /* O catch sem tipo pega tudo MENOS o `sys.exit`: ele
+                     * atravessa, roda os finally e sai (ps_retornos.h). Sem
+                     * o teste, `catch (e)` engolia o exit e o programa
+                     * seguia. Só roda quando um erro chegou aqui. */
+                    emite(c, u, OP_PUSH_ERR_TYPE, 0);
+                    emite(c, u, OP_LOAD_CONST,
+                          idx_const(c, u, K_STR, 0, 0, PS_TIPO_SAIDA, (int32_t)strlen(PS_TIPO_SAIDA)));
+                    emite(c, u, OP_EXC_CASA, 0);
+                    prox_falha = emite(c, u, OP_JUMP_IF_TRUE, 0);
                 }
                 /* liga a mensagem ao nome do catch e roda o bloco */
                 int32_t Mcat = escopo_marca(u);
@@ -6858,7 +6894,20 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
     return idx;
 }
 
+static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai);
+
+/* O corpo da funct roda quando ela é CHAMADA, fora do `try` em volta da
+ * declaração: o import opcional daquele `try` não vale aqui dentro. */
 static int32_t compila_funct(C *c, PSNode *n, Unidade *pai)
+{
+    int protegido = c->import_protegido;
+    c->import_protegido = 0;
+    int32_t r = compila_funct_em(c, n, pai);
+    c->import_protegido = protegido;
+    return r;
+}
+
+static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
 {
     int32_t idx = novo_proto(c, n->texto ? n->texto : "<funct>");
     if (idx < 0) return -1;

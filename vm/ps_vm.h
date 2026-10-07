@@ -28,7 +28,10 @@ typedef enum {
      * aguardou quebrou: o erro JÁ SAIU no stderr, e o código de saída é 1
      * (o mesmo de uma exceção não pega no principal). Saía 0, e um script de
      * build ou um CI tratava a falha como sucesso. */
-    PS_ERRO_TAREFA
+    PS_ERRO_TAREFA,
+    /* `sys.exit(n)`: os `finally` já rodaram; sai com `codigo_saida`, sem
+     * mensagem nenhuma. */
+    PS_ERRO_SAIDA
 } PSTipoErro;
 
 /* Um quadro do traceback: função, arquivo e linha. */
@@ -71,6 +74,8 @@ typedef struct {
     char       nota_arquivo[1024];
     int        nota_linha;
     int        nota_col;
+    /* PS_ERRO_SAIDA: o código que o `sys.exit` pediu */
+    int        codigo_saida;
 } PSErroExec;
 
 /* Roda o `.pr` inteiro. 0 = sucesso; -1 preenche `e`. */

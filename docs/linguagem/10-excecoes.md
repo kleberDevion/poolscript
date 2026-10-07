@@ -47,6 +47,12 @@ try {
   `return`, `break` e `continue` dentro do `finally` valem: saem dali na hora
   (um `return` no `finally` ganha do `return` do `try`), e só atravessam os
   `finally` **de fora** — o próprio nunca roda duas vezes.
+- **`sys.exit(n)` também passa pelos `finally`.** Nenhum `catch` o pega (nem o
+  sem tipo, nem `catch (Exception e)`, nem a rede da `int funct`): os
+  `finally` em volta rodam, de dentro pra fora, e o programa sai com o código
+  `n`. Vale dentro de funct, de gerador, de callback (`map`) e de tarefa
+  `async` (os `finally` da tarefa rodam e o programa sai ali). Na rota do
+  `jinker` ele encerra o servidor na hora.
 
 - As variáveis declaradas no bloco do `try` são **do bloco**: não existem no
   `catch`, no `finally` nem depois — tenha havido erro ou não (seção 4.6).

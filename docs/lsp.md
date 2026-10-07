@@ -408,17 +408,24 @@ Comandos do binário que existem pra servir o editor:
 | `jinga --ast [arq]` | a árvore do parser em JSON, com `erros` quando há |
 | `jinga --contexto L:C [arq]` | o que o cursor toca naquela posição |
 | `jinga --check [arq]` | o erro de compilação em JSON, com linha e coluna |
+| `jinga --check a.pr b.pr …` | um JSON por linha, cada um com `"arquivo"` na frente; sai 1 se algum falhou |
 | `jinga --check --path <arq>` | o mesmo, para um buffer não salvo que VALE como aquele arquivo |
 | `jinga --bytecode [arq]` | o bytecode que o compilador gera, uma instrução por linha (`ip NOME arg ; significado`), por proto |
 
 **Arquivo ou buffer.** Os quatro primeiros aceitam o caminho do arquivo; sem
 caminho, leem o fonte da entrada padrão, que é como o editor manda o buffer
-ainda não salvo.
+ainda não salvo. Um arquivo por vez: `--tokens`, `--ast`, `--bytecode` e
+`--contexto` com arquivo a mais saem com uso errado (64); só o `--check`
+confere vários. O arquivo que não abre (ou a entrada padrão que não se lê)
+vem com o motivo, no formato de cada comando: no `--check`, `IOError` com a
+frase (`nao consegui abrir 'x.pr'`, `nao consegui ler a entrada padrao`); no
+`--tokens`, em `erros`; no `--contexto`, em `msg`.
 
-**`--check --path`.** Sem o caminho, o motor não sabe onde o arquivo mora:
-não acha os módulos vizinhos e pula a conferência entre arquivos sem avisar.
-Com ele, `import util` ao lado resolve igual ao arquivo salvo — é a forma que
-o servidor usa.
+**`--check --path`.** Sem o caminho, o motor não sabe onde o arquivo mora, e
+os módulos vizinhos são procurados na pasta corrente, como o programa lido da
+entrada padrão em outras linguagens. Com ele, `import util` ao lado resolve
+igual ao arquivo salvo, de onde quer que se rode — é a forma que o servidor
+usa.
 
 ```
 printf 'import util\nutil.naoexiste()\n' | jinga --check --path src/main.pr
@@ -426,9 +433,12 @@ printf 'import util\nutil.naoexiste()\n' | jinga --check --path src/main.pr
 
 **Módulo que não existe.** O `--check` acusa `ImportError: No module named
 'x'`, a mesma frase que aparece ao rodar, em `import x`, `from x import y` e
-`from x import *`. A exceção conhecida: módulo GERADO em tempo de execução (o
-programa escreve o `.pr` e depois importa) é acusado pelo checador, porque
-antes de rodar o arquivo não existe.
+`from x import *`. Não acusa o import **opcional**: dentro de um `try` cujo
+`catch` pega o `ImportError` (o tipo, um pai dele ou o catch sem tipo), o
+programa roda e o catch trata. A exceção conhecida: módulo GERADO em tempo de
+execução (o programa escreve o `.pr` e depois importa) é acusado pelo
+checador, porque antes de rodar o arquivo não existe. Rodando, o cursor do
+erro cai no nome do módulo, como no editor.
 
 **Código pela metade.** Enquanto se digita, o arquivo passa a maior parte do
 tempo inválido — e é exatamente aí que o editor precisa de resposta. Os
@@ -521,7 +531,10 @@ de variavel exige '='" no `x` em vez do espaço invisível.
 **Onde cada coisa TERMINA.** Todo token do `--tokens` e todo nó do `--ast`
 trazem `l2` e `c2`: a linha e a coluna logo depois do último caractere. Sem
 elas o editor só sabia onde começa — sublinhava um caractere, e uma string de
-três linhas ou um comentário de bloco não tinham fim nenhum pra dobrar.
+três linhas ou um comentário de bloco não tinham fim nenhum pra dobrar. O que
+não ocupa texto (`INDENT`, `DEDENT`, `SINC`) acaba onde começa; o token de
+dentro da f-string traz o fim na posição do arquivo; e os `erros` do
+`--tokens` e do `--ast` trazem o fim do trecho quando ele é medido.
 
 ```
 $ printf 'x = "ab"\n' | jinga --tokens
@@ -558,9 +571,10 @@ duas contagens coincidem).
 
 Com `--utf16`, o motor entrega e aceita a contagem do protocolo, e o cliente
 não converte nada. Vale em `--tokens`, `--ast`, `--contexto` e `--check` — na
-saída e, no `--contexto`, também na coluna que se pede. No `--tokens` o `n` (o
-tamanho do token) vai na mesma conta: numa string com um caractere fora do
-plano básico, `n` e `c2 - c` dão o mesmo número.
+saída inteira, inclusive nos `erros` e na `coluna_arquivo` do módulo
+importado que não compila, e, no `--contexto`, também na coluna que se pede.
+No `--tokens` o `n` (o tamanho do token) vai na mesma conta: numa string com
+um caractere fora do plano básico, `n` e `c2 - c` dão o mesmo número.
 
 ```
 $ printf 'a = "x"\npost(a)\n' | jinga --tokens --utf16

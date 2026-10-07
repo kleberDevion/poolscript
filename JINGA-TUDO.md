@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.3`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.4`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -1187,7 +1187,7 @@ Modos do lexer:
 | fluxo | `ps_lexer_fluxo` + `ps_lexer_tok` + `ps_lexer_solta_ate` | usado pelo compilador. Os tokens ficam em blocos fixos de `PS_TOK_BLOCO = 4096`, e os blocos de trás são soltos a cada declaração de topo. O vetor de tokens do arquivo inteiro nunca existe |
 
 - **Segunda passada**: só roda no modo de recuperação e só quando a primeira achou grupo sem par. Ela mexe apenas nos grupos que a primeira apontou (os `alvos`). Fecha o grupo na linha que só pode ser começo de declaração (`funct nome`, `class Nome`, `@`, `import`...) ou na linha que volta à indentação do abridor sem começar com um fechador. Um arquivo válido nunca chega nessa regra, e por isso o `--check` não recusa código válido.
-- **Avisos**: um aviso (`SyntaxWarning`) não é erro. O programa roda, o aviso vai para o stderr no formato `<arquivo>:<linha>: SyntaxWarning: ...`, e o `--check` o devolve no JSON. Exemplo de aviso: `"C:\pasta"`, onde `\p` não é escape válido.
+- **Avisos**: um aviso (`SyntaxWarning`) não é erro. O programa roda, o aviso vai para o stderr no formato `<arquivo>:<linha>: SyntaxWarning: ...`, e o `--check` o devolve no JSON (`avisos`), também quando há erro em outra linha. Exemplo de aviso: `"C:\pasta"`, onde `\p` não é escape válido.
 - **f-string**: cada `{...}` é gravado com a posição **real** no fonte (`struct PSInterp`). Assim o editor enxerga as expressões de dentro da string.
 - **Erro na causa, rodando**: rodar compila sem recuperação; o lexer para no erro e o parser lê a lista cortada ali, então o que ele acusa pode cair antes da causa (`int x<U+00A0>= 1` dava "declaracao de variavel exige '='" no `x`). Quando a compilação falha por sintaxe, `primeiro_erro_de_sintaxe` (em `jinga_vm.c`) passa o fonte de novo pelo lexer e pelo parser com recuperação e mostra o primeiro da lista junta (`junta_erros_de_sintaxe`, a mesma do `--check`). Vale pro programa, o módulo importado, o `--bytecode` e o `-o`: o terminal e o editor dizem o mesmo primeiro erro. Medido em 2026-09-28:
 
@@ -1388,13 +1388,13 @@ Um estouro é **erro explícito**, nunca escrita fora do vetor. A recursão prof
 | 2 | `SyntaxError` ou erro da tipagem estática (o programa não rodou) |
 | 3 | `NotImplementedError` (nó que o compilador não emite) |
 | 4 | `MemoryError` |
-| 64 | uso errado da linha de comando |
+| 64 | uso errado da linha de comando (opção que não existe, arquivo a mais num comando de editor) |
 | 65 | `-o`: módulo não achado ou não compila; nada é gerado |
 | 66 | arquivo `.pr` não abre |
 | 70 | `-o`: o binário não acha o próprio executável, ou o payload embutido está corrompido |
 | 73 | `-o`: escrita incompleta ou sem permissão de execução |
 
-`sys.exit(n)` mantém o `n`.
+`sys.exit(n)` mantém o `n`. Ele desenrola como um erro que nenhum `catch` pega (o tipo interno `PS_TIPO_SAIDA`, `"<sys.exit>"`, em `ps_retornos.h`: o `catch` sem tipo ganha um teste contra ele, e a rede da `int funct` o deixa passar como faz com o `RecursionError`); os `finally` rodam e o `ps_roda_fonte` devolve `PS_ERRO_SAIDA` com o código, que o `reporta` devolve sem imprimir. Na tarefa `async`, os `finally` dela rodam e o processo sai no topo da fibra (`fib_trampolim`); na fibra de rota do jinker sai na hora (`sai_agora`), porque o erro da rota vira resposta 500. `jinga build` roda cada arquivo assim: o `sys.exit` encerra só o arquivo dele, `sys.exit(0)` conta como sucesso, e o build sai com 1 se algum falhou.
 
 ---
 
@@ -1725,9 +1725,12 @@ Nenhum deles executa código do usuário. Todos leem do arquivo ou do stdin, e `
 **`--check [arq]`**:
 
 - Passa pelo mesmo `ps_verifica_fonte` (lexer, parser, compilador e tipagem estática).
-- `--check --path <arq>` lê o buffer do stdin como se fosse aquele arquivo, e assim os `import` vizinhos resolvem.
+- `--check --path <arq>` lê o buffer do stdin como se fosse aquele arquivo, e assim os `import` vizinhos resolvem. Sem `--path`, os vizinhos são procurados na pasta corrente.
+- `--check a.pr b.pr …` confere todos: um JSON por linha, com `"arquivo"` na frente (com um arquivo só, o JSON é o de sempre). Os outros comandos de editor leem um fonte só e recusam arquivo a mais (rc 64).
 - Cada erro traz `l2`/`c2` (fim do trecho): no parser é o fim do token, no lexer é o grupo sem par (abridor + 1), na tipagem é o fim do nó.
-- Os avisos do lexer também vão no JSON.
+- Os avisos do lexer também vão no JSON, no caso ok e no de erro.
+- Leitura que falha diz o motivo (`g_falha_leitura` em `main.c`): `IOError` com `nao consegui abrir 'x.pr'`, a extensão antiga, ou `nao consegui ler a entrada padrao` (stdin que é pasta ou está fechada era aprovado como fonte vazio).
+- O `import` dentro de um `try` cujo `catch` pega o `ImportError` (o tipo, um pai ou o catch sem tipo) não é acusado: é o import opcional (`import_protegido` no compilador, zerado no corpo de funct; a regra de herança vem de `ps_excecao_eh`).
 - rc é 0 sem erro e 1 com erro.
 
 ```
@@ -1739,7 +1742,7 @@ $ echo 'int y = 1' | jinga --check
 {"ok":true}
 ```
 
-**`--tokens [arq]`**: modo editor do lexer, com comentários. Os campos são `t` (tipo), `l`, `c`, `n` (tamanho), `l2`, `c2` e `v` (texto).
+**`--tokens [arq]`**: modo editor do lexer, com comentários. Os campos são `t` (tipo), `l`, `c`, `n` (tamanho), `l2`, `c2` e `v` (texto). Todo token traz `l2`/`c2`: o de largura zero (`INDENT`, `DEDENT`, `SINC`) acaba onde começa, e o de dentro da f-string traz o fim na posição do arquivo. Os `erros` (aqui e no `--ast`) saem com `--utf16` convertido e com o fim do trecho quando medido.
 
 ```
 {"tokens":[{"t":"KW","l":1,"c":1,"n":3,"l2":1,"c2":4,"v":"int"},{"t":"IDENT","l":1,"c":5,"n":1,"l2":1,"c2":6,"v":"n"},...
@@ -2122,8 +2125,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.3** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.3 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.4** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.4 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2744,7 +2747,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.3"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.4"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2824,7 +2827,7 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-07 (madrugada)
 
-- Versão da linguagem **17.0.3** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.3 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.4** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.4 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: `71e0a31` (17.0.0, o `Parsing` virou lib), igual a `origin/main` quando subiu; os commits depois dele são de doc e de ferramenta. O único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
 - **Plano 8 fechado** (`71e0a31`): `import Parsing` como qualquer lib, e lib do motor usada sem import diz qual import falta. Major porque quebra programa que usava o `Parsing` sem import. Verde na VPS em `make check`, `check-asan` e `check-debug`.

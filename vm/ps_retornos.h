@@ -49,4 +49,15 @@ const char *ps_nativo_sugestao(const char *mod, const char *membro);
 const char *ps_sugere_nome(const char *alvo, const char **nomes, int n);
 const char *ps_sugere_pre_ligado(const char *nome);
 
+/* `catch (pedido e)` pega o erro `levantado`? A tabela de exceções da VM (o
+ * pai pega o filho). O checador pergunta se o `try` em volta de um import
+ * pega o `ImportError`. */
+int ps_excecao_eh(const char *levantado, const char *pedido);
+
+/* O tipo do erro que o `sys.exit` levanta fora de fibra: nenhum `catch` o
+ * pega (o sem tipo também não, e nem a rede do `int funct`), os `finally`
+ * rodam, e no topo o programa sai com o código pedido, sem mensagem. O nome
+ * não é identificador: nenhum programa consegue escrever `catch` dele. */
+#define PS_TIPO_SAIDA "<sys.exit>"
+
 #endif

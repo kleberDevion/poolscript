@@ -1318,6 +1318,11 @@ struct VM_ {
      * app.run()) fica salvo nos `m_*`. `sched_ctx` é a pilha-C do escalonador
      * (o poll loop), pra onde a fibra volta ao ceder ou terminar. */
     struct Fiber *fib_atual;
+    /* o código do `sys.exit` que está desenrolando (ver PS_TIPO_SAIDA) */
+    int           codigo_saida;
+    /* 1 = uma tarefa `async` terminou num `sys.exit`: o processo sai quando
+     * o controle volta pra pilha principal (fib_resume) */
+    int           saida_pendente;
     PS_CTX        sched_ctx;
     Value  *m_stack;  Value *m_locals;  Frame *m_frames;
     int     m_sp, m_locals_top, m_frame_topo;
@@ -3762,6 +3767,13 @@ static int excecao_eh(const char *levantado, const char *pedido)
     for (const char *t = levantado; t && teto--; t = excecao_pai(t))
         if (strcmp(t, pedido) == 0) return 1;
     return 0;
+}
+
+/* A mesma regra pro checador: o `catch` deste `try` pega o erro que o
+ * import daria? (ps_retornos.h) */
+int ps_excecao_eh(const char *levantado, const char *pedido)
+{
+    return excecao_eh(levantado, pedido);
 }
 
 static const char *tipo_do_errno(int e)
@@ -12179,16 +12191,11 @@ static int avisa_futures_com_erro(VM *vm)
     return avisados;
 }
 
-static int mod_sys_exit(VM *vm, Value *args, int n, Value *out)
+/* Encerra o processo AGORA, com o código: o que o `sys.exit` fazia sempre.
+ * Fica pra quem não pode desenrolar até o topo do programa (ver
+ * mod_sys_exit). */
+static void sai_agora(VM *vm, int codigo)
 {
-    (void)out;
-    if (n > 1) return erro_aridade(vm, "exit", 0, 1, n);
-    int codigo = 0;
-    if (n == 1) {
-        if (args[0].t == V_INT) codigo = (int)args[0].as.i;
-        else if (args[0].t != V_NULL) BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(args[0]));
-    }
     fflush(stdout);
     avisa_futures_com_erro(vm);   /* erro de tarefa não some nem pelo exit() */
     /* `exit()` não passa pelo `libera_vm`, então os finalizadores não rodam e
@@ -12200,6 +12207,32 @@ static int mod_sys_exit(VM *vm, Value *args, int n, Value *out)
             if (r->arquivo && r->temporario && r->dono == getpid()) unlink(r->arquivo);
         }
     exit(codigo);
+}
+
+static int fib_e_de_rota(VM *vm);
+
+static int mod_sys_exit(VM *vm, Value *args, int n, Value *out)
+{
+    (void)out;
+    if (n > 1) return erro_aridade(vm, "exit", 0, 1, n);
+    int codigo = 0;
+    if (n == 1) {
+        if (args[0].t == V_INT) codigo = (int)args[0].as.i;
+        else if (args[0].t != V_NULL) BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+              nome_do_tipo_valor(args[0]));
+    }
+    /* Na fibra de uma rota do jinker (HTTP, WebSocket) ele sai na hora: o
+     * erro da rota vira a resposta 500, e o exit não pode virar resposta. */
+    if (fib_e_de_rota(vm)) sai_agora(vm, codigo);
+    /* No resto o exit DESENROLA: os `finally` (e os `using`) em volta rodam,
+     * nenhum `catch` o pega, e o programa sai com o código no topo (doc
+     * 10.2: o finally roda sempre). O `exit()` direto pulava todos. Na
+     * tarefa `async`, os finally dela rodam e o processo sai no topo da
+     * fibra (fib_trampolim). */
+    vm->codigo_saida = codigo;
+    vm->erro[0] = '\0';
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", PS_TIPO_SAIDA);
+    return -1;
 }
 
 /* `sys.executable` — caminho absoluto do `pool` que está rodando ESTE script.
@@ -22225,6 +22258,15 @@ static void fib_trampolim(void)
             nkw = COMO_LIST(f->a_kwn)->len;
         }
         int rc = executa_alvo_c(vm, &f->a_alvo, tp->itens, tp->len, kwn, kwv, nkw, &res);
+        /* `sys.exit` dentro da tarefa: os finally dela já rodaram; o exit não
+         * é erro da tarefa, é o fim do programa. Sai de volta na pilha
+         * principal (fib_resume): o `exit()` chamado na pilha da fibra fazia o
+         * ASan reclamar da pilha trocada. */
+        if (rc != 0 && strcmp(vm->erro_tipo, PS_TIPO_SAIDA) == 0) {
+            vm->saida_pendente = 1;
+            rc = 0;                                   /* não é erro da tarefa */
+            vm->erro[0] = '\0'; vm->erro_tipo[0] = '\0';
+        }
         if (rc != 0) {
             f->fut->erro = 1;
             f->fut->erro_lido = 0;
@@ -22297,6 +22339,12 @@ static void fib_trampolim(void)
     }
     f->status = FIB_PRONTA;
     ps_ctx_swap(&f->ctx, &vm->sched_ctx);   /* volta pro poll loop; não retorna */
+}
+
+/* A fibra corrente atende uma rota do jinker (HTTP ou WebSocket)? */
+static int fib_e_de_rota(VM *vm)
+{
+    return vm->fib_atual && vm->fib_atual->kind != FIB_ASYNC;
 }
 
 /* pega um slot livre do pool e o arma pra servir `c`. NULL = pool cheio. */
@@ -22422,6 +22470,9 @@ static void fib_resume(VM *vm, Fiber *f)
     ps_ctx_swap(&vm->sched_ctx, &f->ctx);
     ps_pilha_repoe(base_fora, tam_fora);
     fib_troca_sai(vm, f);
+    /* a tarefa terminou num `sys.exit`: o fim do programa, já na pilha
+     * principal */
+    if (vm->saida_pendente) sai_agora(vm, vm->codigo_saida);
 }
 
 /* ── thread pool p/ I/O bloqueante (DB) ───────────────────────────────────
@@ -28934,15 +28985,19 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
          * seguir fazendo conta com ele dava um resultado errado calado — a
          * recursão sem fim devolvia 500 mais o que os níveis de cima somassem.
          * Esse erro atravessa as redes e só para num `catch` escrito. */
-        if (nh > 0 && strcmp(vm->erro_tipo, "RecursionError") == 0)
+        /* O `sys.exit` também atravessa as redes: o `int funct` devolvia 500
+         * e o programa seguia, em vez de sair. */
+        int saindo = strcmp(vm->erro_tipo, PS_TIPO_SAIDA) == 0;
+        if (nh > 0 && (saindo || strcmp(vm->erro_tipo, "RecursionError") == 0))
             while (nh > 0 && vm->protos[handlers[nh - 1].proto].code[handlers[nh - 1].ip] == OP_ENGOLE)
                 nh--;
         if (nh == 0) {
             /* Depurador: é AQUI que o gráfico ganha o ponto vermelho, e é aqui
              * que o editor precisa parar. Depois deste ponto a VM desmonta os
              * frames pra propagar o erro, e a pilha que interessa — a do
-             * momento da falha, com as variáveis ainda vivas — some. */
-            if (vm->dbg.ativo) {
+             * momento da falha, com as variáveis ainda vivas — some. O
+             * `sys.exit` não é falha: não para. */
+            if (vm->dbg.ativo && !saindo) {
                 vm->dbg.quebrou_proto = p ? (int)(p - vm->protos) : -1;
                 vm->dbg.quebrou_linha = linha_agora;
                 vm->sp = sp;
@@ -31382,6 +31437,15 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
         free(rp);
     }
     EstrelaVisita vis_script = { abs_script, NULL };
+    /* Sem caminho (a entrada padrão sem `--path`), a pasta dos vizinhos é a
+     * CORRENTE, como o programa lido da entrada padrão nas outras linguagens:
+     * `cat usa.pr | jinga --check` acusava o `util` ao lado como ImportError,
+     * porque sem pasta nenhum vizinho era achado. O módulo que não existe
+     * continua acusado. */
+    if (!caminho) {
+        char *rp = realpath(".", NULL);
+        if (rp) { snprintf(dir_script, sizeof(dir_script), "%s", rp); free(rp); }
+    }
     /* `so_checa = 1`: aqui é o `--check`, e módulo que não existe é erro do
      * checador, não silêncio. Rodando (`ps_roda_fonte`) segue 0. */
     EstrelaCtx ectx = { dir_script, dir_script, caminho ? &vis_script : NULL, NULL, 1 };
@@ -31683,15 +31747,25 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
      * quem quer o resultado usa `await`. E o programa sai com 1: erro é erro,
      * também no código de saída (`sys.exit(n)` explícito mantém o `n`). */
     int tarefas_com_erro = avisa_futures_com_erro(&vm);
+    /* o `sys.exit` chegou ao topo, com os `finally` rodados: sai com o código
+     * dele, sem mensagem (a tarefa com erro já foi avisada acima) */
+    int saiu = rc != 0 && strcmp(vm.erro_tipo, PS_TIPO_SAIDA) == 0;
     if (vm.dbg.ativo) {
         char corpo[96];
-        snprintf(corpo, sizeof corpo, "{\"exitCode\":%d}", (rc == 0 && tarefas_com_erro == 0) ? 0 : 1);
+        snprintf(corpo, sizeof corpo, "{\"exitCode\":%d}",
+                 saiu ? vm.codigo_saida : (rc == 0 && tarefas_com_erro == 0) ? 0 : 1);
         dbg_evento(&vm, "exited", corpo);
         dbg_evento(&vm, "terminated", NULL);
         /* Fica atendendo depois do fim: é aqui que o editor busca o gráfico de
          * execução, que só está completo agora. Sai quando ele desconectar. */
         while (!vm.dbg.desconectou) dbg_serve(&vm, 0);
         dbg_fecha(&vm);
+    }
+    if (saiu) {
+        e->tipo = PS_ERRO_SAIDA;
+        e->codigo_saida = vm.codigo_saida;
+        libera_vm(&vm);
+        return -1;
     }
     if (rc != 0) {
         e->tipo = PS_ERRO_RUNTIME;

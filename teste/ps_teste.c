@@ -475,9 +475,15 @@ static const char *confere(const Caso *c, Resultado *r)
                      c->erro, (r->erro && r->erro[0]) ? r->erro : "(nenhum)");
             return motivo;
         }
-    } else if (r->rc != 0) {
+    } else if (r->rc != 0 && c->rc <= 0) {
         snprintf(motivo, sizeof motivo, "esperava sucesso, saiu com rc=%d\n     erro: %s",
                  r->rc, r->erro ? r->erro : "");
+        return motivo;
+    } else if (c->rc > 0 && r->erro && r->erro[0]) {
+        /* código diferente de zero SEM mensagem (o `sys.exit(n)`, que não
+         * imprime nada): o stderr tem que vir vazio */
+        snprintf(motivo, sizeof motivo, "esperava o stderr vazio (rc %d sem mensagem)\n     obtido  : %s",
+                 c->rc, r->erro);
         return motivo;
     }
     if (c->rc >= 0 && r->rc != c->rc) {
