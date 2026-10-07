@@ -1883,6 +1883,74 @@ confere("a nota da declaracao nao vaza pro erro seguinte depois de um catch",
         "pego: module 'lib' has no attribute 'x' (existe, mas é private)" in r["saida"]
         and "has no attribute 'nao'" in r["saida"] and not "declarada em" in r["saida"])
 
+# ── private e static nas classes (Plano 6, lote 4) ──────────────────────────
+# O que pede arquivo de verdade: a posição no JSON do --check, a classe de
+# outro módulo e os programas gerados (70 pais, 70 métodos decorados). Os
+# outros vetores estão em casos_linguagem.c.
+str CLS = PASTA + "/classes"
+os.mkdir(CLS, exist_ok=True)
+
+# a escrita aponta o `.` do membro, o mesmo lugar da leitura
+os.writeFile(CLS + "/saldo.pr", "class Conta {\n    private int saldo = 0\n}\nConta c = Conta()\nc.saldo = 999\n")
+r = roda([POOL, "--check", "saldo.pr"], pasta=CLS)
+confere("acesso negado na escrita aponta o membro (linha 5, coluna 2)",
+        "\"ok\":false" in r["saida"] and "\"linha\":5,\"coluna\":2" in r["saida"]
+        and "acesso negado: 'saldo' e private de Conta" in r["saida"])
+
+# a classe de outro módulo: pelo nome trazido e pelo módulo
+os.writeFile(CLS + "/banco.pr",
+    "public class Conta {\n    private static int segredo = 99\n    static int total = 0\n}\n")
+os.writeFile(CLS + "/usa_from.pr", "from banco import Conta\npost(Conta.segredo)\n")
+os.writeFile(CLS + "/usa_mod.pr", "import banco\npost(banco.Conta.segredo)\n")
+os.writeFile(CLS + "/grava_mod.pr", "import banco\nbanco.Conta.total = \"texto\"\n")
+r = roda([POOL, "--check", "usa_from.pr"], pasta=CLS)
+confere("private static de classe importada (from), antes de rodar",
+        "\"ok\":false" in r["saida"] and "acesso negado: 'segredo' e private de Conta" in r["saida"])
+r = roda([POOL, "--check", "usa_mod.pr"], pasta=CLS)
+confere("private static de classe importada (pelo modulo), antes de rodar",
+        "\"ok\":false" in r["saida"] and "acesso negado: 'segredo' e private de Conta" in r["saida"])
+r = roda([POOL, "--check", "grava_mod.pr"], pasta=CLS)
+confere("static tipado de classe importada: a escrita pelo modulo confere o tipo",
+        "\"ok\":false" in r["saida"] and "campo total de Conta esperava int, recebeu str" in r["saida"])
+
+# sem teto de pais: o private do 70º pai continua barrado, antes de rodar e
+# rodando (pelo `Object`, que o checador não segue: é a regra da VM)
+list cls_linhas = []
+for each i in range(1, 70)
+{
+    addEnd(cls_linhas, "class P" + str(i) + " {\n    int funct m" + str(i) + "(self) {\n        return "
+                       + str(i) + "\n    }\n}")
+}
+addEnd(cls_linhas, "class P70 {\n    private int segredo = 7\n}")
+list cls_pais = []
+for each i in range(1, 71)
+{
+    addEnd(cls_pais, "P" + str(i))
+}
+addEnd(cls_linhas, "class F(" + ", ".join(cls_pais) + ") {\n}")
+os.writeFile(CLS + "/setenta.pr", "\n".join(cls_linhas) + "\nF f = F()\npost(f.segredo)\n")
+os.writeFile(CLS + "/setenta_vm.pr", "\n".join(cls_linhas) + "\nObject o = F()\npost(o.segredo)\n")
+r = roda([POOL, "setenta.pr"], pasta=CLS)
+confere("70 pais: o private do ultimo e barrado antes de rodar",
+        r["rc"] == 2 and "acesso negado: 'segredo' e private de P70" in r["saida"])
+r = roda([POOL, "setenta_vm.pr"], pasta=CLS)
+confere("70 pais, rodando: a VM barra sem teto de pais",
+        r["rc"] == 1 and "acesso negado: 'segredo' e private de P70" in r["saida"])
+
+# decorador em 70 métodos da mesma classe: nenhum par é largado (eram 64 fixos)
+list cls_dec = ["class Reg {\n    list v = []\n    Reg funct rota(self) {\n        return self\n    }\n"
+                + "    funct register(self, h) {\n        addEnd(self.v, 1)\n        return h\n    }\n}",
+                "class App {\n    static Reg r = Reg()"]
+for each i in range(70)
+{
+    addEnd(cls_dec, "    @r.rota()\n    static int funct h" + str(i) + "() {\n        return 1\n    }")
+}
+addEnd(cls_dec, "}\npost(len(App.r.v))")
+os.writeFile(CLS + "/decor70.pr", "\n".join(cls_dec) + "\n")
+r = roda([POOL, "decor70.pr"], pasta=CLS)
+confere("70 metodos decorados na mesma classe: os 70 registram",
+        r["rc"] == 0 and r["saida"] == "70\n")
+
 # ── relatório ───────────────────────────────────────────────────────────────
 post("")
 post("cli/jpkg:", ok, "checagens passaram")

@@ -249,8 +249,11 @@ class Config {
     private static int b = 2
     private int static c = 3         # o `static` depois do tipo também vale
     int static private d = 4
+    static int funct soma() {
+        return a + b + c + d         # de dentro da classe o private vale
+    }
 }
-post(Config.a, Config.d)             # 1 4
+post(Config.a, Config.soma())        # 1 10
 ```
 
 Cada modificador vale uma vez (`static static int a` e `public private int
@@ -263,9 +266,9 @@ Quem enxerga o campo, e como:
 
 | De onde | Como se escreve |
 |---|---|
-| de fora | `App.mapp` |
+| de fora | `App.mapp` (o `private static` não: de fora é `acesso negado`, 7.6) |
 | dentro da classe — corpo (decoradores), método `static` ou método comum | `mapp`, o nome solto (também `self.mapp` e `App.mapp` num método comum) |
-| numa classe filha | `mapp`, o nome solto, igual — o `static` do pai é da filha (também `self.mapp` e `Pai.mapp`) |
+| numa classe filha | `mapp`, o nome solto, igual — o `static` público do pai é da filha (também `self.mapp` e `Pai.mapp`); o `private` do pai, não |
 
 A recíproca também vale: **campo sem `static` não é alcançado pelo nome do
 tipo**. `App.nao_static` é `RuntimeError: Entity 'App' não tem campo estático
@@ -292,8 +295,36 @@ m(self, x)` devolve o `x` recebido, não o `C.x`. O editor oferece os mesmos
 nomes: dentro da classe, o completion lista os `static` dela (e dos pais)
 soltos, e o hover/definição num nome solto vai no campo ou método.
 
-É **um só** valor, compartilhado: `K.n = K.n + 1` num método muda o que toda
-instância lê em `self.n`. E ele **não entra** no construtor sintetizado —
+É **um só** valor, compartilhado, e tem **um dono**: a classe que o declara.
+Toda grafia que o lê grava nele — `K.n = 5`, `self.n += 1` num método,
+`obj.n = 5` de fora, `Filha.n = 5` pela filha —, e toda instância (da classe
+e das filhas) lê o mesmo valor:
+
+```ps
+class Conta {
+    static int total = 0
+    str nome
+    funct __init__(self, str nome) {
+        self.nome = nome
+        self.total += 1              # conta na classe, não numa cópia por objeto
+    }
+}
+Conta a = Conta("a")
+Conta b = Conta("b")
+post(Conta.total, a.total, b.total)  # 2 2 2
+```
+
+A filha que **redeclara** o campo (`static int total = 0` também nela) tem o
+dela, e a escrita pela filha vai nele.
+
+O **tipo** escrito no campo `static` é conferido em toda escrita, como no campo
+de instância: `K.n = "texto"` com `static int n` é `AttributedValueError: campo
+n de K esperava int, recebeu str`, antes de rodar quando o tipo do valor se
+sabe, rodando quando não (`K.n = l[0]`); o inicializador também. E `K.n` tem o
+tipo do campo pra quem lê: `str s = K.n` é recusado antes de rodar. Só o
+nascimento sem inicializador vale `Null`.
+
+O campo `static` **não entra** no construtor sintetizado —
 `class P { static int total = 0; str nome }` continua sendo `P("ana")`.
 
 Por que existe: sem ele, `App.mapp` não existia, um método `static` não tinha
@@ -384,12 +415,14 @@ Regras:
   de `A(1, 2)`.
 - **`.metodo(args)`** chama a versão do pai (a dele própria, ou a que ele
   herdou), ligada ao `self` atual. Vale em qualquer método com `self`, não
-  só no `__init__`.
+  só no `__init__`. Método `static` do pai sai sem ligar: `base().dobro(4)` é
+  `Pai.dobro(4)`.
 - **`.campo`** lê: campo `static` do pai, ou o campo da instância (é o mesmo
   objeto que `self.campo`). Escrever é pelo `self`: `base().x = 1` é erro
   (`atribua pelo self: self.x = ...`).
 - **`private` do pai** continua invisível pro filho, também por `base()`:
-  `acesso negado: 'x' e private de A`.
+  `acesso negado: 'x' e private de A`. Com `private funct __init__` no pai,
+  `base().__init__()` do filho também é negado.
 - **Mais de um pai:** `base()` sem nome é erro que lista as opções
   (`base() com mais de um pai: diga qual, base(A) ou base(B)`);
   `base(Pai)` mira o pai escrito. `base(X)` com X que não é ancestral:
@@ -453,12 +486,66 @@ Entity Conta {
 
 c = Conta(100)
 post(c.ver())            # 100  (acessa saldo de dentro)
-post(c.saldo)            # ERRO — saldo é private
+post(c.saldo)            # RuntimeError: acesso negado: 'saldo' e private de Conta
 ```
 
 `public` é o padrão (tudo é público se não disser nada); a palavra existe para
 deixar a intenção explícita. Também há `private class`/`private Entity` (a
 classe não é exportada).
+
+**De dentro** é o código **escrito no corpo da classe**: os métodos, e a lambda
+e a funct aninhada escritas dentro deles (uma `map(self.itens, int funct(int
+v) { return self.dobra(v) })` alcança o `private funct dobra`), o
+inicializador de campo `static` e a expressão de decorador do corpo; também o
+código de uma classe declarada dentro de um método dela. O wrapper de um
+decorador declarado fora da classe é de fora (seção 14).
+
+O `private` vale por **qualquer caminho** até o membro: pela instância
+(`c.saldo`), pelo nome da classe (`Conta.taxa`, `Conta.calcula()` num
+`private static`), pelo nome solto num método da filha e pelo `base()`.
+
+Com herança, decide a **declaração que o nome alcança**: a primeira classe, na
+ordem de busca de método (a própria, depois os pais da esquerda pra direita),
+que declara o nome. Por isso:
+
+- a filha pode declarar um membro **público** com o nome de um `private` do
+  pai — ele é dela, e `f.x` lê o dela;
+- o método do pai continua lendo o `private` dele numa instância da filha;
+- a frase cita a classe que **declara** o private, não a do objeto:
+  `acesso negado: 'segredo' e private de Pai`.
+
+```ps
+class Pai {
+    private int segredo = 42
+}
+class Filha(Pai) {
+    int funct le(self) {
+        return self.segredo      # RuntimeError: acesso negado: 'segredo' e private de Pai
+    }
+}
+```
+
+`private funct __init__` impede **construir** de fora (o construtor private do
+Java: fábrica, singleton). Dentro da classe, `C(...)` vale:
+
+```ps
+class C {
+    int v = 0
+    private funct __init__(self, int v) {
+        self.v = v
+    }
+    static C funct cria(int v) {
+        return C(v)              # de dentro: vale
+    }
+}
+post(C.cria(4).v)                # 4
+C c = C(1)                       # RuntimeError: acesso negado: '__init__' e private de C
+```
+
+O `--check` acusa o acesso negado **antes de rodar** quando o resultado é
+certo: pelo nome da classe, e pela instância quando nenhuma classe do arquivo
+que o valor pode ser libera o nome (uma filha que redeclara o nome como
+público o libera rodando). O resto a VM barra rodando.
 
 ### 7.6.1. Declarar o campo dentro do construtor
 
@@ -478,7 +565,7 @@ private Class Pagamento {
 
 p = Pagamento("ana", 123)
 post(p.mostra())         # ana/123
-post(p.name)             # ERRO — name é private
+post(p.name)             # RuntimeError: acesso negado: 'name' e private de Pagamento
 ```
 
 - É **campo do objeto**, não variável local: escreve em `self.<nome>`, e o
@@ -511,4 +598,9 @@ post(p.name)             # ERRO — name é private
 - Herança (inclusive múltipla) compartilha métodos; filho com campos gera o
   próprio construtor; `base().__init__(...)` chama o construtor do pai, e
   `base(Pai).metodo()` / `base(Pai).campo` alcançam o resto do pai (7.5.2).
-- `private` é imposto pela VM; `public` é o padrão.
+- `private` é imposto pela VM (e pelo `--check` quando é certo) por qualquer
+  caminho; "de dentro" é o código escrito no corpo da classe; `public` é o
+  padrão (7.6).
+- Campo `static` tem um dono, a classe que o declara: toda escrita
+  (`K.n`, `self.n`, `obj.n`, `Filha.n`) grava nele, com o tipo conferido
+  (7.4.1).

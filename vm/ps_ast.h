@@ -149,7 +149,9 @@ struct PSNode {
                                * no parâmetro (Name) e no argumento (CallArg):
                                * 1 = `*args`/`*x`, 2 = `**kwarg`/`**d` */
 
-    /* literais */
+    /* literais. MEMBER_ASSIGNMENT: a posição do `.` do membro gravado,
+     * `linha << 32 | coluna` — é onde o erro do membro aponta, o mesmo lugar
+     * do MEMBER_ACCESS da leitura (o nó em si fica no começo do comando). */
     int64_t     i;
     double      d;
 

@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.5`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.6`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -706,13 +706,16 @@ post(c.deposita(100), Conta.total, Conta.taxa(50.0))   # 100 1 0.5
 ```
 
 - Um método `static` é chamado pela classe (`Conta.taxa(...)`). Chamar pela instância dá `funct 's' e static: chame pela Entity (Tipo.s(...)), nao pela instancia`. Um método static que declara `self` tem o `self` descartado na chamada pela classe.
-- Um campo `static` é avaliado uma vez, na declaração da classe, e é compartilhado. Ele não entra no construtor.
+- Um campo `static` é avaliado uma vez, na declaração da classe, e é compartilhado. Ele não entra no construtor. Tem **um dono**, a classe que o declara: o `MAKE_CLASS` cria a chave de todo static declarado (valendo `Null`), e toda escrita (`K.n`, `self.n`, `obj.n`, `Filha.n`) grava na primeira classe da busca de leitura que tem a chave; a filha que redeclara tem o dela. O tipo escrito é conferido em toda escrita (VM e `--check`), e `K.n` tem esse tipo pra quem lê.
 - **Regra do dono**: o que `App.x` alcança de fora, `x` alcança de dentro. Isso vale para campo e método `static`, da classe e dos pais, pelo nome solto, dentro de qualquer método. Um método comum solto (`m()`) é `NameError`, porque é `self.m()`. Parâmetro ou local com o mesmo nome tem prioridade.
 - Um decorador no corpo da classe roda na declaração, então o objeto que ele usa tem que ser `static`. O motor avisa: `'mapp' e campo de instancia — ... declare-o static`.
 
 #### 2.10.2 private / public
 
-- **Membro**: `private` em campo ou método só é acessível de dentro de um método da própria classe (regra Java). De fora dá `RuntimeError: acesso negado: 'x' e private de C (so acessivel de dentro da classe)`. O `private` do pai continua invisível para o filho. `public` é o padrão.
+- **Membro**: `private` em campo ou método só é acessível de dentro da classe. De fora dá `RuntimeError: acesso negado: 'x' e private de C (so acessivel de dentro da classe)`, por qualquer caminho (instância, nome da classe, nome solto na filha, `base()`, e a construção quando o `__init__` é private). `public` é o padrão.
+- **"De dentro"** é o código ESCRITO no corpo da classe: o compilador carimba cada proto com a classe do corpo em que ele nasceu (`PSProto.classe`: método, `__init__` gerado, lambda e funct aninhada dentro deles) e marca as faixas de corpo de classe que rodam na unidade de fora (`faixas_classe`: inicializador de static, decorador do corpo); classe declarada num método de outra também é de dentro desta (`PSClassDef.fora`).
+- **A declaração que o nome alcança decide** (`priv_barra` na VM, `tp_priv_barra` no checador, a mesma regra): a primeira classe, na ordem de busca de método, que declara o nome (tabela `PSClassDef.membros`: método, campo do corpo, campo declarado em método, `__init__` gerado). Pública libera; private só libera o código escrito numa classe que declara o nome com o valor descendendo dela. A filha pode declarar público um nome private do pai; a frase cita a classe que declara. Hierarquia sem private nenhum não confere nada (`PSClass.tem_priv`).
+- O `--check` acusa quando o resultado é certo: pelo nome da classe (`Conta.x`, `banco.Conta.x`, `base(Pai).x`, o nome solto), e pela instância quando toda classe do arquivo que o valor pode ser barra o nome.
 - **Topo do arquivo**: `private` vale em **qualquer** declaração (funct, class, model, enum, variável). O nome funciona dentro do arquivo e não sai pelo import (ver 2.15).
 - Em qualquer outro lugar dá erro: `'private' aqui nao tem efeito: so vale no topo do arquivo (o que nao sai pelo import) ou no corpo da Entity`.
 - É disciplina de código, não proteção de memória.
@@ -1273,7 +1276,7 @@ Regras gravadas no código:
 - **Tipo escrito é da variável**: `str s = "a"` seguido de `s = 42` é erro. O compilador emite `COERCE_DECL` antes de **toda** escrita no nome: reatribuição, `for each`, desempacotamento e escrita de dentro de funct aninhada.
 - **Variável sem tipo escrito** fica com o tipo da primeira atribuição. Um valor de tipo desconhecido fixa "qualquer".
 - **`Null`** não fixa tipo nem conflita numa variável sem tipo escrito. Variável declarada (`str s`, parâmetro tipado) não aceita `Null`.
-- **Resolução de nomes**: segue a mesma ordem do `carrega_nome`/`guarda_nome_modo` (campo static da classe, módulo, `global`, local, captura, global do arquivo).
+- **Resolução de nomes**: a leitura (`carrega_nome`) vai no campo static da classe (o nome solto é `Classe.x`), depois módulo, `global`, local, captura, global do arquivo. A escrita (`guarda_nome_modo`) ainda não tem o passo do static: `n = 1` solto num método cria local (achado classes:3, entra no Plano 4). O método de uma classe declarada dentro de funct é closure da funct (escopo léxico): captura o que ela declara, a própria classe inclusive, e o `MAKE_CLASS` monta a closure com as células do frame.
 - **Retorno dos nativos**: vem de `vm/ps_retornos.c`, cuja tabela é **gerada** por `scripts/mede_retornos.pr` em `vm/retornos_medidos.inc` (574 entradas, ordenadas para busca binária). Exemplo: `DbConnection.cursor -> DbCursor`. Três formatos: `"str"`, `"dict|Null"` e `"*"`.
 - **"Did you mean"**: `ps_nativo_sugestao` dá a mesma sugestão antes de rodar e rodando.
 - **Erro na causa**: a regra acusa na declaração e depois recupera, sintetizando o que faltou para não repetir o erro em cada uso. O modelo está em `tp_self_dos_metodos` (método sem `self`).
@@ -2125,8 +2128,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.5** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.5 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.6** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.6 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2747,7 +2750,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.5"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.6"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2827,7 +2830,7 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-07 (tarde)
 
-- Versão da linguagem **17.0.5** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.5 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.6** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.6 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: `3110231` (17.0.5, Plano 6 lote 10), igual a `origin/main` quando subiu. O único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
 - **Plano 6 em execução** (aprovado em 2026-10-07 ~01:10; as 9 decisões seguem as recomendações): fechados os lotes 1 `0e4c3f7` (17.0.1, o arquivo-fonte), 2 `2b2201f` (17.0.2, frases do parser), 3 `1fba43c` (17.0.3, as dicas), 9 `252d6df` (17.0.4, `--check`, editor, quadro do erro e `sys.exit`) e 10 `3110231` (17.0.5, linha de comando), cada um verde na VPS em `make check`, `check-asan` e `check-debug` na árvore exata do commit. Faltam os lotes 4 a 8, nessa ordem: classes (private e static), classes (construtor, campos, enum, `is`), funções e tarefas, métodos nativos, libs.

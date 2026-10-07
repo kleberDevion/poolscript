@@ -257,14 +257,15 @@ const Caso CASOS_LINGUAGEM[] = {
   "ana/123", NULL, 0 },
 { "campo private declarado no construtor BARRA de fora",
   /* Registrar a visibilidade e o ponto: `private` que compila e nao barra e
-   * pior que nao ter encapsulamento, porque parece que tem. */
+   * pior que nao ter encapsulamento, porque parece que tem. Antes de rodar:
+   * o valor e um A, e nenhuma classe do arquivo libera o nome. */
   "Class A {\n"
   "    public funct __init__(self, nome) {\n"
   "        private str name = nome\n"
   "    }\n"
   "}\n"
   "post(A(\"ana\").name)\n",
-  "", "acesso negado: 'name' e private de A", 1 },
+  "", "acesso negado: 'name' e private de A", 2 },
 { "public declarado no construtor NAO barra",
   "Class A {\n"
   "    public funct __init__(self, nome) {\n"
@@ -309,7 +310,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "    private str x = \"a\"\n"
   "}\n"
   "post(A().x)\n",
-  "", "acesso negado: 'x' e private de A", 1 },
+  "", "acesso negado: 'x' e private de A", 2 },
 { "int funct dentro da Entity continua sendo funct, nao campo",
   /* A condicao que separa `int funct f()` de `str x = 1` no corpo da
    * classe: depois do tipo de RETORNO vem sempre outra palavra da
@@ -2456,8 +2457,11 @@ const Caso CASOS_LINGUAGEM[] = {
   "nonnull funct e(v) {\n    return v\n}\npost(e(5))\ne(Null)\n",
   "5", "nonnull: parametro 'v' em 'e' nao pode ser Null", 1 },
 { "modificadores colados em qualquer ordem: private static int funct",
-  "Entity K {\n    private static int funct tres() {\n        return 3\n    }\n}\n"
-  "post(K.tres())\n", "3", NULL, 0 },
+  /* lido de dentro da classe: de fora o private barra (o caso seguinte do
+   * `static private funct`) */
+  "Entity K {\n    private static int funct tres() {\n        return 3\n    }\n"
+  "    static int funct usa() {\n        return tres()\n    }\n}\n"
+  "post(K.usa())\n", "3", NULL, 0 },
 { "modificadores colados em qualquer ordem: static nonnull funct",
   "Entity K {\n    static nonnull funct eco(x) {\n        return x\n    }\n}\n"
   "post(K.eco(\"ok\"))\n", "ok", NULL, 0 },
@@ -2507,7 +2511,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "4", NULL, 0 },
 { "Entity: `static private funct` mantem o private lido na cabeca",
   "Entity A {\n    static private funct p(n) {\n        return n\n    }\n}\nx = A()\nx.p(1)\n",
-  "", "acesso negado: 'p' e private de A (so acessivel de dentro da classe)", 1 },
+  "", "acesso negado: 'p' e private de A (so acessivel de dentro da classe)", 2 },
 { "Entity: campo `int y = 2` continua campo ao lado de funct com modificador",
   "Entity A {\n    static funct m(n) {\n        return n\n    }\n    int y = 2\n}\n"
   "post(A.m(1), A(2).y)\n", "1 2", NULL, 0 },
@@ -2638,7 +2642,9 @@ const Caso CASOS_LINGUAGEM[] = {
 { "campo static: Classe.x e nome solto em metodo static",
   "class C {\n    static int x = 7\n    static funct le(){ return x }\n}\npost(C.x, C.le())\n", "7 7", NULL, 0 },
 { "campo static: modificadores em qualquer ordem",
-  "class C {\n    static public int x = 7\n    private static int y = 8\n}\npost(C.x, C.y)\n", "7 8", NULL, 0 },
+  /* o private lido de dentro da classe: de fora ele barra */
+  "class C {\n    static public int x = 7\n    private static int y = 8\n"
+  "    static int funct le_y() {\n        return y\n    }\n}\npost(C.x, C.le_y())\n", "7 8", NULL, 0 },
 { "campo static sem inicializador nasce Null",
   "class C {\n    static int x\n}\npost(C.x)\n", "Null", NULL, 0 },
 { "campo static e UM so: instancias leem e a reescrita e da classe",
@@ -2696,11 +2702,150 @@ const Caso CASOS_LINGUAGEM[] = {
   "    static int private g = 7\n"
   "    int static private h = 8\n"
   "    static public i = 9\n"
-  "}\npost(C.a, C.b, C.c, C.d, C.e, C.f, C.g, C.h, C.i)\n",
+  "    static list funct todos() {\n        return [a, b, c, d, e, f, g, h, i]\n    }\n"
+  "}\npost(*C.todos())\n",
   "1 2 3 4 5 6 7 8 9", NULL, 0 },
 { "funct: modificador depois do tipo continua valendo",
-  "class C {\n    int private static funct m(){ return 1 }\n}\npost(C.m())\n",
+  "class C {\n    int private static funct m(){ return 1 }\n"
+  "    static int funct usa() {\n        return m()\n    }\n}\npost(C.usa())\n",
   "1", NULL, 0 },
+
+/* ── private e static: a declaração que o nome alcança (Plano 6, lote 4) ───
+ * "De dentro" é o código ESCRITO no corpo da classe — método, lambda e funct
+ * aninhada nele, inicializador de static, decorador do corpo —, não o proto
+ * que roda. A primeira classe, na ordem de busca de membro, que declara o
+ * nome decide: pública libera; private só libera o código escrito numa classe
+ * que o declara, com o valor descendendo dela. O static tem UM dono, e toda
+ * grafia que o lê grava nele, com o tipo conferido. */
+{ "private static: de fora pela classe e o mesmo acesso negado, antes de rodar",
+  "class C {\n    private static int b = 2\n}\nC.b = 20\npost(C.b)\n",
+  "", "RuntimeError: acesso negado: 'b' e private de C (so acessivel de dentro da classe)", 2 },
+{ "private static: chamar o metodo private pela classe tambem e negado",
+  "class C {\n    private static int funct s() {\n        return 5\n    }\n}\npost(C.s())\n",
+  "", "RuntimeError: acesso negado: 's' e private de C (so acessivel de dentro da classe)", 2 },
+{ "private static: de dentro vale (metodo, lambda, inicializador do corpo)",
+  "class C {\n    private static int b = 2\n    private static int c = C.b + 1\n"
+  "    private static int funct s() {\n        return 5\n    }\n"
+  "    static int funct soma() {\n        C.b = C.b + 1\n"
+  "        Object g = int funct() {\n            return C.b + b\n        }\n"
+  "        return g() + C.s() + s() + c\n    }\n}\npost(C.soma())\n",
+  "19", NULL, 0 },
+{ "private static do pai pelo nome solto na filha e negado antes de rodar",
+  "class Pai {\n    private static int x = 7\n}\nclass Filha(Pai) {\n"
+  "    int funct solto(self) {\n        return x\n    }\n}\nFilha f = Filha()\npost(f.solto())\n",
+  "", "RuntimeError: acesso negado: 'x' e private de Pai (so acessivel de dentro da classe)", 2 },
+{ "decorador do corpo le o registrador private static da propria classe",
+  "class Reg {\n    list v = []\n    str c = \"\"\n"
+  "    Reg funct rota(self, str c) {\n        self.c = c\n        return self\n    }\n"
+  "    funct register(self, h) {\n        addEnd(self.v, self.c)\n        return h\n    }\n}\n"
+  "class App {\n    private static Reg mapp = Reg()\n    @mapp.rota(\"/opa\")\n"
+  "    static str funct handler(str data) {\n        return \"ok\"\n    }\n"
+  "    static list funct rotas() {\n        return mapp.v\n    }\n}\npost(App.rotas())\n",
+  "['/opa']", NULL, 0 },
+{ "lambda escrita no metodo alcanca o private da classe",
+  "class C {\n    private list itens = [3, 1, 2]\n"
+  "    private int funct dobra(self, int v) {\n        return v * 2\n    }\n"
+  "    list funct dobrados(self) {\n"
+  "        return map(self.itens, int funct(int v) { return self.dobra(v) })\n    }\n}\n"
+  "C c = C()\npost(c.dobrados())\n",
+  "[6, 2, 4]", NULL, 0 },
+{ "funct aninhada no metodo le e grava o private da classe",
+  "class C {\n    private int x = 7\n    int funct dobra(self) {\n"
+  "        int funct le() {\n            return self.x\n        }\n"
+  "        Null funct grava(int v) {\n            self.x = v\n        }\n"
+  "        grava(le() * 2)\n        return self.x\n    }\n}\nC c = C()\npost(c.dobra())\n",
+  "14", NULL, 0 },
+{ "o private do pai nao barra o publico de mesmo nome da filha",
+  "class Pai {\n    private int x = 1\n    private str funct nome(self) {\n        return \"pai\"\n    }\n}\n"
+  "class Filha(Pai) {\n    int x = 2\n    str funct nome(self) {\n        return \"filha\"\n    }\n}\n"
+  "Filha f = Filha()\npost(f.x, f.nome())\n",
+  "2 filha", NULL, 0 },
+{ "o private do avo nao barra o publico da neta",
+  "class A {\n    private str funct nome(self) {\n        return \"avo\"\n    }\n}\nclass B(A) {\n}\n"
+  "class C(B) {\n    str funct nome(self) {\n        return \"neta\"\n    }\n}\nC c = C()\npost(c.nome())\n",
+  "neta", NULL, 0 },
+{ "a frase do acesso negado cita a classe que declara o private",
+  "class Pai {\n    private int segredo = 42\n}\nclass Filha(Pai) {\n"
+  "    int funct le(self) {\n        return self.segredo\n    }\n}\nFilha f = Filha()\npost(f.le())\n",
+  "", "RuntimeError: acesso negado: 'segredo' e private de Pai (so acessivel de dentro da classe)", 2 },
+{ "dois pais: o primeiro que declara o nome decide (publico)",
+  "class A {\n    private int x = 1\n}\nclass B {\n    int x = 2\n}\nclass C(B, A) {\n}\n"
+  "C c = C(5)\npost(c.x)\n",
+  "5", NULL, 0 },
+{ "dois pais: o primeiro que declara o nome decide (private)",
+  "class A {\n    private int x = 1\n}\nclass B {\n    int x = 2\n}\nclass D(A, B) {\n}\n"
+  "D d = D(6)\npost(d.x)\n",
+  "", "RuntimeError: acesso negado: 'x' e private de A (so acessivel de dentro da classe)", 2 },
+{ "metodo do pai le o private dele numa instancia da filha que tambem o declara",
+  "class P {\n    private int s = 1\n    int funct mostra(self) {\n        return self.s\n    }\n}\n"
+  "class F(P) {\n    private int s = 5\n    int funct mostra_f(self) {\n        return self.s\n    }\n}\n"
+  "F f = F()\npost(f.mostra(), f.mostra_f())\n",
+  "5 5", NULL, 0 },
+{ "self.static += 1 conta no static da classe, nao numa copia por objeto",
+  "class Conta {\n    static int total = 0\n    str nome\n"
+  "    funct __init__(self, str nome) {\n        self.nome = nome\n        self.total += 1\n    }\n}\n"
+  "Conta a = Conta(\"a\")\nConta b = Conta(\"b\")\nConta c = Conta(\"c\")\n"
+  "post(Conta.total, a.total, b.total, c.total)\n",
+  "3 3 3 3", NULL, 0 },
+{ "obj.x = v de fora grava no static da classe",
+  "class K {\n    static int n = 0\n}\nK a = K()\nK b = K()\na.n = 5\npost(K.n, a.n, b.n)\n"
+  "K.n = 9\npost(K.n, a.n, b.n)\n",
+  "5 5 5\n9 9 9", NULL, 0 },
+{ "Filha.x = v grava no static do pai, que e o que Filha.x le",
+  "class Pai {\n    static int total = 1\n}\nclass Filha(Pai) {\n}\npost(Pai.total, Filha.total)\n"
+  "Filha.total = 50\npost(Pai.total, Filha.total)\nPai.total = 7\npost(Pai.total, Filha.total)\n",
+  "1 1\n50 50\n7 7", NULL, 0 },
+{ "a filha que redeclara o static tem o dela",
+  "class Pai {\n    static int k = 1\n}\nclass Filha(Pai) {\n    static int k = 2\n}\n"
+  "Filha.k = 20\npost(Pai.k, Filha.k)\nFilha f = Filha()\nf.k = 30\npost(Pai.k, Filha.k, f.k)\n",
+  "1 20\n1 30 30", NULL, 0 },
+{ "static e campo de instancia de mesmo nome na classe: o do objeto ganha",
+  "class K {\n    static int n = 1\n    int n = 2\n}\nK a = K()\npost(K.n, a.n)\n",
+  "1 2", NULL, 0 },
+{ "static tipado: escrita pela classe com outro tipo e recusada antes de rodar",
+  "class K {\n    static int n = 0\n}\nK.n = \"texto\"\npost(K.n, type(K.n))\n",
+  "", "AttributedValueError: campo n de K esperava int, recebeu str", 2 },
+{ "static tipado: pela filha, a frase cita a classe que declara",
+  "class K {\n    static int n = 0\n}\nclass F(K) {\n}\nF.n = \"pela filha\"\npost(K.n)\n",
+  "", "AttributedValueError: campo n de K esperava int, recebeu str", 2 },
+{ "static tipado: o valor que so se sabe rodando e conferido rodando",
+  "list l = [\"texto\"]\nclass K {\n    static int n = 0\n}\nK.n = l[0]\npost(K.n, type(K.n))\n",
+  "", "AttributedValueError: campo n de K esperava int, recebeu str", 1 },
+{ "static tipado: o inicializador tambem e conferido rodando",
+  "list l = [\"texto\"]\nclass K {\n    static int n = l[0]\n}\npost(K.n, type(K.n))\n",
+  "", "AttributedValueError: campo n de K esperava int, recebeu str", 1 },
+{ "static tipado: o tipo vale na leitura pela classe",
+  "class K {\n    static int n = 0\n}\nstr s = K.n\npost(s)\n",
+  "", "AttributedValueError: variável s esperava str, recebeu int", 2 },
+{ "static sem inicializador nasce Null e recebe o tipo dele depois",
+  "class K {\n    static int n\n}\npost(K.n, type(K.n))\nK.n = 3\npost(K.n, type(K.n))\n",
+  "Null Null\n3 int", NULL, 0 },
+{ "base().metodo static do pai chama sem instancia",
+  "class A {\n    static int funct dobro(int n) {\n        return n * 2\n    }\n}\n"
+  "class B(A) {\n    int funct f(self) {\n        return base().dobro(4)\n    }\n}\nB b = B()\npost(b.f())\n",
+  "8", NULL, 0 },
+{ "classe declarada dentro de funct: o static solto acha o campo",
+  "int funct usa() {\n    class Local {\n        static int n = 5\n"
+  "        static int funct le() {\n            return n\n        }\n    }\n"
+  "    return Local.le()\n}\npost(usa())\n",
+  "5", NULL, 0 },
+{ "classe declarada dentro de funct: o metodo enxerga a funct (escopo lexico)",
+  "int funct usa() {\n    int k = 5\n    class Local {\n"
+  "        static int funct le() {\n            return k\n        }\n"
+  "        int funct m(self) {\n            return k + 1\n        }\n    }\n"
+  "    Local l = Local()\n    return Local.le() + l.m()\n}\npost(usa())\n",
+  "11", NULL, 0 },
+{ "lambda na funct enxerga a classe e o enum declarados nela",
+  "list funct f() {\n    class L {\n        int x = 1\n    }\n    enum Cor {\n        RED, GREEN\n    }\n"
+  "    Object g = funct() {\n        return [L().x, Cor.GREEN]\n    }\n    return g()\n}\npost(f())\n",
+  "[1, 1]", NULL, 0 },
+{ "private __init__: construir de fora e negado antes de rodar",
+  "class C {\n    private funct __init__(self) {\n        post(\"criou\")\n    }\n}\nC b = C()\n",
+  "", "RuntimeError: acesso negado: '__init__' e private de C (so acessivel de dentro da classe)", 2 },
+{ "private __init__: a fabrica de dentro da classe constroi",
+  "class C {\n    int v = 0\n    private funct __init__(self, int v) {\n        self.v = v\n    }\n"
+  "    static C funct cria(int v) {\n        return C(v)\n    }\n}\npost(C.cria(4).v)\n",
+  "4", NULL, 0 },
 
 /* ── import por caminho entre aspas (`import '../x.pr'`), 2026-09-06 ───────
  * A string e o especificador, como no TypeScript: com `/` ou extensao da
@@ -4009,7 +4154,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "8", NULL, 0 },
 { "base().campo private do pai continua negado pro filho",
   "Entity A {\n    private int s\n    funct __init__(self) { self.s = 1 }\n}\nEntity B(A) {\n    funct __init__(self) { base().__init__() }\n    funct q(self) { return base().s }\n}\npost(B().q())\n",
-  "", "RuntimeError: acesso negado: 's' e private de A (so acessivel de dentro da classe)", 1 },
+  "", "RuntimeError: acesso negado: 's' e private de A (so acessivel de dentro da classe)", 2 },
 { "base(Pai).x = v e erro: atribua pelo self",
   "Entity A {\n    funct __init__(self, x) { self.x = x }\n}\nEntity B(A) {\n    funct __init__(self) { base(A).x = 1 }\n}\n",
   "", "SyntaxError: atribua pelo self: self.x = ... (base(Pai).x le o campo, nao grava)", 2 },

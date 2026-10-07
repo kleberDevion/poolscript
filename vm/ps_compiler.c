@@ -396,6 +396,17 @@ typedef struct {
                                  * é o escopo por-iteração, sem tocar no que é do laço */
 } Laco;
 
+/* Uma classe com o corpo em compilação (ver `C.corpo`). Mora na pilha do C,
+ * no `case N_ENTITY_DECL`. */
+typedef struct CorpoClasse {
+    PSNode  *no;                  /* a declaração */
+    int32_t  ci;                  /* o descritor, em `out->classes` */
+    /* declarada dentro de funct: o nome dela é local de lá, e o método chega
+     * nela pela captura (o método dessa classe é closure da funct) */
+    int      local;
+    struct CorpoClasse *fora;
+} CorpoClasse;
+
 typedef struct {
     PSPrograma *out;
     int32_t     cap_protos;
@@ -450,6 +461,15 @@ typedef struct {
      * um nome solto dentro da classe resolve pra campo `static` dela
      * (`mapp` -> `App.mapp`), no corpo (decoradores) e nos métodos. */
     PSNode *entity_no;
+    /* As classes com o corpo em compilação, da de dentro pra de fora (classe
+     * declarada num método de outra). É o "de dentro" do `private`: o proto
+     * nasce com a classe da de dentro (`PSProto.classe`), e o checador
+     * pergunta a mesma coisa à cadeia. NULL fora de classe. */
+    struct CorpoClasse *corpo;
+    /* A próxima funct compilada é método da classe de `corpo` (consumido no
+     * `compila_funct_em`, como o `pendente_static`): o `self` dela é dessa
+     * classe. Funct aninhada no método não é método. */
+    int pendente_metodo;
     /* Linha do fonte do nó sendo compilado agora — o `emite()` grava por
      * instrução, pra o erro de runtime dizer ONDE aconteceu. */
     int32_t linha_atual;
@@ -1080,26 +1100,121 @@ static int32_t sintetiza_init(C *c, PSNode *entidade);
 static void compila_unpack_alvo(C *c, Unidade *u, PSNode *alvo);
 static void guarda_em_alvo(C *c, Unidade *u, PSNode *e);
 
-/* Nomes de `private <tipo> <nome> = ...` na subárvore. `nomes == NULL` só
- * conta (pra dimensionar o vetor); `achados` é o índice onde começar a
- * escrever, então a varredura soma aos nomes que os campos do corpo da
- * classe já puseram. */
-static int32_t varre_campos_priv(PSNode *n, char **nomes, int32_t achados)
+/* Os membros que a classe `cls` DECLARA, um por chamada de `f`:
+ *   - os métodos (`cls->lista`);
+ *   - os campos do corpo (`cls->lista2_alias`), com o tipo do `static`;
+ *   - os campos declarados num método (`private str nome = n`, o
+ *     N_FIELD_DECL), sem descer em classe declarada lá dentro, que declara os
+ *     dela;
+ *   - o `__init__` que o compilador gera dos campos de instância quando não
+ *     há um escrito (`sintetiza_init`).
+ * É a lista que vira a tabela da VM (`PSClassDef.membros`) e a que o checador
+ * consulta: a mesma regra dos dois lados. Serve à árvore inteira e ao gêmeo
+ * podado (a poda guarda o N_FIELD_DECL do corpo como fato). */
+typedef void (*VisitaMembro)(void *ctx, const char *nome, int32_t marcas, const char *tipo);
+
+static void membros_dos_metodos(PSNode *n, VisitaMembro f, void *ctx)
 {
-    if (!n) return achados;
-    if (n->kind == N_FIELD_DECL && n->is_private && n->texto) {
-        if (nomes) nomes[achados] = strdup(n->texto);
-        achados++;
+    if (!n) return;
+    if (n->kind == N_ENTITY_DECL || n->kind == N_MODEL_DECL || n->kind == N_ENUM_DECL) return;
+    if (n->kind == N_FIELD_DECL && n->texto) f(ctx, n->texto, n->is_private ? PS_MEMB_PRIVADO : 0, NULL);
+    membros_dos_metodos(n->a, f, ctx);
+    membros_dos_metodos(n->b, f, ctx);
+    membros_dos_metodos(n->c, f, ctx);
+    membros_dos_metodos(n->e, f, ctx);
+    for (int32_t i = 0; i < n->lista.n; i++)  membros_dos_metodos(n->lista.itens[i], f, ctx);
+    for (int32_t i = 0; i < n->lista2.n; i++) membros_dos_metodos(n->lista2.itens[i], f, ctx);
+}
+
+static void membros_declarados(PSNode *cls, VisitaMembro f, void *ctx)
+{
+    if (!cls || cls->kind != N_ENTITY_DECL) return;
+    int tem_init = 0, n_inst = 0;
+    for (int32_t i = 0; i < cls->lista.n; i++) {
+        PSNode *m = cls->lista.itens[i];
+        if (!m || m->kind != N_FUNCT_DECL || !m->texto) continue;
+        f(ctx, m->texto, m->is_private ? PS_MEMB_PRIVADO : 0, NULL);
+        if (strcmp(m->texto, "__init__") == 0) tem_init = 1;
     }
-    achados = varre_campos_priv(n->a, nomes, achados);
-    achados = varre_campos_priv(n->b, nomes, achados);
-    achados = varre_campos_priv(n->c, nomes, achados);
-    achados = varre_campos_priv(n->e, nomes, achados);
-    for (int32_t i = 0; i < n->lista.n; i++)
-        achados = varre_campos_priv(n->lista.itens[i], nomes, achados);
-    for (int32_t i = 0; i < n->lista2.n; i++)
-        achados = varre_campos_priv(n->lista2.itens[i], nomes, achados);
-    return achados;
+    for (int32_t i = 0; i < cls->lista2_alias.n; i++) {
+        PSNode *fl = cls->lista2_alias.itens[i];
+        if (!fl) continue;
+        if (!fl->is_static) n_inst++;
+        if (fl->kind != N_ENTITY_FIELD || !fl->texto) continue;
+        f(ctx, fl->texto, (fl->is_private ? PS_MEMB_PRIVADO : 0) | (fl->is_static ? PS_MEMB_ESTATICO : 0),
+          fl->is_static ? fl->texto2 : NULL);
+    }
+    for (int32_t i = 0; i < cls->lista.n; i++) {
+        PSNode *m = cls->lista.itens[i];
+        if (m && m->kind == N_FUNCT_DECL) membros_dos_metodos(m->b, f, ctx);
+    }
+    if (n_inst > 0 && !tem_init) f(ctx, "__init__", 0, NULL);
+}
+
+/* O mesmo nome declarado mais de uma vez na mesma classe vale como UMA
+ * declaração: private se alguma for, static só se todas forem campo static
+ * (com um campo de instância de mesmo nome, o do objeto ganha). */
+static int32_t membro_junta_marcas(int32_t antes, int32_t agora)
+{
+    return ((antes | agora) & PS_MEMB_PRIVADO) | (antes & agora & PS_MEMB_ESTATICO);
+}
+
+typedef struct { C *c; PSClassDef *def; } TabMembros;
+
+static void membro_tab_poe(void *ctx, const char *nome, int32_t marcas, const char *tipo)
+{
+    TabMembros *t = ctx;
+    PSClassDef *def = t->def;
+    for (int32_t k = 0; k < def->nmembros; k++)
+        if (strcmp(def->membros[k].nome, nome) == 0) {
+            def->membros[k].marcas = membro_junta_marcas(def->membros[k].marcas, marcas);
+            return;
+        }
+    PSMembroDecl *nv = realloc(def->membros, sizeof(PSMembroDecl) * (size_t)(def->nmembros + 1));
+    if (!nv) { cerro(t->c, "sem memoria", NULL); return; }
+    def->membros = nv;
+    char *nm = strdup(nome);
+    char *tp = tipo ? strdup(tipo) : NULL;
+    if (!nm || (tipo && !tp)) { free(nm); free(tp); cerro(t->c, "sem memoria", NULL); return; }
+    def->membros[def->nmembros].nome = nm;
+    def->membros[def->nmembros].marcas = marcas;
+    def->membros[def->nmembros].tipo = tp;
+    def->nmembros++;
+}
+
+/* `cls` (nó da classe) declara `nome`? 1 = sim, com as marcas em `*marcas`. */
+typedef struct { const char *nome; int achou; int32_t marcas; } AchaMembro;
+
+static void membro_acha(void *ctx, const char *nome, int32_t marcas, const char *tipo)
+{
+    (void)tipo;
+    AchaMembro *a = ctx;
+    if (strcmp(nome, a->nome) != 0) return;
+    a->marcas = a->achou ? membro_junta_marcas(a->marcas, marcas) : marcas;
+    a->achou = 1;
+}
+
+static int classe_declara_no(PSNode *cls, const char *nome, int32_t *marcas)
+{
+    AchaMembro a = { nome, 0, 0 };
+    membros_declarados(cls, membro_acha, &a);
+    if (a.achou && marcas) *marcas = a.marcas;
+    return a.achou;
+}
+
+/* Um trecho do proto de `u` que é corpo da classe `ci` (ver
+ * `PSProto.faixas_classe`). */
+static void faixa_classe_poe(C *c, Unidade *u, int32_t ini, int32_t fim, int32_t ci)
+{
+    if (fim <= ini) return;
+    PSProto *p = UP(c, u);
+    PSFaixaClasse *nv = realloc(p->faixas_classe, sizeof(PSFaixaClasse) * (size_t)(p->nfaixas_classe + 1));
+    if (!nv) { cerro(c, "sem memoria", NULL); return; }
+    p->faixas_classe = nv;
+    nv[p->nfaixas_classe].ip_ini = ini;
+    nv[p->nfaixas_classe].ip_fim = fim;
+    nv[p->nfaixas_classe].classe = ci;
+    p->nfaixas_classe++;
 }
 
 /* Registra um campo tipado na classe (o primeiro de cada nome vale). */
@@ -1385,6 +1500,9 @@ static void acha_aninhadas(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *ca
         if (!n) return;
     }
     if (n->kind == N_FUNCT_DECL || n->kind == N_LAMBDA_EXPR) { varre_nomes(c, n, v, cnt, cap); return; }
+    /* O método de uma classe declarada aqui cita a própria classe sem
+     * escrever o nome: o campo `static` solto é `Classe.x` (carrega_estatico). */
+    if (n->kind == N_ENTITY_DECL) junta_nomes(c, v, cnt, cap, n->texto);
     acha_aninhadas(c, n->a, v, cnt, cap);
     acha_aninhadas(c, n->b, v, cnt, cap);
     acha_aninhadas(c, n->c, v, cnt, cap);
@@ -1412,6 +1530,11 @@ static void binda_nomes(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
         case N_FUNCT_DECL:
             junta_nomes(c, v, cnt, cap, n->texto);
             return;                 /* não desce: o corpo dela é outro escopo */
+        case N_ENTITY_DECL: case N_MODEL_DECL: case N_ENUM_DECL:
+            /* a declaração liga o nome dela aqui; o que o corpo liga é dela
+             * (o método é outro escopo) */
+            junta_nomes(c, v, cnt, cap, n->texto);
+            return;
         case N_LAMBDA_EXPR:
             return;                 /* não liga nome nenhum aqui, e o corpo é dela */
         default: break;
@@ -1519,10 +1642,22 @@ static int campo_estatico_da_classe(C *c, const char *nome)
 }
 
 /* `mapp` dentro da classe App -> `App.mapp` (a classe é um global). */
+static void carrega_nome_sem_estatico(C *c, Unidade *u, const char *nome);
+static void tp_confere_privado(C *c, PSNode *alvo, const char *nome, int exato, PSNode *onde);
+
 static void carrega_estatico(C *c, Unidade *u, const char *nome)
 {
     const char *cls = c->entity_no->texto ? c->entity_no->texto : "";
-    emite(c, u, OP_LOAD_GLOBAL, idx_global(c, cls));
+    /* o nome solto é `Classe.x`: o private do pai alcançado por ele é o
+     * mesmo acesso negado, antes de rodar (o erro sai no nome) */
+    tp_confere_privado(c, c->entity_no, nome, 1, NULL);
+    /* Classe declarada dentro de funct: o nome dela é local de lá, e o
+     * método (closure da funct) chega nela pela captura. Com LOAD_GLOBAL o
+     * `n` solto dava "NameError: name 'Local' is not defined". */
+    if (c->corpo && c->corpo->no == c->entity_no && c->corpo->local)
+        carrega_nome_sem_estatico(c, u, cls);
+    else
+        emite(c, u, OP_LOAD_GLOBAL, idx_global(c, cls));
     emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, nome, (int32_t)strlen(nome)));
 }
 
@@ -1657,6 +1792,8 @@ static void emite_decora(C *c, Unidade *u, PSNode *dec, int32_t modo)
     emite(c, u, OP_DECORA, modo);
 }
 
+static void carrega_nome_sem_estatico(C *c, Unidade *u, const char *nome);
+
 static void carrega_nome(C *c, Unidade *u, const char *nome)
 {
     /* Campo `static` da Entity em compilação ganha do global e do "resolve em
@@ -1666,6 +1803,14 @@ static void carrega_nome(C *c, Unidade *u, const char *nome)
         carrega_estatico(c, u, nome);
         return;
     }
+    carrega_nome_sem_estatico(c, u, nome);
+}
+
+/* O nome como variável: global, local, célula, captura ou "resolve rodando".
+ * É por aqui que o `static` de uma classe declarada dentro de funct carrega a
+ * própria classe (`carrega_estatico`), sem voltar à pergunta do static. */
+static void carrega_nome_sem_estatico(C *c, Unidade *u, const char *nome)
+{
     if (u->eh_modulo || eh_global_declarada(u, nome)) {
         emite(c, u, OP_LOAD_GLOBAL, idx_global(c, nome));
         return;
@@ -2784,6 +2929,96 @@ static int tp_classe_tem(C *c, const char *classe, const char *nome, int prof)
     return incerto ? -1 : 0;
 }
 
+/* ── `private` antes de rodar: a regra da VM (`priv_barra`) sobre a árvore ──
+ *
+ * A declaração que o nome ALCANÇA decide: a primeira classe, na ordem de
+ * busca de membro (a própria, depois os pais da esquerda pra direita, em
+ * profundidade), que declara o nome. Pública libera; private só libera o
+ * código escrito numa classe que declara o nome (ou numa de fora dela, a
+ * cadeia `c->corpo`) quando o valor descende dela. O checador só acusa o
+ * que a VM barraria com certeza; o que depende de pai importado fica pra
+ * rodando. */
+
+/* A classe que declara `nome` a partir de `cls`. NULL com `*incerto` = 0:
+ * ninguém declara; com 1: a busca passou por pai que o arquivo não declara. */
+static PSNode *tp_classe_que_declara(C *c, PSNode *cls, const char *nome, int32_t *marcas,
+                                     int *incerto, int prof)
+{
+    if (!cls || cls->kind != N_ENTITY_DECL || prof > 1000) { *incerto = 1; return NULL; }
+    if (classe_declara_no(cls, nome, marcas)) return cls;
+    for (int32_t i = 0; i < cls->lista2.n; i++) {
+        const char *p = cls->lista2.itens[i] ? cls->lista2.itens[i]->texto : NULL;
+        PSNode *r = tp_classe_que_declara(c, p ? tp_tipo_arq(c, p) : NULL, nome, marcas, incerto, prof + 1);
+        if (r || *incerto) return r;
+    }
+    return NULL;
+}
+
+/* O código em compilação acessando `nome` num valor da classe `alvo`:
+ * 0 = liberado, 1 = barrado (`*dona` = a classe que declara o private),
+ * -1 = não dá pra saber. */
+static int tp_priv_barra(C *c, PSNode *alvo, const char *nome, PSNode **dona)
+{
+    int32_t mk = 0;
+    int incerto = 0;
+    PSNode *d = tp_classe_que_declara(c, alvo, nome, &mk, &incerto, 0);
+    if (incerto) return -1;
+    if (!d || !(mk & PS_MEMB_PRIVADO)) return 0;
+    for (CorpoClasse *k = c->corpo; k; k = k->fora) {
+        if (!k->no || !k->no->texto || !classe_declara_no(k->no, nome, NULL)) continue;
+        int h = (alvo->texto) ? tp_herda(c, alvo->texto, k->no->texto, 0) : -1;
+        if (h == 1) return 0;
+        if (h == -1) return -1;
+    }
+    *dona = d;
+    return 1;
+}
+
+/* A expressão É uma classe (não instância dela)? A declaração, ou NULL: o
+ * nome ligado à classe (inclusive o trazido por `from m import C`) e
+ * `modulo.Classe` de um `.pr` importado. Classe decorada fica de fora (o
+ * decorador pode ter trocado o valor). */
+static PSNode *tp_classe_exata(C *c, Unidade *u, PSNode *e)
+{
+    if (!e) return NULL;
+    if (e->kind == N_NAME && e->texto) {
+        SimInfo *s = tp_sim_de(c, u, e->texto);
+        return (s && s->decl && s->decl->kind == N_ENTITY_DECL && !s->decorado) ? s->decl : NULL;
+    }
+    if (e->kind == N_MEMBER_ACCESS && e->texto) {
+        SimInfo *sm = tp_sim_mod_pr(c, u, e->a);
+        if (!sm) return NULL;
+        int deco = 0;
+        PSNode *d = modulo_decl(sm->mod_pr, e->texto, &deco);
+        return (d && d->kind == N_ENTITY_DECL && !deco) ? d : NULL;
+    }
+    return NULL;
+}
+
+/* Acusa o acesso a `nome` num valor de classe `alvo`. `exato`: o valor é a
+ * própria classe (`Conta.x`, `base(Pai).x`); senão é instância de `alvo` ou
+ * de uma classe que descende dela, e só se acusa quando TODA classe do
+ * arquivo que o valor pode ser barra o acesso (uma filha que redeclara o
+ * nome como público o libera rodando). `onde` é a posição do erro. */
+static void tp_confere_privado(C *c, PSNode *alvo, const char *nome, int exato, PSNode *onde)
+{
+    if (!alvo || alvo->kind != N_ENTITY_DECL || !alvo->texto || !nome) return;
+    PSNode *dona = NULL;
+    if (tp_priv_barra(c, alvo, nome, &dona) != 1) return;
+    if (!exato) {
+        for (int32_t i = 0; i < c->ntipos_arq; i++) {
+            PSNode *s = c->tipos_arq[i];
+            if (s == alvo || s->kind != N_ENTITY_DECL || !s->texto) continue;
+            int h = tp_herda(c, s->texto, alvo->texto, 0);
+            if (h == 0) continue;
+            PSNode *outra = NULL;
+            if (h == -1 || tp_priv_barra(c, s, nome, &outra) != 1) return;
+        }
+    }
+    terro(c, onde, "RuntimeError", "acesso negado: '%s' e private de %s (so acessivel de dentro da classe)",
+          nome, dona->texto ? dona->texto : "?");
+}
+
 /* O módulo NATIVO que a expressão é — `os` ou `Parsing` (ligados por import)
  * ou `sys.stdout` — escrito em `buf`; NULL = não é módulo. */
 static const char *tp_modulo_de(C *c, Unidade *u, PSNode *n, char *buf, size_t cap)
@@ -3107,6 +3342,17 @@ static const char *tp_de(C *c, Unidade *u, PSNode *n)
                     int deco = 0;
                     PSNode *d = modulo_decl(sm->mod_pr, n->texto, &deco);
                     return (d && d->kind == N_FUNCT_DECL && !deco) ? "funct" : NULL;
+                }
+            }
+            /* `Classe.x`: o campo `static` tem o tipo escrito na declaração
+             * (`str s = K.n` com `static int n` é recusado antes de rodar) */
+            {
+                PSNode *ce = tp_classe_exata(c, u, n->a);
+                if (ce) {
+                    PSNode *f = estatico_em(c, ce, n->texto, 0, NULL);
+                    if (f && f->kind == N_ENTITY_FIELD) return f->texto2 ? tp_canon(f->texto2) : NULL;
+                    if (f && f->kind == N_FUNCT_DECL) return "funct";
+                    return NULL;
                 }
             }
             const char *t = tp_de(c, u, n->a);
@@ -3739,6 +3985,20 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
             return;
         }
     }
+    if (n->a->kind == N_BASE_CALL_NODE) {
+        /* `base(Pai).x`: o valor é o próprio pai (exato), e quem acessa é a
+         * classe do método — sem `base_pai`, que já acusa o `base()` mal
+         * escrito na compilação */
+        PSNode *ent = c->dentro_entity ? c->entity_no : NULL;
+        const char *pai = n->a->texto2 ? n->a->texto2
+                        : (ent && ent->lista2.n == 1 ? ent->lista2.itens[0]->texto : NULL);
+        if (pai) tp_confere_privado(c, tp_tipo_arq(c, pai), n->texto, 1, n);
+    }
+    if (n->a->kind == N_MEMBER_ACCESS) {
+        /* `banco.Conta.x`: a classe de um `.pr` importado, pelo módulo */
+        PSNode *ce = tp_classe_exata(c, u, n->a);
+        if (ce) { tp_confere_privado(c, ce, n->texto, 1, n); return; }
+    }
     if (n->a->kind == N_NAME && n->a->texto) {
         SimInfo *s = tp_sim_de(c, u, n->a->texto);
         if (s && s->decl && s->decl->kind == N_ENTITY_DECL && !s->decorado) {
@@ -3749,6 +4009,11 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
                       tp_dica_membro(c, s->decl->texto, n->texto, dica, sizeof(dica)));
                 return;
             }
+            /* `Conta.segredo` de fora: o private vale pelo nome da classe
+             * também, como pela instância (a VM confere a mesma coisa) */
+            int nerros_antes = c->nerros;
+            tp_confere_privado(c, s->decl, n->texto, 1, n);
+            if (c->nerros > nerros_antes) return;
             /* Campo declarado SEM `static` lido pela Entity: existe, mas só na
              * instância. Antes o `--check` calava e a VM mandava procurar erro
              * de digitação num nome escrito certo. A frase é a mesma do método
@@ -3771,6 +4036,14 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
     }
     const char *t = tp_de(c, u, n->a);
     if (!t) return;
+    /* instância de uma classe do arquivo, com o membro existindo: o private */
+    if (!strchr(t, '|')) {
+        PSNode *d = tp_tipo_arq(c, t);
+        if (d && d->kind == N_ENTITY_DECL && tp_classe_tem(c, t, n->texto, 0) == 1) {
+            tp_confere_privado(c, d, n->texto, 0, n);
+            return;
+        }
+    }
     /* união: só é erro se NENHUM lado (fora o Null) tem o membro */
     int lados = 0;
     const char *q = t;
@@ -3921,6 +4194,9 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
         }
         if (s->decl->kind != N_ENTITY_DECL || !s->decl->texto) return;
         const char *cls = s->decl->texto;
+        /* construir é chamar o `__init__`: `private funct __init__` só deixa
+         * construir de dentro da classe (a fábrica, o singleton) */
+        tp_confere_privado(c, s->decl, "__init__", 1, f);
         PSNode *init = tp_metodo(c, cls, "__init__", 0);
         if (init) {
             if (tp_metodo_decorado(c, cls, init)) return;
@@ -3985,6 +4261,7 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
                 return;
             }
             if (d->kind == N_ENTITY_DECL && tp_classe_importada(c, d)) {
+                tp_confere_privado(c, d, "__init__", 1, f);
                 PSNode *init = tp_metodo(c, d->texto, "__init__", 0);
                 if (init) {
                     if (!tp_metodo_decorado(c, d->texto, init))
@@ -5997,32 +6274,19 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             def->nome = strdup(n->texto ? n->texto : "?");
             def->npais = n->lista2.n;
             def->classe_privada = n->is_private;   /* `private class` = não exportada */
+            def->fora = c->corpo ? c->corpo->ci : -1;
 
-            /* nomes de membros `private` — métodos (n->lista) + campos
-             * (n->lista2_alias) + os campos declarados DENTRO das functs
-             * (`private str name = nome` no __init__). Estes últimos moram no
-             * corpo do método, mas a visibilidade é da CLASSE: sem varrer por
-             * eles aqui, o `private` compilaria e não barraria nada — pior que
-             * não ter encapsulamento, porque parece que tem. */
-            int32_t npriv_corpo = 0;
-            for (int32_t i = 0; i < n->lista.n; i++)
-                npriv_corpo = varre_campos_priv(n->lista.itens[i], NULL, npriv_corpo);
-            int32_t npriv_max = n->lista.n + n->lista2_alias.n + npriv_corpo;
-            if (npriv_max > 0) {
-                def->priv_nomes = calloc((size_t)npriv_max, sizeof(char *));
-                if (!def->priv_nomes) { cerro(c, "sem memoria", n); return; }
-                for (int32_t i = 0; i < n->lista.n; i++) {
-                    PSNode *m = n->lista.itens[i];
-                    if (m->kind == N_FUNCT_DECL && m->is_private && m->texto)
-                        def->priv_nomes[def->npriv++] = strdup(m->texto);
-                }
-                for (int32_t i = 0; i < n->lista2_alias.n; i++) {
-                    PSNode *f = n->lista2_alias.itens[i];
-                    if (f->kind == N_ENTITY_FIELD && f->is_private && f->texto)
-                        def->priv_nomes[def->npriv++] = strdup(f->texto);
-                }
-                for (int32_t i = 0; i < n->lista.n; i++)
-                    def->npriv = varre_campos_priv(n->lista.itens[i], def->priv_nomes, def->npriv);
+            /* Os membros que a classe declara, com as marcas private e static:
+             * os métodos, os campos do corpo e os campos declarados DENTRO das
+             * functs (`private str name = nome` no __init__). Estes últimos
+             * moram no corpo do método, mas a visibilidade é da CLASSE: sem
+             * eles aqui o `private` compilaria e não barraria nada — pior que
+             * não ter encapsulamento, porque parece que tem. Antes de compilar
+             * os métodos: uma classe declarada lá dentro realoca o vetor. */
+            {
+                TabMembros tm = { c, def };
+                membros_declarados(n, membro_tab_poe, &tm);
+                if (CFALHOU(c)) return;
             }
 
             /* campos de INSTÂNCIA com tipo escrito: a VM confere toda escrita
@@ -6061,6 +6325,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             c->entity_pai = (n->lista2.n > 0) ? n->lista2.itens[0]->texto : NULL;
             c->dentro_entity = 1;
             c->entity_no = n;   /* nome solto -> campo `static` desta classe */
+            /* Daqui até o fim do corpo, todo proto que nascer (método, lambda,
+             * funct aninhada, o `__init__` gerado) é desta classe. Toda saída
+             * deste case passa pelo `fim_classe`, que desempilha. */
+            CorpoClasse corpo_aqui = { n, ci, !u->eh_modulo, c->corpo };
+            c->corpo = &corpo_aqui;
             tp_self_dos_metodos(c, n);   /* classe que a pré-passada não viu (aninhada) */
             /* Dentro de Entity o decorador é uma entrada SEPARADA do corpo
              * (dec_sem_captura no parser): ele não embrulha a funct. Então o
@@ -6072,9 +6341,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * compilava sem registro nenhum e a rota nunca existia, calada.
              * Os pares (decorador, método) ficam guardados e são emitidos
              * DEPOIS de a classe existir, porque a expressão do decorador pode
-             * ler um campo `static` que só nasce então. */
+             * ler um campo `static` que só nasce então. O vetor dos pares
+             * cresce: com 64 fixos, o 65º par era largado calado. */
             PSNode *dec_pend[8];  int ndec_pend = 0;
-            PSNode *par_dec[64];  PSNode *par_met[64];  int npares = 0;
+            PSNode **par_dec = NULL, **par_met = NULL;  int npares = 0, cap_pares = 0;
+            int32_t ini_corpo = -1;          /* o trecho do corpo que roda aqui */
             for (int32_t i = 0; i < n->lista.n && !CFALHOU(c); i++) {
                 PSNode *m = n->lista.itens[i];
                 if (m->kind == N_DECORATOR_STMT) {
@@ -6090,13 +6361,23 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     int emb = dn && (strcmp(dn, "static") == 0 || strcmp(dn, "NonNull") == 0
                                      || strcmp(dn, "dataentity") == 0);
                     if (dec && !emb) {
-                        if (ndec_pend >= 8) { cerro(c, "limite do compilador: 8 decoradores num metodo", m); return; }
+                        if (ndec_pend >= 8) { cerro(c, "limite do compilador: 8 decoradores num metodo", m); goto fim_classe; }
                         dec_pend[ndec_pend++] = dec;
                     }
                     continue;
                 }
                 if (m->kind != N_FUNCT_DECL) continue;
-                for (int k = 0; k < ndec_pend && npares < 64; k++) {
+                for (int k = 0; k < ndec_pend; k++) {
+                    if (npares == cap_pares) {
+                        int novo = cap_pares < 8 ? 8 : cap_pares * 2;
+                        PSNode **nd = realloc(par_dec, sizeof(PSNode *) * (size_t)novo);
+                        if (!nd) { cerro(c, "sem memoria", m); goto fim_classe; }
+                        par_dec = nd;
+                        PSNode **nm2 = realloc(par_met, sizeof(PSNode *) * (size_t)novo);
+                        if (!nm2) { cerro(c, "sem memoria", m); goto fim_classe; }
+                        par_met = nm2;
+                        cap_pares = novo;
+                    }
                     par_dec[npares] = dec_pend[k];
                     par_met[npares] = m;
                     npares++;
@@ -6104,12 +6385,18 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 ndec_pend = 0;
                 c->pendente_static = static_pendente;
                 c->pendente_nonnull = nonnull_pendente;
-                int32_t pi = compila_funct(c, m, NULL);
+                c->pendente_metodo = 1;
+                /* O pai é a unidade onde a classe foi declarada: na funct, o
+                 * método é closure dela (escopo léxico, doc 4.6) e alcança o
+                 * que ela declara, a própria classe inclusive. No topo do
+                 * arquivo não muda nada: unidade de módulo não é pai. */
+                int32_t pi = compila_funct(c, m, u);
                 c->pendente_static = 0;
                 c->pendente_nonnull = 0;
+                c->pendente_metodo = 0;
                 static_pendente = 0;
                 nonnull_pendente = 0;
-                if (CFALHOU(c)) return;
+                if (CFALHOU(c)) goto fim_classe;
                 def = &c->out->classes[ci];               /* realloc pode ter mexido */
                 def->met_nomes[def->nmetodos] = strdup(m->texto ? m->texto : "?");
                 def->met_protos[def->nmetodos] = pi;
@@ -6132,7 +6419,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 if (!tem_init) {
                     PSNodeVec todos = n->lista2_alias;
                     PSNode **so_inst = calloc((size_t)n_inst, sizeof(PSNode *));
-                    if (!so_inst) { cerro(c, "sem memoria", n); return; }
+                    if (!so_inst) { cerro(c, "sem memoria", n); goto fim_classe; }
                     int32_t k = 0;
                     for (int32_t i = 0; i < todos.n; i++)
                         if (!todos.itens[i]->is_static) so_inst[k++] = todos.itens[i];
@@ -6141,7 +6428,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     int32_t pi = sintetiza_init(c, n);
                     n->lista2_alias = todos;
                     free(so_inst);
-                    if (CFALHOU(c)) return;
+                    if (CFALHOU(c)) goto fim_classe;
                     def = &c->out->classes[ci];
                     /* Cada campo é PUBLICADO assim que o realloc dele dá certo.
                      * Guardar os dois pra publicar no fim parecia mais limpo e
@@ -6150,10 +6437,10 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                      * `def->met_nomes` apontando pra memória morta — e o
                      * destrutor da classe passa lá liberando de novo. */
                     char **mn = realloc(def->met_nomes, sizeof(char *) * (size_t)(def->nmetodos + 1));
-                    if (!mn) { cerro(c, "sem memoria", n); return; }
+                    if (!mn) { cerro(c, "sem memoria", n); goto fim_classe; }
                     def->met_nomes = mn;
                     int32_t *mp = realloc(def->met_protos, sizeof(int32_t) * (size_t)(def->nmetodos + 1));
-                    if (!mp) { cerro(c, "sem memoria", n); return; }
+                    if (!mp) { cerro(c, "sem memoria", n); goto fim_classe; }
                     def->met_protos = mp;
                     def->met_nomes[def->nmetodos] = strdup("__init__");
                     def->met_protos[def->nmetodos] = pi;
@@ -6182,18 +6469,24 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             if (n->is_private) priv_declara(c, u, n, n, n->texto);
 
             /* A classe existe. Agora, nesta ordem:
-             *   1) campos `static` — `Classe.x = <inicializador>` (ou Null);
+             *   1) campos `static` com valor — `Classe.x = <inicializador>`
+             *      (o sem valor já nasceu Null no MAKE_CLASS, pela tabela de
+             *      membros: um `Classe.x = Null` aqui seria recusado pelo tipo
+             *      do campo);
              *   2) decoradores dos métodos — a expressão do decorador pode
              *      ler esses campos (`@mapp.post(...)`), por isso vem depois.
              * Tudo com `entity_no` ainda apontando pra esta classe: é o que
-             * faz `mapp` virar `App.mapp` dentro dessas expressões. */
+             * faz `mapp` virar `App.mapp` dentro dessas expressões. E é corpo
+             * da classe rodando aqui fora: a faixa diz isso ao `private`. A
+             * classe se carrega pelo nome como variável, nunca como o campo
+             * `static` homônimo. */
+            ini_corpo = UP(c, u)->ncode;
             const char *cls_nome_aqui = n->texto ? n->texto : "";
             for (int32_t i = 0; i < n->lista2_alias.n && !CFALHOU(c); i++) {
                 PSNode *f = n->lista2_alias.itens[i];
-                if (!f->is_static || !f->texto) continue;
-                carrega_nome(c, u, cls_nome_aqui);
-                if (f->a) expr(c, u, f->a);
-                else emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_NULL, 0, 0, NULL, 0));
+                if (!f->is_static || !f->texto || !f->a) continue;
+                carrega_nome_sem_estatico(c, u, cls_nome_aqui);
+                expr(c, u, f->a);
                 emite(c, u, OP_SET_MEMBER,
                       idx_const(c, u, K_STR, 0, 0, f->texto, (int32_t)strlen(f->texto)));
             }
@@ -6212,7 +6505,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 int ini = k, fim = k;
                 while (fim < npares && par_met[fim] == met) fim++;
                 k = fim;
-                if (fim - ini > 8) { cerro(c, "limite do compilador: 8 decoradores num metodo", met); return; }
+                if (fim - ini > 8) { cerro(c, "limite do compilador: 8 decoradores num metodo", met); goto fim_classe; }
                 for (int q = ini; q < fim; q++) {
                     PSNode *dec = par_dec[q];
                     /* `@mapp.post(...)` com `mapp` sendo campo de INSTÂNCIA da
@@ -6227,29 +6520,36 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                             cerro_sx(c, dec, "'%s' e campo de instancia — o decorador no corpo da classe "
                                      "roda antes de existir instancia; declare-o `static`: "
                                      "static %s = ...", raiz, raiz);
-                            return;
+                            goto fim_classe;
                         }
                     }
                     emite_decorador_expr(c, u, dec);
                     guarda_nome_modo(c, u, DM[q - ini], 1);
                 }
                 int32_t kmet = idx_const(c, u, K_STR, 0, 0, mn, (int32_t)strlen(mn));
-                carrega_nome(c, u, cls_nome_aqui);
+                carrega_nome_sem_estatico(c, u, cls_nome_aqui);
                 emite(c, u, OP_LOAD_METODO, kmet);
                 guarda_nome_modo(c, u, "$dmval", 1);
                 for (int q = fim - 1; q >= ini && !CFALHOU(c); q--) {
-                    carrega_nome(c, u, cls_nome_aqui);
+                    carrega_nome_sem_estatico(c, u, cls_nome_aqui);
                     emite(c, u, OP_LOAD_CONST, kmet);
                     carrega_nome(c, u, DM[q - ini]);
                     carrega_nome(c, u, "$dmval");
                     emite_decora(c, u, par_dec[q], 1);
                     guarda_nome_modo(c, u, "$dmval", 1);
                 }
-                carrega_nome(c, u, cls_nome_aqui);
+                carrega_nome_sem_estatico(c, u, cls_nome_aqui);
                 carrega_nome(c, u, "$dmval");
                 emite(c, u, OP_SET_METODO, kmet);
             }
+            if (!CFALHOU(c)) faixa_classe_poe(c, u, ini_corpo, UP(c, u)->ncode, ci);
+        fim_classe:
+            free(par_dec);
+            free(par_met);
+            c->corpo = corpo_aqui.fora;
             c->entity_no = no_salvo;
+            c->entity_pai = pai_salvo;
+            c->dentro_entity = dentro_salvo;
             return;
         }
 
@@ -6404,6 +6704,12 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                          n->texto ? n->texto : "x", n->texto ? n->texto : "x");
                 return;
             }
+            /* O erro do membro aponta o `.` dele, como na leitura (o nó fica
+             * no começo do comando: `c.saldo = 999` apontava o `c`). */
+            PSNode no_membro;
+            memset(&no_membro, 0, sizeof(no_membro));
+            no_membro.line = n->i ? (int32_t)(n->i >> 32) : n->line;
+            no_membro.col  = n->i ? (int32_t)(uint32_t)(n->i & 0xffffffff) : n->col;
             /* Entity do arquivo: o campo tem que existir nela (declarado no
              * corpo, `private <tipo> x` ou gravado em `self.x` por um método),
              * e campo tipado recebe o tipo dele. A VM confere o tipo de novo
@@ -6412,12 +6718,14 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 const char *t = tp_de(c, u, n->a);
                 PSNode *d = (t && !strchr(t, '|')) ? tp_tipo_arq(c, t) : NULL;
                 if (d && d->kind == N_ENTITY_DECL && n->texto) {
+                    int nerros_antes = c->nerros;
                     if (tp_classe_tem(c, t, n->texto, 0) == 0) {
                         char dica[160];
                         terro(c, n, "AttributeError", "'%s' object has no attribute '%s'%s", t, n->texto,
                               tp_dica_membro(c, t, n->texto, dica, sizeof(dica)));
-                    }
-                    const char *ft = tp_campo_tipo(c, t, n->texto, 0);
+                    } else
+                        tp_confere_privado(c, d, n->texto, 0, &no_membro);
+                    const char *ft = c->nerros == nerros_antes ? tp_campo_tipo(c, t, n->texto, 0) : NULL;
                     if (ft && (!n->texto2 || !strcmp(n->texto2, "="))) {
                         const char *vt = tp_de(c, u, n->b);
                         if (tp_aceita(c, ft, vt, n->b, 1) == T_NAO)
@@ -6425,14 +6733,36 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                                   n->texto, t, ft, vt);
                     }
                 }
+                /* `Classe.x = v`: o private pelo nome da classe, e o campo
+                 * `static` tipado recebe o tipo dele (a frase é a do campo de
+                 * instância, com a classe que o declara). Acesso negado é a
+                 * causa: o tipo de um valor que nem pode entrar não se
+                 * confere. */
+                PSNode *ce = tp_classe_exata(c, u, n->a);
+                int nerros_antes = c->nerros;
+                if (ce && n->texto) tp_confere_privado(c, ce, n->texto, 1, &no_membro);
+                if (ce && n->texto && c->nerros == nerros_antes) {
+                    PSNode *dono = NULL;
+                    PSNode *f = estatico_em(c, ce, n->texto, 0, &dono);
+                    if (f && f->kind == N_ENTITY_FIELD && f->texto2 && (!n->texto2 || !strcmp(n->texto2, "="))) {
+                        const char *ft = tp_canon(f->texto2);
+                        const char *vt = tp_de(c, u, n->b);
+                        if (tp_aceita(c, ft, vt, n->b, 1) == T_NAO)
+                            terro(c, n->b, "AttributedValueError", "campo %s de %s esperava %s, recebeu %s",
+                                  n->texto, dono && dono->texto ? dono->texto : "?", ft, vt);
+                    }
+                }
             }
             int32_t mi = idx_const(c, u, K_STR, 0, 0, n->texto ? n->texto : "",
                                    n->texto ? (int32_t)strlen(n->texto) : 0);
             expr(c, u, n->a);                 /* objeto */
+            int32_t l0 = c->linha_atual, c0 = c->coluna_atual;
             if (n->texto2 && strcmp(n->texto2, "=") != 0) {
                 /* aumentada `obj.x += v`: lê o atual sem re-avaliar o objeto */
                 emite(c, u, OP_DUP, 0);
+                c->linha_atual = no_membro.line; c->coluna_atual = no_membro.col;
                 emite(c, u, OP_GET_MEMBER, mi);
+                c->linha_atual = l0; c->coluna_atual = c0;
                 expr(c, u, n->b);
                 char bin[2] = { n->texto2[0], 0 };
                 int32_t op = op_binario(bin);
@@ -6441,7 +6771,9 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             } else {
                 expr(c, u, n->b);
             }
+            c->linha_atual = no_membro.line; c->coluna_atual = no_membro.col;
             emite(c, u, OP_SET_MEMBER, mi);
+            c->linha_atual = l0; c->coluna_atual = c0;
             return;
         }
 
@@ -6749,6 +7081,9 @@ static int32_t novo_proto(C *c, const char *nome)
     memset(p, 0, sizeof(*p));
     p->slot_vararg = -1;
     p->slot_kwarg = -1;
+    /* o único lugar onde proto nasce: o método, o `__init__` gerado, e a
+     * lambda e a funct aninhada dentro deles ficam todos com a classe */
+    p->classe = c->corpo ? c->corpo->ci : -1;
     size_t n = strlen(nome);
     p->nome = malloc(n + 1);
     if (!p->nome) { cerro(c, "sem memoria", NULL); return -1; }
@@ -6923,8 +7258,10 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
      * sem nenhuma relação visível com o `static` de fora. */
     int meu_static  = c->pendente_static  || n->is_static;
     int meu_nonnull = c->pendente_nonnull || n->is_nonnull;
+    int eh_metodo   = c->pendente_metodo;
     c->pendente_static  = 0;
     c->pendente_nonnull = 0;
+    c->pendente_metodo  = 0;
 
     /* `static funct f(self)` FORA de Entity: não existe instância nunca, o
      * `self` ali é engano — e a frase tem que dizer isso na DECLARAÇÃO, não
@@ -6957,8 +7294,9 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
         if (tp_tem_yield(n->b)) u.tipo_ret_nome = NULL;
     }
     /* método de Entity: o `self` é da classe — é o que confere `self.campo`
-     * e `self.metodo()` antes de rodar */
-    int self_da_classe = !pai && c->dentro_entity && c->entity_no && c->entity_no->texto;
+     * e `self.metodo()` antes de rodar. Pela marca, não pela falta de `pai`:
+     * o método de classe declarada dentro de funct tem a funct como pai. */
+    int self_da_classe = eh_metodo && c->dentro_entity && c->entity_no && c->entity_no->texto;
     /* os nomes que esta funct liga: parâmetros e o corpo inteiro */
     for (int32_t i = 0; i < n->lista.n; i++)
         junta_nomes(c, &u.ligados, &u.nligados, &u.cap_ligados, n->lista.itens[i]->texto);
@@ -7961,6 +8299,7 @@ void ps_compila_free(PSPrograma *p)
         for (int32_t k = 0; k < p->protos[i].nvars; k++)
             free(p->protos[i].vars[k].nome);
         free(p->protos[i].vars);
+        free(p->protos[i].faixas_classe);
     }
     free(p->protos);
     for (int32_t i = 0; i < p->nglobais; i++) free(p->globais[i]);
@@ -7971,9 +8310,11 @@ void ps_compila_free(PSPrograma *p)
             free(p->classes[i].met_nomes[k]);
         free(p->classes[i].met_nomes);
         free(p->classes[i].met_protos);
-        for (int32_t k = 0; k < p->classes[i].npriv; k++)
-            free(p->classes[i].priv_nomes[k]);
-        free(p->classes[i].priv_nomes);
+        for (int32_t k = 0; k < p->classes[i].nmembros; k++) {
+            free(p->classes[i].membros[k].nome);
+            free(p->classes[i].membros[k].tipo);
+        }
+        free(p->classes[i].membros);
         for (int32_t k = 0; k < p->classes[i].ntip; k++) {
             free(p->classes[i].tip_nomes[k]);
             free(p->classes[i].tip_tipos[k]);

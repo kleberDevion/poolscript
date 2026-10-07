@@ -762,8 +762,12 @@ Regras concretas:
 ### `private` / `public` — encapsulamento
 
 Um campo ou método pode ser marcado `private` (ou `public`, que é o **default**).
-Membro `private` só é acessível **de dentro de um método da própria classe** —
-tentar ler, escrever ou chamar de fora levanta erro:
+Membro `private` só é acessível **de dentro da própria classe** — o código
+escrito no corpo dela: os métodos, a lambda e a funct aninhada escritas neles,
+o inicializador de `static` e o decorador do corpo. Tentar ler, escrever ou
+chamar de fora levanta erro, por qualquer caminho (a instância, o nome da
+classe num `private static`, o nome solto na filha, `base()`), e o `--check`
+acusa antes de rodar quando o resultado é certo:
 
 ```
 Entity Conta {
@@ -793,6 +797,12 @@ c.saldo = 9             # ERRO: escrita em private de fora
   máquina.
 - Campo `private` precisa ser **declarado tipado** no corpo (`private x: tipo`);
   atributos criados só por `self.x = ...` num método são públicos.
+- Com herança, decide a **declaração que o nome alcança** (a primeira classe
+  que o declara, na ordem de busca de método): a filha pode declarar público
+  um nome que é `private` no pai, e a frase cita a classe que declara o
+  private (`acesso negado: 'x' e private de Pai`).
+- `private funct __init__` só deixa construir de dentro da classe (fábrica,
+  singleton): `C()` de fora é acesso negado (07-entity §7.6).
 
 ### Herança simples e `base()`
 
@@ -921,6 +931,12 @@ ou método, da classe ou de um pai — é alcançado pelo **nome solto**: `dobro
 num método de `Util` é `Util.dobro(21)`, com a aridade conferida antes de
 rodar. Método comum não: `m()` solto é `NameError`, ele é `self.m()`
 (07-entity §7.4.1).
+
+O campo `static` tem **um dono**, a classe que o declara: `K.n = v`,
+`self.n += 1`, `obj.n = v` e `Filha.n = v` gravam todos nele, e o tipo escrito
+na declaração é conferido em toda escrita (`campo n de K esperava int,
+recebeu str`). `base().metodo_static(...)` chama o static do pai sem
+instância.
 
 ### `nonnull` — barra argumentos Null
 

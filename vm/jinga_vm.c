@@ -251,8 +251,19 @@ typedef struct PSClass_ {
     char   **met_nomes;
     int32_t *met_protos;
     int32_t  nmetodos;
-    char   **priv_nomes;   /* membros `private` — acesso de fora barrado */
-    int32_t  npriv;
+    /* Os membros que a classe DECLARA, com as marcas private e static: a
+     * tabela é do descritor (`VM.classes[def]`, que vive até o fim da VM) e
+     * aqui é só emprestada — a classe declarada dentro de funct nasce a cada
+     * chamada e não copia nada. */
+    const PSMembroDecl *membros;
+    int32_t  nmembros;
+    int32_t  def;          /* o descritor (índice em `VM.classes`): o "de dentro" do private */
+    /* Alguma classe da hierarquia (esta ou um ancestral) declara um private?
+     * Sem nenhum, o acesso a membro não confere nada. */
+    int32_t  tem_priv;
+    /* ...e um campo `static`? Sem nenhum, a escrita `obj.x = v` não procura
+     * dono de static: vai direto no objeto. */
+    int32_t  tem_estatico;
     int32_t  classe_privada;   /* `private class` — não exportada no import */
     /* Campos `static`: pertencem à CLASSE, não à instância. Avaliados uma vez,
      * na declaração; lidos como `Classe.x`, e por nome solto dentro do corpo
@@ -1075,6 +1086,12 @@ typedef struct {
     void     *nativo;
     int32_t  *nativo_ip;
     int       jit_estado;
+    /* A classe (descritor) em cujo corpo o código foi escrito, -1 fora de
+     * classe; e os trechos deste proto que são corpo de classe rodando aqui
+     * (ver PSProto.classe e .faixas_classe). É o "de dentro" do private. */
+    int32_t        classe;
+    PSFaixaClasse *faixas_classe;
+    int32_t        nfaixas_classe;
 } Proto;
 
 typedef struct {
@@ -1171,8 +1188,9 @@ typedef struct {
     int32_t *met_protos;
     int32_t  nmetodos;
     int32_t  npais;
-    char   **priv_nomes;   /* membros `private` (copiado do PSClassDef) */
-    int32_t  npriv;
+    PSMembroDecl *membros;     /* os membros declarados (copiado do PSClassDef) */
+    int32_t  nmembros;
+    int32_t  fora;             /* classe em cujo corpo esta foi declarada, -1 */
     int32_t  classe_privada;   /* `private class` — não exportada no import */
     char   **tip_nomes;    /* campos tipados (copiado do PSClassDef) */
     char   **tip_tipos;
@@ -1962,6 +1980,21 @@ static int classe_estatico(PSClass *cl, const Value *nomev, Value *out)
     return -1;
 }
 
+/* A classe DONA do campo `static`: a que a leitura acharia (`classe_estatico`,
+ * mesma ordem). NULL = nenhuma da hierarquia tem. É onde toda escrita grava. */
+static PSClass *classe_dona_do_estatico(PSClass *cl, const Value *nomev)
+{
+    if (!cl) return NULL;
+    Value ev;
+    if (EH_DICT(cl->estaticos) && dict_get(COMO_DICT(cl->estaticos), nomev, &ev) == 0)
+        return cl;
+    for (int32_t i = 0; i < cl->npais; i++) {
+        PSClass *r = classe_dona_do_estatico(cl->pais[i], nomev);
+        if (r) return r;
+    }
+    return NULL;
+}
+
 static void gct_class(VM *vm, Obj *o) {
     PSClass *cl = (PSClass *)o;
     for (int32_t i = 0; i < cl->npais; i++)
@@ -2043,8 +2076,7 @@ static void fin_class(VM *vm, Obj *o) {      /* CLASS (tam fixo; só buffers) */
     free(cl->met_nomes);
     free(cl->met_protos);
     free(cl->met_valores);
-    for (int32_t i = 0; i < cl->npriv; i++) free(cl->priv_nomes[i]);
-    free(cl->priv_nomes);
+    /* `membros` é emprestado do descritor: não é desta classe */
     for (int32_t i = 0; i < cl->ntip; i++) { free(cl->tip_nomes[i]); free(cl->tip_tipos[i]); }
     free(cl->tip_nomes);
     free(cl->tip_tipos);
@@ -2536,6 +2568,57 @@ static PSBound *novo_bound(VM *vm, Value inst, Value metodo)
     return b;
 }
 
+/* O corpo do MAKE_CLOSURE: em `nc_`, a closure do proto `pi_` com as células
+ * tiradas do frame que roda agora (a base `lbase_` e a closure `cl_` dele).
+ * Escrito uma vez e expandido em dois lugares: no laço da VM (o MAKE_CLOSURE)
+ * e no MAKE_CLASS (o método de classe declarada dentro de funct, pelo
+ * `monta_closure`). No laço ele tem que ser código escrito no lugar: como
+ * chamada de função, e até forçado inline, o gcc redistribuía os registradores
+ * do laço inteiro e o despacho dos outros opcodes ficava mais caro (medido com
+ * `perf stat`). `FALHA_(msg)` sai com o erro; o vetor nasce antes do contador
+ * (o GC percorre `ups` por `nups`). */
+#define MONTA_CLOSURE(nc_, pi_, lbase_, cl_, FALHA_) do {                         \
+        Proto *mc_np_ = &vm->protos[(pi_)];                                       \
+        (nc_) = calloc(1, sizeof(PSClosure));                                     \
+        if (!(nc_)) FALHA_("sem memoria no closure");                             \
+        (nc_)->obj.type = OBJ_CLOSURE; (nc_)->obj.marked = 0;                     \
+        (nc_)->obj.next = vm->objetos; vm->objetos = (Obj *)(nc_);                \
+        (nc_)->proto = (pi_);                                                     \
+        (nc_)->ups = mc_np_->nupvals > 0                                          \
+                   ? calloc((size_t)mc_np_->nupvals, sizeof(PSCelula *)) : NULL;  \
+        if (mc_np_->nupvals > 0 && !(nc_)->ups) FALHA_("sem memoria no closure"); \
+        (nc_)->nups = mc_np_->nupvals;                                            \
+        vm->alocado += sizeof(PSClosure) + sizeof(PSCelula *) * (size_t)mc_np_->nupvals; \
+        for (int mc_k_ = 0; mc_k_ < mc_np_->nupvals; mc_k_++) {                   \
+            if (mc_np_->upvals[mc_k_].em_local) {                                 \
+                Value mc_c0_ = vm->locals[(lbase_) + mc_np_->upvals[mc_k_].idx];  \
+                if (!EH_CELULA(mc_c0_))                                           \
+                    FALHA_("captura de slot sem celula (bug do compilador)");     \
+                (nc_)->ups[mc_k_] = COMO_CELULA(mc_c0_);                          \
+            } else {                                                              \
+                if (!(cl_) || mc_np_->upvals[mc_k_].idx >= (cl_)->nups)           \
+                    FALHA_("captura em cadeia invalida (bug do compilador)");     \
+                (nc_)->ups[mc_k_] = (cl_)->ups[mc_np_->upvals[mc_k_].idx];        \
+            }                                                                     \
+        }                                                                         \
+    } while (0)
+
+/* A falha do MONTA_CLOSURE fora do laço: o erro posto e -1. */
+#define MC_FALHA_C(msg_) do {                                                     \
+        snprintf(vm->erro, sizeof(vm->erro), "%s", (msg_));                       \
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");           \
+        return -1;                                                                \
+    } while (0)
+
+/* O MONTA_CLOSURE como função, pro MAKE_CLASS. 0 = ok; -1 = erro posto. */
+static int monta_closure(VM *vm, int32_t pi, int32_t lbase, PSClosure *cl, PSClosure **out)
+{
+    PSClosure *nc = NULL;
+    MONTA_CLOSURE(nc, pi, lbase, cl, MC_FALHA_C);
+    *out = nc;
+    return 0;
+}
+
 /* MRO simples: a própria classe, depois os pais da esquerda pra direita —
  * é o `find_method` do interpretador. */
 /* `valor` (opcional): sai com o valor do método na tabela da classe — a funct
@@ -2589,53 +2672,116 @@ static const char *nome_do_global(VM *vm, int32_t arg)
     return "?";
 }
 
-/* Encapsulamento: 1 se `nome` é membro `private` de `cl` (ou de um ancestral)
- * E o protótipo em execução (`proto_atual`) NÃO é um método da classe que o
- * declara — isto é, acesso de FORA. 0 = liberado (público, ou private acessado
- * de dentro de um método da própria classe). */
-/* Regra: um `private` é visível DENTRO da classe que o declara.
+/* ── Encapsulamento: a regra do `private` ──────────────────────────────────
  *
- * A versão antiga parava na PRIMEIRA classe da hierarquia que declarasse o
- * nome — em geral a filha — e, se o método em execução não fosse dela,
- * barrava. Com `Entity P` declarando `private s` e `Entity F(P)` também,
- * o `self.s` DENTRO de `P.mostra` era negado: o método é de P, que declara o
- * campo, e ainda assim a checagem só olhava F. Agora a hierarquia inteira é
- * varrida e a pergunta é outra: o proto que está rodando pertence a ALGUMA
- * classe que declara este nome como private? Se pertence, passa. */
-/* `pai` é a própria classe `cl` ou um ancestral dela? (o `base(Pai)`) */
-static int classe_descende_de(PSClass *cl, PSClass *pai)
+ * "De dentro" é o código ESCRITO no corpo da classe — método, `__init__`
+ * gerado, lambda e funct aninhada dentro deles, inicializador de `static` e
+ * expressão de decorador do corpo —, não o proto que está rodando. A
+ * compilação carimba cada proto com a classe do corpo em que ele nasceu
+ * (`Proto.classe`) e marca as faixas de corpo de classe que rodam na unidade
+ * de fora (`Proto.faixas_classe`).
+ *
+ * A declaração que o nome ALCANÇA decide, na ordem de busca de membro do
+ * `acha_metodo` e do `classe_estatico` (a própria classe, depois os pais da
+ * esquerda pra direita, em profundidade): a primeira classe que declara o
+ * nome diz se ele é private. Pública libera. Private só libera o código
+ * escrito numa classe que declara o nome — ou numa de fora dela, a classe
+ * declarada dentro de um método de outra — quando o valor descende dela.
+ * Assim o private do pai não barra o membro público de mesmo nome da filha,
+ * o método do pai continua lendo o private dele numa instância da filha, e a
+ * frase cita a classe que declara. Sem teto de pais: as buscas são
+ * recursivas, como a do método. */
+
+/* A declaração de `nome` na própria classe `cl` (sem os pais), ou NULL. */
+static const PSMembroDecl *classe_declara(const PSClass *cl, const char *nome)
 {
-    PSClass *pilha[64]; int np = 0;
-    if (cl) pilha[np++] = cl;
-    while (np > 0) {
-        PSClass *c = pilha[--np];
-        if (c == pai) return 1;
-        for (int32_t i = 0; i < c->npais && np < 64; i++)
-            if (c->pais[i]) pilha[np++] = c->pais[i];
+    for (int32_t i = 0; i < cl->nmembros; i++)
+        if (strcmp(cl->membros[i].nome, nome) == 0) return &cl->membros[i];
+    return NULL;
+}
+
+/* A primeira classe, na ordem de busca de membro, que declara `nome`; NULL =
+ * nenhuma da hierarquia declara. A declaração sai em `*decl`. */
+static PSClass *classe_que_declara(PSClass *cl, const char *nome, const PSMembroDecl **decl)
+{
+    if (!cl) return NULL;
+    const PSMembroDecl *d = classe_declara(cl, nome);
+    if (d) { *decl = d; return cl; }
+    for (int32_t i = 0; i < cl->npais; i++) {
+        PSClass *r = classe_que_declara(cl->pais[i], nome, decl);
+        if (r) return r;
     }
+    return NULL;
+}
+
+/* `cl` é a classe do descritor `def` ou descende dela? Pelo descritor: a
+ * classe declarada dentro de funct nasce de novo a cada chamada, e é a mesma
+ * classe do fonte. */
+static int classe_descende_do_def(const PSClass *cl, int32_t def)
+{
+    if (!cl) return 0;
+    if (cl->def == def) return 1;
+    for (int32_t i = 0; i < cl->npais; i++)
+        if (classe_descende_do_def(cl->pais[i], def)) return 1;
     return 0;
 }
 
-static int priv_barrado(PSClass *cl, const char *nome, int32_t proto_atual)
+/* `pai` é a própria classe `cl` ou um ancestral dela? (o `base(Pai)`) */
+static int classe_descende_de(const PSClass *cl, const PSClass *pai)
 {
-    PSClass *pilha[64]; int np = 0;
-    int achou = 0;
-    if (cl) pilha[np++] = cl;
-    while (np > 0) {
-        PSClass *c = pilha[--np];
-        for (int32_t i = 0; i < c->npriv; i++) {
-            if (strcmp(c->priv_nomes[i], nome) == 0) {
-                achou = 1;
-                for (int32_t k = 0; k < c->nmetodos; k++)
-                    if (c->met_protos[k] == proto_atual) return 0;  /* de dentro */
-                break;
-            }
-        }
-        for (int32_t i = 0; i < c->npais && np < 64; i++)
-            if (c->pais[i]) pilha[np++] = c->pais[i];
-    }
-    return achou;   /* private em algum ponto da hierarquia e não é de dentro */
+    if (!cl) return 0;
+    if (cl == pai) return 1;
+    for (int32_t i = 0; i < cl->npais; i++)
+        if (classe_descende_de(cl->pais[i], pai)) return 1;
+    return 0;
 }
+
+/* A classe em cujo corpo foi escrita a instrução no `ip` (a palavra do
+ * opcode) do proto `p`: o descritor, ou -1 fora de classe. */
+static int32_t classe_do_codigo(const Proto *p, int32_t ip)
+{
+    for (int32_t i = 0; i < p->nfaixas_classe; i++)
+        if (ip >= p->faixas_classe[i].ip_ini && ip < p->faixas_classe[i].ip_fim)
+            return p->faixas_classe[i].classe;
+    return p->classe;
+}
+
+/* O código na instrução `ip` de `p` acessando `nome` num valor da classe
+ * `alvo` (a do objeto; no `base(Pai)`, o pai). NULL = liberado; senão, a
+ * classe que declara `nome` private e barra o acesso — é ela que a frase
+ * cita. */
+static __attribute__((noinline)) PSClass *priv_barra(VM *vm, PSClass *alvo, const char *nome,
+                                                      const Proto *p, int32_t ip)
+{
+    if (!alvo || !alvo->tem_priv) return NULL;   /* hierarquia sem private: nada a conferir */
+    const PSMembroDecl *d = NULL;
+    PSClass *dona = classe_que_declara(alvo, nome, &d);
+    if (!dona || !(d->marcas & PS_MEMB_PRIVADO)) return NULL;
+    for (int32_t k = p ? classe_do_codigo(p, ip) : -1; k >= 0 && k < vm->nclasses; k = vm->classes[k].fora) {
+        const PSClassDefC *kd = &vm->classes[k];
+        int declara = 0;
+        for (int32_t i = 0; i < kd->nmembros && !declara; i++)
+            declara = strcmp(kd->membros[i].nome, nome) == 0;
+        if (declara && classe_descende_do_def(alvo, k)) return NULL;   /* de dentro */
+    }
+    return dona;
+}
+
+/* A frase do acesso negado: o nome e a classe que o declara private. */
+#define ERRO_PRIVADO(nome_, dona_)                                               \
+    ERRO_TF(vm, "RuntimeError",                                                 \
+            "acesso negado: '%s' e private de %s (so acessivel de dentro da classe)", \
+            (nome_), (dona_)->nome ? (dona_)->nome : "?")
+
+/* O private no laço da VM, na instrução corrente: a classe sem private na
+ * hierarquia paga só o teste da marca; a regra mora fora do laço. */
+#define CONFERE_PRIVADO(cls_, nome_) do {                                        \
+        PSClass *cp_c_ = (cls_);                                                 \
+        if (cp_c_ && cp_c_->tem_priv) {                                          \
+            PSClass *cp_d_ = priv_barra(vm, cp_c_, (nome_), p, ip - 2);          \
+            if (cp_d_) ERRO_PRIVADO((nome_), cp_d_);                             \
+        }                                                                        \
+    } while (0)
 
 /* ── conversões com a extensão de teste diferencial ─────────────────────── */
 
@@ -10291,6 +10437,121 @@ static int erro_esperava(VM *vm, const char *quem, const char *tipo, Value v)
         snprintf(vm->erro, sizeof(vm->erro), "%s esperava %s, recebeu %s",
                  quem, tipo ? tipo : "?", nome_do_tipo_valor(v));
     snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "AttributedValueError");
+    return -1;
+}
+
+/* ── escrita de membro: os caminhos que não são o campo comum do objeto ──
+ * Fora do laço da VM de propósito: o laço só testa a marca da classe
+ * (`tem_priv`, `tem_estatico`), e o código que só a classe com private ou
+ * static precisa não pesa no despacho dos outros opcodes. */
+
+/* O acesso negado, com a frase da VM. Devolve -1. */
+static int erro_privado(VM *vm, const char *nome, const PSClass *dona)
+{
+    snprintf(vm->erro, sizeof(vm->erro),
+             "acesso negado: '%s' e private de %s (so acessivel de dentro da classe)",
+             nome, dona->nome ? dona->nome : "?");
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+    return -1;
+}
+
+/* O tipo escrito do campo `static` declarado em `dono` (NULL = sem tipo). */
+static const char *tipo_do_estatico(const PSClass *dono, const char *nome)
+{
+    const PSMembroDecl *d = classe_declara(dono, nome);
+    return (d && (d->marcas & PS_MEMB_ESTATICO)) ? d->tipo : NULL;
+}
+
+/* Grava `valor` no static `nome` da classe `dono`, conferindo o tipo dele. */
+static int grava_estatico(VM *vm, PSClass *dono, const Value *nomev, const char *nome, Value valor)
+{
+    const char *t = tipo_do_estatico(dono, nome);
+    if (t && !param_casa_tipo(&valor, t)) {
+        char quem[192];
+        snprintf(quem, sizeof(quem), "campo %s de %s", nome, dono->nome ? dono->nome : "?");
+        return erro_esperava(vm, quem, t, valor);
+    }
+    if (!EH_DICT(dono->estaticos)) {
+        PSDict *d = novo_dict(vm, 4);
+        if (!d) { snprintf(vm->erro, sizeof(vm->erro), "sem memoria");
+                  snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError"); return -1; }
+        dono->estaticos = MK_OBJ(d);
+    }
+    if (dict_set(vm, COMO_DICT(dono->estaticos), nomev, &valor) != 0) {
+        snprintf(vm->erro, sizeof(vm->erro), "sem memoria");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+        return -1;
+    }
+    return 0;
+}
+
+/* `Classe.x = v` — campo `static`. É por aqui que o compilador grava os
+ * inicializadores logo depois de criar a classe. O static tem UM dono, a
+ * classe que o declara: a escrita vai pra primeira classe, na ordem de busca
+ * da leitura (`classe_estatico`), que tem a chave — `Filha.total = 7` muda o
+ * `total` do pai, que é o que `Filha.total` lê. Nome que nenhuma tem vira
+ * static novo da própria classe. `p`/`ip`: o código que escreve (private).
+ * 0 = gravou; -1 = erro posto. */
+static __attribute__((noinline)) int set_membro_classe(VM *vm, PSClass *classe, const Value *nomev,
+                                                       Value valor, const Proto *p, int32_t ip)
+{
+    const char *nm = EH_STRING(*nomev) ? COMO_STRING(*nomev)->chars : "?";
+    if (classe->tem_priv) {
+        PSClass *dona = priv_barra(vm, classe, nm, p, ip);
+        if (dona) return erro_privado(vm, nm, dona);
+    }
+    PSClass *dono = classe_dona_do_estatico(classe, nomev);
+    return grava_estatico(vm, dono ? dono : classe, nomev, nm, valor);
+}
+
+/* `self.x = v` / `obj.x = v` num nome que o objeto ainda não tem: quando a
+ * declaração que o nome alcança é um campo `static`, a escrita vai pra classe
+ * dona (o que `self.x` lê). 1 = gravou no static; 0 = não é static (o campo
+ * vai no objeto); -1 = erro posto. */
+static __attribute__((noinline)) int set_estatico_pela_instancia(VM *vm, PSInstance *inst, const Value *nomev,
+                                                                 const char *nm, Value valor)
+{
+    Value ja;
+    if (inst->campos && dict_get(inst->campos, nomev, &ja) == 0) return 0;
+    const PSMembroDecl *d = NULL;
+    PSClass *decl = classe_que_declara(inst->classe, nm, &d);
+    if (!decl || !(d->marcas & PS_MEMB_ESTATICO) || !EH_DICT(decl->estaticos)) return 0;
+    return grava_estatico(vm, decl, nomev, nm, valor) == 0 ? 1 : -1;
+}
+
+/* O que o MAKE_CLASS faz pela tabela de membros do descritor: o método de
+ * classe declarada dentro de funct vira closure (com as células do frame que
+ * roda o MAKE_CLASS), todo campo `static` declarado nasce valendo Null (a
+ * classe é dona dele antes de qualquer escrita, e o inicializador da filha
+ * que REDECLARA o static grava nela, não no pai), e as marcas de private e de
+ * static. 0 = ok; -1 = erro posto. */
+static __attribute__((noinline)) int classe_monta_membros(VM *vm, PSClass *nova, const PSClassDefC *def,
+                                                          int32_t lbase, PSClosure *cl)
+{
+    for (int32_t i = 0; i < nova->nmetodos; i++) {
+        if (vm->protos[nova->met_protos[i]].nupvals <= 0) continue;
+        PSClosure *mc = NULL;
+        if (monta_closure(vm, nova->met_protos[i], lbase, cl, &mc) != 0) return -1;
+        nova->met_valores[i] = MK_OBJ(mc);
+    }
+    for (int32_t i = 0; i < def->nmembros; i++) {
+        if (def->membros[i].marcas & PS_MEMB_PRIVADO) nova->tem_priv = 1;
+        if (!(def->membros[i].marcas & PS_MEMB_ESTATICO)) continue;
+        nova->tem_estatico = 1;
+        if (!EH_DICT(nova->estaticos)) {
+            PSDict *ed = novo_dict(vm, 4);
+            if (!ed) goto sem_memoria;
+            nova->estaticos = MK_OBJ(ed);
+        }
+        PSString *ks = nova_string(vm, def->membros[i].nome, (int)strlen(def->membros[i].nome));
+        if (!ks) goto sem_memoria;
+        Value kv = MK_OBJ(ks), nv = MK_NULL();
+        if (dict_set(vm, COMO_DICT(nova->estaticos), &kv, &nv) != 0) goto sem_memoria;
+    }
+    return 0;
+sem_memoria:
+    snprintf(vm->erro, sizeof(vm->erro), "sem memoria");
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
     return -1;
 }
 
@@ -24567,6 +24828,20 @@ static int chama_valor_modo(VM *vm, Value fn, Value *args, int n,
         PSClass *k = COMO_CLASS(fn);
         Value initv = MK_NULL();
         int32_t mp = acha_metodo(k, "__init__", &initv);
+        /* o `private __init__` vale aqui também; quem constrói é o código do
+         * frame que chamou o nativo (`map(l, Ponto)` dentro da classe pode) */
+        {
+            int32_t pf = vm->frame_topo > 0 ? vm->frames[vm->frame_topo - 1].proto : -1;
+            PSClass *dona = priv_barra(vm, k, "__init__",
+                                       pf >= 0 && pf < vm->nprotos ? &vm->protos[pf] : NULL, -1);
+            if (dona) {
+                snprintf(vm->erro, sizeof(vm->erro),
+                         "acesso negado: '__init__' e private de %s (so acessivel de dentro da classe)",
+                         dona->nome ? dona->nome : "?");
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+                return -1;
+            }
+        }
         PSInstance *ni = nova_instancia(vm, k);
         if (!ni) {
             snprintf(vm->erro, sizeof(vm->erro), "sem memoria ao instanciar");
@@ -26191,27 +26466,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         }
 
         PS_CASE(MAKE_CLOSURE) {
-            Proto *np = &vm->protos[arg];
-            PSClosure *nc = calloc(1, sizeof(PSClosure));
-            if (!nc) ERRO(vm, "sem memoria no closure");
-            nc->obj.type = OBJ_CLOSURE; nc->obj.marked = 0;
-            nc->obj.next = vm->objetos; vm->objetos = (Obj *)nc;
-            nc->proto = arg;
-            nc->nups = np->nupvals;
-            nc->ups = np->nupvals > 0 ? calloc((size_t)np->nupvals, sizeof(PSCelula *)) : NULL;
-            if (np->nupvals > 0 && !nc->ups) ERRO(vm, "sem memoria no closure");
-            vm->alocado += sizeof(PSClosure) + sizeof(PSCelula *) * (size_t)np->nupvals;
-            for (int k = 0; k < np->nupvals; k++) {
-                if (np->upvals[k].em_local) {
-                    Value c0 = vm->locals[lbase + np->upvals[k].idx];
-                    if (!EH_CELULA(c0)) ERRO(vm, "captura de slot sem celula (bug do compilador)");
-                    nc->ups[k] = COMO_CELULA(c0);
-                } else {
-                    if (!cl || np->upvals[k].idx >= cl->nups)
-                        ERRO(vm, "captura em cadeia invalida (bug do compilador)");
-                    nc->ups[k] = cl->ups[np->upvals[k].idx];
-                }
-            }
+            PSClosure *nc;
+#define MC_FALHA_VM(msg_) ERRO(vm, msg_)
+            MONTA_CLOSURE(nc, arg, lbase, cl, MC_FALHA_VM);
+#undef MC_FALHA_VM
             stack[sp++] = MK_OBJ(nc);
             break;
         }
@@ -26327,11 +26585,14 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 int32_t mp = acha_metodo(COMO_CLASS(alvo_kw), "__init__", &initv);
                 if (mp < 0) ERRO_TF(vm, "TypeError", "%s() takes no arguments",
                                     COMO_CLASS(alvo_kw)->nome ? COMO_CLASS(alvo_kw)->nome : "?");
+                CONFERE_PRIVADO(COMO_CLASS(alvo_kw), "__init__");
                 vm->sp = sp; vm->locals_top = locals_top;
                 PSInstance *ni = nova_instancia(vm, COMO_CLASS(alvo_kw));
                 if (!ni) ERRO(vm, "sem memoria");
                 Value inst_kw = MK_OBJ(ni);
-                if (initv.t != V_FUNC) {
+                PSClosure *init_cl = (EH_CLOSURE(initv) && COMO_CLOSURE(initv)->proto == mp)
+                                     ? COMO_CLOSURE(initv) : NULL;
+                if (initv.t != V_FUNC && !init_cl) {
                     /* `__init__` trocado por decorador: roda o valor com a
                      * instância na frente; a expressão vale a instância. O
                      * slot da Entity na pilha passa a guardá-la: é a raiz
@@ -26354,7 +26615,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     stack[sp++] = inst_kw;
                     break;
                 }
-                cp.proto = mp; cp.cl = NULL; cp.self = inst_kw;
+                cp.proto = mp; cp.cl = init_cl; cp.self = inst_kw;
                 cp.desloca = 1; cp.instancia = 1; cp.ignora_kw = 1;
                 cp_pos = &stack[sp - total]; cp_npos = npos;
                 cp_kwn = tn->itens; cp_kwv = &stack[sp - nkw_tab]; cp_nkw = nkw_tab;
@@ -26620,12 +26881,20 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
              * ele como `self`. Se não houver __init__, devolve o objeto. */
             if (EH_CLASS(alvo)) {
                 vm->sp = sp; vm->locals_top = locals_top;
+                /* construir é chamar o `__init__`: o `private` dele vale aqui
+                 * como na chamada explícita (`private funct __init__` só
+                 * constrói de dentro da classe — a fábrica, o singleton) */
+                CONFERE_PRIVADO(COMO_CLASS(alvo), "__init__");
                 PSInstance *inst = nova_instancia(vm, COMO_CLASS(alvo));
                 if (!inst) ERRO(vm, "sem memoria ao instanciar");
                 Value iv = MK_OBJ(inst);
                 Value initv = MK_NULL();
                 int32_t mp = acha_metodo(COMO_CLASS(alvo), "__init__", &initv);
-                if (mp >= 0 && initv.t != V_FUNC) {
+                /* o `__init__` declarado de uma classe dentro de funct é
+                 * closure do mesmo proto: roda aqui, com as células dele */
+                PSClosure *init_cl = (mp >= 0 && EH_CLOSURE(initv) && COMO_CLOSURE(initv)->proto == mp)
+                                     ? COMO_CLOSURE(initv) : NULL;
+                if (mp >= 0 && initv.t != V_FUNC && !init_cl) {
                     /* `__init__` trocado por decorador: roda o valor com a
                      * instância na frente; a expressão vale a instância. O
                      * slot da Entity na pilha passa a guardá-la: é a raiz
@@ -26658,7 +26927,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 }
                 /* o self entra na frente dos argumentos; o valor da expressão
                  * é a instância */
-                cp.proto = mp; cp.cl = NULL; cp.self = iv;
+                cp.proto = mp; cp.cl = init_cl; cp.self = iv;
                 cp.desloca = 1; cp.instancia = 1; cp.ignora_kw = 0;
                 cp_pos = &stack[sp - n]; cp_npos = n;
                 cp_kwn = NULL; cp_kwv = NULL; cp_nkw = 0;
@@ -27901,20 +28170,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 nova->met_valores[i] = MK_FUNC(def->met_protos[i]);   /* até um decorador trocar */
                 nova->nmetodos = i + 1;
             }
-            /* membros private (encapsulamento) — copiados da def */
             nova->classe_privada = def->classe_privada;   /* `private class` */
-            nova->estaticos = MK_NULL();   /* o dict nasce no 1º `Classe.x = v` */
+            nova->estaticos = MK_NULL();   /* o dict nasce com o 1º static */
             nova->inst_decor = MK_NULL();     /* nasce no 1º registrador que precisa de self */
-            nova->priv_nomes = NULL;
-            if (def->npriv > 0) {
-                nova->priv_nomes = calloc((size_t)def->npriv, sizeof(char *));
-                /* o ERRO salta daqui; com `npriv` já publicado, o `fin_class`
-                 * percorreria um vetor que não existe */
-                if (!nova->priv_nomes) ERRO(vm, "sem memoria");
-                for (int32_t i = 0; i < def->npriv; i++)
-                    nova->priv_nomes[i] = strdup(def->priv_nomes[i]);
-            }
-            nova->npriv = def->npriv;
+            /* os membros declarados: a tabela é do descritor, emprestada; o
+             * método-closure, o static nascendo Null e as marcas saem dela */
+            nova->membros = def->membros;
+            nova->nmembros = def->nmembros;
+            nova->def = arg;
+            if (classe_monta_membros(vm, nova, def, lbase, cl) != 0) goto erro_runtime;
             if (def->ntip > 0) {
                 nova->tip_nomes = calloc((size_t)def->ntip, sizeof(char *));
                 nova->tip_tipos = calloc((size_t)def->ntip, sizeof(char *));
@@ -27937,6 +28201,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 Value pv = stack[--sp];
                 if (!EH_CLASS(pv)) ERRO(vm, "pai de Entity precisa ser outra Entity");
                 nova->pais[i] = COMO_CLASS(pv);
+                if (nova->pais[i]->tem_priv) nova->tem_priv = 1;
+                if (nova->pais[i]->tem_estatico) nova->tem_estatico = 1;
             }
             stack[sp++] = MK_OBJ(nova);
             break;
@@ -27959,10 +28225,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (EH_INST(alvo)) {
                 PSInstance *inst = COMO_INST(alvo);
                 /* encapsulamento: membro private só de dentro da classe */
-                if (priv_barrado(inst->classe, nome, (int32_t)(p - vm->protos)))
-                    ERRO_TF(vm, "RuntimeError",
-                            "acesso negado: '%s' e private de %s (so acessivel de dentro da classe)",
-                            nome, inst->classe && inst->classe->nome ? inst->classe->nome : "?");
+                CONFERE_PRIVADO(inst->classe, nome);
                 Value v;
                 /* campo tem prioridade sobre método, como no interpretador */
                 if (inst->campos && dict_get(inst->campos, &nomev, &v) == 0) {
@@ -28011,6 +28274,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 break;
             }
             if (EH_CLASS(alvo)) {
+                /* o private vale também pelo nome da classe: `Conta.segredo`
+                 * de fora é o mesmo acesso negado de `obj.segredo` */
+                CONFERE_PRIVADO(COMO_CLASS(alvo), nome);
                 /* campo `static` da classe (ou de um pai): `App.mapp` */
                 {
                     Value ev;
@@ -28405,17 +28671,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 break;
             }
             if (EH_CLASS(alvo)) {
-                /* `Classe.x = v` — campo `static`. É por aqui que o compilador
-                 * grava os inicializadores logo depois de criar a classe. */
-                PSClass *classe = COMO_CLASS(alvo);
+                /* `Classe.x = v` — campo `static`, gravado no dono (ver
+                 * `set_membro_classe`) */
                 vm->sp = sp; vm->locals_top = locals_top;
-                if (!EH_DICT(classe->estaticos)) {
-                    PSDict *d = novo_dict(vm, 4);
-                    if (!d) ERRO(vm, "sem memoria");
-                    classe->estaticos = MK_OBJ(d);
-                }
-                if (dict_set(vm, COMO_DICT(classe->estaticos), &nomev, &valor) != 0)
-                    ERRO(vm, "sem memoria");
+                if (set_membro_classe(vm, COMO_CLASS(alvo), &nomev, valor, p, ip - 2) != 0)
+                    goto erro_runtime;
                 break;
             }
             if (!EH_INST(alvo)) {
@@ -28425,15 +28685,22 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                         nome_do_tipo_valor(alvo), nm, dica_membro(alvo, nm, dica, sizeof(dica)));
             }
             PSInstance *inst = COMO_INST(alvo);
-            if (EH_STRING(nomev) && priv_barrado(inst->classe, COMO_STRING(nomev)->chars, (int32_t)(p - vm->protos)))
-                ERRO_TF(vm, "RuntimeError",
-                        "acesso negado: '%s' e private de %s (so acessivel de dentro da classe)",
-                        COMO_STRING(nomev)->chars, inst->classe && inst->classe->nome ? inst->classe->nome : "?");
             if (EH_STRING(nomev)) {
-                const char *tc = classe_tipo_campo(inst->classe, COMO_STRING(nomev)->chars);
+                const char *nm = COMO_STRING(nomev)->chars;
+                CONFERE_PRIVADO(inst->classe, nm);
+                /* O campo `static` lido por `self.x`/`obj.x` é gravado no dono
+                 * pela mesma grafia (`self.total += 1` contava numa cópia por
+                 * objeto). Só a classe com static na hierarquia procura. */
+                if (inst->classe && inst->classe->tem_estatico) {
+                    vm->sp = sp; vm->locals_top = locals_top;
+                    int rs = set_estatico_pela_instancia(vm, inst, &nomev, nm, valor);
+                    if (rs < 0) goto erro_runtime;
+                    if (rs > 0) break;
+                }
+                const char *tc = classe_tipo_campo(inst->classe, nm);
                 if (tc && !param_casa_tipo(&valor, tc)) {
                     char quem[192];
-                    snprintf(quem, sizeof(quem), "campo %s de %s", COMO_STRING(nomev)->chars,
+                    snprintf(quem, sizeof(quem), "campo %s de %s", nm,
                              inst->classe && inst->classe->nome ? inst->classe->nome : "?");
                     erro_esperava(vm, quem, tc, valor);
                     goto erro_runtime;
@@ -28871,6 +29138,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 ERRO_TF(vm, "TypeError",
                         "base(): a Entity pai '%s' nao tem __init__",
                         COMO_CLASS(paiv)->nome ? COMO_CLASS(paiv)->nome : "?");
+            CONFERE_PRIVADO(COMO_CLASS(paiv), "__init__");
             Value selfv = lbase >= 0 ? vm->locals[lbase] : MK_NULL();
             PSBound *b = novo_bound(vm, selfv, initv);   /* o __init__ da tabela do pai */
             if (!b) ERRO(vm, "sem memoria em base()");
@@ -28899,10 +29167,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 ERRO_TF(vm, "RuntimeError", "'%s' nao e pai de '%s'", pnome,
                         COMO_INST(selfv)->classe && COMO_INST(selfv)->classe->nome
                             ? COMO_INST(selfv)->classe->nome : "?");
-            if (priv_barrado(pai, nome, (int32_t)(p - vm->protos)))
-                ERRO_TF(vm, "RuntimeError",
-                        "acesso negado: '%s' e private de %s (so acessivel de dentro da classe)",
-                        nome, pnome);
+            CONFERE_PRIVADO(pai, nome);
             {
                 Value ev;
                 if (classe_estatico(pai, &nomev, &ev) == 0) {
@@ -28913,8 +29178,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             Value metv = MK_NULL();
             int32_t mp = acha_metodo(pai, nome, &metv);
             if (mp >= 0) {
+                /* Método `static` do pai: `base().dobro(4)` é `Pai.dobro(4)`,
+                 * sem instância. Ligar o `self` mandava "chame pela Entity, não
+                 * pela instância" num código que não usou instância nenhuma. */
+                if (vm->protos[mp].eh_static) { stack[sp - 1] = metv; break; }
                 vm->sp = sp; vm->locals_top = locals_top;
-                PSBound *b = novo_bound(vm, selfv, vm->protos[mp].eh_static ? MK_FUNC(mp) : metv);
+                PSBound *b = novo_bound(vm, selfv, metv);
                 if (!b) ERRO(vm, "sem memoria");
                 stack[sp - 1] = MK_OBJ(b);
                 break;
@@ -28946,7 +29215,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 ERRO_TF(vm, "TypeError",
                         "base(): a Entity pai '%s' nao tem __init__",
                         COMO_CLASS(paiv)->nome ? COMO_CLASS(paiv)->nome : "?");
-            if (initv.t != V_FUNC) {
+            CONFERE_PRIVADO(COMO_CLASS(paiv), "__init__");
+            /* o `__init__` declarado de uma classe dentro de funct é closure
+             * do mesmo proto: roda aqui mesmo, com as células dele */
+            PSClosure *init_cl = (EH_CLOSURE(initv) && COMO_CLOSURE(initv)->proto == mp)
+                                 ? COMO_CLOSURE(initv) : NULL;
+            if (initv.t != V_FUNC && !init_cl) {
                 /* `__init__` do pai trocado por decorador: roda o valor com o
                  * self na frente; `base(...)` vale o que ele devolver */
                 Value reais[64], rb;
@@ -28968,7 +29242,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 
             /* o `__init__` do pai com o self atual na frente; `base(...)`
              * vale o que ele devolver */
-            cp.proto = mp; cp.cl = NULL; cp.self = selfv;
+            cp.proto = mp; cp.cl = init_cl; cp.self = selfv;
             cp.desloca = 1; cp.instancia = 0; cp.ignora_kw = 0;
             cp_pos = &stack[sp - n]; cp_npos = n;
             cp_kwn = NULL; cp_kwv = NULL; cp_nkw = 0;
@@ -29182,6 +29456,7 @@ static void libera_vm(VM *vm)
             for (int k = 0; k < vm->protos[i].nvars; k++)
                 free(vm->protos[i].vars[k].nome);
             free(vm->protos[i].vars);
+            free(vm->protos[i].faixas_classe);
             free(vm->protos[i].nativo_ip);
             /* A tabela de capturas de toda funct aninhada (closure): copiada
              * na carga do programa e de cada módulo, e nunca solta — o
@@ -29205,9 +29480,13 @@ static void libera_vm(VM *vm)
                 free(vm->classes[i].met_nomes[k]);
             free(vm->classes[i].met_nomes);
             free(vm->classes[i].met_protos);
-            for (int32_t k = 0; k < vm->classes[i].npriv; k++)
-                free(vm->classes[i].priv_nomes[k]);
-            free(vm->classes[i].priv_nomes);
+            /* a tabela que as classes vivas emprestam (PSClass.membros): o
+             * descritor é o dono */
+            for (int32_t k = 0; k < vm->classes[i].nmembros; k++) {
+                free(vm->classes[i].membros[k].nome);
+                free(vm->classes[i].membros[k].tipo);
+            }
+            free(vm->classes[i].membros);
             for (int32_t k = 0; k < vm->classes[i].ntip; k++) {
                 free(vm->classes[i].tip_nomes[k]);
                 free(vm->classes[i].tip_tipos[k]);
@@ -29362,8 +29641,30 @@ static int proto_assume(Proto *p, PSProto *o)
     }
     p->vars = o->vars;                 o->vars = NULL;
     p->nvars = o->nvars;               o->nvars = 0;
+    p->classe = o->classe;
+    p->faixas_classe = o->faixas_classe;   o->faixas_classe = NULL;
+    p->nfaixas_classe = o->nfaixas_classe; o->nfaixas_classe = 0;
     p->nativo = NULL; p->nativo_ip = NULL; p->jit_estado = 0;
     return falta ? -1 : 0;             /* sem memória: o que foi assumido já é da VM */
+}
+
+/* Os membros declarados do descritor compilado, copiados pra VM (o
+ * PSPrograma morre antes da execução). O contador só depois do vetor. */
+static int copia_membros(PSClassDefC *d, const PSClassDef *o)
+{
+    if (o->nmembros <= 0) return 0;
+    d->membros = calloc((size_t)o->nmembros, sizeof(PSMembroDecl));
+    if (!d->membros) return -1;
+    for (int32_t k = 0; k < o->nmembros; k++) {
+        char *nm = strdup(o->membros[k].nome ? o->membros[k].nome : "?");
+        char *tp = o->membros[k].tipo ? strdup(o->membros[k].tipo) : NULL;
+        if (!nm || (o->membros[k].tipo && !tp)) { free(nm); free(tp); return -1; }
+        d->membros[k].nome = nm;
+        d->membros[k].tipo = tp;
+        d->membros[k].marcas = o->membros[k].marcas;
+        d->nmembros = k + 1;
+    }
+    return 0;
 }
 
 static int carrega_protos(VM *vm, PSPrograma *prog)
@@ -29401,15 +29702,10 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
                 }
             }
             d->nmetodos = o->nmetodos;
-            /* nomes private (encapsulamento) */
+            /* membros declarados (encapsulamento e o dono do static) */
             d->classe_privada = o->classe_privada;
-            if (o->npriv > 0) {
-                d->priv_nomes = calloc((size_t)o->npriv, sizeof(char *));
-                if (!d->priv_nomes) return -1;
-                for (int32_t k = 0; k < o->npriv; k++)
-                    d->priv_nomes[k] = strdup(o->priv_nomes[k] ? o->priv_nomes[k] : "?");
-            }
-            d->npriv = o->npriv;
+            d->fora = o->fora;
+            if (copia_membros(d, o) != 0) return -1;
             if (copia_campos_tipados(d, o) != 0) return -1;
         }
     }
@@ -29615,13 +29911,9 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
         }
         d->nmetodos = o->nmetodos;
         d->classe_privada = o->classe_privada;
-        if (o->npriv > 0) {
-            d->priv_nomes = calloc((size_t)o->npriv, sizeof(char *));
-            if (!d->priv_nomes) return -1;
-            for (int32_t k = 0; k < o->npriv; k++)
-                d->priv_nomes[k] = strdup(o->priv_nomes[k] ? o->priv_nomes[k] : "?");
-        }
-        d->npriv = o->npriv;   /* private de classe em módulo importado */
+        /* a classe de fora é do mesmo módulo: o índice desloca junto */
+        d->fora = o->fora >= 0 ? o->fora + *base_classe : -1;
+        if (copia_membros(d, o) != 0) return -1;   /* private de classe em módulo importado */
         if (copia_campos_tipados(d, o) != 0) return -1;
     }
     vm->nclasses = nc;
@@ -29700,6 +29992,11 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
         if (!d->nome) { d->nome = strdup("?"); if (!d->nome) return -1; }
         reloca_codigo(d->code, d->ncode, *base_proto, *base_global, *base_classe,
                       base_model, base_enum);
+        /* a classe do corpo (o "de dentro" do private) é índice de descritor
+         * do módulo: desloca como o arg do MAKE_CLASS */
+        if (d->classe >= 0) d->classe += *base_classe;
+        for (int32_t k = 0; k < d->nfaixas_classe; k++)
+            d->faixas_classe[k].classe += *base_classe;
 
         d->consts = calloc((size_t)(o->nconsts > 0 ? o->nconsts : 1), sizeof(Value));
         if (!d->consts) return -1;

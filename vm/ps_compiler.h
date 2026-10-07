@@ -67,6 +67,26 @@ typedef struct {
     int32_t  ip_fim;    /* primeira palavra em que já NÃO vale (-1 = aberta) */
 } PSVarDbg;
 
+/* Um trecho de código de um proto que pertence ao corpo de uma classe (ver
+ * `PSProto.faixas_classe`). */
+typedef struct {
+    int32_t ip_ini;     /* primeira palavra de code do trecho */
+    int32_t ip_fim;     /* primeira palavra que já não é dele */
+    int32_t classe;     /* índice do descritor da classe */
+} PSFaixaClasse;
+
+/* Um membro que a classe DECLARA: método, campo do corpo, campo declarado num
+ * método (`private str nome = n`) e o `__init__` gerado dos campos. É a
+ * declaração que decide o acesso: a primeira classe, na ordem de busca de
+ * membro, que declara o nome diz se ele é `private` e se é `static`. */
+#define PS_MEMB_PRIVADO   1   /* `private` */
+#define PS_MEMB_ESTATICO  2   /* campo `static`: mora na classe, não no objeto */
+typedef struct {
+    char   *nome;
+    int32_t marcas;     /* PS_MEMB_* */
+    char   *tipo;       /* tipo escrito do campo `static` (NULL = sem tipo) */
+} PSMembroDecl;
+
 typedef struct {
     char    *nome;
     int32_t *code;      /* pares [opcode, arg] */
@@ -116,6 +136,16 @@ typedef struct {
     /* Tabela de variáveis locais com faixa de vida — só o debugger usa. */
     PSVarDbg *vars;
     int32_t   nvars;
+    /* A classe (índice do descritor em `classes`) em cujo corpo este código
+     * foi ESCRITO: método, `__init__` gerado, e a lambda e a funct aninhada
+     * dentro deles. -1 = fora de classe. É o "de dentro" do `private`: quem
+     * acessa é o código escrito na classe, não o proto que está rodando. */
+    int32_t   classe;
+    /* Trechos deste proto que são corpo de uma classe e rodam aqui, na
+     * unidade de fora: o inicializador de campo `static` e a expressão do
+     * decorador de método. Cada faixa [ip_ini, ip_fim) diz a classe. */
+    PSFaixaClasse *faixas_classe;
+    int32_t        nfaixas_classe;
 } PSProto;
 
 /* Descritor de Entity produzido pela compilação. Os PAIS não entram aqui:
@@ -127,10 +157,14 @@ typedef struct {
     int32_t *met_protos;
     int32_t  nmetodos;
     int32_t  npais;
-    /* nomes de membros `private` (campo ou método) — a VM barra acesso a eles
-     * de fora da classe (encapsulamento). */
-    char   **priv_nomes;
-    int32_t  npriv;
+    /* Os membros que a classe declara, um por nome, com as marcas private e
+     * static (ver PSMembroDecl). A VM barra o `private` de fora da classe e
+     * grava o `static` na classe dona por qualquer grafia. */
+    PSMembroDecl *membros;
+    int32_t       nmembros;
+    /* A classe em cujo corpo esta foi declarada (classe dentro de método de
+     * outra), ou -1. O código desta também é "de dentro" daquela. */
+    int32_t  fora;
     /* `private class Nome {` — a classe INTEIRA não é exportada no import. */
     int32_t  classe_privada;
     /* Campos de instância com tipo escrito — `nome: str` no corpo e `private

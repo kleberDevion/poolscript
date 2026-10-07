@@ -3992,7 +3992,9 @@ static PSNode *statement_no(P *p)
             base->texto = dup_tok(p, t);
             int32_t j = p->pos + 1;
             for (int d = 0; d < n_dots - 1; d++) {
-                PSNode *ma = ps_node_novo(p->arena, N_MEMBER_ACCESS, t->line, t->col);
+                /* no `.` do membro, como o acesso da expressão (é onde o erro
+                 * do membro aponta) */
+                PSNode *ma = ps_node_novo(p->arena, N_MEMBER_ACCESS, tok_i(p, j)->line, tok_i(p, j)->col);
                 if (!ma) return NULL;
                 ma->a = base;
                 ma->texto = dup_tok(p, tok_i(p, j + 1));
@@ -4000,10 +4002,14 @@ static PSNode *statement_no(P *p)
                 j += 2;
             }
             const char *ultimo = dup_tok(p, tok_i(p, j + 1));
+            PSToken *ponto = tok_i(p, j);
             p->pos = k + 1;
             PSNode *n = ps_node_novo(p->arena, N_MEMBER_ASSIGNMENT, t->line, t->col);
             if (!n) return NULL;
             n->a = base; n->texto = ultimo;
+            /* onde o erro do membro aponta: o `.` dele, o mesmo lugar da
+             * leitura (ver PSNode.i) */
+            n->i = ((int64_t)ponto->line << 32) | (uint32_t)ponto->col;
             n->texto2 = op_membro;          /* "=" ou aumentado (+=, -=, ...) */
             n->b = expressao(p);
             if (FALHOU(p)) return NULL;

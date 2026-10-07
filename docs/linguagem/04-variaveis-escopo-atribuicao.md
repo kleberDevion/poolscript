@@ -305,6 +305,26 @@ f()
 post(local)         # NameError: name 'local' is not defined
 ```
 
+- Uma classe (ou enum, ou model) **declarada dentro de uma funct** é um nome
+  dela, como uma variável: a funct aninhada e a lambda escritas ali a
+  enxergam. E os **métodos** dessa classe são código escrito dentro da funct:
+  enxergam os nomes dela pelo mesmo escopo léxico, a própria classe inclusive
+  (é por ela que o campo `static` solto chega no valor, 7.4.1).
+
+```ps
+int funct usa() {
+    int k = 5
+    class Local {
+        static int n = 1
+        static int funct le() {
+            return k + n        # o `k` da funct e o static da classe
+        }
+    }
+    return Local.le()
+}
+post(usa())                     # 6
+```
+
 ---
 
 ## 4.7. `global` — escrever no escopo de módulo
