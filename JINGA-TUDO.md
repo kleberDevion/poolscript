@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.6`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.7`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -450,7 +450,7 @@ Precedência, do mais fraco para o mais forte: ternário `A if C else B` < `or`/
 | `<` com `Null` | `TypeError: '<' not supported between instances of 'Null' and 'int'`. `Null == 0` é False |
 | `a < b < c` | Não encadeia, é `(a < b) < c`. Escreva `a < b and b < c` |
 | `and`, `or` | Devolvem **sempre bool** (`0 or "x"` dá `True`). Para valor padrão use o ternário |
-| `is`, `is not` | Testam **tipo**: `x is int`, `x is Null`. `x is 5` é SyntaxError |
+| `is`, `is not` | Testam **tipo**, pela regra da declaração: `x is int`, `x is Null`, `x is Object`; instância `is` classe sobe pela herança, classe `is` classe é identidade; `c is Cor` (enum) = valor de um membro. `x is 5` é SyntaxError |
 | `in`, `not in` | Lista/tup: elemento. str: substring. dict: **chave** |
 | Bitwise | Só entre int (bool entra como 0/1, e `~True` é erro) |
 | `count` | `int(7) count in l` e `count int(7) in l` contam o valor. `int in l count` e `count int in l` contam o tipo |
@@ -677,6 +677,12 @@ post(c)                          # <Cao {'nome': 'rex', 'raca': 'vira-lata'}>
 
 - **Sem `()` no cabeçalho**. O `()` aparece só na instanciação. `class A() {` dá ``o '()' fica so na instanciacao: escreva `class A {` (heranca: `class A(Pai) {`)``. Herança: `class Filha(Pai, Mae) {`.
 - **Campos**: `nome: tipo`, `tipo nome` ou `nome = valor` (sem tipo), com padrão opcional. Eles sintetizam o `__init__` (um argumento por campo, na ordem, aceitando posicional e nomeado). Um `funct __init__(self, ...)` próprio substitui o sintetizado. Um filho com campos próprios sintetiza só com os campos dele.
+- **O padrão nasce sempre** (Plano 6, lote 5): cada classe com campo de valor padrão ganha um proto `<campos>` (`PSClassDef.campos_proto`, closure da funct quando a classe é declarada dentro de uma) que grava `self.campo = padrão`; as quatro formas de construir (`CALL`, `CALL_KW`, a Entity como valor e a instância dos registradores) rodam os da cadeia, pais antes, cada classe uma vez, e só então o `__init__`. O sintetizado não reavalia o padrão: argumento não passado não grava. Classe sem padrão na hierarquia não paga nada (`PSClass.tem_campos_padrao`).
+- **O construtor** que `Classe(...)` roda é decidido por uma regra só (`tp_construtor` no checador, a mesma da VM): o `__init__` escrito; senão, com campo de instância, o sintetizado da própria classe; senão o primeiro pai que tem um, em profundidade. O `--check` confere `C(...)`, `base(Pai).__init__(...)` e `mod.C(...)` contra ele (`C() takes no arguments (N given)` sem nenhum).
+- **Campo sem valor do pai** (`int x` no pai, filha com campos próprios): o sintetizado da filha não o grava, e lê-lo é `AttributeError: 'Filha' object has no attribute 'x': o campo x de Pai foi declarado sem valor e nada o gravou (...)` — a frase mora em `PS_FRASE_SEM_VALOR` (ps_compiler.h), a mesma nos dois motores (marca `PS_MEMB_SEM_VALOR` no membro). O `--check` acusa antes de rodar quando nada pode gravá-lo (`tp_campo_nunca_nasce`: nenhum `.x = v` no arquivo, nenhum `.__init__` chamado pelo nome, nenhum módulo `.pr` importado, e o construtor de cada classe que o valor pode ser não é o sintetizado de quem declara `x`).
+- **Um nome, uma declaração por escopo**: class/model/enum declarados de novo com um nome que outra declaração (class, model, enum ou funct) ainda liga no mesmo escopo é `SyntaxError: 'C' ja foi declarado na linha 1 (class): ...`, no nome (o parser guarda a posição do nome no `i` do nó). Bloco irmão já fechou o nome; funct sobre funct fica como era. Membro repetido no corpo da classe, no model e no enum também é erro, no segundo. Nome de tipo que mais de uma declaração do arquivo usa (a redeclarada, a do `if` e a do `else`, classes locais de mesmo nome em functs diferentes) existe, mas o checador não confere membro, herança nem construtor por ele (`C.tipos_ambiguos`): conferir contra a primeira dava erro em cascata.
+- **A sobrescrita mantém o tipo de retorno**: método da filha sobre método do pai com retorno declarado tem que declarar um retorno que caiba nele (`tp_confere_sobrescrita`); o private do pai, o decorado, o `async`/gerador e o `__init__` ficam de fora.
+- **`is` com classe** sobe pela herança (`classe_descende_de`); classe com classe, model com model e enum com enum é identidade; nome de tipo declarável à direita (`Object`, `String`) é compilado como tipo, pela regra da declaração; com enum, o valor de um dos membros.
 - **Método** tem `self` como primeiro parâmetro, senão dá `TypeError: método m() sem self: o primeiro parâmetro de um método é self (ou marque static)` na linha do `funct`. `self.x = ...` num método cria o campo.
 - **Campo declarado no construtor**: `private str name = nome` dentro de `__init__` vira campo privado do objeto.
 - Um campo sem `static` não é alcançado pelo nome do tipo: `Livro.autor` dá `RuntimeError: Entity 'Livro' não tem campo estático 'autor' — instancie primeiro`.
@@ -764,6 +770,8 @@ p = Pessoa(nome="Ana")
 post(asdict(p), asjson(p))   # {'nome': 'Ana', 'idade': 18} {"nome": "Ana", "idade": 18}
 ```
 
+- `asdict` desce na Entity de dentro (campo, `list`, `tup`, `dict`, em qualquer profundidade), e o `asjson` é ele serializado (`ds_achata` na VM); a que contém a si mesma é `RecursionError`.
+
 ### 2.11 model e enum
 
 `model` **mantém** os `()` (decisão do dono em 2026-09-25). Ele valida um dict com `==` e responde True/False.
@@ -815,6 +823,10 @@ post(Status.OK, Cor.GREEN, type(Cor.RED))   # 200 1 int
 ```
 
 `enum` **não** tem parênteses. Os membros são separados por vírgula ou quebra de linha, e a numeração começa em 0 ou continua a partir de um valor explícito. Um membro inexistente dá `AttributeError`.
+
+- A contagem só continua de um inteiro (depois do maior `int`, inteiro grande); membro sem valor depois de valor que não é inteiro é `TypeError` (antes de rodar quando o valor é escrito; rodando, no `MAKE_ENUM`). Membro repetido é `SyntaxError` no segundo.
+- Os membros são constantes: `Cor.RED = 99` e membro novo são `AttributeError` (no `SET_MEMBER` e no checador).
+- O nome do enum é tipo (decisão 3 do Plano 6): `Cor c = Cor.RED`, parâmetro `Cor c`, `x is Cor`. Aceita o valor de um dos membros (`param_casa_tipo` acha o enum vivo pelo nome em `VM.enum_vivo`); o `--check` recusa o que tem outro tipo escrito (`Cor c = 5`).
 
 ### 2.12 Decoradores
 
@@ -2128,8 +2140,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.6** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.6 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.7** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.7 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2750,7 +2762,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.6"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.7"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2830,7 +2842,7 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-07 (tarde)
 
-- Versão da linguagem **17.0.6** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.6 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.7** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.7 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: `e54b866` (17.0.6, Plano 6 lote 4), igual a `origin/main` quando subiu. O único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
 - **Plano 6 em execução** (aprovado em 2026-10-07 ~01:10; as 9 decisões seguem as recomendações): fechados os lotes 1 `0e4c3f7` (17.0.1, o arquivo-fonte), 2 `2b2201f` (17.0.2, frases do parser), 3 `1fba43c` (17.0.3, as dicas), 9 `252d6df` (17.0.4, `--check`, editor, quadro do erro e `sys.exit`), 10 `3110231` (17.0.5, linha de comando) e 4 `e54b866` (17.0.6, classes: private e static), cada um verde na VPS em `make check`, `check-asan` e `check-debug` na árvore exata do commit. Faltam os lotes 5 a 8, nessa ordem: classes (construtor, campos, enum, `is`), funções e tarefas, métodos nativos, libs.

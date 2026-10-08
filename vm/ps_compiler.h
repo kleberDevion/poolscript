@@ -81,6 +81,16 @@ typedef struct {
  * membro, que declara o nome diz se ele é `private` e se é `static`. */
 #define PS_MEMB_PRIVADO   1   /* `private` */
 #define PS_MEMB_ESTATICO  2   /* campo `static`: mora na classe, não no objeto */
+/* campo de instância do corpo SEM valor (`int x`): só o construtor gerado da
+ * classe dele o grava — é o que a frase do campo ausente explica */
+#define PS_MEMB_SEM_VALOR 4
+/* O fim da frase "'X' object has no attribute 'x'" quando o campo foi
+ * declarado sem valor e nada o gravou: a MESMA no `--check` e rodando, montada
+ * nos dois em duas etapas com o mesmo teto. Os `%s`: o campo, a classe que o
+ * declara e o campo. */
+#define PS_FRASE_SEM_VALOR ": o campo %s de %s foi declarado sem valor e nada o gravou " \
+                           "(de um valor na declaracao ou grave self.%s no __init__)"
+#define PS_FRASE_SEM_VALOR_CAP 200
 typedef struct {
     char   *nome;
     int32_t marcas;     /* PS_MEMB_* */
@@ -165,6 +175,9 @@ typedef struct {
     /* A classe em cujo corpo esta foi declarada (classe dentro de método de
      * outra), ou -1. O código desta também é "de dentro" daquela. */
     int32_t  fora;
+    /* O proto dos campos com valor padrão (`self.campo = padrão`), que a VM
+     * roda em toda instância antes do `__init__`; -1 = a classe não tem. */
+    int32_t  campos_proto;
     /* `private class Nome {` — a classe INTEIRA não é exportada no import. */
     int32_t  classe_privada;
     /* Campos de instância com tipo escrito — `nome: str` no corpo e `private

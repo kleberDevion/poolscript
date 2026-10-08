@@ -390,6 +390,28 @@ post(x is not dict)   # True
 `json` e `dict` são o mesmo tipo, então `d is json` e `d is dict` coincidem
 (ver seção 2). Para obter o nome do tipo como texto, use `type(x)`.
 
+À direita vale **todo nome de tipo que a declaração aceita**, e a resposta é a
+da declaração: `v is T` é `True` exatamente quando `T x = v` aceitaria o
+valor. Por isso:
+
+- `x is Object` segue a regra do `Object` (o que não é escalar nem coleção:
+  instância, funct, módulo...), e `x is String` é `x is str` (o apelido);
+- com uma classe, a instância responde pela classe dela **e pelas ancestrais**
+  (`Animal a = Cao()` vale, então `Cao() is Animal` é `True`);
+- com um enum, responde se o valor é o de um dos membros (`Cor.RED is Cor`);
+- **classe com classe** (e model com model, enum com enum) é identidade, como
+  `int is str`: `Cao is Cao` é `True`, `Cao is Animal` é `False`.
+
+```ps
+class Animal {
+}
+class Cao(Animal) {
+}
+Cao c = Cao()
+post(c is Cao, c is Animal, Animal() is Cao)   # True True False
+post(Cao is Animal)                            # False
+```
+
 **`x is Null`** vale, e é o idioma pro teste de ausência. `type(Null)` é
 literalmente `"Null"`, então ali o nome ocupa a posição de tipo com sentido.
 

@@ -264,6 +264,12 @@ typedef struct PSClass_ {
     /* ...e um campo `static`? Sem nenhum, a escrita `obj.x = v` não procura
      * dono de static: vai direto no objeto. */
     int32_t  tem_estatico;
+    /* Os campos com valor padrão desta classe: o proto que os grava no
+     * objeto (funct, ou closure na classe declarada dentro de funct); Null =
+     * a classe não tem. `tem_campos_padrao`: esta ou um ancestral tem — a
+     * instanciação roda os da cadeia antes do `__init__`. */
+    Value    campos_val;
+    int32_t  tem_campos_padrao;
     int32_t  classe_privada;   /* `private class` — não exportada no import */
     /* Campos `static`: pertencem à CLASSE, não à instância. Avaliados uma vez,
      * na declaração; lidos como `Classe.x`, e por nome solto dentro do corpo
@@ -1191,6 +1197,7 @@ typedef struct {
     PSMembroDecl *membros;     /* os membros declarados (copiado do PSClassDef) */
     int32_t  nmembros;
     int32_t  fora;             /* classe em cujo corpo esta foi declarada, -1 */
+    int32_t  campos_proto;     /* o proto dos campos com valor padrão, -1 */
     int32_t  classe_privada;   /* `private class` — não exportada no import */
     char   **tip_nomes;    /* campos tipados (copiado do PSClassDef) */
     char   **tip_tipos;
@@ -1295,6 +1302,10 @@ struct VM_ {
     int8_t       **enum_auto;
     int32_t       *enum_nmembros;
     int            nenums;
+    /* O último enum criado de cada descritor (Null antes do MAKE_ENUM): é por
+     * ele que o nome do enum vale como tipo dos membros (`Cor c = Cor.RED`),
+     * já que a declaração só traz o NOME. Raiz do GC. */
+    Value         *enum_vivo;
     Value  *globals;
     int     nglobals;
     Value  *stack;
@@ -2003,6 +2014,7 @@ static void gct_class(VM *vm, Obj *o) {
     for (int32_t i = 0; cl->met_valores && i < cl->nmetodos; i++)
         marca_valor(vm, &cl->met_valores[i]);
     marca_valor(vm, &cl->inst_decor);
+    marca_valor(vm, &cl->campos_val);
 }
 static void gct_bound(VM *vm, Obj *o) {
     PSBound *b = (PSBound *)o;
@@ -2012,6 +2024,22 @@ static void gct_bound(VM *vm, Obj *o) {
 static void gct_enum(VM *vm, Obj *o) {
     PSEnum *e = (PSEnum *)o;
     for (int32_t i = 0; i < e->n; i++) marca_valor(vm, &e->valores[i]);
+}
+
+/* O valor é o de um dos membros do enum? É o que o nome do enum aceita como
+ * tipo (`Cor c = Cor.RED`, `x is Cor`): os membros são inteiros de verdade, e
+ * o enum é o conjunto dos valores deles. */
+static int enum_tem_valor(const PSEnum *e, const Value *v)
+{
+    for (int32_t i = 0; i < e->n; i++) {
+        const Value *m = &e->valores[i];
+        /* o mesmo tipo de valor: `True` não é o membro 1, nem `Null` o 0 (o
+         * `==` da linguagem tem as regras dele; aqui é pertinência) */
+        if (m->t != v->t) continue;
+        if (v->t == V_OBJ && v->as.obj->type != m->as.obj->type) continue;
+        if (val_iguais(m, v)) return 1;
+    }
+    return 0;
 }
 static void gct_jinker(VM *vm, Obj *o) {
     PSJinker *j = (PSJinker *)o;
@@ -2496,6 +2524,8 @@ static void gc_coleta(VM *vm)
     for (int i = 0; i < vm->nprotos; i++)
         for (int k = 0; k < vm->protos[i].nconsts; k++)
             marca_valor(vm, &vm->protos[i].consts[k]);
+    /* o último enum de cada descritor: a declaração `Cor c` o procura */
+    for (int i = 0; vm->enum_vivo && i < vm->nenums; i++) marca_valor(vm, &vm->enum_vivo[i]);
 
     percorre_cinzas(vm);
 
@@ -10364,19 +10394,32 @@ static int classe_eh(const PSClass *c, const char *nome)
     return 0;
 }
 
+/* O enum vivo de nome `tipo` aceita `v` (o valor de um dos membros dele)?
+ * Fora da `param_casa_tipo`, que é a conferência de toda atribuição tipada e
+ * de toda chamada com parâmetro tipado: com o laço dos enums dentro, ela
+ * deixava de ser expandida no lugar e o laço da VM inteiro pagava. */
+static __attribute__((noinline)) int casa_enum_vivo(VM *vm, const Value *v, const char *tipo)
+{
+    for (int i = 0; vm->enum_vivo && i < vm->nenums; i++)
+        if (EH_ENUM(vm->enum_vivo[i]) && strcmp(vm->enum_nomes[i], tipo) == 0
+                && enum_tem_valor((PSEnum *)vm->enum_vivo[i].as.obj, v)) return 1;
+    return 0;
+}
+
 /* O valor serve pro tipo declarado de um parâmetro (`funct f(str nome)`)?
- * Três origens de nome, nesta ordem: a TIPOS[] (str, int, char, PoolFile…),
- * o nome de tipo do próprio valor (Response, PoolCursor, MailMessage…) e a
- * cadeia de Entity — subclasse serve onde a mãe é pedida.
+ * Quatro origens de nome, nesta ordem: a TIPOS[] (str, int, char, PoolFile…),
+ * o nome de tipo do próprio valor (Response, PoolCursor, MailMessage…), a
+ * cadeia de Entity — subclasse serve onde a mãe é pedida — e o enum: `Cor`
+ * aceita os valores dos membros dele (o enum vivo daquele nome).
  * Só responde SIM ou NÃO: nada aqui converte valor nenhum. */
-static int param_casa_tipo(const Value *v, const char *tipo)
+static int param_casa_tipo(VM *vm, const Value *v, const char *tipo)
 {
     if (!tipo || !*tipo) return 1;              /* parâmetro sem tipo */
     int64_t idx = tipo_indice(tipo);
     if (idx >= 0) return valor_eh_tipo(v, idx);
     if (strcmp(nome_do_tipo_valor(*v), tipo) == 0) return 1;
     if (EH_INST(*v)) return classe_eh(COMO_INST(*v)->classe, tipo);
-    return 0;
+    return vm && vm->nenums > 0 && casa_enum_vivo(vm, v, tipo);
 }
 
 /* O valor serve pra uma especificação de tipo da tipagem estática (ver
@@ -10385,7 +10428,7 @@ static int param_casa_tipo(const Value *v, const char *tipo)
  * primeira atribuição: o nome do `type()` (subclasse serve onde a mãe foi
  * fixada), e Null sempre passa — variável sem tipo escrito pode voltar a
  * ficar vazia. */
-static int valor_casa_spec(const Value *v, const char *spec, size_t n, int declarado)
+static int valor_casa_spec(VM *vm, const Value *v, const char *spec, size_t n, int declarado)
 {
     if (!declarado && v->t == V_NULL) return 1;
     const char *q = spec, *fim = spec + n;
@@ -10398,7 +10441,7 @@ static int valor_casa_spec(const Value *v, const char *spec, size_t n, int decla
         nome[len] = '\0';
         if (strcmp(nome, "*") == 0) return 1;
         if (declarado) {
-            if (param_casa_tipo(v, nome)) return 1;
+            if (param_casa_tipo(vm, v, nome)) return 1;
         } else {
             if (strcmp(nome_do_tipo_valor(*v), nome) == 0) return 1;
             if (EH_INST(*v) && classe_eh(COMO_INST(*v)->classe, nome)) return 1;
@@ -10408,6 +10451,7 @@ static int valor_casa_spec(const Value *v, const char *spec, size_t n, int decla
     }
     return 0;
 }
+
 
 /* Tipo escrito do campo `nome` na classe ou num pai (`nome: str`, `private
  * str nome = x`), ou NULL se o campo não tem tipo. */
@@ -10466,7 +10510,7 @@ static const char *tipo_do_estatico(const PSClass *dono, const char *nome)
 static int grava_estatico(VM *vm, PSClass *dono, const Value *nomev, const char *nome, Value valor)
 {
     const char *t = tipo_do_estatico(dono, nome);
-    if (t && !param_casa_tipo(&valor, t)) {
+    if (t && !param_casa_tipo(vm, &valor, t)) {
         char quem[192];
         snprintf(quem, sizeof(quem), "campo %s de %s", nome, dono->nome ? dono->nome : "?");
         return erro_esperava(vm, quem, t, valor);
@@ -10534,6 +10578,17 @@ static __attribute__((noinline)) int classe_monta_membros(VM *vm, PSClass *nova,
         if (monta_closure(vm, nova->met_protos[i], lbase, cl, &mc) != 0) return -1;
         nova->met_valores[i] = MK_OBJ(mc);
     }
+    /* o proto dos campos com valor padrão, com as células do frame como o
+     * método (a instanciação o roda antes do `__init__`) */
+    if (def->campos_proto >= 0) {
+        if (vm->protos[def->campos_proto].nupvals > 0) {
+            PSClosure *cc = NULL;
+            if (monta_closure(vm, def->campos_proto, lbase, cl, &cc) != 0) return -1;
+            nova->campos_val = MK_OBJ(cc);
+        } else
+            nova->campos_val = MK_FUNC(def->campos_proto);
+        nova->tem_campos_padrao = 1;
+    }
     for (int32_t i = 0; i < def->nmembros; i++) {
         if (def->membros[i].marcas & PS_MEMB_PRIVADO) nova->tem_priv = 1;
         if (!(def->membros[i].marcas & PS_MEMB_ESTATICO)) continue;
@@ -10585,8 +10640,8 @@ static int checa_param_tipos(VM *vm, const Proto *np, const Value *vals, int n, 
             else if (cod == TIPO_STR)  { if (EH_STRING(*v)) continue; }
             else if (cod == TIPO_FLO)  { if (v->t == V_FLOAT) continue; }
             else if (cod == TIPO_BOOL) { if (v->t == V_BOOL) continue; }
-            else if (cod >= 0 ? valor_eh_tipo(v, cod) : param_casa_tipo(v, t)) continue;
-        } else if (param_casa_tipo(v, t)) continue;
+            else if (cod >= 0 ? valor_eh_tipo(v, cod) : param_casa_tipo(vm, v, t)) continue;
+        } else if (param_casa_tipo(vm, v, t)) continue;
         char quem[192];
         snprintf(quem, sizeof(quem), "parâmetro %s de %s()",
                  (np->param_nomes && np->param_nomes[idx]) ? np->param_nomes[idx] : "?",
@@ -11691,23 +11746,18 @@ static int mod_ds_dataentity(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
+static int ds_achata(VM *vm, Value v, Value *out, const char *quem);
+
+/* O dict dos campos, com a Entity de dentro virando dict também (em list,
+ * tup e dict de dentro, em qualquer profundidade): o `asjson` é este dict
+ * serializado, como a doc dele diz. */
 static int mod_ds_asdict(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "asdict", 1);
     PSDict *d = NULL;
     if (ds_campos(vm, args[0], "asdict", &d) != 0) return -1;
-    PSDict *r = novo_dict(vm, d ? (d->count > 0 ? d->count : 1) : 1);
-    if (!r) BERRO(vm, "MemoryError", "sem memoria em asdict()");
-    if (fixa_raiz(vm, MK_OBJ(r)) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
-    if (d) for (int i = 0; i < d->usados; i++) {
-        if (d->entradas[i].estado != 1) continue;
-        if (dict_set(vm, r, &d->entradas[i].chave, &d->entradas[i].valor) != 0) {
-            vm->sp--; BERRO(vm, "MemoryError", "sem memoria em asdict()");
-        }
-    }
-    vm->sp--;
-    *out = MK_OBJ(r);
-    return 0;
+    (void)d;
+    return ds_achata(vm, args[0], out, "asdict");
 }
 
 static int ds_sequencia(VM *vm, Value *args, int n, Value *out, const char *quem, ObjType tipo)
@@ -11730,19 +11780,76 @@ static int ds_sequencia(VM *vm, Value *args, int n, Value *out, const char *quem
 static int mod_ds_astuple(VM *v, Value *a, int n, Value *o) { return ds_sequencia(v, a, n, o, "astuple", OBJ_TUPLE); }
 static int mod_ds_aslist(VM *v, Value *a, int n, Value *o)  { return ds_sequencia(v, a, n, o, "aslist", OBJ_LIST); }
 
+/* O valor com toda Entity de dentro trocada pelo dict dos campos dela, em
+ * qualquer profundidade (dentro de list, tup e dict também): é o `asdict`, e
+ * o que o `asjson` serializa. Os containers são cópias; o resto vai como
+ * está. Nada aqui volta pra VM, então nada coleta no meio. */
+static int ds_achata(VM *vm, Value v, Value *out, const char *quem)
+{
+    if (ps_pilha_apertada())
+        BERRO(vm, "RecursionError", "%s(): Entity aninhada demais (ou que contem a si mesma)", quem);
+    if (EH_INST(v)) {
+        PSDict *d = COMO_INST(v)->campos;
+        PSDict *r = novo_dict(vm, d && d->count > 0 ? d->count : 1);
+        if (!r) BERRO(vm, "MemoryError", "sem memoria em %s()", quem);
+        if (d) for (int i = 0; i < d->usados; i++) {
+            if (d->entradas[i].estado != 1) continue;
+            Value cv;
+            if (ds_achata(vm, d->entradas[i].valor, &cv, quem) != 0) return -1;
+            if (dict_set(vm, r, &d->entradas[i].chave, &cv) != 0)
+                BERRO(vm, "MemoryError", "sem memoria em %s()", quem);
+        }
+        *out = MK_OBJ(r);
+        return 0;
+    }
+    if (EH_LIST(v) || EH_TUPLA(v)) {
+        PSList *l = COMO_LIST(v);
+        PSList *r = nova_seq(vm, l->len > 0 ? l->len : 1, v.as.obj->type);
+        if (!r) BERRO(vm, "MemoryError", "sem memoria em %s()", quem);
+        r->len = 0;
+        for (int32_t i = 0; i < l->len; i++) {
+            Value cv;
+            if (ds_achata(vm, l->itens[i], &cv, quem) != 0) return -1;
+            r->itens[r->len++] = cv;
+        }
+        *out = MK_OBJ(r);
+        return 0;
+    }
+    if (EH_DICT(v)) {
+        PSDict *d = COMO_DICT(v);
+        PSDict *r = novo_dict(vm, d->count > 0 ? d->count : 1);
+        if (!r) BERRO(vm, "MemoryError", "sem memoria em %s()", quem);
+        for (int i = 0; i < d->usados; i++) {
+            if (d->entradas[i].estado != 1) continue;
+            Value cv;
+            if (ds_achata(vm, d->entradas[i].valor, &cv, quem) != 0) return -1;
+            if (dict_set(vm, r, &d->entradas[i].chave, &cv) != 0)
+                BERRO(vm, "MemoryError", "sem memoria em %s()", quem);
+        }
+        *out = MK_OBJ(r);
+        return 0;
+    }
+    *out = v;
+    return 0;
+}
+
 static int mod_ds_asjson(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "asjson", 1);
     PSDict *d = NULL;
     if (ds_campos(vm, args[0], "asjson", &d) != 0) return -1;
     (void)d;
-    /* reaproveita o serializador do módulo json — inclusive pra Entity
-     * aninhada, que ele já sabe achatar pelos campos */
+    /* O `asdict` (a Entity de dentro vira dict também: a doc promete o
+     * aninhado, e o serializador do json não sabe o que é Entity e
+     * recusava), e o resultado vai pro serializador do módulo json. Fica na
+     * pilha da VM enquanto ele roda: é a raiz dele. */
     Value dv;
-    Value um[1] = { args[0] };
-    if (mod_ds_asdict(vm, um, 1, &dv) != 0) return -1;
+    if (ds_achata(vm, args[0], &dv, "asjson") != 0) return -1;
+    if (fixa_raiz(vm, dv) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
     Value tmp[1] = { dv };
-    return mod_json_stringify(vm, tmp, 1, out);
+    int rc = mod_json_stringify(vm, tmp, 1, out);
+    vm->sp--;
+    return rc;
 }
 
 static const MembroMod MOD_DATASENTITY[] = {
@@ -24414,6 +24521,26 @@ static const char *dica_membro(Value alvo, const char *nome, char *buf, size_t c
     return buf;
 }
 
+/* O fim da frase de membro ausente numa instância quando o campo foi
+ * DECLARADO no corpo sem valor (`int x`) e ninguém o gravou: ele existe no
+ * fonte e falta no objeto (o construtor gerado da filha recebe só os campos
+ * dela), e a frase diz a causa — a mesma do `--check`. NULL = não é o caso. */
+static const char *causa_sem_valor(Value inst, const char *nome, char *buf, size_t cap)
+{
+    if (!EH_INST(inst)) return NULL;
+    const PSMembroDecl *d = NULL;
+    PSClass *dona = classe_que_declara(COMO_INST(inst)->classe, nome, &d);
+    if (!dona || !d || !(d->marcas & PS_MEMB_SEM_VALOR)) return NULL;
+    snprintf(buf, cap, PS_FRASE_SEM_VALOR, nome, dona->nome ? dona->nome : "?", nome);
+    return buf;
+}
+
+static const char *causa_campo_ausente(Value alvo, const char *nome, char *buf, size_t cap)
+{
+    const char *c = causa_sem_valor(alvo, nome, buf, cap);
+    return c ? c : dica_membro(alvo, nome, buf, cap);
+}
+
 enum { MEMBRO_ACHOU = 0, MEMBRO_PRIVADO = 1, MEMBRO_AUSENTE = 2 };
 
 /* O membro `nome` de um módulo, pela regra do import — a MESMA pra `from m
@@ -24743,6 +24870,174 @@ static int chama_valor_kw(VM *vm, Value fn, Value *args, int n,
     return chama_valor_modo(vm, fn, args, n, kw_nomes, kw_vals, nkw, 0, out);
 }
 
+/* O proto dos campos de UMA classe (`self.campo = padrão`), com `iv` de self.
+ * Direto pelo `executa_alvo_c`: o proto é gerado pelo compilador e nunca é
+ * gerador nem async, então o despacho geral do `chama_valor` (que decide
+ * isso a cada chamada) só custaria — é uma vez por objeto. */
+static int roda_campos_uma(VM *vm, Value iv, PSClass *cl)
+{
+    if (cl->campos_val.t == V_NULL) return 0;
+    Alvo a;
+    memset(&a, 0, sizeof(a));
+    a.self = MK_UNSET();
+    a.proto = PROTO_DE(cl->campos_val);
+    a.cl = EH_CLOSURE(cl->campos_val) ? COMO_CLOSURE(cl->campos_val) : NULL;
+    Value ign;
+    vm->erro_tipo[0] = '\0';
+    if (executa_alvo_c(vm, &a, &iv, 1, NULL, NULL, 0, &ign) != 0) {
+        if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+        return -1;
+    }
+    return 0;
+}
+
+/* Os campos com valor padrão nascem em TODA instância, antes do `__init__`
+ * (gerado ou escrito): os da cadeia de classes, pais antes da filha (no mesmo
+ * nome o valor da filha ganha), cada classe uma vez (o losango da herança
+ * múltipla). `iv` tem que estar enraizado por quem chama. 0 = ok; -1 = erro
+ * posto. */
+static int roda_campos_de(VM *vm, Value iv, PSClass *cl, PSClass ***vistos, int *nv, int *cap,
+                          PSClass **inicial)
+{
+    for (int i = 0; i < *nv; i++) if ((*vistos)[i] == cl) return 0;
+    if (*nv == *cap) {
+        int novo = *cap * 2;
+        PSClass **nvv = *vistos == inicial ? malloc(sizeof(PSClass *) * (size_t)novo)
+                                           : realloc(*vistos, sizeof(PSClass *) * (size_t)novo);
+        if (!nvv) {
+            snprintf(vm->erro, sizeof(vm->erro), "sem memoria ao criar os campos");
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+            return -1;
+        }
+        if (*vistos == inicial) memcpy(nvv, inicial, sizeof(PSClass *) * (size_t)*nv);
+        *vistos = nvv;
+        *cap = novo;
+    }
+    (*vistos)[(*nv)++] = cl;
+    for (int32_t i = 0; i < cl->npais; i++)
+        if (cl->pais[i] && cl->pais[i]->tem_campos_padrao
+                && roda_campos_de(vm, iv, cl->pais[i], vistos, nv, cap, inicial) != 0) return -1;
+    return roda_campos_uma(vm, iv, cl);
+}
+
+static __attribute__((noinline)) int roda_campos(VM *vm, Value iv, PSClass *cl)
+{
+    /* o caso comum: nenhum pai tem padrão, e só os da própria classe rodam */
+    int pai_tem = 0;
+    for (int32_t i = 0; i < cl->npais && !pai_tem; i++)
+        pai_tem = cl->pais[i] && cl->pais[i]->tem_campos_padrao;
+    if (!pai_tem) return roda_campos_uma(vm, iv, cl);
+    PSClass *inicial[16];
+    PSClass **vistos = inicial;
+    int nv = 0, cap = 16;
+    int rc = roda_campos_de(vm, iv, cl, &vistos, &nv, &cap, inicial);
+    if (vistos != inicial) free(vistos);
+    return rc;
+}
+
+/* `roda_campos` com uma raiz a mais presa na pilha enquanto os valores rodam
+ * (podem coletar): a tupla dos nomes do CALL_KW, que já saiu da pilha e que o
+ * `__init__` só lê depois. */
+static __attribute__((noinline)) int roda_campos_raiz(VM *vm, Value iv, PSClass *cl, Value raiz)
+{
+    int32_t sp0 = vm->sp;
+    if (fixa_raiz(vm, raiz) != 0) BERRO(vm, "RecursionError", "maximum recursion depth exceeded");
+    int rc = roda_campos(vm, iv, cl);
+    vm->sp = sp0;
+    return rc;
+}
+
+/* ── o que o laço chama fora dele ────────────────────────────────────────────
+ * Código que roda raro (uma vez por declaração, ou só no erro) mora aqui, e
+ * não no corpo do `vm_executa_base`: o corpo é uma função só, e cada linha a
+ * mais nele muda a alocação de registradores do laço inteiro — o `while`
+ * aritmético pagava pelo enum que nem usava. */
+
+/* OP_MAKE_ENUM: [.., v1..vK] (os valores explícitos, na ordem dos membros)
+ * -> [.., enum]. Devolve o `sp` novo, ou -1 com o erro em `vm->erro`. */
+static __attribute__((noinline)) int32_t monta_enum(VM *vm, Value *stack, int32_t sp, int32_t arg)
+{
+    int32_t nm = vm->enum_nmembros[arg];
+    int32_t nexp = 0;
+    for (int32_t i = 0; i < nm; i++) if (!vm->enum_auto[arg][i]) nexp++;
+    int32_t base = sp - nexp;      /* valores explícitos, ordem de membro */
+    /* Membro sem valor conta a partir do anterior, que tem que ser inteiro:
+     * depois de `A = "texto"` (ou flo, bool, lista) o `B` valia 0, calado.
+     * Conferido antes de montar o enum. */
+    int32_t ex = 0;
+    int anterior_inteiro = 1;
+    const char *anterior = NULL;
+    for (int32_t i = 0; i < nm; i++) {
+        if (vm->enum_auto[arg][i]) {
+            if (!anterior_inteiro)
+                BERRO(vm, "TypeError", "enum %s: o membro %s nao tem valor e o anterior (%s) nao e inteiro "
+                      "— so um inteiro continua a contagem: escreva o valor de %s",
+                      vm->enum_nomes[arg], vm->enum_membro_nomes[arg][i],
+                      anterior ? anterior : "?", vm->enum_membro_nomes[arg][i]);
+            anterior_inteiro = 1;
+        } else {
+            anterior_inteiro = EH_INTEIRO(stack[base + ex]);
+            ex++;
+        }
+        anterior = vm->enum_membro_nomes[arg][i];
+    }
+    PSEnum *e = malloc(sizeof(PSEnum));
+    if (!e) BERRO(vm, "RuntimeError", "sem memoria no enum");
+    e->valores = nm > 0 ? malloc(sizeof(Value) * (size_t)nm) : NULL;
+    if (nm > 0 && !e->valores) { free(e); BERRO(vm, "RuntimeError", "sem memoria no enum"); }
+    e->obj.type = OBJ_ENUM; e->obj.marked = 0;
+    e->nome  = vm->enum_nomes[arg];
+    e->n     = nm;
+    e->nomes = vm->enum_membro_nomes[arg];
+    /* auto-numeração: 0-based; um inteiro explícito reancora a sequência, e a
+     * conta é a do `+` da linguagem: depois do maior `int` vem um inteiro
+     * grande (dava a volta pro negativo) */
+    Value prox = MK_INT(0);
+    int32_t ei = 0;
+    for (int32_t i = 0; i < nm; i++) {
+        Value v = vm->enum_auto[arg][i] ? prox : stack[base + ei++];
+        e->valores[i] = v;
+        if (EH_INTEIRO(v)) {
+            prox = int_arit(vm, v, MK_INT(1), '+');
+            if (prox.t == V_NULL) { free(e->valores); free(e); BERRO(vm, "RuntimeError", "sem memoria no enum"); }
+        }
+    }
+    e->obj.next = vm->objetos; vm->objetos = (Obj *)e;   /* linka pronto */
+    sp = base;                     /* pop dos valores explícitos */
+    vm->alocado += sizeof(PSEnum);
+    stack[sp++] = MK_OBJ(e);
+    vm->enum_vivo[arg] = MK_OBJ(e);   /* o nome do enum, como tipo, acha este */
+    return sp;
+}
+
+/* OP_SET_MEMBER num enum: sempre erro. `Cor.RED = 99`: o membro existe e é
+ * constante (a frase antiga dizia que o enum "não tem o atributo RED"). */
+static __attribute__((noinline)) int erro_grava_enum(VM *vm, Value alvo, const Value *nomev)
+{
+    PSEnum *en = (PSEnum *)alvo.as.obj;
+    const char *nm = EH_STRING(*nomev) ? COMO_STRING(*nomev)->chars : "?";
+    for (int32_t k = 0; k < en->n; k++)
+        if (strcmp(en->nomes[k], nm) == 0)
+            BERRO(vm, "AttributeError", "membro '%s' do enum %s e constante: nao se reatribui",
+                  nm, en->nome ? en->nome : "?");
+    BERRO(vm, "AttributeError", "enum %s nao ganha membro novo ('%s'): os membros sao os da declaracao",
+          en->nome ? en->nome : "?", nm);
+}
+
+/* OP_IS com um objeto à direita (não tipo, não Null). Classe, model e enum
+ * dos DOIS lados: identidade, como `int is int` (`Cao is Cao` True, `Cao is
+ * Animal` False). Instância com classe: ela ou uma ancestral, como a
+ * declaração `Animal a = Cao(...)` aceita. Valor com enum: um dos valores dos
+ * membros, como a declaração `Cor c = Cor.RED` aceita. */
+static __attribute__((noinline)) int is_objeto(const Value *a, const Value *b)
+{
+    if ((EH_CLASS(*b) || EH_MODEL(*b) || EH_ENUM(*b)) && a->t == V_OBJ && a->as.obj->type == b->as.obj->type)
+        return a->as.obj == b->as.obj;
+    if (EH_CLASS(*b)) return EH_INST(*a) && classe_descende_de(COMO_INST(*a)->classe, COMO_CLASS(*b));
+    if (EH_ENUM(*b))  return enum_tem_valor((PSEnum *)b->as.obj, a);
+    return val_iguais(a, b);
+}
+
 /* A instância que os registradores dos métodos de `cl` recebem: criada uma
  * vez, na primeira necessidade, rodando o `__init__` (o da tabela — trocado
  * por decorador, se for o caso) sem argumentos. Fica em `cl->inst_decor`,
@@ -24757,6 +25052,10 @@ static int instancia_decor(VM *vm, PSClass *cl, Value *out)
         return -1;
     }
     cl->inst_decor = MK_OBJ(ni);
+    if (cl->tem_campos_padrao && roda_campos(vm, cl->inst_decor, cl) != 0) {
+        cl->inst_decor = MK_NULL();
+        return -1;
+    }
     Value initv = MK_NULL(), ign;
     if (acha_metodo(cl, "__init__", &initv) >= 0) {
         int rc;
@@ -24849,6 +25148,17 @@ static int chama_valor_modo(VM *vm, Value fn, Value *args, int n,
             return -1;
         }
         Value iv = MK_OBJ(ni);
+        /* os campos com valor padrão da cadeia, antes do `__init__` */
+        if (k->tem_campos_padrao) {
+            if (fixa_raiz(vm, iv) != 0) {
+                snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError");
+                return -1;
+            }
+            int rc_c = roda_campos(vm, iv, k);
+            vm->sp--;
+            if (rc_c != 0) return -1;
+        }
         if (mp < 0) {
             /* sem __init__ e sem campo, a Entity não recebe argumento */
             if (nkw > 0 || n > 0) {
@@ -26590,6 +26900,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 PSInstance *ni = nova_instancia(vm, COMO_CLASS(alvo_kw));
                 if (!ni) ERRO(vm, "sem memoria");
                 Value inst_kw = MK_OBJ(ni);
+                /* os campos com valor padrão, como no CALL (a tupla dos nomes
+                 * fica presa enquanto eles rodam: ver `roda_campos_raiz`) */
+                if (COMO_CLASS(alvo_kw)->tem_campos_padrao) {
+                    stack[sp - total - 1] = inst_kw;
+                    PUBLICA_FRAME();
+                    int rc_c;
+                    REANCORA(rc_c = roda_campos_raiz(vm, inst_kw, COMO_CLASS(alvo_kw), nomes));
+                    if (rc_c != 0) goto erro_runtime;
+                }
                 PSClosure *init_cl = (EH_CLOSURE(initv) && COMO_CLOSURE(initv)->proto == mp)
                                      ? COMO_CLOSURE(initv) : NULL;
                 if (initv.t != V_FUNC && !init_cl) {
@@ -26888,6 +27207,16 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 PSInstance *inst = nova_instancia(vm, COMO_CLASS(alvo));
                 if (!inst) ERRO(vm, "sem memoria ao instanciar");
                 Value iv = MK_OBJ(inst);
+                /* os campos com valor padrão da cadeia nascem antes do
+                 * `__init__`; o slot da Entity guarda a instância (a raiz
+                 * dela) enquanto o valor de cada um roda */
+                if (COMO_CLASS(alvo)->tem_campos_padrao) {
+                    stack[sp - n - 1] = iv;
+                    PUBLICA_FRAME();
+                    int rc_c;
+                    REANCORA(rc_c = roda_campos(vm, iv, COMO_CLASS(alvo)));
+                    if (rc_c != 0) goto erro_runtime;
+                }
                 Value initv = MK_NULL();
                 int32_t mp = acha_metodo(COMO_CLASS(alvo), "__init__", &initv);
                 /* o `__init__` declarado de uma classe dentro de funct é
@@ -27949,7 +28278,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             int ntipos = (int)(ss->chars + ss->len - tipos);
             int nrot = (int)(sep - ss->chars) - 1;
             Value v = stack[sp - 1];
-            if (valor_casa_spec(&v, tipos, (size_t)ntipos, declarado)) break;
+            if (valor_casa_spec(vm, &v, tipos, (size_t)ntipos, declarado)) break;
             /* `int` declarado recusa bignum, e o `type()` dele responde `int`:
              * sem dizer o motivo, a mensagem se contradiria */
             if (declarado && EH_BIGINT(v) && ntipos == 3 && memcmp(tipos, "int", 3) == 0)
@@ -28173,6 +28502,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             nova->classe_privada = def->classe_privada;   /* `private class` */
             nova->estaticos = MK_NULL();   /* o dict nasce com o 1º static */
             nova->inst_decor = MK_NULL();     /* nasce no 1º registrador que precisa de self */
+            nova->campos_val = MK_NULL();
             /* os membros declarados: a tabela é do descritor, emprestada; o
              * método-closure, o static nascendo Null e as marcas saem dela */
             nova->membros = def->membros;
@@ -28203,6 +28533,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 nova->pais[i] = COMO_CLASS(pv);
                 if (nova->pais[i]->tem_priv) nova->tem_priv = 1;
                 if (nova->pais[i]->tem_estatico) nova->tem_estatico = 1;
+                if (nova->pais[i]->tem_campos_padrao) nova->tem_campos_padrao = 1;
             }
             stack[sp++] = MK_OBJ(nova);
             break;
@@ -28258,9 +28589,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                         break;
                     }
                     {
-                        char dica[160];
+                        char dica[PS_FRASE_SEM_VALOR_CAP];
                         ERRO_TF(vm, "AttributeError", "'%s' object has no %s '%s'%s",
-                                nome_do_tipo_valor(alvo), rotulo, nome, dica_membro(alvo, nome, dica, sizeof(dica)));
+                                nome_do_tipo_valor(alvo), rotulo, nome,
+                                causa_campo_ausente(alvo, nome, dica, sizeof(dica)));
                     }
                 }
                 vm->sp = sp; vm->locals_top = locals_top;
@@ -28670,6 +29002,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (dict_set(vm, COMO_DICT(alvo), &nomev, &valor) != 0) ERRO(vm, "sem memoria");
                 break;
             }
+            if (EH_ENUM(alvo)) { erro_grava_enum(vm, alvo, &nomev); goto erro_runtime; }
             if (EH_CLASS(alvo)) {
                 /* `Classe.x = v` — campo `static`, gravado no dono (ver
                  * `set_membro_classe`) */
@@ -28698,7 +29031,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     if (rs > 0) break;
                 }
                 const char *tc = classe_tipo_campo(inst->classe, nm);
-                if (tc && !param_casa_tipo(&valor, tc)) {
+                if (tc && !param_casa_tipo(vm, &valor, tc)) {
                     char quem[192];
                     snprintf(quem, sizeof(quem), "campo %s de %s", nm,
                              inst->classe && inst->classe->nome ? inst->classe->nome : "?");
@@ -28911,30 +29244,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 
         PS_CASE(MAKE_ENUM) {
             vm->sp = sp; vm->locals_top = locals_top;
-            int32_t nm = vm->enum_nmembros[arg];
-            int32_t nexp = 0;
-            for (int32_t i = 0; i < nm; i++) if (!vm->enum_auto[arg][i]) nexp++;
-            int32_t base = sp - nexp;      /* valores explícitos, ordem de membro */
-            PSEnum *e = malloc(sizeof(PSEnum));
-            if (!e) ERRO(vm, "sem memoria no enum");
-            e->valores = nm > 0 ? malloc(sizeof(Value) * (size_t)nm) : NULL;
-            if (nm > 0 && !e->valores) { free(e); ERRO(vm, "sem memoria no enum"); }
-            e->obj.type = OBJ_ENUM; e->obj.marked = 0;
-            e->nome  = vm->enum_nomes[arg];
-            e->n     = nm;
-            e->nomes = vm->enum_membro_nomes[arg];
-            /* auto-numeração: 0-based; um int explícito reancora a sequência */
-            int64_t next_auto = 0;
-            int32_t ei = 0;
-            for (int32_t i = 0; i < nm; i++) {
-                Value v = vm->enum_auto[arg][i] ? MK_INT(next_auto) : stack[base + ei++];
-                e->valores[i] = v;
-                if (v.t == V_INT) next_auto = v.as.i + 1;
-            }
-            e->obj.next = vm->objetos; vm->objetos = (Obj *)e;   /* linka pronto */
-            sp = base;                     /* pop dos valores explícitos */
-            vm->alocado += sizeof(PSEnum);
-            stack[sp++] = MK_OBJ(e);
+            int32_t sp_enum = monta_enum(vm, stack, sp, arg);
+            if (sp_enum < 0) goto erro_runtime;
+            sp = sp_enum;
             break;
         }
 
@@ -28991,8 +29303,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             }
             else if (b.t == V_TIPO)     r = valor_eh_tipo(&a, b.as.i);
             else if (b.t == V_NULL)     r = (a.t == V_NULL || a.t == V_UNSET);
-            else if (EH_CLASS(b))       r = EH_INST(a) && COMO_INST(a)->classe == COMO_CLASS(b);
-            else                        r = val_iguais(&a, &b);
+            else                        r = is_objeto(&a, &b);   /* classe, model, enum, valor */
             stack[sp - 1] = MK_BOOL(arg ? !r : r);
             break;
         }
@@ -29197,9 +29508,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 }
             }
             {
-                char dica[160];
+                char dica[PS_FRASE_SEM_VALOR_CAP];
+                const char *fim = causa_sem_valor(selfv, nome, dica, sizeof(dica));
                 ERRO_TF(vm, "AttributeError", "'%s' object has no %s '%s'%s",
-                        pnome, rotulo, nome, dica_membro(paiv, nome, dica, sizeof(dica)));
+                        pnome, rotulo, nome, fim ? fim : dica_membro(paiv, nome, dica, sizeof(dica)));
             }
         }
 
@@ -29520,6 +29832,7 @@ static void libera_vm(VM *vm)
         free(vm->enum_auto);
         free(vm->enum_nmembros);
     }
+    free(vm->enum_vivo);
     if (vm->mods_ps) {
         for (int i = 0; i < vm->nmods_ps; i++) free(vm->mods_ps[i].nome);
         free(vm->mods_ps);
@@ -29705,6 +30018,7 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
             /* membros declarados (encapsulamento e o dono do static) */
             d->classe_privada = o->classe_privada;
             d->fora = o->fora;
+            d->campos_proto = o->campos_proto;
             if (copia_membros(d, o) != 0) return -1;
             if (copia_campos_tipados(d, o) != 0) return -1;
         }
@@ -29739,8 +30053,10 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
         vm->enum_membro_nomes = calloc((size_t)prog->nenums, sizeof(char **));
         vm->enum_auto         = calloc((size_t)prog->nenums, sizeof(int8_t *));
         vm->enum_nmembros     = calloc((size_t)prog->nenums, sizeof(int32_t));
+        vm->enum_vivo         = calloc((size_t)prog->nenums, sizeof(Value));
         if (!vm->enum_nomes || !vm->enum_membro_nomes || !vm->enum_auto
-                || !vm->enum_nmembros) return -1;
+                || !vm->enum_nmembros || !vm->enum_vivo) return -1;
+        for (int32_t i = 0; i < prog->nenums; i++) vm->enum_vivo[i] = MK_NULL();
         for (int32_t i = 0; i < prog->nenums; i++) {
             PSEnumDef *o = &prog->enums[i];
             vm->enum_nomes[i] = strdup(o->nome ? o->nome : "?");
@@ -29913,6 +30229,7 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
         d->classe_privada = o->classe_privada;
         /* a classe de fora é do mesmo módulo: o índice desloca junto */
         d->fora = o->fora >= 0 ? o->fora + *base_classe : -1;
+        d->campos_proto = o->campos_proto >= 0 ? o->campos_proto + *base_proto : -1;
         if (copia_membros(d, o) != 0) return -1;   /* private de classe em módulo importado */
         if (copia_campos_tipados(d, o) != 0) return -1;
     }
@@ -29954,11 +30271,14 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
         char   ***emn = realloc(vm->enum_membro_nomes, sizeof(char **)  * (size_t)nen);
         int8_t  **ea  = realloc(vm->enum_auto,         sizeof(int8_t *) * (size_t)nen);
         int32_t  *enm = realloc(vm->enum_nmembros,     sizeof(int32_t)  * (size_t)nen);
+        Value    *evv = realloc(vm->enum_vivo,         sizeof(Value)    * (size_t)nen);
         if (en)  vm->enum_nomes        = en;
         if (emn) vm->enum_membro_nomes = emn;
         if (ea)  vm->enum_auto         = ea;
         if (enm) vm->enum_nmembros     = enm;
-        if (!en || !emn || !ea || !enm) return -1;
+        if (evv) vm->enum_vivo         = evv;
+        if (!en || !emn || !ea || !enm || !evv) return -1;
+        for (int32_t i = vm->nenums; i < nen; i++) vm->enum_vivo[i] = MK_NULL();
         for (int32_t i = 0; i < prog->nenums; i++) {
             PSEnumDef *o = &prog->enums[i];
             int32_t d = base_enum + i;

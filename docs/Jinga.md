@@ -1,4 +1,4 @@
-# Jinga v17.0.6
+# Jinga v17.0.7
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 jinga --version
-# Jinga 17.0.6 [PSVM] (2026-09-24) Runtime standalone
+# Jinga 17.0.7 [PSVM] (2026-09-24) Runtime standalone
 #                       ^ a data da compilação DESTE binário: duas
 #                         cópias da mesma versão se distinguem por ela
 ```
@@ -770,18 +770,24 @@ post(type(200) == int)     # True
 > `type(200) == int` daria **falso sem erro**: o `if` nunca entrava e nada era
 > avisado.
 
-Para instância de Entity, `is` compara a **classe exata** — ele não sobe pela
-herança:
+Para instância de Entity, `is` **sobe pela herança**, como a declaração
+(`Animal a = Gato()` vale): um `Gato` é `Animal`. Entre duas classes, `is` é
+identidade — `Gato is Animal` é `False`, como `int is str`:
 
 ```jinga
 public Entity Animal { }
 public Entity Gato(Animal) { }
-g = Gato()
+Gato g = Gato()
 
 post(type(g))            # Gato
 post(g is Gato)          # True
-post(g is Animal)        # False — classe exata, herança não conta
+post(g is Animal)        # True — Gato herda de Animal
+post(Gato is Animal)     # False — classe com classe é identidade
 ```
+
+À direita do `is` vale todo nome de tipo que a declaração aceita, pela mesma
+regra: `x is Object`, `x is String` (o apelido de `str`), e o nome de um enum
+(`c is Cor` é `True` quando `c` vale um dos membros de `Cor`).
 
 ---
 

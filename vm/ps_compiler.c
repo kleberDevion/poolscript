@@ -270,6 +270,10 @@ typedef struct {
      * `from util import f` liga `f` direto ao `decl` de dentro da AST. */
     const PSModuloAst *mod_pr;
     const char *mod_pr_nome;
+    /* a declaração (class/model/enum/funct) que ligou o nome neste escopo: o
+     * que ela é e a linha; NULL = o nome não nasceu de declaração */
+    const char *decl_rotulo;
+    int32_t decl_linha;
 } SimInfo;
 
 struct Unidade {
@@ -520,6 +524,15 @@ typedef struct {
      * arquivo os liga, então saem no import como os de topo */
     char   **globais_gravados;
     int32_t  nglobais_gravados;
+    /* O que pode gravar um campo de objeto, colhido do arquivo inteiro na
+     * primeira passada (ver `tp_campo_nunca_nasce`): os nomes gravados por
+     * `obj.x = v` (qualquer receptor) e pelos campos declarados em funct (do
+     * pool `tpool`), um `.__init__` chamado pelo nome (roda o construtor do
+     * pai) e um módulo `.pr` importado (grava o que quiser). */
+    const char **membros_gravados;
+    int32_t  nmembros_gravados, cap_membros_gravados;
+    int      chama_init_nome;
+    int      importa_pr;
 
     /* ── tipagem estática ── */
     /* Textos de tipo montados aqui (a união `a|b`): o compilador é dono. */
@@ -546,6 +559,13 @@ typedef struct {
      * nome — é o que diz se um nome de tipo existe e quem herda de quem. */
     PSNode **tipos_arq;
     int32_t  ntipos_arq, cap_tipos_arq;
+    /* Os nomes que mais de uma declaração de tipo usa no arquivo (a classe
+     * redeclarada, que é erro; o `if` e o `else` declarando cada um a sua; duas
+     * functs com uma classe local de mesmo nome): o nome existe, mas não se
+     * sabe QUAL classe um valor dele é, e conferir membro contra a primeira
+     * daria veredito falso (o erro em cascata da redeclaração). */
+    char   **tipos_ambiguos;
+    int32_t  ntipos_ambiguos;
     /* O que se sabe do membro `static` que um nome solto alcança de dentro da
      * classe (tipo do campo, assinatura do método) — montado a cada consulta. */
     SimInfo  sim_estatico;
@@ -564,7 +584,10 @@ typedef struct {
              const PSModuloAst *mod_pr; const char *mod_pr_nome;
              /* o nome passa a valer OUTRA coisa, de tipo desconhecido — o
               * resultado de um decorador geral sobre a funct */
-             unsigned char redefine; } grava;
+             unsigned char redefine;
+             /* a gravação é a de uma declaração (class/model/enum/funct, o nó
+              * em `no`) ligando o nome dela */
+             unsigned char declaracao; } grava;
     /* Na chamada de SAÍDA de uma funct tipada (`post` dentro de `int funct`):
      * o tipo que cada argumento posicional tem que ter, e o rótulo do erro.
      * `emite_args_e_chama` consome e limpa. */
@@ -1097,6 +1120,7 @@ static int32_t compila_funct(C *c, PSNode *n, Unidade *pai);
  * bytecode direto (em vez de montar uma AST) evita inventar nós sem posição
  * de origem, que estragariam a mensagem de erro. */
 static int32_t sintetiza_init(C *c, PSNode *entidade);
+static int32_t sintetiza_campos(C *c, PSNode *entidade, Unidade *pai);
 static void compila_unpack_alvo(C *c, Unidade *u, PSNode *alvo);
 static void guarda_em_alvo(C *c, Unidade *u, PSNode *e);
 
@@ -1141,7 +1165,8 @@ static void membros_declarados(PSNode *cls, VisitaMembro f, void *ctx)
         if (!fl) continue;
         if (!fl->is_static) n_inst++;
         if (fl->kind != N_ENTITY_FIELD || !fl->texto) continue;
-        f(ctx, fl->texto, (fl->is_private ? PS_MEMB_PRIVADO : 0) | (fl->is_static ? PS_MEMB_ESTATICO : 0),
+        f(ctx, fl->texto, (fl->is_private ? PS_MEMB_PRIVADO : 0) | (fl->is_static ? PS_MEMB_ESTATICO : 0)
+                          | (!fl->is_static && !fl->a ? PS_MEMB_SEM_VALOR : 0),
           fl->is_static ? fl->texto2 : NULL);
     }
     for (int32_t i = 0; i < cls->lista.n; i++) {
@@ -1151,12 +1176,71 @@ static void membros_declarados(PSNode *cls, VisitaMembro f, void *ctx)
     if (n_inst > 0 && !tem_init) f(ctx, "__init__", 0, NULL);
 }
 
-/* O mesmo nome declarado mais de uma vez na mesma classe vale como UMA
- * declaração: private se alguma for, static só se todas forem campo static
- * (com um campo de instância de mesmo nome, o do objeto ganha). */
+/* Membro declarado duas vezes no CORPO da classe (campo ou método, de
+ * instância ou static): o 2º valia pela metade (campo repetido nascia Null e
+ * quebrava o tipo; método repetido rodava o 1º). Erro no 2º, antes de rodar,
+ * apontando o 1º. Os campos declarados dentro de um método não entram: lá
+ * `private str nome = n` é a declaração do campo que o corpo não tem. */
+static void terro(C *c, PSNode *n, const char *classe, const char *fmt, ...);
+
+/* O NOME de uma declaração como nó, em `tmp`, pro erro que é do nome
+ * (redeclarado, repetido) sublinhar o nome inteiro, não a declaração. Na
+ * funct/class/model/enum o nó começa na palavra da declaração, e o parser
+ * guarda a posição do nome em `i` (`linha << 32 | coluna`); no campo e no
+ * membro de enum o nó já começa no nome. Sem a posição, o próprio nó. */
+static PSNode *no_do_nome(PSNode *n, PSNode *tmp)
+{
+    if (!n || !n->texto) return n;
+    int decl = n->kind == N_FUNCT_DECL || n->kind == N_ENTITY_DECL
+            || n->kind == N_MODEL_DECL || n->kind == N_ENUM_DECL;
+    if (decl && !n->i) return n;
+    memset(tmp, 0, sizeof(*tmp));
+    tmp->kind = n->kind;
+    tmp->line = decl ? (int32_t)(n->i >> 32) : n->line;
+    tmp->col = decl ? (int32_t)(uint32_t)n->i : n->col;
+    int32_t nc = 0;
+    for (const unsigned char *q = (const unsigned char *)n->texto; *q; q++)
+        if ((*q & 0xC0) != 0x80) nc++;
+    tmp->linha_fim = tmp->line;
+    tmp->col_fim = tmp->col + nc;
+    return tmp;
+}
+
+static void membros_repetidos(C *c, PSNode *cls)
+{
+    if (!cls || cls->kind != N_ENTITY_DECL) return;
+    PSNodeVec *vs[2] = { &cls->lista, &cls->lista2_alias };
+    for (int a = 0; a < 2; a++)
+        for (int32_t i = 0; i < vs[a]->n; i++) {
+            PSNode *m = vs[a]->itens[i];
+            if (!m || !m->texto || (m->kind != N_FUNCT_DECL && m->kind != N_ENTITY_FIELD)) continue;
+            PSNode *primeiro = NULL;
+            for (int b = 0; b < 2; b++)
+                for (int32_t k = 0; k < vs[b]->n; k++) {
+                    PSNode *o = vs[b]->itens[k];
+                    if (!o || o == m || !o->texto || (o->kind != N_FUNCT_DECL && o->kind != N_ENTITY_FIELD)
+                            || strcmp(o->texto, m->texto) != 0)
+                        continue;
+                    if (o->line > m->line || (o->line == m->line && o->col >= m->col)) continue;
+                    if (!primeiro || o->line < primeiro->line
+                            || (o->line == primeiro->line && o->col < primeiro->col))
+                        primeiro = o;
+                }
+            PSNode tmp;
+            if (primeiro)
+                terro(c, no_do_nome(m, &tmp), "SyntaxError",
+                      "membro '%s' repetido na classe %s (o primeiro esta na linha %d)",
+                      m->texto, cls->texto ? cls->texto : "?", primeiro->line);
+        }
+}
+
+/* O mesmo nome declarado mais de uma vez na mesma classe (no corpo e num
+ * método, já que no corpo repetido é erro) vale como UMA declaração: private
+ * se alguma for, static só se todas forem campo static, e "sem valor" só se
+ * nenhuma der valor (o campo declarado num método grava quando ele roda). */
 static int32_t membro_junta_marcas(int32_t antes, int32_t agora)
 {
-    return ((antes | agora) & PS_MEMB_PRIVADO) | (antes & agora & PS_MEMB_ESTATICO);
+    return ((antes | agora) & PS_MEMB_PRIVADO) | (antes & agora & (PS_MEMB_ESTATICO | PS_MEMB_SEM_VALOR));
 }
 
 typedef struct { C *c; PSClassDef *def; } TabMembros;
@@ -1501,8 +1585,16 @@ static void acha_aninhadas(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *ca
     }
     if (n->kind == N_FUNCT_DECL || n->kind == N_LAMBDA_EXPR) { varre_nomes(c, n, v, cnt, cap); return; }
     /* O método de uma classe declarada aqui cita a própria classe sem
-     * escrever o nome: o campo `static` solto é `Classe.x` (carrega_estatico). */
-    if (n->kind == N_ENTITY_DECL) junta_nomes(c, v, cnt, cap, n->texto);
+     * escrever o nome: o campo `static` solto é `Classe.x` (carrega_estatico).
+     * E o valor padrão de campo de instância roda no proto de campos, que é
+     * aninhado como o método (`sintetiza_campos`). */
+    if (n->kind == N_ENTITY_DECL) {
+        junta_nomes(c, v, cnt, cap, n->texto);
+        for (int32_t i = 0; i < n->lista2_alias.n; i++) {
+            PSNode *f = n->lista2_alias.itens[i];
+            if (f && !f->is_static && f->a) varre_nomes(c, f->a, v, cnt, cap);
+        }
+    }
     acha_aninhadas(c, n->a, v, cnt, cap);
     acha_aninhadas(c, n->b, v, cnt, cap);
     acha_aninhadas(c, n->c, v, cnt, cap);
@@ -2222,13 +2314,30 @@ static const char *tp_uniao(C *c, const char *a, const char *b)
     return tp_guarda(c, buf);
 }
 
-/* A Entity/model/enum do arquivo com esse nome (a primeira), ou NULL. */
-static PSNode *tp_tipo_arq(C *c, const char *nome)
+/* A Entity/model/enum do arquivo com esse nome (a primeira), ou NULL: é o
+ * que diz se o nome de tipo EXISTE. */
+static PSNode *tp_tipo_decl_arq(C *c, const char *nome)
 {
     if (!nome) return NULL;
     for (int32_t i = 0; i < c->ntipos_arq; i++)
         if (c->tipos_arq[i]->texto && strcmp(c->tipos_arq[i]->texto, nome) == 0) return c->tipos_arq[i];
     return NULL;
+}
+
+static int tp_tipo_ambiguo(C *c, const char *nome)
+{
+    for (int32_t i = 0; nome && i < c->ntipos_ambiguos; i++)
+        if (strcmp(c->tipos_ambiguos[i], nome) == 0) return 1;
+    return 0;
+}
+
+/* A declaração que um valor do tipo `nome` É — a que se confere membro,
+ * herança e construtor —, ou NULL: nome que não é tipo do arquivo, ou que
+ * mais de uma declaração usa (ver `C.tipos_ambiguos`). */
+static PSNode *tp_tipo_arq(C *c, const char *nome)
+{
+    PSNode *d = tp_tipo_decl_arq(c, nome);
+    return d && c->ntipos_ambiguos > 0 && tp_tipo_ambiguo(c, nome) ? NULL : d;
 }
 
 static void tp_coleta_tipos_arq(C *c, PSNode *n)
@@ -2239,8 +2348,9 @@ static void tp_coleta_tipos_arq(C *c, PSNode *n)
         n = n->a;
         if (!n) return;
     }
-    if ((n->kind == N_ENTITY_DECL || n->kind == N_MODEL_DECL || n->kind == N_ENUM_DECL) && n->texto
-            && !tp_tipo_arq(c, n->texto)) {
+    PSNode *ja = (n->kind == N_ENTITY_DECL || n->kind == N_MODEL_DECL || n->kind == N_ENUM_DECL) && n->texto
+               ? tp_tipo_decl_arq(c, n->texto) : n;
+    if (!ja) {
         if (c->ntipos_arq + 1 > c->cap_tipos_arq) {
             int32_t novo = c->cap_tipos_arq < 8 ? 8 : c->cap_tipos_arq * 2;
             PSNode **nv = realloc(c->tipos_arq, sizeof(PSNode *) * (size_t)novo);
@@ -2248,6 +2358,13 @@ static void tp_coleta_tipos_arq(C *c, PSNode *n)
             c->tipos_arq = nv; c->cap_tipos_arq = novo;
         }
         c->tipos_arq[c->ntipos_arq++] = n;
+    } else if (ja != n && !mesmo_no(ja, n) && !tp_tipo_ambiguo(c, n->texto)) {
+        char **nv = realloc(c->tipos_ambiguos, sizeof(char *) * (size_t)(c->ntipos_ambiguos + 1));
+        if (!nv) { cerro(c, "sem memoria", NULL); return; }
+        c->tipos_ambiguos = nv;
+        char *nm = strdup(n->texto);
+        if (!nm) { cerro(c, "sem memoria", NULL); return; }
+        c->tipos_ambiguos[c->ntipos_ambiguos++] = nm;
     }
     tp_coleta_tipos_arq(c, n->a);
     tp_coleta_tipos_arq(c, n->b);
@@ -2376,7 +2493,7 @@ static SimInfo *tp_sim_de(C *c, Unidade *u, const char *nome);
 static int tp_tipo_existe(C *c, Unidade *u, const char *t)
 {
     if (!t) return 1;
-    if (ps_tipo_info(t) || tp_tipo_arq(c, t)) return 1;
+    if (ps_tipo_info(t) || tp_tipo_decl_arq(c, t)) return 1;
     if (ps_retorno_tipo_existe(t) || ps_nativo_tem_membro(t, "type") != -1) return 1;
     SimInfo *s = tp_sim_de(c, u, t);
     return s && s->estado == 1 && !s->tipo && !s->decl;
@@ -2848,6 +2965,60 @@ static int tp_metodo_decorado(C *c, const char *classe, PSNode *met)
         return !(dn && (!strcmp(dn, "static") || !strcmp(dn, "NonNull") || !strcmp(dn, "dataentity")));
     }
     return 0;
+}
+
+/* `tp_metodo` que diz também a classe dona do método achado. */
+static PSNode *tp_metodo_dono(C *c, const char *classe, const char *nome, int prof, const char **dono)
+{
+    PSNode *d = tp_tipo_arq(c, classe);
+    if (!d || d->kind != N_ENTITY_DECL || prof > 32) return NULL;
+    for (int32_t i = 0; i < d->lista.n; i++) {
+        PSNode *m = d->lista.itens[i];
+        if (m->kind == N_FUNCT_DECL && m->texto && strcmp(m->texto, nome) == 0) { *dono = d->texto; return m; }
+    }
+    for (int32_t i = 0; i < d->lista2.n; i++) {
+        PSNode *r = d->lista2.itens[i]->texto
+                  ? tp_metodo_dono(c, d->lista2.itens[i]->texto, nome, prof + 1, dono) : NULL;
+        if (r) return r;
+    }
+    return NULL;
+}
+
+/* Sobrescrita que troca o tipo de retorno: o checador tipa `p.m()` pelo
+ * retorno que o PAI declara quando `p` é declarado como o pai, e a filha que
+ * devolve outra coisa (ou não declara o retorno) quebrava rodando, num ponto
+ * que o `--check` aprovou. O método da filha com o nome de um método do pai
+ * que declara o retorno tem que declarar um retorno que caiba nele (`Cao`
+ * cabe em `Animal`). Erro na declaração da filha. Fica de fora o que não se
+ * sabe: pai importado, método decorado (o decorador pode trocá-lo), `private`
+ * do pai (a filha não o enxerga: o dela é outro método), `async`/gerador e
+ * o `__init__`. O primeiro pai que tem o método decide, como na chamada. */
+static void tp_confere_sobrescrita(C *c, PSNode *cls)
+{
+    if (!cls || cls->kind != N_ENTITY_DECL || !cls->texto) return;
+    for (int32_t i = 0; i < cls->lista.n; i++) {
+        PSNode *m = cls->lista.itens[i];
+        if (!m || m->kind != N_FUNCT_DECL || !m->texto || strcmp(m->texto, "__init__") == 0) continue;
+        if (m->is_async || tp_tem_yield(m->b) || tp_metodo_decorado(c, cls->texto, m)) continue;
+        for (int32_t k = 0; k < cls->lista2.n; k++) {
+            const char *pn = cls->lista2.itens[k]->texto;
+            const char *dono = NULL;
+            PSNode *pm = pn ? tp_metodo_dono(c, pn, m->texto, 0, &dono) : NULL;
+            if (!pm) continue;
+            const char *pt = tp_ret_decl(pm);
+            if (!pt || pm->is_private || tp_metodo_decorado(c, dono, pm)) break;
+            PSNode tmp;
+            if (!m->texto2)
+                terro(c, no_do_nome(m, &tmp), "TypeError",
+                      "%s() de %s nao declara o retorno e sobrescreve %s() de %s, que devolve %s: declare %s funct %s",
+                      m->texto, cls->texto, m->texto, dono, pt, pt, m->texto);
+            else if (tp_aceita(c, pt, tp_canon(m->texto2), NULL, 1) == T_NAO)
+                terro(c, no_do_nome(m, &tmp), "TypeError",
+                      "%s() de %s devolve %s e sobrescreve %s() de %s, que devolve %s",
+                      m->texto, cls->texto, tp_canon(m->texto2), m->texto, dono, pt);
+            break;
+        }
+    }
 }
 
 /* Tipo escrito do campo `nome` da Entity (ou de um pai), ou NULL. */
@@ -3566,8 +3737,8 @@ static SimInfo *tp_sim_mod_pr(C *c, Unidade *u, PSNode *n)
 static int tp_classe_importada(C *c, PSNode *d)
 {
     if (!d || d->kind != N_ENTITY_DECL || !d->texto) return 0;
-    PSNode *ja = tp_tipo_arq(c, d->texto);
-    if (ja) return ja == d;
+    PSNode *ja = tp_tipo_decl_arq(c, d->texto);
+    if (ja) return ja == d && !tp_tipo_ambiguo(c, d->texto);
     tp_coleta_tipos_arq(c, d);
     return tp_tipo_arq(c, d->texto) == d;
 }
@@ -3722,10 +3893,33 @@ static int tp_escreve(C *c, SimInfo *s, const char *nome)
     if (!s) return T_TALVEZ;
     PSNode *onde = c->grava.no;
     if (c->grava.redefine) {
+        /* o nome continua sendo o da declaração que o decorador embrulhou */
+        const char *rot = s->decl_rotulo;
+        int32_t lin = s->decl_linha;
         memset(s, 0, sizeof(*s));
         s->estado = 1;
         s->decorado = 1;
+        s->decl_rotulo = rot; s->decl_linha = lin;
         return T_SIM;
+    }
+    /* Uma declaração num nome que outra declaração ainda liga no MESMO escopo,
+     * com um dos dois sendo class/model/enum: a 2ª valia pela metade (o
+     * checador seguia a 1ª e a VM a 2ª, e o erro caía num `self.y` certo).
+     * O nome de um bloco que já fechou saiu do escopo e não conta (o `if` e o
+     * `else` podem declarar cada um a sua); funct sobre funct fica como era.
+     * Acusada a 2ª, ela passa a valer, sem o erro de tipo em cascata. */
+    if (c->grava.declaracao && onde) {
+        const char *rot = onde->kind == N_ENTITY_DECL ? "class" : onde->kind == N_MODEL_DECL ? "model"
+                        : onde->kind == N_ENUM_DECL ? "enum" : "funct";
+        if (s->decl_rotulo && (strcmp(rot, "funct") != 0 || strcmp(s->decl_rotulo, "funct") != 0)) {
+            PSNode tmp;
+            terro(c, no_do_nome(onde, &tmp), "SyntaxError",
+                  "'%s' ja foi declarado na linha %d (%s): um nome, uma declaracao no mesmo escopo",
+                  nome, s->decl_linha, s->decl_rotulo);
+            memset(s, 0, sizeof(*s));
+        }
+        s->decl_rotulo = rot;
+        s->decl_linha = onde->line;
     }
     if (c->grava.declara) {
         const char *T = tp_canon_guarda(c, c->grava.declara);
@@ -3939,6 +4133,8 @@ static const char *tp_dica_membro(C *c, const char *tipo, const char *nome, char
     return buf;
 }
 
+static PSNode *tp_campo_nunca_nasce(C *c, PSNode *cls, const char *nome);
+
 /* `alvo.nome` existe? Módulo nativo, tipo nativo (pelas tabelas da VM),
  * Entity do arquivo (campo, método, `self.x` gravado, pais) e enum. O que não
  * se sabe — tipo desconhecido, pai importado — passa. */
@@ -4036,11 +4232,20 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
     }
     const char *t = tp_de(c, u, n->a);
     if (!t) return;
-    /* instância de uma classe do arquivo, com o membro existindo: o private */
+    /* instância de uma classe do arquivo, com o membro existindo: o private,
+     * e o campo declarado sem valor que nada grava (a frase da VM) */
     if (!strchr(t, '|')) {
         PSNode *d = tp_tipo_arq(c, t);
         if (d && d->kind == N_ENTITY_DECL && tp_classe_tem(c, t, n->texto, 0) == 1) {
+            int nerros_antes = c->nerros;
             tp_confere_privado(c, d, n->texto, 0, n);
+            PSNode *dona = c->nerros == nerros_antes ? tp_campo_nunca_nasce(c, d, n->texto) : NULL;
+            if (dona) {
+                char causa[PS_FRASE_SEM_VALOR_CAP];
+                snprintf(causa, sizeof(causa), PS_FRASE_SEM_VALOR, n->texto, dona->texto, n->texto);
+                terro(c, n, "AttributeError", "'%s' object has no %s '%s'%s", t, tp_rotulo_membro(c, n),
+                      n->texto, causa);
+            }
             return;
         }
     }
@@ -4066,6 +4271,137 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
         terro(c, n, "AttributeError", "'%s' object has no %s '%s'%s", t, tp_rotulo_membro(c, n), n->texto,
               tp_dica_membro(c, t, n->texto, dica, sizeof(dica)));
     }
+}
+
+/* ── qual construtor roda pra `Classe(...)` ────────────────────────────────
+ * A regra da VM (`acha_metodo`: a classe antes dos pais, da esquerda pra
+ * direita, em profundidade) com a síntese do compilador (sem `__init__`
+ * escrito, a classe com campo de instância ganha o gerado dos campos dela).
+ * Era um `tp_metodo(__init__)` que passava reto pelo gerado da filha e
+ * conferia `Filha()` contra o `__init__` escrito do pai. `ma`: a classe é de
+ * um `.pr` importado, e os pais se procuram nele. */
+enum { CONS_INCERTO = -1, CONS_NENHUM = 0, CONS_ESCRITO = 1, CONS_GERADO = 2 };
+
+static int tp_decorador_geral_antes(PSNode *cls, int32_t i)
+{
+    if (i <= 0) return 0;
+    PSNode *ant = cls->lista.itens[i - 1];
+    if (!ant || ant->kind != N_DECORATOR_STMT || !ant->a) return 0;
+    const char *dn = ant->a->lista.n == 1 ? ant->a->lista.itens[0]->texto : NULL;
+    return !(dn && (!strcmp(dn, "static") || !strcmp(dn, "NonNull") || !strcmp(dn, "dataentity")));
+}
+
+/* CONS_ESCRITO: `*no` é o `__init__`; CONS_GERADO: `*no` é a classe dona dos
+ * campos; CONS_NENHUM; CONS_INCERTO (pai que não se acha, `__init__`
+ * decorado: fica pra VM). */
+static int tp_construtor(C *c, PSNode *cls, const PSModuloAst *ma, PSNode **no, int prof)
+{
+    if (!cls || cls->kind != N_ENTITY_DECL || prof > 1000) return CONS_INCERTO;
+    for (int32_t i = 0; i < cls->lista.n; i++) {
+        PSNode *m = cls->lista.itens[i];
+        if (!m || m->kind != N_FUNCT_DECL || !m->texto || strcmp(m->texto, "__init__") != 0) continue;
+        if (tp_decorador_geral_antes(cls, i)) return CONS_INCERTO;
+        *no = m;
+        return CONS_ESCRITO;
+    }
+    for (int32_t i = 0; i < cls->lista2_alias.n; i++)
+        if (cls->lista2_alias.itens[i] && !cls->lista2_alias.itens[i]->is_static) { *no = cls; return CONS_GERADO; }
+    for (int32_t i = 0; i < cls->lista2.n; i++) {
+        const char *pn = cls->lista2.itens[i] ? cls->lista2.itens[i]->texto : NULL;
+        int deco = 0;
+        PSNode *pd = !pn ? NULL : ma ? modulo_decl(ma, pn, &deco) : tp_tipo_arq(c, pn);
+        if (!pd || deco) return CONS_INCERTO;
+        int r = tp_construtor(c, pd, ma, no, prof + 1);
+        if (r != CONS_NENHUM) return r;
+    }
+    return CONS_NENHUM;
+}
+
+/* As declarações de `nome` na cadeia de `cls` (a classe e todos os pais do
+ * arquivo): `*sem` = a primeira classe, na ordem de busca de membro, que o
+ * declara como campo do corpo SEM valor; `*outro` = alguma declaração dá
+ * valor a ele (campo com padrão, `static`) ou o faz método. -1 = um pai não é
+ * do arquivo (não dá pra saber). */
+static int tp_campo_na_cadeia(C *c, PSNode *cls, const char *nome, int prof, PSNode **sem, int *outro)
+{
+    if (!cls || cls->kind != N_ENTITY_DECL || prof > 32) return -1;
+    for (int32_t i = 0; i < cls->lista2_alias.n; i++) {
+        PSNode *f = cls->lista2_alias.itens[i];
+        if (!f || !f->texto || strcmp(f->texto, nome) != 0) continue;
+        if (f->kind == N_ENTITY_FIELD && !f->is_static && !f->a) { if (!*sem) *sem = cls; }
+        else *outro = 1;
+    }
+    for (int32_t i = 0; i < cls->lista.n; i++) {
+        PSNode *m = cls->lista.itens[i];
+        if (m && m->kind == N_FUNCT_DECL && m->texto && strcmp(m->texto, nome) == 0) *outro = 1;
+    }
+    for (int32_t i = 0; i < cls->lista2.n; i++) {
+        const char *pn = cls->lista2.itens[i] ? cls->lista2.itens[i]->texto : NULL;
+        if (!pn || tp_campo_na_cadeia(c, tp_tipo_arq(c, pn), nome, prof + 1, sem, outro) < 0) return -1;
+    }
+    return 0;
+}
+
+/* `obj.x` lido com `obj` da classe `cls` do arquivo, e `x` campo do corpo
+ * declarado SEM valor: rodando é AttributeError quando nada o gravou
+ * (decisão 2 do Plano 6: o padrão nasce sempre, e o campo sem padrão só o
+ * construtor gerado da classe que o declara grava — o da filha recebe só os
+ * dela). É certo antes de rodar quando nada PODE gravá-lo em nenhuma classe
+ * que o valor pode ser (`cls` e as filhas dela no arquivo):
+ *   - nenhuma declaração de `x` na cadeia dá valor a ele ou o faz método;
+ *   - o construtor de cada uma não é o gerado de uma classe que declara `x`,
+ *     nem incerto (pai importado, `__init__` decorado);
+ *   - o arquivo não grava `.x = v` com receptor nenhum, não declara campo
+ *     `x` em funct, não chama `__init__` pelo nome (`base(Pai).__init__(v)`
+ *     roda o gerado do pai) e não importa módulo `.pr`.
+ * Devolve a classe que declara `x` sem valor (a frase a cita), ou NULL. */
+static PSNode *tp_campo_nunca_nasce(C *c, PSNode *cls, const char *nome)
+{
+    /* nome de tipo usado por mais de uma declaração: não se sabe que classes
+     * o valor pode ser */
+    if (!cls || !cls->texto || c->importa_pr || c->chama_init_nome || c->ntipos_ambiguos > 0) return NULL;
+    for (int32_t i = 0; i < c->nmembros_gravados; i++)
+        if (strcmp(c->membros_gravados[i], nome) == 0) return NULL;
+    PSNode *dona = NULL;
+    for (int32_t k = 0; k < c->ntipos_arq; k++) {
+        PSNode *d = c->tipos_arq[k];
+        if (!d || d->kind != N_ENTITY_DECL || !d->texto || tp_herda(c, d->texto, cls->texto, 0) != 1) continue;
+        PSNode *sem = NULL;
+        int outro = 0;
+        if (tp_campo_na_cadeia(c, d, nome, 0, &sem, &outro) < 0 || outro || !sem) return NULL;
+        PSNode *no = NULL;
+        int r = tp_construtor(c, d, NULL, &no, 0);
+        if (r == CONS_INCERTO) return NULL;
+        if (r == CONS_GERADO && no)
+            for (int32_t i = 0; i < no->lista2_alias.n; i++) {
+                PSNode *f = no->lista2_alias.itens[i];
+                if (f && f->texto && !f->is_static && strcmp(f->texto, nome) == 0) return NULL;
+            }
+        if (d == cls || !dona) dona = sem;
+    }
+    return dona;
+}
+
+static void tp_confere_args(C *c, Unidade *u, PSNode *call, const char *nome, PSNodeVec *params,
+                            int recebe, int oculto, const char *classe);
+
+/* Confere a chamada `call` contra o construtor que `tp_construtor` achou.
+ * `classe` é a classe instanciada: é ela que a frase do campo cita (a da VM,
+ * `campo x de Filha`, mesmo com o gerado sendo do pai). */
+static void tp_confere_construtor(C *c, Unidade *u, PSNode *call, const char *classe, int r, PSNode *no)
+{
+    if (r == CONS_ESCRITO) { tp_confere_args(c, u, call, "__init__", &no->lista, 1, 0, NULL); return; }
+    if (r == CONS_GERADO) { tp_confere_args(c, u, call, "__init__", &no->lista2_alias, 1, 0, classe); return; }
+    if (r != CONS_NENHUM || call->lista.n == 0) return;
+    int npos = 0, nomeado = 0;
+    for (int32_t i = 0; i < call->lista.n; i++) {
+        PSNode *a = call->lista.itens[i];
+        if (a->i2) return;                       /* espalhamento: só rodando */
+        if (a->texto) nomeado = 1; else npos++;
+    }
+    /* as frases da VM (OP_CALL e OP_CALL_KW) */
+    if (nomeado) terro(c, call, "TypeError", "%s() takes no arguments", classe);
+    else terro(c, call, "TypeError", "%s() takes no arguments (%d given)", classe, npos);
 }
 
 /* A frase de "faltou argumento" da VM (`lista_faltantes`): 'a', 'b' and 'c'. */
@@ -4197,16 +4533,11 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
         /* construir é chamar o `__init__`: `private funct __init__` só deixa
          * construir de dentro da classe (a fábrica, o singleton) */
         tp_confere_privado(c, s->decl, "__init__", 1, f);
-        PSNode *init = tp_metodo(c, cls, "__init__", 0);
-        if (init) {
-            if (tp_metodo_decorado(c, cls, init)) return;
-            tp_confere_args(c, u, n, "__init__", &init->lista, 1, 0, NULL);
-            return;
-        }
-        /* `__init__` gerado: um parâmetro por campo de instância, da própria
-         * classe — com pai, os campos dele entram por outro caminho */
-        if (s->decl->lista2.n == 0 && s->decl->lista2_alias.n > 0)
-            tp_confere_args(c, u, n, "__init__", &s->decl->lista2_alias, 1, 0, cls);
+        /* o construtor que roda: o escrito, o gerado de quem tem campo, ou
+         * nenhum (`Z(1)` com Z sem construtor) */
+        PSNode *no = NULL;
+        int r = tp_construtor(c, s->decl, NULL, &no, 0);
+        tp_confere_construtor(c, u, n, cls, r, no);
         return;
     }
     if (f->kind != N_MEMBER_ACCESS || !f->texto || !f->a) return;
@@ -4217,19 +4548,15 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
         PSNode *d = pai ? tp_tipo_arq(c, pai) : NULL;
         if (!d || d->kind != N_ENTITY_DECL) return;
         if (strcmp(f->texto, "__init__") == 0) {
-            PSNode *init = tp_metodo(c, pai, "__init__", 0);
-            if (init) {
-                if (!tp_metodo_decorado(c, pai, init))
-                    tp_confere_args(c, u, n, "__init__", &init->lista, 1, 0, NULL);
-                return;
-            }
-            if (d->lista2.n == 0 && d->lista2_alias.n > 0) {
-                tp_confere_args(c, u, n, "__init__", &d->lista2_alias, 1, 0, pai);
-                return;
-            }
-            /* sem `__init__` nem campos (e sem pai que os traga): a frase da VM */
-            if (d->lista2.n == 0)
+            /* o construtor do pai pela mesma regra de `Pai(...)`; o campo do
+             * gerado é gravado no `self`, da classe deste método */
+            PSNode *no = NULL;
+            int r = tp_construtor(c, d, NULL, &no, 0);
+            if (r == CONS_NENHUM)
                 terro(c, f, "TypeError", "base(): a Entity pai '%s' nao tem __init__", pai);
+            else
+                tp_confere_construtor(c, u, n, c->entity_no && c->entity_no->texto ? c->entity_no->texto : pai,
+                                      r, no);
             return;
         }
         PSNode *m = tp_metodo(c, pai, f->texto, 0);
@@ -4262,14 +4589,11 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
             }
             if (d->kind == N_ENTITY_DECL && tp_classe_importada(c, d)) {
                 tp_confere_privado(c, d, "__init__", 1, f);
-                PSNode *init = tp_metodo(c, d->texto, "__init__", 0);
-                if (init) {
-                    if (!tp_metodo_decorado(c, d->texto, init))
-                        tp_confere_args(c, u, n, "__init__", &init->lista, 1, 0, NULL);
-                    return;
-                }
-                if (d->lista2.n == 0 && d->lista2_alias.n > 0)
-                    tp_confere_args(c, u, n, "__init__", &d->lista2_alias, 1, 0, d->texto);
+                /* o construtor pela regra de `Classe(...)`, com os pais
+                 * procurados no próprio módulo */
+                PSNode *no = NULL;
+                int r = tp_construtor(c, d, sm->mod_pr, &no, 0);
+                tp_confere_construtor(c, u, n, d->texto ? d->texto : "?", r, no);
             }
             return;
         }
@@ -4490,7 +4814,7 @@ static int mlit_de(PSNode *v, int32_t tipo, PSModelLit *out)
 /* `nome` é um model — deste arquivo (em qualquer ponto dele) ou importado? */
 static int modelo_conhecido(C *c, Unidade *u, const char *nome)
 {
-    PSNode *d = tp_tipo_arq(c, nome);
+    PSNode *d = tp_tipo_decl_arq(c, nome);
     if (d && d->kind == N_MODEL_DECL) return 1;
     SimInfo *s = tp_nome_ligado(c, u, nome) ? tp_sim_de(c, u, nome) : NULL;
     return s && s->decl && s->decl->kind == N_MODEL_DECL;
@@ -5598,6 +5922,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             c->grava.tem_valor = 1;
             c->grava.tipo = "funct";
             c->grava.no = n;
+            c->grava.declaracao = 1;
             /* o gêmeo podado, não o nó desta passada: o nó morre com o
              * statement, e a assinatura tem que valer até o fim (só aqui, nos
              * nós DESTE arquivo — a declaração de um módulo importado vem de
@@ -5972,6 +6297,21 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             def->ncampos = n->lista.n;
             def->campos = n->lista.n > 0
                         ? calloc((size_t)n->lista.n, sizeof(PSModelCampoDef)) : NULL;
+            /* campo repetido: o 2º valia pela metade, como no enum e na class */
+            for (int32_t i = 0; i < n->lista.n; i++) {
+                PSNode *f = n->lista.itens[i];
+                if (!f->texto) continue;
+                for (int32_t k = 0; k < i; k++) {
+                    PSNode *o = n->lista.itens[k];
+                    if (o->texto && strcmp(o->texto, f->texto) == 0) {
+                        PSNode tmp;
+                        terro(c, no_do_nome(f, &tmp), "SyntaxError",
+                              "campo '%s' repetido no model %s (o primeiro esta na linha %d)",
+                              f->texto, n->texto ? n->texto : "?", o->line);
+                        break;
+                    }
+                }
+            }
             for (int32_t i = 0; i < n->lista.n; i++) {
                 PSNode *f = n->lista.itens[i];
                 PSModelCampoDef *cd = &def->campos[i];
@@ -5994,6 +6334,8 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             }
             emite(c, u, OP_MAKE_MODEL, mi);
             memset(&c->grava, 0, sizeof(c->grava));
+            c->grava.no = n;
+            c->grava.declaracao = 1;
             /* o gêmeo podado, não o nó desta passada: o nó morre com o
              * statement, e a assinatura tem que valer até o fim (só aqui, nos
              * nós DESTE arquivo — a declaração de um módulo importado vem de
@@ -6027,6 +6369,32 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 def->membros[i].nome = strdup(m->texto ? m->texto : "?");
                 def->membros[i].tem_valor = (m->a != NULL);
             }
+            /* Antes de rodar: membro repetido (o 2º sumia calado, `E.A` dava
+             * o primeiro), e membro sem valor depois de um valor LITERAL que
+             * não é inteiro (a contagem não tem de onde continuar; o valor
+             * que só se sabe rodando é conferido no MAKE_ENUM). */
+            for (int32_t i = 0; i < n->lista.n; i++) {
+                PSNode *m = n->lista.itens[i];
+                if (!m->texto) continue;
+                for (int32_t k = 0; k < i; k++) {
+                    PSNode *o = n->lista.itens[k];
+                    if (o->texto && strcmp(o->texto, m->texto) == 0) {
+                        PSNode tmp;
+                        terro(c, no_do_nome(m, &tmp), "SyntaxError",
+                              "membro '%s' repetido no enum %s (o primeiro esta na linha %d)",
+                              m->texto, n->texto ? n->texto : "?", o->line);
+                        break;
+                    }
+                }
+                if (m->a || i == 0) continue;
+                PSNode *ant = n->lista.itens[i - 1];
+                PSNode tmp;
+                if (ant->a && ant->a->kind == N_LITERAL && ant->a->lit != L_INT && ant->a->lit != L_BIGINT)
+                    terro(c, no_do_nome(m, &tmp), "TypeError",
+                          "enum %s: o membro %s nao tem valor e o anterior (%s) nao e inteiro "
+                          "— so um inteiro continua a contagem: escreva o valor de %s",
+                          n->texto ? n->texto : "?", m->texto, ant->texto ? ant->texto : "?", m->texto);
+            }
             /* empilha os valores explícitos, na ordem de declaração */
             for (int32_t i = 0; i < n->lista.n && !CFALHOU(c); i++) {
                 PSNode *m = n->lista.itens[i];
@@ -6035,6 +6403,8 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             if (CFALHOU(c)) return;
             emite(c, u, OP_MAKE_ENUM, ei);
             memset(&c->grava, 0, sizeof(c->grava));
+            c->grava.no = n;
+            c->grava.declaracao = 1;
             /* o gêmeo podado, não o nó desta passada: o nó morre com o
              * statement, e a assinatura tem que valer até o fim (só aqui, nos
              * nós DESTE arquivo — a declaração de um módulo importado vem de
@@ -6275,6 +6645,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             def->npais = n->lista2.n;
             def->classe_privada = n->is_private;   /* `private class` = não exportada */
             def->fora = c->corpo ? c->corpo->ci : -1;
+            def->campos_proto = -1;
 
             /* Os membros que a classe declara, com as marcas private e static:
              * os métodos, os campos do corpo e os campos declarados DENTRO das
@@ -6288,6 +6659,8 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 membros_declarados(n, membro_tab_poe, &tm);
                 if (CFALHOU(c)) return;
             }
+            membros_repetidos(c, n);
+            tp_confere_sobrescrita(c, n);
 
             /* campos de INSTÂNCIA com tipo escrito: a VM confere toda escrita
              * neles. O `static` pertence à classe, não entra. */
@@ -6448,6 +6821,15 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 }
             }
 
+            /* os campos com valor padrão: o proto que a instanciação roda antes
+             * do `__init__` (o descritor já pode ter sido realocado) */
+            if (!CFALHOU(c)) {
+                int32_t pc = sintetiza_campos(c, n, u);
+                if (CFALHOU(c)) goto fim_classe;
+                c->out->classes[ci].campos_proto = pc;
+                def = &c->out->classes[ci];
+            }
+
             /* empilha os pais na ordem declarada */
             for (int32_t i = 0; i < n->lista2.n; i++) {
                 tp_confere_nome(c, u, n->lista2.itens[i]->texto, n->lista2.itens[i]);
@@ -6458,6 +6840,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             c->grava.tem_valor = 1;
             c->grava.tipo = "Entity";
             c->grava.no = n;
+            c->grava.declaracao = 1;
             /* o gêmeo podado, não o nó desta passada: o nó morre com o
              * statement, e a assinatura tem que valer até o fim (só aqui, nos
              * nós DESTE arquivo — a declaração de um módulo importado vem de
@@ -6738,6 +7121,25 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                  * instância, com a classe que o declara). Acesso negado é a
                  * causa: o tipo de um valor que nem pode entrar não se
                  * confere. */
+                /* `Cor.RED = 99`: membro de enum é constante (a frase da VM) */
+                {
+                    SimInfo *se = (n->a && n->a->kind == N_NAME && n->a->texto)
+                                ? tp_sim_de(c, u, n->a->texto) : NULL;
+                    if (se && se->decl && se->decl->kind == N_ENUM_DECL && n->texto) {
+                        int membro = 0;
+                        for (int32_t i = 0; i < se->decl->lista.n && !membro; i++)
+                            membro = se->decl->lista.itens[i]->texto
+                                  && !strcmp(se->decl->lista.itens[i]->texto, n->texto);
+                        if (membro)
+                            terro(c, &no_membro, "AttributeError",
+                                  "membro '%s' do enum %s e constante: nao se reatribui",
+                                  n->texto, se->decl->texto ? se->decl->texto : "?");
+                        else
+                            terro(c, &no_membro, "AttributeError",
+                                  "enum %s nao ganha membro novo ('%s'): os membros sao os da declaracao",
+                                  se->decl->texto ? se->decl->texto : "?", n->texto);
+                    }
+                }
                 PSNode *ce = tp_classe_exata(c, u, n->a);
                 int nerros_antes = c->nerros;
                 if (ce && n->texto) tp_confere_privado(c, ce, n->texto, 1, &no_membro);
@@ -7192,23 +7594,30 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
         c->out->protos[idx].param_nomes = nomes;
     }
 
-    /* prólogo dos campos com valor padrão */
+    /* corpo: self.<campo> = <parametro>, um por campo. O campo com valor
+     * padrão já nasceu com ele antes do `__init__` (o proto de campos, ver
+     * `sintetiza_campos`): aqui ele só é gravado se o argumento veio — o
+     * padrão não é avaliado de novo (`int id = proximo()` rodaria duas
+     * vezes). Cada escrita leva a posição do campo: o erro do valor de tipo
+     * errado aponta o campo, não a linha da classe. */
+    int32_t l0 = c->linha_atual, c0 = c->coluna_atual;
     for (int32_t i = 0; i < campos->n && !CFALHOU(c); i++) {
-        if (!campos->itens[i]->a) continue;
-        emite(c, &u, OP_LOAD_CONST, idx_const(c, &u, K_INT, i + 1, 0, NULL, 0));
-        int32_t pula = emite(c, &u, OP_JUMP_IF_SET, 0);
-        expr(c, &u, campos->itens[i]->a);
-        emite(c, &u, OP_STORE_LOCAL, i + 1);
-        if (pula >= 0) UP(c, (&u))->code[pula + 1] = UP(c, (&u))->ncode;
-    }
-
-    /* corpo: self.<campo> = <parametro>, um por campo */
-    for (int32_t i = 0; i < campos->n && !CFALHOU(c); i++) {
-        const char *nome = campos->itens[i]->texto ? campos->itens[i]->texto : "";
+        PSNode *campo = campos->itens[i];
+        const char *nome = campo->texto ? campo->texto : "";
+        if (campo->line) { c->linha_atual = campo->line; c->coluna_atual = campo->col; }
+        int32_t veio = -1, pula = -1;
+        if (campo->a) {
+            emite(c, &u, OP_LOAD_CONST, idx_const(c, &u, K_INT, i + 1, 0, NULL, 0));
+            veio = emite(c, &u, OP_JUMP_IF_SET, 0);
+            pula = emite(c, &u, OP_JUMP, 0);
+            if (veio >= 0) UP(c, (&u))->code[veio + 1] = UP(c, (&u))->ncode;
+        }
         emite(c, &u, OP_LOAD_LOCAL, 0);
         emite(c, &u, OP_LOAD_LOCAL, i + 1);
         emite(c, &u, OP_SET_MEMBER, idx_const(c, &u, K_STR, 0, 0, nome, (int32_t)strlen(nome)));
+        if (pula >= 0) UP(c, (&u))->code[pula + 1] = UP(c, (&u))->ncode;
     }
+    c->linha_atual = l0; c->coluna_atual = c0;
     emite(c, &u, OP_LOAD_CONST, idx_const(c, &u, K_NULL, 0, 0, NULL, 0));
     emite(c, &u, OP_RETURN, 0);
     proto_encolhe(c, &u);
@@ -7226,6 +7635,92 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
     ix_solta(&u.ix_mod);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
     free(u.globais_decl);
+    return idx;
+}
+
+/* As capturas de uma unidade de funct viram a tabela do proto (é o que o
+ * MAKE_CLOSURE lê pra montar as células), e a unidade é solta. */
+static void fecha_unidade_funct(C *c, Unidade *u, int32_t idx, PSNode *n)
+{
+    if (u->nupvals > 0) {
+        PSUpval *uv = calloc((size_t)u->nupvals, sizeof(PSUpval));
+        if (!uv) cerro(c, "sem memoria", n);
+        else {
+            char **nms = calloc((size_t)u->nupvals, sizeof(char *));
+            for (int32_t i = 0; i < u->nupvals; i++) {
+                uv[i].em_local = u->upvals[i].em_local;
+                uv[i].idx      = u->upvals[i].idx;
+                if (nms) nms[i] = strdup(u->upvals[i].nome);
+            }
+            c->out->protos[idx].upvals  = uv;
+            c->out->protos[idx].nupvals = u->nupvals;
+            c->out->protos[idx].upval_nomes = nms;
+        }
+    }
+    for (int32_t i = 0; i < u->nupvals; i++) free(u->upvals[i].nome);
+    free(u->upvals);
+    proto_encolhe(c, u);
+
+    vardbg_fecha(c, u, 0);
+    for (int32_t i = 0; i < u->nlocais; i++) free(u->locais[i]);
+    free(u->locais);
+    free(u->celula); free(u->celula_virgem); free(u->certo); free(u->tipo_decl);
+    free(u->sim); free(u->mod_sim);
+    for (int32_t i = 0; i < u->nligados; i++) free(u->ligados[i]);
+    free(u->ligados);
+    for (int32_t i = 0; i < u->n_mod_criados; i++) free(u->mod_criados[i]);
+    free(u->mod_criados);
+    free(u->mod_hist);
+    ix_solta(&u->ix_mod);
+    for (int32_t i = 0; i < u->nglobais_decl; i++) free(u->globais_decl[i]);
+    free(u->globais_decl);
+}
+
+/* O proto dos campos com valor padrão da classe: `self.campo = padrão`, na
+ * ordem de declaração. A VM o roda em TODA instância, antes do `__init__`
+ * (gerado ou escrito), pela cadeia de classes, pais antes: o campo com valor
+ * existe sempre, e o `__init__` escrito não apaga mais o padrão (o padrão só
+ * entrava no `__init__` gerado da própria classe). `pai`: a unidade onde a
+ * classe foi declarada — na funct, o proto é closure dela, como o método.
+ * -1 = a classe não tem campo de instância com valor. */
+static int32_t sintetiza_campos(C *c, PSNode *entidade, Unidade *pai)
+{
+    PSNodeVec *campos = &entidade->lista2_alias;
+    int tem = 0;
+    for (int32_t i = 0; i < campos->n && !tem; i++)
+        tem = campos->itens[i] && !campos->itens[i]->is_static && campos->itens[i]->a;
+    if (!tem) return -1;
+    int32_t idx = novo_proto(c, "<campos>");
+    if (idx < 0) return -1;
+
+    Unidade u;
+    memset(&u, 0, sizeof(u));
+    u.pai = (pai && !pai->eh_modulo) ? pai : NULL;
+    u.idx = idx;
+    u.eh_modulo = 0;
+    u.nome_funct = "<campos>";
+    { int32_t si = idx_local(c, &u, "self"); if (si >= 0) u.certo[si] = 1; }
+    c->out->protos[idx].nparams = 1;
+    {
+        char **nomes = calloc(1, sizeof(char *));
+        if (!nomes) { cerro(c, "sem memoria", entidade); return -1; }
+        nomes[0] = strdup("self");
+        c->out->protos[idx].param_nomes = nomes;
+    }
+    int32_t l0 = c->linha_atual, c0 = c->coluna_atual;
+    for (int32_t i = 0; i < campos->n && !CFALHOU(c); i++) {
+        PSNode *campo = campos->itens[i];
+        if (!campo || campo->is_static || !campo->a || !campo->texto) continue;
+        if (campo->line) { c->linha_atual = campo->line; c->coluna_atual = campo->col; }
+        emite(c, &u, OP_LOAD_LOCAL, 0);
+        expr(c, &u, campo->a);
+        if (campo->line) { c->linha_atual = campo->line; c->coluna_atual = campo->col; }
+        emite(c, &u, OP_SET_MEMBER, idx_const(c, &u, K_STR, 0, 0, campo->texto, (int32_t)strlen(campo->texto)));
+    }
+    c->linha_atual = l0; c->coluna_atual = c0;
+    emite(c, &u, OP_LOAD_CONST, idx_const(c, &u, K_NULL, 0, 0, NULL, 0));
+    emite(c, &u, OP_RETURN, 0);
+    fecha_unidade_funct(c, &u, idx, entidade);
     return idx;
 }
 
@@ -7455,39 +7950,7 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
 
     /* Os upvalues descobertos durante o corpo viram tabela no proto: é o que
      * o MAKE_CLOSURE lê pra montar as células. */
-    if (u.nupvals > 0) {
-        PSUpval *uv = calloc((size_t)u.nupvals, sizeof(PSUpval));
-        if (!uv) cerro(c, "sem memoria", n);
-        else {
-            char **nms = calloc((size_t)u.nupvals, sizeof(char *));
-            for (int32_t i = 0; i < u.nupvals; i++) {
-                uv[i].em_local = u.upvals[i].em_local;
-                uv[i].idx      = u.upvals[i].idx;
-                if (nms) nms[i] = strdup(u.upvals[i].nome);
-            }
-            c->out->protos[idx].upvals  = uv;
-            c->out->protos[idx].nupvals = u.nupvals;
-            c->out->protos[idx].upval_nomes = nms;
-        }
-    }
-    for (int32_t i = 0; i < u.nupvals; i++) free(u.upvals[i].nome);
-    free(u.upvals);
-    proto_encolhe(c, &u);
-
-    vardbg_fecha(c, &u, 0);
-    for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
-    free(u.locais);
-    free(u.celula); free(u.celula_virgem); free(u.certo); free(u.tipo_decl);
-    free(u.sim); free(u.mod_sim);
-    for (int32_t i = 0; i < u.nligados; i++) free(u.ligados[i]);
-    free(u.ligados);
-    for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
-    free(u.mod_criados);
-    free(u.mod_hist);
-    ix_solta(&u.ix_mod);
-    for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
-    free(u.globais_decl);
-
+    fecha_unidade_funct(c, &u, idx, n);
     return idx;
 }
 
@@ -7543,12 +8006,14 @@ static void tp_pre_stmt(C *c, Unidade *mod, PSNode *s, int decorado)
             memset(&c->grava, 0, sizeof(c->grava));
             c->grava.tem_valor = 1; c->grava.tipo = "funct"; c->grava.no = s;
             c->grava.decl = s; c->grava.decorado = (unsigned char)decorado;
+            c->grava.declaracao = 1;
             tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
             break;
         case N_ENTITY_DECL:
             if (!s->texto) return;
             memset(&c->grava, 0, sizeof(c->grava));
             c->grava.tem_valor = 1; c->grava.tipo = "Entity"; c->grava.no = s; c->grava.decl = s;
+            c->grava.declaracao = 1;
             tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
             break;
         case N_MODEL_DECL:
@@ -7556,6 +8021,7 @@ static void tp_pre_stmt(C *c, Unidade *mod, PSNode *s, int decorado)
             if (!s->texto) return;
             memset(&c->grava, 0, sizeof(c->grava));
             c->grava.decl = s; c->grava.no = s;
+            c->grava.declaracao = 1;
             tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
             break;
         case N_IMPORT_STMT: {
@@ -7897,11 +8363,71 @@ static void topo_campo_vira_var(PSNode *s)
     if (s && s->kind == N_FIELD_DECL) s->kind = N_VAR_DECL;
 }
 
+static void membro_gravado_poe(C *c, const char *nome)
+{
+    if (!nome) return;
+    for (int32_t i = 0; i < c->nmembros_gravados; i++)
+        if (strcmp(c->membros_gravados[i], nome) == 0) return;
+    if (c->nmembros_gravados + 1 > c->cap_membros_gravados) {
+        int32_t novo = c->cap_membros_gravados < 16 ? 16 : c->cap_membros_gravados * 2;
+        const char **nv = realloc(c->membros_gravados, sizeof(char *) * (size_t)novo);
+        if (!nv) { cerro(c, "sem memoria", NULL); return; }
+        c->membros_gravados = nv; c->cap_membros_gravados = novo;
+    }
+    char *d = strdup(nome);
+    if (!d) { cerro(c, "sem memoria", NULL); return; }
+    c->membros_gravados[c->nmembros_gravados++] = d;
+}
+
+/* Do statement INTEIRO (antes da poda, com os corpos das functs), o que pode
+ * gravar um campo de objeto — ver `C.membros_gravados`. */
+static void tp_colhe_gravacoes(C *c, PSNode *n)
+{
+    if (!n || CFALHOU(c) || fundo_demais(c, n, 1)) return;
+    while (n->kind == N_BINARY_OP) {      /* cadeia `a + b + …` em laço (ver liga_o_nome) */
+        tp_colhe_gravacoes(c, n->b);
+        n = n->a;
+        if (!n) return;
+    }
+    switch (n->kind) {
+        case N_MEMBER_ASSIGNMENT:
+            if (!n->texto2 || !strcmp(n->texto2, "=")) membro_gravado_poe(c, n->texto);
+            break;
+        case N_FIELD_DECL:
+            membro_gravado_poe(c, n->texto);
+            break;
+        case N_UNPACK_TARGET:
+            for (int32_t i = 0; i < n->lista.n; i++)
+                if (n->lista.itens[i] && n->lista.itens[i]->kind == N_MEMBER_ACCESS)
+                    membro_gravado_poe(c, n->lista.itens[i]->texto);
+            break;
+        case N_MEMBER_ACCESS:
+            if (n->texto && !strcmp(n->texto, "__init__")) c->chama_init_nome = 1;
+            break;
+        case N_IMPORT_STMT: {
+            char enc[512];
+            import_modulo_codificado(n, enc);
+            if (!ps_nativo_eh_modulo(enc)) c->importa_pr = 1;
+            break;
+        }
+        default:
+            break;
+    }
+    tp_colhe_gravacoes(c, n->a);
+    tp_colhe_gravacoes(c, n->b);
+    tp_colhe_gravacoes(c, n->c);
+    tp_colhe_gravacoes(c, n->e);
+    for (int32_t i = 0; i < n->lista.n; i++)        tp_colhe_gravacoes(c, n->lista.itens[i]);
+    for (int32_t i = 0; i < n->lista2.n; i++)       tp_colhe_gravacoes(c, n->lista2.itens[i]);
+    for (int32_t i = 0; i < n->lista2_alias.n; i++) tp_colhe_gravacoes(c, n->lista2_alias.itens[i]);
+}
+
 static void passada1_stmt(C *c, PSNode *cheia, PSNode *podada)
 {
     if (CFALHOU(c)) return;
     topo_campo_vira_var(cheia);
     topo_campo_vira_var(podada);
+    tp_colhe_gravacoes(c, cheia);
     coleta_tipos_topo(c, cheia);
     resolve_estrela(c, podada);
     tp_coleta_tipos_arq(c, podada);
@@ -8241,6 +8767,10 @@ static void compila_termina(C *c, Unidade *u)
     free(c->estrelas);
     for (int32_t i = 0; i < c->nglobais_gravados; i++) free(c->globais_gravados[i]);
     free(c->globais_gravados);
+    for (int32_t i = 0; i < c->nmembros_gravados; i++) free((char *)c->membros_gravados[i]);
+    free(c->membros_gravados);
+    for (int32_t i = 0; i < c->ntipos_ambiguos; i++) free(c->tipos_ambiguos[i]);
+    free(c->tipos_ambiguos);
     proto_encolhe(c, u);
 
     /* a cota de pilha de CADA proto, com o código pronto (ver `pilha_max`):

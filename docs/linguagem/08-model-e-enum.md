@@ -185,6 +185,17 @@ enum E {
 post(E.A, E.B, E.C)                   # 10 11 12   (B e C continuam de 10)
 ```
 
+- A contagem segue inteira sem teto: depois do maior `int` de 64 bits vem o
+  inteiro grande (`A = 9223372036854775807, B` dá `B` = `9223372036854775808`,
+  `type` `int`).
+- Só um inteiro continua a contagem. Membro sem valor depois de um valor que
+  não é inteiro é erro — antes de rodar quando o valor é escrito, rodando
+  quando ele só se sabe ali:
+  `TypeError: enum F: o membro B nao tem valor e o anterior (A) nao e inteiro — so um inteiro continua a contagem: escreva o valor de B`.
+- Membro repetido é erro antes de rodar, no segundo:
+  `SyntaxError: membro 'A' repetido no enum E (o primeiro esta na linha 2)`.
+  No `model`, o campo repetido também: `campo 'nome' repetido no model M`.
+
 ### 8.2.2. Uso
 
 - Acesse um membro por `Nome.MEMBRO`.
@@ -192,6 +203,33 @@ post(E.A, E.B, E.C)                   # 10 11 12   (B e C continuam de 10)
   `Cor.RED == 0` é `True` — dá pra comparar e usar em contas normalmente.
 - Acessar um membro inexistente é erro:
   `AttributeError: type object 'Cor' has no attribute 'AZUL'`.
+- Os membros são **constantes**: `Cor.RED = 99` é erro
+  (`AttributeError: membro 'RED' do enum Cor e constante: nao se reatribui`),
+  e o enum não ganha membro novo
+  (`enum Cor nao ganha membro novo ('NOVO'): os membros sao os da declaracao`).
+
+### 8.2.3. O enum como tipo
+
+O nome do enum vale como tipo, em variável, parâmetro, retorno e campo, e no
+`is`: aceita o valor de um dos membros dele.
+
+```ps
+enum Cor {
+    RED,
+    GREEN
+}
+funct pinta(Cor c) {
+    post("cor", c)
+}
+pinta(Cor.GREEN)                      # cor 1
+post(Cor.RED is Cor)                  # True
+```
+
+O `--check` aceita o que ele sabe que é membro (`Cor.GREEN`) e recusa o que
+tem outro tipo escrito (`Cor c = 5`:
+`AttributedValueError: variável c esperava Cor, recebeu int`). O valor que só
+se sabe rodando (um item de lista, o `json.parse`) é conferido rodando: vale
+se for o de um dos membros.
 
 ---
 
@@ -204,5 +242,6 @@ post(E.A, E.B, E.C)                   # 10 11 12   (B e C continuam de 10)
   presentes (salvo `optional`), com o tipo certo e dentro das restrições,
   recursivo no aninhado; extras ignorados.
 - **`enum Nome { A, B … }`** (sem parênteses; chaves; vírgula ou linha).
-  Constantes **inteiras** a partir de `0` (ou explícitas, com auto-continuação);
-  `Nome.MEMBRO` devolve o inteiro.
+  Constantes **inteiras** a partir de `0` (ou explícitas, com auto-continuação
+  só depois de inteiro); `Nome.MEMBRO` devolve o inteiro; membro constante e
+  não repetido; o nome do enum vale como tipo dos membros.

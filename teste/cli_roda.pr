@@ -1951,6 +1951,54 @@ r = roda([POOL, "decor70.pr"], pasta=CLS)
 confere("70 metodos decorados na mesma classe: os 70 registram",
         r["rc"] == 0 and r["saida"] == "70\n")
 
+# ── construtor, campos, enum e redeclaração (Plano 6, lote 5) ───────────────
+# A posição no JSON do --check: o erro que é do NOME (redeclarado, repetido,
+# sobrescrita) sublinha o nome inteiro, não a declaração; a leitura do campo
+# sem valor aponta o membro. Os outros vetores estão em casos_linguagem.c.
+# a 2ª classe usa um membro que a 1ª não tem: conferido contra a 1ª, saíam
+# dois erros em cascata além da causa
+os.writeFile(CLS + "/redecl.pr", "class C {\n    int x = 1\n}\nC a = C()\npost(a.x)\nclass C {\n    str y = \"a\"\n"
+    + "    str funct oi(self) {\n        return \"oi \" + self.y\n    }\n}\nC b = C()\npost(b.oi())\n")
+r = roda([POOL, "--check", "redecl.pr"], pasta=CLS)
+confere("class redeclarada: um erro so, no nome da segunda (linha 6, colunas 7 a 8)",
+        "\"linha\":6,\"coluna\":7,\"l2\":6,\"c2\":8" in r["saida"] and r["saida"].count("ja foi declarado") == 2
+        and r["saida"].count("\"tipo\":") == 2)
+os.writeFile(CLS + "/metodo2.pr",
+    "class C {\n    funct oi(self) {\n        post(\"1\")\n    }\n    funct oi(self) {\n        post(\"2\")\n    }\n}\n")
+r = roda([POOL, "--check", "metodo2.pr"], pasta=CLS)
+confere("metodo repetido: o nome do segundo (linha 5, colunas 11 a 13)",
+        "membro 'oi' repetido na classe C" in r["saida"] and "\"linha\":5,\"coluna\":11,\"l2\":5,\"c2\":13" in r["saida"])
+os.writeFile(CLS + "/enum2.pr", "enum E {\n    A,\n    B,\n    A\n}\n")
+r = roda([POOL, "--check", "enum2.pr"], pasta=CLS)
+confere("membro repetido no enum: o nome do segundo (linha 4, colunas 5 a 6)",
+        "membro 'A' repetido no enum E" in r["saida"] and "\"linha\":4,\"coluna\":5,\"l2\":4,\"c2\":6" in r["saida"])
+os.writeFile(CLS + "/model2.pr", "model M() {\n    nome: str\n    nome: int\n}\n")
+r = roda([POOL, "--check", "model2.pr"], pasta=CLS)
+confere("campo repetido no model: o nome do segundo (linha 3, colunas 5 a 9)",
+        "campo 'nome' repetido no model M" in r["saida"] and "\"linha\":3,\"coluna\":5,\"l2\":3,\"c2\":9" in r["saida"])
+os.writeFile(CLS + "/sobre.pr",
+    "class Pai {\n    int funct m(self) {\n        return 1\n    }\n}\nclass Filha(Pai) {\n    str funct m(self) {\n"
+    + "        return \"t\"\n    }\n}\n")
+r = roda([POOL, "--check", "sobre.pr"], pasta=CLS)
+confere("sobrescrita que troca o retorno: o nome do metodo da filha (linha 7, colunas 15 a 16)",
+        "m() de Filha devolve str e sobrescreve m() de Pai, que devolve int" in r["saida"]
+        and "\"linha\":7,\"coluna\":15,\"l2\":7,\"c2\":16" in r["saida"])
+str CLS_SEM = "class Pai {\n    int x\n}\nclass Filha(Pai) {\n    str y = \"oi\"\n}\nFilha f = Filha()\npost(f.x)\n"
+os.writeFile(CLS + "/semvalor.pr", CLS_SEM)
+r = roda([POOL, "--check", "semvalor.pr"], pasta=CLS)
+confere("campo do pai sem valor lido: antes de rodar, no membro (linha 8, colunas 7 a 9)",
+        "o campo x de Pai foi declarado sem valor e nada o gravou" in r["saida"]
+        and "\"linha\":8,\"coluna\":7,\"l2\":8,\"c2\":9" in r["saida"])
+# um módulo `.pr` importado pode gravar o campo: o checador não acusa, e a VM
+# dá a mesma frase rodando
+os.writeFile(CLS + "/nada.pr", "int n = 1\n")
+os.writeFile(CLS + "/semvalor_mod.pr", "import nada\n" + CLS_SEM)
+r = roda([POOL, "--check", "semvalor_mod.pr"], pasta=CLS)
+confere("campo sem valor com modulo .pr importado: o --check nao acusa", "{\"ok\":true}" in r["saida"])
+r = roda([POOL, "semvalor_mod.pr"], pasta=CLS)
+confere("campo sem valor com modulo .pr importado: rodando, a frase com a causa",
+        r["rc"] == 1 and "'Filha' object has no attribute 'x': o campo x de Pai foi declarado sem valor" in r["saida"])
+
 # ── relatório ───────────────────────────────────────────────────────────────
 post("")
 post("cli/jpkg:", ok, "checagens passaram")

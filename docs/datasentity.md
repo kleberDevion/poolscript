@@ -31,7 +31,9 @@ post(user.nome)   # "Kleber"
 
 ## asdict(instance)
 
-Converte a instância pra `dict` Jinga.
+Converte a instância pra `dict` Jinga. A Entity de dentro (num campo, ou em
+`list`, `tup` e `dict` de dentro, em qualquer profundidade) vira `dict`
+também; uma que contém a si mesma é `RecursionError`.
 
 ```
 asdict(user)
@@ -64,7 +66,8 @@ aslist(user)
 
 ## asjson(instance)
 
-Converte pra string JSON. Serializa `DataEntity` aninhada recursivamente.
+Converte pra string JSON: é o `asdict` serializado, então a `DataEntity`
+aninhada sai como objeto JSON, em qualquer profundidade.
 
 ```
 asjson(user)

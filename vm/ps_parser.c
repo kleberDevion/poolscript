@@ -873,6 +873,14 @@ static void pula_separadores_com_dedent(P *p)
 }
 
 /* nome que vai ser LIGADO: recusa palavra reservada */
+/* A posição do token do nome de uma declaração (funct, class, model, enum),
+ * guardada no `i` do nó como `linha << 32 | coluna`: o nó começa na palavra
+ * da declaração, e o erro que é do NOME (redeclarado, repetido) aponta ele. */
+static int64_t pos_do_nome(const PSToken *t)
+{
+    return t ? ((int64_t)t->line << 32) | (uint32_t)t->col : 0;
+}
+
 static const char *exige_nome(P *p, const char *contexto)
 {
     PSToken *t = atual(p);
@@ -967,6 +975,26 @@ static int eh_tipo_kw_expr(PSToken *t)
     if (t->type != T_KW || !t->texto) return 0;
     const PSTipoInfo *ti = ps_tipo_info(t->texto);
     return ti && ti->expr;
+}
+
+/* O lado direito do `is` quando é um NOME DE TIPO da tabela (`x is Object`,
+ * `c is char`, `s is String`, `f is PoolFile`): vira TypeName, e o `is`
+ * pergunta o que a declaração `T x = valor` aceitaria. Fora do `is` esses
+ * nomes não são valor (`Object` sozinho continua NameError; `String(x)` não é
+ * conversão). Chamada (`T(`) ou membro (`T.`) não é nome de tipo. NULL = não é
+ * o caso; o lado direito segue pela expressão comum. */
+static PSNode *lado_tipo_do_is(P *p)
+{
+    PSToken *t = atual(p);
+    if (!t->texto || (t->type != T_KW && t->type != T_IDENT && t->type != T_IDENT_UPPER)) return NULL;
+    if (!ps_tipo_info(t->texto)) return NULL;
+    PSToken *dep = espia(p, 1);
+    if (dep->type == T_LPAREN || dep->type == T_DOT) return NULL;
+    p->pos++;
+    PSNode *n = ps_node_novo(p->arena, N_TYPE_NAME, t->line, t->col);
+    if (!n) return NULL;
+    n->texto = dup_tok(p, t);
+    return n;
 }
 
 /* ── protótipos ─────────────────────────────────────────────────────────── */
@@ -1972,7 +2000,9 @@ static PSNode *comparacao(P *p)
                 p->pos++;
                 nome_op = dup_str(p, "is not");
             }
-            PSNode *d = bitor_(p);
+            PSNode *d = strcmp(op->texto, "is") == 0 ? lado_tipo_do_is(p) : NULL;
+            if (FALHOU(p)) return NULL;
+            if (!d) d = bitor_(p);
             if (FALHOU(p)) return NULL;
             PSNode *n = ps_node_novo(p->arena, N_BINARY_OP, op->line, op->col);
             if (!n) return NULL;
@@ -2002,7 +2032,9 @@ static PSNode *comparacao(P *p)
             p->pos++;
             const char *seg = atual(p)->texto;
             p->pos++;
-            PSNode *d = bitor_(p);
+            PSNode *d = strcmp(seg, "is") == 0 ? lado_tipo_do_is(p) : NULL;
+            if (FALHOU(p)) return NULL;
+            if (!d) d = bitor_(p);
             if (FALHOU(p)) return NULL;
             PSNode *n = ps_node_novo(p->arena, N_BINARY_OP, op->line, op->col);
             if (!n) return NULL;
@@ -3238,12 +3270,14 @@ static PSNode *funct_decl(P *p, int is_async, const char *tipo_retorno)
 {
     PSToken *t = atual(p);
     p->pos++;                                  /* funct, ou a grafia morta action / reaction */
+    PSToken *tn = atual(p);
     const char *nome = exige_nome(p, "funct");
     if (FALHOU(p)) return NULL;
 
     PSNode *n = ps_node_novo(p->arena, N_FUNCT_DECL, t->line, t->col);
     if (!n) return NULL;
     n->texto = nome;
+    n->i = pos_do_nome(tn);
     n->texto2 = tipo_retorno;
     n->is_async = is_async;
 
@@ -3695,6 +3729,7 @@ static PSNode *statement_no(P *p)
         PSNode *n = ps_node_novo(p->arena, N_ENTITY_DECL, t->line, t->col);
         if (!n) return NULL;
         n->is_private = classe_priv;
+        n->i = pos_do_nome(atual(p));
         n->texto = exige_nome(p, "Entity");
         if (FALHOU(p)) return NULL;
         if (checa(p, T_LPAREN)) {
@@ -4170,6 +4205,7 @@ static PSNode *statement_no(P *p)
         p->pos++;
         PSNode *n = ps_node_novo(p->arena, N_MODEL_DECL, t->line, t->col);
         if (!n) return NULL;
+        n->i = pos_do_nome(atual(p));
         n->texto = exige_nome(p, "model");
         if (FALHOU(p)) return NULL;
         if (!exige(p, T_LPAREN, "esperado '(' apos nome do model")) return NULL;
@@ -4286,6 +4322,7 @@ static PSNode *statement_no(P *p)
         p->pos++;
         PSNode *n = ps_node_novo(p->arena, N_ENUM_DECL, t->line, t->col);
         if (!n) return NULL;
+        n->i = pos_do_nome(atual(p));
         n->texto = exige_nome(p, "enum");
         if (FALHOU(p)) return NULL;
         pula_separadores(p);

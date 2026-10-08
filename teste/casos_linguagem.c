@@ -2241,7 +2241,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "    }\n"
   "}\n",
   "dois", NULL, 0 },
-{ "Entity sem __init__ e sem campo nao recebe argumento",
+{ "Entity sem __init__ e sem campo nao recebe argumento (antes de rodar)",
   "Entity Zero {\n"
   "    funct m(self) {\n"
   "        return 1\n"
@@ -2249,7 +2249,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "post(Zero().m())\n"
   "Zero(1, 2, 3)\n",
-  "1", "TypeError: Zero() takes no arguments (3 given)", 1 },
+  "", "TypeError: Zero() takes no arguments (3 given)", 2 },
 { "@static chamado pela instancia: a mensagem diz pra chamar pela Entity",
   "Entity Mat {\n"
   "    @static\n"
@@ -2799,9 +2799,9 @@ const Caso CASOS_LINGUAGEM[] = {
   "class Pai {\n    static int k = 1\n}\nclass Filha(Pai) {\n    static int k = 2\n}\n"
   "Filha.k = 20\npost(Pai.k, Filha.k)\nFilha f = Filha()\nf.k = 30\npost(Pai.k, Filha.k, f.k)\n",
   "1 20\n1 30 30", NULL, 0 },
-{ "static e campo de instancia de mesmo nome na classe: o do objeto ganha",
+{ "static e campo de instancia de mesmo nome na classe: membro repetido (Plano 6, lote 5)",
   "class K {\n    static int n = 1\n    int n = 2\n}\nK a = K()\npost(K.n, a.n)\n",
-  "1 2", NULL, 0 },
+  "", "SyntaxError: membro 'n' repetido na classe K (o primeiro esta na linha 2)", 2 },
 { "static tipado: escrita pela classe com outro tipo e recusada antes de rodar",
   "class K {\n    static int n = 0\n}\nK.n = \"texto\"\npost(K.n, type(K.n))\n",
   "", "AttributedValueError: campo n de K esperava int, recebeu str", 2 },
@@ -2846,6 +2846,170 @@ const Caso CASOS_LINGUAGEM[] = {
   "class C {\n    int v = 0\n    private funct __init__(self, int v) {\n        self.v = v\n    }\n"
   "    static C funct cria(int v) {\n        return C(v)\n    }\n}\npost(C.cria(4).v)\n",
   "4", NULL, 0 },
+
+/* ── classes: construtor, campos, enum, `is` e redeclaração (Plano 6, lote 5) ──
+ * O `is` com classe sobe pela herança e classe com classe é identidade; o
+ * nome de tipo à direita segue a regra da declaração. Uma regra decide o
+ * construtor (o `--check` e a VM). Campo com valor nasce sempre, antes do
+ * `__init__`, uma vez por objeto; o sem valor do pai, lido sem ninguém o
+ * gravar, é AttributeError com a causa. Redeclaração, membro repetido e
+ * sobrescrita que troca o retorno são erro antes de rodar. Enum como tipo. */
+{ "is sobe pela heranca e classe com classe e identidade",
+  "class Animal {\n}\nclass Cao(Animal) {\n}\nCao c = Cao()\npost(c is Cao, c is Animal, Animal() is Cao)\n"
+  "post(Cao is Cao, Cao is Animal)\n",
+  "True True False\nTrue False", NULL, 0 },
+{ "is com nome de tipo declaravel segue a regra da declaracao",
+  "int a = 1\npost(a is Object, a is int, a is str, \"x\" is String)\npost(a not is str)\n",
+  "False True False True\nTrue", NULL, 0 },
+{ "is Object com instancia",
+  "class A {\n}\nA a = A()\npost(a is Object)\n", "True", NULL, 0 },
+{ "is com enum: o valor de um dos membros",
+  "enum Cor {\n    RED,\n    GREEN\n}\npost(Cor.RED is Cor, 1 is Cor, 5 is Cor)\n",
+  "True True False", NULL, 0 },
+{ "construtor: Filha() com campo e sem __init__ usa o gerado dela, nao o __init__ do pai",
+  "class Pai {\n    funct __init__(self, int x) {\n        self.x = x * 10\n    }\n}\n"
+  "class Filha(Pai) {\n    str nome = \"f\"\n}\nFilha f = Filha()\npost(f.nome)\n",
+  "f", NULL, 0 },
+{ "construtor gerado herdado do pai e conferido antes de rodar",
+  "class Pai {\n    int x\n}\nclass Filha(Pai) {\n}\nFilha f = Filha(\"texto\")\npost(f.x)\n",
+  "", "AttributedValueError: campo x de Filha esperava int, recebeu str", 2 },
+{ "campo com valor do pai nasce na filha que tem campos proprios",
+  "class Pai {\n    int x = 1\n}\nclass Filha(Pai) {\n    str y = \"oi\"\n}\nFilha f = Filha()\npost(f.y)\npost(f.x)\n",
+  "oi\n1", NULL, 0 },
+{ "campo com valor existe com __init__ escrito",
+  "class C {\n    int x = 5\n    funct __init__(self) {\n        post(\"init\")\n    }\n"
+  "    int funct le(self) {\n        return self.x\n    }\n}\nC c = C()\npost(c.le())\n",
+  "init\n5", NULL, 0 },
+{ "base().__init__ com pai sem construtor (static nao gera um): erro antes de rodar",
+  "class A {\n    static int k = 1\n}\nclass B(A) {\n    funct __init__(self) {\n        base().__init__()\n    }\n}\n"
+  "B b = B()\npost(\"ok\")\n",
+  "", "TypeError: base(): a Entity pai 'A' nao tem __init__", 2 },
+{ "campo do pai sem valor lido na filha: AttributeError antes de rodar, com a causa",
+  "class Pai {\n    int x\n}\nclass Filha(Pai) {\n    str y = \"oi\"\n}\nFilha f = Filha()\npost(f.y)\npost(f.x)\n",
+  "", "AttributeError: 'Filha' object has no attribute 'x': o campo x de Pai foi declarado sem valor e nada o "
+      "gravou (de um valor na declaracao ou grave self.x no __init__)", 2 },
+{ "campo do pai sem valor com __init__ escrito na filha: antes de rodar tambem",
+  "class Pai {\n    int x\n}\nclass Filha(Pai) {\n    str y\n    funct __init__(self, str y) {\n        self.y = y\n    }\n}\n"
+  "Filha f = Filha(\"a\")\npost(f.x)\n",
+  "", "AttributeError: 'Filha' object has no attribute 'x': o campo x de Pai foi declarado sem valor e nada o "
+      "gravou (de um valor na declaracao ou grave self.x no __init__)", 2 },
+{ "campo do pai sem valor gravado de fora: vale",
+  "class Pai {\n    int x\n}\nclass Filha(Pai) {\n    str y = \"oi\"\n}\nFilha f = Filha()\nf.x = 3\npost(f.x)\n",
+  "3", NULL, 0 },
+{ "campo do pai sem valor gravado pelo construtor do pai via base: vale",
+  "class Pai {\n    int x\n}\nclass Filha(Pai) {\n    funct __init__(self) {\n        base(Pai).__init__(7)\n    }\n}\n"
+  "Filha f = Filha()\npost(f.x)\n",
+  "7", NULL, 0 },
+{ "campo sem valor lido no metodo do pai: o Pai() o recebe, sem erro",
+  "class Pai {\n    int x\n    int funct dobro(self) {\n        return self.x * 2\n    }\n}\nclass Filha(Pai) {\n    str y = \"oi\"\n}\n"
+  "Pai p = Pai(4)\npost(p.dobro())\nFilha f = Filha()\npost(f.y)\n",
+  "8\noi", NULL, 0 },
+{ "campo sem valor rodando (receptor que o checador nao tipa): a mesma frase",
+  "class Pai {\n    int x\n}\nclass Filha(Pai) {\n    str y = \"a\"\n}\nlist l = [Filha()]\npost(l[0].x)\n",
+  "", "AttributeError: 'Filha' object has no attribute 'x': o campo x de Pai foi declarado sem valor e nada o "
+      "gravou (de um valor na declaracao ou grave self.x no __init__)", 1 },
+{ "valor padrao roda uma vez por objeto, antes do __init__; o argumento passado ganha",
+  "int cont = 0\nint funct proximo() {\n    cont += 1\n    return cont\n}\nclass C {\n    str nome\n    int id = proximo()\n}\n"
+  "C a = C(\"x\")\npost(a.id, cont)\nC b = C(nome=\"y\")\npost(b.id, cont)\nC d = C(\"z\", 50)\npost(d.id, cont)\n",
+  "1 1\n2 2\n50 3", NULL, 0 },
+{ "valor padrao com a Entity como valor (map)",
+  "int cont = 0\nint funct proximo() {\n    cont += 1\n    return cont\n}\nclass C {\n    str nome\n    int id = proximo()\n}\n"
+  "list l = list(map([\"p\", \"q\"], C))\npost(l[0].id, l[1].id, cont)\n",
+  "1 2 2", NULL, 0 },
+{ "valor padrao de campo em classe declarada dentro de funct enxerga a funct",
+  "funct fab(int b0) {\n    class L {\n        int v = b0 * 2\n        int funct dobro(self) {\n            return self.v * 2\n        }\n    }\n"
+  "    return L()\n}\npost(fab(5).v, fab(5).dobro())\n",
+  "10 20", NULL, 0 },
+{ "valor padrao na instancia que o registrador de metodo recebe",
+  "class Reg {\n    list fs = []\n    funct register(self, Object f) {\n        self.fs.append(f)\n    }\n}\nReg r = Reg()\n"
+  "class C {\n    int base0 = 5\n    @r\n    int funct m(self) {\n        return self.base0\n    }\n}\npost(r.fs[0]())\n",
+  "5", NULL, 0 },
+{ "class declarada duas vezes no mesmo escopo: erro na segunda",
+  "class C {\n    int x = 1\n}\nC a = C()\npost(a.x)\nclass C {\n    str y = \"a\"\n}\n",
+  "", "SyntaxError: 'C' ja foi declarado na linha 1 (class): um nome, uma declaracao no mesmo escopo", 2 },
+{ "class em cada ramo do if/else: escopos diferentes, vale",
+  "bool sim = True\nif sim {\n    class C {\n        int x = 1\n    }\n    post(C().x)\n} else {\n    class C {\n        int x = 2\n    }\n"
+  "    post(C().x)\n}\n",
+  "1", NULL, 0 },
+{ "enum com o nome de uma class da mesma funct: erro",
+  "funct f() {\n    class L {\n        int a = 1\n    }\n    enum L {\n        A\n    }\n}\n",
+  "", "SyntaxError: 'L' ja foi declarado na linha 2 (class): um nome, uma declaracao no mesmo escopo", 2 },
+{ "model declarado duas vezes: erro",
+  "model M() {\n    nome: str\n}\nmodel M() {\n    idade: int\n}\n",
+  "", "SyntaxError: 'M' ja foi declarado na linha 1 (model): um nome, uma declaracao no mesmo escopo", 2 },
+{ "class com o nome de uma funct: erro de redeclaracao",
+  "funct C() {\n    return 1\n}\nclass C {\n    int x = 1\n}\n",
+  "", "SyntaxError: 'C' ja foi declarado na linha 1 (funct): um nome, uma declaracao no mesmo escopo", 2 },
+{ "funct declarada de novo continua valendo a ultima",
+  "funct f() {\n    return 1\n}\nfunct f() {\n    return 2\n}\npost(f())\n", "2", NULL, 0 },
+{ "metodo repetido na classe: erro no segundo",
+  "class C {\n    funct oi(self) {\n        post(\"1\")\n    }\n    funct oi(self) {\n        post(\"2\")\n    }\n}\nC().oi()\n",
+  "", "SyntaxError: membro 'oi' repetido na classe C (o primeiro esta na linha 2)", 2 },
+{ "campo repetido na classe: erro no segundo",
+  "class C {\n    int x = 1\n    int x = 2\n}\nC c = C()\npost(c.x)\n",
+  "", "SyntaxError: membro 'x' repetido na classe C (o primeiro esta na linha 2)", 2 },
+{ "campo e metodo de mesmo nome na classe: erro",
+  "class C {\n    int x = 1\n    int funct x(self) {\n        return 2\n    }\n}\n",
+  "", "SyntaxError: membro 'x' repetido na classe C (o primeiro esta na linha 2)", 2 },
+{ "campo repetido no model: erro",
+  "model M() {\n    nome: str\n    nome: int\n}\n",
+  "", "SyntaxError: campo 'nome' repetido no model M (o primeiro esta na linha 2)", 2 },
+{ "membro repetido no enum: erro",
+  "enum E {\n    A,\n    B,\n    A\n}\n",
+  "", "SyntaxError: membro 'A' repetido no enum E (o primeiro esta na linha 2)", 2 },
+{ "sobrescrita que troca o tipo de retorno: erro na filha",
+  "class Pai {\n    int funct m(self) {\n        return 1\n    }\n}\nclass Filha(Pai) {\n    str funct m(self) {\n        return \"texto\"\n    }\n}\n"
+  "Pai p = Filha()\nint x = p.m()\npost(x)\n",
+  "", "TypeError: m() de Filha devolve str e sobrescreve m() de Pai, que devolve int", 2 },
+{ "sobrescrita sem tipo de retorno sobre um metodo tipado: erro",
+  "class Pai {\n    str funct m(self) {\n        return \"a\"\n    }\n}\nclass Filha(Pai) {\n    funct m(self) {\n        return 5\n    }\n}\n",
+  "", "TypeError: m() de Filha nao declara o retorno e sobrescreve m() de Pai, que devolve str: declare str funct m", 2 },
+{ "sobrescrita de um Null funct que devolve valor: erro",
+  "class Pai {\n    Null funct m(self) {\n        post(\"pai\")\n    }\n}\nclass Filha(Pai) {\n    int funct m(self) {\n        return 1\n    }\n}\n",
+  "", "TypeError: m() de Filha devolve int e sobrescreve m() de Pai, que devolve Null", 2 },
+{ "sobrescrita que devolve a subclasse, e o private do pai nao e sobrescrito: valem",
+  "class Animal {\n    str nome = \"a\"\n}\nclass Cao(Animal) {\n}\nclass Pai {\n    Animal funct bicho(self) {\n        return Animal()\n    }\n"
+  "    private int funct seg(self) {\n        return 1\n    }\n}\nclass Filha(Pai) {\n    Cao funct bicho(self) {\n        return Cao()\n    }\n"
+  "    str funct seg(self) {\n        return \"ok\"\n    }\n}\nFilha f = Filha()\npost(f.seg(), type(f.bicho()))\n",
+  "ok Cao", NULL, 0 },
+{ "enum: o automatico depois do maior int vira inteiro grande",
+  "enum E {\n    A = 9223372036854775807,\n    B\n}\npost(E.B, type(E.B))\n",
+  "9223372036854775808 int", NULL, 0 },
+{ "enum: membro sem valor depois de texto e erro antes de rodar",
+  "enum F {\n    A = \"texto\",\n    B\n}\npost(F.B)\n",
+  "", "TypeError: enum F: o membro B nao tem valor e o anterior (A) nao e inteiro "
+      "— so um inteiro continua a contagem: escreva o valor de B", 2 },
+{ "enum: membro sem valor depois de valor nao inteiro que so se sabe rodando",
+  "str s = \"t\"\nenum G {\n    A = s,\n    B\n}\npost(G.B)\n",
+  "", "TypeError: enum G: o membro B nao tem valor e o anterior (A) nao e inteiro "
+      "— so um inteiro continua a contagem: escreva o valor de B", 1 },
+{ "enum como tipo de parametro aceita o membro",
+  "enum Cor {\n    RED, GREEN\n}\nfunct pinta(Cor c) {\n    post(\"cor\", c)\n}\npinta(Cor.GREEN)\n", "cor 1", NULL, 0 },
+{ "enum como tipo: int escrito e recusado antes de rodar",
+  "enum Cor {\n    RED,\n    GREEN\n}\nCor c = 5\n", "", "AttributedValueError: variável c esperava Cor, recebeu int", 2 },
+{ "enum como tipo: o valor que so se sabe rodando vale se for de um membro",
+  "enum Cor {\n    RED,\n    GREEN\n}\nlist l = [1, 7]\nCor c = l[0]\npost(c)\nCor d = l[1]\npost(d)\n",
+  "1", "AttributedValueError: variável d esperava Cor, recebeu int", 1 },
+{ "membro de enum e constante: erro antes de rodar",
+  "enum Cor {\n    RED, GREEN\n}\nCor.RED = 99\npost(Cor.RED)\n",
+  "", "AttributeError: membro 'RED' do enum Cor e constante: nao se reatribui", 2 },
+{ "enum nao ganha membro novo rodando",
+  "enum Cor {\n    RED\n}\nObject e = Cor\ne.NOVO = 1\n",
+  "", "AttributeError: enum Cor nao ganha membro novo ('NOVO'): os membros sao os da declaracao", 1 },
+{ "asjson desce na Entity de dentro",
+  "from datasentity import dataentity, asjson\n@dataentity\nEntity Endereco {\n    rua: str\n}\n@dataentity\nEntity Pessoa {\n"
+  "    nome: str\n    end: Endereco\n}\nPessoa p = Pessoa(\"ana\", Endereco(\"x\"))\npost(asjson(p))\n",
+  "{\"nome\": \"ana\", \"end\": {\"rua\": \"x\"}}", NULL, 0 },
+{ "asdict desce na Entity de dentro, tambem em list; asjson e o asdict serializado",
+  "from datasentity import dataentity, asdict, asjson\nimport json\n@dataentity\nEntity Endereco {\n    rua: str\n}\n"
+  "@dataentity\nEntity Pessoa {\n    nome: str\n    end: Endereco\n    outros: list\n}\n"
+  "Pessoa p = Pessoa(\"ana\", Endereco(\"x\"), [Endereco(\"y\"), 3])\ndict d = asdict(p)\npost(d)\npost(d[\"end\"].rua)\n"
+  "post(asjson(p) == json.stringify(asdict(p)))\n",
+  "{'nome': 'ana', 'end': {'rua': 'x'}, 'outros': [{'rua': 'y'}, 3]}\nx\nTrue", NULL, 0 },
+{ "asdict de Entity que contem a si mesma: RecursionError",
+  "from datasentity import asdict\nclass No {\n    list prox = []\n}\nNo a = No()\na.prox.append(a)\ntry {\n    post(asdict(a))\n"
+  "} catch (RecursionError e) {\n    post(\"pegou:\", e)\n}\n",
+  "pegou: asdict(): Entity aninhada demais (ou que contem a si mesma) (linha 8)", NULL, 0 },
 
 /* ── import por caminho entre aspas (`import '../x.pr'`), 2026-09-06 ───────
  * A string e o especificador, como no TypeScript: com `/` ou extensao da

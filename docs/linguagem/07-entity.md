@@ -28,6 +28,12 @@ Entity Usuario {
   (`o '()' fica so na instanciacao: escreva Entity Usuario {`), e
   `Entity Usuario:` também (`bloco com ':' nao existe mais`).
 - **`class` e `Class` são sinônimos de `Entity`** — mesma semântica.
+- **Um nome, uma declaração por escopo:** declarar de novo uma classe, model
+  ou enum com um nome que outra declaração ainda liga no mesmo escopo (outra
+  classe, model, enum ou funct) é erro antes de rodar, no nome da segunda:
+  `SyntaxError: 'C' ja foi declarado na linha 1 (class): um nome, uma
+  declaracao no mesmo escopo`. Blocos irmãos são escopos diferentes: o `if` e
+  o `else` podem declarar cada um a sua `class C`.
 
 ```ps
 class Ponto {          # idêntico a Entity Ponto {
@@ -75,6 +81,33 @@ Entity Usuario {         # idêntico ao de cima
   post(c.host, c.porta)     # localhost 8080
   ```
 
+- **O valor padrão nasce sempre**, antes do construtor (o sintetizado ou o
+  próprio, 7.2.1), uma vez por objeto, na ordem declarada — os padrões dos
+  pais antes dos da filha (7.5.1). O construtor sintetizado só grava o
+  argumento que recebeu: a expressão do padrão não roda de novo.
+
+  ```ps
+  int cont = 0
+  int funct proximo() {
+      cont += 1
+      return cont
+  }
+  class Pedido {
+      str item
+      int id = proximo()
+  }
+  Pedido a = Pedido("x")
+  Pedido b = Pedido("y", 50)
+  post(a.id, b.id, cont)    # 1 50 2
+  ```
+
+  Numa classe declarada dentro de uma funct, o padrão enxerga a funct, como
+  os métodos (`int v = base0 * 2` lê o parâmetro `base0` dela).
+
+- **Membro repetido** no corpo (dois campos, dois métodos, ou um campo e um
+  método com o mesmo nome) é erro antes de rodar, no segundo:
+  `SyntaxError: membro 'x' repetido na classe C (o primeiro esta na linha 2)`.
+
 - **Campos criados no método:** um método pode criar um campo não declarado
   com `self.x = ...` — ele passa a existir na instância:
 
@@ -118,7 +151,8 @@ Entity Usuario {         # idêntico ao de cima
 ### 7.2.1. Construtor próprio — `funct __init__`
 
 Para um construtor com lógica própria (validação, campos derivados), defina
-`funct __init__(self, …)`. Isso **substitui** o construtor sintetizado:
+`funct __init__(self, …)`. Isso **substitui** o construtor sintetizado (os
+campos com valor padrão nascem antes dele mesmo assim, 7.2):
 
 ```ps
 Entity Retangulo {
@@ -363,13 +397,51 @@ Entity C(A, B) {          # herda métodos de A e de B
 }
 ```
 
+**A sobrescrita mantém o tipo de retorno.** Quem declara `p` como o pai
+recebe de `p.m()` o tipo que o pai promete, então o método do filho que
+sobrescreve um método com retorno declarado tem que declarar um retorno que
+caiba nele (`Cao funct bicho` sobre `Animal funct bicho` vale). Trocar o tipo,
+ou não declarar, é erro antes de rodar, no nome do método do filho:
+
+```
+TypeError: m() de Filha devolve str e sobrescreve m() de Pai, que devolve int
+TypeError: m() de Filha nao declara o retorno e sobrescreve m() de Pai, que devolve str: declare str funct m
+```
+
+O método `private` do pai não é sobrescrito (o filho não o enxerga: o dele é
+outro método), e o que um decorador geral pode trocar fica de fora.
+
 ### 7.5.1. Construtor e herança
 
-- Um filho que **não declara campos nem `__init__`** herda o construtor do pai
-  (recebe os campos do pai).
-- Um filho que **declara campos próprios** sintetiza o seu próprio construtor,
-  só com os **campos dele** — os do pai não entram automaticamente. Para incluí-los,
-  redeclare-os no filho ou escreva um `__init__` próprio.
+Uma regra só decide o construtor que `Classe(...)` roda, a mesma da busca de
+membro, e o `--check` confere a chamada contra ele antes de rodar:
+
+- Um filho com **`__init__` próprio** usa o dele.
+- Um filho que **declara campos próprios** (sem `__init__`) sintetiza o seu,
+  só com os **campos dele** — os do pai não entram como argumento.
+- Um filho **sem campos nem `__init__`** usa o construtor do primeiro pai que
+  tem um (o próprio ou o sintetizado), na ordem dos pais; sem nenhum, a
+  classe não recebe argumento (`Zero() takes no arguments (3 given)`).
+
+Os **campos com valor** do pai nascem no filho sempre (7.2), com o
+construtor que for. Os **sem valor** só o construtor sintetizado da classe
+que os declara grava: com o do filho, ninguém os grava (a não ser o próprio
+código: `self.x = ...`, `base(Pai).__init__(...)`), e lê-los é
+`AttributeError` com a causa — antes de rodar, quando nada no arquivo pode
+gravá-los:
+
+```ps
+class Pai {
+    int x
+}
+class Filha(Pai) {
+    str y = "oi"
+}
+Filha f = Filha()
+post(f.x)
+# AttributeError: 'Filha' object has no attribute 'x': o campo x de Pai foi
+# declarado sem valor e nada o gravou (de um valor na declaracao ou grave self.x no __init__)
+```
 
 ### 7.5.2. `base()` / `base(Pai)` — o pai, como o `super`
 
@@ -588,16 +660,20 @@ post(p.name)             # RuntimeError: acesso negado: 'name' e private de Paga
 ## 7.7. Resumo
 
 - `Entity Nome {` (sem parênteses; herança: `Entity Nome(Pai) {`);
-  `class`/`Class` são sinônimos.
+  `class`/`Class` são sinônimos; um nome, uma declaração por escopo.
 - Campos `nome: tipo` (ou `tipo nome`) sintetizam o construtor (1 arg por campo,
-  na ordem); padrão torna opcional; campo criado no método via `self.x = …`.
+  na ordem); padrão torna opcional e nasce sempre, antes do construtor, uma
+  vez por objeto; campo criado no método via `self.x = …`; membro repetido é
+  erro.
 - Campo declarado no construtor: `private <tipo> <nome> = <valor>` (7.6.1).
 - Construtor próprio: `funct __init__(self, …)`.
 - Métodos têm `self` como 1º parâmetro; `static` não tem `self` e é chamado na
   Entity.
-- Herança (inclusive múltipla) compartilha métodos; filho com campos gera o
-  próprio construtor; `base().__init__(...)` chama o construtor do pai, e
+- Herança (inclusive múltipla) compartilha métodos; a sobrescrita mantém o tipo
+  de retorno; filho com campos gera o próprio construtor (o campo sem valor do
+  pai não nasce nele); `base().__init__(...)` chama o construtor do pai, e
   `base(Pai).metodo()` / `base(Pai).campo` alcançam o resto do pai (7.5.2).
+- `obj is Classe` sobe pela herança; classe com classe é identidade (3.5).
 - `private` é imposto pela VM (e pelo `--check` quando é certo) por qualquer
   caminho; "de dentro" é o código escrito no corpo da classe; `public` é o
   padrão (7.6).
