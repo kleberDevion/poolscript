@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.7`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.8`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -902,6 +902,8 @@ Exception
 ```
 
 A regra de uso: `TypeError` quando o tipo está errado e `ValueError` quando o tipo está certo e o valor não serve.
+
+Erro de arquivo com caminho que tem quebra de linha (o conteúdo de um arquivo no lugar do caminho, `open(os.readFile(p))`, ou um nome lido com o `\n`): a frase é a causa, `o caminho tem 2 linhas (19 caracteres): e texto, nao nome de arquivo — comeca com 'linha um\nlinha dois'` (cortada em 40 caracteres, quebra visível), no tipo que o errno daria. Pedido seu de 2026-10-07: antes saía `[Errno 36] File name too long` com o texto inteiro. Um lugar só, `frase_caminho_texto` (jinga_vm.c), usada pelo `erro_sistema` (todo erro de arquivo do motor; `o destino tem ...` no segundo caminho do `os.rename`), pelo anexo do mail e pelo salvar do QR. Só entra quando a operação já falhou: caminho com quebra que existe abre normalmente.
 
 ### 2.14 using e arquivos
 
@@ -2140,8 +2142,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.7** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.7 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.8** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.8 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2762,7 +2764,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.7"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.8"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2842,11 +2844,11 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-08 (madrugada)
 
-- Versão da linguagem **17.0.7** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.7 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.8** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.8 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: `70869e6` (17.0.7, Plano 6 lote 5), igual a `origin/main` quando subiu. O único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
 - **Plano 6 em execução** (aprovado em 2026-10-07 ~01:10; as 9 decisões seguem as recomendações): fechados os lotes 1 `0e4c3f7` (17.0.1, o arquivo-fonte), 2 `2b2201f` (17.0.2, frases do parser), 3 `1fba43c` (17.0.3, as dicas), 9 `252d6df` (17.0.4, `--check`, editor, quadro do erro e `sys.exit`), 10 `3110231` (17.0.5, linha de comando), 4 `e54b866` (17.0.6, classes: private e static) e 5 `70869e6` (17.0.7, classes: construtor, campos, enum, `is` e redeclaração), cada um verde na VPS em `make check`, `check-asan` e `check-debug` na árvore exata do commit. Faltam os lotes 6 a 8, nessa ordem: funções e tarefas, métodos nativos, libs.
-- **Pedido seu de 2026-10-07, ainda não feito**: `open(texto)` com o CONTEÚDO de um arquivo no lugar do caminho dava `OSError: [Errno 36] File name too long: '# swagger — ...'` ("esse erro não faz sentido... isso deve ser corrigido"). Vai num commit próprio, antes do lote 6: o caminho com quebra de linha é texto, não nome de arquivo, e a frase diz isso, em todo erro de arquivo (o `erro_sistema` da VM, o anexo do mail, o salvar do xlsx, o programa do `os.run`).
+- **Pedido seu de 2026-10-07, feito no 17.0.8**: `open(texto)` com o CONTEÚDO de um arquivo no lugar do caminho dava `OSError: [Errno 36] File name too long: '# swagger — ...'` ("esse erro não faz sentido... isso deve ser corrigido"). Agora a frase diz que o caminho com quebra de linha é texto, não nome de arquivo, em todo erro de arquivo (2.13, depois da árvore de exceções).
 - **O laço da VM tem "modos" de alocação de registradores**: mudança pequena, sem relação lógica com um laço, troca o modo, e no ruim cada instrução executada paga uma a mais (aritmética +4%). Medido no lote 5 com 12 formas do mesmo código. Medir com o alocador fixo (`GLIBC_TUNABLES=glibc.malloc.top_pad=0` nos dois binários) e achar as instruções com o cachegrind (valgrind instalado na VPS) por tratador. Resíduo aceito no 17.0.7, sem JIT: fib +1,3%, fib_int +1,1%, closure +0,7%; instanciar classe com valor padrão +11,9%.
 - **Plano 8 fechado** (`71e0a31`): `import Parsing` como qualquer lib, e lib do motor usada sem import diz qual import falta. Major porque quebra programa que usava o `Parsing` sem import. Verde na VPS em `make check`, `check-asan` e `check-debug`.
 - **Plano 7 fechado**: o modelo leve na VPS consultando o material da Jinga (5.11, "Modelo local de código"). Com a consulta, 39 de 50 programas escritos por ele passam no `--check`; sem ela, 2.

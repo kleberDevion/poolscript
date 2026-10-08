@@ -105,6 +105,26 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `RuntimeError` | `raise "texto"`; e o que é só desta linguagem: `acesso negado: … private`, `nonnull`, `funct … e static` |
 | *(o seu)* | qualquer nome que você levantar com `raise Nome("msg")` |
 
+**Caminho com quebra de linha é texto, não nome de arquivo.** Quando a
+operação de arquivo falha e o caminho tem quebra de linha (o conteúdo de um
+arquivo passado no lugar do caminho dele, ou um nome lido com o `\n` junto),
+a mensagem diz isso no lugar da do sistema, com o começo do texto e a quebra
+visível. O tipo é o mesmo que o sistema daria (`OSError`,
+`FileNotFoundError`...), então o `catch` de sempre continua pegando:
+
+```ps
+str conteudo = "linha um\nlinha dois"
+open(conteudo, "r")
+# FileNotFoundError: o caminho tem 2 linhas (19 caracteres): e texto, nao nome de arquivo — comeca com 'linha um\nlinha dois'
+```
+
+O texto comprido sai cortado em 40 caracteres, com `...` no fim.
+
+Com a quebra só no fim: `o caminho tem quebra de linha: e texto, nao nome de
+arquivo — 'sumiu.txt\n'`. Na troca de nome com dois caminhos (`os.rename`), a
+frase cita qual deles: `o destino tem ...`. O caminho com quebra de linha que
+EXISTE abre normalmente: a frase só aparece quando a operação já falhou.
+
 ## A árvore de exceções
 
 `catch (Tipo e)` pega o tipo pedido **e todos os descendentes dele**. `Exception`

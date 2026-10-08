@@ -51,6 +51,12 @@ escrevendo no lugar antigo.
 - **FileNotFoundError** — arquivo inexistente no modo de leitura, e diretório
   inexistente no modo de escrita: `[Errno 2] No such file or directory: '…'`.
   Não é `IOError` — um `catch (IOError e)` não pega.
+- **Caminho com quebra de linha** (o conteúdo de um arquivo passado no lugar
+  do caminho, `open(os.readFile(p))`): a frase diz a causa, no tipo que o
+  sistema daria — `o caminho tem 2 linhas (19 caracteres): e texto, nao nome
+  de arquivo — comeca com 'linha um\nlinha dois'`. Texto comprido, que antes
+  dava `[Errno 36] File name too long` com o texto inteiro, sai cortado em 40
+  caracteres ([exceções](../../exceptions/exceptions.md)).
 
 ## Bordas
 

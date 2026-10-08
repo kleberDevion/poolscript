@@ -3965,8 +3965,59 @@ static const char *tipo_do_errno(int e)
     }
 }
 
+/* Caminho com quebra de linha não é nome de arquivo: é texto — o conteúdo de
+ * um arquivo passado no lugar do caminho dele, ou um nome lido com o `\n`
+ * junto. O sistema responde outra coisa ("File name too long", "No such file
+ * or directory") e a frase dele, com o texto inteiro despejado, mandava
+ * procurar o defeito no nome. Esta diz a causa e mostra o começo do texto com
+ * a quebra visível (`\n`), sem partir caractere. Só entra quando a operação
+ * JÁ falhou: o caminho com quebra que existe (no Linux é nome válido) abre
+ * normalmente. `oque` nomeia o argumento ("o caminho", "o destino").
+ * 0 = não tem quebra de linha, e a frase é a do sistema. */
+static int frase_caminho_texto(char *buf, size_t cap, const char *oque, const char *cam)
+{
+    if (!cam || !strpbrk(cam, "\r\n")) return 0;
+    long long linhas = 1, nchars = 0;
+    for (const unsigned char *q = (const unsigned char *)cam; *q; q++) {
+        if ((*q & 0xC0) != 0x80) nchars++;
+        if (*q == '\n' && q[1]) linhas++;
+    }
+    char trecho[200];
+    size_t t = 0;
+    int nc = 0;
+    const unsigned char *q = (const unsigned char *)cam;
+    while (*q && nc < 40 && t + 8 < sizeof(trecho)) {
+        if (*q == '\n' || *q == '\r' || *q == '\t') {
+            trecho[t++] = '\\';
+            trecho[t++] = *q == '\n' ? 'n' : *q == '\r' ? 'r' : 't';
+            q++;
+        } else {
+            size_t lc = *q < 0x80 ? 1 : (*q >> 5) == 0x6 ? 2 : (*q >> 4) == 0xE ? 3 : (*q >> 3) == 0x1E ? 4 : 1;
+            size_t k = 0;
+            while (k < lc && q[k]) { trecho[t++] = (char)q[k]; k++; }
+            q += k;
+        }
+        nc++;
+    }
+    trecho[t] = '\0';
+    if (linhas > 1)
+        snprintf(buf, cap, "%s tem %lld linhas (%lld caracteres): e texto, nao nome de arquivo — comeca com '%s%s'",
+                 oque, linhas, nchars, trecho, *q ? "..." : "");
+    else
+        snprintf(buf, cap, "%s tem quebra de linha: e texto, nao nome de arquivo — '%s%s'",
+                 oque, trecho, *q ? "..." : "");
+    return 1;
+}
+
 static int erro_sistema(VM *vm, int e, const char *cam, const char *cam2)
 {
+    /* o caminho que é texto: a frase da causa, no tipo que o errno já dava
+     * (o `catch` de quem pega OSError continua pegando) */
+    if (frase_caminho_texto(vm->erro, sizeof(vm->erro), "o caminho", cam)
+            || frase_caminho_texto(vm->erro, sizeof(vm->erro), "o destino", cam2)) {
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", tipo_do_errno(e));
+        return -1;
+    }
     /* As precisoes cabem no `erro[256]` junto com o prefixo `[Errno N] ` e o
      * `strerror` — sem elas o gcc avisa truncamento e o caminho sairia cortado
      * no meio, que e justamente a parte que o usuario precisa ler. */
@@ -3980,6 +4031,19 @@ static int erro_sistema(VM *vm, int e, const char *cam, const char *cam2)
         snprintf(vm->erro, sizeof(vm->erro), "[Errno %d] %s", e, strerror(e));
     snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", tipo_do_errno(e));
     return -1;
+}
+
+/* "nao consegui salvar 'x'" (o PNG do QR), com a causa quando o caminho é
+ * texto (`frase_caminho_texto`) */
+static int erro_salvar(VM *vm, const char *caminho)
+{
+    static const char pre[] = "nao consegui salvar: ";
+    memcpy(vm->erro, pre, sizeof(pre));
+    if (frase_caminho_texto(vm->erro + sizeof(pre) - 1, sizeof(vm->erro) - (sizeof(pre) - 1), "o caminho", caminho)) {
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "IOError");
+        return -1;
+    }
+    BERRO(vm, "IOError", "nao consegui salvar '%.200s'", caminho);
 }
 
 /* Os parâmetros obrigatórios que ficaram sem valor:
@@ -15656,7 +15720,12 @@ static int met_mm_attach(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (stat(caminho, &st_anexo) == 0 && S_ISDIR(st_anexo.st_mode))
             BERRO(vm, "IOError", "[Errno %d] %s: '%.190s'", EISDIR, strerror(EISDIR), caminho);
         FILE *f = fopen(caminho, "rb");
-        if (!f) BERRO(vm, "IOError", "[Errno %d] %s: '%.190s'", errno, strerror(errno), caminho);
+        if (!f) {
+            int er = errno;
+            char fr[256];
+            if (frase_caminho_texto(fr, sizeof(fr), "o caminho", caminho)) BERRO(vm, "IOError", "%s", fr);
+            BERRO(vm, "IOError", "[Errno %d] %s: '%.190s'", er, strerror(er), caminho);
+        }
         SBUF_AUTO b = {0};
         char ped[4096];
         size_t k;
@@ -18201,7 +18270,7 @@ static int met_qrf_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (qr_salva_em(vm, COMO_STRING(args[0])->chars, q->nome,
                     b ? (const unsigned char *)b->chars : NULL, b ? (size_t)b->len : 0,
                     caminho, sizeof(caminho)) != 0)
-        BERRO(vm, "IOError", "nao consegui salvar '%.200s'", caminho);
+        return erro_salvar(vm, caminho);
     *out = alvo;                 /* QRPoolFile.save devolve self */
     return 0;
 }
@@ -18273,7 +18342,7 @@ static int mod_qr_gen(VM *vm, Value *args, int n, Value *out)
         char caminho[2048];
         int ok = qr_salva_em(vm, save, nome, png, npng, caminho, sizeof(caminho));
         free(png);
-        if (ok != 0) BERRO(vm, "IOError", "nao consegui salvar '%.200s'", caminho);
+        if (ok != 0) return erro_salvar(vm, caminho);
         PSPoolFile *pf = novo_poolfile(vm, caminho);   /* com save= devolve PoolFile */
         if (!pf) return erro_sistema(vm, errno, caminho, NULL);   /* o errno diz o motivo */
         *out = MK_OBJ(pf);
@@ -18324,7 +18393,7 @@ static int met_qri_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     int ok = qr_salva_em(vm, COMO_STRING(args[0])->chars, q->nome, png, npng,
                          caminho, sizeof(caminho));
     free(png);
-    if (ok != 0) MERRO(vm, "IOError", "nao consegui salvar '%.200s'", caminho);
+    if (ok != 0) return erro_salvar(vm, caminho);
     *out = alvo;   /* QRImage.save devolve self */
     return 0;
 }

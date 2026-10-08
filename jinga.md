@@ -275,5 +275,5 @@ minhalib`, onde quer que as libs estejam (`JINGA_HOME` incluso).
 
 ## Versionamento
 
-Versão mais recente — **17.0.7** (a fonte é `vm/ps_versao.h`; `jinga --version`
+Versão mais recente — **17.0.8** (a fonte é `vm/ps_versao.h`; `jinga --version`
 mostra a do binário).

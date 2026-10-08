@@ -769,6 +769,37 @@ const Caso CASOS_LIBS[] = {
   "}\n",
   "recusou", NULL, 0 },
 
+/* ── caminho com quebra de linha é texto, nao nome de arquivo (2026-10-08) ──
+ * Pedido dele: `open(sw)` com `sw` = o CONTEUDO de um arquivo dava
+ * `OSError: [Errno 36] File name too long: '<o texto inteiro>'`, que mandava
+ * procurar o defeito no nome. A frase diz a causa, com o comeco do texto e a
+ * quebra visivel; o tipo e o mesmo de antes (o catch de OSError pega). */
+{ "caminho que e o conteudo de um arquivo: a frase diz que e texto",
+  "import os\nstr conteudo = \"x\" * 300 + \"\\nsegunda linha\"\ntry {\n    open(conteudo, \"r\")\n} catch (OSError e) {\n"
+  "    post(e)\n}\n",
+  "o caminho tem 2 linhas (314 caracteres): e texto, nao nome de arquivo — comeca com "
+  "'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...' (linha 4)", NULL, 0 },
+{ "caminho com a quebra de linha no fim (o nome lido com o \\n)",
+  "import os\ntry {\n    post(os.readFile(\"sumiu.txt\\n\"))\n} catch (OSError e) {\n    post(e)\n}\n",
+  "o caminho tem quebra de linha: e texto, nao nome de arquivo — 'sumiu.txt\\n' (linha 3)", NULL, 0 },
+{ "caminho com quebra de linha: o tipo do erro e o de antes (FileNotFoundError)",
+  "import os\ntry {\n    os.readFile(\"a\\nb\")\n} catch (FileNotFoundError e) {\n    post(\"FileNotFoundError:\", e)\n}\n",
+  "FileNotFoundError: o caminho tem 2 linhas (3 caracteres): e texto, nao nome de arquivo — comeca com 'a\\nb' (linha 3)",
+  NULL, 0, NULL, 0, "linux" },
+{ "destino com quebra de linha: a frase cita o destino, e a origem fica",
+  "import os\nos.writeFile(\"origem.txt\", \"x\")\ntry {\n    os.rename(\"origem.txt\", \"pasta_que_nao_existe/novo\\nnome.txt\")\n"
+  "} catch (OSError e) {\n    post(e)\n}\npost(os.readFile(\"origem.txt\"))\n",
+  "o destino tem 2 linhas (34 caracteres): e texto, nao nome de arquivo — comeca com "
+  "'pasta_que_nao_existe/novo\\nnome.txt' (linha 4)\nx", NULL, 0 },
+{ "move que cai na copia: a frase cita o caminho que falhou",
+  "import os\nos.writeFile(\"origem.txt\", \"x\")\ntry {\n    os.move(\"origem.txt\", \"pasta_que_nao_existe/novo\\nnome.txt\")\n"
+  "} catch (OSError e) {\n    post(e)\n}\npost(os.readFile(\"origem.txt\"))\n",
+  "o caminho tem 2 linhas (34 caracteres): e texto, nao nome de arquivo — comeca com "
+  "'pasta_que_nao_existe/novo\\nnome.txt' (linha 4)\nx", NULL, 0 },
+{ "caminho sem quebra de linha: a frase do sistema, como sempre",
+  "import os\ntry {\n    os.readFile(\"sumiu.txt\")\n} catch (FileNotFoundError e) {\n    post(e)\n}\n",
+  "[Errno 2] No such file or directory: 'sumiu.txt' (linha 3)", NULL, 0, NULL, 0, "linux" },
+
 /* ── json: o teto de profundidade é contrato, nos DOIS sentidos ──────────── */
 { "json ida e volta",
   "import json\n"
