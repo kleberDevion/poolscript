@@ -973,6 +973,44 @@ const Caso CASOS_LIBS[] = {
   "try { s.bind(\"sk\\x00\") } catch (ValueError e) { post(\"bind\", e) }\ns.close()\n",
   "bind o caminho tem o byte nulo \\x00 na posicao 2: nenhum nome de arquivo tem esse caractere — 'sk\\x00' (linha 3)",
   NULL, 0, NULL, 0, "linux" },
+/* ── caminho comprido: inteiro até o limite do sistema (2026-10-08) ─────────
+ * Buffers fixos cortavam o caminho calados e o sistema agia noutro arquivo:
+ * o `open()` de 592 bytes guardava 511 (`size` 0, `path()` cortado,
+ * `delete()` True sem apagar), o `os.mkdir` de 2100 bytes respondia ok sem
+ * criar a pasta. Acima do limite do sistema (4095 bytes) é o erro dele. */
+{ "caminho de 592 bytes no open: size, name, path e delete no arquivo certo",
+  "import os\nstr d2 = \"a\" * 200 + \"/\" + \"b\" * 200\nos.mkdir(d2)\n"
+  "str p = d2 + \"/\" + \"c\" * 190\nos.writeFile(p, \"longo\")\n"
+  "Object h = open(p, \"r\")\nh.close()\n"
+  "post(h.size, len(h.name), h.path().endswith(p))\n"
+  "post(h.delete(), os.exists(p))\n",
+  "5 190 True\nTrue False", NULL, 0, NULL, 0, "linux" },
+{ "pasta de 2100 bytes: mkdir cria, ls lista, cwd responde, rmdir apaga",
+  "import os\nstr fundo = (\"m\" * 200 + \"/\") * 10 + \"n\" * 90\nos.mkdir(fundo)\n"
+  "os.writeFile(fundo + \"/f.txt\", \"x\")\npost(os.isdir(fundo), os.ls(fundo))\n"
+  "str antes = os.cwd()\nos.chdir(fundo)\npost(os.cwd().endswith(fundo))\nos.chdir(antes)\n"
+  "os.rmdir(\"m\" * 200, True)\npost(os.exists(\"m\" * 200))\n",
+  "True [{'name': 'f.txt', 'type': 'file', 'size': 1}]\nTrue\nFalse", NULL, 0, NULL, 0, "linux" },
+{ "caminho acima do limite do sistema: o erro dele, e nada criado",
+  "import os\nstr enorme = (\"e\" * 200 + \"/\") * 21\n"
+  "try { os.mkdir(enorme) } catch (OSError e) { post(\"mkdir\", e[0:35]) }\n"
+  "try { os.writeFile(enorme + \"x.txt\", \"x\") } catch (OSError e) { post(\"writeFile\", e[0:35]) }\n"
+  "try { Object g = open(enorme + \"x.txt\", \"w\") } catch (OSError e) { post(\"open\", e[0:35]) }\n"
+  "try { post(os.ls(enorme)) } catch (OSError e) { post(\"ls\", e[0:35]) }\n"
+  "post(os.exists(\"e\" * 200))\n",
+  "mkdir [Errno 36] File name too long: 'eee\nwriteFile [Errno 36] File name too long: 'eee\n"
+  "open [Errno 36] File name too long: 'eee\nls [Errno 36] File name too long: 'eee\nFalse",
+  NULL, 0, NULL, 0, "linux" },
+{ "soquete local com caminho maior que o endereco: o erro, e nenhum arquivo cortado",
+  "import os\nimport sockets\nObject s = sockets.socket(sockets.AF_UNIX, sockets.SOCK_STREAM)\n"
+  "try { s.bind(\"s\" * 200) } catch (OSError e) { post(\"bind\", e[0:35]) }\ns.close()\n"
+  "post(os.exists(\"s\" * 107))\n",
+  "bind [Errno 36] File name too long: 'sss\nFalse", NULL, 0, NULL, 0, "linux" },
+{ "render(pasta, arquivo) nao sai pra pasta irma de mesmo prefixo",
+  "import os\nfrom jinker import render\nos.mkdir(\"pub\")\nos.writeFile(\"pub/ok.html\", \"ok\")\n"
+  "os.mkdir(\"pub_x\")\nos.writeFile(\"pub_x/segredo.html\", \"SEGREDO\")\n"
+  "post(render(\"pub\", \"ok.html\").status_code, render(\"pub\", \"../pub_x/segredo.html\").status_code)\n",
+  "200 404", NULL, 0 },
 { "byte NUL no import entre aspas: erro antes de rodar, na linha do import",
   "post(\"antes\")\nimport \"lib\\x00.pr\"\npost(\"depois\")\n",
   "", "SyntaxError: o caminho do modulo tem o byte nulo \\x00 na posicao 3: nenhum nome de arquivo tem esse caractere — "

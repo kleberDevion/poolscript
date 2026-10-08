@@ -160,6 +160,37 @@ funct up_nul() {
     return {"erro": "salvou"}
 }
 
+# destino impossível (pasta que é arquivo): o erro do sistema, não o antigo
+# "TypeError: save: nao criou"
+@app.route("/upload_ruim", methods=["POST"])
+funct up_ruim() {
+    Object f = jinker.request.file("arq")
+    try {
+        f.save(PASTA + "/ps_e2e_envio.txt/dentro.txt")
+    } catch (OSError e) {
+        return {"erro": "OSError"}
+    } catch (Exception e) {
+        return {"erro": "outro: " + str(e)}
+    }
+    return {"erro": "salvou"}
+}
+
+# disco cheio (/dev/full, só no Linux): o erro, não sucesso com o arquivo
+# pela metade
+@app.route("/upload_cheio", methods=["POST"])
+funct up_cheio() {
+    Object f = jinker.request.file("arq")
+    if not os.exists("/dev/full") {
+        return {"erro": "sem /dev/full"}
+    }
+    try {
+        f.save("/dev/full")
+    } catch (OSError e) {
+        return {"erro": "OSError"}
+    }
+    return {"erro": "salvou"}
+}
+
 @app.route("/uploads", methods=["POST"])
 funct ups() {
     # files() é POR CAMPO: vários arquivos mandados no mesmo nome de campo

@@ -99,6 +99,18 @@ if not erro_nul.startswith("o destino tem o byte nulo \\x00 na posicao ") or os.
 }
 post("upload com o byte nulo -> recusado")
 
+str erro_ruim = request.post(U + "/upload_ruim", file={"arq": alvo}).get_json()["erro"]
+if erro_ruim != "OSError" {
+    raise "PoolFileUpload.save num destino impossivel nao deu o erro do sistema: " + erro_ruim
+}
+post("upload num destino impossivel -> erro do sistema")
+
+str erro_cheio = request.post(U + "/upload_cheio", file={"arq": alvo}).get_json()["erro"]
+if erro_cheio != "OSError" and erro_cheio != "sem /dev/full" {
+    raise "PoolFileUpload.save com o disco cheio nao deu erro: " + erro_cheio
+}
+post("upload com o disco cheio ->", erro_cheio)
+
 m = request.post(U + "/uploads", file={"fotos": {"name": alvo}})
 post("files(campo) ->", m.get_json())
 

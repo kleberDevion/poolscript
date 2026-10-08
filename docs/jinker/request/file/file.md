@@ -44,6 +44,13 @@ O arquivo vive **em memória** até você salvar. Propriedades e métodos:
 | `.move(destino)` | apelido de `.save()` |
 | `.bytes()` | devolve os bytes crus |
 
+Quando o `.save()` não consegue gravar, o erro é o do sistema, com o
+caminho: `FileNotFoundError`, `PermissionError`, `NotADirectoryError`, e
+`OSError: [Errno 28] No space left on device` com o disco cheio (a gravação
+é conferida até o fim, e o arquivo pela metade não passa por salvo). O
+destino com o byte nulo (`\x00`) é `ValueError`
+([exceções](../../../exceptions/exceptions.md)).
+
 ---
 
 ## Segurança de extensão (embutida)

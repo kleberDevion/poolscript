@@ -22,11 +22,14 @@ return render("paginas/index.html")     # caminho completo, um argumento
 return render("paginas", "index.html")  # pasta + arquivo separados
 ```
 
-São **exatamente a mesma coisa**: internamente
-`render("paginas", "index.html")` só junta os dois com `/` →
-`"paginas/index.html"`. Escolha a que ler melhor.
+As duas juntam a pasta e o arquivo com `/` (`"paginas/index.html"`). A
+diferença é a trava: na forma de dois argumentos o arquivo tem que ficar
+**dentro** da pasta. `render("paginas", "../app.pr")` dá 404, e
+`render("pub", "../pub_x/segredo.html")` também, mesmo com a pasta irmã
+começando com o mesmo nome.
 
-A forma de dois argumentos brilha quando a pasta é fixa e o arquivo é variável:
+Por isso a forma de dois argumentos é a certa quando a pasta é fixa e o arquivo
+vem de fora:
 
 ```
 funct pagina() {

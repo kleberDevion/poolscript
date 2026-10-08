@@ -107,7 +107,7 @@ procurava `IP_TTL` não achava.)
 |---|---|
 | `AF_INET` | IPv4 |
 | `AF_INET6` | IPv6 |
-| `AF_UNIX` | soquete local por caminho de arquivo |
+| `AF_UNIX` | soquete local por caminho de arquivo (até 107 bytes no Linux e 103 no macOS; acima, `OSError: [Errno 36] File name too long`, sem criar arquivo) |
 | `AF_UNSPEC` | "tanto faz" — só em `getaddrinfo` |
 | `AF_PACKET` | quadro cru da camada de enlace (precisa de privilégio) — só no Linux |
 

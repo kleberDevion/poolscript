@@ -841,7 +841,10 @@ typedef struct {
     FILE *f;
     int   fechado;
     int   binario;
-    char  caminho[512];
+    /* o nome inteiro, até o limite do sistema: com 512, o `open()` de um
+     * caminho maior guardava só o começo, e `delete`/`size`/`path` agiam
+     * noutro arquivo */
+    char  caminho[PS_CAMINHO_MAX];
 } PSArquivo;
 
 /* Função nativa como VALOR (`f = json.parse`). Os builtins de topo cabem num
@@ -1680,6 +1683,7 @@ static int val_iguais(const Value *a, const Value *b);
 static int model_valida(const PSModel *m, const Value *v);
 static int utf8_conta(const char *s, int len);
 static int utf8_le(const char *s, int len, int i, uint32_t *cp);
+static int junta_caminho(char *out, size_t cap, const char *a, const char *b);
 static int str_ncp(PSString *s);
 static int str_byte_de(PSString *s, int64_t cp);
 
@@ -7490,9 +7494,9 @@ static int met_a_save(VM *vm, Value alvo, Value *args, int n, Value *out)
                     || (stat(destino, &st) == 0 && S_ISDIR(st.st_mode)));
     const char *base = ps_ultimo_sep(a->caminho);
     base = base ? base + 1 : a->caminho;
-    char caminho[1024];
-    if (eh_pasta) snprintf(caminho, sizeof(caminho), "%.500s/%.400s", destino, base);
-    else          snprintf(caminho, sizeof(caminho), "%.1000s", destino);
+    char caminho[PS_CAMINHO_MAX];
+    if (junta_caminho(caminho, sizeof(caminho), destino, eh_pasta ? base : NULL) != 0)
+        return erro_sistema(vm, ENAMETOOLONG, destino, NULL);
 
     /* copia byte-a-byte, só se o destino for outro arquivo */
     char *rpa = realpath(caminho, NULL), *rpo = realpath(a->caminho, NULL);
@@ -7601,6 +7605,10 @@ static int nativa_open(VM *vm, Value *args, int n, Value *out)
         if (stat(cam->chars, &st) == 0 && S_ISDIR(st.st_mode))
             return erro_sistema(vm, EISDIR, cam->chars, NULL);
     }
+    /* o campo `caminho` guarda o nome inteiro: o que não cabe nele (nem no
+     * sistema) é o erro do sistema, antes de abrir */
+    if ((size_t)cam->len >= sizeof(((PSArquivo *)0)->caminho))
+        return erro_sistema(vm, ENAMETOOLONG, cam->chars, NULL);
     FILE *f = fopen(cam->chars, cfmodo);
     if (!f) return erro_sistema(vm, errno, cam->chars, NULL);
 
@@ -8868,11 +8876,43 @@ static void minusculo(const char *s, char *saida, size_t cap)
     saida[i] = '\0';
 }
 
+/* Caminho que não cabe no buffer não pode chegar CORTADO ao sistema: ele
+ * agiria noutro arquivo, calado (medido no 17.0.9: o `open()` de um caminho
+ * de 592 bytes guardava 511, e o `delete()` dizia True sem apagar nada). Junta
+ * `a` e `b` com a barra (ou copia só `a`, com `b` NULL) em `out`, de `cap`
+ * bytes. 0 = coube; -1 = não cabe, com `errno` = ENAMETOOLONG, o erro que o
+ * próprio sistema dá a caminho longo demais. */
+static int junta_caminho(char *out, size_t cap, const char *a, const char *b)
+{
+    int n = b ? snprintf(out, cap, "%s/%s", a, b) : snprintf(out, cap, "%s", a);
+    if (n < 0 || (size_t)n >= cap) { out[0] = '\0'; errno = ENAMETOOLONG; return -1; }
+    return 0;
+}
+
+/* `cam` (já resolvido) está dentro de `raiz` (já resolvida)? A borda tem que
+ * ser separador: sem isto a raiz `/srv/app` aprovaria `/srv/app-secreto`, que
+ * é outro diretório (medido no 17.0.9: `render("pub",
+ * "../pub_x/segredo.html")` respondia 200 com o arquivo de fora). Devolve o
+ * tamanho do prefixo da raiz (a raiz "/" conta como ""), ou -1 fora dela. */
+static long dentro_da_raiz(const char *raiz, const char *cam)
+{
+    size_t lr = strlen(raiz);
+    while (lr > 0 && raiz[lr - 1] == '/') lr--;
+    if (strncmp(cam, raiz, lr) != 0 || (cam[lr] != '/' && cam[lr] != '\0')) return -1;
+    return (long)lr;
+}
+
+/* O caminho absoluto de `rel` em `saida` (de `cap` bytes); sem resolver (não
+ * existe), o próprio `rel`. O `realpath` aloca: com destino, ele escreve até
+ * PATH_MAX bytes, e os destinos de 2048 de antes deixavam um caminho
+ * resolvido maior escrever fora deles. -1 = não resolveu, ou não coube. */
 static int caminho_abs(const char *rel, char *saida, size_t cap)
 {
-    if (realpath(rel, saida)) return 0;
-    snprintf(saida, cap, "%s", rel);
-    return -1;
+    char *r = realpath(rel, NULL);
+    int rc = r ? junta_caminho(saida, cap, r, NULL) : -1;
+    free(r);
+    if (rc != 0 && junta_caminho(saida, cap, rel, NULL) != 0) return -1;
+    return rc;
 }
 
 static PSPoolFile *novo_poolfile(VM *vm, const char *caminho)
@@ -8902,11 +8942,12 @@ static PSPoolFile *novo_poolfile(VM *vm, const char *caminho)
     if (!pf) return NULL;
     pf->obj.type = OBJ_POOLFILE; pf->obj.marked = 0;
     pf->obj.next = vm->objetos; vm->objetos = (Obj *)pf;
-    char abs[2048];
+    char abs[PS_CAMINHO_MAX];
     caminho_abs(caminho, abs, sizeof(abs));
-    pf->caminho = strdup(abs);
-    const char *barra = ps_ultimo_sep(abs);
-    pf->nome = strdup(barra ? barra + 1 : abs);
+    const char *cam_abs = abs[0] ? abs : caminho;
+    pf->caminho = strdup(cam_abs);
+    const char *barra = ps_ultimo_sep(cam_abs);
+    pf->nome = strdup(barra ? barra + 1 : cam_abs);
     const char *ponto = strrchr(pf->nome ? pf->nome : "", '.');
     char e[64] = "";
     if (ponto) minusculo(ponto, e, sizeof(e));
@@ -8920,8 +8961,10 @@ static PSPoolFile *novo_poolfile(VM *vm, const char *caminho)
 /* ── métodos do PoolFile ───────────────────────────────────────────────── */
 static int cria_pais(const char *caminho)
 {
-    char tmp[2048];
-    snprintf(tmp, sizeof(tmp), "%s", caminho);
+    /* o que não cabe não cria pasta nenhuma (cortado, criaria pastas de
+     * OUTRO caminho); quem chama recebe o ENAMETOOLONG do próprio sistema */
+    char tmp[PS_CAMINHO_MAX];
+    if (junta_caminho(tmp, sizeof(tmp), caminho, NULL) != 0) return -1;
     char *barra = ps_ultimo_sep(tmp);
     if (!barra || barra == tmp) return 0;
     *barra = '\0';
@@ -9074,6 +9117,9 @@ static int met_pf_move(VM *vm, Value alvo, Value *args, int n, Value *out)
                                   nome_do_tipo_valor(args[0]));
     if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o destino") != 0) return -1;
     if (pf_exige_fechado(vm, alvo, "move") != 0) return -1;
+    /* o handle passa a apontar pro destino: ele cabe inteiro no campo */
+    if ((size_t)COMO_STRING(args[0])->len >= PS_CAMINHO_MAX)
+        return erro_sistema(vm, ENAMETOOLONG, COMO_STRING(args[0])->chars, NULL);
     if (!EH_PFILE(alvo)) {
         /* handle fechado: move pelo caminho, sem conteúdo em memória */
         const char *orig = pf_caminho(alvo);
@@ -9192,7 +9238,7 @@ static int met_pf_path(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
     if (n != 0) return erro_aridade(vm, "path", 0, 0, n);
-    char abs[2048];
+    char abs[PS_CAMINHO_MAX];
     caminho_abs(pf_caminho(alvo), abs, sizeof(abs));
     return devolve_texto(vm, out, abs, (int)strlen(abs));
 }
@@ -12743,15 +12789,18 @@ static int busca_recursiva(const char *base, const char *nome, char *saida, size
     if (prof > 32) return -1;                 /* corta link circular */
     DIR *d = opendir(base);
     if (!d) return -1;
+    /* do heap: 4 KB por nível na pilha, em até 33 níveis, estourariam a pilha
+     * de uma fibra (256 KB) */
+    char *cam = malloc(PS_CAMINHO_MAX);
+    if (!cam) { closedir(d); return -1; }
     struct dirent *e;
     int achou = -1;
     while ((e = readdir(d))) {
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
-        char cam[2048];
-        snprintf(cam, sizeof(cam), "%s/%s", base, e->d_name);
+        /* o que não cabe não se alcança pelo caminho: fica fora da busca */
+        if (junta_caminho(cam, PS_CAMINHO_MAX, base, e->d_name) != 0) continue;
         if (!strcmp(e->d_name, nome)) {
-            snprintf(saida, cap, "%s", cam);
-            achou = 0;
+            if (junta_caminho(saida, cap, cam, NULL) == 0) achou = 0;
             break;
         }
         if (pasta_de_verdade(cam) && busca_recursiva(cam, nome, saida, cap, prof + 1) == 0) {
@@ -12759,6 +12808,7 @@ static int busca_recursiva(const char *base, const char *nome, char *saida, size
             break;
         }
     }
+    free(cam);
     closedir(d);
     return achou;
 }
@@ -12769,9 +12819,9 @@ static int mod_sys_relativepath(VM *vm, Value *args, int n, Value *out)
     if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "RelativePath() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
     if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o nome") != 0) return -1;
-    char base[1024];
+    char base[PS_CAMINHO_MAX];
     if (!getcwd(base, sizeof(base))) BERRO(vm, "RuntimeError", "nao consegui ler o diretorio atual");
-    char achado[2048];
+    char achado[PS_CAMINHO_MAX];
     if (busca_recursiva(base, COMO_STRING(args[0])->chars, achado, sizeof(achado), 0) != 0) {
         *out = MK_NULL();
         return 0;
@@ -13077,19 +13127,20 @@ static const MembroMod MOD_SYS[] = {
 static int mod_dotenv_load(VM *vm, Value *args, int n, Value *out)
 {
     if (n > 1) return erro_aridade(vm, "load", 0, 1, n);
-    char caminho[2048] = {0};
+    char caminho[PS_CAMINHO_MAX] = {0};
     if (n == 1 && args[0].t != V_NULL) {
         if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "load() argument 1 must be str, not %s",
                                       nome_do_tipo_valor(args[0]));
         if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
-        snprintf(caminho, sizeof(caminho), "%s", COMO_STRING(args[0])->chars);
+        if (junta_caminho(caminho, sizeof(caminho), COMO_STRING(args[0])->chars, NULL) != 0)
+            return erro_sistema(vm, ENAMETOOLONG, COMO_STRING(args[0])->chars, NULL);
     } else {
-        char dir[1024];
+        char dir[PS_CAMINHO_MAX];
         if (!getcwd(dir, sizeof(dir))) BERRO(vm, "RuntimeError", "nao consegui ler o diretorio atual");
         for (;;) {
-            snprintf(caminho, sizeof(caminho), "%s/.env", dir);
             struct stat st;
-            if (stat(caminho, &st) == 0 && S_ISREG(st.st_mode)) break;
+            if (junta_caminho(caminho, sizeof(caminho), dir, ".env") == 0
+                    && stat(caminho, &st) == 0 && S_ISREG(st.st_mode)) break;
             char *barra = ps_ultimo_sep(dir);        /* o getcwd do Windows dá `\` */
             if (!barra || barra == dir) { caminho[0] = '\0'; break; }
             *barra = '\0';
@@ -13532,25 +13583,29 @@ static int acha_em(const char *raiz, const char *nome, int quer_dir,
                    char *saida, size_t cap, int prof)
 {
     if (prof > 24) return -1;
-    char direto[2048];
-    snprintf(direto, sizeof(direto), "%s/%s", raiz, nome);
+    /* do heap: 4 KB por nível na pilha, em até 25 níveis, estourariam a pilha
+     * de uma fibra (256 KB) */
+    char *cam = malloc(PS_CAMINHO_MAX);
+    if (!cam) return -1;
     struct stat st;
-    if (stat(direto, &st) == 0 && (quer_dir ? S_ISDIR(st.st_mode) : S_ISREG(st.st_mode))) {
-        caminho_abs(direto, saida, cap);
+    if (junta_caminho(cam, PS_CAMINHO_MAX, raiz, nome) == 0 && stat(cam, &st) == 0
+            && (quer_dir ? S_ISDIR(st.st_mode) : S_ISREG(st.st_mode))) {
+        caminho_abs(cam, saida, cap);
+        free(cam);
         return 0;
     }
     DIR *d = opendir(raiz);
-    if (!d) return -1;
+    if (!d) { free(cam); return -1; }
     struct dirent *e;
     int achou = -1;
     while ((e = readdir(d))) {
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
-        char sub[2048];
-        snprintf(sub, sizeof(sub), "%s/%s", raiz, e->d_name);
-        if (!pasta_de_verdade(sub)) continue;
-        if (acha_em(sub, nome, quer_dir, saida, cap, prof + 1) == 0) { achou = 0; break; }
+        /* o que não cabe não se alcança pelo caminho: fica fora da busca */
+        if (junta_caminho(cam, PS_CAMINHO_MAX, raiz, e->d_name) != 0 || !pasta_de_verdade(cam)) continue;
+        if (acha_em(cam, nome, quer_dir, saida, cap, prof + 1) == 0) { achou = 0; break; }
     }
     closedir(d);
+    free(cam);
     return achou;
 }
 
@@ -13559,7 +13614,8 @@ static int os_procura(VM *vm, Value *args, int n, Value *out, int quer_dir, cons
     EXIGE_ARGS(vm, quem, 1);
     PSString *nome;
     if (os_caminho(vm, args[0], quem, "o caminho", &nome) != 0) return -1;
-    char achado[2048];
+    if ((size_t)nome->len >= PS_CAMINHO_MAX) return erro_sistema(vm, ENAMETOOLONG, nome->chars, NULL);
+    char achado[PS_CAMINHO_MAX];
     /* Caminho ABSOLUTO resolve direto — no interpretador `root / "/abs"` do
      * pathlib devolve o absoluto, então a busca por raízes nem entra. Sem
      * este atalho, "/tmp/x.png" virava "raiz//tmp/x.png" e não achava — e no
@@ -13578,7 +13634,7 @@ static int os_procura(VM *vm, Value *args, int n, Value *out, int quer_dir, cons
     if (vm_corrente && vm_corrente->dir_script[0]
             && acha_em(vm_corrente->dir_script, nome->chars, quer_dir, achado, sizeof(achado), 0) == 0)
         return devolve_texto(vm, out, achado, (int)strlen(achado));
-    char cwd_[1024];
+    char cwd_[PS_CAMINHO_MAX];
     if (getcwd(cwd_, sizeof(cwd_))
             && acha_em(cwd_, nome->chars, quer_dir, achado, sizeof(achado), 0) == 0)
         return devolve_texto(vm, out, achado, (int)strlen(achado));
@@ -13742,9 +13798,7 @@ static int mod_os_writefile(VM *vm, Value *args, int n, Value *out)
         PSString *c = COMO_BYTES(conv);
         dados = c->chars; ndados = c->len;
     }
-    /* cria a pasta pai (como makedirs) */
-    char tmp[2048]; snprintf(tmp, sizeof(tmp), "%s", p->chars);
-    for (char *q = tmp + 1; *q; q++) { if (ps_eh_sep(*q)) { char s = *q; *q = '\0'; mkdir(tmp, 0755); *q = s; } }
+    cria_pais(p->chars);                /* as pastas pai (como makedirs) */
     FILE *f = fopen(p->chars, "wb");
     if (!f) { int e = errno; if (fixado) vm->sp--; return erro_sistema(vm, e, p->chars, NULL); }
     if (grava_e_fecha(f, dados, (size_t)ndados) != 0)
@@ -13762,9 +13816,11 @@ static int mod_os_mkdir(VM *vm, Value *args, int n, Value *out)
     PSString *p;
     if (os_caminho(vm, args[0], "mkdir", "o caminho", &p) != 0) return -1;
     int ok_existir = (n == 2) && val_truthy(&args[1]);
-    /* cria a cadeia inteira, como `makedirs` */
-    char tmp[2048];
-    snprintf(tmp, sizeof(tmp), "%s", p->chars);
+    /* cria a cadeia inteira, como `makedirs`; cortado, criaria OUTRA pasta e
+     * responderia ok */
+    char tmp[PS_CAMINHO_MAX];
+    if (junta_caminho(tmp, sizeof(tmp), p->chars, NULL) != 0)
+        return erro_sistema(vm, ENAMETOOLONG, p->chars, NULL);
     for (char *q = tmp + 1; *q; q++) {
         if (!ps_eh_sep(*q)) continue;
         char s = *q;
@@ -13795,17 +13851,27 @@ static int apaga_arvore(const char *caminho, int prof)
     if (ps_e_link(caminho, &link_pasta)) return remove_link(caminho, link_pasta);
     DIR *d = opendir(caminho);
     if (!d) return unlink(caminho);
+    /* do heap: 4 KB por nível na pilha, em até 33 níveis, estourariam a pilha
+     * de uma fibra (256 KB) */
+    char *sub = malloc(PS_CAMINHO_MAX);
+    if (!sub) { closedir(d); errno = ENOMEM; return -1; }
     struct dirent *e;
+    int longo = 0;
     while ((e = readdir(d))) {
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
-        char sub[2048];
-        snprintf(sub, sizeof(sub), "%s/%s", caminho, e->d_name);
+        /* O filho cujo caminho não cabe para a remoção com o erro: o caminho
+         * CORTADO pode ser outro arquivo, e o `unlink` apagaria ele. */
+        if (junta_caminho(sub, PS_CAMINHO_MAX, caminho, e->d_name) != 0) { longo = 1; break; }
         struct stat st;
         if (ps_e_link(sub, &link_pasta)) remove_link(sub, link_pasta);
-        else if (stat(sub, &st) == 0 && S_ISDIR(st.st_mode)) apaga_arvore(sub, prof + 1);
+        else if (stat(sub, &st) == 0 && S_ISDIR(st.st_mode)) {
+            if (apaga_arvore(sub, prof + 1) != 0 && errno == ENAMETOOLONG) { longo = 1; break; }
+        }
         else unlink(sub);
     }
+    free(sub);
     closedir(d);
+    if (longo) { errno = ENAMETOOLONG; return -1; }
     return rmdir(caminho);
 }
 
@@ -13840,8 +13906,13 @@ static int mod_os_ls(VM *vm, Value *args, int n, Value *out)
     struct dirent *e;
     while ((e = readdir(d))) {
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
-        char cam[2048];
-        snprintf(cam, sizeof(cam), "%s/%s", dir, e->d_name);
+        /* cortado, o `stat` olharia OUTRO caminho e o tipo e o tamanho
+         * sairiam errados */
+        char cam[PS_CAMINHO_MAX];
+        if (junta_caminho(cam, sizeof(cam), dir, e->d_name) != 0) {
+            closedir(d); vm->sp--;
+            return erro_sistema(vm, ENAMETOOLONG, dir, NULL);
+        }
         struct stat st;
         int eh_dir = (stat(cam, &st) == 0 && S_ISDIR(st.st_mode));
         int64_t tam = (!eh_dir && stat(cam, &st) == 0) ? (int64_t)st.st_size : 0;
@@ -13944,7 +14015,7 @@ static int mod_os_cwd(VM *vm, Value *args, int n, Value *out)
 {
     (void)args;
     EXIGE_ARGS(vm, "cwd", 0);
-    char c[2048];
+    char c[PS_CAMINHO_MAX];                 /* era 2048: pasta mais funda falhava */
     if (!getcwd(c, sizeof(c))) BERRO(vm, "RuntimeError", "nao consegui ler o diretorio");
     return devolve_texto(vm, out, c, (int)strlen(c));
 }
@@ -15034,21 +15105,27 @@ static int mod_os_code(VM *vm, Value *args, int n, Value *out)
     static const char *EXTS[] = {".exe", ".cmd", ".bat"};
     for (size_t i = 0; i < sizeof(EDITORES)/sizeof(EDITORES[0]); i++) {
         if (!caminho_env) break;
-        char copia[4096];
-        snprintf(copia, sizeof(copia), "%s", caminho_env);
+        /* o PATH inteiro: cortado em 4095 bytes, a última pasta saía pela
+         * metade, e outra pasta */
+        char *copia = strdup(caminho_env);
+        if (!copia) BERRO(vm, "MemoryError", "sem memoria");
         for (char *dir = strtok(copia, ";"); dir; dir = strtok(NULL, ";")) {
             for (size_t e = 0; e < sizeof(EXTS)/sizeof(EXTS[0]); e++) {
-                char bin[2048];
-                snprintf(bin, sizeof(bin), "%s\\%s%s", dir, EDITORES[i], EXTS[e]);
-                if (_access(bin, 0) != 0) continue;
+                char bin[PS_CAMINHO_MAX];
+                int nb = snprintf(bin, sizeof(bin), "%s\\%s%s", dir, EDITORES[i], EXTS[e]);
+                if (nb < 0 || (size_t)nb >= sizeof(bin) || _access(bin, 0) != 0) continue;
+                free(copia);
                 PsWProc w;
                 int rc;
                 if (e == 0) {
                     char *vetor[] = { bin, (char *)alvo, NULL };
                     rc = ps_w_proc_cria(NULL, vetor, -1, -1, -1, 1, &w);
                 } else {
-                    char linha[4200];
-                    snprintf(linha, sizeof(linha), "\"%s\" \"%s\"", bin, alvo);
+                    /* cortada, a linha abriria o editor noutro arquivo */
+                    char linha[2 * PS_CAMINHO_MAX + 8];
+                    int nl = snprintf(linha, sizeof(linha), "\"%s\" \"%s\"", bin, alvo);
+                    if (nl < 0 || (size_t)nl >= sizeof(linha))
+                        return erro_sistema(vm, ENAMETOOLONG, alvo, NULL);
                     rc = ps_w_proc_cria(linha, NULL, -1, -1, -1, 1, &w);
                 }
                 if (rc == 0) ps_w_proc_solta(&w);
@@ -15057,16 +15134,19 @@ static int mod_os_code(VM *vm, Value *args, int n, Value *out)
                 return devolve_texto(vm, out, msg, k);
             }
         }
+        free(copia);
     }
 #else
     for (size_t i = 0; i < sizeof(EDITORES)/sizeof(EDITORES[0]); i++) {
         if (!caminho_env) break;
-        char copia[4096];
-        snprintf(copia, sizeof(copia), "%s", caminho_env);
+        /* o PATH inteiro: cortado em 4095 bytes, a última pasta saía pela
+         * metade, e outra pasta */
+        char *copia = strdup(caminho_env);
+        if (!copia) BERRO(vm, "MemoryError", "sem memoria");
         for (char *dir = strtok(copia, ":"); dir; dir = strtok(NULL, ":")) {
-            char bin[2048];
-            snprintf(bin, sizeof(bin), "%s/%s", dir, EDITORES[i]);
-            if (access(bin, X_OK) != 0) continue;
+            char bin[PS_CAMINHO_MAX];
+            if (junta_caminho(bin, sizeof(bin), dir, EDITORES[i]) != 0 || access(bin, X_OK) != 0) continue;
+            free(copia);
             /* Fork DUPLO, como o `run` em segundo plano: o filho do meio sai
              * na hora e o editor é adotado pelo init. Com um fork só, o editor
              * ficava ZUMBI na tabela de processos até o programa terminar —
@@ -15086,6 +15166,7 @@ static int mod_os_code(VM *vm, Value *args, int n, Value *out)
             int k = snprintf(msg, sizeof(msg), "Abrindo %s...", EDITORES[i]);
             return devolve_texto(vm, out, msg, k);
         }
+        free(copia);
     }
 #endif
     return devolve_texto(vm, out, "Nenhum editor encontrado", 24);
@@ -15863,7 +15944,10 @@ static int sk_monta_addr(VM *vm, int familia, int tipo, Value addr, const char *
         if (CAMINHO_SEM_NUL(vm, COMO_STRING(addr), "o caminho") != 0) return -1;
         struct sockaddr_un *un = (struct sockaddr_un *)sa;
         un->sun_family = AF_UNIX;
-        snprintf(un->sun_path, sizeof(un->sun_path), "%s", COMO_STRING(addr)->chars);
+        /* o endereço do soquete local tem 108 bytes (104 no macOS): cortado,
+         * o bind criava e o connect procurava OUTRO arquivo */
+        if (junta_caminho(un->sun_path, sizeof(un->sun_path), COMO_STRING(addr)->chars, NULL) != 0)
+            return erro_sistema(vm, ENAMETOOLONG, COMO_STRING(addr)->chars, NULL);
         *sl = (socklen_t)sizeof(*un);
         return 0;
     }
@@ -17553,19 +17637,16 @@ static int met_resp_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n == 1 && EH_STRING(args[0]) && CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0)
         return -1;
     const char *destino = (n == 1 && EH_STRING(args[0])) ? COMO_STRING(args[0])->chars : ".";
-    char caminho[2048];
+    char caminho[PS_CAMINHO_MAX];
     /* pasta ('.', '..', termina em barra, ou é diretório) → deriva o nome */
     struct stat st;
     int eh_pasta = (strcmp(destino, ".") == 0 || strcmp(destino, "..") == 0
                     || ps_termina_em_sep(destino)
                     || (stat(destino, &st) == 0 && S_ISDIR(st.st_mode)));
-    if (eh_pasta) {
-        char nome[512];
-        resp_filename(rp, nome, sizeof(nome));
-        snprintf(caminho, sizeof(caminho), "%.1400s/%.500s", destino, nome);
-    } else {
-        snprintf(caminho, sizeof(caminho), "%.1900s", destino);
-    }
+    char nome[512];
+    if (eh_pasta) resp_filename(rp, nome, sizeof(nome));
+    if (junta_caminho(caminho, sizeof(caminho), destino, eh_pasta ? nome : NULL) != 0)
+        return erro_sistema(vm, ENAMETOOLONG, destino, NULL);
     cria_pais(caminho);
 
     /* O CORPO NÃO PASSA PELA MEMÓRIA. Ele já está num arquivo; `.save()` só
@@ -17583,7 +17664,7 @@ static int met_resp_save(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (!f) return erro_sistema(vm, errno, caminho, NULL);
         if (fclose(f) != 0) return erro_sistema(vm, errno, caminho, NULL);
     } else {
-        char dest_abs[2048];
+        char dest_abs[PS_CAMINHO_MAX];
         if (rp->temporario) {
             if (rename(rp->arquivo, caminho) != 0) {
                 if (copia_ou_erro(vm, rp->arquivo, caminho) != 0) return -1;
@@ -17614,7 +17695,7 @@ static int met_resp_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     a->f = NULL;
     a->fechado = 1;
     a->binario = 1;
-    snprintf(a->caminho, sizeof(a->caminho), "%.511s", caminho);   /* o campo tem 512 */
+    snprintf(a->caminho, sizeof(a->caminho), "%s", caminho);   /* os dois têm PS_CAMINHO_MAX */
     vm->alocado += sizeof(PSArquivo);
     *out = MK_OBJ(a);
     return 0;
@@ -17641,9 +17722,9 @@ static int monta_response(VM *vm, PSHttpResp *hr, const char *arquivo, int tempo
      * corpo, e a razão de 237 MB custarem 480 MB. */
     rp->dono = getpid();
     if (arquivo) {
-        char ab[2048];
+        char ab[PS_CAMINHO_MAX];
         caminho_abs(arquivo, ab, sizeof ab);   /* `os.chdir()` depois não pode perder o corpo */
-        rp->arquivo = strdup(ab);
+        rp->arquivo = strdup(ab[0] ? ab : arquivo);
         if (!rp->arquivo) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
         rp->temporario = temporario;
     }
@@ -17926,7 +18007,7 @@ static int request_comum(VM *vm, const char *nome, const char *metodo, Value *ar
      * arquivo: o que o usuário pediu com `save=`, ou um do motor, que some
      * junto com o Response. HEAD não tem corpo e não cria nada. */
     FILE *destino = NULL;
-    char tmp[2048] = "";
+    char tmp[PS_CAMINHO_MAX] = "";
     int temporario = 0;
     const char *final = NULL;   /* `save=`: o caminho do usuário, ocupado só no fim */
     if (strcmp(metodo, "HEAD") != 0) {
@@ -17941,13 +18022,17 @@ static int request_comum(VM *vm, const char *nome, const char *metodo, Value *ar
          * arquivos o `rename` é atômico — sem cópia, sem disco extra. Só cai
          * em $TMPDIR / padrão do sistema se a pasta não for gravável. */
         const char *dirs[3]; int nd = 0;
-        char pasta[1024];
+        char pasta[PS_CAMINHO_MAX];
         if (save_cam) {
             final = save_cam;
             const char *barra = ps_ultimo_sep(save_cam);
             if (barra && barra != save_cam) {
+                /* cortada, a pasta do temporário seria OUTRA */
                 size_t l = (size_t)(barra - save_cam);
-                if (l >= sizeof pasta) l = sizeof pasta - 1;
+                if (l >= sizeof pasta) {
+                    if (corpo_livre) free(corpo);
+                    return erro_sistema(vm, ENAMETOOLONG, save_cam, NULL);
+                }
                 memcpy(pasta, save_cam, l); pasta[l] = '\0';
             } else snprintf(pasta, sizeof pasta, "%s", barra ? "/" : ".");
             dirs[nd++] = pasta;
@@ -17961,10 +18046,8 @@ static int request_comum(VM *vm, const char *nome, const char *metodo, Value *ar
             dirs[nd++] = P_tmpdir;
         }
         int fd = -1;
-        for (int i = 0; i < nd && fd < 0; i++) {
-            snprintf(tmp, sizeof tmp, "%s/.ps_resposta_XXXXXX", dirs[i]);
-            fd = mkstemp(tmp);
-        }
+        for (int i = 0; i < nd && fd < 0; i++)
+            if (junta_caminho(tmp, sizeof tmp, dirs[i], ".ps_resposta_XXXXXX") == 0) fd = mkstemp(tmp);
         if (fd < 0) { int e = errno; if (corpo_livre) free(corpo);
                       return erro_sistema(vm, e, final ? final : tmp, NULL); }
         destino = fdopen(fd, "wb");
@@ -18281,8 +18364,12 @@ static int qr_salva_em(VM *vm, const char *destino, const char *nome,
     int pasta = (strcmp(destino, ".") == 0 || strcmp(destino, "..") == 0
                  || ps_termina_em_sep(destino)
                  || (stat(destino, &st) == 0 && S_ISDIR(st.st_mode)));
-    if (pasta) snprintf(caminho, cap, "%s/%s", destino, nome);
-    else snprintf(caminho, cap, "%s", destino);
+    /* -2 = caminho longo demais, com o erro do sistema já posto (cortado, o
+     * PNG iria pra OUTRO arquivo) */
+    if (junta_caminho(caminho, cap, destino, pasta ? nome : NULL) != 0) {
+        erro_sistema(vm, ENAMETOOLONG, destino, NULL);
+        return -2;
+    }
     /* NÃO cria a pasta pai: o QRPoolFile.save/gen do interpretador também não,
      * e erram se o diretório não existe — alinhar com a autoridade */
     FILE *f = fopen(caminho, "wb");
@@ -18306,11 +18393,12 @@ static int met_qrf_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
     PSQRFile *q = COMO_QRFILE(alvo);
     PSString *b = EH_BYTES(q->conteudo) ? COMO_BYTES(q->conteudo) : NULL;
-    char caminho[2048];
-    if (qr_salva_em(vm, COMO_STRING(args[0])->chars, q->nome,
-                    b ? (const unsigned char *)b->chars : NULL, b ? (size_t)b->len : 0,
-                    caminho, sizeof(caminho)) != 0)
-        return erro_salvar(vm, caminho);
+    char caminho[PS_CAMINHO_MAX];
+    int ok = qr_salva_em(vm, COMO_STRING(args[0])->chars, q->nome,
+                         b ? (const unsigned char *)b->chars : NULL, b ? (size_t)b->len : 0,
+                         caminho, sizeof(caminho));
+    if (ok == -2) return -1;
+    if (ok != 0) return erro_salvar(vm, caminho);
     *out = alvo;                 /* QRPoolFile.save devolve self */
     return 0;
 }
@@ -18381,9 +18469,10 @@ static int mod_qr_gen(VM *vm, Value *args, int n, Value *out)
     if (rc != 0) return -1;
 
     if (save) {
-        char caminho[2048];
+        char caminho[PS_CAMINHO_MAX];
         int ok = qr_salva_em(vm, save, nome, png, npng, caminho, sizeof(caminho));
         free(png);
+        if (ok == -2) return -1;
         if (ok != 0) return erro_salvar(vm, caminho);
         PSPoolFile *pf = novo_poolfile(vm, caminho);   /* com save= devolve PoolFile */
         if (!pf) return erro_sistema(vm, errno, caminho, NULL);   /* o errno diz o motivo */
@@ -18432,10 +18521,11 @@ static int met_qri_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSQRImage *q = COMO_QRIMAGE(alvo);
     unsigned char *png; size_t npng;
     if (qri_png(vm, q, &png, &npng) != 0) return -1;
-    char caminho[2048];
+    char caminho[PS_CAMINHO_MAX];
     int ok = qr_salva_em(vm, COMO_STRING(args[0])->chars, q->nome, png, npng,
                          caminho, sizeof(caminho));
     free(png);
+    if (ok == -2) return -1;
     if (ok != 0) return erro_salvar(vm, caminho);
     *out = alvo;   /* QRImage.save devolve self */
     return 0;
@@ -18931,8 +19021,9 @@ static int mod_mp_src(VM *vm, Value *args, int n, Value *out)
     if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "src() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
     if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
-    char abs[2048];
-    caminho_abs(COMO_STRING(args[0])->chars, abs, sizeof(abs));
+    char abs[PS_CAMINHO_MAX];
+    if (caminho_abs(COMO_STRING(args[0])->chars, abs, sizeof(abs)) != 0 && !abs[0])
+        return erro_sistema(vm, ENAMETOOLONG, COMO_STRING(args[0])->chars, NULL);
     return devolve_texto(vm, out, abs, (int)strlen(abs));
 }
 
@@ -19700,7 +19791,7 @@ static int mod_db_connect(VM *vm, Value *args, int n, Value *out)
     const char *db = (n > 5 && EH_STRING(args[5])) ? COMO_STRING(args[5])->chars : "";
     const char *base = (n > 6 && EH_STRING(args[6])) ? COMO_STRING(args[6])->chars : "";
     /* url tem prioridade (args[7]) */
-    char url_drv[32] = "", url_host[256] = "", url_user[128] = "", url_sen[128] = "", url_db[256] = "", url_base[512] = "";
+    char url_drv[32] = "", url_host[256] = "", url_user[128] = "", url_sen[128] = "", url_db[256] = "", url_base[PS_CAMINHO_MAX] = "";
     int url_porta = 0;
     const char *url = (n > 7 && EH_STRING(args[7])) ? COMO_STRING(args[7])->chars : "";
     if (url[0]) {
@@ -19718,7 +19809,9 @@ static int mod_db_connect(VM *vm, Value *args, int n, Value *out)
                  * ("unable to open database file") — caminho absoluto por URL
                  * nunca funcionou. */
                 if (*resto == '/') resto++;
-                snprintf(url_base, sizeof(url_base), "%s", resto);
+                /* o arquivo do banco: cortado, abria OUTRO */
+                if (junta_caminho(url_base, sizeof(url_base), resto, NULL) != 0)
+                    return erro_sistema(vm, ENAMETOOLONG, resto, NULL);
                 driver = url_drv; base = url_base;
             } else {
                 driver = url_drv;
@@ -20608,22 +20701,23 @@ static int mod_jk_render(VM *vm, Value *args, int n, Value *out)
     if (fixa_raiz(vm, rv) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
 
     /* resolve o caminho via a mesma busca do os (script dir + cwd, recursivo) */
-    char achado[2048]; int ok = 0;
+    char achado[PS_CAMINHO_MAX]; int ok = 0;
     if (n == 2 && EH_STRING(args[1])) {
         /* folder + file: confina file DENTRO da pasta base, bloqueia traversal */
         Value ap = args[0];
-        char base[2048];
+        char base[PS_CAMINHO_MAX];
         int achou_base = 0;
         if (vm->dir_script[0] && acha_em(vm->dir_script, COMO_STRING(ap)->chars, 1, base, sizeof(base), 0) == 0) achou_base = 1;
-        else { char cwd[1024]; if (getcwd(cwd, sizeof(cwd)) && acha_em(cwd, COMO_STRING(ap)->chars, 1, base, sizeof(base), 0) == 0) achou_base = 1; }
+        else { char cwd[PS_CAMINHO_MAX]; if (getcwd(cwd, sizeof(cwd)) && acha_em(cwd, COMO_STRING(ap)->chars, 1, base, sizeof(base), 0) == 0) achou_base = 1; }
         if (achou_base) {
-            char cand[4096];
-            snprintf(cand, sizeof(cand), "%s/%s", base, COMO_STRING(args[1])->chars);
-            char resolv[4096];
-            if (realpath(cand, resolv) && strncmp(resolv, base, strlen(base)) == 0) {
+            /* cortado, o candidato seria OUTRO arquivo da pasta */
+            char cand[PS_CAMINHO_MAX];
+            char resolv[PS_CAMINHO_MAX];
+            if (junta_caminho(cand, sizeof(cand), base, COMO_STRING(args[1])->chars) == 0
+                    && realpath(cand, resolv) && dentro_da_raiz(base, resolv) >= 0) {
                 struct stat st;
                 if (stat(resolv, &st) == 0 && S_ISREG(st.st_mode)) {
-                    snprintf(achado, sizeof(achado), "%.2047s", resolv); ok = 1;
+                    snprintf(achado, sizeof(achado), "%s", resolv); ok = 1;
                 }
             }
         }
@@ -21259,13 +21353,16 @@ static int met_jup_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o destino") != 0) return -1;
     PSJUpload *u = COMO_JUPLOAD(alvo);
     const char *dest = COMO_STRING(args[0])->chars;
-    /* cria pastas pai */
-    char tmp[1024]; snprintf(tmp, sizeof(tmp), "%s", dest);
-    for (char *p = tmp + 1; *p; p++) if (ps_eh_sep(*p)) { char s = *p; *p = '\0'; mkdir(tmp, 0777); *p = s; }
+    /* As pastas pai pelo ajudante comum: a cópia de 1024 bytes de antes,
+     * cortada, criava pastas de OUTRO caminho. A falha é a do sistema (era
+     * "TypeError: save: nao criou"), e a gravação é conferida no `fwrite` e no
+     * `fclose`: disco cheio respondia sucesso com o arquivo pela metade. */
+    cria_pais(dest);
     FILE *f = fopen(dest, "wb");
-    if (!f) MERRO(vm, "TypeError", "save: nao criou %s", dest);
-    if (EH_BYTES(u->dados)) fwrite(COMO_BYTES(u->dados)->chars, 1, (size_t)COMO_BYTES(u->dados)->len, f);
-    fclose(f);
+    if (!f) return erro_sistema(vm, errno, dest, NULL);
+    PSString *b = EH_BYTES(u->dados) ? COMO_BYTES(u->dados) : NULL;
+    if (grava_e_fecha(f, b ? b->chars : "", b ? (size_t)b->len : 0) != 0)
+        return erro_sistema(vm, errno, dest, NULL);
     *out = alvo;
     return 0;
 }
@@ -21280,19 +21377,24 @@ static int met_jup_bytes(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int mod_jk_Jinker(VM *vm, Value *args, int n, Value *out)
 {
     /* os que viram arquivo (a pasta do static_folder, o certificado e a chave
-     * do TLS): o byte nulo é recusado antes de montar o servidor */
-    if (n >= 3 && EH_STRING(args[2])
-            && CAMINHO_SEM_NUL(vm, COMO_STRING(args[2]), "o caminho do static_folder=") != 0) return -1;
+     * do TLS): o byte nulo e o caminho maior que o do sistema são recusados
+     * antes de montar o servidor */
+    if (n >= 3 && EH_STRING(args[2])) {
+        PSString *sf = COMO_STRING(args[2]);
+        if (CAMINHO_SEM_NUL(vm, sf, "o caminho do static_folder=") != 0) return -1;
+        if ((size_t)sf->len >= PS_CAMINHO_MAX) return erro_sistema(vm, ENAMETOOLONG, sf->chars, NULL);
+    }
     if (n >= 2 && EH_DICT(args[1])) {
         PSDict *d = COMO_DICT(args[1]);
         for (int i = 0; i < d->usados; i++) {
             if (d->entradas[i].estado != 1 || !EH_STRING(d->entradas[i].chave)
                     || !EH_STRING(d->entradas[i].valor)) continue;
             const char *k = COMO_STRING(d->entradas[i].chave)->chars;
-            if ((strcmp(k, "cert") == 0 || strcmp(k, "key") == 0)
-                    && CAMINHO_SEM_NUL(vm, COMO_STRING(d->entradas[i].valor),
-                                       k[0] == 'c' ? "o caminho do cert" : "o caminho do key") != 0)
+            if (strcmp(k, "cert") != 0 && strcmp(k, "key") != 0) continue;
+            PSString *cv = COMO_STRING(d->entradas[i].valor);
+            if (CAMINHO_SEM_NUL(vm, cv, k[0] == 'c' ? "o caminho do cert" : "o caminho do key") != 0)
                 return -1;
+            if ((size_t)cv->len >= PS_CAMINHO_MAX) return erro_sistema(vm, ENAMETOOLONG, cv->chars, NULL);
         }
     }
     PSJinker *j = calloc(1, sizeof(PSJinker));
@@ -21785,13 +21887,8 @@ static int jk_sob_a_raiz(const char *raiz, const char *cam, char *saida, size_t 
     if (!rr) return 0;
     char *rc = realpath(cam, NULL);
     if (!rc) { free(rr); return 0; }
-    size_t lr = strlen(rr);
-    while (lr > 0 && rr[lr - 1] == '/') lr--;      /* raiz "/" vira "" */
-    int ok = strncmp(rc, rr, lr) == 0
-             /* a borda tem que ser separador: sem isto a raiz `/srv/app`
-              * aprovaria `/srv/app-secreto`, que é outro diretório */
-             && (rc[lr] == '/' || rc[lr] == '\0')
-             && jk_nome_publicavel(rc + lr);
+    long lr = dentro_da_raiz(rr, rc);
+    int ok = lr >= 0 && jk_nome_publicavel(rc + lr);
     if (ok) snprintf(saida, n, "%s", rc);
     free(rr); free(rc);
     return ok;
@@ -22278,7 +22375,7 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
             else if (strcmp(hr->path, prefixo) == 0)           rel = "";
             else if (strncmp(hr->path, prefixo, pl) == 0 && hr->path[pl] == '/') rel = hr->path + pl + 1;
 
-            char base[2048]; int achou_base = 0;
+            char base[PS_CAMINHO_MAX]; int achou_base = 0;
             /* caminho ABSOLUTO vale como está: `acha_em` sempre junta com uma
              * raiz, e "/dir/x" + "/tmp/front" nunca existe — antes um
              * static_folder absoluto caía calado no 404. */
@@ -22291,18 +22388,21 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
             }
             if (!achou_base && rel) {
                 if (vm->dir_script[0] && acha_em(vm->dir_script, j->static_folder, 1, base, sizeof(base), 0) == 0) achou_base = 1;
-                else { char cwd[512]; if (getcwd(cwd, sizeof(cwd)) && acha_em(cwd, j->static_folder, 1, base, sizeof(base), 0) == 0) achou_base = 1; }
+                else { char cwd[PS_CAMINHO_MAX]; if (getcwd(cwd, sizeof(cwd)) && acha_em(cwd, j->static_folder, 1, base, sizeof(base), 0) == 0) achou_base = 1; }
             }
             if (achou_base) {
-                char cam[3072]; snprintf(cam, sizeof(cam), "%s/%s", base, rel);
+                /* cortado, o pedido resolveria OUTRO arquivo da pasta: o que
+                 * não cabe é URL desconhecida */
+                char cam[PS_CAMINHO_MAX];
+                int cabe = junta_caminho(cam, sizeof(cam), base, rel) == 0;
                 struct stat st;
-                const char *serve = NULL; char idx[3072]; char seguro[4096];
+                const char *serve = NULL; char idx[PS_CAMINHO_MAX]; char seguro[PS_CAMINHO_MAX];
                 /* mesma trava do `/static/`: o pedido tem que RESOLVER dentro
                  * do static_folder. Fora dele, cai no index.html do SPA — que
                  * é o que a URL desconhecida já devolvia. */
-                if (jk_sob_a_raiz(base, cam, seguro, sizeof(seguro))
+                if (cabe && jk_sob_a_raiz(base, cam, seguro, sizeof(seguro))
                     && stat(seguro, &st) == 0 && S_ISREG(st.st_mode)) serve = seguro;
-                else { snprintf(idx, sizeof(idx), "%s/index.html", base); if (stat(idx, &st) == 0) serve = idx; }
+                else if (junta_caminho(idx, sizeof(idx), base, "index.html") == 0 && stat(idx, &st) == 0) serve = idx;
                 if (serve) {
                     FILE *f = fopen(serve, "rb");
                     if (f) {
@@ -23577,7 +23677,9 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     void *ssl_ctx = NULL;
     const char *proto = "http";
     if (j->usa_tls) {
-        char cert[1024], key[1024], erro[256];
+        /* do tamanho do sistema: o `Jinker()` já recusa cert e key maiores, e
+         * em 1024 bytes um caminho maior carregava OUTRO arquivo */
+        char cert[PS_CAMINHO_MAX], key[PS_CAMINHO_MAX], erro[256];
         if (j->cert && j->cert[0]) {
             snprintf(cert, sizeof(cert), "%s", j->cert);
             if (j->key && j->key[0]) {
@@ -23590,11 +23692,12 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
                 const char *ponto = strrchr(j->cert, '.');
                 const char *barra = ps_ultimo_sep(j->cert);
                 if (ponto && (!barra || ponto > barra)) {
-                    char cand[1024];
+                    char cand[PS_CAMINHO_MAX];
                     int base = (int)(ponto - j->cert);
-                    snprintf(cand, sizeof(cand), "%.*s.key", base, j->cert);
+                    int nc = snprintf(cand, sizeof(cand), "%.*s.key", base, j->cert);
                     struct stat ks;
-                    if (stat(cand, &ks) == 0) snprintf(key, sizeof(key), "%s", cand);
+                    if (nc > 0 && (size_t)nc < sizeof(cand) && stat(cand, &ks) == 0)
+                        snprintf(key, sizeof(key), "%s", cand);
                 }
             }
         } else {
@@ -28957,7 +29060,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     const char *base = ps_ultimo_sep(ah->caminho);
                     base = base ? base + 1 : ah->caminho;
                     if (strcmp(nome, "name") == 0) {
-                        snprintf(nbuf, sizeof(nbuf), "%s", base);
+                        /* O nome sem a pasta: no Linux e no macOS tem no
+                         * máximo 255 bytes. A precisão é o tamanho do buffer.
+                         * Medido no 17.0.10: tirar a cópia daqui (ou o trecho
+                         * todo pra uma função à parte) troca o modo de
+                         * registradores do laço, +0,5% a +0,9% em laco_tipado,
+                         * fib e closure sem JIT. */
+                        snprintf(nbuf, sizeof(nbuf), "%.511s", base);
                         txt = nbuf;
                     } else if (strcmp(nome, "ext") == 0) {
                         /* COM o ponto (".png"), igual ao PoolFile carregado —

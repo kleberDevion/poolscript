@@ -149,6 +149,12 @@ tem o byte nulo ...: nenhum argumento de programa tem esse caractere`) e o
 nome de variável do `os.getenv` e do `os.environ`. No `import "..."` o erro
 sai antes de rodar, como `SyntaxError` na linha do import.
 
+**Caminho comprido passa inteiro até o limite do sistema** (4095 bytes no
+Linux). Acima dele, o erro é o que o próprio sistema dá, com o tipo
+`OSError`: `[Errno 36] File name too long: '...'`. Nada é criado nem aberto
+com um pedaço do caminho. O endereço do soquete local (`AF_UNIX`) tem limite
+próprio, de 107 bytes no Linux, e acima dele é o mesmo erro.
+
 ## A árvore de exceções
 
 `catch (Tipo e)` pega o tipo pedido **e todos os descendentes dele**. `Exception`

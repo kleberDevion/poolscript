@@ -57,6 +57,9 @@ escrevendo no lugar antigo.
   de arquivo — comeca com 'linha um\nlinha dois'`. Texto comprido, que antes
   dava `[Errno 36] File name too long` com o texto inteiro, sai cortado em 40
   caracteres ([exceções](../../exceptions/exceptions.md)).
+- **OSError** — caminho maior que o limite do sistema (4095 bytes no Linux):
+  `[Errno 36] File name too long: '…'`. Até o limite o caminho passa inteiro:
+  `.path()`, `.size`, `.move()` e `.delete()` do arquivo aberto agem nele.
 - **ValueError** — caminho com o byte nulo (`\x00`), recusado ANTES de abrir:
   o sistema cortaria o nome nele e abriria OUTRO arquivo. `o caminho tem o
   byte nulo \x00 na posicao 1: nenhum nome de arquivo tem esse caractere —
