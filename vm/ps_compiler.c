@@ -600,6 +600,10 @@ typedef struct {
      * mesmo. Por ponteiro: um valor que sobrou de outra chamada nunca é o nó
      * de uma leitura. */
     PSNode     *membro_chamado;
+    /* O alvo (nome ou membro) da chamada que está sendo compilada, pela mesma
+     * regra do ponteiro: é a chamada direta da saída, que a funct tipada
+     * confere; a leitura como valor é outro nó (`tp_saida_como_valor`). */
+    PSNode     *alvo_chamado;
 } C;
 
 /* "method" se `n` é o membro que uma chamada chama; "attribute" se é leitura */
@@ -1397,6 +1401,29 @@ void ps_import_modulo_codificado(const PSNode *n, char *encoded)
 static int nome_bate(const PSNode *x, const char *alvo)
 {
     return x && x->texto && !strcmp(x->texto, alvo);
+}
+
+/* A primeira LEITURA de `alvo` na expressão `n`. Não entra em funct nem
+ * lambda (o corpo delas roda depois, e a captura é válida) nem na
+ * compreensão que liga o mesmo nome (lá dentro o nome é o dela). */
+static PSNode *acha_leitura(C *c, PSNode *n, const char *alvo)
+{
+    if (!n || fundo_demais(c, n, 1)) return NULL;
+    while (n->kind == N_BINARY_OP) {      /* cadeia `a + b + …` em laço (ver liga_o_nome) */
+        PSNode *r = acha_leitura(c, n->b, alvo);
+        if (r) return r;
+        n = n->a;
+        if (!n) return NULL;
+    }
+    if (n->kind == N_FUNCT_DECL || n->kind == N_LAMBDA_EXPR) return NULL;
+    if (n->kind == N_LIST_COMP && nome_bate(n, alvo)) return NULL;
+    if (n->kind == N_NAME && nome_bate(n, alvo)) return n;
+    PSNode *r;
+    if ((r = acha_leitura(c, n->a, alvo)) || (r = acha_leitura(c, n->b, alvo))
+            || (r = acha_leitura(c, n->c, alvo)) || (r = acha_leitura(c, n->e, alvo))) return r;
+    for (int32_t i = 0; i < n->lista.n; i++)  if ((r = acha_leitura(c, n->lista.itens[i], alvo))) return r;
+    for (int32_t i = 0; i < n->lista2.n; i++) if ((r = acha_leitura(c, n->lista2.itens[i], alvo))) return r;
+    return NULL;
 }
 
 /* Toda forma que LIGA um nome entra aqui. A lista antiga via atribuição,
@@ -2908,15 +2935,24 @@ static int tp_nome_ligado(C *c, Unidade *u, const char *nome)
 }
 
 /* ── o tipo de uma expressão ── */
+/* O primeiro `yield` do corpo, sem entrar nas functs de dentro: é o que faz
+ * da funct um gerador. NULL = não tem. */
+static PSNode *tp_acha_yield(PSNode *n)
+{
+    if (!n || ps_pilha_apertada()) return NULL;   /* fundo demais: quem acusa e o stmt_no */
+    if (n->kind == N_YIELD_STMT) return n;
+    if (n->kind == N_FUNCT_DECL || n->kind == N_LAMBDA_EXPR) return NULL;
+    PSNode *y;
+    if ((y = tp_acha_yield(n->a)) || (y = tp_acha_yield(n->b))
+            || (y = tp_acha_yield(n->c)) || (y = tp_acha_yield(n->e))) return y;
+    for (int32_t i = 0; i < n->lista.n; i++)  if ((y = tp_acha_yield(n->lista.itens[i]))) return y;
+    for (int32_t i = 0; i < n->lista2.n; i++) if ((y = tp_acha_yield(n->lista2.itens[i]))) return y;
+    return NULL;
+}
+
 static int tp_tem_yield(PSNode *n)
 {
-    if (!n || ps_pilha_apertada()) return 0;   /* fundo demais: quem acusa e o stmt_no */
-    if (n->kind == N_YIELD_STMT) return 1;
-    if (n->kind == N_FUNCT_DECL || n->kind == N_LAMBDA_EXPR) return 0;
-    if (tp_tem_yield(n->a) || tp_tem_yield(n->b) || tp_tem_yield(n->c) || tp_tem_yield(n->e)) return 1;
-    for (int32_t i = 0; i < n->lista.n; i++)  if (tp_tem_yield(n->lista.itens[i])) return 1;
-    for (int32_t i = 0; i < n->lista2.n; i++) if (tp_tem_yield(n->lista2.itens[i])) return 1;
-    return 0;
+    return tp_acha_yield(n) != NULL;
 }
 
 /* O retorno que a funct DECLARA — e só quando a chamada devolve esse valor:
@@ -4626,9 +4662,8 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
  * `os.writeFile`, `os.warn`)? Devolve o índice do posicional que sai (-2 =
  * todos), ou -1 se não é saída. É o que a funct tipada confere: ela só dá
  * saída do tipo dela. */
-static int tp_arg_de_saida(C *c, Unidade *u, PSNode *call)
+static int tp_saida_do_alvo(C *c, Unidade *u, PSNode *f)
 {
-    PSNode *f = call->a;
     if (!f) return -1;
     if (f->kind == N_NAME && f->texto)
         return (!strcmp(f->texto, "post") && !tp_nome_ligado(c, u, "post")) ? -2 : -1;
@@ -4645,6 +4680,42 @@ static int tp_arg_de_saida(C *c, Unidade *u, PSNode *call)
     const char *t = tp_de(c, u, f->a);
     if (t && !strcmp(t, "PoolFile") && !strcmp(f->texto, "write")) return 0;
     return -1;
+}
+
+static int tp_arg_de_saida(C *c, Unidade *u, PSNode *call)
+{
+    return tp_saida_do_alvo(c, u, call->a);
+}
+
+/* A saída como VALOR (`Object p = post`, `map(l, post)`) escaparia da regra
+ * da funct tipada: quem escreve depois não é a chamada que a passada confere.
+ * Conferir rodando pedia ao laço da VM dizer ao nativo em que funct ele está,
+ * e custou +4% a +6% (medido no lote 6). Decisão dele (2026-10-08): erro
+ * antes de rodar, na funct que devolve valor. `n` não é o alvo da chamada em
+ * curso (`c->alvo_chamado`): esse é a chamada direta, conferida. */
+static void tp_saida_como_valor(C *c, Unidade *u, PSNode *n)
+{
+    if (!u->tipo_ret_nome || !strcmp(u->tipo_ret_nome, "Null") || n == c->alvo_chamado) return;
+    if (tp_saida_do_alvo(c, u, n) == -1) return;
+    /* o nome como foi escrito: `sys.stdout.write`, `os.warn`, `f.write` */
+    const PSNode *partes[8];
+    int np = 0;
+    for (const PSNode *q = n; q && np < 8; q = q->a) {
+        partes[np++] = q;
+        if (q->kind != N_MEMBER_ACCESS) break;
+    }
+    char nome[160];
+    size_t t = 0;
+    nome[0] = '\0';
+    for (int i = np - 1; i >= 0 && t < sizeof(nome); i--) {
+        int k = snprintf(nome + t, sizeof(nome) - t, "%s%s", i == np - 1 ? "" : ".",
+                         partes[i]->texto ? partes[i]->texto : "?");
+        if (k < 0) break;
+        t += (size_t)k;
+    }
+    terro(c, n, "AttributedValueError",
+          "%s como valor em %s(), que devolve %s: a saída dele não seria conferida (chame %s direto)",
+          nome, u->nome_funct ? u->nome_funct : "?", u->tipo_ret_nome, nome);
 }
 
 /* Funct tipada: os argumentos de saída da chamada `n`, antes de rodar. O que
@@ -5250,6 +5321,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
 
         case N_NAME:
             tp_confere_nome(c, u, n->texto, n);
+            tp_saida_como_valor(c, u, n);
             carrega_nome(c, u, n->texto ? n->texto : "");
             return;
 
@@ -5377,6 +5449,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
 
         case N_CALL:
             if (n->a && n->a->kind == N_MEMBER_ACCESS) c->membro_chamado = n->a;
+            c->alvo_chamado = n->a;
             tp_confere_chamada(c, u, n);
             if (n->a && n->a->kind == N_MEMBER_ACCESS && n->a->a
                     && n->a->a->kind == N_BASE_CALL_NODE) {
@@ -5627,7 +5700,8 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
         case N_MEMBER_ACCESS: {
             tp_confere_membro(c, u, n);
             /* lido ANTES de descer: uma chamada dentro do alvo (`f().m()`)
-             * troca o `membro_chamado` */
+             * troca o `membro_chamado` e o `alvo_chamado` */
+            tp_saida_como_valor(c, u, n);
             int32_t chamado = n == c->membro_chamado ? PS_ARG_CHAMADO : 0;
             if (n->a && n->a->kind == N_BASE_CALL_NODE) {
                 /* `base(Pai).campo` / `base(Pai).metodo` (sem chamar) */
@@ -7781,6 +7855,14 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
     else if (n->texto2 && !strcmp(n->texto2, "bool")) u.tipo_ret = 2;
     const char *nome_f = n->texto ? n->texto : "<funct>";
     u.nome_funct = nome_f;
+    /* `async funct` com `yield` virava gerador comum, calado: o corpo não
+     * começava na chamada, e o `await` e o `gather` devolviam o próprio
+     * gerador. Uma chamada é tarefa ou gerador, não as duas (decisão dele no
+     * Plano 6): erro antes de rodar, no `yield`. */
+    if (n->is_async) {
+        PSNode *y = tp_acha_yield(n->b);
+        if (y) cerro_sx(c, y, "'yield' em async funct: a funct e tarefa (async) ou gerador (yield), nao as duas");
+    }
     if (n->kind == N_FUNCT_DECL && n->texto2) {
         u.tipo_ret_nome = tp_canon(n->texto2);
         if (!tp_tipo_existe(c, &u, n->texto2))
@@ -7844,6 +7926,7 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
     c->out->protos[idx].slot_kwarg = slot_kwarg;
     c->out->protos[idx].eh_async = n->is_async;
     c->out->protos[idx].eh_static = meu_static;
+    c->out->protos[idx].eh_nonnull = meu_nonnull;
     if (nfix > 0) {
         char **nomes = calloc((size_t)nfix, sizeof(char *));
         if (!nomes) { cerro(c, "sem memoria", n); }
@@ -7883,6 +7966,23 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
     for (int32_t i = 0; i < n->lista.n && !CFALHOU(c); i++) {
         PSNode *par = n->lista.itens[i];
         if (!par->a) continue;
+        /* O padrão roda na entrada, na ordem dos parâmetros: o próprio e os
+         * de depois ainda não têm valor (o padrão lia o slot vazio e virava
+         * Null, calado). As estrelas valem: nascem antes, no binding. */
+        for (int32_t j = i; j < n->lista.n; j++) {
+            PSNode *pj = n->lista.itens[j];
+            if (!pj || pj->i2 != 0 || !pj->texto) continue;
+            PSNode *lido = acha_leitura(c, par->a, pj->texto);
+            if (!lido) continue;
+            const char *pn = par->texto ? par->texto : "?";
+            if (j == i)
+                terro(c, lido, "NameError", "o padrão de '%s' lê o próprio '%s', que ainda não tem valor: "
+                      "no padrão só valem os parâmetros de antes", pn, pj->texto);
+            else
+                terro(c, lido, "NameError", "o padrão de '%s' lê '%s', um parâmetro que vem depois e ainda "
+                      "não tem valor: no padrão só valem os parâmetros de antes", pn, pj->texto);
+            break;
+        }
         emite(c, &u, OP_LOAD_CONST, idx_const(c, &u, K_INT, i, 0, NULL, 0));
         int32_t pula = emite(c, &u, OP_JUMP_IF_SET, 0);
         expr(c, &u, par->a);

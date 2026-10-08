@@ -55,6 +55,17 @@ post(g(5, 1))    # 6
 
 O padrão pode ser qualquer expressão: `funct f(a, b = 5 * 2)` → `b` vale `10`.
 
+O padrão roda na entrada, na ordem dos parâmetros, então ele lê só os
+parâmetros **de antes**: `funct h(int a, int b = a * 2)` vale. Ler o próprio
+parâmetro ou um de depois é erro antes de rodar, no nome lido:
+
+```ps
+funct f(a = b, int b = 1) {
+    return a
+}
+# NameError: o padrão de 'a' lê 'b', um parâmetro que vem depois e ainda não tem valor: no padrão só valem os parâmetros de antes
+```
+
 ### 6.2.2. Argumentos nomeados (na chamada)
 
 Na chamada, um argumento pode ser passado pelo nome do parâmetro, em qualquer
@@ -294,6 +305,21 @@ int funct conta() {
 O que só se sabe rodando (o valor de `json.parse`, de `d["k"]`) é conferido
 rodando, no `return` — o mesmo erro, no outro momento.
 
+A regra da saída confere a **chamada** de saída. Por isso, dentro da funct
+que devolve valor, usar `post`, `sys.stdout.write`, `sys.stderr.write`,
+`os.writeFile`, `os.warn` ou `f.write` como **valor** (guardar numa variável,
+passar pro `map`) é erro antes de rodar: quem escreveria depois não seria uma
+chamada conferida. Chame direto. Uma lambda escrita dentro dela é outra funct,
+com a própria regra.
+
+```ps
+int funct conta() {
+    Object p = post
+    return 1
+}
+# AttributedValueError: post como valor em conta(), que devolve int: a saída dele não seria conferida (chame post direto)
+```
+
 ### 6.4.1. `Null funct` — a funct que não devolve valor
 
 `Null funct` é a funct que **não devolve nada**. O
@@ -439,6 +465,10 @@ nonnull funct exige(valor) {
 }
 exige(Null)                 # nonnull: parametro 'valor' em 'exige' nao pode ser Null
 ```
+
+O `nonnull` é contrato da **chamada**: num gerador (funct com `yield`), o
+`Null` passado acusa na linha da chamada, como o tipo do parâmetro, e não no
+primeiro pedido ao gerador.
 
 Chamar um `static` pela instância é erro:
 `funct 'soma' e static: chame pela Entity (Tipo.soma(...)), nao pela instancia`.
@@ -590,13 +620,23 @@ devolve uma lista de geradores).
 yield 1         # SyntaxError: 'yield' fora de funct
 ```
 
+Uma funct é gerador ou tarefa (`async`), não as duas: `yield` dentro de
+`async funct` é erro de sintaxe antes de rodar (antes ela virava um gerador
+comum, calada, e o `await` devolvia o próprio gerador):
+
+```ps
+async funct g() {
+    yield 1     # SyntaxError: 'yield' em async funct: a funct e tarefa (async) ou gerador (yield), nao as duas
+}
+```
+
 ---
 
 ## 6.8. Assíncrono — `async` / `await` / `gather`
 
 Uma funct marcada `async` (`async funct`) devolve um **future** (uma promessa
 do resultado) e **começa a rodar na chamada**: o corpo corre até o primeiro
-ponto em que ele **cede** — `sleep`, I/O (banco, `request`, `os.run`), ou um
+ponto em que ele **cede** — `sleep` (até `sleep(0)`, que cede sem esperar), I/O (banco, `request`, `os.run`), ou um
 `await` de dentro — e aí o controle volta pra quem chamou. O valor sai com
 `await` (espera um future) ou `gather` (espera vários). As tasks correm
 **concorrentes** — enquanto uma espera I/O, as outras andam.

@@ -131,6 +131,9 @@ typedef struct {
      * `self` — e aí `Classe.metodoNormal()` passava batido, dropava o self em
      * silêncio e o erro saía no parâmetro seguinte. */
     int32_t  eh_static;
+    /* `nonnull funct`: o gerador confere o Null passado já na chamada (o
+     * prólogo, que tem o CHECK_NONNULL, só roda no 1º pedido) */
+    int32_t  eh_nonnull;
     /* Nome de cada parâmetro, na ordem. Só existe pra resolver argumento
      * nomeado em runtime — o call site não sabe qual função vai chamar. */
     char   **param_nomes;

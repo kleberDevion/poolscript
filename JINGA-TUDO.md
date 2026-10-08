@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.10`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.11`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -622,7 +622,9 @@ post(exige(1))
   - Os outros tipos: chegar ao fim sem return é erro (`f() devolve str e pode chegar ao fim sem return`).
   - `post("x")` dentro de `int funct` dá `saída de conta() esperava int, recebeu str`.
 - **Modificadores em ordem livre**: tipo, `async`, `public`/`private`, `static`, `nonnull`. Exemplo: `private static int funct f()`. Sem o `funct`: `faltou 'funct' antes de 'f': int async funct f(...)`.
-- `nonnull` recusa `Null` em qualquer parâmetro, inclusive vindo de um valor padrão: `RuntimeError: nonnull: parametro 'v' em 'exige' nao pode ser Null`. `@NonNull` e `@static` em linha própria são a grafia antiga e continuam valendo.
+- `nonnull` recusa `Null` em qualquer parâmetro, inclusive vindo de um valor padrão: `RuntimeError: nonnull: parametro 'v' em 'exige' nao pode ser Null`. Num gerador, o `Null` passado acusa na chamada (o prólogo só roda no 1º pedido; `nonnull_na_chamada`, marca `eh_nonnull` do proto). `@NonNull` e `@static` em linha própria são a grafia antiga e continuam valendo.
+- O valor padrão lê só os parâmetros de antes: o próprio ou um de depois é `NameError` antes de rodar, no nome lido (`o padrão de 'a' lê 'b', um parâmetro que vem depois...`). Lambda no padrão ainda não captura parâmetro (dá `NameError` rodando): vai no lote 6b.
+- `yield` em `async funct` é `SyntaxError` (uma funct é tarefa ou gerador). Na funct que devolve valor, `post`, `sys.stdout.write`/`sys.stderr.write`, `os.writeFile`, `os.warn` e `f.write` como VALOR são `AttributedValueError` antes de rodar (decisão sua de 2026-10-08: conferir rodando custou +4% a +6% no laço). `sleep(0)` numa tarefa cede.
 - `static funct f(self)` fora de classe dá `funct static f(self, ...) nao recebe self: static nao tem instancia, tire o self`.
 - Funct é valor (`type()` dá `"funct"`). A recursão sem fim é `RecursionError`. Uma funct com `yield` é gerador, e chamá-la não executa nada até o primeiro pedido.
 - `map(lista, fn)` e `filter(lista, fn)` recebem **a lista primeiro**.
@@ -2148,8 +2150,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.10** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.10 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.11** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.11 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2770,7 +2772,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.10"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.11"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2850,13 +2852,13 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-08 (madrugada)
 
-- Versão da linguagem **17.0.10** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.10 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.11** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.11 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: `7191e1d` (17.0.10, o caminho comprido), igual a `origin/main` quando subiu. O único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
 - **Ordem decidida por você em 2026-10-08**: primeiro as correções (tudo o que está em andamento: os lotes 6 a 8 do Plano 6), depois o código de máquina com tabela de instruções (Plano 2), depois a volta às coberturas da linguagem; as features vêm depois das correções.
 - **Plano 9 fechado no 17.0.9** (`3364b63`): texto com o byte nulo vira `ValueError` antes de chegar ao sistema, nos 51 pontos em que texto vira nome de arquivo, no comando e nos argumentos do `os.run`/`os.cmd` e no nome do `os.getenv`/`os.environ`; no `import "..."`, `SyntaxError` antes de rodar (2.13).
 - **Plano 10 fechado no 17.0.10** (`7191e1d`): caminho comprido passa inteiro até o limite do sistema (4.095 bytes); acima, o erro do próprio sistema, sem criar nada com um pedaço do caminho (2.13). Junto: o `render(pasta, arquivo)` não sai mais pra pasta irmã de mesmo prefixo, e o `save` do upload dá o erro do sistema e não responde sucesso com o disco cheio. O `.name` do arquivo aberto ficou com a cópia de 512 bytes no laço da VM, porque tirá-la trocava o modo de registradores (+0,5% a +0,9% sem JIT); o micro que só lê `h.name` ficou 3,5% mais caro.
-- **Próximo: o lote 6 do Plano 6** (funções, closures, geradores e tarefas; 13 achados).
+- **Lote 6 do Plano 6, em três commits**: 6a (regras e frases: padrão que lê o parâmetro de depois, `yield` em `async funct`, saída como valor numa funct tipada, `sleep(0)` numa tarefa, `nonnull` do gerador na chamada), 6b (escopo: escrita a nome de fora com funct aninhada, closure em laço; e a lambda no padrão de parâmetro que não captura parâmetro nenhum, achada no 6a: `funct k(int b = 1, a = funct(int x) { return x + b })` passa no `--check` e dá `NameError` rodando), 6c (geradores e tarefas: estado de gerador entre tarefas, tarefa dentro de tarefa, traceback de gerador e de tarefa, `gather` com dois erros, `finally` de gerador abandonado). A saída como valor foi decisão sua (2026-10-08): conferir rodando custou +4% a +6% no laço da VM, medido.
 - **Plano 6 em execução** (aprovado em 2026-10-07 ~01:10; as 9 decisões seguem as recomendações): fechados os lotes 1 `0e4c3f7` (17.0.1, o arquivo-fonte), 2 `2b2201f` (17.0.2, frases do parser), 3 `1fba43c` (17.0.3, as dicas), 9 `252d6df` (17.0.4, `--check`, editor, quadro do erro e `sys.exit`), 10 `3110231` (17.0.5, linha de comando), 4 `e54b866` (17.0.6, classes: private e static) e 5 `70869e6` (17.0.7, classes: construtor, campos, enum, `is` e redeclaração), cada um verde na VPS em `make check`, `check-asan` e `check-debug` na árvore exata do commit. Faltam os lotes 6 a 8, nessa ordem: funções e tarefas, métodos nativos, libs.
 - **Lint de markdown**: você desinstalou a extensão em 2026-10-08 ("não vejo serventia"); o `.markdownlint.json` não faz falta.
 - **Pedido seu de 2026-10-07, feito no 17.0.8**: `open(texto)` com o CONTEÚDO de um arquivo no lugar do caminho dava `OSError: [Errno 36] File name too long: '# swagger — ...'` ("esse erro não faz sentido... isso deve ser corrigido"). Agora a frase diz que o caminho com quebra de linha é texto, não nome de arquivo, em todo erro de arquivo (2.13, depois da árvore de exceções).

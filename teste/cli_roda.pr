@@ -330,6 +330,20 @@ r = roda([POOL, "--check"], entrada="int i = 0\nwhile i < 2 {\n    i = i + 1\n  
 confere("--check: yield em laço do topo é SyntaxError na linha dele",
         "\"ok\":false" in r["saida"] and "'yield' fora de funct" in r["saida"]
         and "\"linha\":4,\"coluna\":5" in r["saida"])
+# Lote 6a: o padrão que lê o parâmetro de depois, o `yield` em async funct e o
+# `post` como valor numa funct tipada reprovam antes de rodar, no lugar certo
+r = roda([POOL, "--check"], entrada="funct f(a = b, int b = 1) {\n    return a\n}\n")
+confere("--check: padrão lendo o parâmetro de depois é NameError no nome lido",
+        "\"tipo\":\"NameError\"" in r["saida"] and "um parâmetro que vem depois" in r["saida"]
+        and "\"linha\":1,\"coluna\":13" in r["saida"])
+r = roda([POOL, "--check"], entrada="async funct g() {\n    yield 1\n}\n")
+confere("--check: yield em async funct é SyntaxError no yield",
+        "\"tipo\":\"SyntaxError\"" in r["saida"] and "'yield' em async funct" in r["saida"]
+        and "\"linha\":2,\"coluna\":5" in r["saida"])
+r = roda([POOL, "--check"], entrada="int funct f() {\n    Object p = post\n    return 1\n}\n")
+confere("--check: post como valor numa funct tipada é erro no post",
+        "\"tipo\":\"AttributedValueError\"" in r["saida"] and "post como valor em f()" in r["saida"]
+        and "\"linha\":2,\"coluna\":16" in r["saida"])
 # Byte nulo no caminho do import: o compilador leria OUTRO arquivo (o do
 # pedaço de antes). Reprova antes de rodar, no texto do caminho.
 r = roda([POOL, "--check"], entrada="post(1)\nimport \"lib\\x00.pr\"\n")

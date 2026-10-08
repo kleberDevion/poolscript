@@ -5039,6 +5039,56 @@ const Caso CASOS_LINGUAGEM[] = {
 { "NameError antes de rodar sugere o nome parecido que existe",
   "valor = 1\nif vlaor == 1 {\n    post(1)\n}\n", "", "NameError: name 'vlaor' is not defined. Did you mean: 'valor'?", 2 },
 
+/* ── funções: padrão, async com yield, saída como valor, sleep(0), nonnull do
+ * gerador (Plano 6, lote 6a, 2026-10-08) ──────────────────────────────────
+ * O padrão que lia o parâmetro de depois virava Null calado; `async funct`
+ * com `yield` virava gerador comum; `post` por apelido ou pelo `map` escapava
+ * da regra da saída da funct tipada (decisão dele: erro antes de rodar);
+ * `sleep(0)` não cedia numa tarefa; o `nonnull` do gerador só acusava no 1º
+ * pedido. */
+{ "padrao que le o parametro de depois: erro antes de rodar (lote 6a)",
+  "funct f(a = b, int b = 1) {\n    return a\n}\npost(f())\n",
+  "", "NameError: o padrão de 'a' lê 'b', um parâmetro que vem depois e ainda não tem valor: "
+  "no padrão só valem os parâmetros de antes", 2 },
+{ "padrao que le o proprio parametro: erro antes de rodar (lote 6a)",
+  "funct g(a = a) {\n    return a\n}\npost(g())\n",
+  "", "NameError: o padrão de 'a' lê o próprio 'a', que ainda não tem valor: "
+  "no padrão só valem os parâmetros de antes", 2 },
+{ "padrao que le o parametro de antes vale (lote 6a)",
+  "funct h(int a, int b = a * 2) {\n    return b\n}\npost(h(3), h(3, 1))\n",
+  "6 1", NULL, 0 },
+{ "async funct com yield: erro antes de rodar, no yield (lote 6a)",
+  "async funct g() {\n    sleep(0.01)\n    yield 1\n}\npost(\"nao roda\")\n",
+  "", "SyntaxError: 'yield' em async funct: a funct e tarefa (async) ou gerador (yield), nao as duas", 2 },
+{ "post como valor numa funct tipada: erro antes de rodar (lote 6a)",
+  "int funct f() {\n    Object p = post\n    p(\"texto\")\n    return 1\n}\npost(f())\n",
+  "", "AttributedValueError: post como valor em f(), que devolve int: a saída dele não seria "
+  "conferida (chame post direto)", 2 },
+{ "map(l, post) numa funct tipada: erro antes de rodar (lote 6a)",
+  "int funct g() {\n    map([\"via map\"], post)\n    return 2\n}\npost(g())\n",
+  "", "AttributedValueError: post como valor em g(), que devolve int: a saída dele não seria "
+  "conferida (chame post direto)", 2 },
+{ "sys.stdout.write como valor numa funct tipada: erro antes de rodar (lote 6a)",
+  "import sys\nstr funct h() {\n    Object w = sys.stdout.write\n    return \"h\"\n}\npost(h())\n",
+  "", "AttributedValueError: sys.stdout.write como valor em h(), que devolve str: a saída dele não "
+  "seria conferida (chame sys.stdout.write direto)", 2 },
+{ "saida como valor vale fora da funct tipada, e a chamada direta e a lambda continuam (lote 6a)",
+  "int funct direto() {\n    post(7)\n    return 4\n}\n"
+  "funct livre() {\n    Object p = post\n    p(\"livre\")\n}\n"
+  "Null funct sem_valor() {\n    Object p = post\n    p(\"null funct\")\n}\n"
+  "int funct com_lambda() {\n    map([\"da lambda\"], funct(str x) { post(x) })\n    return 5\n}\n"
+  "post(direto())\nlivre()\nsem_valor()\npost(com_lambda())\n",
+  "7\n4\nlivre\nnull funct\nda lambda\n5", NULL, 0 },
+{ "sleep(0) numa tarefa cede, e sleep de texto diz que aceita int ou flo (lote 6a)",
+  "list ordem = []\nasync funct a() {\n    ordem.append(\"a1\")\n    sleep(0)\n    ordem.append(\"a2\")\n}\n"
+  "async funct b() {\n    ordem.append(\"b1\")\n    sleep(0)\n    ordem.append(\"b2\")\n}\n"
+  "gather(a(), b())\npost(ordem)\ntry {\n    sleep(\"x\")\n} catch (TypeError e) {\n    post(e)\n}\n",
+  "['a1', 'b1', 'a2', 'b2']\nsleep() argument must be int or flo, not str (linha 15)", NULL, 0 },
+{ "nonnull do gerador acusa na chamada, nao no primeiro pedido (lote 6a)",
+  "nonnull funct gen(v) {\n    yield v\n}\ntry {\n    Object g = gen(Null)\n    post(\"nao chega\")\n"
+  "} catch (RuntimeError e) {\n    post(e)\n}\npost(list(gen(3)))\n",
+  "nonnull: parametro 'v' em 'gen' nao pode ser Null (linha 5)\n[3]", NULL, 0 },
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

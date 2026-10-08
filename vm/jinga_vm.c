@@ -1079,6 +1079,7 @@ typedef struct {
     int       eh_gerador;  /* chamar cria gerador em vez de empilhar frame */
     int       eh_async;    /* `async funct` — chamar cria fibra+future */
     int       eh_static;   /* `@static` — chamável na Entity sem instância */
+    int       eh_nonnull;  /* `nonnull funct` (o buraco de alinhamento antes de `upvals`) */
     /* Variáveis de fora capturadas (closure). NULL na quase totalidade dos
      * protos: só funct DECLARADA DENTRO de outra tem. */
     PSUpval  *upvals;
@@ -10797,6 +10798,26 @@ static int eh_static_self(const Proto *np)
 {
     return np->eh_static && np->nparams > 0 && np->param_nomes && np->param_nomes[0]
         && strcmp(np->param_nomes[0], "self") == 0;
+}
+
+/* A frase do `nonnull`, uma só pro CHECK_NONNULL do prólogo e pra chamada
+ * do gerador (`nonnull_na_chamada`). */
+#define PS_FRASE_NONNULL "nonnull: parametro '%s' em '%s' nao pode ser Null"
+
+/* `nonnull` é contrato da CHAMADA, como o tipo do parâmetro. No gerador o
+ * prólogo (que tem o CHECK_NONNULL) só roda no 1º pedido, e o Null passado
+ * acusava lá, longe da chamada. Aqui confere o que a chamada ligou; o slot
+ * vazio é o padrão, que o prólogo confere quando produzir. */
+static __attribute__((noinline)) int nonnull_na_chamada(VM *vm, const Proto *p, const Value *locais)
+{
+    for (int k = eh_static_self(p); k < p->nparams; k++) {
+        if (locais[k].t != V_NULL) continue;
+        const char *pn = (p->param_nomes && p->param_nomes[k]) ? p->param_nomes[k] : "?";
+        snprintf(vm->erro, sizeof(vm->erro), PS_FRASE_NONNULL, pn, p->nome ? p->nome : "?");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+        return -1;
+    }
+    return 0;
 }
 
 static int liga_args(VM *vm, const Proto *np, Value *dest, const Value *self, int desloca,
@@ -24191,9 +24212,13 @@ static int nativa_sleep(VM *vm, Value *args, int n, Value *out)
     double seg;
     if (args[0].t == V_INT)        seg = (double)args[0].as.i;
     else if (args[0].t == V_FLOAT) seg = args[0].as.d;
-    else BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+    else BERRO(vm, "TypeError", "sleep() argument must be int or flo, not %s",   /* aceita flo */
               nome_do_tipo_valor(args[0]));
-    if (seg > 0) {
+    /* Numa tarefa, `sleep(0)` também CEDE (é o jeito de dar a vez sem
+     * esperar): o despertar fica agendado pra já, e as outras tarefas prontas
+     * andam antes. Só cedia com tempo > 0. */
+    if (seg < 0) seg = 0;
+    if (vm->fib_atual || seg > 0) {
         if (vm->fib_atual) {
             /* dentro de um handler-fibra: em vez de bloquear o worker inteiro,
              * agenda o despertar e CEDE o controle ao poll loop. Outras
@@ -25027,6 +25052,7 @@ static int chamada_sem_frame(VM *vm, Alvo alvo, const Value *pos, int npos,
         }
         if (liga_args(vm, np, g->locais, self, a->desloca, pos, npos, kwn, kwv, nkw, a->ignora_kw) != 0)
             return -1;
+        if (np->eh_nonnull && nonnull_na_chamada(vm, np, g->locais) != 0) return -1;
         g->cl = a->cl;
         *out = MK_OBJ(g);
         return 1;
@@ -29521,8 +29547,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (v.t != V_NULL && v.t != V_UNSET) continue;
                 const char *pn = (p->param_nomes && k < p->nparams && p->param_nomes[k])
                                ? p->param_nomes[k] : "?";
-                snprintf(vm->erro, sizeof(vm->erro),
-                         "nonnull: parametro '%s' em '%s' nao pode ser Null",
+                snprintf(vm->erro, sizeof(vm->erro), PS_FRASE_NONNULL,
                          pn, p->nome ? p->nome : "?");
                 snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
                 goto erro_runtime;
@@ -30185,6 +30210,7 @@ static int proto_assume(Proto *p, PSProto *o)
     p->eh_gerador = o->eh_gerador;
     p->eh_async = o->eh_async;
     p->eh_static = o->eh_static;
+    p->eh_nonnull = o->eh_nonnull;
     int falta = p->code == NULL;
     p->upvals = o->upvals;             o->upvals = NULL;
     p->upval_nomes = o->upval_nomes;   o->upval_nomes = NULL;
