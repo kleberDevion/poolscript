@@ -1950,6 +1950,8 @@ make pool
 sudo make install
 ```
 
+Com o binário compilado em OUTRA máquina (o `scp` do `pool` da VPS, que é como este laptop recebe o motor): `sudo make -o pool -o vm/ps_build.h install`. Sem o `-o`, o `vm/ps_build.h` (alvo `FORCE` com a data do dia) refeito num dia diferente do da última compilação daqui faz o make recompilar o motor inteiro aqui, como root, e o `./pool` e o `ps_build.h` ficam do root (aconteceu no 17.0.7, em 2026-10-08).
+
 O `make install` põe em `PREFIXO=/usr/local`:
 - `bin/jinga`, `bin/jpkg`, `bin/pool` e `bin/psl` (o mesmo binário);
 - `bin/jinga-lsp` e `bin/poolscript-lsp`;
@@ -2846,7 +2848,8 @@ O que o código e o CI já mostram do macOS:
 
 - Versão da linguagem **17.0.8** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.8 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
-- Último commit de código: `70869e6` (17.0.7, Plano 6 lote 5), igual a `origin/main` quando subiu. O único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
+- Último commit de código: `e893fc4` (17.0.8, o caminho com quebra de linha), igual a `origin/main` quando subiu. O único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
+- **Achado, não pedido e ainda não consertado** (medido no 17.0.7 em 2026-10-08): caminho com byte NUL vira OUTRO arquivo, calado. `os.readFile("nul_a\x00qualquer coisa")` lê `nul_a`; `os.writeFile("nul_b\x00.txt", "gravei")` grava em `nul_b`. O texto da Jinga guarda o `\0`, e o C corta nele. O conserto é um extrator de caminho só (conferir o `\0` e dizer a posição), nos ~30 lugares em que texto vira caminho (`open`, `os.*`, PoolFile, mail, QR, xlsx, sqlite, dotenv, `save=` do request).
 - **Plano 6 em execução** (aprovado em 2026-10-07 ~01:10; as 9 decisões seguem as recomendações): fechados os lotes 1 `0e4c3f7` (17.0.1, o arquivo-fonte), 2 `2b2201f` (17.0.2, frases do parser), 3 `1fba43c` (17.0.3, as dicas), 9 `252d6df` (17.0.4, `--check`, editor, quadro do erro e `sys.exit`), 10 `3110231` (17.0.5, linha de comando), 4 `e54b866` (17.0.6, classes: private e static) e 5 `70869e6` (17.0.7, classes: construtor, campos, enum, `is` e redeclaração), cada um verde na VPS em `make check`, `check-asan` e `check-debug` na árvore exata do commit. Faltam os lotes 6 a 8, nessa ordem: funções e tarefas, métodos nativos, libs.
 - **Pedido seu de 2026-10-07, feito no 17.0.8**: `open(texto)` com o CONTEÚDO de um arquivo no lugar do caminho dava `OSError: [Errno 36] File name too long: '# swagger — ...'` ("esse erro não faz sentido... isso deve ser corrigido"). Agora a frase diz que o caminho com quebra de linha é texto, não nome de arquivo, em todo erro de arquivo (2.13, depois da árvore de exceções).
 - **O laço da VM tem "modos" de alocação de registradores**: mudança pequena, sem relação lógica com um laço, troca o modo, e no ruim cada instrução executada paga uma a mais (aritmética +4%). Medido no lote 5 com 12 formas do mesmo código. Medir com o alocador fixo (`GLIBC_TUNABLES=glibc.malloc.top_pad=0` nos dois binários) e achar as instruções com o cachegrind (valgrind instalado na VPS) por tratador. Resíduo aceito no 17.0.7, sem JIT: fib +1,3%, fib_int +1,1%, closure +0,7%; instanciar classe com valor padrão +11,9%.
