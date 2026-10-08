@@ -121,7 +121,7 @@ Cada linha traz a regra e o porquê.
 | Regra | Por quê |
 |---|---|
 | **Sem emoji** em lugar nenhum: código, comentário, doc, teste, commit, resposta. Nem símbolo pictográfico (estrela, check, sinal de aviso). Antes de commitar, `grep` no diff pelas faixas U+1F000-1FAFF, U+2600-27BF, U+2B00-2BFF, U+2300-23FF, FE0F, 200D e U+1D100-1D1FF. Teste de caractere de 4 bytes usa a letra CJK U+20BB7. Aviso em doc é texto ("Cuidado", "PERIGO"). | "Eu odeio emoji, isso é de IA burra" (2026-09-22). |
-| **Sem nome de biblioteca ou framework de outra linguagem** em lugar nenhum: código, comentário, doc, dica de erro, teste, nota, commit. Explicar o conceito pelo que ele faz. Antes de commitar, `git grep -n -i` no diff. Módulo de fachada (stub) não existe. | A Jinga é sua, e nome alheio é a linguagem se apresentando como cópia. Você apagou `notas/` inteiro por isso (2026-09-05). |
+| **Módulo de fachada não existe**: nenhum stub que finja ser uma lib que a Jinga não tem (o `import` que "existe" e só levanta erro). Nome de outra linguagem ou lib escrito em texto, comentário ou doc pode aparecer, e o diff não é varrido atrás deles. | A regra antiga (2026-09-05) proibia o nome em qualquer lugar, com `git grep` antes de commitar; o defeito de origem era o módulo de fachada. Você a revogou em 2026-10-08: "isso desnecessario de nome de outra lang ou lib, esqueci, isso so aumenta o custo". |
 | **Sem hedge**: nunca "risco", "arriscado", "talvez". Dizer o fato medido e a consequência concreta ("código que usa X para de compilar"). Quando não sabe, dizer "não medi isso". | Ressalva atrasa a sua decisão sem acrescentar informação. |
 | Doc no nível das referências oficiais de Python e Java: sintaxe, parâmetros (tipo, padrão, efeito), retorno, erros, bordas, exemplos. Cada afirmação é verificada rodando. A assinatura do título sai do código (`scripts/audita_doc.pr`). Corrigir a categoria, não só o caso apontado. | "Você faz na velocidade da luz mas SEM QUALIDADE." |
 | Não fragmentar doc em um `.md` por membro pequeno quando um só dá conta. | "Isso é ridículo pra quem ler." |
@@ -194,7 +194,7 @@ Conferido rodando `jinga` 16.1.7 em 2026-09-28 quando marcado "medido"; o resto 
 ### 1.5 O que mais irrita (casos que já aconteceram)
 
 - Emoji ou símbolo pictográfico em qualquer lugar.
-- Nome de lib de outra linguagem: no import, na dica de erro, no comentário.
+- Módulo de fachada: um `import` de lib que não existe na Jinga sendo sugerido ou aceito como se existisse.
 - Perguntar de novo o que você já decidiu, ou perguntar o óbvio.
 - Acréscimo não pedido, e mexer no que você só citou.
 - "Risco", hedge, relatório que afirma sucesso sem o dado que prova.
@@ -2840,12 +2840,14 @@ O que o código e o CI já mostram do macOS:
 - Cada item da trilha vira um lote com plano próprio, nunca "de brinde" dentro de outro lote.
 - Pendência de comportamento do motor entra em `teste/casos_pendentes.c`: o caso é escrito com o comportamento certo e o campo `pendente = 1`. Enquanto o motor não acertar, o caso falha. Quando acertar, o runner acusa "JA FUNCIONA" e manda tirar o caso de lá. Hoje a fila está vazia: nenhum caso tem o campo ligado, e o cabeçalho do arquivo diz isso.
 
-### 6.2 Estado medido em 2026-10-07 (tarde)
+### 6.2 Estado medido em 2026-10-08 (madrugada)
 
 - Versão da linguagem **17.0.7** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.7 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
-- Último commit de código: `e54b866` (17.0.6, Plano 6 lote 4), igual a `origin/main` quando subiu. O único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
-- **Plano 6 em execução** (aprovado em 2026-10-07 ~01:10; as 9 decisões seguem as recomendações): fechados os lotes 1 `0e4c3f7` (17.0.1, o arquivo-fonte), 2 `2b2201f` (17.0.2, frases do parser), 3 `1fba43c` (17.0.3, as dicas), 9 `252d6df` (17.0.4, `--check`, editor, quadro do erro e `sys.exit`), 10 `3110231` (17.0.5, linha de comando) e 4 `e54b866` (17.0.6, classes: private e static), cada um verde na VPS em `make check`, `check-asan` e `check-debug` na árvore exata do commit. Faltam os lotes 5 a 8, nessa ordem: classes (construtor, campos, enum, `is`), funções e tarefas, métodos nativos, libs.
+- Último commit de código: `70869e6` (17.0.7, Plano 6 lote 5), igual a `origin/main` quando subiu. O único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
+- **Plano 6 em execução** (aprovado em 2026-10-07 ~01:10; as 9 decisões seguem as recomendações): fechados os lotes 1 `0e4c3f7` (17.0.1, o arquivo-fonte), 2 `2b2201f` (17.0.2, frases do parser), 3 `1fba43c` (17.0.3, as dicas), 9 `252d6df` (17.0.4, `--check`, editor, quadro do erro e `sys.exit`), 10 `3110231` (17.0.5, linha de comando), 4 `e54b866` (17.0.6, classes: private e static) e 5 `70869e6` (17.0.7, classes: construtor, campos, enum, `is` e redeclaração), cada um verde na VPS em `make check`, `check-asan` e `check-debug` na árvore exata do commit. Faltam os lotes 6 a 8, nessa ordem: funções e tarefas, métodos nativos, libs.
+- **Pedido seu de 2026-10-07, ainda não feito**: `open(texto)` com o CONTEÚDO de um arquivo no lugar do caminho dava `OSError: [Errno 36] File name too long: '# swagger — ...'` ("esse erro não faz sentido... isso deve ser corrigido"). Vai num commit próprio, antes do lote 6: o caminho com quebra de linha é texto, não nome de arquivo, e a frase diz isso, em todo erro de arquivo (o `erro_sistema` da VM, o anexo do mail, o salvar do xlsx, o programa do `os.run`).
+- **O laço da VM tem "modos" de alocação de registradores**: mudança pequena, sem relação lógica com um laço, troca o modo, e no ruim cada instrução executada paga uma a mais (aritmética +4%). Medido no lote 5 com 12 formas do mesmo código. Medir com o alocador fixo (`GLIBC_TUNABLES=glibc.malloc.top_pad=0` nos dois binários) e achar as instruções com o cachegrind (valgrind instalado na VPS) por tratador. Resíduo aceito no 17.0.7, sem JIT: fib +1,3%, fib_int +1,1%, closure +0,7%; instanciar classe com valor padrão +11,9%.
 - **Plano 8 fechado** (`71e0a31`): `import Parsing` como qualquer lib, e lib do motor usada sem import diz qual import falta. Major porque quebra programa que usava o `Parsing` sem import. Verde na VPS em `make check`, `check-asan` e `check-debug`.
 - **Plano 7 fechado**: o modelo leve na VPS consultando o material da Jinga (5.11, "Modelo local de código"). Com a consulta, 39 de 50 programas escritos por ele passam no `--check`; sem ela, 2.
 - **O Plano 5 está fechado** (os 16 defeitos da sonda 2 que derrubavam o processo, corrompiam memória, perdiam arquivo ou erravam o resultado calados), em cinco lotes: 16.2.10 `92db70d`, 16.2.11 `0a9347f`, 16.2.12 `fa22ab1`, 16.2.13 `96fbea6`, 16.2.14 `c73fec3`. Uma linha por versão na tabela de 6.6.
