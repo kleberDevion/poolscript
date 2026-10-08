@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.8`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.9`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -904,6 +904,8 @@ Exception
 A regra de uso: `TypeError` quando o tipo está errado e `ValueError` quando o tipo está certo e o valor não serve.
 
 Erro de arquivo com caminho que tem quebra de linha (o conteúdo de um arquivo no lugar do caminho, `open(os.readFile(p))`, ou um nome lido com o `\n`): a frase é a causa, `o caminho tem 2 linhas (19 caracteres): e texto, nao nome de arquivo — comeca com 'linha um\nlinha dois'` (cortada em 40 caracteres, quebra visível), no tipo que o errno daria. Pedido seu de 2026-10-07: antes saía `[Errno 36] File name too long` com o texto inteiro. Um lugar só, `frase_caminho_texto` (jinga_vm.c), usada pelo `erro_sistema` (todo erro de arquivo do motor; `o destino tem ...` no segundo caminho do `os.rename`), pelo anexo do mail e pelo salvar do QR. Só entra quando a operação já falhou: caminho com quebra que existe abre normalmente.
+
+Texto com o byte nulo (`\x00`) não chega ao sistema (17.0.9, Plano 9): o texto da Jinga guarda o byte e o C corta nele, então `os.writeFile("nul\x00.txt", t)` gravava em `nul`, `os.run(["rm", "a\x00b"])` apagava `a` e `os.getenv("PATH\x00X")` devolvia o `PATH`, todos calados (medido no 17.0.8). Agora é `ValueError` ANTES da chamada: `o caminho tem o byte nulo \x00 na posicao 4: nenhum nome de arquivo tem esse caractere — 'nota\x00.txt'` (posição em caractere; byte longe do começo = trecho a partir de 20 caracteres antes dele, com `...`). Vale em toda entrada de texto que vira nome de arquivo (51 pontos: `open`, `os.*`, PoolFile, `sqlite3`, `psodbc` com SQLite, `dotenv`, `save=`/`file=` do `request`, QR, `manpu`, anexo do `mail`, `render`, `Jinker(static_folder=, oauth cert/key)`, soquete AF_UNIX, `sys.RelativePath`), no comando e nos argumentos do `os.run`/`os.cmd` (`nenhum argumento de programa`) e no nome do `os.getenv`/`os.environ`. No `import "..."` é `SyntaxError` antes de rodar, na linha e coluna do texto. Um lugar só: `ps_frase_byte_nulo` (`vm/ps_caminho.h`), usada pelo `sem_byte_nulo`/`CAMINHO_SEM_NUL` do motor e pelo parser. O banco em rede (conninfo do Postgres, MySQL, Mongo) e o texto SQL não são do sistema operacional e ficam de fora.
 
 ### 2.14 using e arquivos
 
@@ -2144,8 +2146,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.8** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.8 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.9** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.9 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2766,7 +2768,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.8"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.9"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2846,7 +2848,7 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-08 (madrugada)
 
-- Versão da linguagem **17.0.8** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.8 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.9** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.9 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: `e893fc4` (17.0.8, o caminho com quebra de linha), igual a `origin/main` quando subiu. O único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
 - **Achado, não pedido e ainda não consertado** (medido no 17.0.7 em 2026-10-08): caminho com byte NUL vira OUTRO arquivo, calado. `os.readFile("nul_a\x00qualquer coisa")` lê `nul_a`; `os.writeFile("nul_b\x00.txt", "gravei")` grava em `nul_b`. O texto da Jinga guarda o `\0`, e o C corta nele. O conserto é um extrator de caminho só (conferir o `\0` e dizer a posição), nos ~30 lugares em que texto vira caminho (`open`, `os.*`, PoolFile, mail, QR, xlsx, sqlite, dotenv, `save=` do request).

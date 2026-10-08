@@ -13,6 +13,7 @@
 #ifndef PS_CAMINHO_H
 #define PS_CAMINHO_H
 
+#include <stdio.h>
 #include <string.h>
 
 /* O maior caminho que o motor guarda: o do Linux (PATH_MAX). A pasta do
@@ -64,6 +65,71 @@ static inline int ps_caminho_absoluto(const char *p)
         return 1;
 #endif
     return 0;
+}
+
+/* ── o texto do caminho numa frase de erro ────────────────────────────────
+ * O começo do texto: até 40 caracteres, com a quebra de linha, o tab e o
+ * byte nulo visíveis (`\n`, `\r`, `\t`, `\x00`), sem partir caractere. O teto
+ * em bytes é o `cap` do destino, escolhido por quem chama pra frase inteira
+ * caber no erro (256 bytes) mesmo com 40 caracteres de 4 bytes. 1 = sobrou
+ * texto (a frase põe "..."). */
+static inline int ps_trecho_visivel(char *out, size_t cap, const char *s, size_t len)
+{
+    const unsigned char *q = (const unsigned char *)s, *fim = q + len;
+    size_t t = 0;
+    for (int nc = 0; q < fim && nc < 40; nc++) {
+        char esc[4];
+        const char *de = (const char *)q;
+        size_t n, anda;
+        if (*q == '\n' || *q == '\r' || *q == '\t' || *q == '\0') {
+            esc[0] = '\\';
+            if (*q == '\0') { memcpy(esc + 1, "x00", 3); n = 4; }
+            else { esc[1] = *q == '\n' ? 'n' : *q == '\r' ? 'r' : 't'; n = 2; }
+            de = esc;
+            anda = 1;
+        } else {
+            n = *q < 0x80 ? 1 : (*q >> 5) == 0x6 ? 2 : (*q >> 4) == 0xE ? 3 : (*q >> 3) == 0x1E ? 4 : 1;
+            if (n > (size_t)(fim - q)) n = (size_t)(fim - q);
+            anda = n;
+        }
+        if (t + n >= cap) break;
+        memcpy(out + t, de, n);
+        t += n;
+        q += anda;
+    }
+    out[t] = '\0';
+    return q < fim;
+}
+
+/* O texto da Jinga guarda o byte nulo (a string tem tamanho) e o C corta
+ * nele: um caminho com `\0` chegava ao sistema só com o pedaço de antes e
+ * abria, gravava ou apagava OUTRO arquivo, calado. Nenhum sistema aceita esse
+ * byte em nome de arquivo nem em argumento de programa. Com o byte em `s`,
+ * escreve em `buf` a frase com a posição (o índice do texto, em caractere) e
+ * o texto com o `\x00` visível, e devolve 1; sem ele, 0. Byte longe do
+ * começo: o trecho começa 20 caracteres antes dele, com "..." na frente, pra
+ * frase MOSTRAR o byte que acusa. `oque` nomeia o argumento ("o caminho",
+ * "o destino"); `nenhum`, o que o sistema não aceita ("nome de arquivo"). Um
+ * lugar só pro motor e pro compilador (o import). */
+static inline int ps_frase_byte_nulo(char *buf, size_t cap, const char *oque, const char *nenhum,
+                                     const char *s, size_t len)
+{
+    const char *z = memchr(s, '\0', len);
+    if (!z) return 0;
+    long long pos = 0;
+    for (const unsigned char *q = (const unsigned char *)s; q < (const unsigned char *)z; q++)
+        if ((*q & 0xC0) != 0x80) pos++;
+    const char *ini = s;
+    if (pos > 30)
+        for (long long pula = pos - 20; pula > 0; ini++)
+            if (((unsigned char)ini[1] & 0xC0) != 0x80) pula--;
+    /* 112: com o rótulo e o "nenhum" mais longos (27 e 28 bytes), a frase
+     * inteira fica abaixo dos 256 do erro */
+    char trecho[112];
+    int sobra = ps_trecho_visivel(trecho, sizeof(trecho), ini, len - (size_t)(ini - s));
+    snprintf(buf, cap, "%s tem o byte nulo \\x00 na posicao %lld: nenhum %s tem esse caractere — '%s%s%s'",
+             oque, pos, nenhum, ini > s ? "..." : "", trecho, sobra ? "..." : "");
+    return 1;
 }
 
 #endif

@@ -800,6 +800,184 @@ const Caso CASOS_LIBS[] = {
   "import os\ntry {\n    os.readFile(\"sumiu.txt\")\n} catch (FileNotFoundError e) {\n    post(e)\n}\n",
   "[Errno 2] No such file or directory: 'sumiu.txt' (linha 3)", NULL, 0, NULL, 0, "linux" },
 
+/* ── byte NUL no caminho: recusado ANTES de tocar o disco (2026-10-08) ──────
+ * O texto da Jinga guarda o \0 e o C corta nele: `os.readFile("nul_a\x00x")`
+ * lia `nul_a` e `os.writeFile("nul_b\x00.txt", ...)` gravava em `nul_b`,
+ * calados. Nenhum sistema aceita \0 em nome de arquivo: e ValueError, com a
+ * posicao (contada como o indice do texto) e o caminho com o \x00 visivel. */
+{ "byte NUL no caminho de leitura: ValueError, e o arquivo do prefixo nao e lido",
+  "import os\nos.writeFile(\"nul_a\", \"conteudo de a\")\ntry {\n    post(os.readFile(\"nul_a\\x00qualquer coisa\"))\n"
+  "} catch (ValueError e) {\n    post(e)\n}\n",
+  "o caminho tem o byte nulo \\x00 na posicao 5: nenhum nome de arquivo tem esse caractere — "
+  "'nul_a\\x00qualquer coisa' (linha 4)", NULL, 0 },
+{ "byte NUL no caminho de escrita: ValueError, e nada e gravado no prefixo",
+  "import os\ntry {\n    os.writeFile(\"nul_b\\x00.txt\", \"gravei\")\n} catch (ValueError e) {\n    post(e)\n}\n"
+  "post(os.exists(\"nul_b\"))\n",
+  "o caminho tem o byte nulo \\x00 na posicao 5: nenhum nome de arquivo tem esse caractere — "
+  "'nul_b\\x00.txt' (linha 3)\nFalse", NULL, 0 },
+{ "byte NUL no open: ValueError antes de abrir",
+  "Object f = open(\"x\\x00y.txt\", \"w\")\n",
+  "", "ValueError: o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
+  "'x\\x00y.txt'", 1 },
+{ "byte NUL no destino do rename: a frase cita o destino, e a origem fica",
+  "import os\nos.writeFile(\"origem.txt\", \"x\")\ntry {\n    os.rename(\"origem.txt\", \"novo\\x00.txt\")\n"
+  "} catch (ValueError e) {\n    post(e)\n}\npost(os.readFile(\"origem.txt\"), os.exists(\"novo\"))\n",
+  "o destino tem o byte nulo \\x00 na posicao 4: nenhum nome de arquivo tem esse caractere — "
+  "'novo\\x00.txt' (linha 4)\nx False", NULL, 0 },
+{ "byte NUL nos outros caminhos do os: cada um recusa, e nada muda no disco",
+  "import os\nimport sys\nos.writeFile(\"nul_a\", \"a\")\nos.mkdir(\"pasta_a\")\n"
+  "try { post(os.exists(\"nul_a\\x00x\")) } catch (ValueError e) { post(\"exists\", e) }\n"
+  "try { os.mkdir(\"pasta_a\\x00/b\") } catch (ValueError e) { post(\"mkdir\", e) }\n"
+  "try { os.rmdir(\"pasta_a\\x00\") } catch (ValueError e) { post(\"rmdir\", e) }\n"
+  "try { post(os.ls(\"pasta_a\\x00\")) } catch (ValueError e) { post(\"ls\", e) }\n"
+  "try { os.copy(\"nul_a\\x00\", \"c.txt\") } catch (ValueError e) { post(\"copy\", e) }\n"
+  "try { os.move(\"nul_a\", \"m\\x00.txt\") } catch (ValueError e) { post(\"move\", e) }\n"
+  "try { post(os.size(\"nul_a\\x00\")) } catch (ValueError e) { post(\"size\", e) }\n"
+  "try { os.chdir(\"pasta_a\\x00\") } catch (ValueError e) { post(\"chdir\", e) }\n"
+  "try { post(os.pathFile(\"nul_a\\x00\")) } catch (ValueError e) { post(\"pathFile\", e) }\n"
+  "try { Object lf = os.loadFile(\"nul_a\\x00\") } catch (ValueError e) { post(\"loadFile\", e) }\n"
+  "try { post(sys.RelativePath(\"nul_a\\x00\")) } catch (ValueError e) { post(\"RelativePath\", e) }\n"
+  "try { os.writeFile(\"ação\\x00.txt\", \"x\") } catch (ValueError e) { post(\"acento\", e) }\n"
+  "try { os.writeFile(\"uma_pasta_com_nome_bem_comprido_mesmo/arquivo\\x00.txt\", \"x\") } "
+  "catch (ValueError e) { post(\"longo\", e) }\n"
+  "post(os.exists(\"nul_a\"), os.isdir(\"pasta_a\"), os.exists(\"m\"), os.exists(\"c.txt\"))\n",
+  "exists o caminho tem o byte nulo \\x00 na posicao 5: nenhum nome de arquivo tem esse caractere — 'nul_a\\x00x' (linha 5)\n"
+  "mkdir o caminho tem o byte nulo \\x00 na posicao 7: nenhum nome de arquivo tem esse caractere — 'pasta_a\\x00/b' (linha 6)\n"
+  "rmdir o caminho tem o byte nulo \\x00 na posicao 7: nenhum nome de arquivo tem esse caractere — 'pasta_a\\x00' (linha 7)\n"
+  "ls o caminho tem o byte nulo \\x00 na posicao 7: nenhum nome de arquivo tem esse caractere — 'pasta_a\\x00' (linha 8)\n"
+  "copy o caminho tem o byte nulo \\x00 na posicao 5: nenhum nome de arquivo tem esse caractere — 'nul_a\\x00' (linha 9)\n"
+  "move o destino tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'm\\x00.txt' (linha 10)\n"
+  "size o caminho tem o byte nulo \\x00 na posicao 5: nenhum nome de arquivo tem esse caractere — 'nul_a\\x00' (linha 11)\n"
+  "chdir o caminho tem o byte nulo \\x00 na posicao 7: nenhum nome de arquivo tem esse caractere — 'pasta_a\\x00' (linha 12)\n"
+  "pathFile o caminho tem o byte nulo \\x00 na posicao 5: nenhum nome de arquivo tem esse caractere — 'nul_a\\x00' (linha 13)\n"
+  "loadFile o caminho tem o byte nulo \\x00 na posicao 5: nenhum nome de arquivo tem esse caractere — 'nul_a\\x00' (linha 14)\n"
+  "RelativePath o nome tem o byte nulo \\x00 na posicao 5: nenhum nome de arquivo tem esse caractere — 'nul_a\\x00' (linha 15)\n"
+  "acento o caminho tem o byte nulo \\x00 na posicao 4: nenhum nome de arquivo tem esse caractere — 'ação\\x00.txt' (linha 16)\n"
+  "longo o caminho tem o byte nulo \\x00 na posicao 45: nenhum nome de arquivo tem esse caractere — "
+  "'...mprido_mesmo/arquivo\\x00.txt' (linha 17)\n"
+  "True True False False", NULL, 0 },
+{ "byte NUL em comando, argumento de programa e nome de variavel de ambiente",
+  "import os\n"
+  "try { os.run([\"ls\", \"nul_a\\x00b\"]) } catch (ValueError e) { post(\"run lista\", e) }\n"
+  "try { os.run(\"ls nul_a\\x00b\") } catch (ValueError e) { post(\"run texto\", e) }\n"
+  "try { os.cmd(\"ls nul_a\\x00b\") } catch (ValueError e) { post(\"cmd\", e) }\n"
+  "try { post(os.getenv(\"PATH\\x00X\")) } catch (ValueError e) { post(\"getenv\", e) }\n"
+  "try { post(os.environ(\"PATH\\x00X\")) } catch (ValueError e) { post(\"environ\", e) }\n",
+  "run lista o item 1 tem o byte nulo \\x00 na posicao 5: nenhum argumento de programa tem esse caractere — "
+  "'nul_a\\x00b' (linha 2)\n"
+  "run texto o comando tem o byte nulo \\x00 na posicao 8: nenhum argumento de programa tem esse caractere — "
+  "'ls nul_a\\x00b' (linha 3)\n"
+  "cmd o comando tem o byte nulo \\x00 na posicao 8: nenhum argumento de programa tem esse caractere — "
+  "'ls nul_a\\x00b' (linha 4)\n"
+  "getenv o nome tem o byte nulo \\x00 na posicao 4: nenhum nome de variavel de ambiente tem esse caractere — "
+  "'PATH\\x00X' (linha 5)\n"
+  "environ o nome tem o byte nulo \\x00 na posicao 4: nenhum nome de variavel de ambiente tem esse caractere — "
+  "'PATH\\x00X' (linha 6)", NULL, 0 },
+{ "byte NUL no destino dos metodos do PoolFile (carregado e aberto)",
+  "import os\nos.writeFile(\"nul_a\", \"a\")\nObject f = os.loadFile(\"nul_a\", mode=\"rb\")\n"
+  "try { f.save(\"s\\x00.txt\") } catch (ValueError e) { post(\"save\", e) }\n"
+  "try { f.copy(\"c\\x00.txt\") } catch (ValueError e) { post(\"copy\", e) }\n"
+  "try { f.move(\"m\\x00.txt\") } catch (ValueError e) { post(\"move\", e) }\n"
+  "Object h = open(\"nul_a\", \"r\")\n"
+  "try { h.save(\"h\\x00.txt\") } catch (ValueError e) { post(\"open save\", e) }\n"
+  "h.close()\n"
+  "post(os.exists(\"nul_a\"), os.exists(\"s\"), os.exists(\"c\"), os.exists(\"m\"), os.exists(\"h\"))\n",
+  "save o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 's\\x00.txt' (linha 4)\n"
+  "copy o destino tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'c\\x00.txt' (linha 5)\n"
+  "move o destino tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'm\\x00.txt' (linha 6)\n"
+  "open save o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'h\\x00.txt' (linha 8)\n"
+  "True False False False False", NULL, 0 },
+{ "byte NUL no arquivo do banco e do .env",
+  "import os\nimport dotenv\nimport sqlite3\nimport psodbc\n"
+  "try { dotenv.load(\"e\\x00.env\") } catch (ValueError e) { post(\"dotenv\", e) }\n"
+  "try { Object b = sqlite3.connect(\"b\\x00.db\") } catch (ValueError e) { post(\"sqlite3\", e) }\n"
+  "try { Object c = psodbc.connect(driver=\"sqlite\", base=\"c\\x00.db\") } catch (ValueError e) { post(\"base\", e) }\n"
+  "try { Object d = psodbc.connect(driver=\"sqlite\", database=\"d\\x00.db\") } catch (ValueError e) { post(\"database\", e) }\n"
+  "try { Object u = psodbc.connect(url=\"sqlite:///u\\x00.db\") } catch (ValueError e) { post(\"url\", e) }\n"
+  "try { Object q = psodbc.query(\"q\\x00.db\") } catch (ValueError e) { post(\"query\", e) }\n"
+  "post(os.exists(\"b\"), os.exists(\"c\"), os.exists(\"d\"), os.exists(\"u\"), os.exists(\"q\"))\n",
+  "dotenv o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'e\\x00.env' (linha 5)\n"
+  "sqlite3 o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'b\\x00.db' (linha 6)\n"
+  "base o caminho do base= tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
+  "'c\\x00.db' (linha 7)\n"
+  "database o caminho do database= tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
+  "'d\\x00.db' (linha 8)\n"
+  "url o caminho do url= tem o byte nulo \\x00 na posicao 11: nenhum nome de arquivo tem esse caractere — "
+  "'sqlite:///u\\x00.db' (linha 9)\n"
+  "query o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'q\\x00.db' (linha 10)\n"
+  "False False False False False", NULL, 0 },
+{ "byte NUL no arquivo do QR e da planilha",
+  "import qrcode\nimport manpu\n"
+  "try { Object q = qrcode.gen(\"x\", save=\"q\\x00.png\") } catch (ValueError e) { post(\"gen save\", e) }\n"
+  "try { Object q2 = qrcode.gen(\"x\", name=\"n\\x00.png\") } catch (ValueError e) { post(\"gen name\", e) }\n"
+  "try { Object q3 = qrcode.make(\"x\", name=\"k\\x00.png\") } catch (ValueError e) { post(\"make name\", e) }\n"
+  "Object q4 = qrcode.gen(\"x\")\n"
+  "try { q4.save(\"w\\x00.png\") } catch (ValueError e) { post(\"QRPoolFile.save\", e) }\n"
+  "Object q5 = qrcode.make(\"x\")\n"
+  "try { q5.save(\"i\\x00.png\") } catch (ValueError e) { post(\"QRImage.save\", e) }\n"
+  "Object qb = qrcode.QRCode()\nqb.add_data(\"x\")\n"
+  "try { Object im = qb.make_image(name=\"z\\x00.png\") } catch (ValueError e) { post(\"make_image\", e) }\n"
+  "try { post(manpu.read(\"p\\x00.csv\")) } catch (ValueError e) { post(\"read\", e) }\n"
+  "try { post(manpu.load(\"l\\x00.csv\")) } catch (ValueError e) { post(\"load\", e) }\n"
+  "try { post(manpu.src(\"s\\x00.csv\")) } catch (ValueError e) { post(\"src\", e) }\n"
+  "try { Object mo = manpu.open(\"o\\x00.csv\") } catch (ValueError e) { post(\"open\", e) }\n"
+  "try { post(manpu.write(\"x\", target=\"t\\x00.csv\")) } catch (ValueError e) { post(\"write\", e) }\n"
+  "try { post(manpu.remove(value=\"x\", target=\"r\\x00.csv\")) } catch (ValueError e) { post(\"remove\", e) }\n",
+  "gen save o caminho do save= tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
+  "'q\\x00.png' (linha 3)\n"
+  "gen name o nome tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'n\\x00.png' (linha 4)\n"
+  "make name o nome tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'k\\x00.png' (linha 5)\n"
+  "QRPoolFile.save o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
+  "'w\\x00.png' (linha 7)\n"
+  "QRImage.save o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
+  "'i\\x00.png' (linha 9)\n"
+  "make_image o nome tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
+  "'z\\x00.png' (linha 12)\n"
+  "read o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'p\\x00.csv' (linha 13)\n"
+  "load o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'l\\x00.csv' (linha 14)\n"
+  "src o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 's\\x00.csv' (linha 15)\n"
+  "open o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'o\\x00.csv' (linha 16)\n"
+  "write o caminho do target= tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
+  "'t\\x00.csv' (linha 17)\n"
+  "remove o caminho do target= tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
+  "'r\\x00.csv' (linha 18)", NULL, 0 },
+{ "byte NUL no anexo, no render, no request e na configuracao do Jinker",
+  "import mail\nimport request\nfrom jinker import Jinker, render\n"
+  "try { Object m = mail.MailMessage(); m.attach(\"nul_a\\x00\") } catch (ValueError e) { post(\"attach\", e) }\n"
+  "try { Object r = render(\"nul_a\\x00\") } catch (ValueError e) { post(\"render\", e) }\n"
+  "try { Object r2 = render(\"pasta\", \"x\\x00.html\") } catch (ValueError e) { post(\"render 2\", e) }\n"
+  "try { Object rq = request.get(\"http://127.0.0.1:9/\", save=\"r\\x00.bin\") } catch (ValueError e) { post(\"save\", e) }\n"
+  "try { Object rf = request.post(\"http://127.0.0.1:9/\", file={\"arq\": \"nul_a\\x00\"}) } "
+  "catch (ValueError e) { post(\"file\", e) }\n"
+  "try { Object j = Jinker(\"x\", static_folder=\"pub\\x00lico\") } catch (ValueError e) { post(\"static_folder\", e) }\n"
+  "try { Object j2 = Jinker(\"x\", oauth={\"tls\": True, \"cert\": \"c\\x00.pem\", \"key\": \"k.pem\"}) } "
+  "catch (ValueError e) { post(\"cert\", e) }\n"
+  "try { Object j3 = Jinker(\"x\", oauth={\"tls\": True, \"cert\": \"c.pem\", \"key\": \"k\\x00.pem\"}) } "
+  "catch (ValueError e) { post(\"key\", e) }\n",
+  "attach o caminho tem o byte nulo \\x00 na posicao 5: nenhum nome de arquivo tem esse caractere — 'nul_a\\x00' (linha 4)\n"
+  "render o caminho tem o byte nulo \\x00 na posicao 5: nenhum nome de arquivo tem esse caractere — 'nul_a\\x00' (linha 5)\n"
+  "render 2 o arquivo tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
+  "'x\\x00.html' (linha 6)\n"
+  "save o caminho do save= tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
+  "'r\\x00.bin' (linha 7)\n"
+  "file o caminho do file= tem o byte nulo \\x00 na posicao 5: nenhum nome de arquivo tem esse caractere — "
+  "'nul_a\\x00' (linha 8)\n"
+  "static_folder o caminho do static_folder= tem o byte nulo \\x00 na posicao 3: nenhum nome de arquivo tem esse "
+  "caractere — 'pub\\x00lico' (linha 9)\n"
+  "cert o caminho do cert tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
+  "'c\\x00.pem' (linha 10)\n"
+  "key o caminho do key tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
+  "'k\\x00.pem' (linha 11)", NULL, 0 },
+{ "byte NUL no caminho do soquete local (AF_UNIX)",
+  "import sockets\nObject s = sockets.socket(sockets.AF_UNIX, sockets.SOCK_STREAM)\n"
+  "try { s.bind(\"sk\\x00\") } catch (ValueError e) { post(\"bind\", e) }\ns.close()\n",
+  "bind o caminho tem o byte nulo \\x00 na posicao 2: nenhum nome de arquivo tem esse caractere — 'sk\\x00' (linha 3)",
+  NULL, 0, NULL, 0, "linux" },
+{ "byte NUL no import entre aspas: erro antes de rodar, na linha do import",
+  "post(\"antes\")\nimport \"lib\\x00.pr\"\npost(\"depois\")\n",
+  "", "SyntaxError: o caminho do modulo tem o byte nulo \\x00 na posicao 3: nenhum nome de arquivo tem esse caractere — "
+  "'lib\\x00.pr'\n  em ", 2 },
+
 /* ── json: o teto de profundidade é contrato, nos DOIS sentidos ──────────── */
 { "json ida e volta",
   "import json\n"

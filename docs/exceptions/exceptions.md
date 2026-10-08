@@ -125,6 +125,30 @@ arquivo — 'sumiu.txt\n'`. Na troca de nome com dois caminhos (`os.rename`), a
 frase cita qual deles: `o destino tem ...`. O caminho com quebra de linha que
 EXISTE abre normalmente: a frase só aparece quando a operação já falhou.
 
+**Caminho com o byte nulo (`\x00`) é `ValueError`, antes de tocar o disco.**
+O texto da Jinga guarda o `\x00`, e o sistema corta o nome nele: sem a
+conferência, `os.writeFile("nota\x00.txt", t)` gravava em `nota`, calado.
+Nenhum sistema aceita esse caractere em nome de arquivo, então a operação é
+recusada antes, com a posição (o índice no texto) e o caminho com o `\x00`
+visível. Com o byte longe do começo, o trecho começa perto dele, com `...` na
+frente:
+
+```ps
+import os
+os.writeFile("nota\x00.txt", "texto")
+# ValueError: o caminho tem o byte nulo \x00 na posicao 4: nenhum nome de arquivo tem esse caractere — 'nota\x00.txt'
+```
+
+Vale em todo lugar em que texto vira nome de arquivo: `open`, o módulo `os`,
+os métodos do `PoolFile`, `sqlite3`, `psodbc` com SQLite, `dotenv`, o `save=`
+e o `file=` do `request`, o QR, a planilha (`manpu`), o anexo do `mail`, o
+`render` e a configuração do `Jinker`. A frase nomeia o argumento: `o
+destino`, `o caminho do save=`, `o nome`. Vale também no que vai pro sistema
+do mesmo jeito: o comando e os argumentos do `os.run` e do `os.cmd` (`o item 1
+tem o byte nulo ...: nenhum argumento de programa tem esse caractere`) e o
+nome de variável do `os.getenv` e do `os.environ`. No `import "..."` o erro
+sai antes de rodar, como `SyntaxError` na linha do import.
+
 ## A árvore de exceções
 
 `catch (Tipo e)` pega o tipo pedido **e todos os descendentes dele**. `Exception`

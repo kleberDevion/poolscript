@@ -330,6 +330,12 @@ r = roda([POOL, "--check"], entrada="int i = 0\nwhile i < 2 {\n    i = i + 1\n  
 confere("--check: yield em laço do topo é SyntaxError na linha dele",
         "\"ok\":false" in r["saida"] and "'yield' fora de funct" in r["saida"]
         and "\"linha\":4,\"coluna\":5" in r["saida"])
+# Byte nulo no caminho do import: o compilador leria OUTRO arquivo (o do
+# pedaço de antes). Reprova antes de rodar, no texto do caminho.
+r = roda([POOL, "--check"], entrada="post(1)\nimport \"lib\\x00.pr\"\n")
+confere("--check: import com o byte nulo é SyntaxError no texto do caminho",
+        "\"ok\":false" in r["saida"] and "o caminho do modulo tem o byte nulo \\\\x00 na posicao 3" in r["saida"]
+        and "\"linha\":2,\"coluna\":8" in r["saida"])
 # Só `True`, `False` e `Null`: a grafia antiga é nome não definido, com a dica
 r = roda([POOL, "--check"], entrada="bool b = true\n")
 confere("--check: true minúsculo é NameError com a dica True, na coluna dele",

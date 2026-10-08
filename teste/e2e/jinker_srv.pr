@@ -147,6 +147,19 @@ funct up() {
             "content_type": f.content_type, "bytes": len(f.bytes())}
 }
 
+# destino com o byte nulo: ValueError antes de gravar (o sistema gravaria
+# no pedaço de antes do \x00, `ps_upload_nul`)
+@app.route("/upload_nul", methods=["POST"])
+funct up_nul() {
+    Object f = jinker.request.file("arq")
+    try {
+        f.save(PASTA + "/ps_upload_nul\x00.txt")
+    } catch (ValueError e) {
+        return {"erro": str(e)}
+    }
+    return {"erro": "salvou"}
+}
+
 @app.route("/uploads", methods=["POST"])
 funct ups() {
     # files() é POR CAMPO: vários arquivos mandados no mesmo nome de campo

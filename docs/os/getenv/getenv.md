@@ -62,6 +62,10 @@ porta   = int(os.getenv("PORT", "8080"))
 timeout = flo(os.getenv("TIMEOUT", "1.5"))
 ```
 
+Nome com o byte nulo (`\x00`) é `ValueError`: o sistema leria a variável do
+pedaço de antes dele (`os.getenv("PATH\x00X")` devolvia o `PATH`). O mesmo
+vale no [`os.environ(nome)`](../environ/environ.md).
+
 ---
 
 ## Relacionados

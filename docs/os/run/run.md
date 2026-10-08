@@ -48,7 +48,7 @@ aí é shell, e vale a advertência de injeção lá embaixo.
 
 ```
 versao = os.run(["jinga", "--version"], capture=True)
-post(versao)                        # "Jinga 17.0.8 [PSVM] (2026-09-24) Runtime standalone"
+post(versao)                        # "Jinga 17.0.9 [PSVM] (2026-09-24) Runtime standalone"
 ```
 
 Com `capture=True` o `run` **espera** o processo terminar: colher a saída exige
@@ -194,6 +194,12 @@ Diferença importante para o [`os.cmd`](../cmd/cmd.md): como o `cmd` passa pelo
 shell, um comando inexistente **não** vira `IOError` — o shell roda, não acha, e
 o `cmd` devolve `Null` **sem `capture`**; com `capture=True` ele devolve o
 texto do stderr do shell ("command not found"), porque o stdout veio vazio.
+
+Item da lista (ou a string) com o byte nulo (`\x00`) é `ValueError` antes de
+rodar: o sistema cortaria o argumento nele, e `os.run(["rm", "a\x00b"])`
+apagaria `a`. A frase diz o item e a posição: `o item 1 tem o byte nulo \x00
+na posicao 1: nenhum argumento de programa tem esse caractere — 'a\x00b'`
+([exceções](../../exceptions/exceptions.md)).
 
 ---
 

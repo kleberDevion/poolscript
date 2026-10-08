@@ -3982,32 +3982,31 @@ static int frase_caminho_texto(char *buf, size_t cap, const char *oque, const ch
         if ((*q & 0xC0) != 0x80) nchars++;
         if (*q == '\n' && q[1]) linhas++;
     }
-    char trecho[200];
-    size_t t = 0;
-    int nc = 0;
-    const unsigned char *q = (const unsigned char *)cam;
-    while (*q && nc < 40 && t + 8 < sizeof(trecho)) {
-        if (*q == '\n' || *q == '\r' || *q == '\t') {
-            trecho[t++] = '\\';
-            trecho[t++] = *q == '\n' ? 'n' : *q == '\r' ? 'r' : 't';
-            q++;
-        } else {
-            size_t lc = *q < 0x80 ? 1 : (*q >> 5) == 0x6 ? 2 : (*q >> 4) == 0xE ? 3 : (*q >> 3) == 0x1E ? 4 : 1;
-            size_t k = 0;
-            while (k < lc && q[k]) { trecho[t++] = (char)q[k]; k++; }
-            q += k;
-        }
-        nc++;
-    }
-    trecho[t] = '\0';
+    char trecho[128];
+    int sobra = ps_trecho_visivel(trecho, sizeof(trecho), cam, strlen(cam));
     if (linhas > 1)
         snprintf(buf, cap, "%s tem %lld linhas (%lld caracteres): e texto, nao nome de arquivo — comeca com '%s%s'",
-                 oque, linhas, nchars, trecho, *q ? "..." : "");
+                 oque, linhas, nchars, trecho, sobra ? "..." : "");
     else
         snprintf(buf, cap, "%s tem quebra de linha: e texto, nao nome de arquivo — '%s%s'",
-                 oque, trecho, *q ? "..." : "");
+                 oque, trecho, sobra ? "..." : "");
     return 1;
 }
+
+/* Texto com o byte nulo não vira caminho nem argumento de programa
+ * (`ps_frase_byte_nulo`): ValueError ANTES da chamada de sistema. Toda
+ * entrada de texto que vira caminho, argumento de programa ou nome de
+ * variável de ambiente passa por aqui. */
+static int sem_byte_nulo(VM *vm, const PSString *s, const char *oque, const char *nenhum)
+{
+    if (!ps_frase_byte_nulo(vm->erro, sizeof(vm->erro), oque, nenhum, s->chars, (size_t)s->len))
+        return 0;
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ValueError");
+    return -1;
+}
+
+/* O caso comum: o texto é um caminho */
+#define CAMINHO_SEM_NUL(vm, s, oque) sem_byte_nulo((vm), (s), (oque), "nome de arquivo")
 
 static int erro_sistema(VM *vm, int e, const char *cam, const char *cam2)
 {
@@ -7478,6 +7477,8 @@ static int met_a_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n == 1 && args[0].t != V_NULL && !EH_STRING(args[0]))
         MERRO(vm, "TypeError", "save() argument 1 must be str, not %s",
               nome_do_tipo_valor(args[0]));
+    if (n == 1 && EH_STRING(args[0]) && CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0)
+        return -1;
     PSArquivo *a;
     if (arq_exige(vm, alvo, "save", &a) != 0) return -1;
     if (a->f) fflush(a->f);
@@ -7592,6 +7593,7 @@ static int nativa_open(VM *vm, Value *args, int n, Value *out)
     /* o 3º argumento é `encoding` no interpretador; aqui tudo é UTF-8 e o
      * valor é aceito e ignorado, pra o mesmo `.pr` rodar nos dois */
     PSString *cam = COMO_STRING(args[0]);
+    if (CAMINHO_SEM_NUL(vm, cam, "o caminho") != 0) return -1;
     /* O fopen("r") do Linux ABRE um diretório sem reclamar; só o read()
      * depois falha, e falhava calado (devolvia ""). Barra aqui. */
     {
@@ -9070,6 +9072,7 @@ static int met_pf_move(VM *vm, Value alvo, Value *args, int n, Value *out)
     ARGS_MET(vm, "move", 1);
     if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "move() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
+    if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o destino") != 0) return -1;
     if (pf_exige_fechado(vm, alvo, "move") != 0) return -1;
     if (!EH_PFILE(alvo)) {
         /* handle fechado: move pelo caminho, sem conteúdo em memória */
@@ -9107,6 +9110,7 @@ static int met_pf_copy(VM *vm, Value alvo, Value *args, int n, Value *out)
     ARGS_MET(vm, "copy", 1);
     if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "copy() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
+    if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o destino") != 0) return -1;
     /* Copiar não mexe no original, então vale com o handle aberto — só é
      * preciso escoar o que ainda está no buffer, senão a cópia sai truncada. */
     if (EH_ARQUIVO(alvo) && COMO_ARQ(alvo)->f) fflush(COMO_ARQ(alvo)->f);
@@ -9161,6 +9165,7 @@ static int met_pf_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n == 1 && args[0].t != V_NULL) {   /* Null = ausente, como a tabela declara */
         if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "save() argument 1 must be str, not %s",
                                       nome_do_tipo_valor(args[0]));
+        if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
         nd = snprintf(dest, sizeof(dest), "%s", COMO_STRING(args[0])->chars);
     } else {
         const char *base = vm->dir_script[0] ? vm->dir_script : ".";
@@ -12763,6 +12768,7 @@ static int mod_sys_relativepath(VM *vm, Value *args, int n, Value *out)
     EXIGE_ARGS(vm, "RelativePath", 1);
     if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "RelativePath() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
+    if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o nome") != 0) return -1;
     char base[1024];
     if (!getcwd(base, sizeof(base))) BERRO(vm, "RuntimeError", "nao consegui ler o diretorio atual");
     char achado[2048];
@@ -13075,6 +13081,7 @@ static int mod_dotenv_load(VM *vm, Value *args, int n, Value *out)
     if (n == 1 && args[0].t != V_NULL) {
         if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "load() argument 1 must be str, not %s",
                                       nome_do_tipo_valor(args[0]));
+        if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
         snprintf(caminho, sizeof(caminho), "%s", COMO_STRING(args[0])->chars);
     } else {
         char dir[1024];
@@ -13512,6 +13519,13 @@ static int os_str(VM *vm, Value v, const char *quem, PSString **out)
     return 0;
 }
 
+/* O argumento que vira caminho: texto, e sem o byte nulo (`sem_byte_nulo`) */
+static int os_caminho(VM *vm, Value v, const char *quem, const char *oque, PSString **out)
+{
+    if (os_str(vm, v, quem, out) != 0) return -1;
+    return CAMINHO_SEM_NUL(vm, *out, oque);
+}
+
 /* Busca recursiva a partir do diretório do script, depois do cwd — a mesma
  * ordem do interpretador. */
 static int acha_em(const char *raiz, const char *nome, int quer_dir,
@@ -13544,7 +13558,7 @@ static int os_procura(VM *vm, Value *args, int n, Value *out, int quer_dir, cons
 {
     EXIGE_ARGS(vm, quem, 1);
     PSString *nome;
-    if (os_str(vm, args[0], quem, &nome) != 0) return -1;
+    if (os_caminho(vm, args[0], quem, "o caminho", &nome) != 0) return -1;
     char achado[2048];
     /* Caminho ABSOLUTO resolve direto — no interpretador `root / "/abs"` do
      * pathlib devolve o absoluto, então a busca por raízes nem entra. Sem
@@ -13668,7 +13682,7 @@ static int mod_os_readfile(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "readFile", 1, 2, n);
     PSString *p;
-    if (os_str(vm, args[0], "readFile", &p) != 0) return -1;
+    if (os_caminho(vm, args[0], "readFile", "o caminho", &p) != 0) return -1;
     /* O `fopen("rb")` do Linux ABRE um diretório sem reclamar (o `nativa_open`
      * já barra isso na mão, por isto mesmo). Aqui não barrava: o `ftell` de
      * diretório devolve LONG_MAX, o malloc estoura e `readFile("pasta")` saía
@@ -13709,7 +13723,7 @@ static int mod_os_writefile(VM *vm, Value *args, int n, Value *out)
      * passar calado. */
     if (n < 2 || n > 3) return erro_aridade(vm, "writeFile", 2, 3, n);
     PSString *p;
-    if (os_str(vm, args[0], "writeFile", &p) != 0) return -1;
+    if (os_caminho(vm, args[0], "writeFile", "o caminho", &p) != 0) return -1;
     const char *dados; int ndados;
     if (EH_STRING(args[1]))      { PSString *c = COMO_STRING(args[1]); dados = c->chars; ndados = c->len; }
     else if (EH_BYTES(args[1]))  { PSString *c = COMO_BYTES(args[1]);  dados = c->chars; ndados = c->len; }
@@ -13746,7 +13760,7 @@ static int mod_os_mkdir(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "mkdir", 1, 2, n);
     PSString *p;
-    if (os_str(vm, args[0], "mkdir", &p) != 0) return -1;
+    if (os_caminho(vm, args[0], "mkdir", "o caminho", &p) != 0) return -1;
     int ok_existir = (n == 2) && val_truthy(&args[1]);
     /* cria a cadeia inteira, como `makedirs` */
     char tmp[2048];
@@ -13799,7 +13813,7 @@ static int mod_os_rmdir(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "rmdir", 1, 2, n);
     PSString *p;
-    if (os_str(vm, args[0], "rmdir", &p) != 0) return -1;
+    if (os_caminho(vm, args[0], "rmdir", "o caminho", &p) != 0) return -1;
     int forca = (n == 2) && val_truthy(&args[1]);
     /* Sem `force`, só remove diretório VAZIO — apagar conteúdo sem o usuário
      * pedir é destrutivo demais pra ser o padrão. */
@@ -13815,7 +13829,7 @@ static int mod_os_ls(VM *vm, Value *args, int n, Value *out)
     const char *dir = ".";
     if (n == 1) {
         PSString *p;
-        if (os_str(vm, args[0], "ls", &p) != 0) return -1;
+        if (os_caminho(vm, args[0], "ls", "o caminho", &p) != 0) return -1;
         dir = p->chars;
     }
     DIR *d = opendir(dir);
@@ -13861,7 +13875,7 @@ static int os_teste(VM *vm, Value *args, int n, Value *out, const char *quem, in
 {
     EXIGE_ARGS(vm, quem, 1);
     PSString *p;
-    if (os_str(vm, args[0], quem, &p) != 0) return -1;
+    if (os_caminho(vm, args[0], quem, "o caminho", &p) != 0) return -1;
     struct stat st;
     int ok = stat(p->chars, &st) == 0;
     if (ok && qual == 1) ok = S_ISREG(st.st_mode);
@@ -13878,7 +13892,8 @@ static int mod_os_rename(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "rename", 2);
     PSString *a, *b;
-    if (os_str(vm, args[0], "rename", &a) != 0 || os_str(vm, args[1], "rename", &b) != 0) return -1;
+    if (os_caminho(vm, args[0], "rename", "o caminho", &a) != 0
+            || os_caminho(vm, args[1], "rename", "o destino", &b) != 0) return -1;
     if (rename(a->chars, b->chars) != 0)
         return erro_sistema(vm, errno, a->chars, b->chars);
     *out = MK_NULL();
@@ -13889,7 +13904,8 @@ static int mod_os_copy(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "copy", 2);
     PSString *a, *b;
-    if (os_str(vm, args[0], "copy", &a) != 0 || os_str(vm, args[1], "copy", &b) != 0) return -1;
+    if (os_caminho(vm, args[0], "copy", "o caminho", &a) != 0
+            || os_caminho(vm, args[1], "copy", "o destino", &b) != 0) return -1;
     if (copia_ou_erro(vm, a->chars, b->chars) != 0) return -1;
     *out = MK_NULL();
     return 0;
@@ -13899,7 +13915,8 @@ static int mod_os_move(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "move", 2);
     PSString *a, *b;
-    if (os_str(vm, args[0], "move", &a) != 0 || os_str(vm, args[1], "move", &b) != 0) return -1;
+    if (os_caminho(vm, args[0], "move", "o caminho", &a) != 0
+            || os_caminho(vm, args[1], "move", "o destino", &b) != 0) return -1;
     if (rename(a->chars, b->chars) != 0) {
         if (copia_ou_erro(vm, a->chars, b->chars) != 0) return -1;
         /* Mover é copiar E apagar a origem. Origem que não sai (pasta sem
@@ -13916,7 +13933,7 @@ static int mod_os_size(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "size", 1);
     PSString *p;
-    if (os_str(vm, args[0], "size", &p) != 0) return -1;
+    if (os_caminho(vm, args[0], "size", "o caminho", &p) != 0) return -1;
     struct stat st;
     if (stat(p->chars, &st) != 0) return erro_sistema(vm, errno, p->chars, NULL);
     *out = MK_INT((int64_t)st.st_size);
@@ -13936,7 +13953,7 @@ static int mod_os_chdir(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "chdir", 1);
     PSString *p;
-    if (os_str(vm, args[0], "chdir", &p) != 0) return -1;
+    if (os_caminho(vm, args[0], "chdir", "o caminho", &p) != 0) return -1;
     if (chdir(p->chars) != 0) return erro_sistema(vm, errno, p->chars, NULL);
     *out = MK_NULL();
     return 0;
@@ -13951,7 +13968,8 @@ static int mod_os_environ(VM *vm, Value *args, int n, Value *out)
     if (n > 1) return erro_aridade(vm, "environ", 0, 1, n);
     if (n == 1 && args[0].t != V_NULL) {
         PSString *k;
-        if (os_str(vm, args[0], "environ", &k) != 0) return -1;
+        if (os_str(vm, args[0], "environ", &k) != 0
+                || sem_byte_nulo(vm, k, "o nome", "nome de variavel de ambiente") != 0) return -1;
         const char *v = getenv(k->chars);
         if (!v) { *out = MK_NULL(); return 0; }
         return devolve_texto(vm, out, v, (int)strlen(v));
@@ -13977,7 +13995,8 @@ static int mod_os_getenv(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "getenv", 1, 2, n);
     PSString *k;
-    if (os_str(vm, args[0], "getenv", &k) != 0) return -1;
+    if (os_str(vm, args[0], "getenv", &k) != 0
+            || sem_byte_nulo(vm, k, "o nome", "nome de variavel de ambiente") != 0) return -1;
     /* carrega o .env antes — variável de arquivo tem
      * que estar visível sem o usuário chamar `dotenv.load()` na mão */
     Value ignora;
@@ -14344,7 +14363,8 @@ static int mod_os_cmd(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "cmd", 1, 2, n);
     PSString *c;
-    if (os_str(vm, args[0], "cmd", &c) != 0) return -1;
+    if (os_str(vm, args[0], "cmd", &c) != 0
+            || sem_byte_nulo(vm, c, "o comando", "argumento de programa") != 0) return -1;
     /* COM shell: `;` `|` `$` são interpretados. Dado de usuário aqui é
      * injeção — pra isso existe o `run`, que não passa por shell. */
     return roda_processo(vm, c->chars, NULL, (n == 2) && val_truthy(&args[1]), out);
@@ -14947,6 +14967,12 @@ static int mod_os_run(VM *vm, Value *args, int n, Value *out)
                 BERRO(vm, "TypeError", "run() argument 1 must be list of str, not %s",
                       nome_do_tipo_valor(l->itens[i]));
             }
+            char oque[32];
+            snprintf(oque, sizeof(oque), "o item %d", i);
+            if (sem_byte_nulo(vm, COMO_STRING(l->itens[i]), oque, "argumento de programa") != 0) {
+                free(vetor);
+                return -1;
+            }
             if (os_run_empurra(&vetor, &q, &cap, COMO_STRING(l->itens[i])->chars) != 0) {
                 free(vetor);
                 BERRO(vm, "MemoryError", "sem memoria em run()");
@@ -14955,6 +14981,7 @@ static int mod_os_run(VM *vm, Value *args, int n, Value *out)
     } else if (EH_STRING(args[0])) {
         /* string é dividida respeitando aspas, SEM interpretar shell */
         PSString *c = COMO_STRING(args[0]);
+        if (sem_byte_nulo(vm, c, "o comando", "argumento de programa") != 0) return -1;
         copia = malloc((size_t)c->len + 1);
         if (!copia) BERRO(vm, "MemoryError", "sem memoria em run()");
         memcpy(copia, c->chars, (size_t)c->len);
@@ -14995,7 +15022,7 @@ static int mod_os_code(VM *vm, Value *args, int n, Value *out)
     const char *alvo = ".";
     if (n == 1) {
         PSString *p;
-        if (os_str(vm, args[0], "code", &p) != 0) return -1;
+        if (os_caminho(vm, args[0], "code", "o caminho", &p) != 0) return -1;
         alvo = p->chars;
     }
     static const char *EDITORES[] = {"code","cursor","zed","nano","vim"};
@@ -15480,6 +15507,7 @@ static int mod_sqlite3_connect(VM *vm, Value *args, int n, Value *out)
     EXIGE_ARGS(vm, "connect", 1);
     if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "connect() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
+    if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
     sqlite3 *db = NULL;
     if (sqlite3_open(COMO_STRING(args[0])->chars, &db) != SQLITE_OK) {
         snprintf(vm->erro, sizeof(vm->erro), "erro de banco de dados: %s",
@@ -15711,6 +15739,7 @@ static int met_mm_attach(VM *vm, Value alvo, Value *args, int n, Value *out)
         return 0;
     }
     if (EH_STRING(args[0])) {
+        if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
         const char *caminho = COMO_STRING(args[0])->chars;
         /* Pasta é recusada ANTES de abrir, como no `open()` e no `os.readFile`:
          * no Linux e no macOS o fopen de pasta sucede e quem falha é o fread
@@ -15831,6 +15860,7 @@ static int sk_monta_addr(VM *vm, int familia, int tipo, Value addr, const char *
         if (!EH_STRING(addr))
         MERRO(vm, "TypeError", "%s() argument 1 must be str, not %s",
               quem, nome_do_tipo_valor(addr));
+        if (CAMINHO_SEM_NUL(vm, COMO_STRING(addr), "o caminho") != 0) return -1;
         struct sockaddr_un *un = (struct sockaddr_un *)sa;
         un->sun_family = AF_UNIX;
         snprintf(un->sun_path, sizeof(un->sun_path), "%s", COMO_STRING(addr)->chars);
@@ -17520,6 +17550,8 @@ static int met_resp_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSResponse *rp = COMO_RESP(alvo);
     if (n == 1 && args[0].t != V_NULL && !EH_STRING(args[0]))
         BERRO(vm, "TypeError", "save() argument 1 must be str, not %s", nome_do_tipo_valor(args[0]));
+    if (n == 1 && EH_STRING(args[0]) && CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0)
+        return -1;
     const char *destino = (n == 1 && EH_STRING(args[0])) ? COMO_STRING(args[0])->chars : ".";
     char caminho[2048];
     /* pasta ('.', '..', termina em barra, ou é diretório) → deriva o nome */
@@ -17702,8 +17734,10 @@ static int request_comum(VM *vm, const char *nome, const char *metodo, Value *ar
      * multipart): abrir agora deixaria o descritor aberto e um arquivo vazio no
      * disco em cada um deles. */
     const char *save_cam = NULL;
-    if (n > 8 && EH_STRING(args[8])) save_cam = COMO_STRING(args[8])->chars;
-    else if (n > 8 && args[8].t != V_NULL && args[8].t != V_UNSET)
+    if (n > 8 && EH_STRING(args[8])) {
+        if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[8]), "o caminho do save=") != 0) return -1;
+        save_cam = COMO_STRING(args[8])->chars;
+    } else if (n > 8 && args[8].t != V_NULL && args[8].t != V_UNSET)
         BERRO(vm, "TypeError", "%s() save must be str, not %s",
               metodo, nome_do_tipo_valor(args[8]));
     int multipart = 0;
@@ -17801,7 +17835,7 @@ static int request_comum(VM *vm, const char *nome, const char *metodo, Value *ar
                 if (d->entradas[i].estado != 1) continue;
                 Value k = d->entradas[i].chave, v = d->entradas[i].valor;
                 if (!EH_STRING(k)) continue;
-                const char *caminho = NULL;
+                PSString *cs = NULL;
                 if (EH_DICT(v)) {
                     PSDict *dv = COMO_DICT(v);
                     for (int q = 0; q < dv->usados; q++) {
@@ -17809,13 +17843,18 @@ static int request_comum(VM *vm, const char *nome, const char *metodo, Value *ar
                         Value kk = dv->entradas[q].chave;
                         if (EH_STRING(kk) && strcmp(COMO_STRING(kk)->chars, "name") == 0
                                 && EH_STRING(dv->entradas[q].valor)) {
-                            caminho = COMO_STRING(dv->entradas[q].valor)->chars;
+                            cs = COMO_STRING(dv->entradas[q].valor);
                             break;
                         }
                     }
                 } else if (EH_STRING(v)) {
-                    caminho = COMO_STRING(v)->chars;
+                    cs = COMO_STRING(v);
                 }
+                if (cs && CAMINHO_SEM_NUL(vm, cs, "o caminho do file=") != 0) {
+                    free(mp.b);
+                    return -1;
+                }
+                const char *caminho = cs ? cs->chars : NULL;
                 if (!caminho || !caminho[0]) {
                     free(mp.b);
                     BERRO(vm, "ValueError", "file=: campo \"%s\" sem \"name\" (o caminho do arquivo)",
@@ -18264,6 +18303,7 @@ static int met_qrf_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     ARGS_MET(vm, "save", 1);
     if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "save() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
+    if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
     PSQRFile *q = COMO_QRFILE(alvo);
     PSString *b = EH_BYTES(q->conteudo) ? COMO_BYTES(q->conteudo) : NULL;
     char caminho[2048];
@@ -18323,6 +18363,8 @@ static int mod_qr_gen(VM *vm, Value *args, int n, Value *out)
     const char *cor   = (n > 4 && EH_STRING(args[4])) ? COMO_STRING(args[4])->chars : "black";
     const char *fundo = (n > 5 && EH_STRING(args[5])) ? COMO_STRING(args[5])->chars : "white";
     const char *nome  = (n > 6 && EH_STRING(args[6])) ? COMO_STRING(args[6])->chars : "qrcode.png";
+    if (save && CAMINHO_SEM_NUL(vm, COMO_STRING(args[1]), "o caminho do save=") != 0) return -1;
+    if (n > 6 && EH_STRING(args[6]) && CAMINHO_SEM_NUL(vm, COMO_STRING(args[6]), "o nome") != 0) return -1;
     char nivel = (n > 7) ? qr_nivel_arg(args[7]) : 'L';
     int tw = 0, th = 0;
     if (n > 8 && EH_SEQ(args[8]) && COMO_LIST(args[8])->len == 2) {
@@ -18386,6 +18428,7 @@ static int met_qri_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     ARGS_MET(vm, "save", 1);
     if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "save() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
+    if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
     PSQRImage *q = COMO_QRIMAGE(alvo);
     unsigned char *png; size_t npng;
     if (qri_png(vm, q, &png, &npng) != 0) return -1;
@@ -18481,6 +18524,7 @@ static int met_qrb_make_image(VM *vm, Value alvo, Value *args, int n, Value *out
     const char *cor   = (n > 0 && EH_STRING(args[0])) ? COMO_STRING(args[0])->chars : "black";
     const char *fundo = (n > 1 && EH_STRING(args[1])) ? COMO_STRING(args[1])->chars : "white";
     const char *nome  = (n > 2 && EH_STRING(args[2])) ? COMO_STRING(args[2])->chars : "qrcode.png";
+    if (n > 2 && EH_STRING(args[2]) && CAMINHO_SEM_NUL(vm, COMO_STRING(args[2]), "o nome") != 0) return -1;
     PSQRImage *q = novo_qrimage(vm, b->dados ? b->dados : "", b->ndados,
                                 b->nivel, b->box, b->border, cor, fundo, nome);
     if (!q) MERRO(vm, "MemoryError", "sem memoria");
@@ -18508,6 +18552,7 @@ static int mod_qr_make(VM *vm, Value *args, int n, Value *out)
     const char *cor   = (n > 4 && EH_STRING(args[4])) ? COMO_STRING(args[4])->chars : "black";
     const char *fundo = (n > 5 && EH_STRING(args[5])) ? COMO_STRING(args[5])->chars : "white";
     const char *nome  = (n > 6 && EH_STRING(args[6])) ? COMO_STRING(args[6])->chars : "qrcode.png";
+    if (n > 6 && EH_STRING(args[6]) && CAMINHO_SEM_NUL(vm, COMO_STRING(args[6]), "o nome") != 0) return -1;
     char *dados; int nd, livre;
     if (qr_dado_texto(vm, args[0], &dados, &nd, &livre) != 0) BERRO(vm, "MemoryError", "sem memoria");
     /* valida os dados agora (o make(fit=True) do wrapper erra neste ponto) */
@@ -18797,6 +18842,7 @@ static int mod_mp_read(VM *vm, Value *args, int n, Value *out)
     EXIGE_ARGS(vm, "read", 1);
     if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "read() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
+    if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
     const char *caminho = COMO_STRING(args[0])->chars;
     if (!existe_arquivo(caminho)) {
         char msg[600]; snprintf(msg, sizeof(msg), "Error: arquivo não encontrado: %.400s", caminho);
@@ -18865,6 +18911,7 @@ static int mod_mp_load(VM *vm, Value *args, int n, Value *out)
     EXIGE_ARGS(vm, "load", 1);
     if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "load() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
+    if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
     const char *caminho = COMO_STRING(args[0])->chars;
     if (!existe_arquivo(caminho)) {
         char msg[600]; snprintf(msg, sizeof(msg), "Error: arquivo não encontrado: %.400s", caminho);
@@ -18883,6 +18930,7 @@ static int mod_mp_src(VM *vm, Value *args, int n, Value *out)
     EXIGE_ARGS(vm, "src", 1);
     if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "src() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
+    if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
     char abs[2048];
     caminho_abs(COMO_STRING(args[0])->chars, abs, sizeof(abs));
     return devolve_texto(vm, out, abs, (int)strlen(abs));
@@ -18907,6 +18955,8 @@ static int mod_mp_write(VM *vm, Value *args, int n, Value *out)
     int column = (n > 1 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
     int celula = (n > 2 && args[2].t == V_INT) ? (int)args[2].as.i : 0;
     const char *target = (n > 3 && EH_STRING(args[3])) ? COMO_STRING(args[3])->chars : "";
+    if (n > 3 && EH_STRING(args[3]) && CAMINHO_SEM_NUL(vm, COMO_STRING(args[3]), "o caminho do target=") != 0)
+        return -1;
     if (!target[0]) { PSManpuRes *r = novo_manpures(vm, 0, "Error: target vazio"); *out = MK_OBJ(r); return 0; }
     char ext[32]; mp_ext(target, ext, sizeof(ext));
     char valtxt[4096];
@@ -18976,6 +19026,8 @@ static int mod_mp_remove(VM *vm, Value *args, int n, Value *out)
     const char *content = (n > 1 && EH_STRING(args[1])) ? COMO_STRING(args[1])->chars : "";
     const char *amount = (n > 4 && EH_STRING(args[4])) ? COMO_STRING(args[4])->chars : "full";
     const char *target = (n > 5 && EH_STRING(args[5])) ? COMO_STRING(args[5])->chars : "";
+    if (n > 5 && EH_STRING(args[5]) && CAMINHO_SEM_NUL(vm, COMO_STRING(args[5]), "o caminho do target=") != 0)
+        return -1;
     const char *alvo = value[0] ? value : content;
     if (!target[0] || !existe_arquivo(target)) {
         PSManpuRes *r = novo_manpures(vm, 0, "Error: arquivo não encontrado");
@@ -19071,6 +19123,7 @@ static int mod_mp_open(VM *vm, Value *args, int n, Value *out)
     if (!EH_STRING(args[0]))
         BERRO(vm, "TypeError", "open() argument 1 must be str, not %s",
                       nome_do_tipo_valor(args[0]));
+    if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
     const char *caminho = COMO_STRING(args[0])->chars;
     char ext[32]; mp_ext(caminho, ext, sizeof(ext));
 
@@ -19702,6 +19755,14 @@ static int mod_db_connect(VM *vm, Value *args, int n, Value *out)
     PSDbDriver drv;
     if (db_resolve_driver(driver, &drv) != 0)
         BERRO(vm, "TypeError", "driver desconhecido: %s", driver);
+    /* no SQLite o banco é um ARQUIVO, e o nome dele vem de um destes três */
+    if (drv == PS_DB_SQLITE) {
+        static const char *const ROTULO[] = {
+            "o caminho do database=", "o caminho do base=", "o caminho do url=" };
+        for (int i = 5; i <= 7; i++)
+            if (n > i && EH_STRING(args[i]) && CAMINHO_SEM_NUL(vm, COMO_STRING(args[i]), ROTULO[i - 5]) != 0)
+                return -1;
+    }
 
     char odbc_cs[1024];
     if (drv == PS_DB_MSSQL) {
@@ -19746,6 +19807,8 @@ static int mod_db_connect(VM *vm, Value *args, int n, Value *out)
 static int mod_db_query(VM *vm, Value *args, int n, Value *out)
 {
     const char *base = (n > 0 && EH_STRING(args[0])) ? COMO_STRING(args[0])->chars : "";
+    if (n > 0 && EH_STRING(args[0]) && CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0)
+        return -1;
     int tem_cmd = (n > 1) && args[1].t != V_NULL && args[1].t != V_UNSET;
     char erro[512];
     PSDbConn *c = ps_db_conecta(PS_DB_SQLITE, "", 0, "", "", base, base, erro, sizeof(erro));
@@ -20535,6 +20598,10 @@ static int mod_jk_render(VM *vm, Value *args, int n, Value *out)
     if (n < 1 || n > 2) return erro_aridade(vm, "render", 1, 2, n);
     if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "render() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
+    /* antes da busca: a falha dela vira "não achado" e calaria este erro */
+    if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
+    if (n == 2 && EH_STRING(args[1]) && CAMINHO_SEM_NUL(vm, COMO_STRING(args[1]), "o arquivo") != 0)
+        return -1;
     PSJResp *r = jk_novo_resp(vm);
     if (!r) BERRO(vm, "MemoryError", "sem memoria");
     Value rv = MK_OBJ(r);
@@ -21189,6 +21256,7 @@ static int met_jup_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     ARGS_MET(vm, "save", 1);
     if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "save() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
+    if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o destino") != 0) return -1;
     PSJUpload *u = COMO_JUPLOAD(alvo);
     const char *dest = COMO_STRING(args[0])->chars;
     /* cria pastas pai */
@@ -21211,6 +21279,22 @@ static int met_jup_bytes(VM *vm, Value alvo, Value *args, int n, Value *out)
 /* ── construtor Jinker(name, oauth=, static_folder=, static_url=) ────────── */
 static int mod_jk_Jinker(VM *vm, Value *args, int n, Value *out)
 {
+    /* os que viram arquivo (a pasta do static_folder, o certificado e a chave
+     * do TLS): o byte nulo é recusado antes de montar o servidor */
+    if (n >= 3 && EH_STRING(args[2])
+            && CAMINHO_SEM_NUL(vm, COMO_STRING(args[2]), "o caminho do static_folder=") != 0) return -1;
+    if (n >= 2 && EH_DICT(args[1])) {
+        PSDict *d = COMO_DICT(args[1]);
+        for (int i = 0; i < d->usados; i++) {
+            if (d->entradas[i].estado != 1 || !EH_STRING(d->entradas[i].chave)
+                    || !EH_STRING(d->entradas[i].valor)) continue;
+            const char *k = COMO_STRING(d->entradas[i].chave)->chars;
+            if ((strcmp(k, "cert") == 0 || strcmp(k, "key") == 0)
+                    && CAMINHO_SEM_NUL(vm, COMO_STRING(d->entradas[i].valor),
+                                       k[0] == 'c' ? "o caminho do cert" : "o caminho do key") != 0)
+                return -1;
+        }
+    }
     PSJinker *j = calloc(1, sizeof(PSJinker));
     if (!j) BERRO(vm, "MemoryError", "sem memoria");
     j->obj.type = OBJ_JINKER; j->obj.marked = 0;

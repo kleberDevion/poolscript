@@ -32,7 +32,7 @@ os.cmd("git status")              # a saída vai direto pro terminal
 
 ```
 versao = os.cmd("jinga --version", capture=True)
-post(versao)                      # "Jinga 17.0.8 [PSVM] (2026-09-24) Runtime standalone"
+post(versao)                      # "Jinga 17.0.9 [PSVM] (2026-09-24) Runtime standalone"
 ```
 
 Com `capture=True`, devolve o **stdout** (sem espaços nas pontas). Se o comando
@@ -70,6 +70,10 @@ injeção de comando): `os.cmd("mkdir " + nome)` com `nome = "x; rm -rf ~"`
 executa o `rm`. Para valores dinâmicos vindos de fora, use
 [`os.run([...])`](../run/run.md), que roda **sem shell** e trata cada argumento
 como texto literal.
+
+Comando com o byte nulo (`\x00`) é `ValueError` antes de rodar: o shell
+receberia só o pedaço de antes dele (`o comando tem o byte nulo \x00 na
+posicao N: nenhum argumento de programa tem esse caractere — '...'`).
 
 ---
 

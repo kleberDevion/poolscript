@@ -17,6 +17,7 @@
  * em silêncio.
  */
 #include "ps_parser.h"
+#include "ps_caminho.h"
 #include "ps_pilha.h"
 #include "ps_retornos.h"
 #include "ps_tipos.h"
@@ -2762,6 +2763,13 @@ static int modulo_entre_aspas(P *p, PSNode *n)
     if (t->type != T_STR) return 0;
     if (t->texto_len == 0) {
         perro(p, "import entre aspas vazio: esperado um caminho ('../x.pr') ou o nome de um modulo ('json')", t);
+        return -1;
+    }
+    /* com o byte nulo, o compilador e o runtime leriam outro arquivo */
+    char fr[256];
+    if (t->texto && ps_frase_byte_nulo(fr, sizeof(fr), "o caminho do modulo", "nome de arquivo",
+                                       t->texto, (size_t)t->texto_len)) {
+        perro(p, fr, t);
         return -1;
     }
     p->pos++;

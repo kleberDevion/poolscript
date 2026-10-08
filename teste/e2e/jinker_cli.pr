@@ -1,5 +1,6 @@
 # Cliente: bate no jinker que `jinker_srv.pr` subiu. Exercita a lib `request`,
 # o tipo `Response` (12 membros) e, do outro lado, o `RequestProxy` (11).
+import os
 import request
 
 U = "http://127.0.0.1:28840"
@@ -90,6 +91,13 @@ using open(alvo, "w") as arq {
 u = request.post(U + "/upload", file={"arq": alvo})
 post("upload ->", u.get_json())
 post("salvou no servidor ->", open(PASTA + "/ps_upload_recebido.txt").read())
+
+Object un = request.post(U + "/upload_nul", file={"arq": alvo})
+str erro_nul = un.get_json()["erro"]
+if not erro_nul.startswith("o destino tem o byte nulo \\x00 na posicao ") or os.exists(PASTA + "/ps_upload_nul") {
+    raise "PoolFileUpload.save com o byte nulo nao foi recusado: " + erro_nul
+}
+post("upload com o byte nulo -> recusado")
 
 m = request.post(U + "/uploads", file={"fotos": {"name": alvo}})
 post("files(campo) ->", m.get_json())
