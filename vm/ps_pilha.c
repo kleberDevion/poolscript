@@ -146,15 +146,4 @@ int ps_pilha_apertada_bloco(void)
     return apertada_com((const char *)__builtin_frame_address(0), 2);
 }
 
-void ps_pilha_le(const char **base, size_t *tam)
-{
-    *base = ps_pilha_base;
-    *tam  = ps_pilha_tam;
-}
-
-void ps_pilha_repoe(const char *base, size_t tam)
-{
-    ps_pilha_base = base;
-    ps_pilha_tam  = tam;
-    ps_pilha_ultimo = NULL;
-}
+/* `ps_pilha_le` e `ps_pilha_repoe` são embutidas, no `ps_pilha.h`. */

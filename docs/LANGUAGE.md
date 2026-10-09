@@ -593,11 +593,19 @@ Semântica (detalhes em `docs/linguagem/06-funcoes.md` §6.8):
   **depois**, sobe no `await` — ou, se ninguém aguardou, sai no stderr no fim
   do programa. O tipo original é PRESERVADO: um `raise ValueError(...)` dentro
   da funct chega como `ValueError` no `catch`, não convertido em outra coisa.
-- `await` numa **lista** funciona como um `gather`: aguarda todos os
+  A linha do erro é a do `raise`: no traceback, no aviso da tarefa sem
+  `await` e no `e` do `catch`.
+- `gather` espera **todas**, mesmo quando uma falha: depois levanta o erro da
+  primeira que falhou (na ordem dos argumentos), com as outras na frase
+  (`tarefa 1 (linha 3); mais 1 tarefa do gather falhou: Quebrou: tarefa 2
+  (linha 3)`). Nenhuma sai depois como tarefa sem `await`.
+- `await` numa **lista** (ou tupla) é o mesmo `gather`: aguarda todos os
   futures da lista (misturados com valores já prontos) e devolve a lista de
-  resultados; se algum tiver dado erro, o erro propaga no `await`.
+  resultados; com erro, a mesma regra do `gather`, e a frase diz `do await`.
 - `await` encadeado (uma `async funct` chamando/aguardando outra `async
-  funct`) e recursão assíncrona funcionam normalmente.
+  funct`) e recursão assíncrona funcionam normalmente. A tarefa criada dentro
+  de outra também começa na chamada e, quando cede, volta pra tarefa que a
+  criou.
 - Métodos `async` dentro de `Entity` funcionam e acessam/mutam `self`
   normalmente.
 - `await valor_comum` (não-future) é pass-through — devolve o valor como

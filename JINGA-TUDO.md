@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.12`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.13`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -646,8 +646,11 @@ post(await [dobro(4), 99])                     # [8, 99]
 
 - `async funct` devolve um `future` e começa a rodar **na chamada**, até o primeiro ponto de cedência (`sleep`, I/O, `await`).
 - As tarefas andam sempre que o principal espera: no `await`, no `gather`, no `sleep` e na I/O dele. No fim do programa, uma tarefa pendente não é esperada.
-- Erro **antes** da primeira cedência sobe na chamada. Erro **depois** sobe no `await`. Se ninguém aguardou, a mensagem sai no stderr no fim e o programa termina com rc 1. O tipo original da exceção é preservado.
-- `await` numa lista funciona como `gather` achatado. `await 5` devolve 5. `gather(lista)` devolve lista dentro de lista.
+- Erro **antes** da primeira cedência sobe na chamada. Erro **depois** sobe no `await`. Se ninguém aguardou, a mensagem sai no stderr no fim e o programa termina com rc 1. O tipo original da exceção é preservado. A linha que o erro mostra é a do `raise` (traceback, aviso da tarefa sem `await` e o `e` do `catch`), pelo mesmo caminho do erro de dentro de módulo importado (`tb_mod` + `import_falhou`, com o tipo e a mensagem conferidos em `tb_dentro_consome`, pra marca velha não vazar pra outro erro). Vale também pro erro de dentro de gerador e de funct chamada de volta por `map`/`filter`/`sorted`/decorador (Plano 6, lote 6c).
+- A tarefa criada dentro de outra começa na chamada e, quando cede, volta pra tarefa que a criou (`Fiber.volta`, gravado no `fib_resume`; todo ponto de cedência troca pra `fib_volta_ctx`). Antes ela só começava quando o principal esperava.
+- O gerador que cede no meio (`sleep`, I/O) dentro de uma tarefa guarda o estado dele na fibra (`GerTransp`, que o `fib_guarda`/`fib_poe` levam e trazem): dois geradores em tarefas diferentes não trocam mais dados.
+- **`gather` espera todas**: se alguma falha (o caminho sem erro é o laço de sempre; da primeira que falha em diante, `fut_espera_resto`), levanta o erro da primeira na ordem dos argumentos, com o traceback dela e as outras na frase (`tarefa 1 (linha 3); mais 1 tarefa do gather falhou: Quebrou: tarefa 2 (linha 3)`). Nenhuma sai depois como sem `await`; a mesma tarefa repetida conta uma vez.
+- `await` numa lista (ou tupla) é o mesmo `gather`, achatado, com os valores trocados no lugar; a frase diz `do await`. `await 5` devolve 5. `gather(lista)` devolve lista dentro de lista.
 - O future não tem `.done()` nem `.result()`. `__init__` não pode ser `async`.
 - Por baixo são fibras (pilha própria por tarefa) com epoll no Linux e kqueue no macOS (`vm/ps_so.c`). Toda I/O de saída do jinker cede. Handler de rota ou middleware `async` roda na fibra da conexão.
 
@@ -2151,8 +2154,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.12** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.12 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.13** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.13 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2773,7 +2776,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.12"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.13"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2853,7 +2856,7 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-08 (madrugada)
 
-- Versão da linguagem **17.0.12** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.12 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.13** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.13 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: `0866fda` (17.0.12, Plano 6 lote 6b), igual a `origin/main` quando subiu. No `2a668b9` (17.0.11) entrou, por engano meu (`git add -A`), o seu rename `examples/action.pr` → `examples/funct.pr` que estava na árvore (100% igual); desde então o commit leva só a lista de arquivos do lote. Fora do controle de versão ficam só arquivos seus (`examples/s.pr`, `examples/ge.pr`), que nunca entram em commit.
 - **Ordem decidida por você em 2026-10-08**: primeiro as correções (tudo o que está em andamento: os lotes 6 a 8 do Plano 6), depois o código de máquina com tabela de instruções (Plano 2), depois a volta às coberturas da linguagem; as features vêm depois das correções.
@@ -3080,6 +3083,8 @@ A métrica de cobertura da doc passou a medir "documentado em algum lugar" em ve
   - `--check` lista todos os erros, e programa com erro de tipo não roda (rc 2).
 - Sem conversão implícita. `char c = 64` e `long y = 5` ficam como estão.
 - Chave do literal de dict é expressão.
+- `gather` (e `await` de lista) com várias tarefas falhando: espera todas e levanta o erro da primeira, na ordem dos argumentos, com as outras na frase; nenhuma sai depois como sem `await`, e o código de saída segue o `catch` (2026-10-09).
+- Gerador abandonado (2026-10-09, lote 6d): o criado no cabeçalho do `for each` fecha quando o laço sai antes (`break`, `return`, erro), rodando o `finally` e fechando o `using`; o guardado em variável continua consumível depois do `break`; o que ainda estiver suspenso fecha no fim do programa.
 - Apelidos de tipo (`String`) **não** viram chamáveis. Conversão é só `str(x)`, `int(x)` e afins.
 - `class X {` sem `()`, e `()` vazio é erro. `model X() {` fica com `()`.
   - `base()` com um pai só e `base(Pai)` com qualquer ancestral alcançam tudo do pai.

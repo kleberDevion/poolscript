@@ -354,6 +354,19 @@ r = roda([POOL, "--check"], entrada="int funct k(a = funct(int x) { return x + b
 confere("--check: lambda no padrão capturando o parâmetro de depois é NameError na lambda",
         "\"tipo\":\"NameError\"" in r["saida"] and "a lambda no padrão de 'a' captura 'b'" in r["saida"]
         and "\"linha\":1,\"coluna\":17" in r["saida"])
+# Lote 6c: o gather e o `await` de lista sem catch levantam a primeira com a
+# outra na frase, e nenhuma das duas sobra pro aviso de tarefa sem `await`
+str TAREFAS_6C = "async str funct t(int n) {\n    sleep(0.01 * n)\n    raise Quebrou(\"tarefa \" + str(n))\n}\n"
+os.writeFile(PASTA + "/gather_sem_catch.pr", TAREFAS_6C + "post(gather(t(1), t(2)))\n")
+r = roda([POOL, "gather_sem_catch.pr"])
+confere("gather sem catch: as duas falhas numa frase, nenhuma como tarefa sem await",
+        r["rc"] == 1 and "mais 1 tarefa do gather falhou: Quebrou: tarefa 2 (linha 3)" in r["saida"]
+        and "sem `await`" not in r["saida"])
+os.writeFile(PASTA + "/await_lista_sem_catch.pr", TAREFAS_6C + "list r = await [t(1), t(2)]\n")
+r = roda([POOL, "await_lista_sem_catch.pr"])
+confere("await de lista sem catch: as duas falhas numa frase, nenhuma como tarefa sem await",
+        r["rc"] == 1 and "mais 1 tarefa do await falhou: Quebrou: tarefa 2 (linha 3)" in r["saida"]
+        and "sem `await`" not in r["saida"])
 # Byte nulo no caminho do import: o compilador leria OUTRO arquivo (o do
 # pedaço de antes). Reprova antes de rodar, no texto do caminho.
 r = roda([POOL, "--check"], entrada="post(1)\nimport \"lib\\x00.pr\"\n")

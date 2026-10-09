@@ -111,6 +111,24 @@ try {
 - A variável do `catch` (`e`) **vale o texto do erro** — imprime como
   `mensagem (linha N)`. Ela é **local ao bloco do catch** (não existe depois;
   seção 4.6).
+- O `N` é a linha do `raise` (ou da operação que falhou), onde quer que ela
+  esteja: numa funct chamada pelo `try`, numa funct chamada de volta por
+  `map`, `filter`, `sorted` ou um decorador, num gerador consumido pelo
+  `for each`, numa tarefa aguardada. O traceback do erro que ninguém pega
+  também traz os quadros de lá, com a linha do `raise` por último.
+
+```ps
+funct gen(list l) {
+    for each x in l {
+        yield 10 / x
+    }
+}
+try {
+    list r = list(gen([5, 0]))
+} catch (ZeroDivisionError e) {
+    post(e)                   # division by zero (linha 3)
+}
+```
 
 ---
 

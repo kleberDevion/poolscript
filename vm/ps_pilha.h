@@ -34,9 +34,27 @@ void ps_pilha_marca_processo(void);
 /* Lê e repõe a marcação. Existe pro contexto que TROCA de pilha (ucontext):
  * quem entra numa fibra salva o par de fora, põe o da fibra, e repõe na volta.
  * Sem isso a medição compara endereços de regiões sem relação e responde
- * qualquer coisa. */
-void ps_pilha_le(const char **base, size_t *tam);
-void ps_pilha_repoe(const char *base, size_t tam);
+ * qualquer coisa.
+ *
+ * Embutidas aqui (as variáveis moram no ps_pilha.c): rodam em toda troca de
+ * fibra, e como chamada pra outro arquivo custavam a chamada e, pelo endereço
+ * tomado dos dois valores, o canário da pilha no `fib_resume`. */
+extern __thread const char *ps_pilha_base;
+extern __thread size_t ps_pilha_tam;
+extern __thread const char *ps_pilha_ultimo;
+
+static inline void ps_pilha_le(const char **base, size_t *tam)
+{
+    *base = ps_pilha_base;
+    *tam  = ps_pilha_tam;
+}
+
+static inline void ps_pilha_repoe(const char *base, size_t tam)
+{
+    ps_pilha_base = base;
+    ps_pilha_tam  = tam;
+    ps_pilha_ultimo = NULL;
+}
 
 /* 1 = está perto do fim da pilha; PARE de descer. 0 = pode continuar (e também
  * quando ninguém marcou nada, porque aí não há o que medir).

@@ -5735,6 +5735,321 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(f())\n",
   "[[2, 2], 2, 2]", NULL, 0 },
 
+/* ── geradores e tarefas (Plano 6, lote 6c, 2026-10-09) ─────────────────────
+ * Dois geradores que cediam em tarefas diferentes trocavam o estado (o do
+ * gerador em curso morava num lugar só da VM); a tarefa criada dentro de
+ * outra só começava quando o principal esperava; o erro de dentro do gerador,
+ * da funct do `map` e da tarefa saía com a linha de quem consumia, e o aviso
+ * da tarefa sem `await` sem linha nenhuma; o `gather` (e o `await` de lista)
+ * parava na primeira tarefa que falhava, e a outra saía no fim como "sem
+ * await", com rc 1 mesmo com o catch (decisão dele: espera todas e levanta a
+ * primeira, com as outras na frase). */
+{ "dois geradores que cedem em tarefas diferentes nao trocam dados (lote 6c)",
+  "funct gen(int n) {\n"
+  "    sleep(0.05)\n"
+  "    yield n\n"
+  "}\n"
+  "async list funct t(int n) {\n"
+  "    list l = list(gen(n))\n"
+  "    return l\n"
+  "}\n"
+  "post(gather(t(1), t(2)))\n",
+  "[[1], [2]]", NULL, 0 },
+{ "geradores que esperam tempos diferentes em tres tarefas (lote 6c)",
+  "funct gen(int n, flo s) {\n"
+  "    yield n\n"
+  "    sleep(s)\n"
+  "    yield n * 10\n"
+  "}\n"
+  "async list funct t(int n, flo s) {\n"
+  "    list l = []\n"
+  "    for each v in gen(n, s) {\n"
+  "        l.append(v)\n"
+  "    }\n"
+  "    return l\n"
+  "}\n"
+  "post(gather(t(1, 0.03), t(2, 0.01), t(3, 0.02)))\n",
+  "[[1, 10], [2, 20], [3, 30]]", NULL, 0 },
+{ "tarefa criada dentro de tarefa comeca na chamada (lote 6c)",
+  "list ordem = []\n"
+  "async str funct filho() {\n"
+  "    ordem.append(\"filho comecou\")\n"
+  "    sleep(0.01)\n"
+  "    return \"f\"\n"
+  "}\n"
+  "async str funct pai() {\n"
+  "    Object f = filho()\n"
+  "    ordem.append(\"pai depois da chamada\")\n"
+  "    return await f\n"
+  "}\n"
+  "Object g = filho()\n"
+  "ordem.append(\"principal depois da chamada\")\n"
+  "str a = await g\n"
+  "str b = await pai()\n"
+  "post(a, b, ordem)\n",
+  "f f ['filho comecou', 'principal depois da chamada', 'filho comecou', 'pai depois da chamada']",
+  NULL, 0 },
+{ "tarefa neta cede e volta pra tarefa que a criou (lote 6c)",
+  "list ordem = []\n"
+  "async int funct neto() {\n"
+  "    ordem.append(\"neto 1\")\n"
+  "    sleep(0.01)\n"
+  "    ordem.append(\"neto 2\")\n"
+  "    return 3\n"
+  "}\n"
+  "async int funct filho() {\n"
+  "    ordem.append(\"filho 1\")\n"
+  "    Object n = neto()\n"
+  "    ordem.append(\"filho 2\")\n"
+  "    int r = await n\n"
+  "    ordem.append(\"filho 3\")\n"
+  "    return r\n"
+  "}\n"
+  "int r = await filho()\n"
+  "post(r, ordem)\n",
+  "3 ['filho 1', 'neto 1', 'filho 2', 'neto 2', 'filho 3']", NULL, 0 },
+{ "erro antes de ceder na tarefa criada dentro de tarefa sobe na chamada (lote 6c)",
+  "async str funct filho() {\n"
+  "    raise Cedo(\"antes de ceder\")\n"
+  "}\n"
+  "async str funct pai() {\n"
+  "    try {\n"
+  "        Object f = filho()\n"
+  "    } catch (Cedo e) {\n"
+  "        return \"pegou na chamada: \" + e\n"
+  "    }\n"
+  "    return \"a chamada nao levantou\"\n"
+  "}\n"
+  "post(await pai())\n",
+  "pegou na chamada: antes de ceder (linha 2)", NULL, 0 },
+{ "sys.exit na tarefa criada dentro de tarefa roda o finally do pai e sai (lote 6c)",
+  "import sys\n"
+  "async Null funct filho() {\n"
+  "    sys.exit(3)\n"
+  "}\n"
+  "async Null funct pai() {\n"
+  "    try {\n"
+  "        Object f = filho()\n"
+  "        post(\"nao chega\")\n"
+  "    } finally {\n"
+  "        post(\"finally do pai\")\n"
+  "    }\n"
+  "}\n"
+  "Object g = pai()\n"
+  "post(\"nao chega no principal\")\n",
+  "finally do pai", NULL, 3 },
+{ "erro dentro de gerador: o traceback termina na linha do raise (lote 6c)",
+  "flo funct ajuda(int x) {\n"
+  "    return 10 / x\n"
+  "}\n"
+  "funct gen(list l) {\n"
+  "    for each x in l {\n"
+  "        yield ajuda(x)\n"
+  "    }\n"
+  "}\n"
+  "for each v in gen([5, 0]) {\n"
+  "    post(v)\n"
+  "}\n",
+  "2.0", ", linha 2\n  |     return 10 / x", 1 },
+{ "erro dentro de gerador: o e do catch diz a linha do raise (lote 6c)",
+  "funct gen(list l) {\n"
+  "    for each x in l {\n"
+  "        yield 10 / x\n"
+  "    }\n"
+  "}\n"
+  "try {\n"
+  "    list r = list(gen([5, 0]))\n"
+  "} catch (ZeroDivisionError e) {\n"
+  "    post(e)\n"
+  "}\n",
+  "division by zero (linha 3)", NULL, 0 },
+{ "erro na funct chamada pelo map: o traceback termina na linha do raise (lote 6c)",
+  "flo funct ajuda(int x) {\n"
+  "    return 10 / x\n"
+  "}\n"
+  "list l = map([5, 0], ajuda)\n"
+  "post(l)\n",
+  "", ", linha 2\n  |     return 10 / x", 1 },
+{ "erro na funct chamada pelo map: o e do catch diz a linha do raise (lote 6c)",
+  "flo funct ajuda(int x) {\n"
+  "    return 10 / x\n"
+  "}\n"
+  "try {\n"
+  "    list l = map([5, 0], ajuda)\n"
+  "} catch (ZeroDivisionError e) {\n"
+  "    post(e)\n"
+  "}\n",
+  "division by zero (linha 2)", NULL, 0 },
+{ "tarefa sem await: o aviso traz a linha do raise e o programa sai 1 (lote 6c)",
+  "async str funct t() {\n"
+  "    sleep(0.01)\n"
+  "    raise Quebrou(\"sem await\")\n"
+  "}\n"
+  "Object f = t()\n"
+  "sleep(0.05)\n"
+  "post(\"fim do principal\")\n",
+  "fim do principal",
+  ", linha 3\n  |     raise Quebrou(\"sem await\")\n  |     ^^^\n"
+  "  em tarefa async que ninguem aguardou (sem `await`)", 1 },
+{ "erro de tarefa: o e do catch diz a linha do raise, no principal e no pai (lote 6c)",
+  "async str funct t(str s) {\n"
+  "    sleep(0.01)\n"
+  "    raise Quebrou(s)\n"
+  "}\n"
+  "async str funct pai() {\n"
+  "    try {\n"
+  "        str r = await t(\"no filho\")\n"
+  "    } catch (Quebrou e) {\n"
+  "        return e\n"
+  "    }\n"
+  "    return \"\"\n"
+  "}\n"
+  "try {\n"
+  "    str r = await t(\"depois do sleep\")\n"
+  "} catch (Quebrou e) {\n"
+  "    post(e)\n"
+  "}\n"
+  "post(await pai())\n",
+  "depois do sleep (linha 3)\nno filho (linha 3)", NULL, 0 },
+{ "erro de tarefa antes de ceder: o e do catch da chamada diz a linha do raise (lote 6c)",
+  "async str funct t() {\n"
+  "    raise Quebrou(\"na chamada\")\n"
+  "}\n"
+  "try {\n"
+  "    Object f = t()\n"
+  "} catch (Quebrou e) {\n"
+  "    post(e)\n"
+  "}\n",
+  "na chamada (linha 2)", NULL, 0 },
+{ "gather com duas tarefas que falham: espera as duas e levanta a primeira com a outra (lote 6c)",
+  "async str funct t(int n) {\n"
+  "    sleep(0.01 * n)\n"
+  "    raise Quebrou(\"tarefa \" + str(n))\n"
+  "}\n"
+  "try {\n"
+  "    post(gather(t(1), t(2)))\n"
+  "} catch (Quebrou e) {\n"
+  "    post(\"pegou:\", e)\n"
+  "}\n"
+  "try {\n"
+  "    post(gather(t(3), t(1)))\n"
+  "} catch (Quebrou e) {\n"
+  "    post(\"pegou:\", e)\n"
+  "}\n"
+  "sleep(0.05)\n"
+  "post(\"fim\")\n",
+  "pegou: tarefa 1 (linha 3); mais 1 tarefa do gather falhou: Quebrou: tarefa 2 (linha 3)\n"
+  "pegou: tarefa 3 (linha 3); mais 1 tarefa do gather falhou: Quebrou: tarefa 1 (linha 3)\n"
+  "fim", NULL, 0 },
+{ "gather de lista com tres falhas em quatro: a frase leva as outras duas (lote 6c)",
+  "async str funct t(int n) {\n"
+  "    sleep(0.01 * n)\n"
+  "    if n == 2 {\n"
+  "        return \"ok\"\n"
+  "    }\n"
+  "    raise Quebrou(\"tarefa \" + str(n))\n"
+  "}\n"
+  "try {\n"
+  "    post(gather([t(1), t(2), t(3), t(4)]))\n"
+  "} catch (Quebrou e) {\n"
+  "    post(\"pegou:\", e)\n"
+  "}\n"
+  "post(\"fim\")\n",
+  "pegou: tarefa 1 (linha 6); mais 2 tarefas do gather falharam: Quebrou: tarefa 3 (linha 6); "
+  "Quebrou: tarefa 4 (linha 6)\nfim", NULL, 0 },
+{ "gather sem catch: o erro sai com a outra tarefa na frase (lote 6c)",
+  "async str funct t(int n) {\n"
+  "    sleep(0.01 * n)\n"
+  "    raise Quebrou(\"tarefa \" + str(n))\n"
+  "}\n"
+  "post(gather(t(1), t(2)))\n",
+  "", "Quebrou: tarefa 1 (linha 3); mais 1 tarefa do gather falhou: Quebrou: tarefa 2 (linha 3)", 1 },
+{ "gather e await de lista com uma falha so: o erro dela, como no await da tarefa (lote 6c)",
+  "async str funct t(int n) {\n"
+  "    sleep(0.01 * n)\n"
+  "    raise Quebrou(\"tarefa \" + str(n))\n"
+  "}\n"
+  "async str funct ok(int n) {\n"
+  "    sleep(0.01 * n)\n"
+  "    return str(n)\n"
+  "}\n"
+  "try {\n"
+  "    post(gather(t(1), ok(2)))\n"
+  "} catch (Quebrou e) {\n"
+  "    post(\"pegou:\", e)\n"
+  "}\n"
+  "try {\n"
+  "    list r = await [ok(1), t(2)]\n"
+  "} catch (Quebrou e) {\n"
+  "    post(\"await:\", e)\n"
+  "}\n"
+  "post(gather(ok(1), t(2)))\n",
+  "pegou: tarefa 1 (linha 3)\nawait: tarefa 2 (linha 3)", "Quebrou: tarefa 2\n", 1 },
+{ "a mesma tarefa duas vezes no gather e no await de lista conta uma vez (lote 6c)",
+  "async str funct t(int n) {\n"
+  "    sleep(0.01 * n)\n"
+  "    raise Quebrou(\"tarefa \" + str(n))\n"
+  "}\n"
+  "Object f = t(1)\n"
+  "try {\n"
+  "    post(gather(f, f, t(2)))\n"
+  "} catch (Quebrou e) {\n"
+  "    post(\"pegou:\", e)\n"
+  "}\n"
+  "try {\n"
+  "    list r = await [f, f]\n"
+  "} catch (Quebrou e) {\n"
+  "    post(\"de novo:\", e)\n"
+  "}\n",
+  "pegou: tarefa 1 (linha 3); mais 1 tarefa do gather falhou: Quebrou: tarefa 2 (linha 3)\n"
+  "de novo: tarefa 1 (linha 3)", NULL, 0 },
+{ "await de lista e de tupla e o gather delas: espera todas, e a frase diz do await (lote 6c)",
+  "async str funct t(int n) {\n"
+  "    sleep(0.01 * n)\n"
+  "    raise Quebrou(\"tarefa \" + str(n))\n"
+  "}\n"
+  "async str funct ok(int n) {\n"
+  "    sleep(0.01 * n)\n"
+  "    return str(n)\n"
+  "}\n"
+  "async str funct pai() {\n"
+  "    try {\n"
+  "        list r = await [t(1), t(2)]\n"
+  "    } catch (Quebrou e) {\n"
+  "        return \"pai pegou: \" + e\n"
+  "    }\n"
+  "    return \"\"\n"
+  "}\n"
+  "try {\n"
+  "    list r = await [t(2), t(1)]\n"
+  "} catch (Quebrou e) {\n"
+  "    post(\"pegou:\", e)\n"
+  "}\n"
+  "post(await pai())\n"
+  "post(await [ok(2), \"solto\", ok(1)])\n"
+  "post(await (ok(2), ok(1)))\n"
+  "try {\n"
+  "    tup s = await (t(1), ok(1), t(1))\n"
+  "} catch (Quebrou e) {\n"
+  "    post(\"tupla:\", e)\n"
+  "}\n"
+  "sleep(0.05)\n"
+  "post(\"fim\")\n",
+  "pegou: tarefa 2 (linha 3); mais 1 tarefa do await falhou: Quebrou: tarefa 1 (linha 3)\n"
+  "pai pegou: tarefa 1 (linha 3); mais 1 tarefa do await falhou: Quebrou: tarefa 2 (linha 3)\n"
+  "['2', 'solto', '1']\n"
+  "('2', '1')\n"
+  "tupla: tarefa 1 (linha 3); mais 1 tarefa do await falhou: Quebrou: tarefa 1 (linha 3)\n"
+  "fim", NULL, 0 },
+{ "await de lista sem catch: o erro sai com a outra tarefa na frase (lote 6c)",
+  "async str funct t(int n) {\n"
+  "    sleep(0.01 * n)\n"
+  "    raise Quebrou(\"tarefa \" + str(n))\n"
+  "}\n"
+  "list r = await [t(1), t(2)]\n"
+  "post(r)\n",
+  "", "Quebrou: tarefa 1 (linha 3); mais 1 tarefa do await falhou: Quebrou: tarefa 2 (linha 3)", 1 },
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

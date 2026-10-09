@@ -1285,6 +1285,20 @@ static inline void ps_ctx_make(PS_CTX *ctx, void *stack, size_t size, void (*ent
 static inline void ps_ctx_solta(PS_CTX *ctx) { (void)ctx; }
 #endif
 
+/* O transporte da retomada de gerador (os `ger_*` da VM) visto como um bloco:
+ * é da execução corrente — o principal ou uma fibra —, e a troca de fibra o
+ * salva e repõe como salva a pilha (`fib_guarda`/`fib_poe`). Um `sleep` no
+ * meio de um gerador troca de fibra, e a outra, entrando no gerador dela,
+ * sobrescrevia os campos: a primeira voltava num `yield` que via `ger_ativo`
+ * zerado ("yield fora de gerador") ou gravava nos buffers do gerador alheio. */
+typedef struct {
+    int      ativo, cedeu;
+    int32_t  ip, npilha;
+    Value   *locais, *pilha;
+    struct Handler_ *handlers;
+    int      nh, cap_h;
+} GerTransp;
+
 struct VM_ {
     Proto  *protos;
     int     nprotos;
@@ -1455,6 +1469,16 @@ struct VM_ {
     char    nota_arquivo[PS_CAMINHO_MAX];
     char    nota_nome[64];
     int     nota_linha, nota_col;
+    /* O transporte de gerador do principal enquanto uma fibra roda (os
+     * `m_*` de cima são a pilha; este, os `ger_*`). */
+    GerTransp m_ger;
+    /* O erro a que o `tb_mod` pertence: o traceback de dentro (de um import,
+     * de uma tarefa, de um gerador, de uma funct chamada pelo C) só vale pro
+     * erro que o trouxe. Um `catch` no C (a rota do jinker que vira 500)
+     * deixava a marca pendurada, e o erro seguinte, sem relação, herdava os
+     * quadros dele. Ver `tb_dentro_poe`/`tb_dentro_consome`. */
+    char    tb_mod_tipo[64];
+    char    tb_mod_msg[256];
 };
 
 /* Handler de `try`: onde saltar e qual estado restaurar. Guardar fp/sp/
@@ -1939,6 +1963,9 @@ typedef struct PSFuturo {
      * errada. Guarda os quadros mais internos, que são os que importam. */
     struct { int proto; int linha; int col; } tb[16];
     int    ntb;
+    /* a geração da última espera de várias (`gather`, `await` de lista) que
+     * contou o erro deste future: a mesma tarefa repetida conta uma vez só */
+    uint64_t visto;
     Value  valor;          /* resultado quando done */
 } PSFuturo;
 
@@ -11777,8 +11804,50 @@ static PSGerador *novo_gerador(VM *vm, int32_t proto)
     return g;
 }
 
+/* ── traceback de DENTRO ────────────────────────────────────────────────────
+ * O erro corrente veio de uma execução aninhada — o corpo de um import, uma
+ * tarefa, um gerador, uma funct chamada pelo C (`map`, decorador) — que
+ * montou o traceback dela em `vm->tb` antes de voltar. Os quadros passam pro
+ * `tb_mod`; o `erro_runtime` de fora os junta aos dele, com o `raise` por
+ * último, e o `catch` de fora carimba a linha do `raise`, não a de quem
+ * chamou. A marca leva o erro junto (`tb_mod_tipo`/`tb_mod_msg`) e só vale
+ * pra ele. Quem chama zera o `vm->ntb` antes da execução aninhada, pra saber
+ * que o traceback é dela. Só caminho de erro: `cold` e fora de linha, pra
+ * não pesar em quem chama (embutido, custava 5 instruções em cada volta de
+ * gerador). */
+static __attribute__((noinline, cold)) void tb_dentro_marca(VM *vm)
+{
+    vm->import_falhou = 1;
+    snprintf(vm->tb_mod_tipo, sizeof(vm->tb_mod_tipo), "%s", vm->erro_tipo);
+    snprintf(vm->tb_mod_msg, sizeof(vm->tb_mod_msg), "%s", vm->erro);
+}
+
+static __attribute__((noinline, cold)) void tb_dentro_poe(VM *vm)
+{
+    if (vm->ntb <= 0) return;
+    vm->ntb_mod = vm->ntb < 64 ? vm->ntb : 64;
+    for (int i = 0; i < vm->ntb_mod; i++) {
+        vm->tb_mod[i].proto = vm->tb[i].proto;
+        vm->tb_mod[i].linha = vm->tb[i].linha;
+        vm->tb_mod[i].col   = vm->tb[i].col;
+    }
+    tb_dentro_marca(vm);
+}
+
+/* O `erro_runtime` lê (e apaga) a marca: vale só se o erro corrente é o que a
+ * pôs. Fora do laço da VM, pra não pesar no código dele. */
+static __attribute__((noinline)) int tb_dentro_consome(VM *vm)
+{
+    int vale = vm->import_falhou && !strcmp(vm->erro_tipo, vm->tb_mod_tipo)
+               && !strcmp(vm->erro, vm->tb_mod_msg);
+    vm->import_falhou = 0;
+    return vale;
+}
+
 /* Roda até o próximo `yield`. Devolve 1 se cedeu (com o valor em `out`),
- * 0 se o gerador acabou, -1 em erro. */
+ * 0 se o gerador acabou, -1 em erro (com o traceback de dentro do gerador
+ * passado adiante: o erro aponta a linha do `raise`, não só a de quem
+ * consome). */
 static int ger_retoma(VM *vm, PSGerador *g, Value *out)
 {
     if (g->estado == GER_FIM) return 0;
@@ -11856,7 +11925,9 @@ static int ger_retoma(VM *vm, PSGerador *g, Value *out)
     vm->ger_cap_h = hc_salvo;
     vm->sp = sp0; vm->locals_top = lb0; vm->frame_topo = fp0;
 
-    if (rc != 0) { g->estado = GER_FIM; return -1; }
+    /* o gerador retomado só falha pelo `erro_runtime` dele, que monta o
+     * `vm->tb` na hora: o traceback é sempre deste erro, e vai adiante */
+    if (rc != 0) { tb_dentro_poe(vm); g->estado = GER_FIM; return -1; }
     if (!cedeu) { g->estado = GER_FIM; return 0; }
     g->estado = GER_SUSPENSO;
     *out = r;
@@ -12697,7 +12768,6 @@ static int        g_nfuts_erro;
  * traceback no stderr com "exit code 0" embaixo fazia o CI aprovar a falha. */
 static int avisa_futures_com_erro(VM *vm)
 {
-    (void)vm;
     int avisados = 0;
     /* a lista de raízes (ver `fut_guarda_erro`), e não o heap: o future de
      * uma `tarefa()` solta não é alcançável pelo programa, e o GC o levava
@@ -12707,8 +12777,19 @@ static int avisa_futures_com_erro(VM *vm)
         if (!f->erro || f->erro_lido) continue;
         f->erro_lido = 1;
         fflush(stdout);
-        fprintf(stderr, "%s: %s\n  em tarefa async que ninguem aguardou (sem `await`)\n",
-                f->erro_tipo[0] ? f->erro_tipo : "RuntimeError", f->erro_msg);
+        fprintf(stderr, "%s: %s\n", f->erro_tipo[0] ? f->erro_tipo : "RuntimeError", f->erro_msg);
+        /* onde quebrou: os quadros de dentro da tarefa, o `raise` por último
+         * (saía só o tipo e a mensagem, sem linha nenhuma) */
+        for (int k = 0; k < f->ntb; k++) {
+            int pi = f->tb[k].proto;
+            if (pi < 0 || pi >= vm->nprotos || f->tb[k].linha <= 0) continue;
+            Proto *pe = &vm->protos[pi];
+            const char *arq = pe->arquivo && pe->arquivo[0] ? pe->arquivo
+                            : (vm->nome_script[0] ? vm->nome_script : "<script>");
+            if (ps_gancho_quadro) ps_gancho_quadro(arq, f->tb[k].linha, f->tb[k].col);
+            else fprintf(stderr, "  em %s, linha %d\n", arq, f->tb[k].linha);
+        }
+        fprintf(stderr, "  em tarefa async que ninguem aguardou (sem `await`)\n");
         fflush(stderr);
         avisados++;
     }
@@ -22763,6 +22844,12 @@ typedef struct Fiber {
     /* espera por fd (offload de I/O bloqueante numa thread — ex: DB) */
     int        wait_fd;
     EpFibW     fibw;
+    /* o transporte de gerador DESTA fibra, salvo enquanto ela não roda */
+    GerTransp  ger;
+    /* Quem a retomou: a fibra que criou a tarefa (a tarefa começa na
+     * chamada, também dentro de outra tarefa) ou NULL, o escalonador do
+     * principal. Toda cedência e o fim voltam pra ele (`fib_volta_ctx`). */
+    struct Fiber *volta;
 } Fiber;
 
 static Fiber **g_fibs = NULL;    /* vetor DINÂMICO de ponteiros p/ fibras */
@@ -22867,35 +22954,73 @@ static Fiber *fib_slot(void)
     return f;
 }
 
-/* salva o contexto de execução MAIN e instala o da fibra em vm-> */
-static void fib_troca_entra(VM *vm, Fiber *f)
+/* O gerador que está no meio de uma volta (`ger_ativo` 1) quando a fibra
+ * troca: os campos de transporte dele vão e voltam com quem estava rodando.
+ * Só se chamam quando há um (`fib_resume`); fora de gerador os campos não
+ * valem nada — o `ger_retoma` preenche todos antes de usar —, e é o caso de
+ * quase toda tarefa.
+ *
+ * Estas trocas (e as de baixo) são `always_inline`: rodam em toda entrada e
+ * saída de fibra. Como funções separadas, o `fib_poe` deixou de ser embutido
+ * e cada tarefa custava 36 instruções a mais (callgrind, 2026-10-09). */
+static inline __attribute__((always_inline)) void ger_transp_guarda(VM *vm, GerTransp *t)
+{
+    t->ativo = 1;
+    t->cedeu = vm->ger_cedeu;
+    t->ip = vm->ger_ip;         t->npilha = vm->ger_npilha;
+    t->locais = vm->ger_locais; t->pilha = vm->ger_pilha;
+    t->handlers = vm->ger_handlers; t->nh = vm->ger_nh; t->cap_h = vm->ger_cap_h;
+}
+
+static inline __attribute__((always_inline)) void ger_transp_poe(VM *vm, const GerTransp *t)
+{
+    vm->ger_ativo = 1;
+    vm->ger_cedeu = t->cedeu;
+    vm->ger_ip = t->ip;         vm->ger_npilha = t->npilha;
+    vm->ger_locais = t->locais; vm->ger_pilha = t->pilha;
+    vm->ger_handlers = t->handlers; vm->ger_nh = t->nh; vm->ger_cap_h = t->cap_h;
+}
+
+/* O principal, guardado nos `m_*` enquanto qualquer fibra roda. */
+static inline __attribute__((always_inline)) void main_guarda(VM *vm)
 {
     vm->m_stack = vm->stack; vm->m_locals = vm->locals; vm->m_frames = vm->frames;
     vm->m_sp = vm->sp; vm->m_locals_top = vm->locals_top; vm->m_frame_topo = vm->frame_topo;
     vm->m_stack_teto = vm->stack_teto; vm->m_locals_teto = vm->locals_teto; vm->m_frames_teto = vm->frames_teto;
     vm->m_jk_req = vm->jk_req;
-
-    vm->stack = f->stack; vm->locals = f->locals; vm->frames = f->frames;
-    vm->sp = f->sp; vm->locals_top = f->locals_top; vm->frame_topo = f->frame_topo;
-    vm->stack_teto = FIB_STACK; vm->locals_teto = FIB_LOCALS; vm->frames_teto = FIB_FRAMES;
-    vm->jk_req = f->jk_req;
-    /* o remetente corrente é POR FIBRA (ver o campo `ws_atual`) */
-    if (f->j) { f->ws_salvo = f->j->ws_atual; f->j->ws_atual = f->ws_atual; }
-    vm->fib_atual = f;
 }
 
-/* salva o estado corrente da fibra (pra retomar) e restaura o MAIN em vm-> */
-static void fib_troca_sai(VM *vm, Fiber *f)
+static inline __attribute__((always_inline)) void main_poe(VM *vm)
 {
-    f->sp = vm->sp; f->locals_top = vm->locals_top; f->frame_topo = vm->frame_topo;
-    f->jk_req = vm->jk_req;
-    if (f->j) { f->ws_atual = f->j->ws_atual; f->j->ws_atual = f->ws_salvo; }
-
     vm->stack = vm->m_stack; vm->locals = vm->m_locals; vm->frames = vm->m_frames;
     vm->sp = vm->m_sp; vm->locals_top = vm->m_locals_top; vm->frame_topo = vm->m_frame_topo;
     vm->stack_teto = vm->m_stack_teto; vm->locals_teto = vm->m_locals_teto; vm->frames_teto = vm->m_frames_teto;
     vm->jk_req = vm->m_jk_req;
     vm->fib_atual = NULL;
+}
+
+/* O estado corrente da fibra, guardado no slot dela (é dali que o GC o marca
+ * enquanto ela não roda): ela cedeu, terminou ou entrou na tarefa que criou. */
+static inline __attribute__((always_inline)) void fib_guarda(VM *vm, Fiber *f)
+{
+    f->sp = vm->sp; f->locals_top = vm->locals_top; f->frame_topo = vm->frame_topo;
+    f->jk_req = vm->jk_req;
+}
+
+/* A fibra passa a ser a corrente: o estado dela vai pra vm->. */
+static inline __attribute__((always_inline)) void fib_poe(VM *vm, Fiber *f)
+{
+    vm->stack = f->stack; vm->locals = f->locals; vm->frames = f->frames;
+    vm->sp = f->sp; vm->locals_top = f->locals_top; vm->frame_topo = f->frame_topo;
+    vm->stack_teto = FIB_STACK; vm->locals_teto = FIB_LOCALS; vm->frames_teto = FIB_FRAMES;
+    vm->jk_req = f->jk_req;
+    vm->fib_atual = f;
+}
+
+/* Pra onde a fibra volta quando cede ou termina: quem a retomou. */
+static inline __attribute__((always_inline)) PS_CTX *fib_volta_ctx(VM *vm, Fiber *f)
+{
+    return f->volta ? &f->volta->ctx : &vm->sched_ctx;
 }
 
 /* corpo da fibra: lê a requisição, serve e devolve o controle ao escalonador.
@@ -22957,7 +23082,7 @@ static void fib_trampolim(void)
         }
         f->fut->done = 1; f->fut->fib = NULL;
         f->status = FIB_PRONTA;
-        ps_ctx_swap(&f->ctx, &vm->sched_ctx);
+        ps_ctx_swap(&f->ctx, fib_volta_ctx(vm, f));
         return;
     }
     if (f->kind == FIB_WS) {
@@ -22983,7 +23108,7 @@ static void fib_trampolim(void)
             f->rc = (i >= 0) ? jk_ws_processa(vm, f->j, i) : 0;
         }
         f->status = FIB_PRONTA;
-        ps_ctx_swap(&f->ctx, &vm->sched_ctx);
+        ps_ctx_swap(&f->ctx, fib_volta_ctx(vm, f));
         return;
     }
     int lido = ps_jk_le_request(f->conn, &f->hr);
@@ -23005,7 +23130,7 @@ static void fib_trampolim(void)
         ps_jk_req_solta(&f->hr);
     }
     f->status = FIB_PRONTA;
-    ps_ctx_swap(&f->ctx, &vm->sched_ctx);   /* volta pro poll loop; não retorna */
+    ps_ctx_swap(&f->ctx, fib_volta_ctx(vm, f));   /* volta pro poll loop; não retorna */
 }
 
 /* A fibra corrente atende uma rota do jinker (HTTP ou WebSocket)? */
@@ -23028,6 +23153,7 @@ static Fiber *fib_pega(VM *vm, PSJinker *j, struct PSJkConn *c, const char *ip)
     f->j = j; f->conn = c; snprintf(f->ip, sizeof(f->ip), "%s", ip);
     f->leu = 0; f->rc = 0; f->keep_alive = 0; f->tem_timer = 0; f->wait_fd = -1; f->wait_fut = NULL;
     f->ws_fase = 0; f->ws_atual = NULL; f->ws_salvo = NULL;
+    f->ger.ativo = 0; f->volta = NULL;   /* sem gerador no meio: o resto não vale */
     ps_ctx_make(&f->ctx, f->cstack, FIB_CSTACK, fib_trampolim);
     return f;
 }
@@ -23102,6 +23228,7 @@ static PSFuturo *fib_pega_async(VM *vm, const Alvo *a, const Value *pos, int npo
      * `j` de outra conexão sobreviveria aqui e a troca de contexto leria
      * ponteiro morto. */
     f->j = NULL; f->ws_fase = 0; f->ws_atual = NULL; f->ws_salvo = NULL;
+    f->ger.ativo = 0; f->volta = NULL;   /* sem gerador no meio: o resto não vale */
     f->a_alvo = *a;
     f->a_pos = tpos; f->a_kwn = tkwn; f->a_kwv = tkwv;
     f->fut = fu; fu->fib = f;
@@ -23116,11 +23243,30 @@ static void fib_libera(Fiber *f)
 }
 
 /* entra na fibra e roda até ela CEDER (sleep) ou TERMINAR. Ao voltar, o estado
- * já está salvo (fib_troca_sai): f->status diz o que aconteceu. */
-static void fib_resume(VM *vm, Fiber *f)
+ * dela já está salvo: f->status diz o que aconteceu.
+ *
+ * Quem retoma é o principal (o escalonador, ou a chamada da tarefa feita no
+ * principal) ou OUTRA fibra: a tarefa criada dentro de uma tarefa começa na
+ * chamada, como no principal. Quem retoma fica guardado — o principal nos
+ * `m_*`, a fibra no slot dela, que o GC marca — e volta inteiro quando a
+ * fibra cede ou termina (`f->volta`).
+ *
+ * O corpo é embutido duas vezes (`fib_resume`, embaixo): uma com `quem` nulo,
+ * o principal, que é quase toda retomada, e o compilador apaga dela os testes
+ * de `quem`. */
+static inline __attribute__((always_inline)) void fib_resume_de(VM *vm, Fiber *f, Fiber *quem)
 {
-    g_fib_vm = vm;
-    fib_troca_entra(vm, f);
+    /* O gerador no meio de uma volta vai e vem só quando há um: o de quem
+     * retoma (`ger_quem`) e o da fibra, se ela cedeu dentro de um. No caso
+     * comum, nenhum dos dois, e só a marca fica em 0. */
+    int ger_quem = vm->ger_ativo;
+    if (quem) fib_guarda(vm, quem); else main_guarda(vm);
+    if (ger_quem) ger_transp_guarda(vm, quem ? &quem->ger : &vm->m_ger);
+    fib_poe(vm, f);
+    if (f->ger.ativo) ger_transp_poe(vm, &f->ger); else vm->ger_ativo = 0;
+    /* o remetente corrente é POR FIBRA (ver o campo `ws_atual`) */
+    if (f->j) { f->ws_salvo = f->j->ws_atual; f->j->ws_atual = f->ws_atual; }
+    f->volta = quem;
     /* A pilha TROCA junto com o contexto, então a referência da medição de
      * folga tem que trocar também. Sem isto, depois que a primeira fibra roda,
      * `ps_pilha_base` fica apontando pro `mmap` dela; de volta na pilha
@@ -23134,12 +23280,23 @@ static void fib_resume(VM *vm, Fiber *f)
     const char *base_fora; size_t tam_fora;
     ps_pilha_le(&base_fora, &tam_fora);
     if (f->pilha_base) ps_pilha_repoe(f->pilha_base, f->pilha_tam);
-    ps_ctx_swap(&vm->sched_ctx, &f->ctx);
+    ps_ctx_swap(quem ? &quem->ctx : &vm->sched_ctx, &f->ctx);
     ps_pilha_repoe(base_fora, tam_fora);
-    fib_troca_sai(vm, f);
-    /* a tarefa terminou num `sys.exit`: o fim do programa, já na pilha
-     * principal */
-    if (vm->saida_pendente) sai_agora(vm, vm->codigo_saida);
+    fib_guarda(vm, f);
+    if (vm->ger_ativo) ger_transp_guarda(vm, &f->ger); else f->ger.ativo = 0;
+    if (f->j) { f->ws_atual = f->j->ws_atual; f->j->ws_atual = f->ws_salvo; }
+    if (quem) fib_poe(vm, quem); else main_poe(vm);
+    if (ger_quem) ger_transp_poe(vm, quem ? &quem->ger : &vm->m_ger); else vm->ger_ativo = 0;
+    /* a tarefa terminou num `sys.exit`: o fim do programa, na pilha
+     * principal (dentro de outra fibra, a chamada desenrola até lá) */
+    if (vm->saida_pendente && !quem) sai_agora(vm, vm->codigo_saida);
+}
+
+static void fib_resume(VM *vm, Fiber *f)
+{
+    g_fib_vm = vm;
+    if (vm->fib_atual) fib_resume_de(vm, f, vm->fib_atual);
+    else fib_resume_de(vm, f, NULL);
 }
 
 /* ── thread pool p/ I/O bloqueante (DB) ───────────────────────────────────
@@ -23242,7 +23399,7 @@ static void fib_espera_ms(VM *vm, int ms)
     if (f->wake_at.tv_nsec >= 1000000000L) { f->wake_at.tv_sec++; f->wake_at.tv_nsec -= 1000000000L; }
     f->tem_timer = 1;
     f->status = FIB_SUSPENSA;
-    ps_ctx_swap(&f->ctx, &vm->sched_ctx);
+    ps_ctx_swap(&f->ctx, fib_volta_ctx(vm, f));
     f->tem_timer = 0;
 }
 
@@ -23275,7 +23432,7 @@ static void fib_offload(VM *vm, void (*fn)(void *), void *arg)
     f->wait_fd = av.le;
     f->status = FIB_SUSPENSA;
     pool_submete(fn, arg, av);
-    ps_ctx_swap(&f->ctx, &vm->sched_ctx);      /* cede; retoma quando o aviso dispara */
+    ps_ctx_swap(&f->ctx, fib_volta_ctx(vm, f));      /* cede; retoma quando o aviso dispara */
     ps_ev_tira(g_jk_epfd, av.le);
     ps_aviso_espera(av);
     ps_aviso_fecha(av);
@@ -23423,7 +23580,7 @@ static void fut_passa_traceback(VM *vm, PSFuturo *fu)
         vm->tb_mod[i].linha = fu->tb[i].linha;
         vm->tb_mod[i].col   = fu->tb[i].col;
     }
-    vm->import_falhou = 1;
+    tb_dentro_marca(vm);   /* depois de o erro da tarefa estar em vm->erro */
 }
 
 static int fut_resolve(VM *vm, PSFuturo *fu)
@@ -23433,7 +23590,7 @@ static int fut_resolve(VM *vm, PSFuturo *fu)
             Fiber *cur = vm->fib_atual;
             while (!fu->done) {
                 cur->wait_fut = fu; cur->status = FIB_SUSPENSA;
-                ps_ctx_swap(&cur->ctx, &vm->sched_ctx);
+                ps_ctx_swap(&cur->ctx, fib_volta_ctx(vm, cur));
                 cur->wait_fut = NULL;
             }
         } else {
@@ -24230,7 +24387,7 @@ static int nativa_sleep(VM *vm, Value *args, int n, Value *out)
             if (f->wake_at.tv_nsec >= 1000000000L) { f->wake_at.tv_sec++; f->wake_at.tv_nsec -= 1000000000L; }
             f->tem_timer = 1;
             f->status = FIB_SUSPENSA;
-            ps_ctx_swap(&f->ctx, &vm->sched_ctx);   /* dorme; retoma aqui no timer */
+            ps_ctx_swap(&f->ctx, fib_volta_ctx(vm, f));   /* dorme; retoma aqui no timer */
             f->tem_timer = 0;
         } else if (vm->n_ws_vivos > 0) {
             /* Fora de fibra, mas com WebSocket de cliente aberto: em vez de
@@ -24282,21 +24439,117 @@ static int nativa_sleep(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
+/* "Mensagem (linha N)", com N a linha do `raise` de dentro da tarefa (o
+ * último quadro do traceback dela), se a mensagem ainda não tem linha. */
+static void fut_msg_com_linha(SBuf *b, const PSFuturo *fu)
+{
+    sb_txt(b, fu->erro_msg);
+    size_t n = strlen(fu->erro_msg);
+    int ja_tem = n > 0 && fu->erro_msg[n - 1] == ')' && strstr(fu->erro_msg, " (linha ") != NULL;
+    int linha = fu->ntb > 0 ? fu->tb[fu->ntb - 1].linha : 0;
+    if (!ja_tem && linha > 0) {
+        char t[32];
+        snprintf(t, sizeof(t), " (linha %d)", linha);
+        sb_txt(b, t);
+    }
+}
+
+/* O `gather` e o `await` de uma lista esperam TODAS as tarefas antes de
+ * qualquer erro subir. O caminho sem erro fica no laço de quem espera
+ * (`nativa_gather` e o `AWAIT` de lista), como sempre foi; na primeira tarefa
+ * que falha (`primeiro`, na posição `k0` do valor `i0`), este aqui continua
+ * dali: espera as que faltam e levanta. `vals` são os n valores; uma lista
+ * (e, com `tuplas`, uma tupla) conta pelos itens, relidos a cada volta porque
+ * a tarefa que roda no meio pode mexer nela. Resolver um future já roda TODOS
+ * os prontos (o escalonador não para num só): é a concorrência.
+ *
+ * Levanta o erro da PRIMEIRA (na ordem), com o traceback dela, e as outras na
+ * frase: `tarefa 1 (linha 3); mais 1 tarefa do gather falhou: Quebrou:
+ * tarefa 2 (linha 3)`. Todas foram aguardadas: nenhuma sai depois como "sem
+ * await", e nenhum erro some (decisão dele, 2026-10-09). Parar na primeira
+ * deixava as outras rodando, e o erro delas saía no fim como de tarefa "sem
+ * await", com o programa saindo 1 mesmo com o catch em volta.
+ *
+ * A primeira e as outras que falham ficam presas como raiz: a tarefa que roda
+ * no meio pode tirar o future da lista, e o GC o levaria (o espaço pra guardar
+ * a próxima é feito ANTES de resolvê-la, pra guardar não alocar). A mesma
+ * tarefa repetida (`gather(f, f)`) conta uma vez só, pela geração desta
+ * espera. Fora do caminho quente: chamar uma função a cada espera custava 83
+ * instruções num `await [a, b]` sem tarefa nenhuma (+6,7%, medido). */
+static uint64_t g_espera_ger;
+
+static __attribute__((noinline, cold)) int fut_espera_resto(VM *vm, Value *vals, int n, int tuplas,
+                                                            int i0, int k0, PSFuturo *primeiro,
+                                                            const char *quem)
+{
+    uint64_t ger = ++g_espera_ger;
+    if (fixa_raiz(vm, MK_OBJ(primeiro)) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
+    PSList *falhas = lista_com_cap(vm, 4, OBJ_LIST);
+    if (!falhas) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
+    if (fixa_raiz(vm, MK_OBJ(falhas)) != 0) { vm->sp--; BERRO(vm, "RuntimeError", "estouro da pilha"); }
+    primeiro->visto = ger;
+    for (int i = i0; i < n; i++) {
+        int seq = EH_LIST(vals[i]) || (tuplas && EH_TUPLA(vals[i]));
+        int nk = seq ? COMO_LIST(vals[i])->len : 1;
+        for (int k = i == i0 ? k0 + 1 : 0; k < nk; k++) {
+            if (seq && k >= COMO_LIST(vals[i])->len) break;
+            Value a = seq ? COMO_LIST(vals[i])->itens[k] : vals[i];
+            if (!EH_FUTURO(a)) continue;
+            if (falhas->len >= falhas->cap && cresce_lista(vm, falhas) != 0) {
+                vm->sp -= 2;
+                BERRO(vm, "MemoryError", "sem memoria");
+            }
+            PSFuturo *fu = COMO_FUTURO(a);
+            if (fut_resolve(vm, fu) == 0 || fu->visto == ger) continue;
+            fu->visto = ger;
+            falhas->itens[falhas->len++] = a;
+        }
+    }
+    /* Uma falha só: a mensagem dela, como no `await` de uma tarefa (a linha
+     * vem do traceback, e o `catch` a carimba). Mais de uma: a primeira com
+     * a linha dela, e as outras. */
+    SBUF_AUTO b = {0};
+    int mais = falhas->len;
+    if (mais > 0) {
+        fut_msg_com_linha(&b, primeiro);
+        char t[96];
+        snprintf(t, sizeof(t), "; mais %d tarefa%s do %s falh%s: ", mais,
+                 mais == 1 ? "" : "s", quem, mais == 1 ? "ou" : "aram");
+        sb_txt(&b, t);
+        for (int k = 0; k < falhas->len; k++) {
+            PSFuturo *fu = COMO_FUTURO(falhas->itens[k]);
+            if (k > 0) sb_txt(&b, "; ");
+            sb_txt(&b, fu->erro_tipo[0] ? fu->erro_tipo : "RuntimeError");
+            sb_txt(&b, ": ");
+            fut_msg_com_linha(&b, fu);
+        }
+        sb_bytes(&b, "", 1);
+    }
+    snprintf(vm->erro, sizeof(vm->erro), "%s", b.b ? b.b : primeiro->erro_msg);
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s",
+             primeiro->erro_tipo[0] ? primeiro->erro_tipo : "RuntimeError");
+    fut_passa_traceback(vm, primeiro);
+    vm->sp -= 2;   /* solta `primeiro` e `falhas` da raiz */
+    return -1;
+}
+
 /* gather(f1, f2, ...) ou gather([f1, f2, ...]) — resolve os futures (rodando-os
  * CONCORRENTES) e devolve os valores na mesma ordem. Argumento que não é future
  * passa direto; lista de futures vira lista de valores. */
 static int nativa_gather(VM *vm, Value *args, int n, Value *out)
 {
-    /* PASSO 1: resolve todo future (arg direto ou dentro de uma lista). Resolver
-     * um já roda TODOS os prontos (o escalonador não para num só) -> concorrência. */
+    /* PASSO 1: resolve todo future (arg direto ou dentro de uma lista). Na
+     * primeira que falha, `fut_espera_resto` espera as outras e levanta. */
     for (int i = 0; i < n; i++) {
-        if (EH_FUTURO(args[i])) {
-            if (fut_resolve(vm, COMO_FUTURO(args[i])) != 0) return -1;
-        } else if (EH_LIST(args[i])) {
-            PSList *s = COMO_LIST(args[i]);
-            for (int k = 0; k < s->len; k++)
-                if (EH_FUTURO(s->itens[k]) && fut_resolve(vm, COMO_FUTURO(s->itens[k])) != 0)
-                    return -1;
+        int nk = EH_LIST(args[i]) ? COMO_LIST(args[i])->len : 1;
+        for (int k = 0; k < nk; k++) {
+            /* relido a cada volta: a tarefa que roda no meio pode mexer na lista */
+            if (EH_LIST(args[i]) && k >= COMO_LIST(args[i])->len) break;
+            Value a = EH_LIST(args[i]) ? COMO_LIST(args[i])->itens[k] : args[i];
+            if (!EH_FUTURO(a)) continue;
+            PSFuturo *fu = COMO_FUTURO(a);
+            if (fut_resolve(vm, fu) != 0)
+                return fut_espera_resto(vm, args, n, 0, i, k, fu, "gather");
         }
     }
     /* PASSO 2: monta a lista de resultados (futures já resolvidos). `l` fica
@@ -25083,11 +25336,12 @@ static int chamada_sem_frame(VM *vm, Alvo alvo, const Value *pos, int npos,
      * servidor iniciava a fibra órfã, então a mesma linha significava coisas
      * diferentes conforme o programa.
      *
-     * Só quando NÃO estamos dentro de outra fibra: `fib_troca_entra`/`sai` e o
-     * `sched_ctx` são um jogo só, e entrar numa fibra de dentro de outra
-     * perderia o contexto de quem estava rodando. Dentro do jinker o laço
-     * inicia a fibra na volta seguinte, como sempre fez. */
-    if (!vm->fib_atual && fu->fib) {
+     * Vale também dentro de outra tarefa (e de uma rota do jinker): a fibra
+     * nova volta pra quem a criou quando cede (`fib_resume`, `f->volta`).
+     * Antes só o principal entrava numa fibra, e a tarefa criada dentro de
+     * outra só começava quando o escalonador passasse por ela: o erro de
+     * antes do primeiro ponto em que ela cede sumia da chamada. */
+    if (fu->fib) {
         Fiber *nf = fu->fib;
         fib_resume(vm, nf);
         if (nf->status == FIB_PRONTA) {
@@ -25102,6 +25356,14 @@ static int chamada_sem_frame(VM *vm, Alvo alvo, const Value *pos, int npos,
                 fut_passa_traceback(vm, fu);
                 return -1;
             }
+        }
+        /* A tarefa saiu num `sys.exit`, e quem a criou é outra tarefa (no
+         * principal, `fib_resume` já encerrou): o exit desenrola esta também,
+         * com os `finally` dela, até o principal. */
+        if (vm->saida_pendente) {
+            vm->erro[0] = '\0';
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", PS_TIPO_SAIDA);
+            return -1;
         }
     }
     return 1;
@@ -25133,9 +25395,13 @@ static int executa_alvo_c(VM *vm, const Alvo *a, const Value *pos, int npos,
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError");
         return -1;
     }
+    vm->ntb = 0;
     int r = vm_executa_base(vm, a->proto, pos, npos, kwn, kwv, nkw,
                             a->self.t != V_UNSET ? &a->self : NULL, a->desloca, a->ignora_kw,
                             vm->frame_topo, vm->sp, vm->locals_top, a->cl, out);
+    /* o erro de dentro (a funct do `map`, o decorador) leva os quadros dela:
+     * sem isso o traceback parava na linha da chamada do `map` */
+    if (r != 0) tb_dentro_poe(vm);
     vm->sp = sp_salvo; vm->locals_top = lt_salvo; vm->frame_topo = ft_salvo;
     if (r == 0 && a->instancia) *out = a->self;
     return r;
@@ -26246,6 +26512,38 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
     const Value *cp_pos = NULL, *cp_kwn = NULL, *cp_kwv = NULL;
     int cp_npos = 0, cp_nkw = 0, cp_base = 0;
 
+#ifdef PS_GOTO
+    /* A tabela de despacho, indexada pelo número do opcode. A segunda manda
+     * TUDO pro depurador, que dá o passo e pula pro tratador de verdade:
+     * com o depurador desligado, o `if` dele some do caminho de cada
+     * instrução. `despacho` é escolhida logo antes do laço e de novo depois
+     * de cada passo (o depurador pode se desligar de dentro do `dbg_serve`).
+     * Nasce com um valor antes do primeiro `goto erro_runtime` (o `catch` que
+     * pega o erro volta pro laço, e o laço despacha por ela), mas constante:
+     * escolhê-la já aqui segurava um registrador pelo caminho dos argumentos
+     * e custava 4 instruções em cada entrada (cada volta de gerador). */
+    static const void *const TAB[] = {
+#define PS_OP(nome, num, texto, tira, deixa) [num] = &&L_##nome,
+#include "ps_opcodes.def"
+#undef PS_OP
+    };
+    static const void *const TAB_DBG[] = {
+#define PS_OP(nome, num, texto, tira, deixa) [num] = &&L_dbg,
+#include "ps_opcodes.def"
+#undef PS_OP
+    };
+    const void *const *despacho = TAB;
+#ifdef PS_JIT
+    /* Depois de uma instrução-ilha (a que o nativo devolveu), TODO despacho
+     * cai em L_uma, que volta pro código de máquina do frame corrente. */
+    static const void *const TAB_UMA[] = {
+#define PS_OP(nome, num, texto, tira, deixa) [num] = &&L_uma,
+#include "ps_opcodes.def"
+#undef PS_OP
+    };
+#endif
+#endif
+
     /* Frame de base: é por aqui que entra a chamada vinda do C (handler do
      * jinker, chave de sort, callback de lib, decorador, fibra async). O
      * binding é o mesmo de qualquer chamada — receptor, buraco do @static,
@@ -26295,33 +26593,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
     }
 
 #ifdef PS_GOTO
-    /* A tabela de despacho, indexada pelo número do opcode. A segunda manda
-     * TUDO pro depurador, que dá o passo e pula pro tratador de verdade:
-     * com o depurador desligado, o `if` dele some do caminho de cada
-     * instrução. `despacho` é escolhida na entrada e de novo depois de cada
-     * passo (o depurador pode se desligar de dentro do `dbg_serve`). */
-    static const void *const TAB[] = {
-#define PS_OP(nome, num, texto, tira, deixa) [num] = &&L_##nome,
-#include "ps_opcodes.def"
-#undef PS_OP
-    };
-    static const void *const TAB_DBG[] = {
-#define PS_OP(nome, num, texto, tira, deixa) [num] = &&L_dbg,
-#include "ps_opcodes.def"
-#undef PS_OP
-    };
-    const void *const *despacho = vm->dbg.ativo ? TAB_DBG : TAB;
-#ifdef PS_JIT
-    /* Depois de uma instrução-ilha (a que o nativo devolveu), TODO despacho
-     * cai em L_uma, que volta pro código de máquina do frame corrente. */
-    static const void *const TAB_UMA[] = {
-#define PS_OP(nome, num, texto, tira, deixa) [num] = &&L_uma,
-#include "ps_opcodes.def"
-#undef PS_OP
-    };
+    despacho = vm->dbg.ativo ? TAB_DBG : TAB;
 #endif
-#endif
-
     int32_t o, arg;
 #ifdef PS_JIT
     JIT_TENTA(p);                       /* frame de base: módulo, callback, gerador retomado */
@@ -28337,14 +28610,19 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 /* `await [f1, f2]` resolve os futures DE DENTRO, no lugar.
                  * Antes a lista voltava intacta e cada future sobrava
                  * pendente — `post` disso saía `[, ]`. Item que não é future
-                 * passa direto, como no await de valor comum. */
+                 * passa direto, como no await de valor comum. Na primeira que
+                 * falha, `fut_espera_resto` espera as outras e levanta: é o
+                 * `gather` da lista. */
                 PSList *l = COMO_LIST(av);
                 for (int k = 0; k < l->len; k++) {
                     if (!EH_FUTURO(l->itens[k])) continue;
                     PSFuturo *fu = COMO_FUTURO(l->itens[k]);
                     vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                     int rc_fu; REANCORA(rc_fu = fut_resolve(vm, fu));
-                    if (rc_fu != 0) goto erro_runtime;
+                    if (rc_fu != 0) {
+                        REANCORA(fut_espera_resto(vm, &stack[sp - 1], 1, 1, 0, k, fu, "await"));
+                        goto erro_runtime;
+                    }
                     /* a lista pode ter sido realocada pela fibra que rodou */
                     l = COMO_LIST(stack[sp - 1]);
                     if (k < l->len) l->itens[k] = fu->valor;
@@ -29664,18 +29942,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     if (!vm->erro_tipo[0])
                         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ImportError");
                     /* O corpo do módulo rodou num loop aninhado que já montou o
-                     * traceball de DENTRO dele (frames + linha do erro real).
+                     * traceback de DENTRO dele (frames + linha do erro real).
                      * Preserva pro erro_runtime externo prepender o frame do
                      * `import` em vez de descartar tudo. */
-                    if (vm->ntb > 0) {
-                        vm->ntb_mod = vm->ntb < 64 ? vm->ntb : 64;
-                        for (int i = 0; i < vm->ntb_mod; i++) {
-                            vm->tb_mod[i].proto = vm->tb[i].proto;
-                            vm->tb_mod[i].linha = vm->tb[i].linha;
-                            vm->tb_mod[i].col   = vm->tb[i].col;
-                        }
-                        vm->import_falhou = 1;
-                    }
+                    tb_dentro_poe(vm);
                     goto erro_runtime;
                 }
                 stack[sp++] = mod;
@@ -29863,10 +30133,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 
     erro_runtime:
         ;
-        /* Erro que borbulhou de dentro de um import? Lê e limpa a flag agora, pra
-         * que um `try` (nh>0) ou um erro posterior não a vejam pendurada. */
-        int veio_de_import = vm->import_falhou;
-        vm->import_falhou = 0;
+        /* Erro que borbulhou de dentro de um import, tarefa, gerador ou funct
+         * chamada pelo C? Lê e limpa a marca agora, pra que um `try` (nh>0) ou
+         * um erro posterior não a vejam pendurada. */
+        int veio_de_import = tb_dentro_consome(vm);
         /* Linha e coluna vêm SEMPRE da tabela de linhas, no `ip` corrente do
          * frame que está executando — nunca de um campo guardado à parte.
          *
@@ -30006,9 +30276,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             size_t nerr = strlen(vm->erro);
             int ja_tem_linha = (nerr > 0 && vm->erro[nerr - 1] == ')'
                                 && strstr(vm->erro, " (linha ") != NULL);
-            if (linha_agora > 0 && !ja_tem_linha)
+            /* o erro que veio de dentro (tarefa, gerador, funct do `map`)
+             * leva a linha do `raise` de lá, como o de uma funct comum */
+            int linha_e = (veio_de_import && vm->ntb_mod > 0 && vm->tb_mod[vm->ntb_mod - 1].linha > 0)
+                          ? vm->tb_mod[vm->ntb_mod - 1].linha : linha_agora;
+            if (linha_e > 0 && !ja_tem_linha)
                 snprintf(msgbuf, sizeof(msgbuf), "%s (linha %d)",
-                         vm->erro, linha_agora);
+                         vm->erro, linha_e);
             else
                 snprintf(msgbuf, sizeof(msgbuf), "%s", vm->erro);
             PSString *msg = nova_string(vm, msgbuf, (int)strlen(msgbuf));
@@ -31457,6 +31731,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
 {
     CaminhosImport *cb = malloc(sizeof(*cb));
     if (!cb) { snprintf(vm->erro, sizeof(vm->erro), "sem memoria ao importar"); return -1; }
+    vm->ntb = 0;   /* o traceback que sobrar é do corpo deste módulo (`tb_dentro_poe`) */
     int rc = carrega_modulo_ps_em(vm, nome, out, cb);
     free(cb);
     return rc;

@@ -653,6 +653,11 @@ espalhada (`g(*lista)`), como **método** (`obj.conta(2)`, ou `f = obj.conta` e
 depois `f(2)`) e passada a uma função que chama de volta (`map([2], obj.conta)`
 devolve uma lista de geradores).
 
+O gerador pode ceder no meio (`sleep`, I/O), também quando duas tarefas
+consomem cada uma o seu ao mesmo tempo: cada tarefa retoma o gerador dela de
+onde parou. O erro de dentro do gerador traz os quadros dele no traceback, e o
+`e` do `catch` de quem consome diz a linha do `raise` (10.3).
+
 `yield` só existe dentro de funct. Fora dela é erro de sintaxe antes de rodar
 (antes só quebrava rodando):
 
@@ -703,7 +708,24 @@ continua quando o principal para pra esperar alguma coisa:
 
 É a mesma regra dentro do `jinker`, onde o laço do servidor roda as tarefas
 entre uma requisição e outra: o mesmo código se comporta igual num script e
-no servidor.
+no servidor. E vale dentro de outra tarefa: a tarefa criada por uma tarefa
+também começa na chamada, e quando cede volta pra tarefa que a criou.
+
+```ps
+list ordem = []
+async str funct filho() {
+    ordem.append("filho")
+    sleep(0.01)
+    return "f"
+}
+async str funct pai() {
+    Object f = filho()
+    ordem.append("pai")
+    return await f
+}
+str r = await pai()
+post(ordem)              # ['filho', 'pai']
+```
 
 ```ps
 async funct t() {
@@ -728,7 +750,29 @@ do programa, dizendo que era de uma tarefa sem `await`, e o programa
 principal — mesmo que o resto tenha corrido até o fim. Erro é erro, também
 pra quem só olha o código (`&&`, `set -e`, o CI). `sys.exit(n)` explícito
 mantém o `n` que você escolheu; o erro é impresso do mesmo jeito. Em
-qualquer caso o traceback termina na linha do `raise`, não na do `await`.
+qualquer caso o traceback termina na linha do `raise`, não na do `await` — no
+aviso da tarefa sem `await` também —, e o `e` do `catch` em volta do `await`
+diz a linha do `raise`.
+
+**`gather` espera todas.** Se mais de uma tarefa falha, o `gather` espera as
+outras terminarem e levanta o erro da primeira que falhou (na ordem dos
+argumentos), com as outras na frase. Todas foram aguardadas: nenhuma sai
+depois como tarefa sem `await`, e o programa segue o `catch`:
+
+```ps
+async str funct t(int n) {
+    sleep(0.01 * n)
+    raise Quebrou("tarefa " + str(n))
+}
+try {
+    post(gather(t(1), t(2)))
+} catch (Quebrou e) {
+    post(e)   # tarefa 1 (linha 3); mais 1 tarefa do gather falhou: Quebrou: tarefa 2 (linha 3)
+}
+```
+
+O `await` de uma lista (`await [t(1), t(2)]`) é o mesmo `gather`, e a frase
+diz `do await`. A mesma tarefa duas vezes (`gather(f, f)`) conta uma vez só.
 
 ```ps
 async funct dobro(n) {
