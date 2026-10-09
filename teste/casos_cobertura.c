@@ -1812,10 +1812,10 @@ const Caso CASOS_COBERTURA[] = {
   "ç 1\n1", NULL, 0 },
 { "matriz: closure em async",
   "async funct a() {\n"
-  "    a = 1\n"
+  "    n = 1\n"
   "    funct inc() {\n"
-  "        a = a + 1\n"
-  "        return a\n"
+  "        n = n + 1\n"
+  "        return n\n"
   "    }\n"
   "    post(inc(), inc())\n"
   "    return 1\n"

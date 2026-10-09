@@ -74,11 +74,15 @@ const Caso CASOS_CRASH[] = {
   "import os\nimport sys\nstr src = \"int s = 0\" + \" + 1\" * 8000 + \"\\npost(s)\\n\"\n"
   "using open(\"soma.pr\", \"w\") as f { f.write(src) }\n"
   "Process p = os.run([sys.executable, \"soma.pr\"], capture=\"live\")\nstr t = p.read(65536)\nint rc = p.wait()\npost(t.strip(), rc)\n", "8000 0", NULL, 0 },
-{ "4000 blocos aninhados e 5000 decoradores sao erro limpo no --check, nunca segfault",
+{ "8000 blocos aninhados e 20000 decoradores sao erro limpo no --check, nunca segfault",
+  /* acima do que o parser e os caminhantes do compilador descem: o freio de
+   * algum deles fala, em qualquer binário (com ASan o quadro é maior e ele
+   * fala antes). Eram 4000 e 5000, que o compilador do 17.0.12 já compila
+   * (os 4000 `if`) ou recusa pelo limite de 8 decoradores empilhados. */
   "import os\nimport sys\n"
-  "str b = \"if True { \" * 4000 + \"post(1)\" + \" }\" * 4000 + \"\\n\"\n"
+  "str b = \"if True { \" * 8000 + \"post(1)\" + \" }\" * 8000 + \"\\n\"\n"
   "using open(\"b.pr\", \"w\") as f { f.write(b) }\n"
-  "str d = \"funct a(Object f) { return f }\\n\" + \"@a\\n\" * 5000 + \"Null funct h() { post(1) }\\nh()\\n\"\n"
+  "str d = \"funct a(Object f) { return f }\\n\" + \"@a\\n\" * 20000 + \"Null funct h() { post(1) }\\nh()\\n\"\n"
   "using open(\"d.pr\", \"w\") as f { f.write(d) }\n"
   "for each nome in [\"b.pr\", \"d.pr\"] {\n"
   "    Process p = os.run([sys.executable, \"--check\", nome], capture=\"live\")\n"

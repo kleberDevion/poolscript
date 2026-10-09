@@ -66,6 +66,18 @@ funct f(a = b, int b = 1) {
 # NameError: o padrão de 'a' lê 'b', um parâmetro que vem depois e ainda não tem valor: no padrão só valem os parâmetros de antes
 ```
 
+Uma lambda no padrão segue a mesma regra: ela captura os parâmetros de antes
+(`int funct k(int b = 1, a = funct(int x) { return x + b })` → `k()` vale
+`2`, e `k(5)` vale `6`), e capturar o próprio ou um de depois é erro na
+lambda:
+
+```ps
+int funct k(a = funct(int x) { return x + b }, int b = 1) {
+    return a(1)
+}
+# NameError: a lambda no padrão de 'a' captura 'b', que ainda não tem valor: no padrão só valem os parâmetros de antes
+```
+
 ### 6.2.2. Argumentos nomeados (na chamada)
 
 Na chamada, um argumento pode ser passado pelo nome do parâmetro, em qualquer
@@ -468,7 +480,8 @@ exige(Null)                 # nonnull: parametro 'valor' em 'exige' nao pode ser
 
 O `nonnull` é contrato da **chamada**: num gerador (funct com `yield`), o
 `Null` passado acusa na linha da chamada, como o tipo do parâmetro, e não no
-primeiro pedido ao gerador.
+primeiro pedido ao gerador. Vale também pro parâmetro que uma funct de dentro
+(ou uma lambda no padrão) captura.
 
 Chamar um `static` pela instância é erro:
 `funct 'soma' e static: chame pela Entity (Tipo.soma(...)), nao pela instancia`.
@@ -551,6 +564,33 @@ post(aplica(dobro, 21))   # 42
 
 `type()` de uma função é `"funct"`, e `post` de uma delas imprime
 `<funct #N>`.
+
+### 6.5.1. Closure — a funct leva as variáveis de fora
+
+A funct (ou lambda) escrita dentro de outra enxerga as variáveis dela e as
+leva junto, mesmo depois que a de fora terminou. É a variável viva, não uma
+cópia: a escrita de um lado aparece do outro.
+
+```ps
+Object funct contador() {
+    int n = 0
+    int funct mais() {
+        n += 1
+        return n
+    }
+    return mais
+}
+Object c = contador()
+c()
+post(c())            # 2
+```
+
+- O que a funct **declara** (parâmetro, `int n = ...`, variável do laço) é
+  dela, mesmo que a de fora tenha uma variável de mesmo nome.
+- A funct criada numa volta de laço guarda a variável daquela volta
+  ([4.6.3](04-variaveis-escopo-atribuicao.md)).
+- A funct escrita fora de um bloco não enxerga a variável do bloco — erro
+  antes de rodar ([4.6.1](04-variaveis-escopo-atribuicao.md)).
 
 ---
 

@@ -667,7 +667,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "post(soma(3)(4))\n",
   "7", NULL, 0 },
-{ "closures do laço compartilham a variável",
+{ "closures do laço guardam a variável da volta delas",
   "funct junta() {\n"
   "    fs = []\n"
   "    for each i in range(3) {\n"
@@ -680,7 +680,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "fs = junta()\n"
   "post(fs[0](), fs[1](), fs[2]())\n",
-  "2 2 2", NULL, 0 },
+  "0 1 2", NULL, 0 },
 { "recursão mútua entre aninhadas",
   "funct mutuo(n) {\n"
   "    funct par(k) {\n"
@@ -5088,6 +5088,652 @@ const Caso CASOS_LINGUAGEM[] = {
   "nonnull funct gen(v) {\n    yield v\n}\ntry {\n    Object g = gen(Null)\n    post(\"nao chega\")\n"
   "} catch (RuntimeError e) {\n    post(e)\n}\npost(list(gen(3)))\n",
   "nonnull: parametro 'v' em 'gen' nao pode ser Null (linha 5)\n[3]", NULL, 0 },
+
+/* ── closures e escopo de bloco (Plano 6, lote 6b, 2026-10-08) ─────────────
+ * A escrita a um nome de fora não chegava quando uma funct aninhada citava o
+ * nome; a closure criada no laço via o valor da última volta (decisão 4:
+ * escopo de verdade, cada volta é uma variável); a funct escrita FORA de um
+ * bloco enxergava a variável dele enquanto ele rodava — agora é NameError
+ * antes de rodar, com a frase que diz por quê; o parâmetro com o nome de uma
+ * variável capturada lá fora gravava nela; a lambda no padrão não capturava
+ * o parâmetro de antes; o `nonnull` deixava passar o Null do parâmetro
+ * capturado. */
+{ "escrita a global chega com uma lambda citando o nome (lote 6b)",
+  "int pontos = 0\n"
+  "list funct soma_tudo(list l) {\n"
+  "    pontos += 100\n"
+  "    list r = map(l, funct(int x) { return x + pontos })\n"
+  "    return r\n"
+  "}\n"
+  "post(soma_tudo([1, 2]), pontos)\n",
+  "[101, 102] 100", NULL, 0 },
+{ "escrita a variavel da funct de fora chega com funct aninhada citando o nome (lote 6b)",
+  "int funct a1() {\n"
+  "    int total = 0\n"
+  "    int funct b() {\n"
+  "        total += 1\n"
+  "        int funct c() { return total }\n"
+  "        return c()\n"
+  "    }\n"
+  "    return b()\n"
+  "}\n"
+  "list funct a2() {\n"
+  "    int total = 0\n"
+  "    int funct b() {\n"
+  "        total = 5\n"
+  "        int funct c() { return total }\n"
+  "        return c()\n"
+  "    }\n"
+  "    int r = b()\n"
+  "    return [r, total]\n"
+  "}\n"
+  "post(a1(), a2())\n",
+  "1 [5, 5]", NULL, 0 },
+{ "escrita a global de dentro de um laco com funct citando o nome chega (lote 6b)",
+  "int total = 0\n"
+  "Null funct f() {\n"
+  "    for each i in [1, 2, 3] {\n"
+  "        total = total + i\n"
+  "        int funct le() { return total }\n"
+  "        le()\n"
+  "    }\n"
+  "}\n"
+  "f()\n"
+  "post(total)\n",
+  "6", NULL, 0 },
+{ "atribuir ao nome da propria funct de fora grava nela, com ou sem funct aninhada: erro de tipo (lote 6b)",
+  "async int funct a() {\n"
+  "    a = 1\n"
+  "    int funct inc() {\n"
+  "        a = a + 1\n"
+  "        return a\n"
+  "    }\n"
+  "    post(inc(), inc())\n"
+  "    return 1\n"
+  "}\n"
+  "post(await a())\n",
+  "", "AttributedValueError: variável a é funct (tipo fixado na primeira atribuição), recebeu int", 2 },
+{ "closure no for each da funct guarda a variavel da volta e a declarada no corpo (lote 6b)",
+  "list funct f() {\n"
+  "    list fs = []\n"
+  "    for each i in [1, 2, 3] {\n"
+  "        int v = i * 10\n"
+  "        fs.append(funct() { return i + v })\n"
+  "    }\n"
+  "    list r = []\n"
+  "    for each g in fs { r.append(g()) }\n"
+  "    return r\n"
+  "}\n"
+  "post(f())\n",
+  "[11, 22, 33]", NULL, 0 },
+{ "closure no while da funct guarda a volta, com continue e break (lote 6b)",
+  "list funct f() {\n"
+  "    list fs = []\n"
+  "    int c = 0\n"
+  "    while c < 5 {\n"
+  "        int z = c\n"
+  "        c += 1\n"
+  "        if z == 1 { continue }\n"
+  "        if z == 3 { break }\n"
+  "        fs.append(funct() { return z })\n"
+  "    }\n"
+  "    list r = []\n"
+  "    for each g in fs { r.append(g()) }\n"
+  "    return r\n"
+  "}\n"
+  "post(f())\n",
+  "[0, 2]", NULL, 0 },
+{ "closure na compreensao da funct guarda o item (lote 6b)",
+  "list funct f() {\n"
+  "    list fs = [funct() { return x } for each x in [1, 2, 3]]\n"
+  "    list r = []\n"
+  "    for each g in fs { r.append(g()) }\n"
+  "    return r\n"
+  "}\n"
+  "post(f())\n",
+  "[1, 2, 3]", NULL, 0 },
+{ "funct escrita antes da declaracao, na mesma volta, ve a variavel da volta (lote 6b)",
+  "list funct f() {\n"
+  "    list r = []\n"
+  "    for each i in [1, 2, 3] {\n"
+  "        int funct g() { return v }\n"
+  "        int v = i\n"
+  "        r.append(g())\n"
+  "    }\n"
+  "    return r\n"
+  "}\n"
+  "post(f())\n",
+  "[1, 2, 3]", NULL, 0 },
+{ "variavel declarada fora do laco segue uma so pras closures (lote 6b)",
+  "list funct f() {\n"
+  "    list fs = []\n"
+  "    int t = 0\n"
+  "    for each i in [1, 2, 3] {\n"
+  "        t = i\n"
+  "        fs.append(funct() { return t })\n"
+  "    }\n"
+  "    list r = []\n"
+  "    for each g in fs { r.append(g()) }\n"
+  "    return r\n"
+  "}\n"
+  "post(f())\n",
+  "[3, 3, 3]", NULL, 0 },
+{ "gerador, tarefa e classe criados no laco da funct guardam a volta (lote 6b)",
+  "list funct f() {\n"
+  "    list gs = []\n"
+  "    list ts = []\n"
+  "    list objs = []\n"
+  "    for each i in [1, 2] {\n"
+  "        funct gen() { yield i }\n"
+  "        gs.append(gen())\n"
+  "        async int funct t() { return i * 10 }\n"
+  "        ts.append(t())\n"
+  "        class K {\n"
+  "            int funct m(self) { return i * 100 }\n"
+  "        }\n"
+  "        objs.append(K())\n"
+  "    }\n"
+  "    return [list(gs[0]), list(gs[1]), await ts[0], await ts[1], objs[0].m(), objs[1].m()]\n"
+  "}\n"
+  "post(f())\n",
+  "[[1], [2], 10, 20, 100, 200]", NULL, 0 },
+{ "desempacotamento no for each da funct: a closure captura os dois nomes (lote 6b)",
+  "list funct f() {\n"
+  "    list fs = []\n"
+  "    for each k, v in {\"a\": 1, \"b\": 2}.items() {\n"
+  "        fs.append(funct() { return k + str(v) })\n"
+  "    }\n"
+  "    return [fs[0](), fs[1]()]\n"
+  "}\n"
+  "post(f())\n",
+  "['a1', 'b2']", NULL, 0 },
+{ "continue e break no for each com closure: cada volta a sua (lote 6b)",
+  "list funct f() {\n"
+  "    list fs = []\n"
+  "    for each i in [1, 2, 3, 4] {\n"
+  "        int v = i\n"
+  "        if v == 2 { continue }\n"
+  "        fs.append(funct() { return v })\n"
+  "        if v == 3 { break }\n"
+  "    }\n"
+  "    list r = []\n"
+  "    for each g in fs { r.append(g()) }\n"
+  "    return r\n"
+  "}\n"
+  "post(f())\n",
+  "[1, 3]", NULL, 0 },
+{ "dois lacos com o mesmo nome e a declaracao de depois: tres variaveis (lote 6b)",
+  "list funct f() {\n"
+  "    list fs = []\n"
+  "    for each i in [1, 2] {\n"
+  "        int v = i * 10\n"
+  "        fs.append(funct() { return v })\n"
+  "    }\n"
+  "    for each j in [3, 4] {\n"
+  "        int v = j * 10\n"
+  "        fs.append(funct() { return v })\n"
+  "    }\n"
+  "    int v = 0\n"
+  "    list r = []\n"
+  "    for each g in fs { r.append(g()) }\n"
+  "    return [r, v]\n"
+  "}\n"
+  "post(f())\n",
+  "[[10, 20, 30, 40], 0]", NULL, 0 },
+{ "bloco de dentro com o nome que o de fora declara depois: duas variaveis (lote 6b)",
+  "list funct f() {\n"
+  "    list fs = []\n"
+  "    if True {\n"
+  "        if True {\n"
+  "            int v = 1\n"
+  "            fs.append(funct() { return v })\n"
+  "        }\n"
+  "        int v = 2\n"
+  "        fs.append(funct() { return v })\n"
+  "    }\n"
+  "    return [fs[0](), fs[1]()]\n"
+  "}\n"
+  "post(f())\n",
+  "[1, 2]", NULL, 0 },
+{ "erro dentro do bloco: a variavel capturada nele nao passa pro catch (lote 6b)",
+  "int funct f() {\n"
+  "    list fs = []\n"
+  "    try {\n"
+  "        if True {\n"
+  "            int v = 7\n"
+  "            fs.append(funct() { return v })\n"
+  "            raise ValueError(\"x\")\n"
+  "        }\n"
+  "    } catch (ValueError e) {\n"
+  "        int v = 9\n"
+  "    }\n"
+  "    return fs[0]()\n"
+  "}\n"
+  "post(f())\n",
+  "7", NULL, 0 },
+{ "laco que sombreia um nome capturado: as closures veem a volta, a de fora volta inteira (lote 6b)",
+  "list funct s1() {\n"
+  "    int i = 99\n"
+  "    int funct h() { return i }\n"
+  "    list fs = []\n"
+  "    for each i in [1, 2, 3] {\n"
+  "        fs.append(funct() { return i })\n"
+  "    }\n"
+  "    list r = []\n"
+  "    for each g in fs { r.append(g()) }\n"
+  "    i = 5\n"
+  "    return [r, h(), i]\n"
+  "}\n"
+  "list funct s2() {\n"
+  "    int x = 99\n"
+  "    int funct h() { return x }\n"
+  "    list fs = [funct() { return x } for each x in [1, 2, 3]]\n"
+  "    list r = []\n"
+  "    for each g in fs { r.append(g()) }\n"
+  "    x = 7\n"
+  "    return [r, h(), x]\n"
+  "}\n"
+  "post(s1(), s2())\n",
+  "[[1, 2, 3], 5, 5] [[1, 2, 3], 7, 7]", NULL, 0 },
+{ "o parametro e a variavel do laco sao da propria funct, nao a de fora de mesmo nome (lote 6b)",
+  "list funct f() {\n"
+  "    int v = 1\n"
+  "    int funct h() { return v }\n"
+  "    int funct g(int v) {\n"
+  "        v = 5\n"
+  "        return v\n"
+  "    }\n"
+  "    int r = g(2)\n"
+  "    return [r, v, h()]\n"
+  "}\n"
+  "list funct k(int x) {\n"
+  "    list fs = [funct() { return x } for each x in [1, 2]]\n"
+  "    return [fs[0](), fs[1](), x]\n"
+  "}\n"
+  "list funct m() {\n"
+  "    int i = 99\n"
+  "    int funct h() { return i }\n"
+  "    list funct g() {\n"
+  "        list fs = []\n"
+  "        for each i in [1, 2] {\n"
+  "            fs.append(funct() { return i })\n"
+  "        }\n"
+  "        return [fs[0](), fs[1]()]\n"
+  "    }\n"
+  "    list r = g()\n"
+  "    return [r, i, h()]\n"
+  "}\n"
+  "post(f(), k(9), m())\n",
+  "[5, 1, 1] [1, 2, 9] [[1, 2], 99, 99]", NULL, 0 },
+{ "redeclarar no bloco o nome que ja existe e a mesma variavel, com closure (lote 6b)",
+  "list funct f() {\n"
+  "    int x = 1\n"
+  "    list fs = []\n"
+  "    if True {\n"
+  "        int x = 2\n"
+  "        fs.append(funct() { return x })\n"
+  "    }\n"
+  "    return [x, fs[0]()]\n"
+  "}\n"
+  "list funct g() {\n"
+  "    int t = 0\n"
+  "    list fs = []\n"
+  "    for each i in [1, 2, 3] {\n"
+  "        int t = i\n"
+  "        fs.append(funct() { return t })\n"
+  "    }\n"
+  "    return [t, fs[0](), fs[2]()]\n"
+  "}\n"
+  "post(f(), g())\n",
+  "[2, 2] [3, 3, 3]", NULL, 0 },
+{ "recursao e recursao mutua de funct declarada num bloco da funct (lote 6b)",
+  "int funct f() {\n"
+  "    if True {\n"
+  "        int funct fat(int k) {\n"
+  "            if k <= 1 { return 1 }\n"
+  "            return k * fat(k - 1)\n"
+  "        }\n"
+  "        return fat(5)\n"
+  "    }\n"
+  "    return 0\n"
+  "}\n"
+  "bool funct g() {\n"
+  "    if True {\n"
+  "        bool funct par(int n) {\n"
+  "            if n == 0 { return True }\n"
+  "            return impar(n - 1)\n"
+  "        }\n"
+  "        bool funct impar(int n) {\n"
+  "            if n == 0 { return False }\n"
+  "            return par(n - 1)\n"
+  "        }\n"
+  "        return par(10)\n"
+  "    }\n"
+  "    return False\n"
+  "}\n"
+  "post(f(), g())\n",
+  "120 True", NULL, 0 },
+{ "bloco de dentro do laco ve a variavel da volta; atribuicao nova no corpo e da volta (lote 6b)",
+  "list funct f() {\n"
+  "    list fs = []\n"
+  "    for each i in [1, 2] {\n"
+  "        int a = i\n"
+  "        if True {\n"
+  "            fs.append(funct() { return a })\n"
+  "        }\n"
+  "        k = i * 3\n"
+  "        fs.append(funct() { return k })\n"
+  "    }\n"
+  "    list r = []\n"
+  "    for each g in fs { r.append(g()) }\n"
+  "    return r\n"
+  "}\n"
+  "post(f())\n",
+  "[1, 3, 2, 6]", NULL, 0 },
+{ "topo: closure no for each, na funct nomeada do laco e na compreensao guarda a volta (lote 6b)",
+  "list fs = []\n"
+  "for each i in [1, 2, 3] {\n"
+  "    int v = i * 10\n"
+  "    fs.append(funct() { return i + v })\n"
+  "}\n"
+  "list fs2 = []\n"
+  "for each n in [1, 2, 3] {\n"
+  "    int funct nomeada() { return n * 2 }\n"
+  "    fs2.append(nomeada)\n"
+  "}\n"
+  "list fs3 = [funct() { return x } for each x in [7, 8, 9]]\n"
+  "list r = []\n"
+  "for each g in fs + fs2 + fs3 { r.append(g()) }\n"
+  "post(r)\n",
+  "[11, 22, 33, 2, 4, 6, 7, 8, 9]", NULL, 0 },
+{ "topo: closure no while guarda a volta, com continue e break (lote 6b)",
+  "list fs = []\n"
+  "int cont = 0\n"
+  "while cont < 5 {\n"
+  "    int z = cont\n"
+  "    cont += 1\n"
+  "    if z == 1 { continue }\n"
+  "    if z == 3 { break }\n"
+  "    fs.append(funct() { return z })\n"
+  "}\n"
+  "list r = []\n"
+  "for each g in fs { r.append(g()) }\n"
+  "post(r)\n",
+  "[0, 2]", NULL, 0 },
+{ "topo: closure criada num bloco roda depois dele; blocos aninhados e compreensao no bloco (lote 6b)",
+  "list fs = []\n"
+  "if True {\n"
+  "    int w = 5\n"
+  "    fs.append(funct() { return w })\n"
+  "    if True {\n"
+  "        int v = 1\n"
+  "        fs.append(funct() { return v + w })\n"
+  "    }\n"
+  "    int v = 2\n"
+  "    fs.append(funct() { return v })\n"
+  "}\n"
+  "list r = []\n"
+  "if True {\n"
+  "    int b0 = 100\n"
+  "    list gs = [funct() { return b0 + x } for each x in [1, 2]]\n"
+  "    for each g in gs { r.append(g()) }\n"
+  "}\n"
+  "post(fs[0](), fs[1](), fs[2](), r)\n",
+  "5 6 2 [101, 102]", NULL, 0 },
+{ "topo: gerador, campo e metodo de classe e lambda dentro de lambda no laco guardam a volta (lote 6b)",
+  "list gs = []\n"
+  "list objs = []\n"
+  "list ls = []\n"
+  "for each i in [1, 2] {\n"
+  "    funct gen() {\n"
+  "        yield i\n"
+  "        yield i * 10\n"
+  "    }\n"
+  "    gs.append(gen())\n"
+  "    class K {\n"
+  "        int v = i\n"
+  "        int funct m(self) { return i * 100 }\n"
+  "    }\n"
+  "    objs.append(K())\n"
+  "    ls.append(funct() { return funct() { return i } })\n"
+  "}\n"
+  "post(list(gs[0]), list(gs[1]), objs[0].v, objs[1].m(), ls[0]()(), ls[1]()())\n",
+  "[1, 10] [2, 20] 1 200 1 2", NULL, 0 },
+{ "topo: desempacotamento no laco e laco que sombreia uma global capturada (lote 6b)",
+  "list fs = []\n"
+  "for each k, v in {\"a\": 1, \"b\": 2}.items() {\n"
+  "    fs.append(funct() { return k + str(v) })\n"
+  "}\n"
+  "int i = 99\n"
+  "int funct h() { return i }\n"
+  "list hs = []\n"
+  "for each i in [1, 2] {\n"
+  "    hs.append(funct() { return i })\n"
+  "}\n"
+  "post(fs[0](), fs[1](), i, h(), hs[0](), hs[1]())\n",
+  "a1 b2 99 99 1 2", NULL, 0 },
+{ "topo: redeclarar no bloco o nome que ja existe e a mesma variavel; o declarado depois e outra (lote 6b)",
+  "int x = 1\n"
+  "list fs = []\n"
+  "if True {\n"
+  "    int x = 2\n"
+  "    fs.append(funct() { return x })\n"
+  "}\n"
+  "int t = 0\n"
+  "list ts = []\n"
+  "for each i in [1, 2, 3] {\n"
+  "    int t = i\n"
+  "    ts.append(funct() { return t })\n"
+  "}\n"
+  "list ws = []\n"
+  "for each i in [1, 2] {\n"
+  "    int w = i\n"
+  "    ws.append(funct() { return w })\n"
+  "}\n"
+  "int w = 0\n"
+  "post(x, fs[0](), t, ts[0](), ts[2](), ws[0](), ws[1](), w)\n",
+  "2 2 3 3 3 1 2 0", NULL, 0 },
+{ "topo: a global lida na closure do bloco segue a global; variavel de bloco sem captura some no fim (lote 6b)",
+  "int glob = 1\n"
+  "list fs = []\n"
+  "for each b in [1] {\n"
+  "    fs.append(funct() { return glob + b })\n"
+  "}\n"
+  "glob = 10\n"
+  "post(fs[0]())\n"
+  "for each sem in [1] {\n"
+  "    int livre = 3\n"
+  "}\n"
+  "try {\n"
+  "    post(livre)\n"
+  "} catch (NameError e) {\n"
+  "    post(e)\n"
+  "}\n",
+  "11\nname 'livre' is not defined (linha 12)", NULL, 0 },
+{ "funct escrita fora do bloco nao enxerga a variavel dele: topo, if (lote 6b)",
+  "int funct le() { return w }\n"
+  "if True {\n"
+  "    int w = 5\n"
+  "    post(le())\n"
+  "}\n",
+  "", "NameError: name 'w' is not defined: 'w' só existe dentro de um bloco, e esta funct foi escrita "
+  "fora dele (declare 'w' antes do bloco)", 2 },
+{ "funct escrita fora do laco nao enxerga a variavel dele: topo, for each (lote 6b)",
+  "int funct le() { return i }\n"
+  "list r = []\n"
+  "for each i in [1, 2] {\n"
+  "    r.append(le())\n"
+  "}\n"
+  "post(r)\n",
+  "", "NameError: name 'i' is not defined: 'i' só existe dentro de um bloco, e esta funct foi escrita "
+  "fora dele (declare 'i' antes do bloco)", 2 },
+{ "funct escrita fora do guard nao enxerga a variavel dele (lote 6b)",
+  "int funct mostra() { return porta }\n"
+  "if __name__ == \"main\" {\n"
+  "    int porta = 8080\n"
+  "    post(mostra())\n"
+  "}\n",
+  "", "NameError: name 'porta' is not defined: 'porta' só existe dentro de um bloco, e esta funct foi "
+  "escrita fora dele (declare 'porta' antes do bloco)", 2 },
+{ "funct escrita fora do bloco nao enxerga a variavel dele: dentro de funct, if (lote 6b)",
+  "int funct f() {\n"
+  "    int funct le() { return w }\n"
+  "    if True {\n"
+  "        int w = 5\n"
+  "        return le()\n"
+  "    }\n"
+  "    return 0\n"
+  "}\n"
+  "post(f())\n",
+  "", "NameError: name 'w' is not defined: 'w' só existe dentro de um bloco, e esta funct foi escrita "
+  "fora dele (declare 'w' antes do bloco)", 2 },
+{ "funct escrita fora do laco nao enxerga a variavel dele: dentro de funct, for each (lote 6b)",
+  "list funct f() {\n"
+  "    int funct le() { return i }\n"
+  "    list r = []\n"
+  "    for each i in [1, 2] {\n"
+  "        r.append(le())\n"
+  "    }\n"
+  "    return r\n"
+  "}\n"
+  "post(f())\n",
+  "", "NameError: name 'i' is not defined: 'i' só existe dentro de um bloco, e esta funct foi escrita "
+  "fora dele (declare 'i' antes do bloco)", 2 },
+{ "funct escrita num bloco irmao nao enxerga a variavel do outro (lote 6b)",
+  "int funct f() {\n"
+  "    if True {\n"
+  "        int w = 1\n"
+  "    }\n"
+  "    if True {\n"
+  "        int funct g() { return w }\n"
+  "        return g()\n"
+  "    }\n"
+  "    return 0\n"
+  "}\n"
+  "post(f())\n",
+  "", "NameError: name 'w' is not defined: 'w' só existe dentro de um bloco, e esta funct foi escrita "
+  "fora dele (declare 'w' antes do bloco)", 2 },
+{ "funct escrita fora do guard nao enxerga o import feito nele (lote 6b)",
+  "if __name__ == \"main\" {\n"
+  "    import json\n"
+  "}\n"
+  "str funct f() { return json.stringify([2]) }\n"
+  "post(f())\n",
+  "", "NameError: name 'json' is not defined: 'json' só existe dentro de um bloco, e esta funct foi "
+  "escrita fora dele (declare 'json' antes do bloco)", 2 },
+{ "a funct enxerga a global de fora do bloco, o nome do arquivo declarado depois e o do bloco onde foi escrita (lote 6b)",
+  "int w = 100\n"
+  "int funct f() {\n"
+  "    int funct g() { return w }\n"
+  "    if True {\n"
+  "        int w = 1\n"
+  "    }\n"
+  "    return g()\n"
+  "}\n"
+  "int funct le() { return depois }\n"
+  "int depois = 4\n"
+  "if __name__ == \"main\" {\n"
+  "    int porta = 8080\n"
+  "    int funct mostra() { return porta }\n"
+  "    post(f(), le(), mostra())\n"
+  "}\n",
+  "100 4 8080", NULL, 0 },
+{ "lambda no padrao captura o parametro de antes (lote 6b)",
+  "int funct k2(int b = 1, a = funct(int x) { return x + b }) {\n"
+  "    return a(1)\n"
+  "}\n"
+  "int funct k3(int b = 1, a = funct(int b) { return b * 2 }) {\n"
+  "    return a(4)\n"
+  "}\n"
+  "post(k2(), k2(5), k3())\n",
+  "2 6 8", NULL, 0 },
+{ "lambda no padrao que captura o parametro de depois: erro antes de rodar (lote 6b)",
+  "int funct k(a = funct(int x) { return x + b }, int b = 1) {\n"
+  "    return a(1)\n"
+  "}\n"
+  "post(k())\n",
+  "", "NameError: a lambda no padrão de 'a' captura 'b', que ainda não tem valor: no padrão só valem "
+  "os parâmetros de antes", 2 },
+{ "nonnull recusa o Null do parametro capturado, no padrao e no corpo (lote 6b)",
+  "nonnull int funct k4(v, a = funct() { return v }) {\n"
+  "    return a()\n"
+  "}\n"
+  "nonnull int funct f(v) {\n"
+  "    int funct g() { return v }\n"
+  "    return g()\n"
+  "}\n"
+  "post(k4(3))\n"
+  "try {\n"
+  "    post(k4(Null))\n"
+  "} catch (RuntimeError e) {\n"
+  "    post(e)\n"
+  "}\n"
+  "try {\n"
+  "    post(f(Null))\n"
+  "} catch (RuntimeError e) {\n"
+  "    post(e)\n"
+  "}\n",
+  "3\nnonnull: parametro 'v' em 'k4' nao pode ser Null (linha 1)\n"
+  "nonnull: parametro 'v' em 'f' nao pode ser Null (linha 4)", NULL, 0 },
+{ "laco sem closure que sombreia uma variavel capturada (e o parametro capturado) devolve a de fora intacta (lote 6b)",
+  "list funct f() {\n"
+  "    int i = 99\n"
+  "    int funct h() { return i }\n"
+  "    list r = []\n"
+  "    for each i in [1, 2, 3] {\n"
+  "        r.append(i)\n"
+  "    }\n"
+  "    return [r, i, h()]\n"
+  "}\n"
+  "list funct g(int x) {\n"
+  "    int funct h() { return x }\n"
+  "    list l = [x * 2 for each x in [1, 2, 3]]\n"
+  "    return [l, x, h()]\n"
+  "}\n"
+  "post(f(), g(99))\n",
+  "[[1, 2, 3], 99, 99] [[2, 4, 6], 99, 99]", NULL, 0 },
+{ "variavel do laco numa funct aninhada nao grava na variavel da funct de fora (lote 6b)",
+  "list funct o() {\n"
+  "    int i = 99\n"
+  "    int funct h() { return i }\n"
+  "    list funct f() {\n"
+  "        list r = []\n"
+  "        for each i in [1, 2, 3] {\n"
+  "            r.append(i)\n"
+  "        }\n"
+  "        list q = [i * 10 for each i in [1, 2]]\n"
+  "        return [r, q]\n"
+  "    }\n"
+  "    list x = f()\n"
+  "    return [x, i, h()]\n"
+  "}\n"
+  "post(o())\n",
+  "[[[1, 2, 3], [10, 20]], 99, 99]", NULL, 0 },
+{ "laco com closure sobre um nome declarado com tipo confere o tipo, como sem closure (lote 6b)",
+  "list funct f() {\n"
+  "    int i = 99\n"
+  "    list fs = []\n"
+  "    for each i in [\"a\", \"b\"] {\n"
+  "        fs.append(funct() { return i })\n"
+  "    }\n"
+  "    return fs\n"
+  "}\n"
+  "post(len(f()))\n",
+  "", "AttributedValueError: variável i esperava int, recebeu str", 1 },
+{ "alvo do desempacotamento com o nome de uma global grava nela, com ou sem closure (lote 6b)",
+  "int i = 99\n"
+  "int funct h() { return i }\n"
+  "list funct f() {\n"
+  "    list fs = []\n"
+  "    for each i, j in [[1, 10], [2, 20]] {\n"
+  "        fs.append(funct() { return i })\n"
+  "    }\n"
+  "    list vs = []\n"
+  "    for each g in fs { vs.append(g()) }\n"
+  "    return [vs, i, h()]\n"
+  "}\n"
+  "post(f())\n",
+  "[[2, 2], 2, 2]", NULL, 0 },
 
 /* ── CLI ── */
 { "--check não executa o script",

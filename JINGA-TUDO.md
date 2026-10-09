@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.11`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.12`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -394,7 +394,8 @@ for each chave, valor in d.items() {
 
 ### 2.5 Variáveis, escopo e atribuição
 
-- **Escopo de bloco**: cada `if`, `elif`, `else`, `while`, `for each`, `count each`, `try`, `catch`, `finally`, `case` e o guard `main` abre um escopo. Um nome **novo** criado no bloco não sai dele. Atribuir a um nome que já existe fora atualiza esse nome (write-through). O corpo de um laço reinicia a cada volta.
+- **Escopo de bloco**: cada `if`, `elif`, `else`, `while`, `for each`, `count each`, `try`, `catch`, `finally`, `case` e o guard `main` abre um escopo. Um nome **novo** criado no bloco não sai dele. Atribuir a um nome que já existe fora atualiza esse nome (write-through), e declarar de novo com o mesmo tipo também; de dentro de funct vale igual, com ou sem funct aninhada citando o nome. O corpo de um laço reinicia a cada volta.
+- **Closure (lote 6b, 17.0.12)**: a funct ou lambda criada numa volta guarda a variável **daquela volta** (a do laço e as do corpo; `for each`, `while`, compreensão, topo do arquivo; gerador, tarefa e método de classe também). A funct escrita **fora** de um bloco não enxerga a variável dele, nem enquanto ele roda: `NameError` antes de rodar, `name 'w' is not defined: 'w' só existe dentro de um bloco, e esta funct foi escrita fora dele (declare 'w' antes do bloco)` — vale pro guard `main` (inclusive o `import` feito nele). O parâmetro e a variável do laço são da própria funct, mesmo com o nome de uma variável capturada lá fora (antes a escrita no parâmetro gravava na de fora). A variável do `for each` e da compreensão nunca muda a de mesmo nome de fora (nem a da funct que envolve, que antes recebia os valores quando o corpo não tinha closure) e, se a de fora tem tipo declarado, segue o tipo, com closure ou sem; o desempacotamento do cabeçalho é atribuição (o nome que existe recebe os valores, também a global). Conferido numa matriz de todas as combinações de laço × nome de antes × corpo com e sem closure × tipo do valor. No motor: a variável capturada de um bloco é **célula do bloco** (slot novo depois da marca do bloco, `bloco_abre`/`laco_abre`, na funct; slot do módulo no topo), e a busca por nome vai do último slot pro primeiro.
 - **Exceção**: as variáveis do `using` e do corpo dele sobrevivem depois do bloco.
 - `global nome` dentro de uma funct é obrigatório para **criar** uma global lá de dentro.
 - Não existe atribuição encadeada (`a = b = 5` dá `SyntaxError: expressao invalida`), walrus (`:=`), `++x` prefixo nem atribuição por fatia.
@@ -622,8 +623,8 @@ post(exige(1))
   - Os outros tipos: chegar ao fim sem return é erro (`f() devolve str e pode chegar ao fim sem return`).
   - `post("x")` dentro de `int funct` dá `saída de conta() esperava int, recebeu str`.
 - **Modificadores em ordem livre**: tipo, `async`, `public`/`private`, `static`, `nonnull`. Exemplo: `private static int funct f()`. Sem o `funct`: `faltou 'funct' antes de 'f': int async funct f(...)`.
-- `nonnull` recusa `Null` em qualquer parâmetro, inclusive vindo de um valor padrão: `RuntimeError: nonnull: parametro 'v' em 'exige' nao pode ser Null`. Num gerador, o `Null` passado acusa na chamada (o prólogo só roda no 1º pedido; `nonnull_na_chamada`, marca `eh_nonnull` do proto). `@NonNull` e `@static` em linha própria são a grafia antiga e continuam valendo.
-- O valor padrão lê só os parâmetros de antes: o próprio ou um de depois é `NameError` antes de rodar, no nome lido (`o padrão de 'a' lê 'b', um parâmetro que vem depois...`). Lambda no padrão ainda não captura parâmetro (dá `NameError` rodando): vai no lote 6b.
+- `nonnull` recusa `Null` em qualquer parâmetro, inclusive vindo de um valor padrão e o que uma funct de dentro captura (o `CHECK_NONNULL` vem antes das células): `RuntimeError: nonnull: parametro 'v' em 'exige' nao pode ser Null`. Num gerador, o `Null` passado acusa na chamada (o prólogo só roda no 1º pedido; `nonnull_na_chamada`, marca `eh_nonnull` do proto). `@NonNull` e `@static` em linha própria são a grafia antiga e continuam valendo.
+- O valor padrão lê só os parâmetros de antes: o próprio ou um de depois é `NameError` antes de rodar, no nome lido (`o padrão de 'a' lê 'b', um parâmetro que vem depois...`). A lambda no padrão captura os de antes (a célula deles nasce no prólogo, antes da lambda); capturar o próprio ou um de depois é `NameError` na lambda (`a lambda no padrão de 'a' captura 'b', que ainda não tem valor...`).
 - `yield` em `async funct` é `SyntaxError` (uma funct é tarefa ou gerador). Na funct que devolve valor, `post`, `sys.stdout.write`/`sys.stderr.write`, `os.writeFile`, `os.warn` e `f.write` como VALOR são `AttributedValueError` antes de rodar (decisão sua de 2026-10-08: conferir rodando custou +4% a +6% no laço). `sleep(0)` numa tarefa cede.
 - `static funct f(self)` fora de classe dá `funct static f(self, ...) nao recebe self: static nao tem instancia, tire o self`.
 - Funct é valor (`type()` dá `"funct"`). A recursão sem fim é `RecursionError`. Uma funct com `yield` é gerador, e chamá-la não executa nada até o primeiro pedido.
@@ -2150,8 +2151,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.11** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.11 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.12** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.12 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2772,7 +2773,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.11"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.12"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2852,7 +2853,7 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-08 (madrugada)
 
-- Versão da linguagem **17.0.11** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.11 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.12** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.12 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: `2a668b9` (17.0.11, Plano 6 lote 6a), igual a `origin/main` quando subiu. Entrou nele, por engano meu (`git add -A`), o seu rename `examples/action.pr` → `examples/funct.pr` que estava na árvore (100% igual). O único arquivo fora do controle de versão é `examples/s.pr`, que é seu e nunca entra em commit.
 - **Ordem decidida por você em 2026-10-08**: primeiro as correções (tudo o que está em andamento: os lotes 6 a 8 do Plano 6), depois o código de máquina com tabela de instruções (Plano 2), depois a volta às coberturas da linguagem; as features vêm depois das correções.
@@ -2951,6 +2952,10 @@ Ordem: **8 -> 5 -> 1 -> 3**.
    - A sua regra (primeiro você pensou num parâmetro `server` no `Jinker(...)`, e trocou por esta): **todo cabeçalho vai pelo `JinkerResponse`. Handler que não usa `JinkerResponse` recebe os cabeçalhos fixos de hoje; handler que usa, quem forma os cabeçalhos é o dev.**
    - O lote: `ps_jk_responde` deixa de pôr `Server`/`Date` quando a resposta veio de um `JinkerResponse`; o resto continua igual; valor de cabeçalho sem quebra de linha (senão vira injeção de cabeçalho); doc `docs/jinker/JinkerResponse/` (a página do `header` hoje diz que o jinker "já define sozinho" alguns); casos no `teste/jinker_roda.pr`.
    - Perguntado no plano: `Content-Length` e `Connection` são do protocolo (dizem onde o corpo acaba); a proposta é o servidor continuar calculando os dois sempre.
+
+7. **Item 11: benchmark da Jinga contra C, Node, Java, Python, Go, Rust e PHP** (anotado em 2026-10-08, "depois": "quero ver se a Jinga se sai bem em algo").
+   - Plano próprio, melhor depois do Plano 2 (o JIT nunca mais lento que o interpretador), que é o que muda os números.
+   - O lote: os mesmos programas escritos em cada linguagem (laço numérico, recursão, texto, lista, dict, objeto, I/O de arquivo, servidor HTTP), medidos na VPS com `perf stat` (instruções e tempo) e memória máxima; tabela com a posição da Jinga em cada um, sem escolher só os casos em que ela ganha.
 
 Itens da trilha já fechados: 2 (Pyrite) foi superado pelo rename pra Jinga; 4 (`public`/`private`), 6 (IntelliJ) e 7 (regressão do LSP) estão feitos. Detalhes em 6.6.
 

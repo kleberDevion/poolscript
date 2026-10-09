@@ -203,6 +203,24 @@ if em_codigo {
 post(novo)              # ok
 ```
 
+Vale também pra funct: a funct escrita **fora** do bloco não enxerga a
+variável dele, nem enquanto o bloco roda — é erro antes de rodar, no nome. O
+guard `if __name__ == "main"` é um bloco como os outros:
+
+```ps
+int funct mostra() {
+    return porta
+}
+if __name__ == "main" {
+    int porta = 8080
+    post(mostra())
+}
+# NameError: name 'porta' is not defined: 'porta' só existe dentro de um bloco, e esta funct foi escrita fora dele (declare 'porta' antes do bloco)
+```
+
+A funct escrita **dentro** do bloco enxerga a variável dele e a leva junto,
+mesmo depois que o bloco termina (4.6.3).
+
 ### 4.6.2. Reatribuir uma variável de fora (write-through)
 
 Se o nome **já existe** num escopo mais externo, a atribuição no bloco **altera
@@ -223,7 +241,20 @@ post(total)             # 6
 ```
 
 Ou seja: **atribuir a um nome existente lá fora → atualiza; atribuir a um nome
-novo → cria, preso ao bloco.**
+novo → cria, preso ao bloco.** Declarar de novo, com o mesmo tipo, um nome que
+já existe (`int x = 2` com o `int x` de fora) também é a mesma variável.
+
+De dentro de uma funct vale igual, com ou sem uma funct aninhada (ou lambda)
+citando o nome — a escrita chega na de fora, e a de dentro lê a mesma:
+
+```ps
+int pontos = 0
+list funct soma(list l) {
+    pontos += 100
+    return map(l, funct(int x) { return x + pontos })
+}
+post(soma([1, 2]), pontos)      # [101, 102] 100
+```
 
 ### 4.6.3. Laço reinicia o corpo a cada volta
 
@@ -247,6 +278,31 @@ post(i)              # NameError: name 'i' is not defined (i não vaza do for)
 
 `break` e `continue` respeitam isso: ao sair (ou reiniciar), o que nasceu no
 laço é descartado.
+
+A variável do `for each` (e a da compreensão) é **do laço**: uma de mesmo nome
+que exista fora — no bloco, na funct, num parâmetro ou na funct que envolve
+esta — continua com o valor dela depois do laço. Se a de fora foi declarada
+com tipo (`int i = 0`), a do laço segue o tipo dela: `for each i in ["a"]` é
+erro de tipo. O desempacotamento no cabeçalho (`for each a, b in pares`) é a
+atribuição `a, b = ...` a cada volta: nome que já existe recebe os valores.
+
+Por isso a funct (ou lambda) criada numa volta guarda a variável **daquela
+volta** — a do laço e as que o corpo declara —, e cada volta tem a sua, como
+o `let` do laço em JavaScript. Vale no `for each`, no `while`, na compreensão
+e no topo do arquivo; o gerador, a tarefa (`async funct`) e o método de uma
+classe declarados no laço também:
+
+```ps
+list fs = []
+for each i in [1, 2, 3] {
+    int dobro = i * 2
+    fs.append(funct() { return i + dobro })
+}
+post(fs[0](), fs[1](), fs[2]())      # 3 6 9
+```
+
+A variável declarada **fora** do laço é uma só: as functs criadas nas voltas
+veem o último valor dela.
 
 ### 4.6.4. O tipo é da variável — tipagem estática
 
@@ -294,6 +350,9 @@ Object s = "texto"           # AttributedValueError: variável s esperava Object
 - Variáveis no **topo do corpo de uma função** vivem enquanto a função roda
   (não são de bloco; sobrevivem entre os blocos internos dela).
 - Variáveis no **topo do arquivo** são do **escopo de módulo** (globais).
+- Uma funct enxerga o topo do arquivo — o que está fora de bloco, declarado
+  antes ou depois dela — e os blocos em que ela foi escrita. O nome que só
+  nasce num bloco que não a envolve é do bloco (4.6.1).
 - Dentro de uma função, atribuir a um nome que **não existe fora** cria uma
   variável **local** à função — ela some quando a função retorna:
 

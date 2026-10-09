@@ -344,6 +344,16 @@ r = roda([POOL, "--check"], entrada="int funct f() {\n    Object p = post\n    r
 confere("--check: post como valor numa funct tipada é erro no post",
         "\"tipo\":\"AttributedValueError\"" in r["saida"] and "post como valor em f()" in r["saida"]
         and "\"linha\":2,\"coluna\":16" in r["saida"])
+# Lote 6b: a funct escrita fora do bloco que lê a variável dele, e a lambda no
+# padrão que captura o parâmetro de depois, reprovam antes de rodar, no nome
+r = roda([POOL, "--check"], entrada="int funct f() {\n    int funct le() { return w }\n    if True {\n        int w = 5\n        return le()\n    }\n    return 0\n}\n")
+confere("--check: funct escrita fora do bloco lendo a variável dele é NameError no nome",
+        "\"tipo\":\"NameError\"" in r["saida"] and "só existe dentro de um bloco" in r["saida"]
+        and "\"linha\":2,\"coluna\":29" in r["saida"])
+r = roda([POOL, "--check"], entrada="int funct k(a = funct(int x) { return x + b }, int b = 1) {\n    return a(1)\n}\n")
+confere("--check: lambda no padrão capturando o parâmetro de depois é NameError na lambda",
+        "\"tipo\":\"NameError\"" in r["saida"] and "a lambda no padrão de 'a' captura 'b'" in r["saida"]
+        and "\"linha\":1,\"coluna\":17" in r["saida"])
 # Byte nulo no caminho do import: o compilador leria OUTRO arquivo (o do
 # pedaço de antes). Reprova antes de rodar, no texto do caminho.
 r = roda([POOL, "--check"], entrada="post(1)\nimport \"lib\\x00.pr\"\n")

@@ -280,6 +280,10 @@ struct Unidade {
     /* Função que ENVOLVE esta. NULL no módulo e nas functs de topo — é o que
      * limita a captura: nome não achado aqui nem no pai vira global. */
     Unidade *pai;
+    /* Na funct de topo (pai NULL): o módulo em que ela foi escrita. A
+     * variável de BLOCO do topo que ela cita mora numa célula do módulo
+     * (`celula_do_topo`), e é por aqui que a captura a acha. */
+    Unidade *modulo;
     /* Os quatro vetores por SLOT abaixo (celula, celula_virgem, certo,
      * tipo_decl) crescem junto com `locais` (ver `idx_local`). Eram fixos em
      * 256: do slot 256 em diante o local perdia o tipo declarado (`int v299 =
@@ -549,6 +553,16 @@ typedef struct {
     char   **ligados_mod;
     int32_t  nligados_mod, cap_ligados_mod;
     IdxNomes ix_ligados_mod;   /* nome -> posição em `ligados_mod` */
+    /* Só os que o ARQUIVO liga fora de bloco (e os de `global x`): são os
+     * globais que toda funct enxerga. O nome que só nasce dentro de um bloco
+     * é do bloco — a funct escrita fora dele não o enxerga (ver
+     * `tp_ligado_no_escopo`). */
+    char   **ligados_mod_raso;
+    int32_t  nligados_mod_raso, cap_ligados_mod_raso;
+    IdxNomes ix_ligados_mod_raso;
+    /* A última pergunta do `tp_ligado_no_escopo` achou o nome só num bloco
+     * que não envolve a funct: a frase do NameError diz isso. */
+    int      nome_oculto;
     int      nomes_incertos;
     /* o arquivo importa o jinker: `request` e `channel` são injetados quando
      * o app sobe */
@@ -927,10 +941,21 @@ static void vardbg_fecha(C *c, Unidade *u, int32_t marca)
     }
 }
 
+static int32_t slot_novo(C *c, Unidade *u, const char *nome);
+
+/* O slot do nome, criando se não há. A busca vai do último pro primeiro: a
+ * variável de um bloco de dentro tem slot próprio (`bloco_abre`) e sombreia a
+ * de mesmo nome de fora enquanto o bloco dura. */
 static int32_t idx_local(C *c, Unidade *u, const char *nome)
 {
-    for (int32_t i = 0; i < u->nlocais; i++)
+    for (int32_t i = u->nlocais - 1; i >= 0; i--)
         if (strcmp(u->locais[i], nome) == 0) return i;
+    return slot_novo(c, u, nome);
+}
+
+/* Um slot NOVO pro nome, mesmo que outro slot já o tenha. */
+static int32_t slot_novo(C *c, Unidade *u, const char *nome)
+{
     if (u->nlocais + 1 > u->cap_locais) {
         int32_t novo = u->cap_locais < 8 ? 8 : u->cap_locais * 2;
         char **nl = realloc(u->locais, sizeof(char *) * (size_t)novo);
@@ -955,6 +980,13 @@ static int32_t idx_local(C *c, Unidade *u, const char *nome)
     if (!copia) { cerro(c, "sem memoria", NULL); return -1; }
     memcpy(copia, nome, n + 1);
     u->locais[u->nlocais] = copia;
+    /* o slot reaproveitado (um bloco que fechou o devolveu) nasce limpo: a
+     * célula de bloco que morou nele não passa pro nome novo */
+    u->celula[u->nlocais] = 0;
+    u->celula_virgem[u->nlocais] = 0;
+    u->certo[u->nlocais] = 0;
+    u->tipo_decl[u->nlocais] = 0;
+    memset(&u->sim[u->nlocais], 0, sizeof(SimInfo));
     /* nlocals = MARCA D'ÁGUA (maior slot já usado + 1), não o corrente: com
      * escopo de bloco os slots são reaproveitados (nlocais encolhe no fim do
      * bloco), e o frame precisa caber o pico, não o valor do momento. */
@@ -1005,6 +1037,8 @@ static void escopo_trunca(C *c, Unidade *u, int32_t marca)
              * caísse nele herdava o tipo declarado do bloco que já fechou */
             u->certo[i] = 0;
             u->tipo_decl[i] = 0;
+            u->celula[i] = 0;
+            u->celula_virgem[i] = 0;
             memset(&u->sim[i], 0, sizeof(SimInfo));
         }
         if (u->nlocais > marca) u->nlocais = marca;
@@ -1526,14 +1560,29 @@ static int32_t add_upval(C *c, Unidade *u, const char *nome, int32_t em_local, i
     return u->nupvals++;
 }
 
+static int32_t slot_existente(Unidade *u, const char *nome);
+
 /* Índice do upvalue `nome` nesta unidade, criando a cadeia de captura pelos
  * pais se preciso. -1 = o nome não vem de nenhuma função de fora. */
 static int32_t resolve_upval(C *c, Unidade *u, const char *nome)
 {
-    if (!u->pai || u->pai->eh_modulo) return -1;
+    if (!u->pai || u->pai->eh_modulo) {
+        /* Funct de topo: só a variável de BLOCO do topo que está numa célula
+         * do módulo (`celula_do_topo`) é capturada; o resto é global. */
+        Unidade *m = u->pai ? u->pai : u->modulo;
+        if (!m) return -1;
+        for (int32_t i = 0; i < u->nupvals; i++)
+            if (strcmp(u->upvals[i].nome, nome) == 0) return i;
+        int32_t s = slot_existente(m, nome);
+        if (s >= 0 && m->celula[s]) return add_upval(c, u, nome, 1, s);
+        return -1;
+    }
     for (int32_t i = 0; i < u->nupvals; i++)
         if (strcmp(u->upvals[i].nome, nome) == 0) return i;
-    for (int32_t i = 0; i < u->pai->nlocais; i++)
+    /* do último slot pro primeiro: a célula do bloco aberto onde esta funct
+     * foi escrita sombreia a de mesmo nome do nível de cima. A de um bloco
+     * que não envolve esta funct não está viva aqui: não é capturada. */
+    for (int32_t i = u->pai->nlocais - 1; i >= 0; i--)
         /* `celula` e `locais` têm a mesma capacidade (crescem juntos) */
         if (u->pai->celula[i] && strcmp(u->pai->locais[i], nome) == 0)
             return add_upval(c, u, nome, 1, i);
@@ -1552,7 +1601,8 @@ static void junta_nomes(C *c, char ***v, int32_t *n, int32_t *cap, const char *n
     /* A lista do MÓDULO tem índice: ela junta um nome por declaração do
      * arquivo, e a varredura aqui era o N² de um arquivo com milhares de
      * funct. As de funct aninhada são curtas e seguem varridas. */
-    IdxNomes *ix = (v == &c->ligados_mod) ? &c->ix_ligados_mod : NULL;
+    IdxNomes *ix = (v == &c->ligados_mod) ? &c->ix_ligados_mod
+                 : (v == &c->ligados_mod_raso) ? &c->ix_ligados_mod_raso : NULL;
     if (ix) { if (ix_busca(ix, nome) >= 0) return; }
     else for (int32_t i = 0; i < *n; i++) if (!strcmp((*v)[i], nome)) return;
     if (*n + 1 > *cap) {
@@ -1567,6 +1617,107 @@ static void junta_nomes(C *c, char ***v, int32_t *n, int32_t *cap, const char *n
     memcpy(copia, nome, ln + 1);
     if (ix && ix_poe(ix, copia, *n) != 0) { free(copia); cerro(c, "sem memoria", NULL); return; }
     (*v)[(*n)++] = copia;
+}
+
+/* Os nomes que um `import` liga: o apelido, os nomes do `from`, o do arquivo,
+ * ou os que o módulo exporta no `*`. */
+static void junta_nomes_do_import(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
+{
+    if (n->texto3) {                 /* `*`: os nomes que o módulo exporta */
+        int achou = 0;
+        for (int32_t e = 0; e < c->nestrelas; e++) {
+            if (!mesmo_no(c->estrelas[e].no, n)) continue;
+            achou = 1;
+            if (!c->estrelas[e].resolvido || c->estrelas[e].incompleto) c->nomes_incertos = 1;
+            for (int32_t k = 0; k < c->estrelas[e].n; k++)
+                junta_nomes(c, v, cnt, cap, c->estrelas[e].nomes[k]);
+        }
+        if (!achou) c->nomes_incertos = 1;
+        return;
+    }
+    char enc[512];
+    if (!(n->i2 > 0 && n->lista.n == 0)) {
+        import_modulo_codificado(n, enc);
+        if (strcmp(enc, "jinker") == 0) c->usa_jinker = 1;
+    }
+    junta_nomes(c, v, cnt, cap, n->texto2);
+    for (int32_t i = 0; i < n->lista2.n; i++) {
+        const char *apelido = (i < n->lista2_alias.n && n->lista2_alias.itens[i])
+                            ? n->lista2_alias.itens[i]->texto : n->lista2.itens[i]->texto;
+        junta_nomes(c, v, cnt, cap, apelido);
+    }
+    if (n->lista2.n == 0 && !n->texto2 && n->texto && strcmp(n->texto, "from") != 0) {
+        char base[256];
+        import_nome_do_arquivo(n, base, sizeof(base));
+        junta_nomes(c, v, cnt, cap, base);
+    }
+}
+
+/* Os alvos de um desempacotamento (`a, (b, c) = ...`), em `*v`. */
+static void junta_alvos(C *c, PSNode *alvo, char ***v, int32_t *cnt, int32_t *cap)
+{
+    if (!alvo) return;
+    for (int32_t i = 0; i < alvo->lista.n; i++) {
+        PSNode *x = alvo->lista.itens[i];
+        if (!x) continue;
+        if (x->kind == N_UNPACK_TARGET) junta_alvos(c, x, v, cnt, cap);
+        else if (x->kind == N_NAME) junta_nomes(c, v, cnt, cap, x->texto);
+    }
+}
+
+/* Os nomes que a instrução `s` liga NO BLOCO em que está escrita — não nos
+ * blocos de dentro, que têm a entrada deles: a declaração, a funct, a classe,
+ * o model, o enum e o import vão em `decl`; a atribuição simples e o
+ * desempacotamento sem tipo vão em `atrib`, porque só criam variável quando o
+ * nome ainda não existe (senão gravam no de fora, doc 4.6.2). O `using` e o
+ * bloco que envolve a declaração decorada não abrem escopo: o que ligam é do
+ * bloco de fora. */
+static void liga_direto_stmt(C *c, PSNode *s, char ***decl, int32_t *nd, int32_t *cd,
+                             char ***atrib, int32_t *na, int32_t *ca)
+{
+    if (!s || fundo_demais(c, s, 1)) return;
+    switch (s->kind) {
+        case N_VAR_DECL: case N_FUNCT_DECL: case N_ENTITY_DECL:
+        case N_MODEL_DECL: case N_ENUM_DECL:
+            junta_nomes(c, decl, nd, cd, s->texto);
+            break;
+        case N_ASSIGNMENT:
+            junta_nomes(c, atrib, na, ca, s->texto);
+            break;
+        case N_UNPACK_ASSIGNMENT:
+            junta_alvos(c, s->a, atrib, na, ca);
+            break;
+        case N_IMPORT_STMT:
+            junta_nomes_do_import(c, s, decl, nd, cd);
+            break;
+        case N_USING_STMT:
+            junta_nomes(c, decl, nd, cd, s->texto ? s->texto : "_");
+            if (s->b)
+                for (int32_t i = 0; i < s->b->lista.n; i++)
+                    liga_direto_stmt(c, s->b->lista.itens[i], decl, nd, cd, atrib, na, ca);
+            break;
+        case N_DECORATOR_STMT:
+            if (s->b && s->b->kind == N_BLOCK)
+                for (int32_t i = 0; i < s->b->lista.n; i++)
+                    liga_direto_stmt(c, s->b->lista.itens[i], decl, nd, cd, atrib, na, ca);
+            break;
+        default:
+            break;
+    }
+}
+
+static void liga_direto(C *c, PSNode *b, char ***decl, int32_t *nd, int32_t *cd,
+                        char ***atrib, int32_t *na, int32_t *ca)
+{
+    if (!b) return;
+    for (int32_t i = 0; i < b->lista.n; i++)
+        liga_direto_stmt(c, b->lista.itens[i], decl, nd, cd, atrib, na, ca);
+}
+
+static void solta_nomes(char **v, int32_t n)
+{
+    for (int32_t i = 0; i < n; i++) free(v[i]);
+    free(v);
 }
 
 static void varre_nomes(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
@@ -1630,71 +1781,405 @@ static void acha_aninhadas(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *ca
     for (int32_t i = 0; i < n->lista2.n; i++) acha_aninhadas(c, n->lista2.itens[i], v, cnt, cap);
 }
 
-/* Nomes que ESTA função liga: parâmetro, atribuição, declaração tipada,
- * variável de for-each, funct aninhada e alvo de desempacotamento. Não entra
- * nas functs aninhadas — o que elas ligam é escopo delas. */
-static void binda_nomes(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
+static int tp_na_lista(char **v, int32_t n, const char *nome);
+static int32_t celula_ativa_do_topo(Unidade *u, const char *nome);
+static int nome_ja_existe(Unidade *u, const char *nome);
+
+/* O módulo em que a funct `u` foi escrita: o da funct de topo da cadeia. */
+static Unidade *modulo_de(Unidade *u)
 {
-    if (!n || fundo_demais(c, n, 1)) return;
-    while (n->kind == N_BINARY_OP) {      /* cadeia `a + b + …` em laço (ver liga_o_nome) */
-        binda_nomes(c, n->b, v, cnt, cap);
-        n = n->a;
-        if (!n) return;
-    }
-    switch (n->kind) {
-        case N_ASSIGNMENT: case N_VAR_DECL: case N_FOR_EACH_STMT:
-        case N_UNPACK_TARGET:
-            junta_nomes(c, v, cnt, cap, n->texto);
-            break;
-        case N_FUNCT_DECL:
-            junta_nomes(c, v, cnt, cap, n->texto);
-            return;                 /* não desce: o corpo dela é outro escopo */
-        case N_ENTITY_DECL: case N_MODEL_DECL: case N_ENUM_DECL:
-            /* a declaração liga o nome dela aqui; o que o corpo liga é dela
-             * (o método é outro escopo) */
-            junta_nomes(c, v, cnt, cap, n->texto);
-            return;
-        case N_LAMBDA_EXPR:
-            return;                 /* não liga nome nenhum aqui, e o corpo é dela */
-        default: break;
-    }
-    binda_nomes(c, n->a, v, cnt, cap);
-    binda_nomes(c, n->b, v, cnt, cap);
-    binda_nomes(c, n->c, v, cnt, cap);
-    binda_nomes(c, n->e, v, cnt, cap);
-    for (int32_t i = 0; i < n->lista.n; i++)  binda_nomes(c, n->lista.itens[i], v, cnt, cap);
-    for (int32_t i = 0; i < n->lista2.n; i++) binda_nomes(c, n->lista2.itens[i], v, cnt, cap);
+    Unidade *k = u;
+    while (k->pai && !k->pai->eh_modulo) k = k->pai;
+    return (k->pai && k->pai->eh_modulo) ? k->pai : k->modulo;
+}
+
+/* A escrita de `nome` aqui iria pra variável de FORA desta funct: a célula
+ * viva de uma funct que a envolve, ou a célula de bloco do topo — o que o
+ * `resolve_upval` acharia, sem criar o upvalue. */
+static int vem_de_fora(Unidade *u, const char *nome)
+{
+    for (int32_t i = 0; i < u->nupvals; i++)
+        if (!strcmp(u->upvals[i].nome, nome)) return 1;
+    for (Unidade *q = u->pai; q && !q->eh_modulo; q = q->pai)
+        for (int32_t i = q->nlocais - 1; i >= 0; i--)
+            if (q->celula[i] && !strcmp(q->locais[i], nome)) return 1;
+    Unidade *m = modulo_de(u);
+    return m && celula_ativa_do_topo(m, nome) >= 0;
+}
+
+/* A atribuição simples (`x = v`, `x += v`) a `nome` aqui grava FORA desta
+ * funct (doc 4.6.2)? Na variável viva de uma funct de fora (`vem_de_fora`) ou
+ * na global que se enxerga daqui — a do arquivo fora de bloco, ou a viva no
+ * ponto em que a funct foi escrita (o STORE_NAME grava nela). O nome que só
+ * existe num bloco que não envolve a funct não conta: daqui ele não existe. */
+static int atrib_vai_pra_fora(C *c, Unidade *u, const char *nome)
+{
+    if (vem_de_fora(u, nome)) return 1;
+    if (ix_busca(&c->ix_ligados_mod_raso, nome) >= 0) return 1;
+    Unidade *m = modulo_de(u);
+    return m && nome_ja_existe(m, nome);
 }
 
 /* Reserva o slot e emite a célula das variáveis capturadas: as que ESTA função
- * liga E que alguma funct aninhada cita. A interseção é o que evita
- * transformar uma GLOBAL lida lá dentro em célula vazia. Roda depois do
- * prólogo dos defaults (que testa o slot cru com JUMP_IF_SET) e antes do
- * corpo — os acessos precisam já saber que o slot virou célula. */
+ * liga no nível de cima do corpo (ou os parâmetros) E que alguma funct
+ * aninhada cita. A interseção é o que evita transformar uma GLOBAL lida lá
+ * dentro em célula vazia. A variável que nasce num bloco do corpo é do bloco:
+ * a célula dela nasce na entrada dele (`bloco_abre`), e a funct escrita fora
+ * do bloco não a enxerga. Roda depois do prólogo dos defaults (que testa o
+ * slot cru com JUMP_IF_SET) e antes do corpo — os acessos precisam já saber
+ * que o slot virou célula. */
 static void marca_celulas(C *c, Unidade *u, PSNode *params, PSNode *corpo)
 {
     char **usados = NULL; int32_t nu = 0, cu = 0;
     char **ligados = NULL; int32_t nl = 0, cl = 0;
+    char **atrib = NULL; int32_t na = 0, ca = 0;
     acha_aninhadas(c, corpo, &usados, &nu, &cu);
-    binda_nomes(c, corpo, &ligados, &nl, &cl);
-    if (params)
-        for (int32_t i = 0; i < params->lista.n; i++)
-            junta_nomes(c, &ligados, &nl, &cl, params->lista.itens[i]->texto);
+    liga_direto(c, corpo, &ligados, &nl, &cl, &atrib, &na, &ca);
+    int32_t npar = params ? params->lista.n : 0;
+    for (int32_t i = 0; i < npar; i++)
+        junta_nomes(c, &ligados, &nl, &cl, params->lista.itens[i]->texto);
     for (int32_t i = 0; i < nu && !CFALHOU(c); i++) {
-        int liga = 0;
-        for (int32_t k = 0; k < nl; k++) if (!strcmp(ligados[k], usados[i])) { liga = 1; break; }
+        int liga = tp_na_lista(ligados, nl, usados[i]);
+        /* Só atribuído aqui (`total += 1`) e ligado fora: a escrita vai pro
+         * de fora (STORE_UPVAL, STORE_NAME), e a funct aninhada lê o de fora
+         * também. A célula local desviava as duas pra uma variável nova: a
+         * global ficava 0 e a funct de dentro dava NameError. */
+        if (!liga && tp_na_lista(atrib, na, usados[i]) && !atrib_vai_pra_fora(c, u, usados[i])) liga = 1;
         if (!liga) continue;
         if (eh_global_declarada(u, usados[i])) continue;   /* `global x` manda */
         int32_t slot = idx_local(c, u, usados[i]);
         if (slot < 0 || u->celula[slot]) continue;
         u->celula[slot] = 1;
-        u->celula_virgem[slot] = 1;
+        /* o parâmetro já tem valor (o da chamada); o resto nasce no corpo */
+        u->celula_virgem[slot] = slot >= npar;
         emite(c, u, OP_MAKE_CELL, slot);
     }
-    for (int32_t i = 0; i < nu; i++) free(usados[i]);
-    free(usados);
-    for (int32_t i = 0; i < nl; i++) free(ligados[i]);
-    free(ligados);
+    /* O que esta funct DECLARA no nível de cima (`funct g`, `class`, `import`)
+     * é dela, mesmo com o nome de uma variável viva de uma funct de fora: o
+     * slot nasce aqui, e a gravação da declaração não sobe pro upvalue (a
+     * declaração tipada já reserva o slot dela). */
+    for (int32_t i = 0; i < nl && !CFALHOU(c); i++)
+        if (!eh_global_declarada(u, ligados[i]) && slot_existente(u, ligados[i]) < 0
+                && vem_de_fora(u, ligados[i]))
+            idx_local(c, u, ligados[i]);
+    solta_nomes(usados, nu);
+    solta_nomes(ligados, nl);
+    solta_nomes(atrib, na);
+}
+
+/* As functs e lambdas escritas em `n` (sem entrar nelas), em `*v`. */
+static void colhe_lambdas(C *c, PSNode *n, PSNode ***v, int32_t *k, int32_t *cap)
+{
+    if (!n || fundo_demais(c, n, 1)) return;
+    while (n->kind == N_BINARY_OP) {      /* cadeia `a + b + …` em laço (ver liga_o_nome) */
+        colhe_lambdas(c, n->b, v, k, cap);
+        n = n->a;
+        if (!n) return;
+    }
+    if (n->kind == N_FUNCT_DECL || n->kind == N_LAMBDA_EXPR) {
+        if (*k + 1 > *cap) {
+            int32_t novo = *cap < 4 ? 4 : *cap * 2;
+            PSNode **nv = realloc(*v, sizeof(PSNode *) * (size_t)novo);
+            if (!nv) { cerro(c, "sem memoria", NULL); return; }
+            *v = nv; *cap = novo;
+        }
+        (*v)[(*k)++] = n;
+        return;
+    }
+    colhe_lambdas(c, n->a, v, k, cap);
+    colhe_lambdas(c, n->b, v, k, cap);
+    colhe_lambdas(c, n->c, v, k, cap);
+    colhe_lambdas(c, n->e, v, k, cap);
+    for (int32_t i = 0; i < n->lista.n; i++)  colhe_lambdas(c, n->lista.itens[i], v, k, cap);
+    for (int32_t i = 0; i < n->lista2.n; i++) colhe_lambdas(c, n->lista2.itens[i], v, k, cap);
+}
+
+/* O slot do nome, se esta unidade já tem um (sem criar). */
+static int32_t slot_existente(Unidade *u, const char *nome)
+{
+    for (int32_t i = u->nlocais - 1; i >= 0; i--)
+        if (u->locais[i] && !strcmp(u->locais[i], nome)) return i;
+    return -1;
+}
+
+/* ── células de bloco ─────────────────────────────────────────────────────
+ * A variável que NASCE num bloco (declarada nele, ou a do laço) e que uma
+ * funct escrita no bloco cita mora numa CÉLULA DO BLOCO: nova a cada entrada
+ * — no laço, a cada volta (doc 4.6.3) — e só dele. A funct escrita no bloco
+ * a captura; a escrita fora dele não a enxerga (decisão 4 do Plano 6, escopo
+ * de verdade, doc 4.6.1). Nome que já existe quando o bloco abre não nasce
+ * nele: a escrita grava no de fora (doc 4.6.2).
+ *
+ * Na funct, a célula é um slot NOVO, depois da marca do bloco: a busca por
+ * nome vai do último slot pro primeiro, então ele sombreia o de mesmo nome do
+ * nível de cima, e o fim do bloco o apaga e devolve como a qualquer local do
+ * bloco (`escopo_fecha`, o `break`, o `continue`, o alvo do handler).
+ *
+ * No topo do arquivo, onde o resto é global, é um slot local do módulo
+ * enquanto o bloco dura. Global, o fim do bloco a apagava (CLEAR_GLOBAL), e a
+ * funct de dentro dava NameError quando rodava depois; e as voltas do laço
+ * dividiam uma só. Leitura e escrita no topo vão pela célula
+ * (`carrega_nome_sem_estatico`, `guarda_nome_modo_no`), e a funct de topo a
+ * captura pelo `modulo` (`resolve_upval`). A VM não muda: o frame do módulo
+ * reserva os locais do proto, como o de qualquer funct. */
+static int32_t celula_do_topo(C *c, Unidade *u, const char *nome)
+{
+    /* um slot que já saiu ou um novo — acima do de mesmo nome que está vivo
+     * (o de um bloco de fora), que este sombreia enquanto dura */
+    int32_t piso = slot_existente(u, nome);
+    int32_t s = -1;
+    for (int32_t i = piso + 1; i < u->nlocais && s < 0; i++)
+        if (u->locais[i] && !u->locais[i][0]) {      /* slot de célula que já saiu */
+            size_t n = strlen(nome);
+            char *copia = malloc(n + 1);
+            if (!copia) { cerro(c, "sem memoria", NULL); return -1; }
+            memcpy(copia, nome, n + 1);
+            free(u->locais[i]);
+            u->locais[i] = copia;
+            u->tipo_decl[i] = 0;
+            memset(&u->sim[i], 0, sizeof(SimInfo));
+            s = i;
+        }
+    if (s < 0) s = slot_novo(c, u, nome);
+    if (s < 0) return -1;
+    u->celula[s] = 1;
+    u->celula_virgem[s] = 1;
+    /* não "certo": a leitura vai pelo CELL_GET_NAME, que com a célula ainda
+     * vazia (lida antes da declaração no bloco) cai na global ou no
+     * NameError, como antes — o CELL_GET empurraria o vazio */
+    u->certo[s] = 0;
+    return s;
+}
+
+/* Funct: a célula de bloco num slot novo. */
+static int32_t celula_de_bloco(C *c, Unidade *u, const char *nome)
+{
+    int32_t s = slot_novo(c, u, nome);
+    if (s < 0) return -1;
+    u->celula[s] = 1;
+    u->celula_virgem[s] = 1;
+    return s;
+}
+
+/* O fim do bloco: a célula sai do slot (CLEAR_LOCAL), o nome volta a ser
+ * global (ou a não existir) e o slot fica livre. */
+static void solta_celula_do_topo(C *c, Unidade *u, const char *nome)
+{
+    int32_t s = slot_existente(u, nome);
+    if (s < 0 || !u->celula[s]) return;
+    emite(c, u, OP_CLEAR_LOCAL, s);
+    char *vazio = malloc(1);
+    if (!vazio) { cerro(c, "sem memoria", NULL); return; }
+    vazio[0] = '\0';
+    free(u->locais[s]);
+    u->locais[s] = vazio;
+    u->celula[s] = 0;
+    u->certo[s] = 0;
+}
+
+/* O nome é célula de bloco do topo agora? */
+static int32_t celula_ativa_do_topo(Unidade *u, const char *nome)
+{
+    if (!u->eh_modulo) return -1;
+    int32_t s = slot_existente(u, nome);
+    return (s >= 0 && u->celula[s]) ? s : -1;
+}
+
+static void celula_nova_se_capturado(C *c, Unidade *u, const char *nome);
+static int nome_ja_existe(Unidade *u, const char *nome);
+
+/* `nome` nasce neste bloco? Só se ainda não existe aqui — o que já existe é a
+ * mesma variável (a escrita grava nela, doc 4.6.2) — e, na atribuição simples
+ * (`atrib`), se ela não grava fora desta funct (`atrib_vai_pra_fora`). A
+ * declaração (`int x`, `funct`, `class`, `import`) cria a variável desta
+ * funct mesmo com o nome de uma de fora, como no nível de cima dela.
+ * Nascendo aqui, e citado por uma funct escrita no bloco (`cit`), vira célula
+ * de bloco. Sem citação, ganha slot próprio só quando já há um de mesmo nome
+ * ainda vazio — a célula de um nome do nível de cima que nasce DEPOIS deste
+ * bloco —, pra a variável do bloco não cair nela. O que vira célula entra em
+ * `ativ` (a célula nova da entrada, e o fechamento no topo). */
+static void ativa_bloco(C *c, Unidade *u, const char *nome, int atrib, char **cit, int32_t nc,
+                        char ***ativ, int32_t *na, int32_t *ca)
+{
+    if (!nome || !*nome || tp_na_lista(*ativ, *na, nome)) return;
+    if (nome_ja_existe(u, nome) || eh_global_declarada(u, nome)) return;
+    if (!u->eh_modulo && atrib && atrib_vai_pra_fora(c, u, nome)) return;
+    int citado = tp_na_lista(cit, nc, nome);
+    if (u->eh_modulo) {
+        if (!citado && celula_ativa_do_topo(u, nome) < 0) return;
+        if (celula_do_topo(c, u, nome) < 0) return;
+    } else {
+        if (!citado) {
+            /* a declaração com o nome de uma variável viva de fora também:
+             * sem o slot, a gravação dela iria pro upvalue */
+            if (slot_existente(u, nome) >= 0 || (!atrib && vem_de_fora(u, nome))) slot_novo(c, u, nome);
+            return;
+        }
+        if (celula_de_bloco(c, u, nome) < 0) return;
+    }
+    junta_nomes(c, ativ, na, ca, nome);
+}
+
+/* Entrada de um bloco (`bloco_stmts`): as variáveis que nascem DIRETAMENTE
+ * nele (`liga_direto`; as de um bloco de dentro têm a entrada dele). A célula
+ * nova sai aqui, a cada entrada — no corpo do laço, a cada volta. */
+static void bloco_abre(C *c, Unidade *u, PSNode *b, char ***ativ, int32_t *na, int32_t *ca)
+{
+    if (!b) return;
+    char **cit = NULL; int32_t nc = 0, cc = 0;
+    char **decl = NULL; int32_t nd = 0, cd = 0;
+    char **atrib = NULL; int32_t nt = 0, ct = 0;
+    acha_aninhadas(c, b, &cit, &nc, &cc);
+    liga_direto(c, b, &decl, &nd, &cd, &atrib, &nt, &ct);
+    for (int32_t i = 0; i < nd; i++) ativa_bloco(c, u, decl[i], 0, cit, nc, ativ, na, ca);
+    for (int32_t i = 0; i < nt; i++) ativa_bloco(c, u, atrib[i], 1, cit, nc, ativ, na, ca);
+    for (int32_t i = 0; i < *na; i++) celula_nova_se_capturado(c, u, (*ativ)[i]);
+    solta_nomes(cit, nc);
+    solta_nomes(decl, nd);
+    solta_nomes(atrib, nt);
+}
+
+/* `nome` aparece numa funct escrita em `corpo`? */
+static int citado_em(C *c, PSNode *corpo, const char *nome)
+{
+    if (!nome || !*nome) return 0;
+    char **cit = NULL; int32_t nc = 0, cc = 0;
+    acha_aninhadas(c, corpo, &cit, &nc, &cc);
+    int r = tp_na_lista(cit, nc, nome);
+    solta_nomes(cit, nc);
+    return r;
+}
+
+static SimInfo *tp_sim_upval(Unidade *u, const char *nome);
+static int tipo_de_upval(Unidade *u, const char *nome);
+
+/* O slot `s`, que a variável do laço ganhou só dela, herda o tipo DECLARADO
+ * do nome de fora (`int i` antes do laço, o parâmetro tipado, a variável
+ * tipada da funct que envolve): o laço confere o tipo como o laço que
+ * sombreia (`tp_sombra_poe`) — `for each i in ["a"]` com `int i` lá fora é
+ * erro com ou sem closure no corpo. `fora` = o slot de fora nesta funct, ou
+ * -1 (o da funct que envolve, se houver). Sem tipo escrito, nada passa. */
+static void laco_herda_tipo(Unidade *u, int32_t s, int32_t fora)
+{
+    const SimInfo *t;
+    int cod;
+    if (fora >= 0) { t = &u->sim[fora]; cod = u->tipo_decl[fora]; }
+    else { t = tp_sim_upval(u, u->locais[s]); cod = tipo_de_upval(u, u->locais[s]); }
+    if (!t || t->estado != 2) return;
+    u->sim[s] = *t;
+    u->tipo_decl[s] = (unsigned char)cod;
+}
+
+/* A variável do laço (`for each` e compreensão) é do laço: na funct, que uma
+ * funct do corpo (`corpo`, `corpo2`) a cite ou que o nome venha de uma funct
+ * de fora (`propria`), ela ganha slot próprio — célula, se citada, nova a
+ * cada volta (`celulas_novas_da_volta`) — e a escrita não vai pra variável de
+ * fora. No topo, a citada vira célula do laço e sombreia a global. Os alvos
+ * do desempacotamento seguem a regra da atribuição (`ativa_bloco`): o que já
+ * existe, aqui ou fora, é o de fora. */
+static void laco_abre(C *c, Unidade *u, const char *var, int propria, PSNode *alvo,
+                      PSNode *corpo, PSNode *corpo2, char ***ativ, int32_t *na, int32_t *ca)
+{
+    char **cit = NULL; int32_t nc = 0, cc = 0;
+    acha_aninhadas(c, corpo, &cit, &nc, &cc);
+    acha_aninhadas(c, corpo2, &cit, &nc, &cc);
+    if (var && *var && !tp_na_lista(*ativ, *na, var)) {
+        int32_t fora = u->eh_modulo ? -1 : slot_existente(u, var);
+        int32_t s = -1;
+        if (tp_na_lista(cit, nc, var)) {
+            s = u->eh_modulo ? celula_do_topo(c, u, var) : celula_de_bloco(c, u, var);
+            if (s >= 0) junta_nomes(c, ativ, na, ca, var);
+        } else if (propria && !u->eh_modulo) s = slot_novo(c, u, var);
+        if (s >= 0 && !u->eh_modulo) laco_herda_tipo(u, s, fora);
+    }
+    if (alvo) {
+        char **alv = NULL; int32_t nv = 0, cv = 0;
+        junta_alvos(c, alvo, &alv, &nv, &cv);
+        for (int32_t i = 0; i < nv; i++) ativa_bloco(c, u, alv[i], 1, cit, nc, ativ, na, ca);
+        solta_nomes(alv, nv);
+    }
+    solta_nomes(cit, nc);
+}
+
+/* O fim do bloco ou do laço: no topo, solta as células que a abertura
+ * ativou; na funct, o slot delas já saiu com a marca do bloco
+ * (`escopo_trunca`), e só a lista é solta. */
+static void celulas_fecha(C *c, Unidade *u, char **ativ, int32_t na)
+{
+    for (int32_t i = 0; i < na; i++) {
+        if (u->eh_modulo) solta_celula_do_topo(c, u, ativ[i]);
+        free(ativ[i]);
+    }
+    free(ativ);
+}
+
+/* Célula nova no slot do nome capturado: a de antes fica com quem a
+ * capturou (CLEAR_LOCAL tira a célula velha do slot; MAKE_CELL embrulha o
+ * slot vazio). */
+static void celula_nova_se_capturado(C *c, Unidade *u, const char *nome)
+{
+    if (!nome || !*nome) return;
+    int32_t s = slot_existente(u, nome);
+    if (s < 0 || !u->celula[s]) return;
+    emite(c, u, OP_CLEAR_LOCAL, s);
+    emite(c, u, OP_MAKE_CELL, s);
+}
+
+/* Closure criada numa volta do laço guarda a variável DAQUELA volta
+ * (decisão 4 do Plano 6; doc 4.6.3: o corpo do laço é um escopo por volta).
+ * A variável capturada mora numa célula, e a célula era uma só pro laço
+ * inteiro: as closures de três voltas viam o último valor (3 3 3). Na
+ * ENTRADA de cada volta, as células do laço (`ativ`, de `laco_abre`: a
+ * variável do laço e os alvos que nascem nele) são trocadas por novas, como o
+ * `let` do laço em JavaScript; as que o corpo declara ganham a delas na
+ * entrada do corpo (`bloco_abre`), que é a entrada de cada volta. Variável
+ * declarada FORA do laço segue uma só (as closures veem o último valor dela,
+ * que é o certo). */
+static void celulas_novas_da_volta(C *c, Unidade *u, char **ativ, int32_t na)
+{
+    for (int32_t i = 0; i < na; i++) celula_nova_se_capturado(c, u, ativ[i]);
+}
+
+static void carrega_nome(C *c, Unidade *u, const char *nome);
+static void guarda_nome_modo(C *c, Unidade *u, const char *nome, int certa);
+
+/* A sombra do laço (`for each i` e a compreensão, com `i` que já existe):
+ * guarda o de fora num nome escondido e devolve na saída. Variável
+ * capturada (célula) guarda a CÉLULA, não o valor: as voltas ganham células
+ * novas (`celulas_novas_da_volta`), e a de fora volta inteira na saída —
+ * quem a capturou continua vendo as escritas de depois. Devolvendo só o
+ * valor, ele caía na célula da última volta, a da última closure. */
+static int sombra_e_celula(Unidade *u, const char *var)
+{
+    int32_t s = u->eh_modulo ? -1 : slot_existente(u, var);
+    return s >= 0 && u->celula[s];
+}
+
+static void sombra_guarda(C *c, Unidade *u, const char *var, const char *salvo)
+{
+    if (sombra_e_celula(u, var)) {
+        emite(c, u, OP_LOAD_LOCAL, slot_existente(u, var));
+        int32_t h = idx_local(c, u, salvo);
+        if (h >= 0) emite(c, u, OP_STORE_LOCAL, h);
+        return;
+    }
+    carrega_nome(c, u, var);
+    guarda_nome_modo(c, u, salvo, 1);
+}
+
+/* O par do `sombra_guarda`: deixa o de fora na pilha (célula crua ou valor),
+ * e `sombra_devolve_fim` grava. Entre os dois, o tipo de fora volta
+ * (`tp_sombra_devolve`). */
+static void sombra_devolve_carrega(C *c, Unidade *u, const char *var, const char *salvo)
+{
+    if (sombra_e_celula(u, var)) emite(c, u, OP_LOAD_LOCAL, slot_existente(u, salvo));
+    else carrega_nome(c, u, salvo);
+}
+
+static void sombra_devolve_fim(C *c, Unidade *u, const char *var)
+{
+    if (sombra_e_celula(u, var)) emite(c, u, OP_STORE_LOCAL, slot_existente(u, var));
+    else guarda_nome_modo(c, u, var, 1);
 }
 
 /* MAKE_CLOSURE só quando a funct realmente captura algo: sem upvalue ela
@@ -1930,11 +2415,19 @@ static void carrega_nome(C *c, Unidade *u, const char *nome)
  * própria classe (`carrega_estatico`), sem voltar à pergunta do static. */
 static void carrega_nome_sem_estatico(C *c, Unidade *u, const char *nome)
 {
+    {
+        int32_t s = celula_ativa_do_topo(u, nome);    /* variável de bloco capturada */
+        if (s >= 0) {
+            emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, s, 0, NULL, 0));
+            emite(c, u, OP_CELL_GET_NAME, idx_global(c, nome));
+            return;
+        }
+    }
     if (u->eh_modulo || eh_global_declarada(u, nome)) {
         emite(c, u, OP_LOAD_GLOBAL, idx_global(c, nome));
         return;
     }
-    for (int32_t i = 0; i < u->nlocais; i++) {
+    for (int32_t i = u->nlocais - 1; i >= 0; i--) {
         if (strcmp(u->locais[i], nome) != 0) continue;
         if (u->celula[i] && u->certo[i]) emite(c, u, OP_CELL_GET, i);
         else if (u->celula[i]) {
@@ -1970,7 +2463,7 @@ static int nome_ja_existe(Unidade *u, const char *nome)
 {
     if (!nome || !*nome) return 0;
     if (u->eh_modulo) return ix_busca(&u->ix_mod, nome) >= 0;
-    for (int32_t i = 0; i < u->nlocais; i++)
+    for (int32_t i = u->nlocais - 1; i >= 0; i--)
         if (strcmp(u->locais[i], nome) == 0)
             return !u->celula_virgem[i];
     return 0;
@@ -2124,7 +2617,7 @@ static void coleta_tipos_topo(C *c, PSNode *n)
 static int tipo_de_upval(Unidade *u, const char *nome)
 {
     for (Unidade *q = u->pai; q && !q->eh_modulo; q = q->pai)
-        for (int32_t i = 0; i < q->nlocais; i++)
+        for (int32_t i = q->nlocais - 1; i >= 0; i--)
             if (strcmp(q->locais[i], nome) == 0) return q->tipo_decl[i];
     return 0;
 }
@@ -2572,7 +3065,7 @@ static SimInfo *tp_sim_de(C *c, Unidade *u, const char *nome)
         return tp_sim_topo(c, nome);
     }
     if (eh_global_declarada(u, nome)) return tp_sim_topo(c, nome);
-    for (int32_t i = 0; i < u->nlocais; i++) {
+    for (int32_t i = u->nlocais - 1; i >= 0; i--) {
         if (strcmp(u->locais[i], nome) != 0) continue;
         /* slot reservado por uma LEITURA de global (o `carrega_nome` reserva
          * e resolve rodando), ou célula ainda vazia (o CELL_GET_NAME lê o
@@ -2584,7 +3077,7 @@ static SimInfo *tp_sim_de(C *c, Unidade *u, const char *nome)
         return &u->sim[i];
     }
     for (Unidade *q = u->pai; q && !q->eh_modulo; q = q->pai)
-        for (int32_t i = 0; i < q->nlocais; i++)
+        for (int32_t i = q->nlocais - 1; i >= 0; i--)
             if (strcmp(q->locais[i], nome) == 0) return &q->sim[i];
     return tp_sim_topo(c, nome);
 }
@@ -2675,37 +3168,9 @@ static void tp_junta_ligados(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *
             return;                          /* o corpo é outro escopo */
         case N_LAMBDA_EXPR:
             return;
-        case N_IMPORT_STMT: {
-            if (n->texto3) {                 /* `*`: os nomes que o módulo exporta */
-                int achou = 0;
-                for (int32_t e = 0; e < c->nestrelas; e++) {
-                    if (!mesmo_no(c->estrelas[e].no, n)) continue;
-                    achou = 1;
-                    if (!c->estrelas[e].resolvido || c->estrelas[e].incompleto) c->nomes_incertos = 1;
-                    for (int32_t k = 0; k < c->estrelas[e].n; k++)
-                        junta_nomes(c, v, cnt, cap, c->estrelas[e].nomes[k]);
-                }
-                if (!achou) c->nomes_incertos = 1;
-                return;
-            }
-            char enc[512];
-            if (!(n->i2 > 0 && n->lista.n == 0)) {
-                import_modulo_codificado(n, enc);
-                if (strcmp(enc, "jinker") == 0) c->usa_jinker = 1;
-            }
-            junta_nomes(c, v, cnt, cap, n->texto2);
-            for (int32_t i = 0; i < n->lista2.n; i++) {
-                const char *apelido = (i < n->lista2_alias.n && n->lista2_alias.itens[i])
-                                    ? n->lista2_alias.itens[i]->texto : n->lista2.itens[i]->texto;
-                junta_nomes(c, v, cnt, cap, apelido);
-            }
-            if (n->lista2.n == 0 && !n->texto2 && n->texto && strcmp(n->texto, "from") != 0) {
-                char base[256];
-                import_nome_do_arquivo(n, base, sizeof(base));
-                junta_nomes(c, v, cnt, cap, base);
-            }
+        case N_IMPORT_STMT:
+            junta_nomes_do_import(c, n, v, cnt, cap);
             return;
-        }
         default:
             break;
     }
@@ -2727,8 +3192,11 @@ static void tp_junta_globais(C *c, PSNode *n)
         if (!n) return;
     }
     if (n->kind == N_GLOBAL_STMT)
-        for (int32_t i = 0; i < n->lista.n; i++)
+        for (int32_t i = 0; i < n->lista.n; i++) {
             junta_nomes(c, &c->ligados_mod, &c->nligados_mod, &c->cap_ligados_mod, n->lista.itens[i]->texto);
+            junta_nomes(c, &c->ligados_mod_raso, &c->nligados_mod_raso, &c->cap_ligados_mod_raso,
+                        n->lista.itens[i]->texto);
+        }
     tp_junta_globais(c, n->a);
     tp_junta_globais(c, n->b);
     tp_junta_globais(c, n->c);
@@ -2744,15 +3212,39 @@ static int tp_na_lista(char **v, int32_t n, const char *nome)
     return 0;
 }
 
-/* O programa liga o nome no escopo? A funct e as que a envolvem, o arquivo
- * (atribuição, funct, import) e o campo `static` da classe em compilação. Não
- * conta o que a VM liga sozinha. */
+/* O programa liga o nome no escopo que se ENXERGA daqui? A própria funct (o
+ * corpo inteiro), as que a envolvem, o arquivo (atribuição, funct, import) e
+ * o campo `static` da classe em compilação. Da funct de fora (e do arquivo)
+ * vale só o que está vivo no ponto em que esta foi escrita: o nível de cima
+ * dela (parâmetros e células nascem antes do corpo) e os blocos abertos em
+ * volta — o nome ligado lá só num bloco que não envolve esta funct é do
+ * bloco, e daqui não se enxerga (decisão 4 do Plano 6; doc 4.6.1). A funct
+ * nem o captura (`resolve_upval` só acha o vivo), e rodando ele seria
+ * NameError ou, no arquivo, a global do bloco enquanto ele dura. Não conta o
+ * que a VM liga sozinha. `c->nome_oculto` diz se o nome só existe assim. */
 static int tp_ligado_no_escopo(C *c, Unidade *u, const char *nome)
 {
-    for (Unidade *q = u; q; q = q->pai)
-        if (tp_na_lista(q->ligados, q->nligados, nome)) return 1;
-    if (ix_busca(&c->ix_ligados_mod, nome) >= 0) return 1;
-    return c->entity_no && campo_estatico_da_classe(c, nome);
+    c->nome_oculto = 0;
+    if (!u->eh_modulo) {
+        if (tp_na_lista(u->ligados, u->nligados, nome)) return 1;
+        Unidade *k = u;
+        for (Unidade *q = u->pai; q && !q->eh_modulo; k = q, q = q->pai) {
+            if (!tp_na_lista(q->ligados, q->nligados, nome)) continue;
+            if (slot_existente(q, nome) >= 0) { c->nome_oculto = 0; return 1; }
+            c->nome_oculto = 1;
+        }
+        Unidade *m = (k->pai && k->pai->eh_modulo) ? k->pai : k->modulo;
+        if (ix_busca(&c->ix_ligados_mod, nome) >= 0) {
+            if (!m || ix_busca(&c->ix_ligados_mod_raso, nome) >= 0
+                    || celula_ativa_do_topo(m, nome) >= 0 || nome_ja_existe(m, nome)) {
+                c->nome_oculto = 0;
+                return 1;
+            }
+            c->nome_oculto = 1;
+        }
+    } else if (ix_busca(&c->ix_ligados_mod, nome) >= 0) return 1;
+    if (c->entity_no && campo_estatico_da_classe(c, nome)) { c->nome_oculto = 0; return 1; }
+    return 0;
 }
 
 /* O nome lido existe em algum lugar? O escopo (acima), o que a VM liga
@@ -2779,6 +3271,14 @@ static int tp_nome_inexistente(C *c, Unidade *u, const char *nome)
 static void tp_acusa_sem_import(C *c, PSNode *onde, const char *nome)
 {
     terro(c, onde, "NameError", "name '%s' is not defined. Did you forget to import '%s'?", nome, nome);
+}
+
+/* O nome existe, mas só dentro de um bloco que não envolve a funct que o lê
+ * (`c->nome_oculto`): a causa é essa, e a frase diz como enxergar. */
+static void tp_acusa_oculto(C *c, PSNode *onde, const char *nome)
+{
+    terro(c, onde, "NameError", "name '%s' is not defined: '%s' só existe dentro de um bloco, "
+          "e esta funct foi escrita fora dele (declare '%s' antes do bloco)", nome, nome, nome);
 }
 
 static void tp_junta_membros_classe(C *c, const char *classe, const char **v, int *cnt, int prof);
@@ -2812,6 +3312,7 @@ static int tp_membro_da_classe(C *c, const char *classe, const char *nome)
 
 static void tp_acusa_nome(C *c, Unidade *u, const char *nome, PSNode *onde, int palavras)
 {
+    if (!tp_ligado_no_escopo(c, u, nome) && c->nome_oculto) { tp_acusa_oculto(c, onde, nome); return; }
     if (ps_nativo_eh_modulo(nome)) { tp_acusa_sem_import(c, onde, nome); return; }
     /* Membro de instância lido pelo nome solto, dentro do método: só se
      * alcança por `self`, e a dica é essa. Saía o nome parecido de outro
@@ -4184,7 +4685,8 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
     if (n->a->kind == N_NAME && n->a->texto && !c->nomes_incertos
             && ps_tipo_info(n->a->texto) && ps_nativo_eh_modulo(n->a->texto)
             && !tp_ligado_no_escopo(c, u, n->a->texto)) {
-        tp_acusa_sem_import(c, n->a, n->a->texto);
+        if (c->nome_oculto) tp_acusa_oculto(c, n->a, n->a->texto);
+        else tp_acusa_sem_import(c, n->a, n->a->texto);
         return;
     }
     char buf[64];
@@ -4765,7 +5267,7 @@ static int tp_cod1(SimInfo *s, int cod_antigo)
 static SimInfo *tp_sim_upval(Unidade *u, const char *nome)
 {
     for (Unidade *q = u->pai; q && !q->eh_modulo; q = q->pai)
-        for (int32_t i = 0; i < q->nlocais; i++)
+        for (int32_t i = q->nlocais - 1; i >= 0; i--)
             if (strcmp(q->locais[i], nome) == 0) return &q->sim[i];
     return NULL;
 }
@@ -4778,7 +5280,11 @@ static void guarda_nome_modo_no(C *c, Unidade *u, const char *nome, int certa)
         SimInfo *s = km >= 0 ? &u->mod_sim[km] : NULL;
         int v = tp_escreve(c, s, nome);
         tp_emite_escrita(c, u, nome, s, v, tp_cod1(s, tipo_topo_de(c, nome)));
-        emite(c, u, OP_STORE_GLOBAL, idx_global(c, nome));
+        /* variável de bloco capturada: grava na célula (a conferência de tipo
+         * acima é a mesma da global) */
+        int32_t sc = celula_ativa_do_topo(u, nome);
+        if (sc >= 0) emite(c, u, OP_CELL_SET, sc);
+        else emite(c, u, OP_STORE_GLOBAL, idx_global(c, nome));
         return;
     }
     if (eh_global_declarada(u, nome)) {
@@ -4791,8 +5297,11 @@ static void guarda_nome_modo_no(C *c, Unidade *u, const char *nome, int certa)
     }
     /* Escrita num nome que vem de fora vai pra célula capturada — é o mesmo
      * critério que a linguagem já usava pra global ("se já existe lá fora,
-     * escreve lá"), agora valendo também pro escopo da função que envolve. */
-    {
+     * escreve lá"), agora valendo também pro escopo da função que envolve.
+     * Mas o nome que ESTA funct já tem (o parâmetro, a variável dela, a
+     * célula do bloco ou do laço) é o dela, como na leitura: a escrita no
+     * parâmetro de mesmo nome de uma variável capturada lá fora ia pra ela. */
+    if (slot_existente(u, nome) < 0) {
         int32_t up = resolve_upval(c, u, nome);
         if (up >= 0) {
             SimInfo *s = tp_sim_upval(u, nome);
@@ -5518,23 +6027,35 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             emite(c, u, OP_BUILD_LIST, 0);
             guarda_nome_modo(c, u, acc, 1);
 
-            /* o nome da var da compreensão SOMBREIA, como no `for each` */
+            /* o nome da var da compreensão SOMBREIA, como no `for each`; na
+             * funct, a capturada pelo item ou pela condição, ou com o nome de
+             * uma variável da funct de fora, tem slot próprio (`laco_abre`), e
+             * o de fora fica onde está, sem ser guardado */
             char salvo[128];
-            int sombreia = nome_ja_existe(u, var);
+            int propria = !u->eh_modulo
+                       && (citado_em(c, n->b, var) || citado_em(c, n->c, var) || vem_de_fora(u, var));
+            int sombreia = !propria && nome_ja_existe(u, var);
             SimInfo sim_fora;
             int sim_posto = 0;
             if (sombreia) {
                 snprintf(salvo, sizeof(salvo), "  lcv$%s", var);
-                carrega_nome(c, u, var);
-                guarda_nome_modo(c, u, salvo, 1);
+                sombra_guarda(c, u, var, salvo);
                 sim_posto = tp_sombra_poe(c, u, var, &sim_fora);
             }
             int32_t M = escopo_marca(u);
 
             expr(c, u, n->a);
+            /* a var capturada pelo item ou pela condição vira célula do laço */
+            char **ativ_lc = NULL; int32_t na_lc = 0, ca_lc = 0;
+            laco_abre(c, u, var, propria, NULL, n->b, n->c, &ativ_lc, &na_lc, &ca_lc);
+            /* sombra de variável capturada fora: célula nova por volta (ver o `for each`) */
+            if (sombreia && sombra_e_celula(u, var)) junta_nomes(c, &ativ_lc, &na_lc, &ca_lc, var);
             emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 0, 0, NULL, 0));
             int32_t topo = UP(c, u)->ncode;
             int32_t fim = emite(c, u, OP_ITER_NEXT, 0);
+            /* a compreensão também é laço: a closure de cada item guarda a
+             * variável daquela volta */
+            celulas_novas_da_volta(c, u, ativ_lc, na_lc);
             memset(&c->grava, 0, sizeof(c->grava));
             c->grava.tem_valor = 1;
             c->grava.tipo = tp_elemento(tp_de(c, u, n->a));
@@ -5558,10 +6079,11 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             UP(c, u)->code[fim + 1] = UP(c, u)->ncode;
             escopo_emite_clears(c, u, M);
             escopo_trunca(c, u,M);
+            celulas_fecha(c, u, ativ_lc, na_lc);
             if (sombreia) {
-                carrega_nome(c, u, salvo);
+                sombra_devolve_carrega(c, u, var, salvo);
                 tp_sombra_devolve(c, u, var, sim_posto, &sim_fora);
-                guarda_nome_modo(c, u, var, 1);
+                sombra_devolve_fim(c, u, var);
             }
             carrega_nome(c, u, acc);
             return;
@@ -5924,11 +6446,29 @@ static void padrao_testa(C *c, Unidade *u, PSNode *pat)
 }
 
 /* ── statements ─────────────────────────────────────────────────────────── */
-static void bloco_stmts(C *c, Unidade *u, PSNode *b)
+/* As instruções de `b` sem abrir escopo de células: o corpo da funct (as
+ * células do nível de cima dela vêm do `marca_celulas`), o do `using` (que
+ * não abre escopo: o que liga é do bloco de fora) e o bloco que o parser monta
+ * em volta da declaração decorada (`@x funct f`), que não é bloco do usuário:
+ * o nome declarado nele vale fora, e o decorador o rebinda logo depois. */
+static void stmts_de(C *c, Unidade *u, PSNode *b)
 {
     if (!b) return;
     for (int32_t i = 0; i < b->lista.n && !CFALHOU(c); i++)
         stmt(c, u, b->lista.itens[i]);
+}
+
+/* Um bloco do usuário: a variável que nasce nele e que uma funct escrita
+ * nele cita vira célula do bloco (`bloco_abre`). Na funct, o slot dela some
+ * com a marca que quem chamou tomou antes do bloco; no topo, o fechamento a
+ * solta aqui. */
+static void bloco_stmts(C *c, Unidade *u, PSNode *b)
+{
+    if (!b) return;
+    char **ativ = NULL; int32_t na = 0, ca = 0;
+    bloco_abre(c, u, b, &ativ, &na, &ca);
+    stmts_de(c, u, b);
+    celulas_fecha(c, u, ativ, na);
 }
 
 
@@ -6248,17 +6788,22 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * sombra so cobre o primeiro, entao aqui ela sai de cena e as
              * variaveis do laco seguem a regra normal de escopo (limpas na
              * marca M, logo abaixo). Sombrear um nome de tres seria pior que
-             * nao sombrear nenhum. */
-            int sombreia = !n->e && nome_ja_existe(u, var_laco);
+             * nao sombrear nenhum. Na funct, a var que uma funct do corpo
+             * captura, ou com o nome de uma variável da funct de fora, tem
+             * slot próprio (`laco_abre`): sombreia sem guardar o de fora, que
+             * fica onde está. */
+            int propria = !n->e && !u->eh_modulo
+                       && (citado_em(c, n->b, var_laco) || vem_de_fora(u, var_laco));
+            int sombreia = !n->e && !propria && nome_ja_existe(u, var_laco);
             SimInfo sim_fora;
             int sim_posto = 0;
             if (sombreia) {
                 snprintf(salvo, sizeof(salvo), "  fe$%s", var_laco);   /* nome não digitável */
-                carrega_nome(c, u, var_laco);
-                guarda_nome_modo(c, u, salvo, 1);
+                sombra_guarda(c, u, var_laco, salvo);
                 sim_posto = tp_sombra_poe(c, u, var_laco, &sim_fora);
             }
             int32_t M = escopo_marca(u);        /* marca ANTES da var do laço */
+            char **ativ_fe = NULL; int32_t na_fe = 0, ca_fe = 0;
             /* `for each i in range(a, b, p)`: em vez de materializar a lista
              * inteira (20 milhões de itens = 320 MB), empilha ini/fim/passo e
              * conta. Só entra quando o nome `range` não é ligado em lugar
@@ -6300,7 +6845,15 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             /* variável do laço é local desta função, como o parâmetro.
              * Com `for each a, b in ...`, o item que o ITER_NEXT deixou no
              * topo e desempacotado pelo MESMO emissor do `a, b = [1, 2]` —
-             * mesma checagem de quantidade, mesma mensagem de erro. */
+             * mesma checagem de quantidade, mesma mensagem de erro. A var
+             * (ou o alvo) que uma funct do corpo captura vira célula do laço,
+             * nova a cada volta — depois do iterável, que lê o de fora. */
+            laco_abre(c, u, n->e ? NULL : var_laco, propria, n->e, n->b, NULL, &ativ_fe, &na_fe, &ca_fe);
+            /* A sombra de uma variável que uma funct de fora do laço captura
+             * (célula): o laço grava no slot dela, então cada volta ganha
+             * célula nova, e a de fora, guardada pela sombra, não é tocada. */
+            if (sombreia && sombra_e_celula(u, var_laco)) junta_nomes(c, &ativ_fe, &na_fe, &ca_fe, var_laco);
+            celulas_novas_da_volta(c, u, ativ_fe, na_fe);
             if (n->e) guarda_em_alvo(c, u, n->e);
             else {
                 memset(&c->grava, 0, sizeof(c->grava));
@@ -6321,10 +6874,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             fecha_laco(c, u, topo);
             escopo_emite_clears(c, u, M);        /* saída: var do laço não vaza */
             escopo_trunca(c, u,M);
-            if (sombreia) {                      /* devolve o valor de fora */
-                carrega_nome(c, u, salvo);
+            celulas_fecha(c, u, ativ_fe, na_fe);
+            if (sombreia) {                      /* devolve o de fora */
+                sombra_devolve_carrega(c, u, var_laco, salvo);
                 tp_sombra_devolve(c, u, var_laco, sim_posto, &sim_fora);
-                guarda_nome_modo(c, u, var_laco, 1);
+                sombra_devolve_fim(c, u, var_laco);
             }
             return;
         }
@@ -6502,7 +7056,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                                     || strcmp(nome, "static") == 0
                                     || strcmp(nome, "NonNull") == 0);
             if (nome && strcmp(nome, "dataentity") == 0) {
-                if (n->b) bloco_stmts(c, u, n->b);
+                if (n->b) stmts_de(c, u, n->b);
                 return;
             }
             /* Decorador GERAL: avalia a expressão -> o decorador (guardado);
@@ -6553,7 +7107,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                  * decorador empilhado ali dentro usa o próprio temporário) */
                 guarda_nome_modo(c, u, reg, 1);
                 c->decor_prof++;
-                bloco_stmts(c, u, n->b);
+                stmts_de(c, u, n->b);
                 c->decor_prof--;
                 if (CFALHOU(c)) return;
                 /* 3) OP_DECORA: funct solta -> o nome passa a valer o resultado */
@@ -6591,13 +7145,13 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                  * sem instância). Fora de Entity, a marca é inofensiva: só
                  * vale na resolução de `Classe.metodo`. */
                 c->pendente_static = 1;
-                bloco_stmts(c, u, n->b);
+                stmts_de(c, u, n->b);
                 c->pendente_static = 0;
                 return;
             }
             if (nome && strcmp(nome, "NonNull") == 0) {
                 c->pendente_nonnull = 1;
-                bloco_stmts(c, u, n->b);
+                stmts_de(c, u, n->b);
                 c->pendente_nonnull = 0;
                 return;
             }
@@ -6632,7 +7186,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             guarda_nome_modo(c, u, n->texto ? n->texto : "_", 1);
             int32_t setup = emite(c, u, OP_SETUP_TRY, 0);
             c->dentro_try++;
-            bloco_stmts(c, u, n->b);
+            stmts_de(c, u, n->b);   /* o que ele liga é do bloco de fora (`liga_direto`) */
             c->dentro_try--;
             emite(c, u, OP_POP_TRY, 0);
 
@@ -7770,6 +8324,7 @@ static int32_t sintetiza_campos(C *c, PSNode *entidade, Unidade *pai)
     Unidade u;
     memset(&u, 0, sizeof(u));
     u.pai = (pai && !pai->eh_modulo) ? pai : NULL;
+    u.modulo = (pai && pai->eh_modulo) ? pai : NULL;   /* a célula de bloco do topo, como no método */
     u.idx = idx;
     u.eh_modulo = 0;
     u.nome_funct = "<campos>";
@@ -7849,6 +8404,7 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
     Unidade u;
     memset(&u, 0, sizeof(u));
     u.pai = (pai && !pai->eh_modulo) ? pai : NULL;
+    u.modulo = (pai && pai->eh_modulo) ? pai : NULL;
     u.idx = idx;
     u.eh_modulo = 0;
     if (n->texto2 && !strcmp(n->texto2, "int"))       u.tipo_ret = 1;
@@ -7983,6 +8539,42 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
                       "não tem valor: no padrão só valem os parâmetros de antes", pn, pj->texto);
             break;
         }
+        /* Lambda no padrão que CAPTURA parâmetro (`funct f(int b = 1, a =
+         * funct(int x) { return x + b })`): a célula do parâmetro tem que
+         * existir quando a lambda nasce, aqui no prólogo — as células da
+         * funct só nasciam depois dele, e a lambda lia `b` como global
+         * (NameError rodando, com o `--check` ok). O parâmetro de antes ganha
+         * a célula agora (o slot dele já tem valor); o próprio e os de depois
+         * seguem a regra de cima. Na `nonnull funct`, os de antes são
+         * conferidos antes de virar célula (o CHECK_NONNULL lê o slot cru). */
+        {
+            PSNode **lams = NULL; int32_t nl = 0, cl = 0;
+            colhe_lambdas(c, par->a, &lams, &nl, &cl);
+            int conferiu = 0;
+            for (int32_t q = 0; q < nl && !CFALHOU(c); q++) {
+                char **cit = NULL; int32_t nc = 0, cc = 0;
+                varre_nomes(c, lams[q], &cit, &nc, &cc);
+                for (int32_t j = 0; j < n->lista.n; j++) {
+                    PSNode *pj = n->lista.itens[j];
+                    if (!pj || pj->i2 != 0 || !pj->texto || !tp_na_lista(cit, nc, pj->texto)) continue;
+                    if (liga_o_nome(c, lams[q], pj->texto)) continue;   /* o nome é dela */
+                    if (j >= i) {
+                        terro(c, lams[q], "NameError", "a lambda no padrão de '%s' captura '%s', que ainda não "
+                              "tem valor: no padrão só valem os parâmetros de antes",
+                              par->texto ? par->texto : "?", pj->texto);
+                        continue;
+                    }
+                    if (u.celula[j]) continue;
+                    if (meu_nonnull && !conferiu) { emite(c, &u, OP_CHECK_NONNULL, i); conferiu = 1; }
+                    u.celula[j] = 1;
+                    u.celula_virgem[j] = 0;          /* o parâmetro de antes já tem valor */
+                    emite(c, &u, OP_MAKE_CELL, j);
+                }
+                for (int32_t t = 0; t < nc; t++) free(cit[t]);
+                free(cit);
+            }
+            free(lams);
+        }
         emite(c, &u, OP_LOAD_CONST, idx_const(c, &u, K_INT, i, 0, NULL, 0));
         int32_t pula = emite(c, &u, OP_JUMP_IF_SET, 0);
         expr(c, &u, par->a);
@@ -8007,13 +8599,16 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
         if (pula >= 0) UP(c, (&u))->code[pula + 1] = UP(c, (&u))->ncode;
     }
 
+    /* Depois do prólogo: um default que avalie pra Null também é violação.
+     * Só os fixos: a tup e o dict das estrelas nunca são Null. ANTES das
+     * células: o CHECK_NONNULL lê o slot cru, e o parâmetro capturado por
+     * uma funct de dentro virava célula antes — a célula não é Null, e
+     * `nonnull funct f(v)` com `v` capturado deixava `f(Null)` passar. */
+    if (meu_nonnull) emite(c, &u, OP_CHECK_NONNULL, nfix);
+
     /* Células das variáveis que as functs aninhadas capturam. Vem depois do
      * prólogo (que testa o slot cru com JUMP_IF_SET) e antes do corpo. */
     marca_celulas(c, &u, n, n->b);
-
-    /* Depois do prólogo: um default que avalie pra Null também é violação.
-     * Só os fixos: a tup e o dict das estrelas nunca são Null. */
-    if (meu_nonnull) emite(c, &u, OP_CHECK_NONNULL, nfix);
 
     /* `int funct` e `bool funct` não deixam erro escapar: devolvem 500 e
      * False. Sai mais barato emitir o `try` implícito aqui do que ensinar o
@@ -8021,7 +8616,7 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
     int32_t rede = -1;
     if (u.tipo_ret) rede = emite(c, &u, OP_SETUP_TRY, 0);
 
-    bloco_stmts(c, &u, n->b);
+    stmts_de(c, &u, n->b);
     /* Chegar ao fim devolve Null, e Null não é valor de nenhum tipo escrito
      * — a não ser `int`/`bool`, cujo fim é o sentinela 0/True, e a própria
      * `Null funct`, que não devolve valor. Gerador devolve o gerador. */
@@ -8532,6 +9127,8 @@ static void passada1_stmt(C *c, PSNode *cheia, PSNode *podada)
     resolve_estrela(c, podada);
     tp_coleta_tipos_arq(c, podada);
     tp_junta_ligados(c, cheia, &c->ligados_mod, &c->nligados_mod, &c->cap_ligados_mod);
+    liga_direto_stmt(c, cheia, &c->ligados_mod_raso, &c->nligados_mod_raso, &c->cap_ligados_mod_raso,
+                     &c->ligados_mod_raso, &c->nligados_mod_raso, &c->cap_ligados_mod_raso);
     tp_junta_globais(c, cheia);
     if (!c->range_ligado && liga_o_nome(c, cheia, "range")) c->range_ligado = 1;
 }
@@ -8856,6 +9453,9 @@ static void compila_termina(C *c, Unidade *u)
     for (int32_t i = 0; i < c->nligados_mod; i++) free(c->ligados_mod[i]);
     free(c->ligados_mod);
     ix_solta(&c->ix_ligados_mod);
+    for (int32_t i = 0; i < c->nligados_mod_raso; i++) free(c->ligados_mod_raso[i]);
+    free(c->ligados_mod_raso);
+    ix_solta(&c->ix_ligados_mod_raso);
     ix_solta(&c->ix_globais);        /* as chaves são do programa de saída: só o índice sai */
     free(c->tipos_arq);
     free(c->gemeos);
