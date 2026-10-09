@@ -452,6 +452,12 @@ typedef struct {
     /* Closure da funct geradora, quando ela captura variável de fora — sem
      * isto o `yield` dentro de funct aninhada perderia as células. */
     PSClosure *cl;
+    /* 1 = criado no cabeçalho de um `for each` que é dono dele (ITER_DONO):
+     * o laço o fecha quando sai antes do fim (break, return, erro). */
+    int       dono;
+    /* posição em `vm->ger_abertos` (o suspenso com `try`/`using` aberto, que
+     * o fim do programa fecha), ou -1 */
+    int32_t   idx_aberto;
 } PSGerador;
 
 /* Módulo carregado de um `.pr`.
@@ -1404,6 +1410,14 @@ struct VM_ {
     struct Handler_ *ger_handlers;   /* onde o YIELD despeja os `try` abertos */
     int      ger_nh;
     int      ger_cap_h;
+    /* 1 = a próxima retomada é pra FECHAR (`ger_fecha`): o gerador volta no
+     * `yield` com o sinal `<gerador.fecha>`. Lido e apagado na entrada. */
+    int      ger_fechando;
+    /* Os geradores suspensos com `try`/`using` aberto: o fim do programa
+     * fecha os que sobrarem (decisão dele, 2026-10-09). São raiz do GC até
+     * terminarem ou fecharem. */
+    PSGerador **ger_abertos;
+    int      n_ger_abertos, cap_ger_abertos;
 
     /* coletor */
     Obj    *objetos;
@@ -1479,6 +1493,15 @@ struct VM_ {
      * quadros dele. Ver `tb_dentro_poe`/`tb_dentro_consome`. */
     char    tb_mod_tipo[64];
     char    tb_mod_msg[256];
+    /* 1 = o erro corrente saiu de um RERAISE (o `finally` ou o `using`
+     * relançando o que pegaram); lido e apagado no `erro_runtime` */
+    int     relanca;
+    /* a mensagem que o último handler recebeu (só identidade: não se lê) —
+     * ver `tb_marca_relancado` */
+    Obj    *pego_msg;
+    /* o frame e o topo da pilha de onde o último erro pego saiu (ver
+     * `msg_do_pego`) */
+    int     pego_fp, pego_sp;
 };
 
 /* Handler de `try`: onde saltar e qual estado restaurar. Guardar fp/sp/
@@ -2553,6 +2576,9 @@ static void gc_coleta(VM *vm)
     for (int i = 0; i < vm->gc_fp && i < vm->frames_teto; i++)
         if (vm->frames[i].cl) marca_obj(vm, (Obj *)vm->frames[i].cl);
     fib_marca_gc(vm);   /* MAIN salvo + fibras suspensas (contextos fora de vm->) */
+    /* o gerador suspenso com `try`/`using` aberto vive até fechar (o fim do
+     * programa roda o `finally` dele) */
+    for (int i = 0; i < vm->n_ger_abertos; i++) marca_obj(vm, (Obj *)vm->ger_abertos[i]);
     for (int i = 0; i < vm->nprotos; i++)
         for (int k = 0; k < vm->protos[i].nconsts; k++)
             marca_valor(vm, &vm->protos[i].consts[k]);
@@ -3971,6 +3997,9 @@ static const char *excecao_pai(const char *nome)
 static int excecao_eh(const char *levantado, const char *pedido)
 {
     if (!levantado || !pedido) return 0;
+    /* os sinais internos (`<sys.exit>`, `<gerador.fecha>`) casam entre si: é
+     * a pergunta do `catch` sem tipo, "isto é um sinal que eu deixo passar?" */
+    if (levantado[0] == '<' && pedido[0] == '<') return 1;
     size_t teto = sizeof(EXCECOES) / sizeof(EXCECOES[0]) + 1;
     for (const char *t = levantado; t && teto--; t = excecao_pai(t))
         if (strcmp(t, pedido) == 0) return 1;
@@ -11782,6 +11811,8 @@ static PSGerador *novo_gerador(VM *vm, int32_t proto)
     g->nh = 0;
     g->cap_handlers = 0;
     g->cl = NULL;          /* preenchido pelo CALL quando a geradora captura */
+    g->dono = 0;
+    g->idx_aberto = -1;
     /* pilha do gerador dimensionada como a cota do CALL: cada instrução
      * empilha no máximo um valor */
     int32_t cap_pilha = pr->ncode / 2 + 8;
@@ -11834,6 +11865,88 @@ static __attribute__((noinline, cold)) void tb_dentro_poe(VM *vm)
     tb_dentro_marca(vm);
 }
 
+/* Erro PEGO por um handler: os quadros que somem agora (do `raise` até o
+ * frame do handler) ficam no `tb_mod`. Se o handler relança a mesma
+ * mensagem — o `finally` e o `using` (RERAISE; ver `tb_marca_relancado`) —,
+ * o `erro_runtime` de lá o reconhece e o traceback volta com eles,
+ * terminando na linha do `raise`. Antes acabava na linha do `try`. O `catch` que trata o erro e
+ * segue não paga nada além disto: a marca não casa com o erro seguinte. */
+static __attribute__((noinline, cold)) void tb_guarda_pego(VM *vm, int proto, int linha, int col,
+                                                          int fp, int fp_h, int veio, int relancou)
+{
+    if (!veio) {
+        /* sem quadros de dentro: escreve direto, os chamadores que somem e
+         * o ponto do erro por último (o caso comum é o próprio frame do
+         * `try`: um quadro só) */
+        int m = 0;
+        for (int f = fp - 1; f >= fp_h && m < 63; f--) {
+            Proto *pr = &vm->protos[vm->frames[f].proto];
+            int qip = vm->frames[f].ip;
+            vm->tb_mod[m].proto = vm->frames[f].proto;
+            vm->tb_mod[m].linha = (pr->linhas && qip >= 2 && (qip - 2) < pr->ncode) ? pr->linhas[(qip - 2) / 2] : 0;
+            vm->tb_mod[m].col = 0;
+            m++;
+        }
+        if (proto >= 0) { vm->tb_mod[m].proto = proto; vm->tb_mod[m].linha = linha; vm->tb_mod[m].col = col; m++; }
+        vm->ntb_mod = m;
+        return;
+    }
+    struct { int proto; int linha; int col; } t[64];
+    int n = 0;
+    if (veio && vm->ntb_mod > 0) {
+        /* o erro já vinha de dentro (módulo, tarefa, gerador, ou um
+         * relançado): os quadros de lá, e o ponto em que este frame os
+         * chamou — menos o do relançamento, que não é chamada */
+        for (int i = 0; i < vm->ntb_mod - 1 && n < 62; i++) {
+            t[n].proto = vm->tb_mod[i].proto; t[n].linha = vm->tb_mod[i].linha; t[n].col = vm->tb_mod[i].col; n++;
+        }
+        if (!relancou) { t[n].proto = proto; t[n].linha = linha; t[n].col = col; n++; }
+    }
+    /* os chamadores que somem — e o ponto do frame do handler que chamou o
+     * primeiro deles —, do mais de dentro pro mais de fora */
+    for (int f = fp - 1; f >= fp_h && n < 63; f--) {
+        Proto *pr = &vm->protos[vm->frames[f].proto];
+        int qip = vm->frames[f].ip;
+        t[n].proto = vm->frames[f].proto;
+        t[n].linha = (pr->linhas && qip >= 2 && (qip - 2) < pr->ncode) ? pr->linhas[(qip - 2) / 2] : 0;
+        t[n].col = 0;
+        n++;
+    }
+    /* o ponto do erro, por último */
+    if (veio && vm->ntb_mod > 0) {
+        t[n].proto = vm->tb_mod[vm->ntb_mod - 1].proto;
+        t[n].linha = vm->tb_mod[vm->ntb_mod - 1].linha;
+        t[n].col   = vm->tb_mod[vm->ntb_mod - 1].col;
+        n++;
+    } else if (proto >= 0) {
+        t[n].proto = proto; t[n].linha = linha; t[n].col = col; n++;
+    }
+    vm->ntb_mod = n;
+    for (int i = 0; i < n; i++) {
+        vm->tb_mod[i].proto = t[i].proto; vm->tb_mod[i].linha = t[i].linha; vm->tb_mod[i].col = t[i].col;
+    }
+}
+
+/* O RERAISE relança a mensagem que o handler recebeu: se é o MESMO objeto que
+ * o `erro_runtime` empilhou ao pegar (`vm->pego_msg`), os quadros guardados
+ * pelo `tb_guarda_pego` são deste erro e valem (a marca do `tb_dentro_*`).
+ * Comparar o objeto, e não o texto, deixa o `catch` comum sem custo: só o
+ * relançamento escreve a marca. */
+static __attribute__((noinline, cold)) void tb_marca_relancado(VM *vm)
+{
+    if (vm->ntb_mod <= 0) return;
+    tb_dentro_marca(vm);
+}
+
+/* O RERAISE marca o relançamento numa função à parte: escrito no próprio
+ * tratador, trocava o modo dos registradores do laço (fib_int +1,1%,
+ * closure +0,7% sem JIT, medido em variantes, 2026-10-09). */
+static __attribute__((noinline, cold)) void relanca_marca(VM *vm, Value msg)
+{
+    vm->relanca = 1;
+    if (msg.t == V_OBJ && msg.as.obj == vm->pego_msg) tb_marca_relancado(vm);
+}
+
 /* O `erro_runtime` lê (e apaga) a marca: vale só se o erro corrente é o que a
  * pôs. Fora do laço da VM, pra não pesar no código dele. */
 static __attribute__((noinline)) int tb_dentro_consome(VM *vm)
@@ -11842,6 +11955,32 @@ static __attribute__((noinline)) int tb_dentro_consome(VM *vm)
                && !strcmp(vm->erro, vm->tb_mod_msg);
     vm->import_falhou = 0;
     return vale;
+}
+
+/* O registro dos geradores suspensos com `try`/`using` aberto (`vm->
+ * ger_abertos`): entra quem cede com handler, sai quem termina ou fecha
+ * (troca com o último, pela posição guardada no próprio gerador). */
+static int ger_aberto_poe(VM *vm, PSGerador *g)
+{
+    if (vm->n_ger_abertos >= vm->cap_ger_abertos) {
+        int nc = vm->cap_ger_abertos ? vm->cap_ger_abertos * 2 : 16;
+        PSGerador **nv = realloc(vm->ger_abertos, sizeof(PSGerador *) * (size_t)nc);
+        if (!nv) return -1;
+        vm->ger_abertos = nv; vm->cap_ger_abertos = nc;
+    }
+    g->idx_aberto = vm->n_ger_abertos;
+    vm->ger_abertos[vm->n_ger_abertos++] = g;
+    return 0;
+}
+
+static void ger_aberto_tira(VM *vm, PSGerador *g)
+{
+    int32_t i = g->idx_aberto;
+    if (i < 0 || i >= vm->n_ger_abertos || vm->ger_abertos[i] != g) { g->idx_aberto = -1; return; }
+    PSGerador *ult = vm->ger_abertos[--vm->n_ger_abertos];
+    vm->ger_abertos[i] = ult;
+    ult->idx_aberto = i;
+    g->idx_aberto = -1;
 }
 
 /* Roda até o próximo `yield`. Devolve 1 se cedeu (com o valor em `out`),
@@ -11927,11 +12066,149 @@ static int ger_retoma(VM *vm, PSGerador *g, Value *out)
 
     /* o gerador retomado só falha pelo `erro_runtime` dele, que monta o
      * `vm->tb` na hora: o traceback é sempre deste erro, e vai adiante */
-    if (rc != 0) { tb_dentro_poe(vm); g->estado = GER_FIM; return -1; }
-    if (!cedeu) { g->estado = GER_FIM; return 0; }
+    if (rc != 0) {
+        if (g->idx_aberto >= 0) ger_aberto_tira(vm, g);
+        tb_dentro_poe(vm); g->estado = GER_FIM; return -1;
+    }
+    if (!cedeu) {
+        if (g->idx_aberto >= 0) ger_aberto_tira(vm, g);
+        g->estado = GER_FIM; return 0;
+    }
     g->estado = GER_SUSPENSO;
+    /* suspenso com `try`/`using` aberto: tem o que rodar ao fechar */
+    if (g->nh > 0) {
+        if (g->idx_aberto < 0 && ger_aberto_poe(vm, g) != 0) {
+            snprintf(vm->erro, sizeof(vm->erro), "sem memoria ao suspender o gerador");
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+            return -1;
+        }
+    } else if (g->idx_aberto >= 0) {
+        ger_aberto_tira(vm, g);
+    }
     *out = r;
     return 1;
+}
+
+/* Fecha um gerador suspenso (o `for each` dono saiu antes do fim, ou o fim
+ * do programa): ele volta no `yield` em que parou com o sinal
+ * `<gerador.fecha>`, que nenhum `catch` pega, e os `finally` e os `using`
+ * abertos rodam. Sem `try`/`using` aberto não há o que rodar: só acaba.
+ * 0 = fechou; -1 = o `finally` levantou outro erro (ou fez `sys.exit`), que
+ * sobe; o `yield` dentro do `finally` enquanto fecha é RuntimeError. */
+static int ger_fecha(VM *vm, PSGerador *g)
+{
+    if (g->rodando) return 0;
+    if (g->estado != GER_SUSPENSO || g->nh == 0) {
+        if (g->idx_aberto >= 0) ger_aberto_tira(vm, g);
+        g->estado = GER_FIM;
+        return 0;
+    }
+    vm->ger_fechando = 1;
+    Value item;
+    int r = ger_retoma(vm, g, &item);
+    vm->ger_fechando = 0;
+    if (r < 0) {
+        if (strcmp(vm->erro_tipo, PS_TIPO_FECHA) != 0) return -1;
+        vm->erro[0] = '\0'; vm->erro_tipo[0] = '\0';
+        vm->import_falhou = 0;      /* a marca do traceback era deste sinal */
+        return 0;
+    }
+    if (r == 1) {
+        if (g->idx_aberto >= 0) ger_aberto_tira(vm, g);
+        g->estado = GER_FIM;
+        snprintf(vm->erro, sizeof(vm->erro), "o gerador fez yield enquanto era fechado (yield dentro do finally)");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+        return -1;
+    }
+    return 0;
+}
+
+/* O erro (ou o `sys.exit`, ou o fecho de outro gerador) sai de laços donos de
+ * gerador (ITER_DONO): os geradores deles, na faixa [de, ate) da pilha que o
+ * `erro_runtime` vai descartar, fecham agora, do mais de dentro pro de fora,
+ * e o `finally` deles roda. O erro que está saindo segue como estava, com o
+ * traceback de dentro; se um desses `finally` levantar outro erro, é o novo
+ * que segue (como o `finally` que levanta). Fora do laço da VM: só o caminho
+ * de erro paga a varredura. */
+static __attribute__((noinline, cold)) int fecha_donos_na_faixa(VM *vm, Value *pilha, int de, int ate, int fp, PSClosure *cl)
+{
+    int mudou = 0, sp_antes = vm->sp, publicou = 0;
+    for (int k = ate - 1; k >= de; k--) {
+        Value v = pilha[k];
+        if (!EH_GERADOR(v) || !COMO_GER(v)->dono) continue;
+        PSGerador *g = COMO_GER(v);
+        g->dono = 0;
+        if (!publicou) {
+            /* a faixa fica viva (raiz) e o fecho roda por cima dela */
+            vm->sp = ate;
+            if (fp >= 0) { vm->frame_topo = fp + 1; vm->frames[fp].cl = cl; }
+            publicou = 1;
+        }
+        static char erro[sizeof(((VM *)0)->erro)], tipo[sizeof(((VM *)0)->erro_tipo)];
+        static char mt[sizeof(((VM *)0)->tb_mod_tipo)], mm[sizeof(((VM *)0)->tb_mod_msg)];
+        static char tbm[sizeof(((VM *)0)->tb_mod)];
+        memcpy(erro, vm->erro, sizeof erro);
+        memcpy(tipo, vm->erro_tipo, sizeof tipo);
+        memcpy(mt, vm->tb_mod_tipo, sizeof mt);
+        memcpy(mm, vm->tb_mod_msg, sizeof mm);
+        memcpy(tbm, vm->tb_mod, sizeof tbm);
+        int ntbm = vm->ntb_mod, falhou = vm->import_falhou, codigo = vm->codigo_saida;
+        if (ger_fecha(vm, g) != 0) { mudou = 1; continue; }   /* o erro novo é o que segue */
+        memcpy(vm->erro, erro, sizeof erro);
+        memcpy(vm->erro_tipo, tipo, sizeof tipo);
+        memcpy(vm->tb_mod_tipo, mt, sizeof mt);
+        memcpy(vm->tb_mod_msg, mm, sizeof mm);
+        memcpy(vm->tb_mod, tbm, sizeof tbm);
+        vm->ntb_mod = ntbm; vm->import_falhou = falhou; vm->codigo_saida = codigo;
+    }
+    vm->sp = sp_antes;
+    return mudou;
+}
+
+/* O erro pego por um handler: (1) os quadros que somem, pro relançamento
+ * (`tb_guarda_pego`); (2) os geradores donos de laços na faixa da pilha que
+ * se descarta fecham agora (o laço dono fecha quando sai por erro) — se um
+ * `finally` deles levantar outro erro, é o novo que o handler recebe; (3) a
+ * mensagem que o handler recebe, e que o RERAISE reconhece (`pego_msg`).
+ * Tudo numa chamada só, no lugar da que já criava a mensagem: chamada nova
+ * com muito estado vivo no `erro_runtime` trocava o modo dos registradores
+ * do laço da VM (closure +1,2%, chamada +0,8%, medido em variantes). */
+static __attribute__((noinline)) PSString *msg_do_pego(VM *vm, char *msgbuf, size_t cap, int veio,
+                                                      int fp, PSClosure *cl)
+{
+    tb_guarda_pego(vm, vm->pego_proto, vm->pego_linha, vm->pego_col, vm->pego_fp, fp, veio, vm->relanca);
+    vm->relanca = 0;
+    if (vm->pego_sp > vm->sp
+            && fecha_donos_na_faixa(vm, vm->stack, vm->sp, vm->pego_sp, fp, cl)) {
+        int l = vm->ntb_mod > 0 ? vm->tb_mod[vm->ntb_mod - 1].linha : 0;
+        if (l > 0) snprintf(msgbuf, cap, "%s (linha %d)", vm->erro, l);
+        else snprintf(msgbuf, cap, "%s", vm->erro);
+    }
+    PSString *msg = nova_string(vm, msgbuf, (int)strlen(msgbuf));
+    if (msg) vm->pego_msg = (Obj *)msg;
+    return msg;
+}
+
+/* O erro sai desta execução sem handler: os geradores donos de laços dela
+ * fecham agora. O traceback já está montado; se um `finally` deles levantar
+ * outro erro, é o novo que sobe, com os quadros dele. */
+static __attribute__((noinline, cold)) void fecha_donos_ao_sair(VM *vm, int de, int ate)
+{
+    vm->relanca = 0;
+    if (ate <= de) return;
+    static char tb[sizeof(((VM *)0)->tb)];
+    memcpy(tb, vm->tb, sizeof tb);
+    int ntb = vm->ntb;
+    if (fecha_donos_na_faixa(vm, vm->stack, de, ate, -1, NULL)) {
+        vm->ntb = vm->ntb_mod < 64 ? vm->ntb_mod : 64;
+        for (int i = 0; i < vm->ntb; i++) {
+            vm->tb[i].proto = vm->tb_mod[i].proto; vm->tb[i].linha = vm->tb_mod[i].linha; vm->tb[i].col = vm->tb_mod[i].col;
+        }
+        vm->import_falhou = 0;
+        return;
+    }
+    memcpy(vm->tb, tb, sizeof tb);
+    vm->ntb = ntb;
 }
 
 /* ── datasentity ────────────────────────────────────────────────────────── */
@@ -12794,6 +13071,57 @@ static int avisa_futures_com_erro(VM *vm)
         avisados++;
     }
     return avisados;
+}
+
+/* O fim do programa fecha os geradores que sobraram suspensos com `try`/
+ * `using` aberto (decisão dele, 2026-10-09): os `finally` rodam, do último
+ * suspenso pro primeiro. O erro de um fecho sai no stderr, como o da tarefa
+ * sem `await`, e o programa sai com 1; o `sys.exit` de dentro de um desses
+ * `finally` vale como o do programa (`*saida`, -1 se nenhum). O erro do
+ * principal, se houve, fica como estava: é ele que se relata. Devolve
+ * quantos fechos deram erro. */
+static int fecha_geradores_no_fim(VM *vm, int *saida)
+{
+    *saida = -1;
+    if (vm->n_ger_abertos == 0) return 0;
+    static char erro[sizeof(((VM *)0)->erro)], tipo[sizeof(((VM *)0)->erro_tipo)];
+    static char tb[sizeof(((VM *)0)->tb)];
+    memcpy(erro, vm->erro, sizeof erro);
+    memcpy(tipo, vm->erro_tipo, sizeof tipo);
+    memcpy(tb, vm->tb, sizeof tb);
+    int ntb = vm->ntb, codigo = vm->codigo_saida;
+    int falhas = 0;
+    while (vm->n_ger_abertos > 0) {
+        PSGerador *g = vm->ger_abertos[vm->n_ger_abertos - 1];
+        ger_aberto_tira(vm, g);          /* sai antes: o fecho sempre anda */
+        if (g->estado != GER_SUSPENSO) continue;
+        if (ger_fecha(vm, g) == 0) continue;
+        if (strcmp(vm->erro_tipo, PS_TIPO_SAIDA) == 0) {
+            if (*saida < 0) *saida = vm->codigo_saida;
+            continue;
+        }
+        fflush(stdout);
+        fprintf(stderr, "%s: %s\n", vm->erro_tipo[0] ? vm->erro_tipo : "RuntimeError", vm->erro);
+        for (int k = 0; k < vm->ntb; k++) {
+            int pi = vm->tb[k].proto;
+            if (pi < 0 || pi >= vm->nprotos || vm->tb[k].linha <= 0) continue;
+            Proto *pe = &vm->protos[pi];
+            const char *arq = pe->arquivo && pe->arquivo[0] ? pe->arquivo
+                            : (vm->nome_script[0] ? vm->nome_script : "<script>");
+            if (ps_gancho_quadro) ps_gancho_quadro(arq, vm->tb[k].linha, vm->tb[k].col);
+            else fprintf(stderr, "  em %s, linha %d\n", arq, vm->tb[k].linha);
+        }
+        fprintf(stderr, "  ao fechar um gerador no fim do programa\n");
+        fflush(stderr);
+        falhas++;
+    }
+    memcpy(vm->erro, erro, sizeof erro);
+    memcpy(vm->erro_tipo, tipo, sizeof tipo);
+    memcpy(vm->tb, tb, sizeof tb);
+    vm->ntb = ntb;
+    vm->codigo_saida = codigo;
+    vm->import_falhou = 0;
+    return falhas;
 }
 
 /* Encerra o processo AGORA, com o código: o que o `sys.exit` fazia sempre.
@@ -26573,6 +26901,14 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             handlers[k].locals_top += locals0;
             handlers[k].lbase      += locals0;
         }
+        /* `ger_fecha`: o gerador volta no `yield` com o sinal de fecho, e os
+         * handlers que acabaram de voltar rodam os `finally` e os `using` */
+        if (vm->ger_fechando) {
+            vm->ger_fechando = 0;
+            vm->erro[0] = '\0';
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", PS_TIPO_FECHA);
+            goto erro_runtime;
+        }
     }
 
     /* A cota da pilha de valores deste frame, exata (`pilha_max`, ver
@@ -28657,6 +28993,30 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (nh > 0) nh--;
             break;
 
+        PS_CASE(ITER_DONO) {
+            /* `for each x in f()`: o laço é dono do gerador que o cabeçalho
+             * criou e o fecha quando sai antes do fim — o `break` e o
+             * `return` pelo DONO_SAI, o erro pelo `erro_runtime`, que fecha
+             * os donos da pilha que descarta. Só o gerador NOVO: o que já
+             * andou não nasceu aqui. */
+            Value v = stack[sp - 1];
+            if (EH_GERADOR(v) && COMO_GER(v)->estado == GER_NOVO) COMO_GER(v)->dono = 1;
+            break;
+        }
+
+        PS_CASE(DONO_SAI) {
+            /* `break`/`return` saindo do laço dono: fecha o gerador dele, em
+             * stack[sp - arg] */
+            Value v = stack[sp - arg];
+            if (EH_GERADOR(v) && COMO_GER(v)->dono) {
+                COMO_GER(v)->dono = 0;
+                vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
+                int rc_f; REANCORA(rc_f = ger_fecha(vm, COMO_GER(v)));
+                if (rc_f != 0) goto erro_runtime;
+            }
+            break;
+        }
+
         PS_CASE(ENGOLE)
             /* o `try` implícito de `int funct`/`bool funct` pegou um erro: o
              * sentinela sai (o compilador o empilha a seguir) e o erro sai
@@ -28691,6 +29051,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             snprintf(vm->erro, sizeof(vm->erro), "%s", t.b ? t.b : "");
             snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s",
                      EH_STRING(tipo) ? COMO_STRING(tipo)->chars : "RuntimeError");
+            relanca_marca(vm, msg);
             goto erro_runtime;
         }
 
@@ -30161,7 +30522,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
          * Esse erro atravessa as redes e só para num `catch` escrito. */
         /* O `sys.exit` também atravessa as redes: o `int funct` devolvia 500
          * e o programa seguia, em vez de sair. */
-        int saindo = strcmp(vm->erro_tipo, PS_TIPO_SAIDA) == 0;
+        int saindo = vm->erro_tipo[0] == '<';   /* `<sys.exit>` e `<gerador.fecha>` (ps_retornos.h) */
         if (nh > 0 && (saindo || strcmp(vm->erro_tipo, "RecursionError") == 0))
             while (nh > 0 && vm->protos[handlers[nh - 1].proto].code[handlers[nh - 1].ip] == OP_ENGOLE)
                 nh--;
@@ -30204,7 +30565,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     vm->tb[vm->ntb].col   = vm->tb_mod[i].col;
                     vm->ntb++;
                 }
-                if (vm->ntb < 63) {   /* frame do `import` (chamou o módulo) */
+                if (vm->ntb < 63 && !vm->relanca) {   /* frame do `import` (chamou o módulo); o relançamento não é chamada */
                     vm->tb[vm->ntb].proto = (int)(p - vm->protos);
                     vm->tb[vm->ntb].linha = linha_agora;
                     vm->tb[vm->ntb].col   = col_agora;
@@ -30243,6 +30604,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     vm->ntb++;
                 }
             }
+            /* os geradores donos de laços desta execução fecham agora */
+            fecha_donos_ao_sair(vm, sp0, sp);
             HANDLERS_SOLTA();
             return -1;
         }
@@ -30257,10 +30620,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
              * ele — um erro seguinte, sem relação, não pode herdá-la */
             vm->nota_arquivo[0] = '\0';
             vm->nota_linha = vm->nota_col = 0;
+            /* de onde o erro sai (ver `msg_do_pego`) */
+            vm->pego_fp = fp;
+            vm->pego_sp = sp;
             fp = h->fp;
             locals_top = h->locals_top;
             sp = h->sp;
-            p = &vm->protos[h->proto];
             cl = h->cl;
             lbase = h->lbase;
             nargs = (fp > fp0) ? vm->frames[fp - 1].nargs : nargs_in;
@@ -30285,8 +30650,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                          vm->erro, linha_e);
             else
                 snprintf(msgbuf, sizeof(msgbuf), "%s", vm->erro);
-            PSString *msg = nova_string(vm, msgbuf, (int)strlen(msgbuf));
+            PSString *msg = msg_do_pego(vm, msgbuf, sizeof(msgbuf), veio_de_import, fp, cl);
             if (!msg) return -1;
+            p = &vm->protos[h->proto];   /* depois: o fecho dos donos pode ter crescido os protos */
             stack[sp++] = MK_OBJ(msg);
             ip = h->ip;
         }
@@ -30303,6 +30669,8 @@ static void libera_vm(VM *vm)
     jit_solta(vm);         /* código de máquina: mmap também */
 #endif
     estrela_cache_solta(); /* o que cada arquivo exporta, lembrado pro `import *` */
+    free(vm->ger_abertos);   /* só o vetor: os geradores são do coletor */
+    vm->ger_abertos = NULL; vm->n_ger_abertos = vm->cap_ger_abertos = 0;
     if (vm->nomes_globais) {
         for (int i = 0; i < vm->n_nomes_globais; i++) free(vm->nomes_globais[i]);
         free(vm->nomes_globais);
@@ -33027,14 +33395,20 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
     Value resultado;
     int rc = vm_executa(&vm, 0, &resultado);
     fflush(stdout);
+    /* os geradores que sobraram suspensos com `try`/`using` aberto fecham
+     * agora: os `finally` deles rodam (ver `fecha_geradores_no_fim`) */
+    int saida_fecho;
+    int fechos_com_erro = fecha_geradores_no_fim(&vm, &saida_fecho);
+    fflush(stdout);
     /* Tarefa `async` que quebrou e ninguém aguardou: o erro sai agora, em vez
      * de morrer dentro do future. O programa NÃO espera tarefa pendente —
      * quem quer o resultado usa `await`. E o programa sai com 1: erro é erro,
      * também no código de saída (`sys.exit(n)` explícito mantém o `n`). */
-    int tarefas_com_erro = avisa_futures_com_erro(&vm);
+    int tarefas_com_erro = avisa_futures_com_erro(&vm) + fechos_com_erro;
     /* o `sys.exit` chegou ao topo, com os `finally` rodados: sai com o código
      * dele, sem mensagem (a tarefa com erro já foi avisada acima) */
     int saiu = rc != 0 && strcmp(vm.erro_tipo, PS_TIPO_SAIDA) == 0;
+    if (rc == 0 && saida_fecho >= 0) { saiu = 1; rc = 1; vm.codigo_saida = saida_fecho; }
     if (vm.dbg.ativo) {
         char corpo[96];
         snprintf(corpo, sizeof corpo, "{\"exitCode\":%d}",

@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.13`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.14`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -628,6 +628,7 @@ post(exige(1))
 - `yield` em `async funct` é `SyntaxError` (uma funct é tarefa ou gerador). Na funct que devolve valor, `post`, `sys.stdout.write`/`sys.stderr.write`, `os.writeFile`, `os.warn` e `f.write` como VALOR são `AttributedValueError` antes de rodar (decisão sua de 2026-10-08: conferir rodando custou +4% a +6% no laço). `sleep(0)` numa tarefa cede.
 - `static funct f(self)` fora de classe dá `funct static f(self, ...) nao recebe self: static nao tem instancia, tire o self`.
 - Funct é valor (`type()` dá `"funct"`). A recursão sem fim é `RecursionError`. Uma funct com `yield` é gerador, e chamá-la não executa nada até o primeiro pedido.
+- **Gerador abandonado fecha** (lote 6d, 17.0.14, decisão sua de 2026-10-09): o `for each` que cria o gerador no cabeçalho é dono dele e o fecha quando sai antes do fim (`break` e `return` pelo opcode `DONO_SAI`; erro pelo `erro_runtime`, que fecha os donos da faixa da pilha que descarta), e o `finally`/`using` de dentro dele roda; o guardado em variável segue consumível; o suspenso com `try`/`using` aberto que sobrar fecha no fim do programa (registro `vm->ger_abertos`, raiz do GC; erro nesse fecho sai no stderr e o programa sai com 1). Fechar = voltar no `yield` com o sinal interno `<gerador.fecha>` (`PS_TIPO_FECHA`), que nenhum `catch` pega, como o `<sys.exit>`; `yield` dentro do `finally` durante o fecho é `RuntimeError`. O `ITER_DONO` (opcode 116) marca o gerador NOVO só no laço cujo cabeçalho é chamada de tipo que pode ser gerador (o laço sobre a lista de um `split()` não paga nada) e tem gabarito no JIT.
 - `map(lista, fn)` e `filter(lista, fn)` recebem **a lista primeiro**.
 
 ### 2.9 async / await / fibras
@@ -889,6 +890,8 @@ assert(len("abc"), 3, "tamanho")
 
 - `catch` exige parênteses e tem quatro formas: `(Tipo e)`, `(Tipo)`, `(e)` e `()`. O `e` é **texto** (`mensagem (linha N)`), e `type(e)` é `str`. O tipo se filtra no próprio `catch`.
 - `try` com `finally` e sem `catch` é válido (o erro propaga depois do finally). `try` sozinho dá `esperado 'catch' ou 'finally' apos bloco do try`.
+- **Saída do `try` por `return`, `break` ou `continue`** (lote 6d, 17.0.14): o `finally` roda uma vez e o handler do `try` sai junto. Antes o `break`/`continue` deixavam o handler armado (o `raise` depois do laço caía no `catch` ou no `finally` velho; 70 mil `continue` num `try`/`finally` davam `RecursionError`) e o `finally` que levantava na saída rodava duas vezes. No compilador: cada `finally` pendente (`FinPend`) diz quantos handlers tem armados naquele ponto (`armados`: 1 no corpo; no catch, 1 se há finally) e o `emite_finallys` emite um POP_TRY por eles antes do bloco.
+- **O erro que atravessa um `finally` ou um `using` guarda os quadros** (17.0.14): o traceback termina na linha do `raise`, não na do `try`. Ao pegar um erro, o handler guarda no `tb_mod` os quadros que somem (`tb_guarda_pego`, chamado de dentro do `msg_do_pego`, que também cria a mensagem); o RERAISE da mesma mensagem (objeto `vm->pego_msg`) marca o erro (`relanca_marca`) e o `erro_runtime` monta o traceback com eles, sem o quadro do relançamento. Custo medido: +63 instruções por exceção pega no próprio frame, +144 vinda de outra funct.
 - `raise Nome("msg")` aceita um nome livre com maiúscula, sem declaração prévia. `raise "texto"` gera `RuntimeError`. Os nomes da árvore são valores (`erro = KeyError`, `raise erro`, `ValueError is Exception`).
 - Um `SyntaxError`, e todo erro de tipo, nome, aridade ou membro que o compilador já conhece, sai antes de rodar e não chega ao `catch`.
 - `assert(cond)`, `assert(cond, "mensagem")` e `assert(veio, esperado, "nota")` levantam `AssertionError`. Exemplo: `AssertionError: soma — veio 4, esperava 5`. Quando passa, devolve `True`. Um `esperado` do tipo str é lido como mensagem, então para comparar com texto use a forma de três.
@@ -926,7 +929,7 @@ using open("saida.txt", "a") as f {
 post(os.readFile("saida.txt"))
 ```
 
-- `using` fecha o recurso na saída, mesmo com erro: arquivo, conexão de banco (faz commit antes de fechar) e planilha do `manpu` (salva).
+- `using` fecha o recurso na saída, mesmo com erro: arquivo, conexão de banco (faz commit antes de fechar) e planilha do `manpu` (salva). Também no `return`, `break` e `continue` de dentro do bloco (17.0.14: antes saíam sem fechar, e o arquivo escrito ficava vazio): o fechamento é um `finally` pendente (`FinPend.fecha`). O erro que atravessa o `using` segue com o tipo dele (o caminho de erro relança com PUSH_ERR_TYPE + RERAISE; o RAISE de antes fazia de todo erro um `RuntimeError`, e o `sys.exit` de dentro saía com código 1).
 - Para ler ou gravar um arquivo inteiro, o idioma do projeto é `os.readFile(path)` e `os.writeFile(path, conteudo)`. O dono proíbe `open(x).read()`.
 - `open(path, mode="r", encoding="utf-8")` devolve um `PoolFile` com os métodos `read readline readlines write writelines close save path move copy delete bytes` e os campos `name ext size`.
 - Remover arquivo é `PoolFile.delete()`. `os.remove` não existe.
@@ -1127,7 +1130,7 @@ Toda mensagem vem com o quadro `em arquivo.pr, linha N` e o cursor `^^^` no pont
 
 - `docs/LANGUAGE.md`, seção Entity: diz que "os parênteses após o nome são obrigatórios". O motor **recusa** `class A() {`, e o certo é `class A {` (a `07-entity.md` está certa).
 - `docs/LANGUAGE.md`, seção Tipos: diz que `int n = input()` converte. O motor recusa (`esperava int, recebeu str|Null`). O certo é `int(input())`.
-- `docs/LANGUAGE.md`: diz que `try`/`finally` sem `catch` não vale e que `for each` não desempacota. Os dois funcionam hoje (`10-excecoes.md` e `05-controle-de-fluxo.md` estão certos).
+- `docs/LANGUAGE.md`: as frases do `try`/`finally` sem `catch` e do `for each` que não desempacotava foram corrigidas no 17.0.14.
 - `docs/LANGUAGE.md`: diz que redeclarar com outro tipo passa. O motor recusa (`já foi declarada como int e não pode ser redeclarada como long`). Redeclarar com o mesmo tipo passa.
 - `docs/INDEX.md`, tabela "Apelidos": lista `db`, `mp`, `qr`, `JSON`, `dataentity` e o plural de `request`. Todos dão `ImportError`.
 - `docs/Jinga.md`, cabeçalho: diz v16.1.9, igual ao fonte (`vm/ps_versao.h`) e ao binário instalado (conferido no fim de 2026-09-28; mais cedo no mesmo dia o instalado respondia 16.1.6 e o cabeçalho dizia 16.1.7).
@@ -2154,8 +2157,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.13** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.13 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.14** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.14 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2776,7 +2779,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.13"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.14"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2856,7 +2859,7 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-08 (madrugada)
 
-- Versão da linguagem **17.0.13** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.13 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.14** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.14 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: `8e3de05` (17.0.13, Plano 6 lote 6c), igual a `origin/main` quando subiu. No `2a668b9` (17.0.11) entrou, por engano meu (`git add -A`), o seu rename `examples/action.pr` → `examples/funct.pr` que estava na árvore (100% igual); desde então o commit leva só a lista de arquivos do lote. Fora do controle de versão ficam só arquivos seus (`examples/s.pr`, `examples/ge.pr`), que nunca entram em commit.
 - **Ordem decidida por você em 2026-10-08**: primeiro as correções (tudo o que está em andamento: os lotes 6 a 8 do Plano 6), depois o código de máquina com tabela de instruções (Plano 2), depois a volta às coberturas da linguagem; as features vêm depois das correções.

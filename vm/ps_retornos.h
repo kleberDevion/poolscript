@@ -60,4 +60,11 @@ int ps_excecao_eh(const char *levantado, const char *pedido);
  * não é identificador: nenhum programa consegue escrever `catch` dele. */
 #define PS_TIPO_SAIDA "<sys.exit>"
 
+/* O sinal que FECHA um gerador suspenso (o laço dono saiu antes, ou o fim do
+ * programa): ele volta no `yield` em que parou com este erro, que nenhum
+ * `catch` pega, como o `sys.exit`; os `finally` e os `using` abertos rodam, e
+ * quem fechou o engole. Todo tipo que começa com `<` é desses: o `catch` sem
+ * tipo e a rede do `int funct` deixam passar. */
+#define PS_TIPO_FECHA "<gerador.fecha>"
+
 #endif

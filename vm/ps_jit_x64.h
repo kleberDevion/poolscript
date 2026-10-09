@@ -496,6 +496,27 @@ static void jg_instr(JitGen *g, const Proto *p, int32_t i)
             j->b[segue + 2] = (uint8_t)((aqui2 - (segue + 4)) >> 16); j->b[segue + 3] = (uint8_t)((aqui2 - (segue + 4)) >> 24);
             break;
         }
+        case OP_ITER_DONO: {
+            /* o gerador NOVO no topo fica dono do laço (ver o tratador): três
+             * conferências e uma escrita, sem ilha — como ilha, cada laço
+             * sobre a chamada de um gerador pagava a ida e volta inteira */
+            size_t f[3];
+            x_cmp_mem32_imm8(j, RBX, -16, (int8_t)V_OBJ);
+            f[0] = x_jcc(j, CC_NE);
+            x_mov_r64_mem(j, RAX, RBX, -8);
+            x_cmp_mem32_imm8(j, RAX, 0, (int8_t)OBJ_GERADOR);
+            f[1] = x_jcc(j, CC_NE);
+            x_cmp_mem32_imm8(j, RAX, (int32_t)offsetof(PSGerador, estado), (int8_t)GER_NOVO);
+            f[2] = x_jcc(j, CC_NE);
+            x_mov_mem32_imm(j, RAX, (int32_t)offsetof(PSGerador, dono), 1);
+            size_t aqui = j->n;
+            for (int k = 0; k < 3; k++) {
+                size_t d = aqui - (f[k] + 4);
+                j->b[f[k]] = (uint8_t)d; j->b[f[k] + 1] = (uint8_t)(d >> 8);
+                j->b[f[k] + 2] = (uint8_t)(d >> 16); j->b[f[k] + 3] = (uint8_t)(d >> 24);
+            }
+            break;
+        }
         default:
             /* sem gabarito: o interpretador faz esta e o nativo retoma na seguinte */
             jg_ilha_sempre(g, i);

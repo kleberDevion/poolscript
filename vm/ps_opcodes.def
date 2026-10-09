@@ -275,3 +275,11 @@ PS_OP(LOAD_BASE_MEMBRO,   114, "LOAD_BASE_MEMBRO", 1, 1)
 /* [.., lista] -> [.., tupla] com os mesmos itens: o fim de um literal de tupla
  * montado em LOTES (ver `emite_literal_seq` no compilador). arg = 0. */
 PS_OP(TUP_DE_LISTA,       115, "TUP_DE_LISTA", 1, 1)
+/* `for each x in f()`: o laço é DONO do gerador que o cabeçalho acabou de
+ * criar (decisão dele, 2026-10-09) e o fecha quando sai antes do fim. Se o
+ * topo é um gerador NOVO (nunca retomado), marca-o; senão, nada. O erro que
+ * sai do laço o fecha no `erro_runtime`. [.., it] -> [.., it] */
+PS_OP(ITER_DONO,          116, "ITER_DONO", 0, 0)
+/* `break`/`return` saindo do laço dono: fecha o gerador em stack[sp - arg],
+ * se é dono. */
+PS_OP(DONO_SAI,           117, "DONO_SAI", 0, 0)

@@ -377,8 +377,24 @@ struct Unidade {
  * deixavam um JUMP com alvo 0 no bytecode. */
 typedef struct { int32_t *v; int32_t n, cap; } Saltos;
 
-/* Um `finally` pendente: o bloco e em que laço/função o try foi aberto. */
-struct FinPend { PSNode *bloco; int laco; const void *unidade; };
+/* Um `finally` pendente: o bloco e em que laço/função o try foi aberto.
+ *
+ * `armados`: quantos handlers ESTE construto tem armados no ponto que está
+ * compilando agora (1 no corpo do try; no catch, 1 se há finally — o try de
+ * dentro que repropaga o erro do catch —, senão 0). A saída por `return`,
+ * `break` ou `continue` desarma esses handlers (POP_TRY) antes de rodar o
+ * finally: sem isso o `break` deixava o handler armado (o `raise` depois do
+ * laço caía no catch velho), o `continue` empilhava um por volta (70 mil
+ * voltas davam RecursionError) e o finally que levantava rodava duas vezes.
+ *
+ * `fecha`: o `using` não tem bloco de finally, tem o recurso a fechar — o
+ * nome dele (`carrega_nome` + CLOSE_SE_TEM).
+ *
+ * `dono_laco`: o `for each` dono do gerador do cabeçalho (ITER_DONO), pelo
+ * índice dele em `c->lacos` (-1 nos outros). A saída por `break` e `return`
+ * emite DONO_SAI com a profundidade do gerador na pilha; o `continue` do
+ * próprio laço não sai dele. */
+struct FinPend { PSNode *bloco; int laco; const void *unidade; int armados; const char *fecha; int dono_laco; };
 
 typedef struct {
     int32_t inicio;                  /* alvo do `continue` */
@@ -6479,14 +6495,29 @@ static void bloco_stmts(C *c, Unidade *u, PSNode *b)
  * ficam lá enquanto as cópias rodam: 1 no `return` (o valor devolvido), 0 no
  * `break`/`continue`. Um `break` dentro da cópia descarta esses também (ver
  * `Laco.extra_base`). */
-static void emite_finallys(C *c, Unidade *u, int ate_laco, int extra)
+static void emite_finallys(C *c, Unidade *u, int ate_laco, int extra, int continua)
 {
     c->pilha_extra += extra;
     for (int i = c->nfinally - 1; i >= 0; i--) {
         if (c->fin_pend[i].unidade != (const void *)u) break;   /* outra função */
         if (ate_laco >= 0 && c->fin_pend[i].laco < ate_laco) break;
+        int li = c->fin_pend[i].dono_laco;
+        if (li >= 0) {
+            /* o laço dono: fecha o gerador dele, que está embaixo do que os
+             * construtos de dentro empilharam e do estado dos laços de
+             * dentro. O `continue` dele não sai. */
+            if (continua && li == c->nlacos - 1) continue;
+            int32_t prof = (c->pilha_extra - c->lacos[li].extra_base) + 2;
+            for (int k = li + 1; k < c->nlacos; k++) prof += c->lacos[k].slots_pilha;
+            emite(c, u, OP_DONO_SAI, prof);
+            continue;
+        }
+        /* primeiro desarma o que este construto tem armado: o finally (e o
+         * fechamento) rodam fora da proteção dele, como na saída normal */
+        for (int k = 0; k < c->fin_pend[i].armados; k++) emite(c, u, OP_POP_TRY, 0);
         PSNode *bloco = c->fin_pend[i].bloco;
-        if (!bloco) continue;
+        const char *fecha = c->fin_pend[i].fecha;
+        if (!bloco && !fecha) continue;
         /* Enquanto ESTA entrada compila, ela e as de dentro dela saem de
          * pendente: um `return` (ou break/continue) dentro do próprio finally
          * achava o finally pendente e o recompilava sem fim
@@ -6494,9 +6525,14 @@ static void emite_finallys(C *c, Unidade *u, int ate_laco, int extra)
          * Um finally nunca envolve a si mesmo. */
         int salvo = c->nfinally;
         c->nfinally = i;
-        int32_t M = escopo_marca(u);
-        bloco_stmts(c, u, bloco);
-        escopo_fecha(c, u, M);
+        if (fecha) {
+            carrega_nome(c, u, fecha);
+            emite(c, u, OP_CLOSE_SE_TEM, 0);
+        } else {
+            int32_t M = escopo_marca(u);
+            bloco_stmts(c, u, bloco);
+            escopo_fecha(c, u, M);
+        }
         c->nfinally = salvo;
     }
     c->pilha_extra -= extra;
@@ -6717,7 +6753,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 }
             }
             if (u->tipo_ret) emite(c, u, OP_COERCE_RET, u->tipo_ret);
-            emite_finallys(c, u, -1, 1);   /* todos os finally abertos nesta função; o valor fica em cima */
+            emite_finallys(c, u, -1, 1, 0);   /* todos os finally abertos nesta função; o valor fica em cima */
             emite(c, u, OP_RETURN, 0);
             return;
 
@@ -6821,6 +6857,16 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     if (n->a->lista.itens[k]->texto || n->a->lista.itens[k]->i2) { usa_range = 0; break; }
             }
             int32_t topo, fim;
+            /* O laço é DONO do gerador que o cabeçalho cria (`for each x in
+             * gen()`, decisão dele): fecha-o quando sai antes do fim (break e
+             * return pelo DONO_SAI; erro pelo `erro_runtime`), e o `finally`/
+             * `using` de dentro dele roda. Só o cabeçalho que é chamada e cujo
+             * tipo o checador não sabe que não é gerador: o laço sobre a lista
+             * de um `split()` não paga nada. */
+            int fin_dono = -1;
+            const char *t_it = (!usa_range && n->a && n->a->kind == N_CALL) ? tp_de(c, u, n->a) : "";
+            int dono = !usa_range && n->a && n->a->kind == N_CALL
+                       && (!t_it || !strcmp(t_it, "generator") || !strcmp(t_it, "Object"));
             if (usa_range) {
                 int32_t na = n->a->lista.n;
                 if (na == 1) {                       /* range(fim) */
@@ -6838,6 +6884,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 fim = emite(c, u, OP_ITER_RANGE, 0);
             } else {
             expr(c, u, n->a);
+            if (dono) emite(c, u, OP_ITER_DONO, 0);
             emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 0, 0, NULL, 0));
             topo = UP(c, u)->ncode;
             fim = emite(c, u, OP_ITER_NEXT, 0);
@@ -6867,7 +6914,25 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * por-iteração é inofensivo — corpo e var compartilham a marca */
             c->lacos[c->nlacos - 1].escopo_marca = M;
             c->lacos[c->nlacos - 1].escopo_marca_body = M;
+            if (dono) {
+                /* pendente como um finally: `break` e `return` de dentro o
+                 * emitem (DONO_SAI) antes de saltar */
+                if (c->nfinally >= c->cap_finally) {
+                    int nc = c->cap_finally ? c->cap_finally * 2 : 16;
+                    struct FinPend *nv = realloc(c->fin_pend, sizeof(struct FinPend) * (size_t)nc);
+                    if (!nv) { cerro(c, "sem memoria", n); return; }
+                    c->fin_pend = nv; c->cap_finally = nc;
+                }
+                fin_dono = c->nfinally++;
+                c->fin_pend[fin_dono].bloco     = NULL;
+                c->fin_pend[fin_dono].laco      = c->nlacos;
+                c->fin_pend[fin_dono].unidade   = (const void *)u;
+                c->fin_pend[fin_dono].armados   = 0;
+                c->fin_pend[fin_dono].fecha     = NULL;
+                c->fin_pend[fin_dono].dono_laco = c->nlacos - 1;
+            }
             bloco_stmts(c, u, n->b);
+            if (fin_dono >= 0) c->nfinally = fin_dono;   /* sai de pendente */
             escopo_emite_clears(c, u, M);        /* reset por-iteração */
             emite(c, u, OP_JUMP, topo);
             if (fim >= 0) UP(c, u)->code[fim + 1] = UP(c, u)->ncode;
@@ -7181,25 +7246,50 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             /* NÃO abre escopo de bloco: no interp, a var do `using` e as
              * variáveis atribuídas no corpo SOBREVIVEM depois do bloco (é
              * deliberado). Manter igual pra não divergir. */
+            const char *recurso = n->texto ? n->texto : "_";
             expr(c, u, n->a);
             grava_valor(c, u, n->a);
-            guarda_nome_modo(c, u, n->texto ? n->texto : "_", 1);
+            guarda_nome_modo(c, u, recurso, 1);
             int32_t setup = emite(c, u, OP_SETUP_TRY, 0);
             c->dentro_try++;
+            /* O fechamento fica PENDENTE como um `finally`: `return`, `break`
+             * e `continue` de dentro do corpo o emitem antes de saltar. Antes
+             * saíam sem fechar, e o arquivo escrito ficava vazio. */
+            int fin_meu = -1;
+            if (c->nfinally >= c->cap_finally) {
+                int nc = c->cap_finally ? c->cap_finally * 2 : 16;
+                struct FinPend *nv = realloc(c->fin_pend, sizeof(struct FinPend) * (size_t)nc);
+                if (!nv) { cerro(c, "sem memoria", n); return; }
+                c->fin_pend = nv; c->cap_finally = nc;
+            }
+            fin_meu = c->nfinally++;
+            c->fin_pend[fin_meu].bloco   = NULL;
+            c->fin_pend[fin_meu].laco    = c->nlacos;
+            c->fin_pend[fin_meu].unidade = (const void *)u;
+            c->fin_pend[fin_meu].armados = 1;
+            c->fin_pend[fin_meu].fecha   = recurso;
+            c->fin_pend[fin_meu].dono_laco = -1;
             stmts_de(c, u, n->b);   /* o que ele liga é do bloco de fora (`liga_direto`) */
+            c->nfinally = fin_meu;  /* sai de pendente */
             c->dentro_try--;
             emite(c, u, OP_POP_TRY, 0);
 
             /* saída normal: fecha e pula o caminho de erro */
-            carrega_nome(c, u, n->texto ? n->texto : "_");
+            carrega_nome(c, u, recurso);
             emite(c, u, OP_CLOSE_SE_TEM, 0);
             int32_t fim = emite(c, u, OP_JUMP, 0);
 
-            /* saída por erro: fecha e relança */
+            /* saída por erro: fecha e relança o MESMO erro, com o tipo junto
+             * da mensagem (como o try sem catch). O RAISE só com a mensagem
+             * fazia de todo erro um RuntimeError — `catch (ZeroDivisionError
+             * e)` não o pegava — e o `sys.exit` de dentro saía com código 1 */
             if (setup >= 0) UP(c, u)->code[setup + 1] = UP(c, u)->ncode;
-            carrega_nome(c, u, n->texto ? n->texto : "_");
+            emite(c, u, OP_PUSH_ERR_TYPE, 0);
+            c->pilha_extra += 2;               /* [mensagem, tipo] por baixo */
+            carrega_nome(c, u, recurso);
             emite(c, u, OP_CLOSE_SE_TEM, 0);
-            emite(c, u, OP_RAISE, 0);          /* a mensagem já está na pilha */
+            c->pilha_extra -= 2;
+            emite(c, u, OP_RERAISE, 0);
 
             if (fim >= 0) UP(c, u)->code[fim + 1] = UP(c, u)->ncode;
             return;
@@ -7897,6 +7987,9 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             c->fin_pend[fin_meu].bloco   = n->c;      /* pode ser NULL (sem finally) */
             c->fin_pend[fin_meu].laco    = c->nlacos;
             c->fin_pend[fin_meu].unidade = (const void *)u;
+            c->fin_pend[fin_meu].armados = 1;         /* o SETUP_TRY do corpo */
+            c->fin_pend[fin_meu].fecha   = NULL;
+            c->fin_pend[fin_meu].dono_laco = -1;
             c->nfinally++;
             int32_t Mt = escopo_marca(u);
             /* o que o corpo (e depois os catches) criar é apagado no alvo de
@@ -7925,6 +8018,9 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * dele. Um try interno segura esse caso e repropaga. */
             int32_t setup_cat = -1;
             if (n->c) setup_cat = emite(c, u, OP_SETUP_TRY, 0);
+            /* nos catches o handler do corpo já saiu (o erro o consumiu); fica
+             * armado só o de cima, quando há finally */
+            c->fin_pend[fin_meu].armados = setup_cat >= 0 ? 1 : 0;
 
             /* Cada catch: se tem tipo, compara; senão captura tudo.
              * A mensagem já está no topo quando chegamos aqui. */
@@ -8061,7 +8157,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             Laco *l = &c->lacos[c->nlacos - 1];
             /* saindo do laço: apaga TUDO nascido nele até aqui (var do laço +
              * corpo + blocos aninhados abertos), pra nada vazar pra fora */
-            emite_finallys(c, u, c->nlacos, 0);   /* finally aberto DENTRO deste laço */
+            emite_finallys(c, u, c->nlacos, 0, 0);   /* finally aberto DENTRO deste laço */
             escopo_emite_clears(c, u, l->escopo_marca);
             /* limpa o estado do iterador antes de sair do laço — e o que os
              * construtos abertos desde o laço guardam por cima dele (ver
@@ -8082,7 +8178,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             Laco *l = &c->lacos[c->nlacos - 1];
             /* próxima iteração começa limpa: apaga só o escopo do CORPO (o que é
              * do laço — var/ self/_count — é re-atribuído no topo ou persiste) */
-            emite_finallys(c, u, c->nlacos, 0);   /* finally aberto DENTRO deste laço */
+            emite_finallys(c, u, c->nlacos, 0, 1);   /* finally aberto DENTRO deste laço */
             escopo_emite_clears(c, u, l->escopo_marca_body);
             /* o topo do laço espera só o estado dele: o que os construtos
              * abertos desde o laço guardam por cima sai antes do salto */

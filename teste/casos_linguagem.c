@@ -6050,6 +6050,292 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(r)\n",
   "", "Quebrou: tarefa 1 (linha 3); mais 1 tarefa do await falhou: Quebrou: tarefa 2 (linha 3)", 1 },
 
+/* ── gerador abandonado, saídas de try e using (Plano 6, lote 6d, 2026-10-09)
+ * O gerador que o `for each` criava e abandonava (break, return, erro) não
+ * rodava o finally nem fechava o using (decisão dele: o laço dono fecha na
+ * hora; o guardado em variável segue consumível; o resto fecha no fim do
+ * programa). Achados no caminho e consertados junto: `break`/`continue` que
+ * saíam de um `try` deixavam o handler armado (o catch velho pegava um erro de
+ * fora; 70 mil `continue` davam RecursionError) e o finally que levantava na
+ * saída rodava duas vezes; `return`/`break`/`continue` dentro de `using`
+ * saíam sem fechar; o erro que atravessava um `using` perdia o tipo (e o
+ * `sys.exit` virava RuntimeError); o erro que atravessava um `finally` ou um
+ * `using` perdia os quadros de onde foi levantado. */
+{ "laco dono fecha o gerador no break: o finally dele roda (lote 6d)",
+  "funct gen() {\n"
+  "    try {\n"
+  "        yield 1\n"
+  "        yield 2\n"
+  "        yield 3\n"
+  "    } finally {\n"
+  "        post(\"finally do gerador\")\n"
+  "    }\n"
+  "}\n"
+  "for each v in gen() {\n"
+  "    post(\"v\", v)\n"
+  "    if v == 2 {\n"
+  "        break\n"
+  "    }\n"
+  "}\n"
+  "post(\"depois do laco\")\n",
+  "v 1\nv 2\nfinally do gerador\ndepois do laco", NULL, 0 },
+{ "laco dono fecha no return e no erro; em variavel segue; o resto fecha no fim do programa (lote 6d)",
+  "import os\n"
+  "funct gen(str nome) {\n"
+  "    try {\n"
+  "        yield 1\n"
+  "        yield 2\n"
+  "    } finally {\n"
+  "        post(\"finally\", nome)\n"
+  "    }\n"
+  "}\n"
+  "funct gen_u(str cam) {\n"
+  "    using open(cam, \"w\") as h {\n"
+  "        h.write(\"dado\")\n"
+  "        yield 1\n"
+  "        yield 2\n"
+  "    }\n"
+  "}\n"
+  "int funct primeiro() {\n"
+  "    for each v in gen(\"return\") {\n"
+  "        return v\n"
+  "    }\n"
+  "    return 0\n"
+  "}\n"
+  "post(primeiro())\n"
+  "try {\n"
+  "    for each v in gen(\"erro\") {\n"
+  "        raise Quebrou(\"no corpo\")\n"
+  "    }\n"
+  "} catch (Quebrou e) {\n"
+  "    post(\"pegou:\", e)\n"
+  "}\n"
+  "for each v in gen_u(\"/tmp/ps_6d_gen_u.txt\") {\n"
+  "    break\n"
+  "}\n"
+  "post(\"using fechou:\", len(os.readFile(\"/tmp/ps_6d_gen_u.txt\")))\n"
+  "Object g = gen(\"variavel\")\n"
+  "for each v in g {\n"
+  "    break\n"
+  "}\n"
+  "post(\"variavel segue:\", list(g))\n"
+  "Object g2 = gen(\"fim do programa\")\n"
+  "for each v in g2 {\n"
+  "    break\n"
+  "}\n"
+  "post(\"antes do fim\")\n",
+  "finally return\n1\nfinally erro\npegou: no corpo (linha 26)\nusing fechou: 4\n"
+  "finally variavel\nvariavel segue: [2]\nantes do fim\nfinally fim do programa", NULL, 0 },
+{ "fecho do gerador: yield no finally e RuntimeError, catch nao pega, sys.exit sai com o codigo (lote 6d)",
+  "import sys\n"
+  "funct teimoso() {\n"
+  "    try {\n"
+  "        yield 1\n"
+  "    } finally {\n"
+  "        yield 2\n"
+  "    }\n"
+  "}\n"
+  "try {\n"
+  "    for each v in teimoso() {\n"
+  "        break\n"
+  "    }\n"
+  "} catch (RuntimeError e) {\n"
+  "    post(\"pegou:\", e)\n"
+  "}\n"
+  "funct pega_tudo() {\n"
+  "    try {\n"
+  "        yield 1\n"
+  "    } catch (e) {\n"
+  "        post(\"catch nao pode pegar o fecho\")\n"
+  "    } finally {\n"
+  "        post(\"finally roda\")\n"
+  "    }\n"
+  "}\n"
+  "for each v in pega_tudo() {\n"
+  "    break\n"
+  "}\n"
+  "funct sai() {\n"
+  "    try {\n"
+  "        yield 1\n"
+  "    } finally {\n"
+  "        sys.exit(4)\n"
+  "    }\n"
+  "}\n"
+  "for each v in sai() {\n"
+  "    break\n"
+  "}\n"
+  "post(\"nao chega\")\n",
+  "pegou: o gerador fez yield enquanto era fechado (yield dentro do finally) (linha 11)\nfinally roda",
+  NULL, 4 },
+{ "erro dentro de gerador com finally: o traceback termina na linha do raise (lote 6d)",
+  "flo funct ajuda(int x) {\n"
+  "    return 10 / x\n"
+  "}\n"
+  "funct gen(list l) {\n"
+  "    try {\n"
+  "        for each x in l {\n"
+  "            yield ajuda(x)\n"
+  "        }\n"
+  "    } finally {\n"
+  "        post(\"finally do gen\")\n"
+  "    }\n"
+  "}\n"
+  "for each v in gen([5, 0]) {\n"
+  "    post(v)\n"
+  "}\n",
+  "2.0\nfinally do gen", ", linha 2\n  |     return 10 / x", 1 },
+{ "erro que atravessa um finally: o traceback termina na linha do raise (lote 6d)",
+  "flo funct ajuda(int x) {\n"
+  "    return 10 / x\n"
+  "}\n"
+  "list lg = []\n"
+  "flo funct f(int x) {\n"
+  "    try {\n"
+  "        return ajuda(x)\n"
+  "    } finally {\n"
+  "        lg.append(\"finally de f\")\n"
+  "    }\n"
+  "}\n"
+  "post(f(0))\n",
+  "", ", linha 7\n  |         return ajuda(x)", 1 },
+{ "erro que atravessa um using: o quadro do corpo e o do raise (lote 6d)",
+  "flo funct ajuda(int x) {\n"
+  "    return 10 / x\n"
+  "}\n"
+  "using open(\"/tmp/ps_6d_g06.txt\", \"w\") as h {\n"
+  "    flo z = ajuda(0)\n"
+  "}\n",
+  "", ", linha 5\n  |     flo z = ajuda(0)", 1 },
+{ "break que sai de try leva o handler junto: o raise depois do laco nao cai no finally velho (lote 6d)",
+  "for each i in [1, 2] {\n"
+  "    try {\n"
+  "        break\n"
+  "    } finally {\n"
+  "        post(\"finally\", i)\n"
+  "    }\n"
+  "}\n"
+  "try {\n"
+  "    raise Boom(\"depois do laco\")\n"
+  "} catch (Boom e) {\n"
+  "    post(\"pegou:\", e)\n"
+  "}\n"
+  "int n = 0\n"
+  "for each j in range(100000) {\n"
+  "    try {\n"
+  "        n += 1\n"
+  "        continue\n"
+  "    } finally {\n"
+  "        n += 0\n"
+  "    }\n"
+  "}\n"
+  "post(\"voltas:\", n)\n"
+  "raise Fim(\"fora de tudo\")\n",
+  "finally 1\npegou: depois do laco (linha 9)\nvoltas: 100000", "Fim: fora de tudo\n", 1 },
+{ "continue dentro de try/finally num laco de 70 mil voltas (lote 6d)",
+  "int n = 0\n"
+  "for each j in range(70000) {\n"
+  "    try {\n"
+  "        n += 1\n"
+  "        continue\n"
+  "    } finally {\n"
+  "        n += 0\n"
+  "    }\n"
+  "}\n"
+  "post(\"voltas:\", n)\n",
+  "voltas: 70000", NULL, 0 },
+{ "break que sai de try/catch: o raise de fora nao e pego pelo catch velho (lote 6d)",
+  "for each i in [1, 2] {\n"
+  "    try {\n"
+  "        break\n"
+  "    } catch (Boom e) {\n"
+  "        post(\"catch velho\", e)\n"
+  "    }\n"
+  "}\n"
+  "raise Boom(\"fora de tudo\")\n",
+  "", "Boom: fora de tudo\n", 1 },
+{ "finally que levanta na saida por return ou break roda uma vez (lote 6d)",
+  "str funct f() {\n"
+  "    try {\n"
+  "        return \"x\"\n"
+  "    } finally {\n"
+  "        post(\"finally roda\")\n"
+  "        raise Boom(\"no finally\")\n"
+  "    }\n"
+  "}\n"
+  "try {\n"
+  "    post(f())\n"
+  "} catch (Boom e) {\n"
+  "    post(\"pegou:\", e)\n"
+  "}\n"
+  "for each i in [1] {\n"
+  "    try {\n"
+  "        try {\n"
+  "            break\n"
+  "        } finally {\n"
+  "            post(\"finally do break\")\n"
+  "            raise Boom(\"no finally do break\")\n"
+  "        }\n"
+  "    } catch (Boom e) {\n"
+  "        post(\"pegou:\", e)\n"
+  "    }\n"
+  "}\n",
+  "finally roda\npegou: no finally (linha 6)\nfinally do break\npegou: no finally do break (linha 20)",
+  NULL, 0 },
+{ "using fecha no return, no break e no continue (lote 6d)",
+  "import os\n"
+  "str CAM = \"/tmp/ps_6d_using.txt\"\n"
+  "Null funct grava() {\n"
+  "    using open(CAM, \"w\") as h {\n"
+  "        h.write(\"dado\")\n"
+  "        return\n"
+  "    }\n"
+  "}\n"
+  "grava()\n"
+  "post(\"depois do return:\", len(os.readFile(CAM)))\n"
+  "for each i in [1, 2] {\n"
+  "    using open(CAM, \"w\") as h2 {\n"
+  "        h2.write(\"outro\")\n"
+  "        break\n"
+  "    }\n"
+  "}\n"
+  "post(\"depois do break:\", len(os.readFile(CAM)))\n"
+  "for each i in [1] {\n"
+  "    using open(CAM, \"w\") as h3 {\n"
+  "        h3.write(\"mais\")\n"
+  "        continue\n"
+  "    }\n"
+  "}\n"
+  "post(\"depois do continue:\", len(os.readFile(CAM)))\n",
+  "depois do return: 4\ndepois do break: 5\ndepois do continue: 4", NULL, 0 },
+{ "erro que atravessa um using mantem o tipo (lote 6d)",
+  "try {\n"
+  "    using open(\"/tmp/ps_6d_tipo.txt\", \"w\") as h {\n"
+  "        flo z = 1 / 0\n"
+  "    }\n"
+  "} catch (ZeroDivisionError e) {\n"
+  "    post(\"pegou ZeroDivisionError:\", e)\n"
+  "} catch (e) {\n"
+  "    post(\"outro tipo:\", e)\n"
+  "}\n"
+  "try {\n"
+  "    using open(\"/tmp/ps_6d_tipo.txt\", \"w\") as h2 {\n"
+  "        raise Quebrou(\"dentro do using\")\n"
+  "    }\n"
+  "} catch (Quebrou e) {\n"
+  "    post(\"pegou Quebrou:\", e)\n"
+  "} catch (e) {\n"
+  "    post(\"outro tipo:\", e)\n"
+  "}\n",
+  "pegou ZeroDivisionError: division by zero (linha 3)\npegou Quebrou: dentro do using (linha 12)", NULL, 0 },
+{ "sys.exit dentro de using fecha o recurso e sai com o codigo (lote 6d)",
+  "import sys\n"
+  "using open(\"/tmp/ps_6d_exit.txt\", \"w\") as h {\n"
+  "    h.write(\"x\")\n"
+  "    sys.exit(3)\n"
+  "}\n"
+  "post(\"nao chega\")\n",
+  "", NULL, 3 },
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

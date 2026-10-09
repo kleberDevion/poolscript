@@ -417,13 +417,17 @@ sem ele, `nova = 1` dentro da funct e `post(nova)` fora dá
 ## 4.8. `using` — fechamento automático de recurso
 
 `using <expr> as <nome> { … }` avalia a expressão, liga ao nome e roda o bloco; ao
-terminar (**por saída normal ou por erro**) ele **fecha o recurso**, se for um
+terminar (**por saída normal, por erro, ou por `return`, `break` e `continue` de
+dentro do bloco**) ele **fecha o recurso**, se for um
 dos tipos que a linguagem sabe fechar — **arquivo**, **conexão de banco**
 (com `commit` antes de fechar), **planilha** (salva ao sair), **socket** e
 **processo** do `os.run(..., capture="live")` (fecha os três canais; o
 processo segue vivo, e quem quer esperar por ele chama `wait()` dentro do
 bloco). Garante a liberação mesmo se o bloco estourar. Para um valor que não é
-um desses recursos, o `using` só executa o bloco (não há o que fechar).
+um desses recursos, o `using` só executa o bloco (não há o que fechar). O erro
+que atravessa o `using` segue com o tipo dele (um `catch (ZeroDivisionError e)`
+de fora pega a divisão por zero de dentro) e com o traceback até a linha do
+`raise`; o `sys.exit` de dentro fecha o recurso e sai com o código pedido.
 
 ```ps
 using conexao as db {        # db é fechada/comitada ao sair, mesmo com erro

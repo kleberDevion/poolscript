@@ -365,8 +365,8 @@ Regras:
   atribuição simples: cria se não existir, sobrescreve se já existir.
 
 **Fora do escopo (não suportado):** `self.x`/`obj.y` como alvo de unpacking;
-unpacking em declaração tipada (`str a, b = ...`); unpacking no `for each`
-(que continua aceitando só 1 nome: `for each x in lista`).
+unpacking em declaração tipada (`str a, b = ...`). No `for each` o unpacking
+vale: `for each k, v in d.items() { ... }`.
 
 ---
 
@@ -410,8 +410,9 @@ for each item in iteravel {
 }
 ```
 
-`for each` aceita **só um nome** (sem unpacking — `for each k, v in ...` não
-existe). Itera listas, tuplas, strings (char a char) e geradores.
+`for each` aceita um nome ou vários, desempacotando cada item
+(`for each k, v in d.items()`). Itera listas, tuplas, strings (char a char) e
+geradores.
 `break`/`continue` funcionam normalmente mesmo dentro de um `if` aninhado no
 corpo do loop.
 
@@ -638,15 +639,20 @@ for each v in contar(3) {
 }
 ```
 
-`break` no `for each` consumidor para de puxar valores do gerador (não
-executa o resto do corpo da função geradora).
+`break` (ou `return`, ou erro) no `for each` que criou o gerador no cabeçalho
+para de puxar valores e **fecha** o gerador: o resto do corpo da geradora não
+roda, mas o `finally` e o `using` abertos nela rodam. O gerador guardado numa
+variável continua consumível depois do `break`; o que sobrar suspenso com
+`finally`/`using` aberto fecha no fim do programa (`docs/linguagem/06-funcoes.md`
+§6.7).
 
 ---
 
 ## `try` / `catch` / `finally`
 
-**Precisa de pelo menos um `catch`** — `try { ... } finally { ... }` sem
-nenhum `catch` **não é sintaxe válida**.
+Um `try` leva um ou mais `catch`, um `finally`, ou os dois — `try { ... }
+finally { ... }` sem `catch` vale: o `finally` roda e o erro, se houver,
+propaga depois dele. Só `try` sozinho é erro de sintaxe.
 
 ```
 try {
@@ -666,7 +672,9 @@ try {
   [Erros nomeados](#erros-nomeados)).
 - `catch (nome)` sem tipo captura qualquer erro.
 - `finally` sempre executa, com ou sem erro, e mesmo se nenhum `catch` bateu
-  (nesse caso o erro original é relançado depois do `finally`).
+  (nesse caso o erro original é relançado depois do `finally`, com o mesmo
+  tipo e o traceback até a linha do `raise`). Saindo do `try` por `return`,
+  `break` ou `continue`, ele roda uma vez e o `try` deixa de valer.
 - `try`/`catch` podem ser aninhados; um erro não capturado por um `catch`
   interno propaga para um `try` externo.
 

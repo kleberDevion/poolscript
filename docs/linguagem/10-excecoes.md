@@ -47,6 +47,9 @@ try {
   `return`, `break` e `continue` dentro do `finally` valem: saem dali na hora
   (um `return` no `finally` ganha do `return` do `try`), e só atravessam os
   `finally` **de fora** — o próprio nunca roda duas vezes.
+- **Saindo do `try` por `return`, `break` ou `continue`**, o `finally` roda uma
+  vez — também quando ele mesmo levanta um erro — e o `try` deixa de valer: um
+  erro levantado depois do laço não cai no `catch` nem no `finally` dele.
 - **`sys.exit(n)` também passa pelos `finally`.** Nenhum `catch` o pega (nem o
   sem tipo, nem `catch (Exception e)`, nem a rede da `int funct`): os
   `finally` em volta rodam, de dentro pra fora, e o programa sai com o código
@@ -115,7 +118,9 @@ try {
   esteja: numa funct chamada pelo `try`, numa funct chamada de volta por
   `map`, `filter`, `sorted` ou um decorador, num gerador consumido pelo
   `for each`, numa tarefa aguardada. O traceback do erro que ninguém pega
-  também traz os quadros de lá, com a linha do `raise` por último.
+  também traz os quadros de lá, com a linha do `raise` por último — também
+  quando o erro atravessou um `finally` ou um `using` no caminho (antes o
+  traceback acabava na linha do `try`).
 
 ```ps
 funct gen(list l) {

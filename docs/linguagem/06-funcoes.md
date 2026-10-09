@@ -658,6 +658,33 @@ consomem cada uma o seu ao mesmo tempo: cada tarefa retoma o gerador dela de
 onde parou. O erro de dentro do gerador traz os quadros dele no traceback, e o
 `e` do `catch` de quem consome diz a linha do `raise` (10.3).
 
+**Gerador abandonado fecha.** O `for each` que cria o gerador no cabeçalho
+(`for each v in gen()`) é dono dele: se o laço sai antes do fim — `break`,
+`return` ou erro —, o gerador fecha na hora, e o `finally` e o `using` que
+estavam abertos dentro dele rodam. O gerador guardado numa variável é de quem
+o guardou: o `break` não o fecha, e ele segue consumível de onde parou. O que
+sobrar suspenso no fim do programa com `finally` ou `using` aberto fecha ali.
+
+```ps
+funct numeros() {
+    try {
+        yield 1
+        yield 2
+    } finally {
+        post("fechou")
+    }
+}
+for each v in numeros() {
+    break               # fechou
+}
+```
+
+Fechar é voltar no `yield` em que ele parou com um sinal que nenhum `catch`
+pega (nem o sem tipo), como o `sys.exit`: só os `finally` e os `using` rodam.
+Um `yield` dentro desse `finally` é `RuntimeError: o gerador fez yield
+enquanto era fechado (yield dentro do finally)`, e o `sys.exit` dentro dele
+encerra o programa com o código dele.
+
 `yield` só existe dentro de funct. Fora dela é erro de sintaxe antes de rodar
 (antes só quebrava rodando):
 
