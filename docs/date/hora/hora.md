@@ -44,6 +44,16 @@ token = jwt.gen({"user_id": 1, "exp": exp}, "chave")
 
 ---
 
+## Erros
+
+- **TypeError** — horas, minutos ou dias que não são inteiros:
+  `date.hora(1.5)` → `'flo' object cannot be interpreted as an integer`
+  (o `flo` era truncado calado: 1.5 hora dava 3600). Uma hora e meia é
+  `date.hora(1, 30)`. `bool` vale 0/1, e a conta é exata com inteiro de
+  qualquer tamanho.
+
+---
+
 ## Relacionados
 
 - [`date.timestamp()`](../timestamp/timestamp.md) — o "agora" em segundos, pra somar

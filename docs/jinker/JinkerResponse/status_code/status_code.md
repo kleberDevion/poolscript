@@ -77,12 +77,12 @@ funct cria_encadeado() {
 | `resp.status_code = 201` | nada (é atribuição) | **não** |
 | `resp.status(201)` | `JinkerResponse` (o próprio) | sim |
 
-O valor **tem que ser `int`**. Qualquer outro tipo é
-`RuntimeError: status_code espera um int` — `"201"` em string não converte
-sozinho.
-
-O motor não confere a faixa: `r.status_code = 999` é aceito e vai pro cliente
-como `999`. A tabela de códigos usuais está em
+O valor **tem que ser inteiro** (`int`, `bool` ou inteiro grande), a mesma
+regra do [`.status(code)`](../status/status.md): outro tipo é
+`TypeError: 'str' object cannot be interpreted as an integer` — `"201"` em
+string não converte sozinho — e fora de 100 a 999 (o código do HTTP tem três
+dígitos) é `ValueError: status(): codigo HTTP fora da faixa 100..999: 1000`.
+A tabela de códigos usuais está em
 [`.status(code)`](../status/status.md#códigos-http-mais-comuns).
 
 ## Não confundir com o `status_code` do módulo `request`

@@ -63,4 +63,8 @@ int ps_uni_caixa(uint32_t c, int qual, uint32_t out[3]);
 /* casefold completo (CaseFolding C + F): até 3 codepoints */
 int ps_uni_dobra(uint32_t c, uint32_t out[3]);
 
+/* valor (0 a 9) do dígito decimal de qualquer escrita (٣ é 3, ３ é 3); -1 se
+ * o caractere não é dígito decimal */
+int ps_uni_valor_decimal(uint32_t c);
+
 #endif

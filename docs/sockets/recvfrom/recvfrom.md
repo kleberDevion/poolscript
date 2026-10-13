@@ -34,8 +34,10 @@ quer só os dados escreve `s.recvfrom(64)[0]`.
 - **`TypeError`** — `recvfrom() takes at least 1 argument (0 given)` /
   `recvfrom() takes at most 2 arguments (3 given)`
 - **`TypeError`** — `'str' object cannot be interpreted as an integer`
-- **`TypeError`** — `recvfrom: bufsize deve ser int positivo`, para `0` e
-  negativos
+- **`ValueError`** — `negative buffersize in recvfrom`, para negativos (`0`
+  vale)
+- **`OverflowError`** — `flags` fora da faixa do `int` do sistema:
+  `signed integer is greater than maximum`
 - **`RuntimeError`** — `timed out`: o prazo estourou, ou o socket é
   não-bloqueante e não havia datagrama
 - **`OSError`** — socket fechado: `[Errno 9] Bad file descriptor`

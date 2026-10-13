@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.15`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.16`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -446,7 +446,8 @@ Precedência, do mais fraco para o mais forte: ternário `A if C else B` < `or`/
 | `**` e `pow(b, e, mod)` | Potência. `-2 ** 2` dá `-4`. `2 ** 3 ** 2` dá `512` |
 | `+` | Soma números ou concatena sequências do mesmo tipo. **Não coage**: `"a" + 1` dá `TypeError: can only concatenate str (not "int") to str` |
 | `*` | Sequência vezes int repete: `"-" * 40`, `[0] * 3` |
-| `==` | Compara valor: `1 == 1.0`, `1 == True`, estrutura de list, tup e dict. `5 == "5"` é False |
+| `==` | Compara valor: `1 == 1.0`, `1 == True`, estrutura de list, tup e dict. `5 == "5"` é False. int x flo é **exato** (`9007199254740993 == 9007199254740992.0` é False), e a chave de dict acha o número que o `==` diz igual. Estrutura de qualquer profundidade (a descida não usa a pilha do C); a que contém a si mesma compara pela forma (17.0.16) |
+| `<` entre list e tup | `TypeError: '<' not supported between instances of 'list' and 'tup'` (o `==` delas já era False). `nan` não se ordena com nada |
 | `===`, `!==` | Não existem: `` `===` nao existe nesta linguagem; use `==` `` |
 | `<` com `Null` | `TypeError: '<' not supported between instances of 'Null' and 'int'`. `Null == 0` é False |
 | `a < b < c` | Não encadeia, é `(a < b) < c`. Escreva `a < b and b < c` |
@@ -454,7 +455,7 @@ Precedência, do mais fraco para o mais forte: ternário `A if C else B` < `or`/
 | `is`, `is not` | Testam **tipo**, pela regra da declaração: `x is int`, `x is Null`, `x is Object`; instância `is` classe sobe pela herança, classe `is` classe é identidade; `c is Cor` (enum) = valor de um membro. `x is 5` é SyntaxError |
 | `in`, `not in` | Lista/tup: elemento. str: substring. dict: **chave** |
 | Bitwise | Só entre int (bool entra como 0/1, e `~True` é erro) |
-| `count` | `int(7) count in l` e `count int(7) in l` contam o valor. `int in l count` e `count int in l` contam o tipo |
+| `count` | `int(7) count in l` e `count int(7) in l` contam o valor. `int in l count` e `count int in l` contam o tipo — todo tipo vale (`byte`, `long`, `Object`, `PoolFile` também), e num `byte` cada elemento é o int do byte |
 
 ### 2.7 Controle de fluxo
 
@@ -2185,8 +2186,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.15** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.15 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.16** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.16 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2807,7 +2808,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.15"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.16"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2887,7 +2888,7 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-08 (madrugada)
 
-- Versão da linguagem **17.0.15** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.15 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.16** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.16 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: `9c05801` (17.0.15, Plano 6 lote 7a), igual a `origin/main` quando subiu. No `2a668b9` (17.0.11) entrou, por engano meu (`git add -A`), o seu rename `examples/action.pr` → `examples/funct.pr` que estava na árvore (100% igual); desde então o commit leva só a lista de arquivos do lote. Fora do controle de versão ficam só arquivos seus (`examples/s.pr`), que nunca entram em commit; a sua mudança em `vm/ps_lexer.c` (de 2026-10-12: `with` sai das palavras reservadas) segue na árvore, fora dos meus commits.
 - **Lote 7a fechado no 17.0.15** (`9c05801`, 2026-10-13): texto pela tabela do Unicode inteira, de qualquer língua (decisão sua: só em string; nome no código segue ASCII) — caixa completa, sigma final, classes de caractere, branco e imprimível (2.17, 3.14); `isidentifier` pela regra de nome; `format` (zero depois do sinal, hexa com sinal, precisão em caractere, inteiro grande, número à direita; o que formatava diferente calado é erro); `replace` com listas em paralelo, com `count` e `new` obrigatório; `rsplit` pelo codepoint e sem teto; `translate`, `chr` e `char c = N` na faixa do Unicode; `char` com uma regra só. Conferido contra o Python nos 1.112.064 caracteres. Verde na VPS em `make check`, `check-asan` e `check-debug`. Medido: os 13 casos do bench de -0,12% a +0,02% (a partida +0,33%/+0,82% é núcleo: em instruções de usuário, -30/+107); métodos de texto mais rápidos (metodo -20%, caixa em ASCII -56%, em português -23%).

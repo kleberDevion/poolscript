@@ -1638,12 +1638,39 @@ static void mpz_de_val(mpz_t z, Value v)
     else              ps_mpz_set_i64(z, v.as.i);     /* V_INT (bool já virou int) */
 }
 
-/* v é inteiro (int64 ou bignum)? / inteiro como double (pra misturar com float) */
+/* v é inteiro (int64 ou bignum)? O inteiro que entra numa conta com flo vira
+ * double por `num_flo_ou_erro` (arredondado, e o que não cabe é erro). */
 #define EH_INTEIRO(v) ((v).t == V_INT || EH_BIGINT(v))
-static double int_como_double(Value v)
+
+/* Argumento inteiro de um nativo, numa regra só: int, bool (bool é int,
+ * doc 2.4: True é 1) e o inteiro grande — que fica no extremo do int64 com
+ * o sinal dele, então índice, largura ou contagem desse tamanho cai na regra
+ * de cada um (fora da faixa, memória insuficiente, todas). Antes metade dos
+ * nativos aceitava bool e a outra metade dizia que bool "não pode ser
+ * interpretado como inteiro", e o inteiro grande era recusado com a frase
+ * "'int' object cannot be interpreted as an integer". 1 se é inteiro. */
+static inline int arg_inteiro(Value v, int64_t *out)
 {
-    return EH_BIGINT(v) ? mpz_get_d(COMO_BIGINT(v)->v) : (double)v.as.i;
+    if (v.t == V_INT)  { *out = v.as.i; return 1; }
+    if (v.t == V_BOOL) { *out = v.as.b ? 1 : 0; return 1; }
+    if (EH_BIGINT(v))  { *out = mpz_sgn(COMO_BIGINT(v)->v) < 0 ? INT64_MIN : INT64_MAX; return 1; }
+    return 0;
 }
+
+/* A frase de quem não é inteiro, a mesma pra todo nativo. */
+static const char *nome_do_tipo_valor(Value v);
+static int erro_nao_inteiro(VM *vm, Value v)
+{
+    snprintf(vm->erro, sizeof(vm->erro), "'%s' object cannot be interpreted as an integer",
+             nome_do_tipo_valor(v));
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+    return -1;
+}
+
+/* `int64_t x; INTEIRO_OU_ERRO(vm, args[1], x);` dentro de um nativo */
+#define INTEIRO_OU_ERRO(vm, v, dest) do { \
+    if (!arg_inteiro((v), &(dest))) return erro_nao_inteiro((vm), (v)); \
+} while (0)
 
 /* Dígitos decimais de um bignum, em buffer malloc (o chamador dá free). */
 static char *bigint_str(mpz_srcptr z)
@@ -1747,11 +1774,24 @@ static uint32_t hash_valor(const Value *v)
         case V_INT:   return (uint32_t)((uint64_t)v->as.i * 2654435761u);
         case V_FLOAT: {
             /* inteiro guardado como float precisa colidir com o int
-             * equivalente, senão d[1] e d[1.0] viram chaves diferentes */
-            if (v->as.d == (double)(int64_t)v->as.d)
-                return (uint32_t)((uint64_t)(int64_t)v->as.d * 2654435761u);
+             * equivalente, senão d[1] e d[1.0] viram chaves diferentes. Fora
+             * da faixa do int64 o inteiro é o grande (2.0 ** 64 com 2 ** 64):
+             * o hash é o dele. Antes o cast pra int64 fora da faixa era
+             * indefinido, e o flo 2^64 caía no hash dos bits. */
+            double d = v->as.d;
+            if (d == trunc(d) && d >= -9223372036854775808.0 && d < 9223372036854775808.0)
+                return (uint32_t)((uint64_t)(int64_t)d * 2654435761u);
+            if (isfinite(d) && d == trunc(d)) {
+                mpz_t z; mpz_init(z);
+                mpz_set_d(z, d);
+                char *s = bigint_str(z);
+                uint32_t h = s ? hash_str(s, (int)strlen(s)) : 0;
+                free(s);
+                mpz_clear(z);
+                return h;
+            }
             uint64_t bits;
-            memcpy(&bits, &v->as.d, sizeof(bits));
+            memcpy(&bits, &d, sizeof(bits));
             return (uint32_t)(bits ^ (bits >> 32));
         }
         case V_TIPO:  return 0x7ed0u ^ (uint32_t)v->as.i;
@@ -2991,17 +3031,306 @@ static int strings_iguais(const PSString *a, const PSString *b)
     return memcmp(a->chars, b->chars, (size_t)a->len) == 0;
 }
 
-/* regra do spec: Null == 0 é True */
-/* Profundidade da comparação: estruturas MUTUAMENTE recursivas (a contém b,
- * b contém a) faziam val_iguais descer pra sempre — segfault. O teto devolve
- * "diferente" em vez de derrubar o processo; comparação legítima nunca chega
- * perto de 256 níveis. */
-#define PS_CMP_MAX 256
-static int ps_prof_cmp = 0;
+/* ── int x flo, exato ──────────────────────────────────────────────────────
+ * Comparar convertendo o int pra double perdia dígito acima de 2^53:
+ * `9007199254740993 == 9007199254740992.0` dava True, e o dict (que acha a
+ * chave pelo hash e pela igualdade) não achava a chave que o `==` dizia
+ * igual. Agora a comparação é exata (-1, 0, 1; 2 = NaN, que não se ordena
+ * com nada), e o hash do flo inteiro é o do int de mesmo valor. */
+static int cmp_i64_flo(int64_t i, double d)
+{
+    if (isnan(d)) return 2;
+    if (d >= 9223372036854775808.0) return -1;
+    if (d < -9223372036854775808.0) return 1;
+    double t = trunc(d);                 /* cabe no int64: o cast é exato */
+    int64_t ti = (int64_t)t;
+    if (i != ti) return i < ti ? -1 : 1;
+    double f = d - t;
+    return f > 0 ? -1 : f < 0 ? 1 : 0;
+}
+
+static int cmp_big_flo(mpz_srcptr z, double d)
+{
+    if (isnan(d)) return 2;
+    if (isinf(d)) return d > 0 ? -1 : 1;
+    mpz_t t; mpz_init(t);
+    mpz_set_d(t, d);                     /* trunca pra zero: exato */
+    int c = mpz_cmp(z, t);
+    mpz_clear(t);
+    if (c) return c < 0 ? -1 : 1;
+    double f = d - trunc(d);
+    return f > 0 ? -1 : f < 0 ? 1 : 0;
+}
+
+/* Inteiro grande -> double, arredondado ao mais próximo (o mpz_get_d trunca:
+ * 2^53 + 3 virava 2^53 + 2). -1 se não cabe num double. */
+static int bigint_para_double(mpz_srcptr z, double *out)
+{
+    if (mpz_sizeinbase(z, 2) > 1024) return -1;
+    char *s = mpz_get_str(NULL, 10, z);
+    if (!s) return -1;
+    double d = strtod(s, NULL);
+    free(s);
+    if (isinf(d)) return -1;
+    *out = d;
+    return 0;
+}
+
+#define MSG_INT_FLO "int too large to convert to flo"
+
+/* Número -> double pra conta com flo: o inteiro grande que não cabe é
+ * OverflowError (antes virava inf calado: `10**400 + 0.5` dava inf). 0 ok;
+ * -1 com o erro posto. */
+static int num_flo_ou_erro(VM *vm, Value v, double *out)
+{
+    if (v.t == V_FLOAT) { *out = v.as.d; return 0; }
+    if (v.t == V_INT)   { *out = (double)v.as.i; return 0; }
+    if (v.t == V_BOOL)  { *out = v.as.b ? 1.0 : 0.0; return 0; }
+    if (EH_BIGINT(v) && bigint_para_double(COMO_BIGINT(v)->v, out) == 0) return 0;
+    snprintf(vm->erro, sizeof(vm->erro), "%s", MSG_INT_FLO);
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "OverflowError");
+    return -1;
+}
+
+/* A conta de um inteiro grande com flo (o laço da VM faz a do int64 em
+ * linha): op é + - * / f (//) % ^ (**). 0 ok; -1 com o erro posto. */
+static __attribute__((noinline)) int arit_grande_flo(VM *vm, Value a, Value b, char op, Value *out)
+{
+    double x, y;
+    if (num_flo_ou_erro(vm, a, &x) || num_flo_ou_erro(vm, b, &y)) return -1;
+    double r = 0.0;
+    const char *zero = NULL;   /* a frase de cada conta, a mesma do laço */
+    switch (op) {
+        case '+': r = x + y; break;
+        case '-': r = x - y; break;
+        case '*': r = x * y; break;
+        case '/':
+            if (y == 0.0) { zero = "flo division by zero"; break; }
+            r = x / y; break;
+        case 'f':
+            if (y == 0.0) { zero = "float floor division by zero"; break; }
+            r = floor(x / y); break;
+        case '%':
+            if (y == 0.0) { zero = "flo modulo"; break; }
+            r = fmod(x, y);
+            if (r != 0.0 && ((r < 0.0) != (y < 0.0))) r += y;
+            else if (r == 0.0 && signbit(r) != signbit(y)) r = -r;
+            break;
+        default:   /* ** */
+            if (x == 0.0 && y < 0.0) { zero = "0.0 cannot be raised to a negative power"; break; }
+            r = pow(x, y); break;
+    }
+    if (zero) {
+        snprintf(vm->erro, sizeof(vm->erro), "%s", zero);
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ZeroDivisionError");
+        return -1;
+    }
+    *out = MK_FLOAT(r);
+    return 0;
+}
+
+/* `/` entre inteiros, arredondado ao mais próximo da conta exata: o
+ * quociente com 55 ou 56 bits, o último marcando se sobrou resto, e a escala
+ * no fim. Converter os dois lados pra double antes errava a última casa
+ * quando um passava de 2^53, e com inteiro grande dava inf/inf = nan. 0 ok;
+ * -1 com o erro posto. */
+static __attribute__((noinline)) int div_int_exata(VM *vm, Value a, Value b, double *out)
+{
+    mpz_t za, zb, q, r;
+    mpz_init(za); mpz_init(zb); mpz_init(q); mpz_init(r);
+    mpz_de_val(za, a); mpz_de_val(zb, b);
+    int rc = 0;
+    if (mpz_sgn(zb) == 0) {
+        snprintf(vm->erro, sizeof(vm->erro), "division by zero");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ZeroDivisionError");
+        rc = -1;
+        goto fim;
+    }
+    int neg = (mpz_sgn(za) < 0) != (mpz_sgn(zb) < 0);
+    if (mpz_sgn(za) < 0) mpz_neg(za, za);
+    if (mpz_sgn(zb) < 0) mpz_neg(zb, zb);
+    if (mpz_sgn(za) == 0) { *out = neg ? -0.0 : 0.0; goto fim; }
+    long dif = (long)mpz_sizeinbase(za, 2) - (long)mpz_sizeinbase(zb, 2);
+    if (dif > 1025) {
+        snprintf(vm->erro, sizeof(vm->erro), "integer division result too large for a flo");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "OverflowError");
+        rc = -1;
+        goto fim;
+    }
+    if (dif < -1100) { *out = neg ? -0.0 : 0.0; goto fim; }   /* abaixo do menor double */
+    long esc = 55 - dif;
+    if (esc > 0) mpz_mul_2exp(za, za, (unsigned long)esc);
+    else if (esc < 0) mpz_mul_2exp(zb, zb, (unsigned long)-esc);
+    mpz_fdiv_q(q, za, zb);
+    mpz_fdiv_r(r, za, zb);
+    uint64_t qq = (uint64_t)ps_mpz_get_i64(q);
+    if (mpz_sgn(r) != 0) qq |= 1;
+    double d = ldexp((double)qq, (int)-esc);
+    if (isinf(d)) {
+        snprintf(vm->erro, sizeof(vm->erro), "integer division result too large for a flo");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "OverflowError");
+        rc = -1;
+        goto fim;
+    }
+    *out = neg ? -d : d;
+fim:
+    mpz_clear(za); mpz_clear(zb); mpz_clear(q); mpz_clear(r);
+    return rc;
+}
+
+/* `a` é int, bool ou inteiro grande; `b` é flo. */
+static int cmp_int_flo(const Value *a, const Value *b)
+{
+    if (EH_BIGINT(*a)) return cmp_big_flo(COMO_BIGINT(*a)->v, b->as.d);
+    return cmp_i64_flo(a->t == V_BOOL ? (int64_t)a->as.b : a->as.i, b->as.d);
+}
+
+/* Comparação numérica de dois valores que são int, bool, inteiro grande ou
+ * flo, com pelo menos um flo: -1, 0, 1; 2 = NaN. */
+static __attribute__((noinline)) int cmp_num_misto(const Value *a, const Value *b)
+{
+    if (a->t == V_FLOAT && b->t == V_FLOAT) {
+        if (isnan(a->as.d) || isnan(b->as.d)) return 2;
+        return (a->as.d > b->as.d) - (a->as.d < b->as.d);
+    }
+    if (b->t == V_FLOAT) return cmp_int_flo(a, b);
+    int c = cmp_int_flo(b, a);
+    return c == 2 ? 2 : -c;
+}
+
+/* ── igualdade de estrutura, sem recursão ──────────────────────────────────
+ * Lista com lista, tupla com tupla e dict com dict comparam item a item. A
+ * descida é numa pilha própria (no heap quando passa de 32 níveis), não na
+ * do C: estrutura de qualquer profundidade compara sem estourar. Antes um
+ * teto de 256 níveis respondia "diferente" pra duas listas iguais de 300
+ * níveis, que o `str()` imprime iguais.
+ *
+ * Estrutura que contém a si mesma não desce pra sempre: o par que já está
+ * sendo comparado mais acima no caminho conta como igual. Duas estruturas
+ * cíclicas de mesma forma são iguais; as que diferem, diferem num item.
+ * Assim a igualdade nunca falha, e o `==` do laço da VM não precisa de
+ * caminho de erro (um caminho desses ali trocava o modo de registradores
+ * do laço inteiro: +8% na aritmética). */
+typedef struct { Obj *x, *y; int pos; int slot; } IgQuadro;
+typedef struct { Obj *x, *y; } IgPar;
+
+typedef struct {
+    IgQuadro *q; int n, qcap;          /* o caminho */
+    IgPar *t; int tcap;                /* o caminho em tabela, a partir de 32 níveis */
+    IgQuadro q_local[32];
+} IgPilha;
+
+static uint32_t ig_hash(const Obj *x, const Obj *y)
+{
+    uint64_t h = (uint64_t)(uintptr_t)x * 0x9E3779B97F4A7C15ull
+               ^ ((uint64_t)(uintptr_t)y >> 3) * 0xC2B2AE3D27D4EB4Full;
+    return (uint32_t)(h >> 32) ^ (uint32_t)h;
+}
+
+/* põe o par na tabela (sondagem linear; tira-se na ordem inversa da entrada,
+ * então apagar a casa nunca quebra a sondagem de quem entrou antes) */
+static int ig_tab_poe(IgPar *t, int tcap, Obj *x, Obj *y)
+{
+    uint32_t h = ig_hash(x, y) & (uint32_t)(tcap - 1);
+    while (t[h].x) h = (h + 1) & (uint32_t)(tcap - 1);
+    t[h].x = x; t[h].y = y;
+    return (int)h;
+}
+
+static int ig_no_caminho(const IgPilha *p, const Obj *x, const Obj *y)
+{
+    if (!p->t) {
+        for (int i = 0; i < p->n; i++)
+            if (p->q[i].x == x && p->q[i].y == y) return 1;
+        return 0;
+    }
+    uint32_t h = ig_hash(x, y) & (uint32_t)(p->tcap - 1);
+    while (p->t[h].x) {
+        if (p->t[h].x == x && p->t[h].y == y) return 1;
+        h = (h + 1) & (uint32_t)(p->tcap - 1);
+    }
+    return 0;
+}
+
+/* 0 ok; -1 sem memória */
+static int ig_empilha(IgPilha *p, Obj *x, Obj *y)
+{
+    if (p->n == p->qcap) {
+        int nc = p->qcap * 2;
+        IgQuadro *nq = p->q == p->q_local ? malloc(sizeof(IgQuadro) * (size_t)nc)
+                                          : realloc(p->q, sizeof(IgQuadro) * (size_t)nc);
+        if (!nq) return -1;
+        if (p->q == p->q_local) memcpy(nq, p->q_local, sizeof(p->q_local));
+        p->q = nq; p->qcap = nc;
+    }
+    if (p->n >= 32 && (p->n + 1) * 2 > p->tcap) {
+        /* a tabela nasce (ou dobra) e recebe o caminho inteiro */
+        int nt = p->tcap ? p->tcap * 2 : 128;
+        IgPar *t = calloc((size_t)nt, sizeof(IgPar));
+        if (!t) return -1;
+        free(p->t);
+        p->t = t; p->tcap = nt;
+        for (int i = 0; i < p->n; i++) p->q[i].slot = ig_tab_poe(t, nt, p->q[i].x, p->q[i].y);
+    }
+    IgQuadro *f = &p->q[p->n++];
+    f->x = x; f->y = y; f->pos = 0;
+    f->slot = p->t ? ig_tab_poe(p->t, p->tcap, x, y) : -1;
+    return 0;
+}
+
+static int val_iguais(const Value *a, const Value *b);
+
+/* `x0` e `y0` são do mesmo tipo (lista, tupla ou dict), de mesmo tamanho. */
+static int iguais_estrutura(Obj *x0, Obj *y0)
+{
+    IgPilha p;
+    p.q = p.q_local; p.n = 0; p.qcap = 32; p.t = NULL; p.tcap = 0;
+    int r = ig_empilha(&p, x0, y0) == 0;
+    while (r && p.n > 0) {
+        IgQuadro *f = &p.q[p.n - 1];
+        Value va, vb;
+        int tem = 0;
+        if (f->x->type == OBJ_DICT) {
+            PSDict *dx = (PSDict *)f->x, *dy = (PSDict *)f->y;
+            while (f->pos < dx->usados && dx->entradas[f->pos].estado != 1) f->pos++;
+            if (f->pos < dx->usados) {
+                va = dx->entradas[f->pos].valor;
+                if (dict_get(dy, &dx->entradas[f->pos].chave, &vb) != 0) { r = 0; break; }   /* chave só em x */
+                f->pos++;
+                tem = 1;
+            }
+        } else {
+            PSList *lx = (PSList *)f->x, *ly = (PSList *)f->y;
+            if (f->pos < lx->len && f->pos < ly->len) {
+                va = lx->itens[f->pos]; vb = ly->itens[f->pos];
+                f->pos++;
+                tem = 1;
+            }
+        }
+        if (!tem) {   /* este par acabou igual: sai do caminho */
+            if (f->slot >= 0) { p.t[f->slot].x = NULL; p.t[f->slot].y = NULL; }
+            p.n--;
+            continue;
+        }
+        if (va.t == V_OBJ && vb.t == V_OBJ && va.as.obj->type == vb.as.obj->type
+                && (EH_SEQ(va) || EH_DICT(va))) {
+            Obj *ox = va.as.obj, *oy = vb.as.obj;
+            if (ox == oy) continue;
+            if (EH_DICT(va) ? COMO_DICT(va)->count != COMO_DICT(vb)->count
+                            : COMO_LIST(va)->len != COMO_LIST(vb)->len) { r = 0; break; }
+            if (ig_no_caminho(&p, ox, oy)) continue;   /* ciclo: conta como igual */
+            if (ig_empilha(&p, ox, oy) != 0) { r = 0; break; }
+            continue;
+        }
+        if (!val_iguais(&va, &vb)) r = 0;
+    }
+    if (p.q != p.q_local) free(p.q);
+    free(p.t);
+    return r;
+}
 
 static int val_iguais(const Value *a, const Value *b)
 {
-    if (ps_prof_cmp > PS_CMP_MAX) return 0;
     /* Null só é igual a Null.
      *
      * Até 28/08 `null == 0`, `null == 0.0` e `null == false` eram TRUE, e o
@@ -3027,9 +3356,8 @@ static int val_iguais(const Value *a, const Value *b)
     if (EH_BIGINT(*a) || EH_BIGINT(*b)) {
         if (EH_BIGINT(*a) && EH_BIGINT(*b))
             return mpz_cmp(COMO_BIGINT(*a)->v, COMO_BIGINT(*b)->v) == 0;
-        if (a->t == V_FLOAT || b->t == V_FLOAT)   /* bignum vs float: aproximado */
-            return int_como_double(EH_BIGINT(*a) ? *a : *b)
-                   == (a->t == V_FLOAT ? a->as.d : b->as.d);
+        if (a->t == V_FLOAT || b->t == V_FLOAT)   /* inteiro grande vs flo: exato */
+            return cmp_num_misto(a, b) == 0;
         return 0;   /* bignum vs int64/bool: nunca igual (fora do alcance do int64) */
     }
     /* ManpuResult == true/false compara o sucesso; == "texto" compara status */
@@ -3077,21 +3405,16 @@ static int val_iguais(const Value *a, const Value *b)
      * saíram acima; aqui é sempre mistura. */
     if ((a->t == V_INT || a->t == V_FLOAT || a->t == V_BOOL) &&
         (b->t == V_INT || b->t == V_FLOAT || b->t == V_BOOL)) {
-        double x = (a->t == V_FLOAT) ? a->as.d : (double)(a->t == V_BOOL ? a->as.b : a->as.i);
-        double y = (b->t == V_FLOAT) ? b->as.d : (double)(b->t == V_BOOL ? b->as.b : b->as.i);
-        return x == y;
+        if (a->t != V_FLOAT && b->t != V_FLOAT)   /* int com bool */
+            return (a->t == V_BOOL ? (int64_t)a->as.b : a->as.i)
+                == (b->t == V_BOOL ? (int64_t)b->as.b : b->as.i);
+        return cmp_num_misto(a, b) == 0;
     }
     if (EH_SEQ(*a) && EH_SEQ(*b) && a->as.obj->type == b->as.obj->type) {
         PSList *x = COMO_LIST(*a), *y = COMO_LIST(*b);
         if (x == y) return 1;
         if (x->len != y->len) return 0;
-        for (int i = 0; i < x->len; i++) {
-            ps_prof_cmp++;
-            int ig = val_iguais(&x->itens[i], &y->itens[i]);
-            ps_prof_cmp--;
-            if (!ig) return 0;
-        }
-        return 1;
+        return iguais_estrutura(a->as.obj, b->as.obj);
     }
     /* dicts: igualdade ESTRUTURAL, como as listas acima e como o interp —
      * mesmas chaves com mesmos valores, independente da ordem de inserção. */
@@ -3099,16 +3422,7 @@ static int val_iguais(const Value *a, const Value *b)
         PSDict *x = COMO_DICT(*a), *y = COMO_DICT(*b);
         if (x == y) return 1;
         if (x->count != y->count) return 0;
-        for (int k = 0; k < x->usados; k++) {
-            if (x->entradas[k].estado != 1) continue;
-            Value vy;
-            if (dict_get(y, &x->entradas[k].chave, &vy) != 0) return 0;   /* chave só em x */
-            ps_prof_cmp++;
-            { int ig = val_iguais(&x->entradas[k].valor, &vy);
-              ps_prof_cmp--;
-              if (!ig) return 0; }
-        }
-        return 1;
+        return iguais_estrutura(a->as.obj, b->as.obj);
     }
     /* Funct é igual a si mesma. `V_FUNC` e `V_NATIVE` não são `V_OBJ` — o
      * valor carrega o índice do proto/builtin, não um ponteiro — então os dois
@@ -4239,28 +4553,162 @@ static int nativa_str(VM *vm, Value *args, int n, Value *out)
     return r;
 }
 
-/* Texto → int, com as regras do `int()`: espaço em volta é
- * ignorado, sinal opcional, só dígitos decimais. "0x1f" é erro. */
-static int texto_para_int(const char *s, int len, int64_t *out)
+/* ── número a partir de texto ──────────────────────────────────────────────
+ * Um leitor só pro int(), o flo() e a célula de planilha; o json.parse lê o
+ * número pela gramática do JSON e converte pelas mesmas funções. O texto é
+ * conferido INTEIRO antes de converter, sem buffer fixo. Antes o int()
+ * cortava em 511 dígitos calado, juntava "99999999999999999999 1" num número
+ * só (o mpz_set_str pula espaço no meio), recusava o "+" depois do 19º
+ * dígito; o flo() parava no NUL ("1.5\x00abc" dava 1.5) e aceitava hexa
+ * ("0x1A" dava 26.0). Branco nas pontas (o do strip), sinal, e dígito
+ * decimal de qualquer escrita (o que o isdecimal diz que é dígito: ٣ é 3). */
+
+/* As pontas sem branco: o texto útil é [*ini, *fim). */
+static void apara_branco(const char *s, int len, int *ini, int *fim)
 {
     int i = 0, j = len;
-    while (i < j && isspace((unsigned char)s[i])) i++;
-    while (j > i && isspace((unsigned char)s[j - 1])) j--;
-    if (i >= j) return -1;
-    int neg = 0;
-    if (s[i] == '+' || s[i] == '-') { neg = (s[i] == '-'); i++; }
-    if (i >= j) return -1;
-    int64_t v = 0;
-    for (; i < j; i++) {
-        if (!isdigit((unsigned char)s[i])) return -1;
-        /* passou do int64: quem chama decide (o `int()` vai pro bignum). Antes
-         * o valor dava a volta em silêncio — `int("<32 dígitos>")` virava
-         * lixo negativo sem erro nenhum. */
-        if (v > (INT64_MAX - (s[i] - '0')) / 10) return 1;   /* 1 = estourou */
-        v = v * 10 + (s[i] - '0');
+    while (i < j) {
+        uint32_t c;
+        int k = utf8_le(s, len, i, &c);
+        if (!k || !(c < 0x80 ? (c == ' ' || (c >= '\t' && c <= '\r')) : ps_uni_eh_branco(c))) break;
+        i += k;
     }
-    *out = neg ? -v : v;
+    while (j > i) {
+        int p = j - 1;
+        while (p > i && ((unsigned char)s[p] & 0xC0) == 0x80) p--;
+        uint32_t c;
+        utf8_le(s, len, p, &c);
+        if (!(c < 0x80 ? (c == ' ' || (c >= '\t' && c <= '\r')) : ps_uni_eh_branco(c))) break;
+        j = p;
+    }
+    *ini = i; *fim = j;
+}
+
+/* `nd` dígitos ASCII já conferidos -> int (ou inteiro grande, sem teto).
+ * 0 ok; -1 sem memória. */
+static int digitos_para_int(VM *vm, const char *d, int nd, int neg, Value *out)
+{
+    if (nd <= 18) {   /* 18 dígitos sempre cabem no int64 */
+        int64_t v = 0;
+        for (int k = 0; k < nd; k++) v = v * 10 + (d[k] - '0');
+        *out = MK_INT(neg ? -v : v);
+        return 0;
+    }
+    char *b = malloc((size_t)nd + 2);
+    if (!b) return -1;
+    int o = 0;
+    if (neg) b[o++] = '-';
+    memcpy(b + o, d, (size_t)nd);
+    b[o + nd] = '\0';
+    mpz_t z; mpz_init(z);
+    int rc = mpz_set_str(z, b, 10);
+    free(b);
+    if (rc == 0) *out = mk_from_mpz(vm, z);
+    mpz_clear(z);
+    return rc == 0 && out->t != V_NULL ? 0 : -1;
+}
+
+/* Valor do dígito decimal no byte/codepoint `c`, ou -1. `so_ascii`: só 0-9
+ * (o conteúdo de um byte). */
+static int valor_digito(uint32_t c, int so_ascii)
+{
+    if (c >= '0' && c <= '9') return (int)(c - '0');
+    return (c < 0x80 || so_ascii) ? -1 : ps_uni_valor_decimal(c);
+}
+
+/* Texto -> int (int ou inteiro grande). `so_ascii`: o texto é o conteúdo de
+ * um byte. 0 ok; 1 não é inteiro; -1 sem memória. */
+static int texto_para_int(VM *vm, const char *s, int len, int so_ascii, Value *out)
+{
+    int i, j;
+    apara_branco(s, len, &i, &j);
+    if (i >= j) return 1;
+    int neg = 0;
+    if (s[i] == '+' || s[i] == '-') { neg = s[i] == '-'; i++; }
+    if (i >= j) return 1;
+    int ascii = 1;
+    for (int k = i; k < j && ascii; k++) {
+        unsigned char c = (unsigned char)s[k];
+        if (c >= 0x80) ascii = 0;
+        else if (c < '0' || c > '9') return 1;
+    }
+    if (ascii) return digitos_para_int(vm, s + i, j - i, neg, out);
+    if (so_ascii) return 1;
+    /* dígito de outra escrita: vira o ASCII de mesmo valor */
+    char *d = malloc((size_t)(j - i) + 1);
+    if (!d) return -1;
+    int nd = 0;
+    for (int k = i; k < j; ) {
+        uint32_t c;
+        int kk = utf8_le(s, len, k, &c);
+        int v = valor_digito(c, 0);
+        if (v < 0) { free(d); return 1; }
+        d[nd++] = (char)('0' + v);
+        k += kk;
+    }
+    int rc = digitos_para_int(vm, d, nd, neg, out);
+    free(d);
+    return rc;
+}
+
+/* Texto -> flo: [sinal] (dígitos [. [dígitos]] | . dígitos) [e [sinal]
+ * dígitos], ou inf, infinity, nan (sem caixa). Fora da faixa vira inf (ou
+ * 0.0), como o literal. 0 ok; 1 não é número; -1 sem memória. */
+static int texto_para_flo(const char *s, int len, int so_ascii, double *out)
+{
+    int i, j;
+    apara_branco(s, len, &i, &j);
+    if (i >= j) return 1;
+    int k = i, neg = 0;
+    if (s[k] == '+' || s[k] == '-') { neg = s[k] == '-'; k++; }
+    int resto = j - k;
+    if ((resto == 3 || resto == 8) && strncasecmp(s + k, "infinity", (size_t)resto) == 0) {
+        *out = neg ? -INFINITY : INFINITY;
+        return 0;
+    }
+    if (resto == 3 && strncasecmp(s + k, "nan", 3) == 0) { *out = NAN; return 0; }
+    char *b = malloc((size_t)(j - i) + 2);
+    if (!b) return -1;
+    int n = 0, dig = 0, dig_exp = 0, ponto = 0, expo = 0;
+    if (neg) b[n++] = '-';
+    while (k < j) {
+        uint32_t c;
+        int kk = utf8_le(s, len, k, &c);
+        int v = valor_digito(c, so_ascii);
+        if (v >= 0) {
+            b[n++] = (char)('0' + v);
+            if (expo) dig_exp++; else dig++;
+        } else if (c == '.' && !ponto && !expo) {
+            ponto = 1; b[n++] = '.';
+        } else if ((c == 'e' || c == 'E') && !expo && dig) {
+            expo = 1; b[n++] = 'e';
+            if (k + 1 < j && (s[k + 1] == '+' || s[k + 1] == '-')) { b[n++] = s[k + 1]; kk++; }
+        } else {
+            free(b);
+            return 1;
+        }
+        k += kk;
+    }
+    b[n] = '\0';
+    if (!dig || (expo && !dig_exp)) { free(b); return 1; }
+    char *fim = NULL;
+    double d = strtod(b, &fim);
+    int ok = fim == b + n;
+    free(b);
+    if (!ok) return 1;
+    *out = d;
     return 0;
+}
+
+/* A frase de ValueError do int()/flo() com o texto como está escrito (o
+ * repr: o NUL aparece como \x00, e não corta a frase ali). */
+static int erro_texto_numero(VM *vm, const char *frase, const char *s, int len, int eh_byte)
+{
+    char *r = eh_byte ? repr_bytes_dup(s, len) : repr_str_dup(s, len);
+    snprintf(vm->erro, sizeof(vm->erro), "%s: %s", frase, r ? r : "?");
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ValueError");
+    free(r);
+    return -1;
 }
 
 static int nativa_int(VM *vm, Value *args, int n, Value *out)
@@ -4290,49 +4738,19 @@ static int nativa_int(VM *vm, Value *args, int n, Value *out)
         *out = MK_INT((int64_t)v.as.d);
         return 0;
     }
-    if (EH_STRING(v)) {
+    /* texto, e o conteúdo de um byte (só dígito ASCII), como a frase diz */
+    if (EH_STRING(v) || EH_BYTES(v)) {
         PSString *s = COMO_STRING(v);
-        int64_t r;
-        int rc = texto_para_int(s->chars, s->len, &r);
-        if (rc == 1) {   /* não cabe no int64 -> bignum, como o interpretador */
-            char buf[512];
-            int len = s->len < (int)sizeof(buf) - 1 ? s->len : (int)sizeof(buf) - 1;
-            memcpy(buf, s->chars, (size_t)len); buf[len] = '\0';
-            mpz_t z; mpz_init(z);
-            if (mpz_set_str(z, buf, 10) != 0) {
-                mpz_clear(z);
-                BERRO(vm, "ValueError",
-                      "invalid literal for int() with base 10: '%s'", s->chars);
-            }
-            *out = mk_from_mpz(vm, z);
-            mpz_clear(z);
-            return 0;
-        }
-        if (rc != 0)
-            BERRO(vm, "ValueError",
-                      "invalid literal for int() with base 10: '%s'", s->chars);
-        *out = MK_INT(r);
+        int rc = texto_para_int(vm, s->chars, s->len, EH_BYTES(v), out);
+        if (rc < 0) BERRO(vm, "MemoryError", "sem memoria em int()");
+        if (rc > 0)
+            return erro_texto_numero(vm, "invalid literal for int() with base 10",
+                                     s->chars, s->len, EH_BYTES(v));
         return 0;
     }
     BERRO(vm, "TypeError",
           "int() argument must be a string, a byte-like object"
           " or a real number, not '%s'", nome_do_tipo_valor(v));
-}
-
-/* Texto -> double, com espaço em volta permitido e lixo no fim recusado.
- * `-1` se não converte. */
-static int texto_para_flo(const char *s, int len, double *out)
-{
-    char buf[64];
-    if (len <= 0 || len >= (int)sizeof(buf)) return -1;
-    memcpy(buf, s, (size_t)len);
-    buf[len] = '\0';
-    char *fim = NULL;
-    double d = strtod(buf, &fim);
-    while (fim && *fim && isspace((unsigned char)*fim)) fim++;
-    if (!fim || fim == buf || *fim) return -1;
-    *out = d;
-    return 0;
 }
 
 static int nativa_flo(VM *vm, Value *args, int n, Value *out)
@@ -4341,18 +4759,23 @@ static int nativa_flo(VM *vm, Value *args, int n, Value *out)
     Value v = args[0];
     if (v.t == V_FLOAT) { *out = v; return 0; }
     if (v.t == V_INT)   { *out = MK_FLOAT((double)v.as.i); return 0; }
-    if (EH_BIGINT(v))   { *out = MK_FLOAT(mpz_get_d(COMO_BIGINT(v)->v)); return 0; }
+    if (EH_BIGINT(v)) {
+        /* arredondado ao mais próximo; o que não cabe num flo é erro (o
+         * mpz_get_d truncava e, acima do maior double, dava inf) */
+        double d;
+        if (num_flo_ou_erro(vm, v, &d)) return -1;
+        *out = MK_FLOAT(d);
+        return 0;
+    }
     if (v.t == V_BOOL)  { *out = MK_FLOAT(v.as.b ? 1.0 : 0.0); return 0; }
-    if (EH_STRING(v)) {
+    if (EH_STRING(v) || EH_BYTES(v)) {
         PSString *s = COMO_STRING(v);
-        char *fim = NULL;
-        double d = strtod(s->chars, &fim);
-        /* strtod para no primeiro caractere inválido; só aceita se o resto
-         * for espaço, senão "1.5abc" viraria 1.5 em silêncio. */
-        while (fim && *fim && isspace((unsigned char)*fim)) fim++;
-        if (!fim || fim == s->chars || *fim)
-            BERRO(vm, "ValueError",
-                  "could not convert string to flo: '%s'", s->chars);
+        double d;
+        int rc = texto_para_flo(s->chars, s->len, EH_BYTES(v), &d);
+        if (rc < 0) BERRO(vm, "MemoryError", "sem memoria em flo()");
+        if (rc > 0)
+            return erro_texto_numero(vm, "could not convert string to flo",
+                                     s->chars, s->len, EH_BYTES(v));
         *out = MK_FLOAT(d);
         return 0;
     }
@@ -4547,14 +4970,7 @@ static int nativa_pow(VM *vm, Value *args, int n, Value *out)
 
     if (EH_INTEIRO(a) && EH_INTEIRO(b)) {
         int neg = (b.t == V_INT) ? (b.as.i < 0) : (mpz_sgn(COMO_BIGINT(b)->v) < 0);
-        if (neg) {
-            double base = int_como_double(a);
-            if (base == 0.0)
-                BERRO(vm, "ZeroDivisionError",
-                      "0.0 cannot be raised to a negative power");
-            *out = MK_FLOAT(pow(base, int_como_double(b)));
-            return 0;
-        }
+        if (neg) return arit_grande_flo(vm, a, b, '^', out);   /* a mesma conta do `**` */
         if (b.t != V_INT || b.as.i > 1000000)
             BERRO(vm, "MemoryError", "expoente grande demais em pow()");
         mpz_t za, zr; mpz_init(za); mpz_init(zr);
@@ -4564,17 +4980,71 @@ static int nativa_pow(VM *vm, Value *args, int n, Value *out)
         mpz_clear(za); mpz_clear(zr);
         return 0;
     }
-    if ((EH_INTEIRO(a) || a.t == V_FLOAT) && (EH_INTEIRO(b) || b.t == V_FLOAT)) {
-        double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
-        double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
-        if (x == 0.0 && y < 0.0)
-            BERRO(vm, "ZeroDivisionError", "0.0 cannot be raised to a negative power");
-        *out = MK_FLOAT(pow(x, y));
-        return 0;
-    }
+    if ((EH_INTEIRO(a) || a.t == V_FLOAT) && (EH_INTEIRO(b) || b.t == V_FLOAT))
+        return arit_grande_flo(vm, a, b, '^', out);
     BERRO(vm, "TypeError",
           "unsupported operand type(s) for ** or pow(): '%s' and '%s'",
           nome_do_tipo_valor(args[0]), nome_do_tipo_valor(args[1]));
+}
+
+/* Arredonda num/den (den > 0) ao inteiro mais próximo, meio pro par. */
+static void divide_meio_par(mpz_t q, mpz_srcptr num, mpz_srcptr den)
+{
+    mpz_t r, r2;
+    mpz_init(r); mpz_init(r2);
+    mpz_fdiv_q(q, num, den);
+    mpz_fdiv_r(r, num, den);                 /* 0 <= r < den */
+    mpz_mul_2exp(r2, r, 1);
+    int c = mpz_cmp(r2, den);
+    if (c > 0 || (c == 0 && mpz_odd_p(q))) {
+        mpz_set_si(r, 1);
+        mpz_add(q, q, r);
+    }
+    mpz_clear(r); mpz_clear(r2);
+}
+
+/* round(inteiro, casas < 0): o múltiplo de 10^-casas mais próximo, meio pro
+ * par. */
+static int arredonda_inteiro(VM *vm, Value v, int64_t casas, Value *out)
+{
+    if (casas < -100000) { *out = MK_INT(0); return 0; }   /* 10^100000 passa de todo inteiro com memória */
+    mpz_t x, p, q;
+    mpz_init(x); mpz_init(p); mpz_init(q);
+    mpz_de_val(x, v);
+    mpz_set_si(p, 10);
+    mpz_pow_ui(p, p, (unsigned long)-casas);
+    divide_meio_par(q, x, p);
+    mpz_mul(q, q, p);
+    *out = mk_from_mpz(vm, q);
+    mpz_clear(x); mpz_clear(p); mpz_clear(q);
+    if (out->t == V_NULL) BERRO(vm, "MemoryError", "sem memoria em round()");
+    return 0;
+}
+
+/* round(flo, casas < 0) exato: o flo é m * 2^e de verdade; a conta é feita
+ * nessa fração e só o resultado volta a flo. 0 ok; -1 sem memória. */
+static int arredonda_flo_negativo(double d, int64_t casas, double *out)
+{
+    if (casas < -400 || d == 0.0) { *out = d < 0 || signbit(d) ? -0.0 : 0.0; return 0; }
+    int e;
+    double f = frexp(d, &e);                         /* d = f * 2^e, 0.5 <= |f| < 1 */
+    mpz_t m, num, den, q;
+    mpz_init(m); mpz_init(num); mpz_init(den); mpz_init(q);
+    mpz_set_d(m, ldexp(fabs(f), 53));                /* mantissa inteira, exata */
+    int k = e - 53;                                  /* |d| = m * 2^k */
+    mpz_set_si(den, 10);
+    mpz_pow_ui(den, den, (unsigned long)-casas);     /* 10^-casas */
+    mpz_set(num, m);
+    if (k >= 0) mpz_mul_2exp(num, num, (unsigned long)k);
+    else mpz_mul_2exp(den, den, (unsigned long)-k);
+    divide_meio_par(q, num, den);
+    if (k < 0) mpz_fdiv_q_2exp(den, den, (unsigned long)-k);   /* volta a 10^-casas */
+    mpz_mul(q, q, den);
+    double r = 0.0;
+    if (bigint_para_double(q, &r) != 0) r = HUGE_VAL;   /* passou do maior flo */
+    *out = d < 0 ? -r : r;
+    mpz_clear(m); mpz_clear(num); mpz_clear(den); mpz_clear(q);
+    return 0;
 }
 
 static int nativa_round(VM *vm, Value *args, int n, Value *out)
@@ -4582,16 +5052,17 @@ static int nativa_round(VM *vm, Value *args, int n, Value *out)
     if (n != 1 && n != 2) return erro_aridade(vm, "round", 1, 2, n);
     /* As casas sao conferidas ANTES do atalho de int: `round(1, "a")` devolvia
      * 1 em silencio porque o `return 0` do inteiro vinha primeiro. */
-    if (n == 2 && args[1].t != V_INT && args[1].t != V_BOOL)
-        BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(args[1]));
+    int64_t casas_arg = 0;
+    if (n == 2 && !arg_inteiro(args[1], &casas_arg)) return erro_nao_inteiro(vm, args[1]);
     Value v = args[0];
-    if (v.t == V_INT || v.t == V_BOOL) {
-        /* int já está arredondado; com casas, continua int */
-        *out = MK_INT(v.t == V_BOOL ? (v.as.b ? 1 : 0) : v.as.i);
-        return 0;
+    if (v.t == V_BOOL) v = MK_INT(v.as.b ? 1 : 0);
+    if (EH_INTEIRO(v)) {
+        /* int com casas >= 0 já está arredondado e continua int; com casas
+         * negativas arredonda pra dezena, centena...: round(1250, -2) é 1200
+         * (meio pro par). Antes devolvia o número sem mexer. */
+        if (n == 1 || casas_arg >= 0) { *out = v; return 0; }
+        return arredonda_inteiro(vm, v, casas_arg, out);
     }
-    if (EH_BIGINT(v)) { *out = v; return 0; }   /* já é inteiro */
     if (v.t != V_FLOAT)
         BERRO(vm, "TypeError", "type %s doesn't define __round__ method",
               nome_do_tipo_valor(v));
@@ -4613,14 +5084,23 @@ static int nativa_round(VM *vm, Value *args, int n, Value *out)
         *out = MK_INT((int64_t)r);
         return 0;
     }
-    /* As casas já foram conferidas na entrada (int ou bool); esta era uma
-     * segunda cópia da decisão, e recusava bool que a primeira aceitava. */
-    int64_t casas = (args[1].t == V_BOOL) ? (args[1].as.b ? 1 : 0) : args[1].as.i;
-    if (casas < 0)  casas = 0;
-    if (casas > 30) casas = 30;
+    /* As casas já foram conferidas na entrada (int, bool ou inteiro grande). */
+    int64_t casas = casas_arg;
+    if (!isfinite(v.as.d)) { *out = v; return 0; }   /* nan e inf ficam */
+    if (casas < 0) {
+        /* casas negativas: a conta exata sobre o valor binário do flo, como
+         * o printf faz com as positivas (antes virava 0 casas: round(1234.5,
+         * -2) dava 1234.0, não 1200.0) */
+        double r;
+        if (arredonda_flo_negativo(v.as.d, casas, &r) != 0)
+            BERRO(vm, "MemoryError", "sem memoria em round()");
+        *out = MK_FLOAT(r);
+        return 0;
+    }
+    if (casas > 30) casas = 30;   /* além disso o flo não muda */
     /* Formata e relê: o printf arredonda sobre o valor binário exato
      * (por isso 2.675 → 2.67). */
-    char buf[64];
+    char buf[400];
     snprintf(buf, sizeof(buf), "%.*f", (int)casas, v.as.d);
     *out = MK_FLOAT(strtod(buf, NULL));
     return 0;
@@ -4707,11 +5187,9 @@ static int nativa_ord(VM *vm, Value *args, int n, Value *out)
 static int nativa_chr(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "chr", 1);
-    /* aceita bool como int (true->1, false->0), como o interp */
-    if (args[0].t != V_INT && args[0].t != V_BOOL)
-        BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(args[0]));
-    int64_t cp = (args[0].t == V_BOOL) ? (args[0].as.b ? 1 : 0) : args[0].as.i;
+    /* int, bool e inteiro grande (este cai no "fora da faixa") */
+    int64_t cp;
+    INTEIRO_OU_ERRO(vm, args[0], cp);
     if (cp < 0 || cp > 0x10FFFF)
         BERRO(vm, "ValueError", "chr() arg not in range(0x110000)");
     if (cp >= 0xD800 && cp <= 0xDFFF)
@@ -4763,9 +5241,17 @@ static int compara_valores_par(const Value *a, const Value *b,
     if (an && bn) {
         if (a->t == V_INT && b->t == V_INT)
             return (a->as.i > b->as.i) - (a->as.i < b->as.i);
-        double x = (a->t == V_FLOAT) ? a->as.d : (a->t == V_BOOL ? (a->as.b ? 1 : 0) : int_como_double(*a));
-        double y = (b->t == V_FLOAT) ? b->as.d : (b->t == V_BOOL ? (b->as.b ? 1 : 0) : int_como_double(*b));
-        return (x > y) - (x < y);
+        if (a->t != V_FLOAT && b->t != V_FLOAT) {   /* bool com int ou inteiro grande */
+            if (EH_BIGINT(*a)) return ps_mpz_cmp_i64(COMO_BIGINT(*a)->v, b->as.b) > 0 ? 1 : -1;
+            if (EH_BIGINT(*b)) return ps_mpz_cmp_i64(COMO_BIGINT(*b)->v, a->as.b) > 0 ? -1 : 1;
+            int64_t x = a->t == V_BOOL ? (int64_t)a->as.b : a->as.i;
+            int64_t y = b->t == V_BOOL ? (int64_t)b->as.b : b->as.i;
+            return (x > y) - (x < y);
+        }
+        /* com flo: exato (NaN não se ordena; aqui fica como igual, que é o
+         * que o sorted já fazia) */
+        int c = cmp_num_misto(a, b);
+        return c == 2 ? 0 : c;
     }
     if (EH_STRING(*a) && EH_STRING(*b)) {
         PSString *x = COMO_STRING(*a), *y = COMO_STRING(*b);
@@ -4784,7 +5270,10 @@ static int compara_valores_par(const Value *a, const Value *b,
         if (c) return c < 0 ? -1 : 1;
         return (x->len > y->len) - (x->len < y->len);
     }
-    if (EH_SEQ(*a) && EH_SEQ(*b)) {
+    /* lista com lista e tupla com tupla; lista com tupla não se ordena (o
+     * `==` delas já é False: `l <= t` e `l >= t` davam True com `l == t`
+     * False) */
+    if (EH_SEQ(*a) && EH_SEQ(*b) && a->as.obj->type == b->as.obj->type) {
         PSList *x = COMO_LIST(*a), *y = COMO_LIST(*b);
         /* A mesma lista dos dois lados é igual sem descer: é o que faz
          * `l < l` de uma lista cíclica responder False em vez de recursar
@@ -4808,6 +5297,35 @@ static int compara_valores_par(const Value *a, const Value *b,
 
 /* A frase do -3 do compara_valores_par, uma só pra todo chamador. */
 #define MSG_CMP_FUNDO "comparacao aninhada demais"
+
+/* O índice que não é int64 no `x[i]` / `x[i] = v` (o laço só chega aqui fora
+ * do caminho comum): o inteiro grande é int, então é "fora da faixa" — a
+ * frase do tipo ("list indices must be integers or slices, not int") negava
+ * que ele fosse int —, e o resto é o TypeError do tipo do índice. `escrita`:
+ * o lado esquerdo do `=`. */
+static __attribute__((noinline, cold)) void indice_errado(VM *vm, Value alvo, Value idx, int escrita)
+{
+    const char *tipo = "IndexError";
+    if (EH_BIGINT(idx)) {
+        if (EH_BYTES(alvo))       snprintf(vm->erro, sizeof(vm->erro), "index out of range");
+        else if (EH_STRING(alvo)) snprintf(vm->erro, sizeof(vm->erro), "string index out of range");
+        else snprintf(vm->erro, sizeof(vm->erro), "%s %sindex out of range",
+                      nome_do_tipo_valor(alvo), escrita ? "assignment " : "");
+    } else {
+        tipo = "TypeError";
+        if (EH_BYTES(alvo))
+            snprintf(vm->erro, sizeof(vm->erro), "byte indices must be integers or slices, not %s",
+                     nome_do_tipo_valor(idx));
+        else if (EH_STRING(alvo))
+            snprintf(vm->erro, sizeof(vm->erro), "string indices must be integers, not '%s'",
+                     nome_do_tipo_valor(idx));
+        else
+            snprintf(vm->erro, sizeof(vm->erro), "%s indices must be integers or slices, not %s",
+                     nome_do_tipo_valor(alvo), nome_do_tipo_valor(idx));
+    }
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", tipo);
+}
+
 
 /* Os dois motivos de o regex parar (ps_regex_busca: -1 passos, -3 fundo).
  * Eram uma frase só, e o teto de profundidade saía como "backtracking" num
@@ -4896,70 +5414,145 @@ static int lista_push(VM *vm, PSList *l, Value v)
     return 0;
 }
 
-/* Mesmas regras de conversão do `range()`: int, bool, flo truncado e texto
- * numérico. Usado pelo `range()` e pelo laço especializado, pra os dois
- * aceitarem exatamente a mesma coisa. */
+/* Os limites do `range()` e do laço especializado `for each i in range(...)`,
+ * pela regra única do argumento inteiro (a doc diz int): antes os dois
+ * convertiam calados o flo (`range(2.7)` dava [0, 1]) e o texto numérico
+ * (`range("5")`), contra a doc e a regra da linguagem (sem conversão
+ * implícita: `range(int(x))`). */
 static int num_de_range(VM *vm, Value v, int64_t *out)
 {
-    if (v.t == V_INT)        { *out = v.as.i; return 0; }
-    if (v.t == V_BOOL)       { *out = v.as.b ? 1 : 0; return 0; }
-    if (v.t == V_FLOAT)      { *out = (int64_t)v.as.d; return 0; }
-    if (EH_STRING(v)) {
-        const char *s = COMO_STRING(v)->chars;
-        while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
-        char *end = NULL;
-        long long val = strtoll(s, &end, 10);
-        while (*end == ' ' || *end == '\t' || *end == '\n' || *end == '\r') end++;
-        if (end == s || *end != '\0') {
-            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
-            snprintf(vm->erro, sizeof(vm->erro),
-                     "'str' object cannot be interpreted as an integer");
-            return -1;
+    if (arg_inteiro(v, out)) return 0;
+    return erro_nao_inteiro(vm, v);
+}
+
+static int fixa_raiz(VM *vm, Value v);
+
+/* range com inteiro grande em algum limite: a conta exata (o extremo do
+ * int64 daria resultado errado: range(-2**70, -2**70 + 1) é [-2**70]).
+ * `lim` são os três valores já conferidos (ini, fim, passo). Põe em `ini`,
+ * `passo` e `qtd` o primeiro valor, o passo e a quantidade. 0 ok; -1 com o
+ * erro posto (passo zero). */
+static int range_exato(VM *vm, const Value lim[3], mpz_t ini, mpz_t passo, mpz_t qtd)
+{
+    mpz_t fim, span;
+    mpz_init(fim); mpz_init(span);
+    Value l0 = lim[0].t == V_BOOL ? MK_INT(lim[0].as.b) : lim[0];
+    Value l1 = lim[1].t == V_BOOL ? MK_INT(lim[1].as.b) : lim[1];
+    Value l2 = lim[2].t == V_BOOL ? MK_INT(lim[2].as.b) : lim[2];
+    mpz_de_val(ini, l0); mpz_de_val(fim, l1); mpz_de_val(passo, l2);
+    int rc = 0;
+    if (mpz_sgn(passo) == 0) {
+        snprintf(vm->erro, sizeof(vm->erro), "range() arg 3 must not be zero");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ValueError");
+        rc = -1;
+    } else {
+        /* qtd = ceil((fim - ini) / passo), ou 0 se o sinal não bate */
+        mpz_sub(span, fim, ini);
+        if (mpz_sgn(span) == 0 || (mpz_sgn(span) > 0) != (mpz_sgn(passo) > 0)) {
+            mpz_set_si(qtd, 0);
+        } else {
+            mpz_t um; mpz_init(um);
+            if (mpz_sgn(passo) < 0) { mpz_neg(span, span); mpz_neg(fim, passo); }
+            else mpz_set(fim, passo);
+            mpz_set_si(um, 1);
+            mpz_sub(span, span, um);
+            mpz_fdiv_q(qtd, span, fim);
+            mpz_add(qtd, qtd, um);
+            mpz_clear(um);
         }
-        *out = (int64_t)val;
-        return 0;
     }
-    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
-    snprintf(vm->erro, sizeof(vm->erro),
-             "'%s' object cannot be interpreted as an integer",
-             nome_do_tipo_valor(v));
-    return -1;
+    mpz_clear(fim); mpz_clear(span);
+    return rc;
+}
+
+/* O `for each i in range(...)` com inteiro grande num limite (o RANGE_PREPARA
+ * do laço só leva int64): a conta exata. Com o primeiro valor e o passo no
+ * int64, o laço anda até onde o valor cabe — mais de 9 * 10^18 voltas, o fim
+ * do `range(1, 10**30)` que se escreve pra dizer "até o break". O primeiro
+ * valor (ou o passo) fora do int64 é OverflowError: o laço não leva inteiro
+ * grande, e a lista do `range()` leva. */
+static __attribute__((noinline)) int range_grande_no_laco(VM *vm, Value *slots)
+{
+    Value lv[3] = { slots[0], slots[1], slots[2] };
+    mpz_t ini, passo, qtd;
+    mpz_init(ini); mpz_init(passo); mpz_init(qtd);
+    int rc = range_exato(vm, lv, ini, passo, qtd);
+    if (rc == 0 && mpz_sgn(qtd) == 0) {
+        slots[0] = MK_INT(0); slots[1] = MK_INT(0); slots[2] = MK_INT(1); slots[3] = MK_INT(0);
+    } else if (rc == 0 && (!ps_mpz_cabe_i64(ini) || !ps_mpz_cabe_i64(passo))) {
+        snprintf(vm->erro, sizeof(vm->erro),
+                 "range() no for each comeca fora de 64 bits: guarde numa lista antes (list r = range(...))");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "OverflowError");
+        rc = -1;
+    } else if (rc == 0) {
+        int64_t i0 = ps_mpz_get_i64(ini), p0 = ps_mpz_get_i64(passo);
+        /* quantos valores cabem no int64 a partir do primeiro */
+        uint64_t cabem = p0 > 0 ? ((uint64_t)INT64_MAX - (uint64_t)i0) / (uint64_t)p0 + 1
+                                : ((uint64_t)i0 - (uint64_t)INT64_MIN) / ((uint64_t)0 - (uint64_t)p0) + 1;
+        uint64_t q = ps_mpz_cabe_i64(qtd) ? (uint64_t)ps_mpz_get_i64(qtd) : UINT64_MAX;
+        if (q > cabem) q = cabem;
+        if (q > (uint64_t)INT64_MAX) q = INT64_MAX;
+        slots[0] = MK_INT(i0); slots[1] = MK_INT((int64_t)q); slots[2] = MK_INT(p0); slots[3] = MK_INT(0);
+    }
+    mpz_clear(ini); mpz_clear(passo); mpz_clear(qtd);
+    return rc;
 }
 
 static int nativa_range(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 3) return erro_aridade(vm, "range", 1, 3, n);
     int64_t lim[3] = { 0, 0, 1 };
-    for (int i = 0; i < n; i++) {
-        if (args[i].t == V_INT)       lim[i] = args[i].as.i;
-        else if (args[i].t == V_BOOL) lim[i] = args[i].as.b ? 1 : 0;
-        else if (args[i].t == V_FLOAT)lim[i] = (int64_t)args[i].as.d;
-        else if (EH_STRING(args[i])) {
-            /* string numérica é parseada, como o interp faz (int(a)) */
-            const char *s = COMO_STRING(args[i])->chars;
-            while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
-            char *end = NULL;
-            long long val = strtoll(s, &end, 10);
-            while (*end == ' ' || *end == '\t' || *end == '\n' || *end == '\r') end++;
-            if (end == s || *end != '\0')
-                BERRO(vm, "TypeError", "'str' object cannot be interpreted as an integer");
-            lim[i] = (int64_t)val;
+    for (int i = 0; i < n; i++)
+        if (num_de_range(vm, args[i], &lim[i]) != 0) return -1;
+    if (EH_BIGINT(args[0]) || (n > 1 && EH_BIGINT(args[1])) || (n > 2 && EH_BIGINT(args[2]))) {
+        Value lv[3] = { n == 1 ? MK_INT(0) : args[0], n == 1 ? args[0] : args[1],
+                        n == 3 ? args[2] : MK_INT(1) };
+        mpz_t ini, passo, qtd;
+        mpz_init(ini); mpz_init(passo); mpz_init(qtd);
+        if (range_exato(vm, lv, ini, passo, qtd) != 0) {
+            mpz_clear(ini); mpz_clear(passo); mpz_clear(qtd);
+            return -1;
         }
-        else BERRO(vm, "TypeError",
-                   "'%s' object cannot be interpreted as an integer",
-                   nome_do_tipo_valor(args[i]));
+        if (mpz_cmp_si(qtd, 50000000) > 0) {
+            mpz_clear(ini); mpz_clear(passo); mpz_clear(qtd);
+            BERRO(vm, "MemoryError", "range() grande demais");
+        }
+        int q = (int)mpz_get_si(qtd);
+        PSList *l = lista_com_cap(vm, q, OBJ_LIST);
+        if (!l || fixa_raiz(vm, MK_OBJ(l)) != 0) {
+            mpz_clear(ini); mpz_clear(passo); mpz_clear(qtd);
+            BERRO(vm, "MemoryError", "sem memoria em range()");
+        }
+        for (int k = 0; k < q; k++) {
+            Value v = mk_from_mpz(vm, ini);
+            if (v.t == V_NULL) {
+                vm->sp--;
+                mpz_clear(ini); mpz_clear(passo); mpz_clear(qtd);
+                BERRO(vm, "MemoryError", "sem memoria em range()");
+            }
+            l->itens[l->len++] = v;
+            mpz_add(ini, ini, passo);
+        }
+        vm->sp--;
+        mpz_clear(ini); mpz_clear(passo); mpz_clear(qtd);
+        *out = MK_OBJ(l);
+        return 0;
     }
     int64_t ini = (n == 1) ? 0 : lim[0];
     int64_t fim = (n == 1) ? lim[0] : lim[1];
     int64_t passo = (n == 3) ? lim[2] : 1;
     if (passo == 0) BERRO(vm, "ValueError", "range() arg 3 must not be zero");
-    int64_t quant = (passo > 0)
-        ? (fim > ini ? (fim - ini + passo - 1) / passo : 0)
-        : (fim < ini ? (ini - fim - passo - 1) / (-passo) : 0);
+    /* sem estourar o int64 nas pontas (o inteiro grande fica no extremo):
+     * a conta é em unsigned */
+    uint64_t span = passo > 0 ? (fim > ini ? (uint64_t)fim - (uint64_t)ini : 0)
+                              : (fim < ini ? (uint64_t)ini - (uint64_t)fim : 0);
+    uint64_t ap = passo > 0 ? (uint64_t)passo : (uint64_t)0 - (uint64_t)passo;
+    uint64_t quant = span ? (span - 1) / ap + 1 : 0;
     if (quant > 50000000) BERRO(vm, "MemoryError", "range() grande demais");
     PSList *l = lista_com_cap(vm, (int)quant, OBJ_LIST);
     if (!l) BERRO(vm, "MemoryError", "sem memoria em range()");
-    for (int64_t k = 0, v = ini; k < quant; k++, v += passo) l->itens[k] = MK_INT(v);
+    for (uint64_t k = 0; k < quant; k++)
+        l->itens[k] = MK_INT((int64_t)((uint64_t)ini + k * (uint64_t)passo));
     l->len = (int)quant;
     *out = MK_OBJ(l);
     return 0;
@@ -5177,7 +5770,16 @@ static int nativa_sum(VM *vm, Value *args, int n, Value *out)
                   nome_do_tipo_valor(v));
         }
     }
-    *out = flutuou ? MK_FLOAT(sd + mpz_get_d(si)) : mk_from_mpz(vm, si);
+    if (flutuou) {
+        /* a parte inteira arredondada ao mais próximo; a que não cabe num
+         * flo é OverflowError, como no `+` */
+        double di;
+        if (bigint_para_double(si, &di) != 0) {
+            mpz_clear(si);
+            BERRO(vm, "OverflowError", MSG_INT_FLO);
+        }
+        *out = MK_FLOAT(sd + di);
+    } else *out = mk_from_mpz(vm, si);
     mpz_clear(si);
     return 0;
 }
@@ -5840,21 +6442,19 @@ static int faixa_busca(VM *vm, PSString *s, Value *args, int n, const char *quem
 {
     int64_t total = str_ncp(s);
     int64_t i0 = 0, i1 = total;
+    /* int, bool e inteiro grande (este fica no extremo: satura como a faixa) */
     if (n >= 2 && args[1].t != V_NULL) {
-        if (args[1].t != V_INT)
+        if (!arg_inteiro(args[1], &i0))
             MERRO(vm, "TypeError",
                   "slice indices must be integers or Null");
-        i0 = args[1].as.i;
-        if (i0 < 0) i0 += total;
-        if (i0 < 0) i0 = 0;
+        if (i0 < 0) i0 = i0 < -total ? 0 : i0 + total;
         if (i0 > total) { *b0 = s->len; *b1 = s->len - 1; return 0; }
     }
     if (n >= 3 && args[2].t != V_NULL) {
-        if (args[2].t != V_INT)
+        if (!arg_inteiro(args[2], &i1))
             MERRO(vm, "TypeError",
                   "slice indices must be integers or Null");
-        i1 = args[2].as.i;
-        if (i1 < 0) i1 += total;
+        if (i1 < 0) i1 = i1 < -total ? 0 : i1 + total;
         if (i1 < 0) i1 = 0;
         if (i1 > total) i1 = total;
     }
@@ -6008,13 +6608,7 @@ static int met_split(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (sep->len == 0) MERRO(vm, "ValueError", "empty separator");
     }
     int64_t limite = -1;
-    if (n == 2) {
-        if (args[1].t != V_INT)
-            MERRO(vm, "TypeError",
-                  "'%s' object cannot be interpreted as an integer",
-                  nome_do_tipo_valor(args[1]));
-        limite = args[1].as.i;
-    }
+    if (n == 2) INTEIRO_OU_ERRO(vm, args[1], limite);
     PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
     if (!l) MERRO(vm, "MemoryError", "sem memoria em split()");
     if (fixa_raiz(vm, MK_OBJ(l)) != 0) MERRO(vm, "RuntimeError", "estouro da pilha em split()");
@@ -6082,10 +6676,8 @@ static int met_rsplit(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n > 2) return erro_aridade(vm, "rsplit", 0, 2, n);
     if (n >= 1 && args[0].t != V_NULL && !EH_STRING(args[0]))
         MERRO(vm, "TypeError", "must be str or Null, not %s", nome_do_tipo_valor(args[0]));
-    if (n == 2 && args[1].t != V_INT)
-        MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(args[1]));
-    int64_t limite = n == 2 ? args[1].as.i : -1;
+    int64_t limite = -1;
+    if (n == 2) INTEIRO_OU_ERRO(vm, args[1], limite);
     PSString *s = COMO_STRING(alvo);
     PSString *sep = (n >= 1 && EH_STRING(args[0])) ? COMO_STRING(args[0]) : NULL;
     if (sep && sep->len == 0) MERRO(vm, "ValueError", "empty separator");
@@ -6249,13 +6841,7 @@ static int met_replace(VM *vm, Value alvo, Value *args, int n, Value *out)
     /* `new` nao tem valor padrao (doc): `replace("a")` apagava as letras */
     if (n < 2 || n > 3) return erro_aridade(vm, "replace", 2, 3, n);
     int64_t limite = -1;
-    if (n == 3) {
-        if (args[2].t != V_INT)
-            MERRO(vm, "TypeError",
-                  "'%s' object cannot be interpreted as an integer",
-                  nome_do_tipo_valor(args[2]));
-        limite = args[2].as.i;
-    }
+    if (n == 3) INTEIRO_OU_ERRO(vm, args[2], limite);
     /* alvo em lista: `.replace(["-", "_"], ".")` */
     if (EH_SEQ(args[0]))
         return met_replace_lista(vm, alvo, COMO_LIST(args[0]), args[1], limite, out);
@@ -6377,16 +6963,25 @@ static int met_removesuffix(VM *v, Value a, Value *g, int n, Value *o) { return 
  * pequeno o bastante pra não matar a máquina. */
 #define PS_STR_MAX (256 * 1024 * 1024)
 
+/* O teto de largura (ljust, zfill, expandtabs, os de byte) com o número como
+ * foi passado — o inteiro grande inclusive, que no int64 viraria outro número. */
+static int erro_largura(VM *vm, const char *quem, Value v)
+{
+    TXTBUF_AUTO t = {0};
+    valor_para_texto(&t, &v, 0);
+    snprintf(vm->erro, sizeof(vm->erro), "memória insuficiente: %s() pediu largura %s",
+             quem, t.b ? t.b : "?");
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+    return -1;
+}
+
 static int met_preenche(VM *vm, Value alvo, Value *args, int n, Value *out,
                         const char *quem, int modo)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, quem, 1, 2, n);
     PSString *s = COMO_STRING(alvo);
-    if (args[0].t != V_INT)
-            MERRO(vm, "TypeError",
-                  "'%s' object cannot be interpreted as an integer",
-                  nome_do_tipo_valor(args[0]));
-    int64_t larg = args[0].as.i;
+    int64_t larg;
+    INTEIRO_OU_ERRO(vm, args[0], larg);
     const char *ench = " ";
     int ench_len = 1;
     if (n == 2) {
@@ -6401,8 +6996,7 @@ static int met_preenche(VM *vm, Value alvo, Value *args, int n, Value *out,
     }
     int atual = utf8_conta(s->chars, s->len);
     if (larg > PS_STR_MAX / (ench_len > 0 ? ench_len : 1))
-        MERRO(vm, "MemoryError", "memória insuficiente: %s() pediu largura %lld",
-              quem, (long long)larg);
+        return erro_largura(vm, quem, args[0]);
     int64_t falta = larg - atual;
     if (falta <= 0) {
         PSString *r = nova_string(vm, s->chars, s->len);
@@ -6438,15 +7032,10 @@ static int met_zfill(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "zfill", 1);
     PSString *s = COMO_STRING(alvo);
-    if (args[0].t != V_INT)
-            MERRO(vm, "TypeError",
-                  "'%s' object cannot be interpreted as an integer",
-                  nome_do_tipo_valor(args[0]));
-    int64_t larg = args[0].as.i;
+    int64_t larg;
+    INTEIRO_OU_ERRO(vm, args[0], larg);
     int atual = utf8_conta(s->chars, s->len);
-    if (larg > PS_STR_MAX)
-        MERRO(vm, "MemoryError", "memória insuficiente: zfill() pediu largura %lld",
-              (long long)larg);
+    if (larg > PS_STR_MAX) return erro_largura(vm, "zfill", args[0]);
     int64_t falta = larg - atual;
     SBUF_AUTO b = {0};
     int sinal = (s->len > 0 && (s->chars[0] == '+' || s->chars[0] == '-')) ? 1 : 0;
@@ -6466,16 +7055,10 @@ static int met_expandtabs(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n > 1) return erro_aridade(vm, "expandtabs", 0, 1, n);
     PSString *s = COMO_STRING(alvo);
     int64_t passo = 8;
-    if (n == 1) {
-        if (args[0].t != V_INT) MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-                                     nome_do_tipo_valor(args[0]));
-        passo = args[0].as.i;
-    }
+    if (n == 1) INTEIRO_OU_ERRO(vm, args[0], passo);
     /* o mesmo teto do ljust: sem ele, `expandtabs(10**12)` escrevia espaco
      * a espaco ate comer a memoria da maquina */
-    if (passo > PS_STR_MAX)
-        MERRO(vm, "MemoryError", "memória insuficiente: expandtabs() pediu largura %lld",
-              (long long)passo);
+    if (passo > PS_STR_MAX) return erro_largura(vm, "expandtabs", args[0]);
     SBUF_AUTO b = {0};
     int64_t coluna = 0;
     for (int i = 0; i < s->len; i++) {
@@ -6591,8 +7174,8 @@ static int formata_um(VM *vm, SBuf *saida, const Value *v, const char *spec, int
     if (apres == 'f') {
         if (!eh_int && v->t != V_FLOAT)
             MERRO(vm, "TypeError", "format: 'f' espera numero, recebeu %s", nome_do_tipo_valor(*v));
-        double d = v->t == V_FLOAT ? v->as.d
-                 : v->t == V_BOOL ? (v->as.b ? 1.0 : 0.0) : int_como_double(*v);
+        double d;
+        if (num_flo_ou_erro(vm, *v, &d)) return -1;   /* inteiro grande que não cabe */
         ntxt = snprintf(num, sizeof(num), "%.*f", prec < 0 ? 6 : prec, d);
         txt = num;
         if (ntxt >= (int)sizeof(num)) {
@@ -6948,12 +7531,10 @@ static int met_l_extend(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_l_insert(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "insert", 2);
-    if (args[0].t != V_INT) MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-                                 nome_do_tipo_valor(args[0]));
+    int64_t i;
+    INTEIRO_OU_ERRO(vm, args[0], i);
     PSList *l = COMO_LIST(alvo);
-    int64_t i = args[0].as.i;
-    if (i < 0) i += l->len;
-    if (i < 0) i = 0;
+    if (i < 0) i = i < -(int64_t)l->len ? 0 : i + l->len;
     if (i > l->len) i = l->len;            /* fora do fim gruda no fim */
     if (cresce_lista(vm, l) != 0) MERRO(vm, "MemoryError", "sem memoria em insert()");
     memmove(l->itens + i + 1, l->itens + i, sizeof(Value) * (size_t)(l->len - i));
@@ -6967,15 +7548,11 @@ static int met_l_pop(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n > 1) return erro_aridade(vm, "pop", 0, 1, n);
     PSList *l = COMO_LIST(alvo);
+    int64_t i = -1;
+    if (n == 1) INTEIRO_OU_ERRO(vm, args[0], i);   /* o tipo antes da lista vazia */
     if (l->len == 0) MERRO(vm, "IndexError", "pop from empty list");
-    int64_t i = l->len - 1;
-    if (n == 1) {
-        if (args[0].t != V_INT) MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-                                     nome_do_tipo_valor(args[0]));
-        i = args[0].as.i;
-        if (i < 0) i += l->len;
-        if (i < 0 || i >= l->len) MERRO(vm, "IndexError", "pop index out of range");
-    }
+    if (i < 0) i = i < -(int64_t)l->len ? -1 : i + l->len;
+    if (i < 0 || i >= l->len) MERRO(vm, "IndexError", "pop index out of range");
     *out = l->itens[i];
     memmove(l->itens + i, l->itens + i + 1, sizeof(Value) * (size_t)(l->len - i - 1));
     l->len--;
@@ -7005,23 +7582,17 @@ static int met_l_index(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSList *l = COMO_LIST(alvo);
     int64_t de = 0, ate = l->len;
     /* Sem o "or Null" que o `str.find` tem: aqui a faixa não aceita Null,
-     * então a frase é a mais curta. */
+     * então a frase é a mais curta (sem o "__index__" de antes, que a
+     * linguagem não tem). int, bool e inteiro grande, que satura. */
     if (n >= 2) {
-        if (args[1].t != V_INT)
-            MERRO(vm, "TypeError",
-                  "slice indices must be integers"
-                  " or have an __index__ method");
-        de = args[1].as.i;
-        if (de < 0) de += l->len;
-        if (de < 0) de = 0;
+        if (!arg_inteiro(args[1], &de))
+            MERRO(vm, "TypeError", "slice indices must be integers");
+        if (de < 0) de = de < -(int64_t)l->len ? 0 : de + l->len;
     }
     if (n >= 3) {
-        if (args[2].t != V_INT)
-            MERRO(vm, "TypeError",
-                  "slice indices must be integers"
-                  " or have an __index__ method");
-        ate = args[2].as.i;
-        if (ate < 0) ate += l->len;
+        if (!arg_inteiro(args[2], &ate))
+            MERRO(vm, "TypeError", "slice indices must be integers");
+        if (ate < 0) ate = ate < -(int64_t)l->len ? 0 : ate + l->len;
         if (ate > l->len) ate = l->len;
     }
     for (int64_t i = de; i < ate; i++)
@@ -7367,11 +7938,7 @@ static int met_a_read(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSArquivo *a;
     if (arq_exige(vm, alvo, "read", &a) != 0) return -1;
     int64_t limite = -1;                /* int64: o `long` do Windows tem 32 bits */
-    if (n == 1) {
-        if (args[0].t != V_INT) MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-                                     nome_do_tipo_valor(args[0]));
-        limite = args[0].as.i;
-    }
+    if (n == 1 && args[0].t != V_NULL) INTEIRO_OU_ERRO(vm, args[0], limite);
     SBUF_AUTO b = {0};
     char pedaco[4096];
     size_t lidos;
@@ -8051,12 +8618,7 @@ static int met_b_hex(VM *vm, Value alvo, Value *args, int n, Value *out)
         sep = sp->chars[0];
     }
     int64_t grupo = 1;
-    if (n == 2 && args[1].t != V_NULL) {
-        if (args[1].t != V_INT)
-            MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-                  nome_do_tipo_valor(args[1]));
-        grupo = args[1].as.i;
-    }
+    if (n == 2 && args[1].t != V_NULL) INTEIRO_OU_ERRO(vm, args[1], grupo);
     if (!sep) grupo = 0;                 /* sem separador, não há o que agrupar */
     SBUF_AUTO sb = {0};
     for (int i = 0; i < b->len; i++) {
@@ -8148,11 +8710,13 @@ static int by_agulha(VM *vm, Value v, const unsigned char **p, int *n,
         *n = b->len;
         return 0;
     }
-    if (v.t == V_INT || (v.t == V_OBJ && v.as.obj->type == OBJ_BIGINT)) {
-        /* bigint nunca cabe num byte: mesmo erro do int fora de 0..255 */
-        if (v.t != V_INT || v.as.i < 0 || v.as.i > 255)
+    int64_t x;
+    if (arg_inteiro(v, &x)) {
+        /* bool é 0/1; o inteiro grande nunca cabe num byte: o mesmo erro do
+         * int fora de 0..255 */
+        if (x < 0 || x > 255)
             MERRO(vm, "ValueError", "byte must be in range(0, 256)");
-        *um = (unsigned char)v.as.i;
+        *um = (unsigned char)x;
         *p = um;
         *n = 1;
         return 0;
@@ -8169,21 +8733,17 @@ static int by_faixa(VM *vm, int total, Value *args, int n, int *b0, int *b1)
 {
     int64_t i0 = 0, i1 = total;
     if (n >= 2 && args[1].t != V_NULL) {
-        if (args[1].t != V_INT)
+        if (!arg_inteiro(args[1], &i0))
             MERRO(vm, "TypeError",
                   "slice indices must be integers or Null");
-        i0 = args[1].as.i;
-        if (i0 < 0) i0 += total;
-        if (i0 < 0) i0 = 0;
+        if (i0 < 0) i0 = i0 < -(int64_t)total ? 0 : i0 + total;
         if (i0 > total) i0 = total;
     }
     if (n >= 3 && args[2].t != V_NULL) {
-        if (args[2].t != V_INT)
+        if (!arg_inteiro(args[2], &i1))
             MERRO(vm, "TypeError",
                   "slice indices must be integers or Null");
-        i1 = args[2].as.i;
-        if (i1 < 0) i1 += total;
-        if (i1 < 0) i1 = 0;
+        if (i1 < 0) i1 = i1 < -(int64_t)total ? 0 : i1 + total;
         if (i1 > total) i1 = total;
     }
     *b0 = (int)i0;
@@ -8494,12 +9054,7 @@ static int by_split(VM *vm, Value alvo, Value *args, int n, Value *out,
     if (n > 2) return erro_aridade(vm, quem, 0, 2, n);
     BY_EU(alvo, s, slen);
     int64_t maxs = -1;
-    if (n >= 2 && args[1].t != V_NULL) {
-        if (args[1].t != V_INT)
-            MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-                  nome_do_tipo_valor(args[1]));
-        maxs = args[1].as.i;
-    }
+    if (n >= 2 && args[1].t != V_NULL) INTEIRO_OU_ERRO(vm, args[1], maxs);
     PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
     if (!l) MERRO(vm, "MemoryError", "sem memoria em %s()", quem);
     if (fixa_raiz(vm, MK_OBJ(l)) != 0) MERRO(vm, "RuntimeError", "estouro da pilha");
@@ -8700,12 +9255,7 @@ static int met_b_replace(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (by_like(vm, args[0], &velho, &nv) != 0) return -1;
     if (by_like(vm, args[1], &novo, &nn) != 0) return -1;
     int64_t conta = -1;
-    if (n == 3 && args[2].t != V_NULL) {
-        if (args[2].t != V_INT)
-            MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-                  nome_do_tipo_valor(args[2]));
-        conta = args[2].as.i;
-    }
+    if (n == 3 && args[2].t != V_NULL) INTEIRO_OU_ERRO(vm, args[2], conta);
     SBUF_AUTO b = {0};
     int64_t feitas = 0;
     int i = 0;
@@ -8742,13 +9292,13 @@ static int met_b_replace(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 /* ── preencher ──────────────────────────────────────────────────────────── */
 
-static int by_larg(VM *vm, Value v, int64_t *w)
+/* A largura do ljust/rjust/center/zfill de byte: a regra do argumento
+ * inteiro e o teto do de str. Antes a largura absurda era cortada em 256 MB
+ * CALADA (b"ab".ljust(10**12) devolvia 256 MB, não o que se pediu). */
+static int by_larg(VM *vm, Value v, const char *quem, int64_t *w)
 {
-    if (v.t != V_INT)
-        MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(v));
-    *w = v.as.i;
-    if (*w > PS_STR_MAX) *w = PS_STR_MAX;   /* largura absurda não come a RAM */
+    if (!arg_inteiro(v, w)) return erro_nao_inteiro(vm, v);
+    if (*w > PS_STR_MAX) return erro_largura(vm, quem, v);
     return 0;
 }
 
@@ -8767,8 +9317,8 @@ static int by_just(VM *vm, Value alvo, Value *args, int n, Value *out,
 {
     if (n < 1 || n > 2) return erro_aridade(vm, quem, 1, 2, n);
     BY_EU(alvo, s, slen);
-    int64_t w;
-    if (by_larg(vm, args[0], &w) != 0) return -1;
+    int64_t w = 0;
+    if (by_larg(vm, args[0], quem, &w) != 0) return -1;
     unsigned char ch = ' ';
     if (n == 2 && by_enche(vm, args[1], quem, &ch) != 0) return -1;
     if (w <= slen) return by_devolve(vm, out, (const char *)s, slen);
@@ -8798,8 +9348,8 @@ static int met_b_zfill(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "zfill", 1);
     BY_EU(alvo, s, slen);
-    int64_t w;
-    if (by_larg(vm, args[0], &w) != 0) return -1;
+    int64_t w = 0;
+    if (by_larg(vm, args[0], "zfill", &w) != 0) return -1;
     if (w <= slen) return by_devolve(vm, out, (const char *)s, slen);
     SBUF_AUTO b = {0};
     /* o sinal fica NA FRENTE dos zeros: `b"-42".zfill(8)` é `b"-0000042"` */
@@ -8820,17 +9370,10 @@ static int met_b_expandtabs(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n > 1) return erro_aridade(vm, "expandtabs", 0, 1, n);
     BY_EU(alvo, s, slen);
     int64_t tam = 8;
-    if (n == 1 && args[0].t != V_NULL) {
-        if (args[0].t != V_INT)
-            MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-                  nome_do_tipo_valor(args[0]));
-        tam = args[0].as.i;
-    }
+    if (n == 1 && args[0].t != V_NULL) INTEIRO_OU_ERRO(vm, args[0], tam);
     /* o mesmo teto do ljust; e a conta em int64: `(int)(tam - col % tam)`
      * truncava, e expandtabs(2**32 + 4) virava expandtabs(4) calado */
-    if (tam > PS_STR_MAX)
-        MERRO(vm, "MemoryError", "memória insuficiente: expandtabs() pediu largura %lld",
-              (long long)tam);
+    if (tam > PS_STR_MAX) return erro_largura(vm, "expandtabs", args[0]);
     SBUF_AUTO b = {0};
     int64_t col = 0;
     for (int i = 0; i < slen; i++) {
@@ -10087,35 +10630,40 @@ static int j_valor(VM *vm, JLeitor *j, Value *out, int prof)
     if (j->n - j->i >= 5 && memcmp(j->s + j->i, "false", 5) == 0) { j->i += 5; *out = MK_BOOL(0); return 0; }
     if (j->n - j->i >= 4 && memcmp(j->s + j->i, "null", 4) == 0)  { j->i += 4; *out = MK_NULL(); return 0; }
     if (c == '-' || (c >= '0' && c <= '9')) {
-        int ini = j->i, flutua = 0;
-        if (j->s[j->i] == '-') j->i++;
-        while (j->i < j->n && j->s[j->i] >= '0' && j->s[j->i] <= '9') j->i++;
-        if (j->i < j->n && j->s[j->i] == '.') { flutua = 1; j->i++;
-            while (j->i < j->n && j->s[j->i] >= '0' && j->s[j->i] <= '9') j->i++; }
-        if (j->i < j->n && (j->s[j->i] == 'e' || j->s[j->i] == 'E')) { flutua = 1; j->i++;
-            if (j->i < j->n && (j->s[j->i] == '+' || j->s[j->i] == '-')) j->i++;
-            while (j->i < j->n && j->s[j->i] >= '0' && j->s[j->i] <= '9') j->i++; }
-        char buf[512];   /* inteiro de JSON pode ser bem maior que 64 dígitos */
-        int len = j->i - ini;
-        if (len <= 0 || len >= (int)sizeof(buf)) return j_erro(vm, j, j->i, "Expecting value");
-        memcpy(buf, j->s + ini, (size_t)len);
-        buf[len] = '\0';
-        if (flutua) { *out = MK_FLOAT(strtod(buf, NULL)); return 0; }
-        /* `strtoll` SATURA em INT64_MAX quando não cabe: um id grande vindo de
-         * uma API virava 9223372036854775807 sem erro nenhum. Vai pro bignum. */
-        errno = 0;
-        long long li = strtoll(buf, NULL, 10);
-        if (errno == ERANGE) {
-            mpz_t z; mpz_init(z);
-            if (mpz_set_str(z, buf, 10) != 0) {
-                mpz_clear(z);
-                return j_erro(vm, j, j->i, "Expecting value");
+        /* A gramática do número do JSON: -?(0|[1-9][0-9]*)(.[0-9]+)?([eE][+-]?[0-9]+)?
+         * — a fração e o expoente só entram completos; o que sobra (o "." de
+         * "1.", o "1" de "01") é "Extra data" de quem chamou. Sem buffer fixo:
+         * o de 512 recusava número válido de 600 dígitos com "Expecting value",
+         * e o "-" sozinho virava 0. */
+        const char *s = j->s;
+        int ini = j->i, p = j->i, flutua = 0;
+        if (s[p] == '-') p++;
+        if (p < j->n && s[p] == '0') p++;
+        else if (p < j->n && s[p] >= '1' && s[p] <= '9') { while (p < j->n && s[p] >= '0' && s[p] <= '9') p++; }
+        else return j_erro(vm, j, ini, "Expecting value");
+        if (p + 1 < j->n && s[p] == '.' && s[p + 1] >= '0' && s[p + 1] <= '9') {
+            flutua = 1; p += 2;
+            while (p < j->n && s[p] >= '0' && s[p] <= '9') p++;
+        }
+        if (p < j->n && (s[p] == 'e' || s[p] == 'E')) {
+            int q = p + 1;
+            if (q < j->n && (s[q] == '+' || s[q] == '-')) q++;
+            if (q < j->n && s[q] >= '0' && s[q] <= '9') {
+                flutua = 1; p = q;
+                while (p < j->n && s[p] >= '0' && s[p] <= '9') p++;
             }
-            *out = mk_from_mpz(vm, z);
-            mpz_clear(z);
+        }
+        j->i = p;
+        if (flutua) {
+            double d;
+            int rc = texto_para_flo(s + ini, p - ini, 1, &d);
+            if (rc < 0) BERRO(vm, "MemoryError", "sem memoria em json.parse()");
+            *out = MK_FLOAT(d);
             return 0;
         }
-        *out = MK_INT((int64_t)li);
+        int neg = s[ini] == '-';
+        if (digitos_para_int(vm, s + ini + neg, p - ini - neg, neg, out) != 0)
+            BERRO(vm, "MemoryError", "sem memoria em json.parse()");
         return 0;
     }
     return j_erro(vm, j, j->i, "Expecting value");
@@ -10196,17 +10744,30 @@ static int mod_date_monotonic(VM *vm, Value *args, int n, Value *out)
 static int mod_date_hora(VM *vm, Value *args, int n, Value *out)
 {
     if (n > 3) return erro_aridade(vm, "hora", 0, 3, n);
-    int64_t v[3] = { 0, 0, 0 };
+    /* horas, minutos e dias são inteiros (a regra do argumento inteiro: o
+     * flo era truncado calado, 1.5 hora virava 3600), e a conta é exata,
+     * com inteiro grande se passar de 64 bits */
+    static const int por[3] = { 3600, 60, 86400 };
+    mpz_t total, t;
+    mpz_init(total); mpz_init(t);
     for (int i = 0; i < n && i < 3; i++) {
         /* buraco de arg nomeado ausente = 0 (o mapeador preenche com NULL/UNSET) */
         if (args[i].t == V_UNSET || args[i].t == V_NULL) continue;
-        if (args[i].t == V_INT)        v[i] = args[i].as.i;
-        else if (args[i].t == V_FLOAT) v[i] = (int64_t)args[i].as.d;
-        else if (args[i].t == V_BOOL)  v[i] = args[i].as.b ? 1 : 0;
-        else BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(args[i]));
+        int64_t x;
+        if (!arg_inteiro(args[i], &x)) {
+            mpz_clear(total); mpz_clear(t);
+            return erro_nao_inteiro(vm, args[i]);
+        }
+        mpz_de_val(t, args[i].t == V_BOOL ? MK_INT(x) : args[i]);
+        Value m = MK_INT(por[i]);
+        mpz_t zm; mpz_init(zm); mpz_de_val(zm, m);
+        mpz_mul(t, t, zm);
+        mpz_clear(zm);
+        mpz_add(total, total, t);
     }
-    *out = MK_INT(v[0] * 3600 + v[1] * 60 + v[2] * 86400);
+    *out = mk_from_mpz(vm, total);
+    mpz_clear(total); mpz_clear(t);
+    if (out->t == V_NULL) BERRO(vm, "MemoryError", "sem memoria");
     return 0;
 }
 
@@ -11121,6 +11682,9 @@ static int count_percorre(VM *vm, Value cont, int64_t tipo, const Value *val, in
     if (EH_SEQ(cont))         n_itens = COMO_LIST(cont)->len;
     else if (EH_DICT(cont))   n_itens = COMO_DICT(cont)->count;
     else if (EH_STRING(cont)) n_itens = str_ncp(COMO_STRING(cont));
+    /* byte se itera em int, como no `for each` e no `in`: `int(97) count in
+     * b"aab"` é 2 (antes contava zero, calado) */
+    else if (EH_BYTES(cont))  n_itens = COMO_BYTES(cont)->len;
     else {
         /* Container que não se itera conta ZERO, não é erro — `count` é uma
          * pergunta ("quantos?"), e a resposta pra algo sem itens é nenhum. */
@@ -11139,6 +11703,9 @@ static int count_percorre(VM *vm, Value cont, int64_t tipo, const Value *val, in
             if (pos < 0) continue;
             item = COMO_DICT(cont)->entradas[pos].valor;
             chave = COMO_DICT(cont)->entradas[pos].chave;
+        } else if (EH_BYTES(cont)) {
+            item = MK_INT((unsigned char)COMO_BYTES(cont)->chars[i]);
+            chave = MK_INT(i);
         } else {
             unsigned int cp;
             int u = utf8_le(COMO_STRING(cont)->chars, COMO_STRING(cont)->len, byte, &cp);
@@ -11455,13 +12022,7 @@ static int mod_regex_sub(VM *vm, Value *args, int n, Value *out)
               EH_STRING(args[1]) ? 3 : 2,
               nome_do_tipo_valor(EH_STRING(args[1]) ? args[2] : args[1]));
     int64_t limite = 0;
-    if (n == 4) {
-        if (args[3].t != V_INT)
-            BERRO(vm, "TypeError",
-                  "'%s' object cannot be interpreted as an integer",
-                  nome_do_tipo_valor(args[3]));
-        limite = args[3].as.i;
-    }
+    if (n == 4) INTEIRO_OU_ERRO(vm, args[3], limite);
     PSRegex *r = rx_compila(vm, args[0], "sub");
     if (!r) return -1;
     PSString *rep = COMO_STRING(args[1]), *s = COMO_STRING(args[2]);
@@ -11531,13 +12092,7 @@ static int mod_regex_split(VM *vm, Value *args, int n, Value *out)
     if (!EH_STRING(args[1])) BERRO(vm, "TypeError", "split() argument 2 must be str, not %s",
                                   nome_do_tipo_valor(args[1]));
     int64_t maxsplit = 0;
-    if (n == 3) {
-        if (args[2].t != V_INT)
-            BERRO(vm, "TypeError",
-                  "'%s' object cannot be interpreted as an integer",
-                  nome_do_tipo_valor(args[2]));
-        maxsplit = args[2].as.i;
-    }
+    if (n == 3) INTEIRO_OU_ERRO(vm, args[2], maxsplit);
     PSRegex *r = rx_compila(vm, args[0], "split");
     if (!r) return -1;
     PSString *s = COMO_STRING(args[1]);
@@ -12551,9 +13106,17 @@ static int mod_bytes_new(VM *vm, Value *args, int n, Value *out)
     /* `bytes(True)` é recusa deliberada: bool não vira tamanho de buffer.
      * Fica o texto do MESMO TypeError que o resto de bytes.new levanta. */
     if (x.t == V_BOOL) BY_ERRO_TIPO(vm, "cannot convert 'bool' object to bytes");
-    if (x.t == V_INT) {
-        if (x.as.i < 0) BY_ERRO_VALOR(vm, "negative count");
-        int64_t sz = x.as.i;
+    if (x.t == V_INT || EH_BIGINT(x)) {
+        int64_t sz = 0;
+        arg_inteiro(x, &sz);
+        if (sz < 0) BY_ERRO_VALOR(vm, "negative count");
+        /* o teto de todo texto e byte: antes `(int)sz` cortava o tamanho
+         * (2^32 + 5 bytes viravam 5) e o inteiro grande era "não converte" */
+        if (sz > PS_STR_MAX) {
+            TXTBUF_AUTO t = {0};
+            valor_para_texto(&t, &x, 0);
+            BERRO(vm, "MemoryError", "memória insuficiente: bytes.new() pediu %s bytes", t.b ? t.b : "?");
+        }
         char *buf = calloc((size_t)(sz > 0 ? sz : 1), 1);
         if (!buf) BERRO(vm, "MemoryError", "sem memoria");
         int r = by_devolve(vm, out, buf, (int)sz);
@@ -12566,9 +13129,8 @@ static int mod_bytes_new(VM *vm, Value *args, int n, Value *out)
         if (!buf) BERRO(vm, "MemoryError", "sem memoria");
         for (int i = 0; i < l->len; i++) {
             Value it = l->itens[i];
-            int64_t bv;
-            if (it.t == V_INT || it.t == V_BOOL) bv = it.as.i;  /* true/false = 1/0 */
-            else { free(buf); BY_ERRO_TIPO(vm, "'%s' object cannot be interpreted as an integer", by_nome(it)); }
+            int64_t bv;   /* True/False = 1/0 (lido do `.b`, não do `.i` da união) */
+            if (!arg_inteiro(it, &bv)) { free(buf); BY_ERRO_TIPO(vm, "'%s' object cannot be interpreted as an integer", by_nome(it)); }
             if (bv < 0 || bv > 255) { free(buf); BY_ERRO_VALOR(vm, "bytes must be in range(0, 256)"); }
             buf[i] = (char)(unsigned char)bv;
         }
@@ -12651,13 +13213,18 @@ static int mod_bytes_frombase64(VM *vm, Value *args, int n, Value *out)
     return r;
 }
 
+/* `n` (int, bool ou inteiro grande, >= 0) em bytes: o inteiro inteiro, sem
+ * o teto de 8 bytes que antes recusava o inteiro grande ("'int' object cannot
+ * be interpreted as an integer") e ignorava o que passava de 64 bits. */
 static int mod_bytes_fromint(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 3) return erro_aridade(vm, "fromint", 1, 3, n);
-    if (args[0].t == V_BOOL || args[0].t != V_INT)
+    int64_t dummy;
+    if (!arg_inteiro(args[0], &dummy))
         BY_ERRO_TIPO(vm, "'%s' object cannot be interpreted as an integer", by_nome(args[0]));
-    int64_t v = args[0].as.i;
-    if (v < 0) BERRO(vm, "OverflowError", "can't convert negative int to unsigned");
+    Value nv = args[0].t == V_BOOL ? MK_INT(args[0].as.b ? 1 : 0) : args[0];
+    if (nv.t == V_INT ? nv.as.i < 0 : mpz_sgn(COMO_BIGINT(nv)->v) < 0)
+        BERRO(vm, "OverflowError", "can't convert negative int to unsigned");
     int big = 1;   /* byteorder checado antes de length, como no interp */
     if (n > 2 && args[2].t != V_UNSET) {
         if (!EH_STRING(args[2]))
@@ -12667,27 +13234,46 @@ static int mod_bytes_fromint(VM *vm, Value *args, int n, Value *out)
     }
     int64_t length = 0;
     if (n > 1 && args[1].t != V_UNSET) {
-        if (args[1].t == V_BOOL || args[1].t != V_INT)
+        if (!arg_inteiro(args[1], &length))
             BY_ERRO_TIPO(vm, "'%s' object cannot be interpreted as an integer", by_nome(args[1]));
-        length = args[1].as.i;
+        if (length < 0) BY_ERRO_VALOR(vm, "length argument must be non-negative");
+        /* o teto de todo texto e byte do motor; antes `(int)length` cortava
+         * 4294967297 em 1 e devolvia 1 byte calado */
+        if (length > PS_STR_MAX) {
+            TXTBUF_AUTO t = {0};
+            valor_para_texto(&t, &args[1], 0);
+            BERRO(vm, "MemoryError", "memória insuficiente: fromint() pediu length %s", t.b ? t.b : "?");
+        }
     }
-    int bits = 0; uint64_t u = (uint64_t)v; while (u) { bits++; u >>= 1; }
-    int minimo = (bits + 7) / 8; if (minimo == 0) minimo = 1;
+    /* os dígitos em hexa, do mais significativo pro menos */
+    mpz_t z; mpz_init(z);
+    mpz_de_val(z, nv);
+    char *hx = mpz_get_str(NULL, 16, z);
+    mpz_clear(z);
+    if (!hx) BERRO(vm, "MemoryError", "sem memoria");
+    int nh = (int)strlen(hx);
+    int minimo = (nh + 1) / 2;
+    if (minimo == 0 || (nh == 1 && hx[0] == '0')) minimo = 1;
     int largura = length > 0 ? (int)length : minimo;
-    if (largura < minimo) BERRO(vm, "OverflowError", "int too big to convert");
-    unsigned char *buf = calloc((size_t)(largura > 0 ? largura : 1), 1);
-    if (!buf) BERRO(vm, "MemoryError", "sem memoria");
-    u = (uint64_t)v;
-    for (int i = 0; i < largura && i < 8; i++) {
-        int idx = big ? (largura - 1 - i) : i;
-        buf[idx] = (unsigned char)(u & 0xFF);
-        u >>= 8;
+    if (largura < minimo) { free(hx); BERRO(vm, "OverflowError", "int too big to convert"); }
+    unsigned char *buf = calloc((size_t)largura, 1);
+    if (!buf) { free(hx); BERRO(vm, "MemoryError", "sem memoria"); }
+    /* do dígito menos significativo pra trás, dois por byte */
+    for (int k = 0; k * 2 < nh; k++) {
+        int lo = by_hexval((unsigned char)hx[nh - 1 - 2 * k]);
+        int hi = nh - 2 - 2 * k >= 0 ? by_hexval((unsigned char)hx[nh - 2 - 2 * k]) : 0;
+        int idx = big ? (largura - 1 - k) : k;
+        buf[idx] = (unsigned char)((hi << 4) | lo);
     }
+    free(hx);
     int r = by_devolve(vm, out, (const char *)buf, largura);
     free(buf);
     return r;
 }
 
+/* Os bytes de volta num inteiro >= 0, exato: com mais de 8 bytes (ou o bit
+ * alto ligado) vira inteiro grande. Antes o valor ficava no int64: 9 bytes
+ * perdiam o alto e `ff ff ff ff ff ff ff ff` dava -1. */
 static int mod_bytes_toint(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "toint", 1, 2, n);
@@ -12700,12 +13286,27 @@ static int mod_bytes_toint(VM *vm, Value *args, int n, Value *out)
     }
     if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "toint() argument 1 must be byte, not %s", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
-    uint64_t acc = 0;
+    if (b->len < 8 || (b->len == 8 && !((unsigned char)b->chars[big ? 0 : 7] & 0x80))) {
+        uint64_t acc = 0;
+        for (int i = 0; i < b->len; i++) {
+            int idx = big ? i : (b->len - 1 - i);
+            acc = (acc << 8) | (unsigned char)b->chars[idx];
+        }
+        *out = MK_INT((int64_t)acc);
+        return 0;
+    }
+    char *hx = malloc((size_t)b->len * 2 + 1);
+    if (!hx) BERRO(vm, "MemoryError", "sem memoria");
     for (int i = 0; i < b->len; i++) {
         int idx = big ? i : (b->len - 1 - i);
-        acc = (acc << 8) | (unsigned char)b->chars[idx];
+        snprintf(hx + i * 2, 3, "%02x", (unsigned char)b->chars[idx]);
     }
-    *out = MK_INT((int64_t)acc);
+    mpz_t z; mpz_init(z);
+    int rc = mpz_set_str(z, hx, 16);
+    free(hx);
+    if (rc == 0) *out = mk_from_mpz(vm, z);
+    mpz_clear(z);
+    if (rc != 0 || out->t == V_NULL) BERRO(vm, "MemoryError", "sem memoria");
     return 0;
 }
 
@@ -12756,23 +13357,16 @@ static int mod_bytes_slice(VM *vm, Value *args, int n, Value *out)
      * None" e o teste recusava Null: passar explicitamente o default que a doc
      * publica (`slice(b, 1, Null)`) era TypeError, com a mensagem prometendo
      * o contrario do que o codigo fazia. */
+    /* int, bool e inteiro grande (satura, como a fatia) */
     int64_t ini = 0;
-    if (n > 1 && args[1].t != V_UNSET && args[1].t != V_NULL) {
-        if (args[1].t == V_BOOL || args[1].t != V_INT)
-            BY_ERRO_TIPO(vm, "slice indices must be integers or Null");
-        ini = args[1].as.i;
-    }
+    if (n > 1 && args[1].t != V_UNSET && args[1].t != V_NULL && !arg_inteiro(args[1], &ini))
+        BY_ERRO_TIPO(vm, "slice indices must be integers or Null");
     int64_t fim = len;
-    if (n > 2 && args[2].t != V_UNSET && args[2].t != V_NULL) {
-        if (args[2].t == V_BOOL || args[2].t != V_INT)
-            BY_ERRO_TIPO(vm, "slice indices must be integers or Null");
-        fim = args[2].as.i;
-    }
-    if (ini < 0) ini += len;
-    if (ini < 0) ini = 0;
+    if (n > 2 && args[2].t != V_UNSET && args[2].t != V_NULL && !arg_inteiro(args[2], &fim))
+        BY_ERRO_TIPO(vm, "slice indices must be integers or Null");
+    if (ini < 0) ini = ini < -(int64_t)len ? 0 : ini + len;
     if (ini > len) ini = len;
-    if (fim < 0) fim += len;
-    if (fim < 0) fim = 0;
+    if (fim < 0) fim = fim < -(int64_t)len ? 0 : fim + len;
     if (fim > len) fim = len;
     int outlen = (fim > ini) ? (int)(fim - ini) : 0;
     return by_devolve(vm, out, b->chars + ini, outlen);
@@ -12783,9 +13377,9 @@ static int mod_bytes_get(VM *vm, Value *args, int n, Value *out)
     EXIGE_ARGS(vm, "get", 2);
     if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "get() argument 1 must be byte, not %s", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
-    if (args[1].t == V_BOOL || args[1].t != V_INT)
+    int64_t i;
+    if (!arg_inteiro(args[1], &i))   /* o inteiro grande cai no "out of range" */
         BY_ERRO_TIPO(vm, "byte indices must be integers or slices, not %s", by_nome(args[1]));
-    int64_t i = args[1].as.i;
     /* IndexError, o mesmo texto de `b[i]` — é o mesmo erro, e o nome do
      * tipo não vai na frente quando o alvo é bytes. */
     if (i < -(int64_t)b->len || i >= b->len)
@@ -13176,10 +13770,21 @@ static int mod_sys_exit(VM *vm, Value *args, int n, Value *out)
     (void)out;
     if (n > 1) return erro_aridade(vm, "exit", 0, 1, n);
     int codigo = 0;
-    if (n == 1) {
-        if (args[0].t == V_INT) codigo = (int)args[0].as.i;
-        else if (args[0].t != V_NULL) BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(args[0]));
+    if (n == 1 && args[0].t != V_NULL) {
+        int64_t c;
+        if (!arg_inteiro(args[0], &c)) return erro_nao_inteiro(vm, args[0]);
+        if (EH_BIGINT(args[0])) {
+            /* o sistema guarda 8 bits do código: o do inteiro grande é o
+             * resto por 256, como o do int64 (antes, "'int' object cannot be
+             * interpreted as an integer") */
+            mpz_t z, m; mpz_init(z); mpz_init(m);
+            mpz_set(z, COMO_BIGINT(args[0])->v);
+            mpz_set_si(m, 256);
+            mpz_fdiv_r(z, z, m);
+            c = ps_mpz_get_i64(z);
+            mpz_clear(z); mpz_clear(m);
+        }
+        codigo = (int)c;
     }
     /* Na fibra de uma rota do jinker (HTTP, WebSocket) ele sai na hora: o
      * erro da rota vira a resposta 500, e o exit não pode virar resposta. */
@@ -13382,11 +13987,9 @@ static int mod_in_read(VM *vm, Value *a, int n, Value *o)
     int64_t quer = -1;                  /* int64: o `long` do Windows tem 32 bits */
     if (n > 1) return erro_aridade(vm, "read", 0, 1, n);
     if (n == 1) {
-        if (a[0].t != V_INT)
-        BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(a[0]));
-        quer = a[0].as.i;
-        if (quer < 0) BERRO(vm, "TypeError", "read() nao aceita tamanho negativo");
+        INTEIRO_OU_ERRO(vm, a[0], quer);
+        /* o tipo está certo, o valor é que não serve: ValueError */
+        if (quer < 0) BERRO(vm, "ValueError", "read() nao aceita tamanho negativo");
     }
     int poll = stdin_em_poll();
     SBUF_AUTO b = {0};
@@ -15265,10 +15868,13 @@ static int proc_le(VM *vm, Value alvo, Value *args, int n, Value *out, int stder
     if (n > 1) return erro_aridade(vm, stderr_lado ? "read_err" : "read", 0, 1, n);
     int quanto = 4096;
     if (n == 1) {
-        if (args[0].t != V_INT) MERRO(vm, "TypeError", "%s() argument 1 must be int, not %s",
-                                      stderr_lado ? "read_err" : "read", nome_do_tipo_valor(args[0]));
-        quanto = (int)args[0].as.i;
-        if (quanto < 0) quanto = 0;
+        int64_t q;
+        if (!arg_inteiro(args[0], &q))
+            MERRO(vm, "TypeError", "%s() argument 1 must be int, not %s",
+                  stderr_lado ? "read_err" : "read", nome_do_tipo_valor(args[0]));
+        /* "até N bytes": o pedido acima de 1 GB lê o que houver, sem o
+         * `(int)` que cortava 2**32 em 0 */
+        quanto = q < 0 ? 0 : q > (1 << 30) ? (1 << 30) : (int)q;
     }
     PSProcesso *p = COMO_PROCESSO(alvo);
     /* Espera só até CHEGAR algo — o ponto do modo vivo é ver a saída enquanto
@@ -15392,9 +15998,13 @@ static int met_pr_kill(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n > 1) return erro_aridade(vm, "kill", 0, 1, n);
     int sinal = SIGTERM;
     if (n == 1) {
-        if (args[0].t != V_INT) MERRO(vm, "TypeError", "kill() argument 1 must be int, not %s",
-                                      nome_do_tipo_valor(args[0]));
-        sinal = (int)args[0].as.i;
+        int64_t s;
+        if (!arg_inteiro(args[0], &s))
+            MERRO(vm, "TypeError", "kill() argument 1 must be int, not %s",
+                  nome_do_tipo_valor(args[0]));
+        /* o `(int)` cortava o número e mandava outro sinal */
+        if (s < 0 || s > 64) MERRO(vm, "ValueError", "kill(): sinal fora da faixa 0..64: %lld", (long long)s);
+        sinal = (int)s;
     }
     PSProcesso *p = COMO_PROCESSO(alvo);
     if (p->terminou) { *out = MK_BOOL(0); return 0; }
@@ -15409,9 +16019,16 @@ static int met_pr_kill(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_pr_resize(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "resize", 2);
-    if (args[0].t != V_INT || args[1].t != V_INT)
-        MERRO(vm, "TypeError", "resize() argument %d must be int, not %s",
-              args[0].t != V_INT ? 1 : 2, nome_do_tipo_valor(args[0].t != V_INT ? args[0] : args[1]));
+    int64_t tam[2];
+    for (int k = 0; k < 2; k++) {
+        if (!arg_inteiro(args[k], &tam[k]))
+            MERRO(vm, "TypeError", "resize() argument %d must be int, not %s",
+                  k + 1, nome_do_tipo_valor(args[k]));
+        /* linhas e colunas de terminal cabem em 16 bits; o `(int)` cortava */
+        if (tam[k] < 1 || tam[k] > 65535)
+            MERRO(vm, "ValueError", "resize(): argument %d fora da faixa 1..65535: %lld", k + 1, (long long)tam[k]);
+    }
+    args[0] = MK_INT(tam[0]); args[1] = MK_INT(tam[1]);
     PSProcesso *p = COMO_PROCESSO(alvo);
     if (!p->eh_pty)
         MERRO(vm, "RuntimeError", "erro de execução: resize() so vale com pty=True (sem terminal nao ha tamanho)");
@@ -15939,11 +16556,7 @@ static int met_sqlcur_fetchmany(VM *vm, Value alvo, Value *args, int n, Value *o
 {
     if (n > 1) return erro_aridade(vm, "fetchmany", 0, 1, n);
     int64_t quantos = 1;
-    if (n == 1) {
-        if (args[0].t != V_INT) MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-                                     nome_do_tipo_valor(args[0]));
-        quantos = args[0].as.i;
-    }
+    if (n == 1) INTEIRO_OU_ERRO(vm, args[0], quantos);
     return sql_busca(vm, alvo, quantos < 0 ? 0 : quantos, out);
 }
 
@@ -16360,6 +16973,24 @@ static PSSocket *novo_socket(VM *vm, int fd, int familia, int tipo, int proto)
     return s;
 }
 
+/* Argumento inteiro que vai pra um `int` do C (flags, nível e opção de
+ * socket, `how` do shutdown): a regra do argumento inteiro e a faixa do
+ * `int`. Antes o `(int)` cortava o número calado e o sistema recebia outro.
+ * 0 ok; -1 com o erro posto. */
+static int arg_int_c(VM *vm, Value v, int *out)
+{
+    int64_t x;
+    if (!arg_inteiro(v, &x)) return erro_nao_inteiro(vm, v);
+    if (x > INT_MAX || x < INT_MIN) {
+        snprintf(vm->erro, sizeof(vm->erro), "signed integer is %s than %s",
+                 x > 0 ? "greater" : "less", x > 0 ? "maximum" : "minimum");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "OverflowError");
+        return -1;
+    }
+    *out = (int)x;
+    return 0;
+}
+
 static int sk_exige(VM *vm, Value alvo, const char *quem, PSSocket **out)
 {
     PSSocket *s = COMO_SOCKET(alvo);
@@ -16425,12 +17056,14 @@ static int sk_monta_addr(VM *vm, int familia, int tipo, Value addr, const char *
     if (!EH_STRING(t->itens[0]))
         MERRO(vm, "TypeError", "str, bytes or bytearray expected, not %s",
               nome_do_tipo_valor(t->itens[0]));
-    if (t->itens[1].t != V_INT)
-        MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(t->itens[1]));
+    int64_t pnum;
+    if (!arg_inteiro(t->itens[1], &pnum)) return erro_nao_inteiro(vm, t->itens[1]);
+    /* a porta tem 16 bits: fora disso o texto ia pro resolvedor e a conexão
+     * saía noutra porta ou num erro sem relação com o número */
+    if (pnum < 0 || pnum > 65535) MERRO(vm, "OverflowError", "%s(): port must be 0-65535", quem);
     const char *host = COMO_STRING(t->itens[0])->chars;
     char porta[16];
-    snprintf(porta, sizeof(porta), "%lld", (long long)t->itens[1].as.i);
+    snprintf(porta, sizeof(porta), "%lld", (long long)pnum);
     struct addrinfo hints, *res = NULL;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = familia;
@@ -16689,12 +17322,8 @@ static int met_sk_sendto(VM *vm, Value alvo, Value *args, int n, Value *out)
      * (posicional ou `address=`/`flags=` juntos) era recusada. */
     Value addr = args[1];
     int flags = 0;
-    if (n == 3 && args[2].t != V_UNSET && args[2].t != V_NULL) {
-        if (args[2].t != V_INT)
-            MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-                  nome_do_tipo_valor(args[2]));
-        flags = (int)args[2].as.i;
-    }
+    if (n == 3 && args[2].t != V_UNSET && args[2].t != V_NULL && arg_int_c(vm, args[2], &flags) != 0)
+        return -1;
     struct sockaddr_storage sa; socklen_t sl;
     if (sk_monta_addr(vm, s->familia, s->tipo, addr, "sendto", &sa, &sl, 0) != 0) return -1;
     SkSendOff o = { s->fd, p, tam, flags, 0, 0, 0, (struct sockaddr *)&sa, sl };
@@ -16708,15 +17337,18 @@ static int sk_recv_nucleo(VM *vm, Value alvo, Value *args, int n, const char *qu
                           int com_addr, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, quem, 1, 2, n);
-    if (args[0].t != V_INT)
-        MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(args[0]));
-    if (args[0].as.i <= 0)
-        MERRO(vm, "TypeError", "%s: bufsize deve ser int positivo", quem);
+    int64_t pedido;
+    INTEIRO_OU_ERRO(vm, args[0], pedido);
+    /* o tipo está certo, o valor é que não serve: ValueError (era TypeError,
+     * e o zero, que só devolve vazio, era recusado) */
+    if (pedido < 0) MERRO(vm, "ValueError", "negative buffersize in %s", quem);
     PSSocket *s = NULL; if (sk_exige(vm, alvo, quem, &s) != 0) return -1;
-    size_t cap = (size_t)args[0].as.i;
-    int flags = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
-    char *buf = malloc(cap);   /* cap >= 1: o zero foi recusado acima */
+    /* "até N bytes": acima de 1 GB lê o que houver */
+    size_t cap = pedido > (1 << 30) ? (size_t)1 << 30 : (size_t)pedido;
+    int flags = 0;
+    if (n == 2 && args[1].t != V_UNSET && args[1].t != V_NULL && arg_int_c(vm, args[1], &flags) != 0)
+        return -1;
+    char *buf = malloc(cap > 0 ? cap : 1);
     if (!buf) MERRO(vm, "MemoryError", "sem memoria");
     SkRecvOff o = { s->fd, buf, cap, flags, 0, 0, com_addr, {0}, 0 };
     fib_offload(vm, sk_recv_off, &o);
@@ -16753,10 +17385,9 @@ static int met_sk_shutdown(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "shutdown", 1);
     PSSocket *s = NULL; if (sk_exige(vm, alvo, "shutdown", &s) != 0) return -1;
-    if (args[0].t != V_INT)
-        MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(args[0]));
-    if (shutdown(s->fd, (int)args[0].as.i) != 0) SK_ERRNO(vm, "shutdown", errno);
+    int como;
+    if (arg_int_c(vm, args[0], &como) != 0) return -1;
+    if (shutdown(s->fd, como) != 0) SK_ERRNO(vm, "shutdown", errno);
     *out = MK_NULL();
     return 0;
 }
@@ -16765,16 +17396,16 @@ static int met_sk_setsockopt(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "setsockopt", 3);
     PSSocket *s = NULL; if (sk_exige(vm, alvo, "setsockopt", &s) != 0) return -1;
-    if (args[0].t != V_INT || args[1].t != V_INT)
-        MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(args[0].t != V_INT ? args[0] : args[1]));
+    int nivel, opcao;
+    if (arg_int_c(vm, args[0], &nivel) != 0 || arg_int_c(vm, args[1], &opcao) != 0) return -1;
     int rc;
     if (EH_BYTES(args[2]) || EH_STRING(args[2]))
-        rc = setsockopt(s->fd, (int)args[0].as.i, (int)args[1].as.i,
+        rc = setsockopt(s->fd, nivel, opcao,
                         COMO_STRING(args[2])->chars, (socklen_t)COMO_STRING(args[2])->len);
-    else if (args[2].t == V_INT || args[2].t == V_BOOL) {
-        int v = args[2].t == V_INT ? (int)args[2].as.i : (args[2].as.b ? 1 : 0);
-        rc = setsockopt(s->fd, (int)args[0].as.i, (int)args[1].as.i, &v, sizeof(v));
+    else if (args[2].t == V_INT || args[2].t == V_BOOL || EH_BIGINT(args[2])) {
+        int v;
+        if (arg_int_c(vm, args[2], &v) != 0) return -1;
+        rc = setsockopt(s->fd, nivel, opcao, &v, sizeof(v));
     } else
         MERRO(vm, "TypeError", "a byte-like object is required, not '%s'",
               nome_do_tipo_valor(args[2]));
@@ -16787,16 +17418,16 @@ static int met_sk_getsockopt(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n < 2 || n > 3) return erro_aridade(vm, "getsockopt", 2, 3, n);
     PSSocket *s = NULL; if (sk_exige(vm, alvo, "getsockopt", &s) != 0) return -1;
-    if (args[0].t != V_INT || args[1].t != V_INT)
-        MERRO(vm, "TypeError", "getsockopt: level/optname devem ser int");
+    int nivel, opcao;
+    if (arg_int_c(vm, args[0], &nivel) != 0 || arg_int_c(vm, args[1], &opcao) != 0) return -1;
     if (n == 3) {   /* com buflen -> devolve bytes */
-        if (args[2].t != V_INT)
-            MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-                  nome_do_tipo_valor(args[2]));
-        if (args[2].as.i <= 0 || args[2].as.i > 1024)
-            MERRO(vm, "TypeError", "getsockopt: buflen invalido");
-        char buf[1024]; socklen_t sl = (socklen_t)args[2].as.i;
-        if (getsockopt(s->fd, (int)args[0].as.i, (int)args[1].as.i, buf, &sl) != 0)
+        int64_t bl;
+        INTEIRO_OU_ERRO(vm, args[2], bl);
+        /* o tipo está certo, o valor é que não serve */
+        if (bl <= 0 || bl > 1024)
+            MERRO(vm, "ValueError", "getsockopt: buflen fora da faixa 1..1024: %lld", (long long)bl);
+        char buf[1024]; socklen_t sl = (socklen_t)bl;
+        if (getsockopt(s->fd, nivel, opcao, buf, &sl) != 0)
             SK_ERRNO(vm, "getsockopt", errno);
         PSString *by = novo_bytes(vm, buf, (int)sl);
         if (!by) MERRO(vm, "MemoryError", "sem memoria");
@@ -16804,7 +17435,7 @@ static int met_sk_getsockopt(VM *vm, Value alvo, Value *args, int n, Value *out)
         return 0;
     }
     int v = 0; socklen_t sl = sizeof(v);
-    if (getsockopt(s->fd, (int)args[0].as.i, (int)args[1].as.i, &v, &sl) != 0)
+    if (getsockopt(s->fd, nivel, opcao, &v, &sl) != 0)
         SK_ERRNO(vm, "getsockopt", errno);
     *out = MK_INT(v);
     return 0;
@@ -16815,11 +17446,11 @@ static int met_sk_settimeout(VM *vm, Value alvo, Value *args, int n, Value *out)
     ARGS_MET(vm, "settimeout", 1);
     PSSocket *s = NULL; if (sk_exige(vm, alvo, "settimeout", &s) != 0) return -1;
     if (args[0].t == V_NULL) s->timeout = -1.0;
-    else if (args[0].t == V_INT) s->timeout = (double)args[0].as.i;
-    else if (args[0].t == V_FLOAT) s->timeout = args[0].as.d;
-    else MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+    else if (args[0].t == V_INT || args[0].t == V_BOOL || args[0].t == V_FLOAT || EH_BIGINT(args[0])) {
+        if (num_flo_ou_erro(vm, args[0], &s->timeout)) return -1;
+    } else MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
               nome_do_tipo_valor(args[0]));
-    if (s->timeout < 0 && args[0].t != V_NULL)
+    if ((s->timeout < 0 || isnan(s->timeout)) && args[0].t != V_NULL)
         MERRO(vm, "ValueError", "Timeout value out of range");
     sk_aplica_timeout(s);
     *out = MK_NULL();
@@ -17190,10 +17821,11 @@ static int mod_sk_getservbyname(VM *vm, Value *args, int n, Value *out)
 static int mod_sk_getservbyport(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "getservbyport", 1, 2, n);
-    if (args[0].t != V_INT) BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-                                 nome_do_tipo_valor(args[0]));
+    int64_t porta;
+    INTEIRO_OU_ERRO(vm, args[0], porta);
+    if (porta < 0 || porta > 65535) BERRO(vm, "OverflowError", "getservbyport: port must be 0-65535.");
     const char *proto = (n == 2 && EH_STRING(args[1])) ? COMO_STRING(args[1])->chars : NULL;
-    struct servent *se = getservbyport(htons((uint16_t)args[0].as.i), proto);
+    struct servent *se = getservbyport(htons((uint16_t)porta), proto);
     if (!se) BERRO(vm, "RuntimeError", "port/proto not found");
     PSString *r = nova_string(vm, se->s_name, (int)strlen(se->s_name));
     if (!r) BERRO(vm, "MemoryError", "sem memoria");
@@ -17212,21 +17844,24 @@ static int mod_sk_getprotobyname(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
-#define SK_CONV(nome_fn, quem, expr) \
+/* htons/ntohs levam 16 bits e htonl/ntohl 32, sem sinal: fora da faixa é
+ * OverflowError (antes o número era cortado calado: htons(70000) trocava os
+ * bytes de 4464) */
+#define SK_CONV(nome_fn, quem, maximo, bits, expr) \
 static int nome_fn(VM *vm, Value *args, int n, Value *out) \
 { \
     EXIGE_ARGS(vm, quem, 1); \
-    if (args[0].t != V_INT) BERRO(vm, "TypeError", \
-        "'%s' object cannot be interpreted as an integer", \
-        nome_do_tipo_valor(args[0])); \
-    int64_t x = args[0].as.i; (void)x; \
+    int64_t x; \
+    INTEIRO_OU_ERRO(vm, args[0], x); \
+    if (x < 0) BERRO(vm, "OverflowError", quem ": can't convert negative value to unsigned int"); \
+    if (x > (maximo)) BERRO(vm, "OverflowError", quem ": int too large to convert to " bits "-bit unsigned integer"); \
     *out = MK_INT((int64_t)(expr)); \
     return 0; \
 }
-SK_CONV(mod_sk_htons, "htons", htons((uint16_t)x))
-SK_CONV(mod_sk_htonl, "htonl", htonl((uint32_t)x))
-SK_CONV(mod_sk_ntohs, "ntohs", ntohs((uint16_t)x))
-SK_CONV(mod_sk_ntohl, "ntohl", ntohl((uint32_t)x))
+SK_CONV(mod_sk_htons, "htons", 65535, "16", htons((uint16_t)x))
+SK_CONV(mod_sk_htonl, "htonl", 4294967295LL, "32", htonl((uint32_t)x))
+SK_CONV(mod_sk_ntohs, "ntohs", 65535, "16", ntohs((uint16_t)x))
+SK_CONV(mod_sk_ntohl, "ntohl", 4294967295LL, "32", ntohl((uint32_t)x))
 
 static int mod_sk_inet_aton(VM *vm, Value *args, int n, Value *out)
 {
@@ -17264,14 +17899,12 @@ static int mod_sk_inet_ntoa(VM *vm, Value *args, int n, Value *out)
 static int mod_sk_inet_pton(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "inet_pton", 2);
-    if (args[0].t != V_INT)
-        BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(args[0]));
+    int fam;
+    if (arg_int_c(vm, args[0], &fam) != 0) return -1;
     if (!EH_STRING(args[1]))
         BERRO(vm, "TypeError", "inet_pton() argument 2 must be str, not %s",
               nome_do_tipo_valor(args[1]));
     unsigned char buf[16];
-    int fam = (int)args[0].as.i;
     int rc = inet_pton(fam, COMO_STRING(args[1])->chars, buf);
     if (rc != 1) BERRO(vm, "OSError", "illegal IP address string passed to inet_pton");
     PSString *by = novo_bytes(vm, (const char *)buf, fam == AF_INET6 ? 16 : 4);
@@ -17283,17 +17916,16 @@ static int mod_sk_inet_pton(VM *vm, Value *args, int n, Value *out)
 static int mod_sk_inet_ntop(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "inet_ntop", 2);
-    if (args[0].t != V_INT)
-        BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(args[0]));
+    int fam;
+    if (arg_int_c(vm, args[0], &fam) != 0) return -1;
     if (!EH_BYTES(args[1]) && !EH_STRING(args[1]))
         BERRO(vm, "TypeError", "a byte-like object is required, not '%s'",
               nome_do_tipo_valor(args[1]));
     char ip[INET6_ADDRSTRLEN];
     /* O inet_ntop(3) não olha o tamanho do buffer: a única falha que ele
      * reporta é EAFNOSUPPORT, e é essa a frase. */
-    if (!inet_ntop((int)args[0].as.i, COMO_STRING(args[1])->chars, ip, sizeof(ip)))
-        BERRO(vm, "ValueError", "unknown address family %d", (int)args[0].as.i);
+    if (!inet_ntop(fam, COMO_STRING(args[1])->chars, ip, sizeof(ip)))
+        BERRO(vm, "ValueError", "unknown address family %d", fam);
     PSString *r = nova_string(vm, ip, (int)strlen(ip));
     if (!r) BERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(r);
@@ -17303,11 +17935,15 @@ static int mod_sk_inet_ntop(VM *vm, Value *args, int n, Value *out)
 static int mod_sk_setdefaulttimeout(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "setdefaulttimeout", 1);
-    if (args[0].t == V_NULL) g_sk_def_timeout = -1.0;
-    else if (args[0].t == V_INT) g_sk_def_timeout = (double)args[0].as.i;
-    else if (args[0].t == V_FLOAT) g_sk_def_timeout = args[0].as.d;
-    else BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+    double t = -1.0;
+    if (args[0].t == V_INT || args[0].t == V_BOOL || args[0].t == V_FLOAT || EH_BIGINT(args[0])) {
+        if (num_flo_ou_erro(vm, args[0], &t)) return -1;
+        /* a regra do settimeout: negativo não é tempo (antes passava) */
+        if (t < 0 || isnan(t)) BERRO(vm, "ValueError", "Timeout value out of range");
+    } else if (args[0].t != V_NULL)
+        BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
               nome_do_tipo_valor(args[0]));
+    g_sk_def_timeout = t;
     *out = MK_NULL();
     return 0;
 }
@@ -17367,10 +18003,12 @@ static int mod_sk_if_nametoindex(VM *vm, Value *args, int n, Value *out)
 static int mod_sk_if_indextoname(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "if_indextoname", 1);
-    if (args[0].t != V_INT) BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-                                 nome_do_tipo_valor(args[0]));
+    int64_t idx;
+    INTEIRO_OU_ERRO(vm, args[0], idx);
+    if (idx < 0 || idx > 4294967295LL)
+        BERRO(vm, "OverflowError", "if_indextoname: index fora da faixa 0..4294967295");
     char nome[IF_NAMESIZE];
-    if (!if_indextoname((unsigned)args[0].as.i, nome))
+    if (!if_indextoname((unsigned)idx, nome))
         BERRO(vm, "RuntimeError", "[Errno %d] %s", errno, strerror(errno));
     PSString *r = nova_string(vm, nome, (int)strlen(nome));
     if (!r) BERRO(vm, "MemoryError", "sem memoria");
@@ -18990,15 +19628,17 @@ static int met_qri_save(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_qri_resize(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "resize", 2);
-    if (args[0].t != V_INT)
-        MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(args[0]));
-    if (args[1].t != V_INT)
-        MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(args[1]));
+    int64_t lado[2];
+    for (int k = 0; k < 2; k++) {
+        INTEIRO_OU_ERRO(vm, args[k], lado[k]);
+        /* largura e altura da imagem em pixels: o `(int)` cortava o número
+         * e a imagem saía com outro tamanho */
+        if (lado[k] < 1 || lado[k] > 65535)
+            MERRO(vm, "ValueError", "resize(): argument %d fora da faixa 1..65535: %lld", k + 1, (long long)lado[k]);
+    }
     PSQRImage *q = COMO_QRIMAGE(alvo);
-    q->tw = (int)args[0].as.i;
-    q->th = (int)args[1].as.i;
+    q->tw = (int)lado[0];
+    q->th = (int)lado[1];
     *out = alvo;
     return 0;
 }
@@ -19167,15 +19807,18 @@ static int mp_celula_valor(VM *vm, const PSGrade *g, int r, int c, Value *out)
     char t = ps_grade_tipo(g, r, c);
     const char *s = ps_grade_get(g, r, c);
     if (t == 'n') {
-        /* int se não tem ponto/expoente; senão float */
+        /* int se não tem ponto/expoente; senão float. Pelo leitor do int(): o
+         * inteiro que não cabe no int64 vira inteiro grande (antes, Null). */
+        int rc;
         if (strpbrk(s, ".eE")) {
             double d;
-            if (texto_para_flo(s, (int)strlen(s), &d) == 0) { *out = MK_FLOAT(d); return 0; }
+            rc = texto_para_flo(s, (int)strlen(s), 1, &d);
+            if (rc == 0) *out = MK_FLOAT(d);
         } else {
-            int64_t i;
-            if (texto_para_int(s, (int)strlen(s), &i) == 0) { *out = MK_INT(i); return 0; }
+            rc = texto_para_int(vm, s, (int)strlen(s), 1, out);
         }
-        *out = MK_NULL();
+        if (rc < 0) return -1;
+        if (rc > 0) *out = MK_NULL();   /* célula numérica com texto que não é número */
         return 0;
     }
     if (t == 's') {
@@ -20499,11 +21142,12 @@ static int mongo_inteiro_opcional(VM *vm, Value v, const char *nome, int64_t *ou
 {
     *out = 0;
     if (v.t == V_NULL || v.t == V_UNSET) return 0;
-    if (v.t != V_INT)
+    int64_t x;
+    if (!arg_inteiro(v, &x))   /* int, bool e inteiro grande (este satura) */
         MERRO(vm, "TypeError", "find(): '%s' tem que ser int, nao %s", nome, nome_do_tipo_valor(v));
-    if (v.as.i < 0)
-        MERRO(vm, "ValueError", "find(): '%s' nao pode ser negativo (%lld)", nome, (long long)v.as.i);
-    *out = v.as.i;
+    if (x < 0)
+        MERRO(vm, "ValueError", "find(): '%s' nao pode ser negativo (%lld)", nome, (long long)x);
+    *out = x;
     return 0;
 }
 
@@ -21008,9 +21652,12 @@ static int met_jresp_json(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_jresp_status(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "status", 1);
-    if (args[0].t != V_INT) MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-                                 nome_do_tipo_valor(args[0]));
-    COMO_JRESP(alvo)->status = (int)args[0].as.i;
+    int64_t st;
+    INTEIRO_OU_ERRO(vm, args[0], st);
+    /* o código de status do HTTP tem três dígitos; o `(int)` cortava o
+     * número e a resposta saía com outro status */
+    if (st < 100 || st > 999) MERRO(vm, "ValueError", "status(): codigo HTTP fora da faixa 100..999: %lld", (long long)st);
+    COMO_JRESP(alvo)->status = (int)st;
     *out = alvo;
     return 0;
 }
@@ -24722,9 +25369,10 @@ static int nativa_sleep(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "sleep", 1);
     double seg;
-    if (args[0].t == V_INT)        seg = (double)args[0].as.i;
-    else if (args[0].t == V_FLOAT) seg = args[0].as.d;
-    else BERRO(vm, "TypeError", "sleep() argument must be int or flo, not %s",   /* aceita flo */
+    /* int (bool e inteiro grande inclusive) ou flo */
+    if (args[0].t == V_INT || args[0].t == V_BOOL || args[0].t == V_FLOAT || EH_BIGINT(args[0])) {
+        if (num_flo_ou_erro(vm, args[0], &seg)) return -1;
+    } else BERRO(vm, "TypeError", "sleep() argument must be int or flo, not %s",
               nome_do_tipo_valor(args[0]));
     /* Numa tarefa, `sleep(0)` também CEDE (é o jeito de dar a vez sem
      * esperar): o despertar fica agendado pra já, e as outras tarefas prontas
@@ -27036,8 +27684,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if (EH_INTEIRO(a) && EH_INTEIRO(b))        { vm->sp = sp; vm->locals_top = locals_top; stack[sp - 1] = int_arit(vm, a, b, '+'); }
             else if (a.t == V_FLOAT && b.t == V_FLOAT) stack[sp - 1] = MK_FLOAT(a.as.d + b.as.d);
-            else if (EH_INTEIRO(a) && b.t == V_FLOAT)  stack[sp - 1] = MK_FLOAT(int_como_double(a) + b.as.d);
-            else if (a.t == V_FLOAT && EH_INTEIRO(b))  stack[sp - 1] = MK_FLOAT(a.as.d + int_como_double(b));
+            else if (a.t == V_INT && b.t == V_FLOAT)   stack[sp - 1] = MK_FLOAT((double)a.as.i + b.as.d);
+            else if (a.t == V_FLOAT && b.t == V_INT)   stack[sp - 1] = MK_FLOAT(a.as.d + (double)b.as.i);
+            else if ((EH_BIGINT(a) && b.t == V_FLOAT) || (a.t == V_FLOAT && EH_BIGINT(b))) {
+                if (arit_grande_flo(vm, a, b, '+', &stack[sp - 1])) goto erro_runtime;
+            }
             else if (EH_STRING(a) && EH_STRING(b)) {
                 PSString *x = COMO_STRING(a), *y = COMO_STRING(b);
                 /* publica o estado antes de alocar: se este malloc for o que
@@ -27119,8 +27770,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if (EH_INTEIRO(a) && EH_INTEIRO(b))        { vm->sp = sp; vm->locals_top = locals_top; stack[sp - 1] = int_arit(vm, a, b, '-'); }
             else if (a.t == V_FLOAT && b.t == V_FLOAT) stack[sp - 1] = MK_FLOAT(a.as.d - b.as.d);
-            else if (EH_INTEIRO(a) && b.t == V_FLOAT)  stack[sp - 1] = MK_FLOAT(int_como_double(a) - b.as.d);
-            else if (a.t == V_FLOAT && EH_INTEIRO(b))  stack[sp - 1] = MK_FLOAT(a.as.d - int_como_double(b));
+            else if (a.t == V_INT && b.t == V_FLOAT)   stack[sp - 1] = MK_FLOAT((double)a.as.i - b.as.d);
+            else if (a.t == V_FLOAT && b.t == V_INT)   stack[sp - 1] = MK_FLOAT(a.as.d - (double)b.as.i);
+            else if ((EH_BIGINT(a) && b.t == V_FLOAT) || (a.t == V_FLOAT && EH_BIGINT(b))) {
+                if (arit_grande_flo(vm, a, b, '-', &stack[sp - 1])) goto erro_runtime;
+            }
             else ERRO_TF(vm, "TypeError",
                          "unsupported operand type(s) for -: '%s' and '%s'",
                          TIPO0(a, ta0), TIPO0(b, tb0));
@@ -27141,8 +27795,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if (EH_INTEIRO(a) && EH_INTEIRO(b))        { vm->sp = sp; vm->locals_top = locals_top; stack[sp - 1] = int_arit(vm, a, b, '*'); }
             else if (a.t == V_FLOAT && b.t == V_FLOAT) stack[sp - 1] = MK_FLOAT(a.as.d * b.as.d);
-            else if (EH_INTEIRO(a) && b.t == V_FLOAT)  stack[sp - 1] = MK_FLOAT(int_como_double(a) * b.as.d);
-            else if (a.t == V_FLOAT && EH_INTEIRO(b))  stack[sp - 1] = MK_FLOAT(a.as.d * int_como_double(b));
+            else if (a.t == V_INT && b.t == V_FLOAT)   stack[sp - 1] = MK_FLOAT((double)a.as.i * b.as.d);
+            else if (a.t == V_FLOAT && b.t == V_INT)   stack[sp - 1] = MK_FLOAT(a.as.d * (double)b.as.i);
+            else if ((EH_BIGINT(a) && b.t == V_FLOAT) || (a.t == V_FLOAT && EH_BIGINT(b))) {
+                if (arit_grande_flo(vm, a, b, '*', &stack[sp - 1])) goto erro_runtime;
+            }
             /* Repetição: `[1,2] * 3` e `3 * [1,2]`. Contagem <= 0 dá
              * sequência vazia (é o que o `list * int` do interpretador faz). */
             else if ((EH_SEQ(a) && b.t == V_INT) || (EH_SEQ(b) && a.t == V_INT)) {
@@ -27226,17 +27883,35 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 ERRO_TF(vm, "TypeError",
                         "unsupported operand type(s) for /: '%s' and '%s'",
                         TIPO0(a, ta0), TIPO0(b, tb0));
-            double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
-            double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
             /* A frase separa pelo tipo dos OPERANDOS, não pelo do resultado:
              * `1/0` é "division by zero" e `1.0/0` é "flo division by zero",
              * embora os dois devolvam float. */
-            if (y == 0.0) {
-                if (a.t == V_FLOAT || b.t == V_FLOAT)
-                    ERRO_T(vm, "ZeroDivisionError", "flo division by zero");
-                ERRO_T(vm, "ZeroDivisionError", "division by zero");
+            if (a.t == V_FLOAT || b.t == V_FLOAT) {
+                if (EH_BIGINT(a) || EH_BIGINT(b)) {
+                    if (arit_grande_flo(vm, a, b, '/', &stack[sp - 1])) goto erro_runtime;
+                    break;
+                }
+                double x = (a.t == V_FLOAT) ? a.as.d : (double)a.as.i;
+                double y = (b.t == V_FLOAT) ? b.as.d : (double)b.as.i;
+                if (y == 0.0) ERRO_T(vm, "ZeroDivisionError", "flo division by zero");
+                stack[sp - 1] = MK_FLOAT(x / y);
+                break;
             }
-            stack[sp - 1] = MK_FLOAT(x / y);
+            /* int / int: os dois até 2^53 viram double sem perder casa e a
+             * divisão sai exata; acima disso (e com inteiro grande), a conta
+             * exata, arredondada uma vez só */
+            if (a.t == V_INT && b.t == V_INT
+                    && (uint64_t)a.as.i + 9007199254740992u <= 18014398509481984u
+                    && (uint64_t)b.as.i + 9007199254740992u <= 18014398509481984u) {
+                if (b.as.i == 0) ERRO_T(vm, "ZeroDivisionError", "division by zero");
+                stack[sp - 1] = MK_FLOAT((double)a.as.i / (double)b.as.i);
+                break;
+            }
+            {
+                double d_;
+                if (div_int_exata(vm, a, b, &d_)) goto erro_runtime;
+                stack[sp - 1] = MK_FLOAT(d_);
+            }
             break;
         }
         /* ── I11: `**` (potencia) e `//` (divisao inteira) ────────────────
@@ -27265,11 +27940,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 int neg = (b.t == V_INT) ? (b.as.i < 0)
                                          : (mpz_sgn(COMO_BIGINT(b)->v) < 0);
                 if (neg) {
-                    double base = int_como_double(a);
+                    if (EH_BIGINT(a) || EH_BIGINT(b)) {
+                        if (arit_grande_flo(vm, a, b, '^', &stack[sp - 1])) goto erro_runtime;
+                        break;
+                    }
+                    double base = (double)a.as.i;
                     if (base == 0.0)
                         ERRO_T(vm, "ZeroDivisionError",
                                "0.0 cannot be raised to a negative power");
-                    double e = int_como_double(b);
+                    double e = (double)b.as.i;
                     stack[sp - 1] = MK_FLOAT(pow(base, e));
                     break;
                 }
@@ -27286,8 +27965,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 break;
             }
             if ((EH_INTEIRO(a) || a.t == V_FLOAT) && (EH_INTEIRO(b) || b.t == V_FLOAT)) {
-                double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
-                double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
+                if (EH_BIGINT(a) || EH_BIGINT(b)) {
+                    if (arit_grande_flo(vm, a, b, '^', &stack[sp - 1])) goto erro_runtime;
+                    break;
+                }
+                double x = (a.t == V_FLOAT) ? a.as.d : (double)a.as.i;
+                double y = (b.t == V_FLOAT) ? b.as.d : (double)b.as.i;
                 if (x == 0.0 && y < 0.0)
                     ERRO_T(vm, "ZeroDivisionError",
                            "0.0 cannot be raised to a negative power");
@@ -27333,8 +28016,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 break;
             }
             if ((EH_INTEIRO(a) || a.t == V_FLOAT) && (EH_INTEIRO(b) || b.t == V_FLOAT)) {
-                double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
-                double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
+                if (EH_BIGINT(a) || EH_BIGINT(b)) {
+                    if (arit_grande_flo(vm, a, b, 'f', &stack[sp - 1])) goto erro_runtime;
+                    break;
+                }
+                double x = (a.t == V_FLOAT) ? a.as.d : (double)a.as.i;
+                double y = (b.t == V_FLOAT) ? b.as.d : (double)b.as.i;
                 if (y == 0.0)
                     ERRO_T(vm, "ZeroDivisionError", "float floor division by zero");
                 stack[sp - 1] = MK_FLOAT(floor(x / y));
@@ -27373,8 +28060,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             } else if ((EH_INTEIRO(a) || a.t == V_FLOAT) && (EH_INTEIRO(b) || b.t == V_FLOAT)) {
                 /* `fmod` trunca pra zero; a linguagem (e o interpretador) usam o
                  * sinal do DIVISOR — `-1.0 % 3` é 2.0, não -1.0. */
-                double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
-                double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
+                if (EH_BIGINT(a) || EH_BIGINT(b)) {
+                    if (arit_grande_flo(vm, a, b, '%', &stack[sp - 1])) goto erro_runtime;
+                    break;
+                }
+                double x = (a.t == V_FLOAT) ? a.as.d : (double)a.as.i;
+                double y = (b.t == V_FLOAT) ? b.as.d : (double)b.as.i;
                 if (y == 0.0) ERRO_T(vm, "ZeroDivisionError", "flo modulo");
                 double r = fmod(x, y);
                 if (r != 0.0 && ((r < 0.0) != (y < 0.0))) r += y;
@@ -27495,9 +28186,19 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (!(EH_INTEIRO(a) || a.t == V_FLOAT) ||                     \
                     !(EH_INTEIRO(b) || b.t == V_FLOAT))                       \
                     CMP_RECUSA(C_OP, a, ta0, b, tb0);                         \
-                double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);    \
-                double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);    \
-                r_ = (x C_OP y);                                              \
+                if (a.t == V_FLOAT && b.t == V_FLOAT)                         \
+                    r_ = (a.as.d C_OP b.as.d);                                \
+                /* int até 2^53 vira double sem perder casa: em linha */      \
+                else if (a.t == V_INT && b.t == V_FLOAT                       \
+                         && (uint64_t)a.as.i + 9007199254740992u <= 18014398509481984u) \
+                    r_ = ((double)a.as.i C_OP b.as.d);                        \
+                else if (a.t == V_FLOAT && b.t == V_INT                       \
+                         && (uint64_t)b.as.i + 9007199254740992u <= 18014398509481984u) \
+                    r_ = (a.as.d C_OP (double)b.as.i);                        \
+                else { /* int grande com flo: exato, NaN não se ordena */     \
+                    int c_ = cmp_num_misto(&a, &b);                           \
+                    r_ = c_ != 2 && (c_ C_OP 0);                              \
+                }                                                             \
             }                                                                 \
             FIM;                                                              \
             PROXIMA();                                                        \
@@ -28525,10 +29226,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             /* `b[i]` devolve o BYTE como int, não uma fatia de 1 — é o que
              * torna `b[0]` comparável com número. */
             if (EH_BYTES(alvo)) {
-                if (idx.t != V_INT)
-                    ERRO_TF(vm, "TypeError",
-                            "byte indices must be integers or slices, not %s",
-                            nome_do_tipo_valor(idx));
+                if (idx.t != V_INT) { indice_errado(vm, alvo, idx, 0); goto erro_runtime; }
                 PSString *b = COMO_BYTES(alvo);
                 int64_t i = idx.as.i;
                 if (i < 0) i += b->len;
@@ -28540,10 +29238,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 break;
             }
             if (EH_SEQ(alvo)) {
-                if (idx.t != V_INT)
-                    ERRO_TF(vm, "TypeError",
-                            "%s indices must be integers or slices, not %s",
-                            nome_do_tipo_valor(alvo), nome_do_tipo_valor(idx));
+                if (idx.t != V_INT) { indice_errado(vm, alvo, idx, 0); goto erro_runtime; }
                 PSList *l = COMO_LIST(alvo);
                 int64_t i = idx.as.i;
                 /* Ler fora da faixa LEVANTA, desde 28/08.
@@ -28574,10 +29269,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 }
                 stack[sp - 1] = v;
             } else if (EH_STRING(alvo)) {
-                if (idx.t != V_INT)
-                    ERRO_TF(vm, "TypeError",
-                            "string indices must be integers, not '%s'",
-                            nome_do_tipo_valor(idx));
+                if (idx.t != V_INT) { indice_errado(vm, alvo, idx, 0); goto erro_runtime; }
                 PSString *s = COMO_STRING(alvo);
                 int64_t i = idx.as.i;
                 /* índice em CARACTERES (codepoints), não em bytes — "pão"[1]
@@ -28610,10 +29302,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (idx.t == V_BOOL) { idx.t = V_INT; idx.as.i = idx.as.b ? 1 : 0; }
             Value alvo  = stack[--sp];
             if (EH_LIST(alvo)) {
-                if (idx.t != V_INT)
-                    ERRO_TF(vm, "TypeError",
-                            "%s indices must be integers or slices, not %s",
-                            nome_do_tipo_valor(alvo), nome_do_tipo_valor(idx));
+                if (idx.t != V_INT) { indice_errado(vm, alvo, idx, 1); goto erro_runtime; }
                 PSList *l = COMO_LIST(alvo);
                 int64_t i = idx.as.i;
                 if (i < 0) i += l->len;
@@ -28671,20 +29360,27 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         PS_CASE(RANGE_PREPARA) {
             /* `for each i in range(...)` — a lista NUNCA é construída.
              * Pilha: [.., ini, fim, passo, 0]. Os três operandos são
-             * decodificados UMA vez aqui (int, bool, flo truncado, str
-             * numérica — as mesmas regras e frases de sempre) e os slots
-             * ficam [ini, quant, passo] em int: a volta do laço vira só
+             * decodificados UMA vez aqui (int, bool e inteiro grande — as
+             * mesmas regras e frases do `range()`) e os slots ficam
+             * [ini, quant, passo] em int: a volta do laço vira só
              * aritmética. Antes o ITER_RANGE redecodificava os três e
              * recalculava a quantidade a cada iteração. */
             int64_t ini, fim, passo;
             if (num_de_range(vm, stack[sp - 4], &ini) != 0
                 || num_de_range(vm, stack[sp - 3], &fim) != 0
                 || num_de_range(vm, stack[sp - 2], &passo) != 0) goto erro_runtime;
+            if (EH_BIGINT(stack[sp - 4]) || EH_BIGINT(stack[sp - 3]) || EH_BIGINT(stack[sp - 2])) {
+                if (range_grande_no_laco(vm, &stack[sp - 4]) != 0) goto erro_runtime;
+                PROXIMA();
+            }
             if (passo == 0)
                 ERRO_T(vm, "ValueError", "range() arg 3 must not be zero");
-            int64_t quant = (passo > 0)
-                ? (fim > ini ? (fim - ini + passo - 1) / passo : 0)
-                : (fim < ini ? (ini - fim - passo - 1) / (-passo) : 0);
+            /* em unsigned: as pontas extremas não estouram */
+            uint64_t span_ = passo > 0 ? (fim > ini ? (uint64_t)fim - (uint64_t)ini : 0)
+                                       : (fim < ini ? (uint64_t)ini - (uint64_t)fim : 0);
+            uint64_t ap_ = passo > 0 ? (uint64_t)passo : (uint64_t)0 - (uint64_t)passo;
+            uint64_t uq_ = span_ ? (span_ - 1) / ap_ + 1 : 0;
+            int64_t quant = uq_ > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)uq_;
             stack[sp - 4] = MK_INT(ini);
             stack[sp - 3] = MK_INT(quant);
             stack[sp - 2] = MK_INT(passo);
@@ -28834,6 +29530,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (EH_BIGINT(fim)) { fim.t = V_INT; fim.as.i = mpz_sgn(COMO_BIGINT(fim)->v) < 0 ? INT64_MIN : INT64_MAX; }
             if (ini.t == V_BOOL) { ini.t = V_INT; ini.as.i = ini.as.b ? 1 : 0; }
             if (fim.t == V_BOOL) { fim.t = V_INT; fim.as.i = fim.as.b ? 1 : 0; }
+            /* o passo pela mesma regra (era recusado com bool e inteiro grande) */
+            if (passo.t == V_BOOL || EH_BIGINT(passo)) {
+                int64_t pv = 1; arg_inteiro(passo, &pv);
+                passo = MK_INT(pv);
+            }
             /* A regra vale pros TRÊS índices. Só o passo era conferido:
              * `s[1.5:]` e `s[:"x"]` tratavam o limite como ausente, calados,
              * e devolviam a coleção inteira. */
@@ -29948,9 +30649,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
              * expõe status_code como atributo gravável; .status(N) é o método). */
             if (EH_JRESP(alvo) && EH_STRING(nomev)
                     && strcmp(COMO_STRING(nomev)->chars, "status_code") == 0) {
-                if (valor.t != V_INT)
-                    ERRO_T(vm, "RuntimeError", "status_code espera um int");
-                COMO_JRESP(alvo)->status = (int)valor.as.i;
+                /* a mesma regra do .status(N): inteiro de 100 a 999 (era
+                 * RuntimeError pra tipo errado, e o `(int)` cortava o número) */
+                Value ignora;
+                if (met_jresp_status(vm, alvo, &valor, 1, &ignora) != 0) goto erro_runtime;
                 break;
             }
             if (EH_DICT(alvo)) {   /* d.chave = v  ->  d["chave"] = v */
@@ -30290,11 +30992,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (EH_BYTES(alvo)) {
                     PSString *n2 = COMO_BYTES(alvo);
                     r = acha_bytes(h->chars, h->len, n2->chars, n2->len, 0) >= 0;
-                } else if (alvo.t == V_INT
-                           || (alvo.t == V_OBJ && alvo.as.obj->type == OBJ_BIGINT)) {
-                    if (alvo.t != V_INT || alvo.as.i < 0 || alvo.as.i > 255)
+                } else if (alvo.t == V_INT || alvo.t == V_BOOL || EH_BIGINT(alvo)) {
+                    int64_t bv = 0;   /* bool é 0/1, como em todo argumento inteiro */
+                    arg_inteiro(alvo, &bv);
+                    if (bv < 0 || bv > 255)
                         ERRO_TF(vm, "ValueError", "byte must be in range(0, 256)");
-                    r = memchr(h->chars, (int)alvo.as.i, (size_t)h->len) != NULL;
+                    r = memchr(h->chars, (int)bv, (size_t)h->len) != NULL;
                 } else {
                     ERRO_TF(vm, "TypeError", "a byte-like object is required, not '%s'",
                             nome_do_tipo_valor(alvo));

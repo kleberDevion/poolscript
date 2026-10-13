@@ -938,15 +938,37 @@ const Caso CASOS_LINGUAGEM[] = {
   "1", NULL, 0 },
 
 /* ── range decodificado uma vez (RANGE_PREPARA + ITER_RANGE so aritmetica) ── */
-{ "range: passo negativo, flo truncado, str numerica e bool como limite",
-  "s = []\n"
+{ "range: passo negativo, bool e inteiro grande como limite (lote 7b)",
+  "list s = []\n"
   "for each i in range(10, 0, -3) { s.append(i) }\n"
-  "for each i in range(2.9) { s.append(i) }\n"
-  "for each i in range(\"3\") { s.append(i) }\n"
   "for each i in range(True, 3) { s.append(i) }\n"
   "for each i in range(5, 5) { s.append(i) }\n"
-  "post(s)\n",
-  "[10, 7, 4, 1, 0, 1, 0, 1, 2, 1, 2]", NULL, 0 },
+  "for each i in range(1, 10 ** 30) {\n"
+  "    if i > 3 { break }\n"
+  "    s.append(i)\n"
+  "}\n"
+  "post(s, range(-2 ** 70, -2 ** 70 + 2), range(2 ** 64, 2 ** 64 + 10, 4))\n"
+  "try {\n"
+  "    for each g in range(2 ** 64, 2 ** 64 + 2) { post(g) }\n"
+  "} catch (OverflowError e) {\n"
+  "    post(e)\n"
+  "}\n",
+  "[10, 7, 4, 1, 1, 2, 1, 2, 3] [-1180591620717411303424, -1180591620717411303423] "
+  "[18446744073709551616, 18446744073709551620, 18446744073709551624]\n"
+  "range() no for each comeca fora de 64 bits: guarde numa lista antes (list r = range(...)) (linha 11)",
+  NULL, 0 },
+{ "range so aceita inteiro: flo e texto sao erro, sem conversao calada (lote 7b)",
+  "for each a in [2.9, \"3\"] {\n"
+  "    try {\n"
+  "        for each i in range(a) { post(i) }\n"
+  "    } catch (TypeError e) {\n"
+  "        post(e)\n"
+  "    }\n"
+  "}\n"
+  "post(range(int(\"3\")))\n",
+  "'flo' object cannot be interpreted as an integer (linha 3)\n"
+  "'str' object cannot be interpreted as an integer (linha 3)\n"
+  "[0, 1, 2]", NULL, 0 },
 { "range com str nao numerica levanta como antes, na linha do for each",
   "for each i in range(\"x\") { post(i) }\n",
   "", "'str' object cannot be interpreted as an integer", -1 },
@@ -1440,10 +1462,10 @@ const Caso CASOS_LINGUAGEM[] = {
   "    post(\"NAO\")\n"
   "}\n"
   "post(\"fim\")\n", "fim", NULL, 0 },
-{ "range aceita texto numerico",
+{ "range recusa texto: so inteiro, sem conversao implicita (lote 7b)",
   "for each i in range(\"3\") {\n"
   "    post(i)\n"
-  "}\n", "0\n1\n2", NULL, 0 },
+  "}\n", "", "'str' object cannot be interpreted as an integer", 1 },
 { "range com passo 0 e erro",
   "for each i in range(1, 5, 0) {\n"
   "    post(i)\n"
@@ -6511,6 +6533,194 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(\"\\u3000\".isspace(), \"\\u00a0\".isspace(), (\"漢\" + \"\\u3000\" + \"字\").split(), \"漢\\u00a0字\".split(), len(\"\\u3000x\\u3000\".strip()))\n"
   "post(\"\\u1680\\u2000\\u200a\\u202f\\u205f\".isspace(), \"\\u200b\".isspace(), \"x\\u2003y\".split(), \"\".isspace())\n",
   "True True ['漢', '字'] ['漢', '字'] 1\nTrue False ['x', 'y'] False", NULL, 0 },
+
+/* ── números e coleções nos nativos (Plano 6, lote 7b, 2026-10-13) ──────────
+ * Um leitor de número só (int, flo, json.parse), sem o buffer de 512 que
+ * cortava 600 dígitos calado; int x flo exato no ==, na ordem e na chave de
+ * dict; o inteiro grande que não cabe num flo é OverflowError (era inf);
+ * igualdade funda medida pela pilha (o teto de 256 dizia "diferente");
+ * list x tup não se ordena; bool e inteiro grande em todo argumento inteiro,
+ * uma regra só; bytes.fromint/toint/get/slice/new com inteiro grande e sem o
+ * `(int)` que cortava; round com casas negativas; date.hora só inteiro. */
+{ "int() e flo() pelo leitor unico: sinal, 600 digitos, NUL, digito de outra escrita e byte (lote 7b)",
+  "Null funct tenta(str rot, Object f) {\n"
+  "    try {\n"
+  "        post(rot, f())\n"
+  "    } catch (Exception e) {\n"
+  "        post(rot, \"ERRO\", e)\n"
+  "    }\n"
+  "}\n"
+  "tenta(\"a\", funct() { return int(\"99999999999999999999 1\") })\n"
+  "tenta(\"b\", funct() { return int(\"+99999999999999999999\") })\n"
+  "tenta(\"c\", funct() { return str(int(\"9\" * 600)) == \"9\" * 600 })\n"
+  "tenta(\"d\", funct() { return int(\"15\\x00\") })\n"
+  "tenta(\"e\", funct() { return flo(\"1.5\\x00abc\") })\n"
+  "tenta(\"f\", funct() { return flo(\"0x1A\") })\n"
+  "tenta(\"g\", funct() { return [int(\"٣٤\"), int(\"４２\"), int(b\"12\"), flo(b\" 2.5 \")] })\n"
+  "tenta(\"h\", funct() { return int(b\"1x\") })\n"
+  "tenta(\"i\", funct() { return [flo(\"inf\"), flo(\"-Infinity\"), flo(\"5.\"), flo(\".5\"), flo(\"1E-2\")] })\n"
+  "tenta(\"j\", funct() { return flo(\"1e\") })\n",
+  "a ERRO invalid literal for int() with base 10: '99999999999999999999 1' (linha 8)\n"
+  "b 99999999999999999999\n"
+  "c True\n"
+  "d ERRO invalid literal for int() with base 10: '15\\x00' (linha 11)\n"
+  "e ERRO could not convert string to flo: '1.5\\x00abc' (linha 12)\n"
+  "f ERRO could not convert string to flo: '0x1A' (linha 13)\n"
+  "g [34, 42, 12, 2.5]\n"
+  "h ERRO invalid literal for int() with base 10: b'1x' (linha 15)\n"
+  "i [inf, -inf, 5.0, 0.5, 0.01]\n"
+  "j ERRO could not convert string to flo: '1e' (linha 17)", NULL, 0 },
+{ "json.parse pela gramatica do numero do JSON, sem teto de digitos (lote 7b)",
+  "import json\n"
+  "post(len(str(json.parse(\"9\" * 600))), json.parse(\"1e5\"), json.parse(\"-0\"), json.parse(\"2.5E-1\"))\n"
+  "for each t in [\"-\", \"01\", \"1.\"] {\n"
+  "    try {\n"
+  "        post(json.parse(t))\n"
+  "    } catch (Exception e) {\n"
+  "        post(e)\n"
+  "    }\n"
+  "}\n",
+  "600 100000.0 0 0.25\n"
+  "Expecting value: line 1 column 1 (char 0) (linha 5)\n"
+  "Extra data: line 1 column 2 (char 1) (linha 5)\n"
+  "Extra data: line 1 column 2 (char 1) (linha 5)", NULL, 0 },
+{ "int x flo exato no ==, na ordem, na chave de dict e na divisao (lote 7b)",
+  "post(9007199254740993 == 9007199254740992.0, 9007199254740992 == 9007199254740992.0, 2 ** 64 == 2.0 ** 64)\n"
+  "post(9007199254740993 > 9007199254740992.0, 2 ** 64 + 1 > 2.0 ** 64, 2 ** 70 < 1e300)\n"
+  "dict h = {9007199254740992.0: \"x\"}\n"
+  "dict d = {}\n"
+  "d[2 ** 64] = \"big\"\n"
+  "post(9007199254740993 in h, 9007199254740992 in h, 2.0 ** 64 in d, d.get(2.0 ** 64))\n"
+  "post(flo(2 ** 60 + 3) == flo(str(2 ** 60 + 3)), flo(2 ** 70), [10 ** 400 / 10 ** 399, (2 ** 63 - 1) / 3])\n",
+  "False True True\nTrue True True\nFalse True True big\n"
+  "True 1.1805916207174113e+21 [10.0, 3.0744573456182584e+18]", NULL, 0 },
+{ "inteiro grande que nao cabe num flo e OverflowError, nao inf (lote 7b)",
+  "list contas = [funct() { return flo(10 ** 400) }, funct() { return 10 ** 400 + 0.5 }, funct() { return 10 ** 400 / 3 }, funct() { return sum([10 ** 400, 0.5]) }, funct() { return pow(10 ** 400, -1) }, funct() { return \"{:.1f}\".format(10 ** 400) }]\n"
+  "for each f in contas {\n"
+  "    try {\n"
+  "        post(f())\n"
+  "    } catch (OverflowError e) {\n"
+  "        post(e)\n"
+  "    }\n"
+  "}\n",
+  "int too large to convert to flo (linha 1)\n"
+  "int too large to convert to flo (linha 1)\n"
+  "integer division result too large for a flo (linha 1)\n"
+  "int too large to convert to flo (linha 1)\n"
+  "int too large to convert to flo (linha 1)\n"
+  "int too large to convert to flo (linha 1)", NULL, 0 },
+{ "list e tup nao se ordenam entre si; NaN nao se ordena com nada (lote 7b)",
+  "for each p in [funct() { return [1, 2] <= (1, 2) }, funct() { return sorted([[1], (2,)]) }] {\n"
+  "    try {\n"
+  "        post(p())\n"
+  "    } catch (TypeError e) {\n"
+  "        post(e)\n"
+  "    }\n"
+  "}\n"
+  "flo nan = flo(\"nan\")\n"
+  "post(nan < 1, 1 < nan, nan == nan, [1, 2] == (1, 2))\n",
+  "'<=' not supported between instances of 'list' and 'tup' (linha 1)\n"
+  "'<' not supported between instances of 'tup' and 'list' (linha 1)\n"
+  "False False False False", NULL, 0 },
+{ "igualdade de estrutura sem recursao: 300 e 20 mil niveis; ciclicas pela forma (lote 7b)",
+  "list funct aninha(int n) {\n"
+  "    list x = [0]\n"
+  "    for each i in range(n) {\n"
+  "        x = [x]\n"
+  "    }\n"
+  "    return x\n"
+  "}\n"
+  "list a = aninha(300)\n"
+  "list b = aninha(300)\n"
+  "post(a == b, a != b, a in [b], [a].count(b), [a].index(b))\n"
+  "post(aninha(20000) == aninha(20000), aninha(20000) == aninha(19999))\n"
+  "list c = [1]\n"
+  "c.append(c)\n"
+  "list d = [1]\n"
+  "d.append(d)\n"
+  "list e = [2]\n"
+  "e.append(e)\n"
+  "dict f = {\"k\": 1}\n"
+  "f[\"eu\"] = f\n"
+  "dict g = {\"k\": 1}\n"
+  "g[\"eu\"] = g\n"
+  "post(c == c, c == d, c == e, f == g)\n",
+  "True False True 1 0\nTrue False\nTrue True False True", NULL, 0 },
+{ "bool e inteiro grande em todo argumento inteiro, uma regra so (lote 7b)",
+  "Null funct tenta(str rot, Object f) {\n"
+  "    try {\n"
+  "        post(rot, f())\n"
+  "    } catch (Exception e) {\n"
+  "        post(rot, \"ERRO\", e)\n"
+  "    }\n"
+  "}\n"
+  "tenta(\"a\", funct() { return [[10, 20][True], \"abc\"[True:], [1, 2, 3][::True], [1] * True] })\n"
+  "tenta(\"b\", funct() { list l = [10, 20]; return [l.pop(True), l] })\n"
+  "tenta(\"c\", funct() { list l = [10, 20]; l.insert(True, 9); return l })\n"
+  "tenta(\"d\", funct() { return [\"1\".zfill(True), \"abca\".find(\"a\", True), \"a,b,c\".split(\",\", True), \"aaa\".replace(\"a\", \"b\", True), [5, 6, 5].index(5, True)] })\n"
+  "tenta(\"e\", funct() { return [chr(True), range(True), round(2.567, True)] })\n"
+  "tenta(\"f\", funct() { return [1, 2][2 ** 70] })\n"
+  "tenta(\"g\", funct() { list l = [1]; l[2 ** 70] = 5; return l })\n"
+  "tenta(\"h\", funct() { list l = [1, 2]; l.insert(2 ** 70, 9); l.insert(-(2 ** 70), 0); return [l, \"abc\".find(\"a\", 2 ** 70), \"a,b\".split(\",\", 2 ** 70), [1, 2, 3][::2 ** 70]] })\n"
+  "tenta(\"i\", funct() { return \"a\".ljust(2 ** 70) })\n"
+  "tenta(\"j\", funct() { return chr(2 ** 70) })\n"
+  "tenta(\"k\", funct() { return [True in b\"\\x01\", b\"ab\"[True]] })\n",
+  "a [20, 'bc', [1, 2, 3], [1]]\n"
+  "b [20, [10]]\n"
+  "c [10, 9, 20]\n"
+  "d ['1', 3, ['a', 'b,c'], 'baa', 2]\n"
+  "e ['\\x01', [0], 2.6]\n"
+  "f ERRO list index out of range (linha 13)\n"
+  "g ERRO list assignment index out of range (linha 14)\n"
+  "h [[0, 1, 2, 9], -1, ['a', 'b'], [1]]\n"
+  "i ERRO memória insuficiente: ljust() pediu largura 1180591620717411303424 (linha 16)\n"
+  "j ERRO chr() arg not in range(0x110000) (linha 17)\n"
+  "k [True, 98]", NULL, 0 },
+{ "bytes: fromint, toint, get, slice e new com inteiro grande, sem cortar o tamanho; count de byte e long (lote 7b)",
+  "import bytes\n"
+  "Null funct tenta(str rot, Object f) {\n"
+  "    try {\n"
+  "        post(rot, f())\n"
+  "    } catch (Exception e) {\n"
+  "        post(rot, \"ERRO\", e)\n"
+  "    }\n"
+  "}\n"
+  "tenta(\"a\", funct() { return [bytes.fromint(2 ** 63, 8), bytes.fromint(2 ** 64, 9), bytes.fromint(True)] })\n"
+  "tenta(\"b\", funct() { return bytes.fromint(1, 4294967297) })\n"
+  "tenta(\"c\", funct() { return bytes.fromint(1, -1) })\n"
+  "tenta(\"d\", funct() { return [bytes.toint(bytes.fromhex(\"ffffffffffffffff\")), bytes.toint(bytes.fromhex(\"010000000000000000\")), bytes.toint(bytes.fromint(2 ** 70)) == 2 ** 70] })\n"
+  "tenta(\"e\", funct() { return [bytes.slice(bytes.new(\"abc\"), 2 ** 64), bytes.get(bytes.new(\"ab\"), True)] })\n"
+  "tenta(\"f\", funct() { return bytes.get(bytes.new(\"ab\"), 2 ** 64) })\n"
+  "tenta(\"g\", funct() { return bytes.new(2 ** 64) })\n"
+  "tenta(\"h\", funct() { return b\"ab\".ljust(10 ** 12) })\n"
+  "tenta(\"i\", funct() { return [int(97) count in b\"aab\", int in b\"aab\" count, byte in [1, b\"x\", \"s\"] count, long in [1, 2 ** 70] count] })\n",
+  "a [b'\\x80\\x00\\x00\\x00\\x00\\x00\\x00\\x00', b'\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00', b'\\x01']\n"
+  "b ERRO memória insuficiente: fromint() pediu length 4294967297 (linha 10)\n"
+  "c ERRO length argument must be non-negative (linha 11)\n"
+  "d [18446744073709551615, 18446744073709551616, True]\n"
+  "e [b'', 98]\n"
+  "f ERRO index out of range (linha 14)\n"
+  "g ERRO memória insuficiente: bytes.new() pediu 18446744073709551616 bytes (linha 15)\n"
+  "h ERRO memória insuficiente: ljust() pediu largura 1000000000000 (linha 16)\n"
+  "i [2, 3, 1, 2]", NULL, 0 },
+{ "round com casas negativas, exato; date.hora so com inteiro (lote 7b)",
+  "import date\n"
+  "post(round(1250, -2), round(1350, -2), round(1234.5, -2), round(-1250, -2), round(2 ** 70 + 7, -1))\n"
+  "post(round(0.1, 2 ** 70), round(123.456, -(2 ** 70)), round(1e300, 2) == 1e300)\n"
+  "post(date.hora(1, 30), date.hora(days=True), date.hora(2 ** 62))\n"
+  "try {\n"
+  "    post(date.hora(1.5))\n"
+  "} catch (TypeError e) {\n"
+  "    post(e)\n"
+  "}\n",
+  "1200 1400 1200.0 -1200 1180591620717411303430\n"
+  "0.1 0.0 True\n"
+  "5400 86400 16602069666338596454400\n"
+  "'flo' object cannot be interpreted as an integer (linha 6)", NULL, 0 },
+{ "sys.exit com inteiro grande sai com o resto por 256 (lote 7b)",
+  "import sys\n"
+  "sys.exit(2 ** 70 + 3)\n",
+  "", NULL, 3 },
 
 /* ── CLI ── */
 { "--check não executa o script",

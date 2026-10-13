@@ -19,8 +19,8 @@ int — a posição, contada do **começo da tupla**, não do `inicio`.
 - **ValueError** — o item não está no trecho procurado:
   `tup.index(x): x not in tup`. A frase diz `tup`, não `list`: é o mesmo código
   da lista, com um ramo próprio pro nome do tipo.
-- **TypeError** — `inicio` ou `fim` que não é `int`:
-  `slice indices must be integers or have an __index__ method`.
+- **TypeError** — `inicio` ou `fim` que não é inteiro (`int`, `bool` ou
+  inteiro grande): `slice indices must be integers`.
 - **TypeError** — sem argumento nenhum:
   `index() takes at least 1 argument (0 given)`.
 

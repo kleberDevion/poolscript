@@ -100,6 +100,8 @@ extern unsigned long __gmpz_get_ui(mpz_srcptr);
 #define mpz_get_ui       __gmpz_get_ui
 /* sgn é macro no gmp.h de verdade: olha o campo _mp_size direto */
 #define mpz_sgn(z)       ((z)->_mp_size < 0 ? -1 : (z)->_mp_size > 0)
+/* odd também (a paridade é o bit de baixo do primeiro limb) */
+#define mpz_odd_p(z)     (((z)->_mp_size != 0) & (int)((z)->_mp_d[0] & 1))
 
 /* int64 <-> mpz. O `int` da Jinga é int64, e as funções `_si` da GMP recebem
  * `long`: no Linux e no macOS o `long` tem 64 bits e elas servem direto; no

@@ -26,7 +26,7 @@ Tudo aqui foi verificado rodando o fonte na VM em C.
 |---|---|---|
 | `len` | `len(x)` | tamanho de `str` (em **caracteres**, não bytes: `len("olá")`→3), `list`, `tup`, `dict` ou `byte`. `len(Null)` → `0`. |
 | `type` | `type(x)` | nome do tipo como `str` (`"int"`, `"str"`, `"list"`, `"Null"`, nome da Entity, `"funct"`, `"type"`, `"generator"`). Igual ao método `x.type()`. |
-| `range` | `range(fim)` / `range(início, fim, passo=1)` | **lista** concreta de inteiros, `início` (inclusive) a `fim` (exclusive), de `passo` em `passo` (negativo conta pra trás). Aceita string numérica (`range("3")`) e trunca float. `passo=0` → erro. |
+| `range` | `range(fim)` / `range(início, fim, passo=1)` | **lista** concreta de inteiros, `início` (inclusive) a `fim` (exclusive), de `passo` em `passo` (negativo conta pra trás). Só inteiro: `int`, `bool` e inteiro grande; texto e `flo` são `TypeError` (`range(int(x))` converte). `passo=0` → erro. |
 
 ---
 

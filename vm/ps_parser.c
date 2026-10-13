@@ -2732,7 +2732,8 @@ static int count_esquerda(P *p, PSNode *no, PSToken *tok,
     if (no && no->kind == N_NAME && eh_tipo_count(no->texto)) {
         *tipo = no->texto; *valor = NULL; return 0;
     }
-    perro(p, "lado esquerdo de 'count in' deve ser um tipo (ex: int(7) count in lista)", tok);
+    /* as duas formas passam por aqui: a frase mostra as duas */
+    perro(p, "o lado esquerdo do 'count' deve ser um tipo: int in lista count, ou int(7) count in lista", tok);
     return -1;
 }
 

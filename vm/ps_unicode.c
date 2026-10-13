@@ -134,3 +134,18 @@ int ps_uni_dobra(uint32_t c, uint32_t out[3])
     out[0] = caixa_simples(c, 1);
     return 1;
 }
+
+int ps_uni_valor_decimal(uint32_t c)
+{
+    if (c >= '0' && c <= '9') return (int)(c - '0');
+    if (!ps_uni_eh_decimal(c)) return -1;
+    /* o último zero que vem em `c` ou antes */
+    int lo = 0, hi = N_ELEM(UNI_DECIMAL_ZERO) - 1;
+    while (lo < hi) {
+        int m = (lo + hi + 1) / 2;
+        if (UNI_DECIMAL_ZERO[m] <= c) lo = m;
+        else hi = m - 1;
+    }
+    uint32_t d = c - UNI_DECIMAL_ZERO[lo];
+    return d <= 9 ? (int)d : -1;
+}

@@ -30,10 +30,13 @@ Booleana ligada devolve `1`, desligada devolve `0` — nunca `True`/`False`.
 
 - **`TypeError`** — `getsockopt() takes at least 2 arguments (1 given)` /
   `getsockopt() takes at most 3 arguments (4 given)`
-- **`TypeError`** — `getsockopt: level/optname devem ser int`
-- **`TypeError`** — `getsockopt: buflen invalido`, para `buflen` ≤ 0 ou > 1024
-- **`TypeError`** — `buflen` que não é `int`:
-  `'str' object cannot be interpreted as an integer`
+- **`TypeError`** — `level`, `optname` ou `buflen` que não é inteiro:
+  `'str' object cannot be interpreted as an integer` (`bool` e inteiro grande
+  são inteiros)
+- **`OverflowError`** — `level` ou `optname` fora da faixa do `int` do
+  sistema: `signed integer is greater than maximum`
+- **`ValueError`** — `buflen` ≤ 0 ou > 1024:
+  `getsockopt: buflen fora da faixa 1..1024: 0`
 - **`RuntimeError`** — opção que a camada não conhece:
   `[Errno 92] Protocol not available`
 - **`OSError`** — socket fechado: `[Errno 9] Bad file descriptor`

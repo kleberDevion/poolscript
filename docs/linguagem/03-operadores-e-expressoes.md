@@ -264,11 +264,20 @@ if x == 0 and type(x) == "int" {
 
 ### 3.3.2. Igualdade compara VALOR, entre tipos numéricos e por estrutura
 
-- Números de tipos diferentes se comparam pelo valor: `1 == 1.0` é `True`.
+- Números de tipos diferentes se comparam pelo valor, **exato**: `1 == 1.0`
+  é `True`, e `9007199254740993 == 9007199254740992.0` é `False` (o `flo`
+  não guarda o último dígito, e a comparação não arredonda o `int`). A ordem
+  (`<`, `>`...) também é exata, e a chave de dict acha o número que o `==`
+  diz igual (`d[2 ** 64]` acha a chave `2.0 ** 64`).
+- `nan` não é igual nem se ordena com nada (nem com ele mesmo): todas as
+  comparações dão `False`, e o `!=` dá `True`.
 - `bool` é subtipo de `int`: `1 == True` e `0 == False` são `True`
   (`2 == True` é `False`).
 - Listas, tuplas e **dicts** comparam por **conteúdo** (igualdade estrutural),
-  não por identidade. Em dict a ordem das chaves não importa.
+  não por identidade. Em dict a ordem das chaves não importa. Qualquer
+  profundidade compara (a descida não usa a pilha do C), e a estrutura que
+  contém a si mesma compara pela forma: o par que já está sendo comparado
+  conta como igual, então duas listas `[1, <ela mesma>]` são iguais.
 
 ```ps
 post(1 == 1.0)                          # True
@@ -278,7 +287,10 @@ post({"a": 1, "b": 2} == {"b": 2, "a": 1})   # True
 post({"a": 1} == {"a": 2})              # False
 ```
 
-Tipos diferentes que não sejam numéricos nunca são iguais: `5 == "5"` é `False`.
+Tipos diferentes que não sejam numéricos nunca são iguais: `5 == "5"` é
+`False`, e `[1, 2] == (1, 2)` também. Por isso lista e tupla também não se
+**ordenam** entre si: `[1] < (2,)` é `TypeError: '<' not supported between
+instances of 'list' and 'tup'`.
 
 ### 3.3.3. `Null` na comparação
 
@@ -562,8 +574,14 @@ caractere é um elemento:
 
 ```ps
 post(char in "a b\tc" count)                  # 5
-post(char in ["a", " ", "ab", " "] count)  # 3   ("ab" tem dois)
+post(char in ["a", " ", "ab", "ç"] count)        # 3   ("ab" tem dois)
+post(int(97) count in b"aab", int in b"aab" count)   # 2 3
 ```
+
+Num `byte`, cada elemento é o **int** do byte, como no `for each`. Todo tipo
+vale como lado esquerdo — `byte`, `long`, `Object` e `PoolFile` também:
+`byte in [1, b"x", "s"] count` é 1, e `long in [1, 2 ** 70] count` é 2 (o
+`long` aceita os dois, como na declaração).
 
 ---
 

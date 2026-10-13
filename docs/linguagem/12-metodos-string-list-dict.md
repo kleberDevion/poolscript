@@ -10,6 +10,15 @@ exemplos que **rodam de verdade** pela suíte.
 
 Tudo aqui foi verificado rodando o fonte na VM em C.
 
+**Argumento inteiro, uma regra só** (vale pra todo método e builtin): onde se
+pede um inteiro (largura, posição, quantidade, `count`, `maxsplit`, índice)
+entram `int`, `bool` (`True` é 1) e o inteiro grande; nada mais converte
+(`"a".ljust(2.5)` e `range("3")` são `TypeError: '...' object cannot be
+interpreted as an integer`). O inteiro grande cai na regra do próprio
+argumento: posição fora da faixa (`l.pop(2 ** 70)` é `IndexError`), largura
+acima do teto (`"a".ljust(2 ** 70)` é `MemoryError` com o número pedido) ou
+"todas" (`s.split(",", 2 ** 70)`).
+
 ---
 
 ## 12.1. Métodos de `str` (55)

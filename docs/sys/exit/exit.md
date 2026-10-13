@@ -12,6 +12,10 @@ sys.exit(code: int = 0) -> Null
 |---|---|---|
 | `code` | `0` | código de saída: `0` = sucesso, diferente de `0` = erro |
 
+O sistema guarda 8 bits do código: vale o resto por 256 (`sys.exit(256)` sai
+com 0, `sys.exit(2 ** 70 + 3)` com 3). `bool` vale 0/1, `Null` é 0, e outro
+tipo é `TypeError: 'str' object cannot be interpreted as an integer`.
+
 ---
 
 ## Uso

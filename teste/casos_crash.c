@@ -283,13 +283,15 @@ const Caso CASOS_CRASH[] = {
   "t = [1]\nl = [t]\nt.append(l)\npost(t)\n",
   "[1, [[...]]]", NULL, 0 },
 
+/* A igualdade não desce pela pilha do C (lote 7b): o par que já está sendo
+ * comparado conta como igual, então as duas têm a mesma forma infinita. */
 { "compara estruturas mutuamente recursivas",
   "a = [1]\nb = [1]\na.append(b)\nb.append(a)\npost(a == b)\n",
-  NULL, NULL, 0 },
+  "True", NULL, 0 },
 
 { "contains em estrutura mutuamente recursiva",
   "a = [1]\nb = [1]\na.append(b)\nb.append(a)\npost(a.contains(b))\n",
-  NULL, NULL, 0 },
+  "True", NULL, 0 },
 
 { "INT64_MIN % -1 (era SIGFPE)",
   "post(-9223372036854775808 % -1)\n",

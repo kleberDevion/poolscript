@@ -9,7 +9,11 @@ status(code: int) -> JinkerResponse
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `code` | `int` | código HTTP (ex: `200`, `201`, `404`, `500`) |
+| `code` | `int` | código HTTP (ex: `200`, `201`, `404`, `500`), de 100 a 999 |
+
+Erros: `code` que não é inteiro é `TypeError: 'str' object cannot be
+interpreted as an integer`; fora de 100 a 999 é `ValueError: status(): codigo
+HTTP fora da faixa 100..999: 42` (o código do HTTP tem três dígitos).
 
 ---
 

@@ -24,13 +24,19 @@ bytes.fromint(258, 4, "little") # b'\x02\x01\x00\x00'  — little-endian
 
 ---
 
+`n` é qualquer inteiro >= 0, o grande inclusive (`bytes.fromint(2 ** 64, 9)`
+é `b'\x01\x00\x00\x00\x00\x00\x00\x00\x00'`), e `bool` vale como 0/1.
+
 ## Erros
 
 - **TypeError** — `n` não é inteiro, ou `length` não é inteiro.
-- **ValueError** — `byteorder` inválido: `byteorder must be either 'little' or 'big'`.
+- **ValueError** — `byteorder` inválido: `byteorder must be either 'little' or 'big'`;
+  `length` negativo: `length argument must be non-negative`.
 - **OverflowError** — `n` negativo (`can't convert negative int to unsigned`)
   ou `n` que não cabe em `length` bytes (`int too big to convert`). **Não** é
   `ValueError`: um `catch (ValueError e)` não pega esses dois.
+- **MemoryError** — `length` acima do teto de texto e byte do motor (256 MB):
+  `memória insuficiente: fromint() pediu length 4294967297`.
 
 ```
 bytes.fromint(70000, 1)   # OverflowError: int too big to convert

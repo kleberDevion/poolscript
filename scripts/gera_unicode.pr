@@ -98,6 +98,9 @@ if __name__ == "main" {
     list maiu = [-1] * MAX_CP
     list minu = [-1] * MAX_CP
     list tit = [-1] * MAX_CP
+    # o zero de cada sequência de dígitos decimais (campo 6 = "0"): os dez
+    # dígitos de uma escrita vêm sempre seguidos, do 0 ao 9
+    list zeros = []
 
     # UnicodeData: categoria e caixa simples; "<..., First>" e "<..., Last>"
     # marcam uma faixa inteira com a mesma categoria
@@ -120,6 +123,9 @@ if __name__ == "main" {
             continue
         }
         props[c] = cat
+        if f[6] == "0" {
+            zeros.append(c)
+        }
         if f[12] != "" {
             maiu[c] = hexa(f[12])
         }
@@ -324,7 +330,22 @@ if __name__ == "main" {
         out.append("    { " + hx(e[0]) + ", { " + ", ".join(hs) + " } },")
     }
     out.append("};")
+    out.append("")
+
+    # 6. o zero de cada sequência de dígitos decimais: o valor de um dígito é
+    # a distância até o zero da sequência dele
+    out.append("/* o digito 0 de cada escrita (campo 6 do UnicodeData = 0): o valor de um")
+    out.append(" * digito decimal e a distancia ate o zero da sequencia dele */")
+    out.append("static const uint32_t UNI_DECIMAL_ZERO[" + str(len(zeros)) + "] = {")
+    for each ini in range(0, len(zeros), 8) {
+        list partes = []
+        for each k in range(ini, min(ini + 8, len(zeros))) {
+            partes.append(hx(zeros[k]))
+        }
+        out.append("    " + ", ".join(partes) + ",")
+    }
+    out.append("};")
 
     os.writeFile(saida, "\n".join(out) + "\n")
-    post("UCD", versao + ":", len(inicios), "faixas de propriedade,", len(faixas_caixa), "de caixa,", len(especiais), "especiais,", len(difs), "dobras")
+    post("UCD", versao + ":", len(inicios), "faixas de propriedade,", len(faixas_caixa), "de caixa,", len(especiais), "especiais,", len(difs), "dobras,", len(zeros), "escritas de digito")
 }

@@ -9,7 +9,7 @@ bool
 ## Exemplos
 
 ```ps
-post("oi".isprintable(), "a\tb".isprintable(), "a​b".isprintable())
+post("oi".isprintable(), "a\tb".isprintable(), "a\U0000200Bb".isprintable())
 ```
 
 ```saida

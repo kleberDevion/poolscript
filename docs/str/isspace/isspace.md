@@ -9,7 +9,7 @@ bool
 ## Exemplos
 
 ```ps
-post("  ".isspace(), "　".isspace(), "".isspace())
+post("  ".isspace(), "\U00003000".isspace(), "".isspace())
 ```
 
 ```saida
