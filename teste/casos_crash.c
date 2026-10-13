@@ -441,10 +441,10 @@ const Caso CASOS_CRASH[] = {
  * morria: ficava comendo RAM. O CPython responde MemoryError. */
 { "largura absurda em format nao trava",
   "post(\"{:99999999999d}\".format(1))\n", "",
-  "sem memoria na largura do format", 1 },
+  "MemoryError: memória insuficiente: format() pediu largura 99999999999", 1 },
 { "precisao absurda em format nao trava",
   "post(\"{:.99999999999f}\".format(1.5))\n", "",
-  "sem memoria na precisao do format", 1 },
+  "MemoryError: memória insuficiente: format() pediu precisao 99999999999", 1 },
 { "format normal continua funcionando",
   "post(\"{:>8d}\".format(42))\n"
   "post(\"{:.2f}\".format(3.14159))\n"

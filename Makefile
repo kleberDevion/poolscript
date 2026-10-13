@@ -126,7 +126,7 @@ endif
 TIMEOUT := $(shell command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null)
 VM      := vm
 FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
-           $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_pkg.c $(VM)/ps_debug.c $(VM)/ps_retornos.c $(VM)/ps_so.c $(VM)/jinga_vm.c $(VM)/main.c
+           $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_pkg.c $(VM)/ps_debug.c $(VM)/ps_retornos.c $(VM)/ps_so.c $(VM)/ps_unicode.c $(VM)/jinga_vm.c $(VM)/main.c
 
 # A sqlite entra ESTÁTICA (libsqlite3.a): o binário continua rodando em
 # máquina que não tem libsqlite3.so. Ela é domínio público, sem custo de
@@ -164,7 +164,9 @@ $(VM)/ps_build.h: FORCE
 # Os CABEÇALHOS da VM também: mudar só um `.h` (uma macro, um campo de struct)
 # não refazia o binário — o make olhava os `.c`, via tudo em dia, e o `pool`
 # seguia com o comportamento velho.
-CABECALHOS := $(wildcard $(VM)/*.h)
+# `ps_unicode_tab.inc` é GERADO (scripts/gera_unicode.pr) e incluído pelo
+# `ps_unicode.c`: na lista, regerar as tabelas recompila todos os alvos.
+CABECALHOS := $(wildcard $(VM)/*.h) $(VM)/ps_unicode_tab.inc
 
 pool$(EXE): $(FONTES) $(CABECALHOS) $(VM)/ps_versao.h $(VM)/ps_build.h $(VM)/retornos_medidos.inc $(RECURSOS) $(MK)
 	$(CC) $(CFLAGS) -I$(VM) -o $@ $(FONTES) $(RECURSOS) $(LIBS_POOL)

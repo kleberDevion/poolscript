@@ -1341,9 +1341,10 @@ const Caso CASOS_LINGUAGEM[] = {
 { "isidentifier recusa sobrescrito e digito nao-decimal",
   "post(\"²³\".isidentifier(), \"٣٤\".isidentifier(), \"a²\".isidentifier())\n",
   "False False False", NULL, 0 },
-{ "isidentifier aceita acento, digito decimal depois do inicio e _",
-  "post(\"ção\".isidentifier(), \"a٣\".isidentifier(), \"_x1\".isidentifier(), \"1abc\".isidentifier())\n",
-  "True True True False", NULL, 0 },
+{ "isidentifier segue o nome da linguagem: ASCII, _ e digito depois do inicio (lote 7a)",
+  "post(\"ção\".isidentifier(), \"a٣\".isidentifier(), \"_x1\".isidentifier(), \"1abc\".isidentifier())\n"
+  "post(\"CAFÉ\".isidentifier(), \"Ω\".isidentifier(), \"漢字\".isidentifier(), \"if\".isidentifier(), \"\".isidentifier())\n",
+  "False False True False\nFalse False False True False", NULL, 0 },
 { "preenchimento de string vazia",
   "post(\"[\" + \"\".rjust(3) + \"]\", \"[\" + \"\".ljust(3) + \"]\", \"[\" + \"\".center(3) + \"]\")\n",
   "[   ] [   ] [   ]", NULL, 0 },
@@ -6335,6 +6336,181 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "post(\"nao chega\")\n",
   "", NULL, 3 },
+
+/* ── texto e Unicode nos métodos nativos (Plano 6, lote 7a, 2026-10-13) ─────
+ * format: o `0` entrava antes do sinal ("00-42"), x/o davam o complemento de
+ * dois, a precisão cortava BYTE (UTF-8 inválido), número sem alinhamento ia
+ * pra esquerda e o inteiro grande era recusado. replace com listas trocava em
+ * cadeia ("ab" virava "aa"), ignorava o count e aceitava ficar sem o new.
+ * rsplit testava o branco byte a byte (cortava "à" e "你") e parava calado em
+ * 256 cortes. Caixa do Latin Estendido-A trocada ("łódź"), sigma final só no
+ * lower, brancos e imprimíveis pela régua errada, translate e chr sem a faixa
+ * do Unicode, count de char pulando o espaço pelo primeiro byte. */
+{ "format: zero depois do sinal, hexa com sinal, precisao em caractere, numero a direita, inteiro grande (lote 7a)",
+  "post(\"[{:05d}]\".format(-42), \"[{:08.2f}]\".format(-3.14159))\n"
+  "post(\"[{:x}]\".format(-255), \"[{:o}]\".format(-8), hex(-255), oct(-8))\n"
+  "post(\"[{:.2}]\".format(\"漢字かな\"), \"[{:.3}]\".format(\"açúcar\"))\n"
+  "post(\"[{:5}]\".format(42), \"[{:>5}]\".format(42))\n"
+  "post(\"[{:d}]\".format(2 ** 70))\n",
+  "[-0042] [-0003.14]\n[-ff] [-10] -0xff -0o10\n[漢字] [açú]\n[   42] [   42]\n"
+  "[1180591620717411303424]", NULL, 0 },
+{ "format: preenchimento, alinhamento e o 0 com e sem alinhamento escrito (lote 7a)",
+  "post(\"[{:>05d}]\".format(-42), \"[{:<05d}]\".format(-42), \"[{:*>05d}]\".format(-42), \"[{:^07d}]\".format(-42))\n"
+  "post(\"[{:X}]\".format(-255), \"[{:b}]\".format(-5), \"[{:06x}]\".format(-255), \"[{:b}]\".format(-9223372036854775807 - 1))\n"
+  "post(\"[{:5}]\".format(\"ab\"), \"[{:5}]\".format(1.5), \"[{:5}]\".format(True), \"[{:05}]\".format(\"ab\"), \"[{:08}]\".format(-3.5))\n"
+  "post(\"[{:x}]\".format(2 ** 70), \"[{:X}]\".format(-(2 ** 70) - 11), \"[{:030d}]\".format(-(2 ** 70)), \"[{:f}]\".format(2 ** 70))\n"
+  "post(\"[{:.1f}]\".format(True), \"[{:d}]\".format(False), \"[{:·>6}]\".format(\"ab\"), \"[{:漢^5}]\".format(\"x\"), \"[{:.0}]\".format(\"abc\"))\n",
+  "[00-42] [-4200] [**-42] [00-4200]\n"
+  "[-FF] [-101] [-000ff] [-1000000000000000000000000000000000000000000000000000000000000000]\n"
+  "[ab   ] [  1.5] [True ] [000ab] [-00003.5]\n"
+  "[400000000000000000] [-40000000000000000B] [-00000001180591620717411303424] [1180591620717411303424.000000]\n"
+  "[1.0] [0] [····ab] [漢漢x漢漢] []", NULL, 0 },
+{ "format: especificador fora da forma e tipo que nao serve sao erro, nunca ignorados (lote 7a)",
+  "list ruins = [\"{:.2d}\", \"{:.2}\", \"{:+d}\", \"{:e}\", \"{:,}\", \"{:=5d}\"]\n"
+  "list vals = [5, 3.14159, 5, 1.5, 1000, 5]\n"
+  "for each i in range(len(ruins)) {\n"
+  "    try {\n"
+  "        post(ruins[i].format(vals[i]))\n"
+  "    } catch (ValueError e) {\n"
+  "        post(e)\n"
+  "    }\n"
+  "}\n"
+  "list tipos = [\"{:d}\", \"{:f}\", \"{:x}\"]\n"
+  "for each t in tipos {\n"
+  "    try {\n"
+  "        post(t.format(\"a\"))\n"
+  "    } catch (TypeError e) {\n"
+  "        post(e)\n"
+  "    }\n"
+  "}\n",
+  "format: precisao nao vale pra inteiro ('d'); pra casas decimais use o tipo 'f' ({:.2f}) (linha 5)\n"
+  "format: precisao num flo pede o tipo 'f' ({:.2f}) (linha 5)\n"
+  "format: especificador '+d' invalido; a forma e [preenche][<>^][0][largura][.precisao][tipo] (linha 5)\n"
+  "format: tipo 'e' nao existe; os tipos sao s d f x X o b (linha 5)\n"
+  "format: tipo ',' nao existe; os tipos sao s d f x X o b (linha 5)\n"
+  "format: especificador '=5d' invalido; a forma e [preenche][<>^][0][largura][.precisao][tipo] (linha 5)\n"
+  "format: 'd' espera int, recebeu str (linha 13)\n"
+  "format: 'f' espera numero, recebeu str (linha 13)\n"
+  "format: 'x' espera int, recebeu str (linha 13)", NULL, 0 },
+{ "replace com listas: em paralelo, count somado, vale o primeiro alvo da lista (lote 7a)",
+  "post(\"ab\".replace([\"a\", \"b\"], [\"b\", \"a\"]))\n"
+  "post(\"gato e rato\".replace([\"gato\", \"rato\"], [\"rato\", \"gato\"]))\n"
+  "post(\"a-b-c_d\".replace([\"-\", \"_\"], \"+\", 1))\n"
+  "post(\"a\".replace([\"a\", \"y\"], \"xy\"))\n"
+  "post(\"abab\".replace([\"a\", \"ab\"], [\"1\", \"2\"]), \"abab\".replace([\"ab\", \"a\"], [\"1\", \"2\"]), \"a-b\".replace([\"-\"], [\"+\"], 0))\n",
+  "ba\nrato e gato\na+b-c_d\nxy\n1b1b 11 a-b", NULL, 0 },
+{ "replace com listas: tamanhos, alvo vazio, item que nao e str e o new obrigatorio (lote 7a)",
+  "list vruins = [[\"a\", \"b\"], [\"\"]]\n"
+  "for each c in vruins {\n"
+  "    try {\n"
+  "        post(\"x-a\".replace(c, [\"z\"]))\n"
+  "    } catch (ValueError e) {\n"
+  "        post(e)\n"
+  "    }\n"
+  "}\n"
+  "try {\n"
+  "    post(\"x\".replace([1], \"y\"))\n"
+  "} catch (TypeError e) {\n"
+  "    post(e)\n"
+  "}\n"
+  "try {\n"
+  "    post(\"x\".replace([\"x\"], [1]))\n"
+  "} catch (TypeError e) {\n"
+  "    post(e)\n"
+  "}\n"
+  "try {\n"
+  "    post(\"x\".replace([\"x\"], 5))\n"
+  "} catch (TypeError e) {\n"
+  "    post(e)\n"
+  "}\n"
+  "post(\"banana\".replace(\"a\"))\n",
+  "replace(): 2 alvo(s) e 1 novo(s); em paralelo, as duas listas tem o mesmo tamanho (linha 4)\n"
+  "replace(): o item 0 da lista de alvos e vazio; o alvo vazio vale sozinho: replace(\"\", novo) (linha 4)\n"
+  "replace() argument 1 item 0 must be str, not int (linha 10)\n"
+  "replace() argument 2 item 0 must be str, not int (linha 15)\n"
+  "replace() argument 2 must be str or list, not int (linha 20)",
+  "TypeError: replace() takes at least 2 arguments (1 given)", 1 },
+{ "rsplit pelo codepoint, sem teto de cortes, separador procurado da direita (lote 7a)",
+  "str a = \"voilà\"\n"
+  "list ra = a.rsplit(Null, 1)\n"
+  "post(ra, ra[0] == \"voilà\", a.split())\n"
+  "str b = \"你好 你\"\n"
+  "list rb = b.rsplit(Null, 1)\n"
+  "post(rb, rb[1] == \"你\", b.split())\n"
+  "str s = \"x,\" * 300\n"
+  "post(len(s.rsplit(\",\", 1000)), len(s.split(\",\", 1000)), s.rsplit(\",\", 1000)[0].count(\",\"))\n"
+  "str w = \"x \" * 300\n"
+  "post(len(w.rsplit(Null, 1000)), len(w.split()))\n"
+  "post(\"aaa\".rsplit(\"aa\"), \"aaa\".rsplit(\"aa\", 5), b\"aaa\".rsplit(b\"aa\"), \"aaa\".split(\"aa\"))\n"
+  "post(\"  a b c  \".rsplit(Null, 1))\n",
+  "['voilà'] True ['voilà']\n['你好', '你'] True ['你好', '你']\n301 301 0\n300 300\n"
+  "['a', ''] ['a', ''] [b'a', b''] ['', 'a']\n['  a b', 'c']", NULL, 0 },
+{ "caixa do Latin Estendido-A pelo par certo de cada letra (lote 7a)",
+  "str cidade = \"łódź\"\n"
+  "str maiu = \"ŁÓDŹ\"\n"
+  "str cavalo = \"kůň\"\n"
+  "post(cidade.lower(), cidade.upper(), maiu.upper(), maiu.lower(), cavalo.lower(), cavalo.upper())\n"
+  "post(\"ı\".upper(), \"ĸ\".isupper(), \"Ĺ\".upper(), \"ł\".lower(), maiu.lower() == cidade)\n"
+  "post(\"İ\".lower(), len(\"İ\".lower()), \"ŉ\".upper(), \"ſ\".upper(), \"Ÿ\".lower(), \"ĺ\".upper(), \"Ž\".lower())\n",
+  "łódź ŁÓDŹ ŁÓDŹ łódź kůň KŮŇ\nI False Ĺ ł True\ni\xcc\x87 2 ʼN S ÿ Ĺ ž", NULL, 0 },
+{ "caixa e classes de caractere de qualquer lingua, pela tabela do Unicode (lote 7a)",
+  "post(\"ș\".upper(), \"ạ\".upper(), \"ϊ\".upper(), \"ａ\".upper(), \"Ա\".lower(), \"ა\".upper(), \"Ꭰ\".lower(), \"ɐ\".upper())\n"
+  "post(\"ﬁ\".upper(), \"ǰ\".upper(), \"ᾳ\".upper(), \"ǆ\".title(), \"ǅ\".lower(), \"Ⅷ\".lower(), \"ⓐ\".upper(), \"ꭰ\".casefold())\n"
+  "post(\"漢\".isalpha(), \"ǈ\".istitle(), \"ǈ\".isupper(), \"ǈ\".islower(), \"Ⅷ\".isupper(), \"ª\".islower())\n"
+  "post(\"一\".isnumeric(), \"一\".isdigit(), \"٣\".isdecimal(), \"²\".isdigit(), \"²\".isdecimal(), \"½\".isnumeric(), \"漢٣\".isalnum())\n"
+  "post(\"漢a\".title(), \"ﬁx\".title(), \"ßa\".capitalize(), \"ǆemal\".capitalize(), \"Straße\".swapcase(), \"ΑΣ'\".lower(), \"ΑΣ'Β\".lower())\n"
+  "post(\"\\u0378\".isprintable(), \"\\U00020BB7\".isprintable(), \"\\u00ad\".isprintable(), \"\\u2028\".isspace())\n",
+  "Ș Ạ Ϊ Ａ ա Ა ꭰ Ɐ\n"
+  "FI J\xcc\x8c ΑΙ ǅ ǆ ⅷ Ⓐ Ꭰ\n"
+  "True True False False True True\n"
+  "True False True True False True True\n"
+  "漢A Fix Ssa ǅemal sTRASSE ας' ασ'β\n"
+  "False True False True", NULL, 0 },
+{ "sigma final em lower, title, capitalize e swapcase; o casefold da sigma (lote 7a)",
+  "str w = \"ΟΔΥΣΣΕΥΣ\"\n"
+  "post(w.lower(), w.title(), w.capitalize(), w.swapcase(), w.casefold())\n"
+  "post(\"ΣΑΣ ΣΑΣ\".lower(), \"Σ\".lower(), \"ΑΣ.\".lower())\n",
+  "οδυσσευς Οδυσσευς Οδυσσευς οδυσσευς οδυσσευσ\nσας σας σ ας.", NULL, 0 },
+{ "translate e chr na faixa do Unicode, sem substituto (lote 7a)",
+  "list destinos = [-1, 1114112, 55296]\n"
+  "for each d in destinos {\n"
+  "    try {\n"
+  "        post(\"abc\".translate({97: d}))\n"
+  "    } catch (ValueError e) {\n"
+  "        post(e)\n"
+  "    }\n"
+  "}\n"
+  "post(\"abc\".translate({97: 1114111}).encode(), \"abc\".translate({97: Null}))\n"
+  "try {\n"
+  "    post(chr(56319))\n"
+  "} catch (ValueError e) {\n"
+  "    post(e)\n"
+  "}\n"
+  "post(chr(55295).encode(), chr(57344).encode())\n",
+  "character mapping must be in range(0x110000) (linha 4)\n"
+  "character mapping must be in range(0x110000) (linha 4)\n"
+  "character mapping is a surrogate (0xd800..0xdfff), not a character (linha 4)\n"
+  "b'\\xf4\\x8f\\xbf\\xbfbc' bc\n"
+  "chr() arg is a surrogate (0xd800..0xdfff), not a character (linha 11)\n"
+  "b'\\xed\\x9f\\xbf' b'\\xee\\x80\\x80'", NULL, 0 },
+{ "count de char: um caractere qualquer, o espaco e o TAB inclusive (lote 7a)",
+  "str frase = \"a b\\tc d\"\n"
+  "post(char in frase count, len(frase))\n"
+  "list vistos = []\n"
+  "count each char in frase {\n"
+  "    vistos.append(_match)\n"
+  "}\n"
+  "post(vistos)\n"
+  "post(char in [\"a\", \" \", \"ab\", \"\\u00a0\"] count)\n",
+  "7 7\n['a', ' ', 'b', '\\t', 'c', ' ', 'd']\n3", NULL, 0 },
+{ "isprintable pela regra do Unicode: controle, branco, formatacao invisivel (lote 7a)",
+  "post(\"\\x85\".isprintable(), \"\\x9b\".isprintable(), \"\\u2003\".isprintable(), \"\\u200b\".isprintable(), \"\\ufeff\".isprintable(), \"\\x7f\".isprintable())\n"
+  "post(\"a b\".isprintable(), \"ç漢\".isprintable(), \"\".isprintable(), \"\\ue000\".isprintable(), \"\\u00ad\".isprintable())\n",
+  "False False False False False False\nTrue True True False False", NULL, 0 },
+{ "brancos do Unicode no isspace, no split e no strip (lote 7a)",
+  "post(\"\\u3000\".isspace(), \"\\u00a0\".isspace(), (\"漢\" + \"\\u3000\" + \"字\").split(), \"漢\\u00a0字\".split(), len(\"\\u3000x\\u3000\".strip()))\n"
+  "post(\"\\u1680\\u2000\\u200a\\u202f\\u205f\".isspace(), \"\\u200b\".isspace(), \"x\\u2003y\".split(), \"\".isspace())\n",
+  "True True ['漢', '字'] ['漢', '字'] 1\nTrue False ['x', 'y'] False", NULL, 0 },
 
 /* ── CLI ── */
 { "--check não executa o script",

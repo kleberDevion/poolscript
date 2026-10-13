@@ -16,4 +16,11 @@ post("OLA mundo".capitalize())
 Ola mundo
 ```
 
+## Bordas
+
+- O primeiro caractere vai pra forma de título do Unicode, que nas letras
+  duplas e nas ligaduras não é a maiúscula: `"ǆemal".capitalize()` é
+  `ǅemal`, `"ßa".capitalize()` é `Ssa`. O resto desce, com o sigma final
+  (`Σ` no fim de palavra vira `ς`).
+
 [← índice](../str.md)

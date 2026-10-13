@@ -62,6 +62,7 @@
 #include "ps_retornos.h"
 #include "ps_gmp_min.h"
 #include "ps_so.h"
+#include "ps_unicode.h"
 #include <pthread.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -4713,6 +4714,8 @@ static int nativa_chr(VM *vm, Value *args, int n, Value *out)
     int64_t cp = (args[0].t == V_BOOL) ? (args[0].as.b ? 1 : 0) : args[0].as.i;
     if (cp < 0 || cp > 0x10FFFF)
         BERRO(vm, "ValueError", "chr() arg not in range(0x110000)");
+    if (cp >= 0xD800 && cp <= 0xDFFF)
+        BERRO(vm, "ValueError", "chr() arg is a surrogate (0xd800..0xdfff), not a character");
     char b[4];
     int k = 0;
     if (cp < 0x80) b[k++] = (char)cp;
@@ -5516,118 +5519,19 @@ static int str_byte_de(PSString *s, int64_t cp)
     return i;
 }
 
-/* Maiúscula/minúscula cobrindo ASCII, Latin-1 Suplementar e Latin Estendido-A.
- * É a faixa que importa pro português (ç, ã, é, ô…). Fora dela o codepoint
- * passa intacto — está anotado em LIMITACOES.md. */
-/* Caixa fora do Latin-1: a tabela cobria só ASCII + Latin-1/Ext-A, então
- * grego e cirílico passavam INTACTOS por lower()/upper() e `isalpha` dizia
- * False pra letra. Os blocos abaixo são contíguos e regulares, então cabem
- * em aritmética — nada de tabela de milhares de entradas. */
-static uint32_t cp_maiuscula(uint32_t c)
+/* Caixa e classes de caractere vêm da tabela do Unicode inteira
+ * (vm/ps_unicode.c). Antes era aritmética por bloco — ASCII, Latin-1, Latin
+ * Estendido-A, grego básico e cirílico — e o resto passava intacto: o "ș"
+ * romeno, o vietnamita, o armênio, o georgiano e as ligaduras (ﬁ) não mudavam
+ * de caixa, e `"漢".isalpha()` dizia False. */
+/* Branco = a propriedade White_Space do Unicode, inteira: a régua do
+ * isspace, do split()/rsplit() sem separador e do strip() sem argumento.
+ * Faltavam o espaço ideográfico (U+3000), os tipográficos (U+2000–U+200A),
+ * o ogham (U+1680), o estreito (U+202F) e o matemático (U+205F). */
+static inline int cp_eh_branco(uint32_t c)
 {
-    if (c >= 'a' && c <= 'z') return c - 32;
-    if (c >= 0xE0 && c <= 0xFE && c != 0xF7) return c - 32;   /* à-þ, menos ÷ */
-    if (c == 0xFF) return 0x178;                              /* ÿ -> Ÿ */
-    if (c >= 0x100 && c <= 0x177) return (c & 1) ? c - 1 : c; /* pares Ā/ā … */
-    if (c >= 0x179 && c <= 0x17E) return (c & 1) ? c : c - 1; /* Ź/ź … */
-    /* grego: α-ω (0x3B1-0x3C9) -> Α-Ω (0x391-0x3A9); ς (sigma final) -> Σ */
-    if (c == 0x3C2) return 0x3A3;
-    if (c >= 0x3B1 && c <= 0x3C9) return c - 32;
-    if (c >= 0x3AC && c <= 0x3AF) {                            /* acentuadas */
-        if (c == 0x3AC) return 0x386;
-        return c - 0x25;                                       /* έήί -> ΈΉΊ */
-    }
-    if (c == 0x3CC) return 0x38C;
-    if (c == 0x3CD) return 0x38E;
-    if (c == 0x3CE) return 0x38F;
-    /* cirílico: а-я (0x430-0x44F) -> А-Я (0x410-0x42F); ѐ-џ -> Ѐ-Џ */
-    if (c >= 0x430 && c <= 0x44F) return c - 32;
-    if (c >= 0x450 && c <= 0x45F) return c - 80;
-    if (c >= 0x460 && c <= 0x481) return (c & 1) ? c - 1 : c;
-    if (c >= 0x48A && c <= 0x4BF) return (c & 1) ? c - 1 : c;
-    if (c >= 0x4C1 && c <= 0x4CE) return (c & 1) ? c : c - 1;
-    if (c >= 0x4D0 && c <= 0x52F) return (c & 1) ? c - 1 : c;
-    /* İ (I com pingo) NÃO vira i sem pingo: é maiúscula, fica como está */
-    return c;
-}
-
-static uint32_t cp_minuscula(uint32_t c)
-{
-    if (c >= 'A' && c <= 'Z') return c + 32;
-    if (c >= 0xC0 && c <= 0xDE && c != 0xD7) return c + 32;
-    if (c == 0x178) return 0xFF;
-    if (c == 0x130) return 'i';        /* İ -> i; vem ANTES da faixa Ext-A,
-                                        * senão a regra dos pares dava ı */
-    if (c >= 0x100 && c <= 0x177) return (c & 1) ? c : c + 1;
-    if (c >= 0x179 && c <= 0x17E) return (c & 1) ? c + 1 : c;
-    if (c == 0x386) return 0x3AC;
-    if (c >= 0x388 && c <= 0x38A) return c + 0x25;
-    if (c == 0x38C) return 0x3CC;
-    if (c == 0x38E) return 0x3CD;
-    if (c == 0x38F) return 0x3CE;
-    if (c >= 0x391 && c <= 0x3A9 && c != 0x3A2) return c + 32;
-    if (c >= 0x410 && c <= 0x42F) return c + 32;
-    if (c >= 0x400 && c <= 0x40F) return c + 80;
-    if (c >= 0x460 && c <= 0x481) return (c & 1) ? c : c + 1;
-    if (c >= 0x48A && c <= 0x4BF) return (c & 1) ? c : c + 1;
-    if (c >= 0x4C1 && c <= 0x4CE) return (c & 1) ? c + 1 : c;
-    if (c >= 0x4D0 && c <= 0x52F) return (c & 1) ? c : c + 1;
-    return c;
-}
-
-/* Letras que NÃO têm par de caixa de um codepoint só. `cp_eh_minuscula` é
- * "trocar de caixa muda o caractere?" — critério que dá False pro ß (a
- * maiúscula dele é "SS", duas letras) e pro ʼn/ﬀ. Sem esta lista, `"ß".isalpha()`
- * respondia False, e `isalnum`/`islower` junto. */
-static int cp_min_sem_par(uint32_t c)
-{
-    return c == 0x00DF        /* ß  — maiúscula é "SS" */
-        || c == 0x0149        /* ŉ  */
-        || c == 0x01F0        /* ǰ  */
-        || c == 0x0390 || c == 0x03B0
-        || (c >= 0x1E96 && c <= 0x1E9A)
-        || c == 0x00B5;       /* µ (micro) */
-}
-
-static int cp_eh_maiuscula(uint32_t c) { return cp_minuscula(c) != c; }
-static int cp_eh_minuscula(uint32_t c) { return cp_maiuscula(c) != c || cp_min_sem_par(c); }
-static int cp_eh_letra(uint32_t c)     { return cp_eh_maiuscula(c) || cp_eh_minuscula(c); }
-/* Dígito além do ASCII. `isdecimal` = dígito decimal de qualquer escrita
- * (árabe-índico ٣, devanágari ३…); `isdigit` inclui os sobrescritos (²³¹);
- * `isnumeric` inclui fração e numeral romano (½ Ⅷ). Antes tudo isso dava
- * False e só 0-9 contava. */
-static int cp_eh_decimal(uint32_t c)
-{
-    if (c >= '0' && c <= '9') return 1;
-    if (c >= 0x660 && c <= 0x669) return 1;    /* árabe-índico */
-    if (c >= 0x6F0 && c <= 0x6F9) return 1;    /* árabe-índico estendido */
-    if (c >= 0x966 && c <= 0x96F) return 1;    /* devanágari */
-    if (c >= 0x9E6 && c <= 0x9EF) return 1;    /* bengali */
-    if (c >= 0xE50 && c <= 0xE59) return 1;    /* tailandês */
-    if (c >= 0xFF10 && c <= 0xFF19) return 1;  /* dígitos de largura plena */
-    return 0;
-}
-
-static int cp_eh_digito(uint32_t c)
-{
-    if (cp_eh_decimal(c)) return 1;
-    if (c == 0xB2 || c == 0xB3 || c == 0xB9) return 1;   /* ² ³ ¹ */
-    if (c >= 0x2070 && c <= 0x2079) return 1;            /* ⁰-⁹ sobrescrito */
-    if (c >= 0x2080 && c <= 0x2089) return 1;            /* ₀-₉ subscrito */
-    return 0;
-}
-
-static int cp_eh_numerico(uint32_t c)
-{
-    if (cp_eh_digito(c)) return 1;
-    if (c >= 0xBC && c <= 0xBE) return 1;                /* ¼ ½ ¾ */
-    if (c >= 0x2150 && c <= 0x218B) return 1;            /* frações e romanos */
-    return 0;
-}
-static int cp_eh_branco(uint32_t c)
-{
-    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'
-        || c == 0x85 || c == 0xA0 || c == 0x2028 || c == 0x2029;
+    if (c < 0x80) return c == ' ' || (c >= '\t' && c <= '\r');
+    return ps_uni_eh_branco(c);
 }
 
 /* Buffer de saída dos métodos que constroem texto. */
@@ -5717,60 +5621,82 @@ static int exige_str(VM *vm, Value v, const char *quem, PSString **out)
 }
 
 /* ── caixa ──────────────────────────────────────────────────────────────── */
+static int cp_antes(const PSString *s, int fim, uint32_t *cp);
+
+/* Σ minúsculo é ς no fim de palavra: a condição Final_Sigma do Unicode. Antes
+ * dele (pulando os que ignoram caixa, como o apóstrofo) vem uma letra com
+ * caixa, e depois dele (pulando os mesmos) não vem. */
+static int sigma_final(const PSString *s, int i, int k)
+{
+    int j = i;
+    int antes = 0;
+    while (j > 0) {
+        uint32_t c;
+        j = cp_antes(s, j, &c);
+        if (ps_uni_ignora_caixa(c)) continue;
+        antes = ps_uni_tem_caixa(c);
+        break;
+    }
+    if (!antes) return 0;
+    for (j = i + k; j < s->len; ) {
+        uint32_t c;
+        int k2 = utf8_le(s->chars, s->len, j, &c);
+        if (!k2) break;
+        if (!ps_uni_ignora_caixa(c)) return !ps_uni_tem_caixa(c);
+        j += k2;
+    }
+    return 1;
+}
+
+/* modo: 0 upper, 1 lower, 2 title, 3 capitalize, 4 swapcase, 5 casefold.
+ * Caixa completa do Unicode: um caractere pode virar até três (ß -> SS,
+ * ﬁ -> FI, İ -> i + ponto combinante). O title sobe a letra que vem depois
+ * de um caractere sem caixa e desce as outras; o capitalize sobe só a
+ * primeira (pro título dela: ǆ -> ǅ). */
 static int met_caixa(VM *vm, Value alvo, int n, Value *out, const char *quem, int modo)
 {
     if (n != 0) MERRO(vm, "TypeError", "%s() nao aceita argumento", quem);
     PSString *s = COMO_STRING(alvo);
     SBUF_AUTO b = {0};
-    int inicio_palavra = 1;
+    if (sb_grow(&b, s->len) != 0) { MERRO(vm, "MemoryError", "sem memoria em %s()", quem); }
+    int antes_tem_caixa = 0;
     for (int i = 0; i < s->len; ) {
+        unsigned char byte = (unsigned char)s->chars[i];
+        if (byte < 0x80) {
+            /* ASCII direto, sem tabela: é o caminho da maior parte do texto */
+            int letra = (byte | 32) >= 'a' && (byte | 32) <= 'z';
+            if (letra) {
+                int sobe = modo == 0 || (modo == 2 && !antes_tem_caixa) || (modo == 3 && i == 0)
+                           || (modo == 4 && byte >= 'a');
+                byte = sobe ? (unsigned char)(byte & ~32) : (unsigned char)(byte | 32);
+            }
+            if (sb_bytes(&b, (const char *)&byte, 1) != 0) { MERRO(vm, "MemoryError", "sem memoria em %s()", quem); }
+            antes_tem_caixa = letra;
+            i++;
+            continue;
+        }
         uint32_t cp;
         int k = utf8_le(s->chars, s->len, i, &cp);
         if (!k) break;
-        uint32_t r = cp;
-        /* `sobe` = este caractere vai pra maiúscula neste modo. Serve pra
-         * decidir a expansão do ß, que não tem maiúscula de 1 codepoint. */
-        int sobe = (modo == 0) || (modo == 2 && inicio_palavra) || (modo == 3 && i == 0)
-                   || (modo == 4 && !cp_eh_maiuscula(cp));
-        if (cp == 0x00DF && sobe) {
-            /* ß não tem maiúscula única: vira "SS" (ou "Ss" quando só a
-             * inicial da palavra sobe, como no title/capitalize). */
-            const char *exp = (modo == 0 || modo == 4) ? "SS" : "Ss";
-            if (sb_bytes(&b, exp, 2) != 0) { MERRO(vm, "MemoryError", "sem memoria em %s()", quem); }
-            inicio_palavra = 0;
-            i += k;
-            continue;
-        }
+        /* 0 maiúscula, 1 minúscula, 2 título, 3 dobra, -1 fica como está */
+        int qual;
         switch (modo) {
-            case 0: r = cp_maiuscula(cp); break;                 /* upper */
-            case 1: /* lower */
-                r = cp_minuscula(cp);
-                /* Σ no fim de palavra vira ς, não σ: depende do que vem
-                 * depois, então não cabe no cp_minuscula. */
-                if (cp == 0x03A3 && !inicio_palavra) {
-                    uint32_t prox;
-                    int k2 = utf8_le(s->chars, s->len, i + k, &prox);
-                    if (!k2 || !cp_eh_letra(prox)) r = 0x03C2;
-                }
-                break;
-            case 2: r = inicio_palavra ? cp_maiuscula(cp) : cp_minuscula(cp); break;  /* title */
-            case 3: r = (i == 0) ? cp_maiuscula(cp) : cp_minuscula(cp); break;        /* capitalize */
-            case 4: r = cp_eh_maiuscula(cp) ? cp_minuscula(cp) : cp_maiuscula(cp); break; /* swapcase */
-            case 5:                                              /* casefold */
-                /* full folding dos casos que o lower não pega: ß/ẞ viram
-                 * "ss" (por isso casefold ≠ lower) e o sigma final grego
-                 * normaliza. O resto cai no lower comum. */
-                if (cp == 0x00DF || cp == 0x1E9E) {
-                    if (sb_bytes(&b, "ss", 2) != 0) { MERRO(vm, "MemoryError", "sem memoria em %s()", quem); }
-                    inicio_palavra = 0;
-                    i += k;
-                    continue;
-                }
-                r = cp == 0x03C2 ? 0x03C3 : cp_minuscula(cp);
-                break;
+            case 0:  qual = 0; break;
+            case 1:  qual = 1; break;
+            case 2:  qual = antes_tem_caixa ? 1 : 2; break;
+            case 3:  qual = i == 0 ? 2 : 1; break;
+            case 4:  qual = ps_uni_eh_maiuscula(cp) ? 1 : ps_uni_eh_minuscula(cp) ? 0 : -1; break;
+            default: qual = 3; break;
         }
-        if (sb_cp(&b, r) != 0) { MERRO(vm, "MemoryError", "sem memoria em %s()", quem); }
-        inicio_palavra = !cp_eh_letra(cp);
+        uint32_t m[3];
+        int nm = 1;
+        if (qual < 0) m[0] = cp;
+        else if (qual == 3) nm = ps_uni_dobra(cp, m);
+        else if (qual == 1 && cp == 0x03A3) m[0] = sigma_final(s, i, k) ? 0x03C2 : 0x03C3;
+        else nm = ps_uni_caixa(cp, qual, m);
+        for (int t = 0; t < nm; t++)
+            if (sb_cp(&b, m[t]) != 0) { MERRO(vm, "MemoryError", "sem memoria em %s()", quem); }
+        antes_tem_caixa = ps_uni_tem_caixa(cp);
         i += k;
     }
     return devolve_sbuf(vm, &b, out);
@@ -6010,35 +5936,40 @@ static int met_teste(VM *vm, Value alvo, int n, Value *out, const char *quem, in
     /* Vazia: `isascii`/`isprintable` são True (nada viola a regra); os
      * demais pedem "pelo menos um da classe", então dão False. */
     if (s->len == 0) { *out = MK_BOOL(qual == 6 || qual == 8); return 0; }
-    int ok = 1, viu_caixa = 0, inicio_palavra = 1;
+    /* As classes são as do Unicode: letra = categoria L*; maiúscula e
+     * minúscula = as propriedades Uppercase e Lowercase; o título (ǅ) não é
+     * nem uma nem outra. isupper/islower: nenhum caractere da caixa oposta
+     * (nem título) e pelo menos um da pedida. istitle: maiúscula ou título só
+     * depois de caractere sem caixa, minúscula só depois de um com caixa. */
+    int ok = 1, viu_caixa = 0, antes_tem_caixa = 0;
     for (int i = 0; i < s->len && ok; ) {
         uint32_t cp;
         int k = utf8_le(s->chars, s->len, i, &cp);
         if (!k) break;
         switch (qual) {
-            case 0: ok = cp_eh_letra(cp); break;                                  /* isalpha */
-            case 1: ok = cp_eh_digito(cp); break;                                 /* isdigit */
-            case 2: ok = cp_eh_letra(cp) || cp_eh_digito(cp); break;              /* isalnum */
+            case 0: ok = ps_uni_eh_letra(cp); break;                              /* isalpha */
+            case 1: ok = ps_uni_eh_digito(cp); break;                             /* isdigit */
+            case 2: ok = ps_uni_eh_letra(cp) || ps_uni_eh_numerico(cp); break;    /* isalnum */
             case 3: ok = cp_eh_branco(cp); break;                                 /* isspace */
-            case 4: if (cp_eh_minuscula(cp)) ok = 0;                              /* isupper */
-                    if (cp_eh_maiuscula(cp)) viu_caixa = 1;
+            case 4: if (ps_uni_eh_minuscula(cp) || ps_uni_eh_titulo(cp)) ok = 0;  /* isupper */
+                    else if (ps_uni_eh_maiuscula(cp)) viu_caixa = 1;
                     break;
-            case 5: if (cp_eh_maiuscula(cp)) ok = 0;                              /* islower */
-                    if (cp_eh_minuscula(cp)) viu_caixa = 1;
+            case 5: if (ps_uni_eh_maiuscula(cp) || ps_uni_eh_titulo(cp)) ok = 0;  /* islower */
+                    else if (ps_uni_eh_minuscula(cp)) viu_caixa = 1;
                     break;
             case 6: ok = cp < 128; break;                                         /* isascii */
-            case 7: { /* istitle */
-                int letra = cp_eh_letra(cp);
-                if (letra) {
-                    if (inicio_palavra) { if (!cp_eh_maiuscula(cp)) ok = 0; else viu_caixa = 1; }
-                    else if (cp_eh_maiuscula(cp)) ok = 0;
-                }
-                inicio_palavra = !letra;
+            case 7:                                                               /* istitle */
+                if (ps_uni_eh_maiuscula(cp) || ps_uni_eh_titulo(cp)) {
+                    if (antes_tem_caixa) ok = 0;
+                    antes_tem_caixa = viu_caixa = 1;
+                } else if (ps_uni_eh_minuscula(cp)) {
+                    if (!antes_tem_caixa) ok = 0;
+                    antes_tem_caixa = viu_caixa = 1;
+                } else antes_tem_caixa = 0;
                 break;
-            }
-            case 8: ok = cp >= 32 && cp != 127; break;                            /* isprintable */
-            case 9:  ok = cp_eh_decimal(cp); break;                               /* isdecimal */
-            case 10: ok = cp_eh_numerico(cp); break;                              /* isnumeric */
+            case 8: ok = ps_uni_eh_imprimivel(cp); break;                         /* isprintable */
+            case 9:  ok = ps_uni_eh_decimal(cp); break;                           /* isdecimal */
+            case 10: ok = ps_uni_eh_numerico(cp); break;                          /* isnumeric */
         }
         i += k;
     }
@@ -6129,73 +6060,85 @@ static int met_split(VM *vm, Value alvo, Value *args, int n, Value *out)
     return 0;
 }
 
-/* rsplit: sem limite é igual ao split; com limite, as divisões contam da
- * DIREITA — `"a,b,c".rsplit(",", 1)` = ["a,b", "c"]. */
+/* O codepoint que termina antes de `fim` (volta pelos bytes de continuação):
+ * a posição dele, e o codepoint em `*cp`. */
+static int cp_antes(const PSString *s, int fim, uint32_t *cp)
+{
+    int p = fim - 1;
+    while (p > 0 && ((unsigned char)s->chars[p] & 0xC0) == 0x80) p--;
+    if (!utf8_le(s->chars, s->len, p, cp)) *cp = (unsigned char)s->chars[p];
+    return p;
+}
+
+/* rsplit: as divisões contam da DIREITA — `"a,b,c".rsplit(",", 1)` =
+ * ["a,b", "c"], e o separador que se sobrepõe casa da direita também
+ * (`"aaa".rsplit("aa")` = ["a", ""], como o rsplit de byte). Antes: o branco
+ * era testado BYTE a BYTE (o 0xA0 de "à" e de "你" passava por NBSP e cortava
+ * o caractere no meio), os cortes paravam calados em 256, e sem limite ele
+ * delegava ao split, que casa da esquerda. Os pedaços vão de trás pra frente
+ * numa lista que cresce, virada no fim. */
 static int met_rsplit(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n > 2) return erro_aridade(vm, "rsplit", 0, 2, n);
-    int64_t limite = (n == 2 && args[1].t == V_INT) ? args[1].as.i : -1;
-    /* sem limite (ou negativo) a direção não importa — delega ao split */
-    if (limite < 0) return met_split(vm, alvo, args, n, out);
     if (n >= 1 && args[0].t != V_NULL && !EH_STRING(args[0]))
         MERRO(vm, "TypeError", "must be str or Null, not %s", nome_do_tipo_valor(args[0]));
-
+    if (n == 2 && args[1].t != V_INT)
+        MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+              nome_do_tipo_valor(args[1]));
+    int64_t limite = n == 2 ? args[1].as.i : -1;
     PSString *s = COMO_STRING(alvo);
     PSString *sep = (n >= 1 && EH_STRING(args[0])) ? COMO_STRING(args[0]) : NULL;
     if (sep && sep->len == 0) MERRO(vm, "ValueError", "empty separator");
+    /* branco sem limite: a direção não muda nada */
+    if (!sep && limite < 0) return met_split(vm, alvo, args, n, out);
 
-    /* acha os cortes da direita pra esquerda, no máximo `limite` */
-    int cortes[256]; int nc = 0;
-    int i = s->len;
-    while (nc < limite && nc < 256) {
-        int achou = -1;
-        if (sep) {
-            for (int p = i - sep->len; p >= 0; p--)
-                if (memcmp(s->chars + p, sep->chars, (size_t)sep->len) == 0) { achou = p; break; }
-            if (achou < 0) break;
-            cortes[nc++] = achou;
-            i = achou;
-        } else {
-            /* separador = branco: pula brancos à direita, depois acha o próximo */
-            int p = i - 1;
-            while (p >= 0) { uint32_t cp; utf8_le(s->chars, s->len, p, &cp); if (!cp_eh_branco((unsigned char)s->chars[p])) break; p--; }
-            int fimtok = p + 1;
-            while (p >= 0 && !cp_eh_branco((unsigned char)s->chars[p])) p--;
-            if (fimtok <= 0) break;
-            cortes[nc++] = p + 1;          /* início do token */
-            cortes[nc++] = fimtok;         /* fim do token (par) */
-            i = p + 1;
-            if (nc >= limite * 2) break;
-        }
-    }
-
-    PSList *l = lista_com_cap(vm, nc + 2, OBJ_LIST);
+    PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
     if (!l) MERRO(vm, "MemoryError", "sem memoria em rsplit()");
     if (fixa_raiz(vm, MK_OBJ(l)) != 0) MERRO(vm, "RuntimeError", "estouro da pilha");
-
+    int fim = s->len;
+    int64_t feitos = 0;
     if (sep) {
-        /* monta da esquerda: resto + cada corte */
-        int ini = 0;
-        for (int c = nc - 1; c >= 0; c--) {
-            PSString *parte = nova_string(vm, s->chars + ini, cortes[c] - ini);
+        while (limite < 0 || feitos < limite) {
+            int achou = -1;
+            for (int p = fim - sep->len; p >= 0; p--)
+                if (memcmp(s->chars + p, sep->chars, (size_t)sep->len) == 0) { achou = p; break; }
+            if (achou < 0) break;
+            PSString *parte = nova_string(vm, s->chars + achou + sep->len, fim - achou - sep->len);
             if (!parte || lista_push(vm, l, MK_OBJ(parte)) != 0) { vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
-            ini = cortes[c] + sep->len;
+            fim = achou;
+            feitos++;
         }
-        PSString *parte = nova_string(vm, s->chars + ini, s->len - ini);
+        PSString *parte = nova_string(vm, s->chars, fim);
         if (!parte || lista_push(vm, l, MK_OBJ(parte)) != 0) { vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
     } else {
-        /* cortes vêm em pares (ini,fim) da direita; o "resto" vai na frente */
-        int resto_fim = nc >= 2 ? cortes[nc - 2] : s->len;
-        /* apara branco à direita do resto */
-        while (resto_fim > 0 && cp_eh_branco((unsigned char)s->chars[resto_fim - 1])) resto_fim--;
-        if (resto_fim > 0) {
-            PSString *parte = nova_string(vm, s->chars, resto_fim);
+        for (;;) {
+            /* pula o branco à direita, pelo codepoint */
+            while (fim > 0) {
+                uint32_t cp; int p = cp_antes(s, fim, &cp);
+                if (!cp_eh_branco(cp)) break;
+                fim = p;
+            }
+            if (fim == 0) break;
+            if (feitos >= limite) {
+                /* o resto: com o branco da direita aparado, o da esquerda fica */
+                PSString *parte = nova_string(vm, s->chars, fim);
+                if (!parte || lista_push(vm, l, MK_OBJ(parte)) != 0) { vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
+                break;
+            }
+            int ini = fim;
+            while (ini > 0) {
+                uint32_t cp; int p = cp_antes(s, ini, &cp);
+                if (cp_eh_branco(cp)) break;
+                ini = p;
+            }
+            PSString *parte = nova_string(vm, s->chars + ini, fim - ini);
             if (!parte || lista_push(vm, l, MK_OBJ(parte)) != 0) { vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
+            fim = ini;
+            feitos++;
         }
-        for (int c = nc - 2; c >= 0; c -= 2) {
-            PSString *parte = nova_string(vm, s->chars + cortes[c], cortes[c + 1] - cortes[c]);
-            if (!parte || lista_push(vm, l, MK_OBJ(parte)) != 0) { vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
-        }
+    }
+    for (int a = 0, z = l->len - 1; a < z; a++, z--) {
+        Value t = l->itens[a]; l->itens[a] = l->itens[z]; l->itens[z] = t;
     }
     vm->sp--;
     *out = MK_OBJ(l);
@@ -6247,50 +6190,64 @@ static int met_join(VM *vm, Value alvo, Value *args, int n, Value *out)
     return devolve_sbuf(vm, &b, out);
 }
 
-static int met_replace(VM *vm, Value alvo, Value *args, int n, Value *out);
-
 /* `.replace([alvos], novo)` e `.replace([alvos], [novos])` — extensão da
- * Jinga. Aplica os replaces de string em cadeia sobre o resultado
- * corrente, na ordem da lista; `novos` par a par, ou o mesmo `novo` pra
- * todos. Reusa met_replace pra cada par (mesma semântica de substring). */
-static int met_replace_lista(VM *vm, Value alvo, PSList *alvos, Value novo, Value *out)
+ * Jinga. Uma passada só, da esquerda pra direita: em cada posição vale o
+ * primeiro alvo DA LISTA que casa ali, e o texto que entrou não é trocado
+ * de novo (`"ab".replace(["a", "b"], ["b", "a"])` é "ba"; em cadeia dava
+ * "aa"). `limite` conta as trocas de todos os alvos juntos. */
+static int met_replace_lista(VM *vm, Value alvo, PSList *alvos, Value novo,
+                             int64_t limite, Value *out)
 {
+    PSString *s = COMO_STRING(alvo);
     int novo_lista = EH_SEQ(novo);
     PSList *novos = novo_lista ? COMO_LIST(novo) : NULL;
-    Value atual = alvo;
-    if (fixa_raiz(vm, atual) != 0) MERRO(vm, "RuntimeError", "estouro da pilha");
-    for (int i = 0; i < alvos->len; i++) {
-        if (!EH_STRING(alvos->itens[i])) { vm->sp--;
-            MERRO(vm, "TypeError", "replace() argument 1 must be str, not %s",
-                  nome_do_tipo_valor(alvos->itens[i])); }
-        Value nv;
-        if (novo_lista) { if (i >= novos->len) break; nv = novos->itens[i]; }  /* zip para no menor */
-        else nv = novo;
-        Value par[2] = { alvos->itens[i], nv };
-        Value res;
-        if (met_replace(vm, atual, par, 2, &res) != 0) { vm->sp--; return -1; }
-        atual = res;
-        vm->stack[vm->sp - 1] = atual;   /* mantém o resultado corrente fixo */
+    if (!novo_lista && !EH_STRING(novo))
+        MERRO(vm, "TypeError", "replace() argument 2 must be str or list, not %s",
+              nome_do_tipo_valor(novo));
+    if (novo_lista && novos->len != alvos->len)
+        MERRO(vm, "ValueError", "replace(): %d alvo(s) e %d novo(s); em paralelo, as duas "
+              "listas tem o mesmo tamanho", alvos->len, novos->len);
+    for (int k = 0; k < alvos->len; k++) {
+        if (!EH_STRING(alvos->itens[k]))
+            MERRO(vm, "TypeError", "replace() argument 1 item %d must be str, not %s",
+                  k, nome_do_tipo_valor(alvos->itens[k]));
+        /* o vazio casa em toda posição e esconderia os outros alvos */
+        if (COMO_STRING(alvos->itens[k])->len == 0)
+            MERRO(vm, "ValueError", "replace(): o item %d da lista de alvos e vazio; "
+                  "o alvo vazio vale sozinho: replace(\"\", novo)", k);
+        if (novo_lista && !EH_STRING(novos->itens[k]))
+            MERRO(vm, "TypeError", "replace() argument 2 item %d must be str, not %s",
+                  k, nome_do_tipo_valor(novos->itens[k]));
     }
-    vm->sp--;
-    *out = atual;
-    return 0;
+    SBUF_AUTO b = {0};
+    int64_t feitos = 0;
+    int i = 0;
+    while (i < s->len) {
+        int achou = -1;
+        if (limite < 0 || feitos < limite) {
+            for (int k = 0; k < alvos->len; k++) {
+                PSString *a = COMO_STRING(alvos->itens[k]);
+                if (a->len <= s->len - i && a->chars[0] == s->chars[i]
+                        && memcmp(s->chars + i, a->chars, (size_t)a->len) == 0) { achou = k; break; }
+            }
+        }
+        if (achou >= 0) {
+            PSString *nv = COMO_STRING(novo_lista ? novos->itens[achou] : novo);
+            if (sb_bytes(&b, nv->chars, nv->len) != 0) MERRO(vm, "MemoryError", "sem memoria");
+            i += COMO_STRING(alvos->itens[achou])->len;
+            feitos++;
+        } else {
+            if (sb_bytes(&b, s->chars + i, 1) != 0) MERRO(vm, "MemoryError", "sem memoria");
+            i++;
+        }
+    }
+    return devolve_sbuf(vm, &b, out);
 }
 
 static int met_replace(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 3) return erro_aridade(vm, "replace", 1, 3, n);
-    /* alvo em lista: `.replace(["-", "_"], ".")` */
-    if (n >= 1 && EH_SEQ(args[0]))
-        return met_replace_lista(vm, alvo, COMO_LIST(args[0]), n >= 2 ? args[1] : jk_str_val(vm, ""), out);
-    PSString *s = COMO_STRING(alvo), *velho, *novo = NULL;
-    if (exige_str(vm, args[0], "replace", &velho) != 0) return -1;
-    if (n >= 2) {
-        if (!EH_STRING(args[1]))
-            MERRO(vm, "TypeError", "replace() argument 2 must be str, not %s",
-                  nome_do_tipo_valor(args[1]));
-        novo = COMO_STRING(args[1]);
-    }
+    /* `new` nao tem valor padrao (doc): `replace("a")` apagava as letras */
+    if (n < 2 || n > 3) return erro_aridade(vm, "replace", 2, 3, n);
     int64_t limite = -1;
     if (n == 3) {
         if (args[2].t != V_INT)
@@ -6299,13 +6256,22 @@ static int met_replace(VM *vm, Value alvo, Value *args, int n, Value *out)
                   nome_do_tipo_valor(args[2]));
         limite = args[2].as.i;
     }
+    /* alvo em lista: `.replace(["-", "_"], ".")` */
+    if (EH_SEQ(args[0]))
+        return met_replace_lista(vm, alvo, COMO_LIST(args[0]), args[1], limite, out);
+    PSString *s = COMO_STRING(alvo), *velho, *novo;
+    if (exige_str(vm, args[0], "replace", &velho) != 0) return -1;
+    if (!EH_STRING(args[1]))
+        MERRO(vm, "TypeError", "replace() argument 2 must be str, not %s",
+              nome_do_tipo_valor(args[1]));
+    novo = COMO_STRING(args[1]);
     int64_t feitos_vazio = 0;
     SBUF_AUTO b = {0};
     if (velho->len == 0) {
         /* alvo vazio casa em toda fronteira de caractere, inclusive nas
          * pontas: `"a".replace("", "x")` é "xax". */
         for (int i = 0; i <= s->len; ) {
-            if ((limite < 0 || feitos_vazio < limite) && novo
+            if ((limite < 0 || feitos_vazio < limite)
                     && sb_bytes(&b, novo->chars, novo->len) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
             feitos_vazio++;
             if (i == s->len) break;
@@ -6322,7 +6288,7 @@ static int met_replace(VM *vm, Value alvo, Value *args, int n, Value *out)
     while (i < s->len) {
         if ((limite < 0 || feitos < limite) && i + velho->len <= s->len
                 && memcmp(s->chars + i, velho->chars, (size_t)velho->len) == 0) {
-            if (novo && sb_bytes(&b, novo->chars, novo->len) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
+            if (sb_bytes(&b, novo->chars, novo->len) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
             i += velho->len;
             feitos++;
         } else {
@@ -6534,70 +6500,99 @@ static int met_expandtabs(VM *vm, Value alvo, Value *args, int n, Value *out)
  * Mini-linguagem de formato, no subconjunto que cobre o uso real:
  *
  *   {}  {0}  {nome}          posicional automático, indexado, nomeado
- *   {:[preenche][<^>][0][largura][.precisao][tipo]}
+ *   {:[preenche][<>^][0][largura][.precisao][tipo]}
  *   {{  }}                   chave literal
  *
- * `tipo` aceita `s d f x X b o`. O que não estiver aqui é recusado com erro,
+ * `tipo` aceita `s d f x X o b`. O que não estiver aqui é recusado com erro,
  * nunca ignorado: formatar diferente do pedido é pior que não formatar.
+ *
+ * - O preenchimento é UM caractere, de qualquer tamanho em UTF-8 (`{:·>8}`).
+ * - Número (int, inteiro grande, flo, e os tipos d x X o b f) alinha à
+ *   direita; o resto, à esquerda.
+ * - `0` sem alinhamento escrito põe os zeros DEPOIS do sinal num número
+ *   (`{:05d}` de -42 é `-0042`, como o zfill); com alinhamento escrito, o `0`
+ *   só vira o preenchimento (`{:>05d}` é `00-42`); preenchimento escrito
+ *   ganha do `0`.
+ * - x X o b dizem o sinal e o valor (`{:x}` de -255 é `-ff`, como o hex()),
+ *   e valem pro inteiro grande.
+ * - A precisão do texto conta CARACTERE (`{:.2}` de "漢字かな" é "漢字").
+ *   Precisão em inteiro é erro, e num flo sem tipo também (pede o `f`).
  */
 static int formata_um(VM *vm, SBuf *saida, const Value *v, const char *spec, int nspec)
 {
     /* [preenche][align] [0] [largura] [.prec] [tipo] */
-    char preenche = ' ', align = 0, tipo = 0;
+    char preenche[4] = { ' ' };
+    int npreenche = 1, tem_preenche = 0, zero = 0;
+    char align = 0, tipo = 0;
     int i = 0, largura = 0, prec = -1;
-    if (nspec >= 2 && (spec[1] == '<' || spec[1] == '>' || spec[1] == '^')) {
-        preenche = spec[0]; align = spec[1]; i = 2;
-    } else if (nspec >= 1 && (spec[0] == '<' || spec[0] == '>' || spec[0] == '^')) {
-        align = spec[0]; i = 1;
+    if (nspec >= 1) {
+        unsigned char c0 = (unsigned char)spec[0];
+        int nc = c0 < 0x80 ? 1 : (c0 & 0xE0) == 0xC0 ? 2 : (c0 & 0xF0) == 0xE0 ? 3
+               : (c0 & 0xF8) == 0xF0 ? 4 : 1;
+        if (nspec > nc && (spec[nc] == '<' || spec[nc] == '>' || spec[nc] == '^')) {
+            memcpy(preenche, spec, (size_t)nc);
+            npreenche = nc; tem_preenche = 1;
+            align = spec[nc]; i = nc + 1;
+        } else if (spec[0] == '<' || spec[0] == '>' || spec[0] == '^') {
+            align = spec[0]; i = 1;
+        }
     }
-    if (i < nspec && spec[i] == '0') { preenche = '0'; if (!align) align = '>'; i++; }
+    if (i < nspec && spec[i] == '0') { zero = 1; i++; }
     /* COM TETO. `largura = largura * 10 + digito` transbordava o `int` em
      * silencio: `"{:99999999999d}".format(1)` dava um valor lixo, o laco de
      * preenchimento la embaixo escrevia byte a byte, e o processo TRAVAVA
-     * comendo memoria ate morrer. Agora responde MemoryError.
+     * comendo memoria ate morrer. Agora responde MemoryError, com a frase do
+     * ljust/zfill e o numero como foi escrito.
      *
      * O teto e o mesmo limite de string do resto do motor — acima dele nao ha
      * o que produzir de qualquer forma. */
+    int ini = i;
     while (i < nspec && spec[i] >= '0' && spec[i] <= '9') {
-        if (largura > PS_STR_MAX / 10) {
-            snprintf(vm->erro, sizeof(vm->erro), "sem memoria na largura do format");
-            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
-            return -1;
-        }
-        largura = largura * 10 + (spec[i++] - '0');
+        if (largura <= PS_STR_MAX) largura = largura * 10 + (spec[i] - '0');
+        i++;
     }
-    if (largura > PS_STR_MAX) {
-        snprintf(vm->erro, sizeof(vm->erro), "sem memoria na largura do format");
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
-        return -1;
-    }
+    if (largura > PS_STR_MAX)
+        MERRO(vm, "MemoryError", "memória insuficiente: format() pediu largura %.*s",
+              i - ini, spec + ini);
     if (i < nspec && spec[i] == '.') {
-        i++; prec = 0;
+        i++; prec = 0; ini = i;
         while (i < nspec && spec[i] >= '0' && spec[i] <= '9') {
-            if (prec > PS_STR_MAX / 10) {
-                snprintf(vm->erro, sizeof(vm->erro), "sem memoria na precisao do format");
-                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
-                return -1;
-            }
-            prec = prec * 10 + (spec[i++] - '0');
+            if (prec <= PS_STR_MAX) prec = prec * 10 + (spec[i] - '0');
+            i++;
         }
+        if (prec > PS_STR_MAX)
+            MERRO(vm, "MemoryError", "memória insuficiente: format() pediu precisao %.*s",
+                  i - ini, spec + ini);
     }
     if (i < nspec) tipo = spec[i++];
-    if (i != nspec) { snprintf(vm->erro, sizeof(vm->erro), "format: spec invalido"); return -1; }
+    /* A string de formato e que esta errada, nao o tipo do argumento:
+     * ValueError, como os outros erros do formato. */
+    if (i != nspec)
+        MERRO(vm, "ValueError", "format: especificador '%.*s' invalido; a forma e "
+              "[preenche][<>^][0][largura][.precisao][tipo]", nspec, spec);
+    if (tipo && tipo != 's' && tipo != 'd' && tipo != 'f' && tipo != 'x' && tipo != 'X'
+             && tipo != 'o' && tipo != 'b')
+        MERRO(vm, "ValueError", "format: tipo '%c' nao existe; os tipos sao s d f x X o b", tipo);
+
+    /* bool e int (doc 2.4): entra onde o inteiro entra, e no 'f' */
+    int eh_int = v->t == V_INT || v->t == V_BOOL || EH_BIGINT(*v);
+    /* tipo vazio: inteiro sai como 'd'; flo como o texto dele; o resto como
+     * texto. `numero` decide o alinhamento padrao e o `0` depois do sinal. */
+    char apres = tipo;
+    if (!apres && (v->t == V_INT || EH_BIGINT(*v))) apres = 'd';
+    int numero = (apres && apres != 's') || (!apres && v->t == V_FLOAT);
 
     char num[128];
     const char *txt = NULL;
     int ntxt = 0;
     TXTBUF_AUTO t = {0};
+    char *grande = NULL;   /* digitos do inteiro grande (mpz_get_str) */
 
-    if (tipo == 'f') {
-        double d = (v->t == V_INT) ? (double)v->as.i : (v->t == V_FLOAT) ? v->as.d : 0;
-        if (v->t != V_INT && v->t != V_FLOAT) { snprintf(vm->erro, sizeof(vm->erro), "format: 'f' espera numero"); return -1; }
-        if (prec > PS_STR_MAX) {
-            snprintf(vm->erro, sizeof(vm->erro), "memória insuficiente: format() pediu precisao %d", prec);
-            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
-            return -1;
-        }
+    if (apres == 'f') {
+        if (!eh_int && v->t != V_FLOAT)
+            MERRO(vm, "TypeError", "format: 'f' espera numero, recebeu %s", nome_do_tipo_valor(*v));
+        double d = v->t == V_FLOAT ? v->as.d
+                 : v->t == V_BOOL ? (v->as.b ? 1.0 : 0.0) : int_como_double(*v);
         ntxt = snprintf(num, sizeof(num), "%.*f", prec < 0 ? 6 : prec, d);
         txt = num;
         if (ntxt >= (int)sizeof(num)) {
@@ -6607,56 +6602,89 @@ static int formata_um(VM *vm, SBuf *saida, const Value *v, const char *spec, int
              * da str, diferente a cada execucao. Formata de novo num buffer
              * do tamanho certo. */
             char *g = malloc((size_t)ntxt + 1);
-            if (!g) { snprintf(vm->erro, sizeof(vm->erro), "sem memoria"); snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError"); return -1; }
+            if (!g) MERRO(vm, "MemoryError", "sem memoria");
             snprintf(g, (size_t)ntxt + 1, "%.*f", prec < 0 ? 6 : prec, d);
             int rc_g = txt_put(&t, g, ntxt);
             free(g);
-            if (rc_g != 0) { snprintf(vm->erro, sizeof(vm->erro), "sem memoria"); snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError"); return -1; }
+            if (rc_g != 0) MERRO(vm, "MemoryError", "sem memoria");
             txt = t.b; ntxt = t.n;
         }
-    } else if (tipo == 'd' || tipo == 'x' || tipo == 'X' || tipo == 'o' || tipo == 'b') {
-        if (v->t != V_INT && v->t != V_BOOL) { snprintf(vm->erro, sizeof(vm->erro), "format: '%c' espera int", tipo); return -1; }
-        int64_t x = (v->t == V_BOOL) ? (v->as.b ? 1 : 0) : v->as.i;
-        if (tipo == 'd')      ntxt = snprintf(num, sizeof(num), "%lld", (long long)x);
-        else if (tipo == 'x') ntxt = snprintf(num, sizeof(num), "%llx", (unsigned long long)x);
-        else if (tipo == 'X') ntxt = snprintf(num, sizeof(num), "%llX", (unsigned long long)x);
-        else if (tipo == 'o') ntxt = snprintf(num, sizeof(num), "%llo", (unsigned long long)x);
-        else {
-            /* `b` não tem no printf */
+    } else if (apres == 'd' || apres == 'x' || apres == 'X' || apres == 'o' || apres == 'b') {
+        if (!eh_int)
+            MERRO(vm, "TypeError", "format: '%c' espera int, recebeu %s", apres, nome_do_tipo_valor(*v));
+        if (prec >= 0)
+            MERRO(vm, "ValueError", "format: precisao nao vale pra inteiro ('%c'); "
+                  "pra casas decimais use o tipo 'f' ({:.2f})", apres);
+        int base = apres == 'd' ? 10 : apres == 'o' ? 8 : apres == 'b' ? 2 : 16;
+        if (EH_BIGINT(*v)) {
+            /* base negativa no GMP = letras maiusculas */
+            grande = mpz_get_str(NULL, apres == 'X' ? -16 : base, COMO_BIGINT(*v)->v);
+            if (!grande) MERRO(vm, "MemoryError", "sem memoria");
+            txt = grande; ntxt = (int)strlen(grande);
+        } else {
+            /* o sinal e o valor, como o hex()/oct()/bin(): -255 em 'x' e
+             * `-ff`, nunca o complemento de dois */
+            int64_t x = v->t == V_BOOL ? (v->as.b ? 1 : 0) : v->as.i;
+            uint64_t u = x < 0 ? (uint64_t)(-(x + 1)) + 1 : (uint64_t)x;   /* sem estourar em INT64_MIN */
+            const char *dig = apres == 'X' ? "0123456789ABCDEF" : "0123456789abcdef";
             char tmp[70];
-            int k = 0;
-            uint64_t u = (uint64_t)(x < 0 ? -x : x);
+            int k = 0, o = 0;
             if (!u) tmp[k++] = '0';
-            while (u) { tmp[k++] = (char)('0' + (u & 1)); u >>= 1; }
-            int o = 0;
+            while (u) { tmp[k++] = dig[u % (unsigned)base]; u /= (unsigned)base; }
             if (x < 0) num[o++] = '-';
             while (k) num[o++] = tmp[--k];
             num[o] = '\0';
-            ntxt = o;
+            txt = num; ntxt = o;
         }
-        txt = num;
-    } else if (tipo == 's' || tipo == 0) {
-        if (valor_para_texto(&t, v, 0) != 0) { return -1; }
+    } else {
+        /* 's', ou tipo vazio com valor que nao e inteiro */
+        if (valor_para_texto(&t, v, 0) != 0) MERRO(vm, "MemoryError", "sem memoria");
         txt = t.b ? t.b : "";
         ntxt = t.n;
-        if (prec >= 0 && prec < ntxt) ntxt = prec;
-    } else {
-        snprintf(vm->erro, sizeof(vm->erro), "format: tipo '%c' nao suportado", tipo);
-        return -1;
+        if (prec >= 0) {
+            if (numero)
+                MERRO(vm, "ValueError", "format: precisao num flo pede o tipo 'f' ({:.2f})");
+            /* a precisao conta CARACTERE: cortar no byte partia o `漢` no
+             * meio e deixava UTF-8 invalido dentro da str */
+            int k = 0;
+            for (int c = 0; k < ntxt && c < prec; c++) {
+                k++;
+                while (k < ntxt && ((unsigned char)txt[k] & 0xC0) == 0x80) k++;
+            }
+            ntxt = k;
+        }
     }
 
-    /* sem align explícito: número alinha à direita, o resto à esquerda */
-    if (!align) align = (tipo && tipo != 's') ? '>' : '<';
-    int atual = utf8_conta(txt, ntxt);
+    /* o sinal fica de fora do corpo: o `0` sem alinhamento escrito entra
+     * entre os dois */
+    int nsinal = numero && ntxt > 0 && txt[0] == '-';
+    const char *corpo = txt + nsinal;
+    int ncorpo = ntxt - nsinal;
+    int depois_do_sinal = 0;
+    if (zero) {
+        if (!tem_preenche) { preenche[0] = '0'; npreenche = 1; }
+        if (!align) {
+            if (numero) depois_do_sinal = 1;
+            else align = '>';
+        }
+    }
+    /* sem align escrito: número alinha à direita, o resto à esquerda */
+    if (!align) align = numero ? '>' : '<';
+    int atual = nsinal + utf8_conta(corpo, ncorpo);
     int falta = largura > atual ? largura - atual : 0;
-    int esq = align == '>' ? falta : align == '^' ? falta / 2 : 0;
-    int dir = falta - esq;
+    int esq = depois_do_sinal ? 0 : align == '>' ? falta : align == '^' ? falta / 2 : 0;
+    int meio = depois_do_sinal ? falta : 0;
+    int dir = falta - esq - meio;
 
     int rc = 0;
-    for (int k = 0; k < esq && !rc; k++) rc = sb_bytes(saida, &preenche, 1);
-    if (!rc) rc = sb_bytes(saida, txt, ntxt);
-    for (int k = 0; k < dir && !rc; k++) rc = sb_bytes(saida, &preenche, 1);
-    return rc;
+    for (int k = 0; k < esq && !rc; k++) rc = sb_bytes(saida, preenche, npreenche);
+    if (!rc && nsinal) rc = sb_bytes(saida, "-", 1);
+    for (int k = 0; k < meio && !rc; k++) rc = sb_bytes(saida, preenche, npreenche);
+    if (!rc) rc = sb_bytes(saida, corpo, ncorpo);
+    for (int k = 0; k < dir && !rc; k++) rc = sb_bytes(saida, preenche, npreenche);
+    free(grande);
+    if (rc) MERRO(vm, "MemoryError", "sem memoria");
+    return 0;
 }
 
 /* `nomes` alinha com os últimos `nkw` de `args` (o CALL_KW já reordenou),
@@ -6772,20 +6800,16 @@ static int met_isidentifier(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n != 0) return erro_aridade(vm, "isidentifier", 0, 0, n);
     PSString *s = COMO_STRING(alvo);
     if (s->len == 0) { *out = MK_BOOL(0); return 0; }
-    int ok = 1, primeiro = 1;
-    for (int i = 0; i < s->len && ok; ) {
-        uint32_t cp;
-        int k = utf8_le(s->chars, s->len, i, &cp);
-        if (!k) break;
-        /* Letra ou `_`. O atalho "cp >= 128 vale" fazia `"²³".isidentifier()`
-         * e `"٣٤".isidentifier()` responderem True: sobrescrito e dígito
-         * árabe não são identificador em lugar nenhum. Depois do primeiro,
-         * dígito DECIMAL entra (`a²` continua inválido, `a٣` vale — a
-         * categoria Nd do Unicode). */
-        int letra = cp_eh_letra(cp) || cp == '_';
-        ok = primeiro ? letra : (letra || cp_eh_decimal(cp));
-        primeiro = 0;
-        i += k;
+    /* A regra do nome da PRÓPRIA linguagem (doc 1.4, o lexer): letra ASCII ou
+     * `_`, e depois também dígito. Letra acentuada ou fora do ASCII não entra
+     * — `int ação = 1` é SyntaxError. Antes o método aceitava as letras que a
+     * tabela de caixa conhecia ("ação" dava True, "漢字" False): nenhuma das
+     * duas réguas. */
+    int ok = 1;
+    for (int i = 0; i < s->len && ok; i++) {
+        unsigned char c = (unsigned char)s->chars[i];
+        int letra = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+        ok = i == 0 ? letra : (letra || (c >= '0' && c <= '9'));
     }
     *out = MK_BOOL(ok);
     return 0;
@@ -6836,7 +6860,14 @@ static int met_translate(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (dict_get(COMO_DICT(args[0]), &ch, &destino) == 0) {
             /* Null na tabela REMOVE o caractere */
             if (destino.t == V_INT) {
-                if (sb_cp(&b, (uint32_t)destino.as.i) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
+                /* a faixa do `chr`: fora dela (ou substituto) nascia uma str
+                 * com UTF-8 inválido, que o `len` contava errado */
+                int64_t d = destino.as.i;
+                if (d < 0 || d > 0x10FFFF)
+                    MERRO(vm, "ValueError", "character mapping must be in range(0x110000)");
+                if (d >= 0xD800 && d <= 0xDFFF)
+                    MERRO(vm, "ValueError", "character mapping is a surrogate (0xd800..0xdfff), not a character");
+                if (sb_cp(&b, (uint32_t)d) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
             } else if (EH_STRING(destino)) {
                 PSString *d2 = COMO_STRING(destino);
                 if (sb_bytes(&b, d2->chars, d2->len) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
@@ -10495,12 +10526,13 @@ static int aceita_type(const Value *v)  { return v->t == V_TIPO; }
  * `type()` responde "PoolFile" nos dois. A tabela tem que dizer o mesmo, ou
  * `f is PoolFile` e `PoolFile f = open(...)` recusam metade dos arquivos. */
 static int aceita_pfile(const Value *v) { return EH_PFILE(*v) || EH_ARQUIVO(*v); }
-/* `char` é caractere VISÍVEL: string de uma posição que não é branco. */
+/* `char` é UM caractere, qualquer um — a regra da declaração (`char sp = " "`
+ * vale, doc 2). Antes `is char`, o parâmetro `char` e o campo recusavam o
+ * espaço e o TAB (olhando o primeiro BYTE, então o NBSP passava), e o `count`
+ * tinha uma terceira regra: três réguas pro mesmo tipo. */
 static int aceita_char(const Value *v)
 {
-    return EH_STRING(*v)
-        && utf8_conta(COMO_STRING(*v)->chars, COMO_STRING(*v)->len) == 1
-        && !cp_eh_branco((unsigned char)COMO_STRING(*v)->chars[0]);
+    return EH_STRING(*v) && utf8_conta(COMO_STRING(*v)->chars, COMO_STRING(*v)->len) == 1;
 }
 /* `Object`: qualquer objeto que não é str/list/dict/tup/bytes — instância de
  * classe, servidor, conexão, arquivo, função. `Object app = Jinker(...)`.
@@ -11009,13 +11041,8 @@ static int liga_args(VM *vm, const Proto *np, Value *dest, const Value *self, in
 
 static int count_casa(const Value *item, int64_t tipo, const Value *val, int tem_val)
 {
-    int bate;
-    if (tipo == TIPO_CHAR)
-        bate = EH_STRING(*item) && utf8_conta(COMO_STRING(*item)->chars, COMO_STRING(*item)->len) == 1
-            && !cp_eh_branco((unsigned char)COMO_STRING(*item)->chars[0]);
-    else
-        bate = valor_eh_tipo(item, tipo);
-    if (!bate) return 0;
+    /* `char` pela mesma régua do `is char` e da declaração (aceita_char) */
+    if (!valor_eh_tipo(item, tipo)) return 0;
     return tem_val ? val_iguais(item, val) : 1;
 }
 
@@ -29110,7 +29137,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * tipo separado (nenhum valor responde `char` ao `type()`). */
                 if (v.t == V_INT || v.t == V_BOOL) {
                     int64_t codigo = v.t == V_BOOL ? (v.as.b ? 1 : 0) : v.as.i;
-                    if (codigo < 0 || codigo > 0x10FFFF)
+                    /* a faixa do chr(): o substituto (U+D800–U+DFFF) não é
+                     * caractere e virava UTF-8 inválido dentro da str */
+                    if (codigo < 0 || codigo > 0x10FFFF || (codigo >= 0xD800 && codigo <= 0xDFFF))
                         ERRO_TF(vm, "ConversionError",
                                 "%lld nao e um caractere valido (declarado como 'char %s')",
                                 (long long)codigo, decl_nome);

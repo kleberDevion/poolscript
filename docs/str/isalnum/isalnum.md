@@ -16,4 +16,10 @@ post("a1".isalnum(), "a 1".isalnum())
 True False
 ```
 
+## Bordas
+
+- Cada caractere é letra ([`isalpha`](../isalpha/isalpha.md)) ou numérico
+  ([`isnumeric`](../isnumeric/isnumeric.md)), de qualquer escrita:
+  `"漢٣½".isalnum()` é True.
+
 [← índice](../str.md)

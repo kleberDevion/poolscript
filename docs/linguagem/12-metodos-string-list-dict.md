@@ -74,7 +74,15 @@ Os três de número **não** são sinônimos, e nenhum deles para no ASCII:
 |---|---|
 | `isdecimal()` | só dígito decimal, de qualquer escrita: `0-9`, `٣` (árabe), `३` (devanágari), `๓` (tailandês), `３` (largura plena) |
 | `isdigit()` | os decimais **mais** os sobrescritos/subscritos: `²`, `³`, `¹`, `⁷`, `₄` |
-| `isnumeric()` | os anteriores **mais** fração e numeral romano: `½`, `¾`, `Ⅷ` |
+| `isnumeric()` | os anteriores **mais** fração, numeral romano e numeral CJK: `½`, `¾`, `Ⅷ`, `一` |
+
+Caixa e classes de caractere seguem a tabela do Unicode inteira (UCD 15.1),
+de qualquer escrita: letra é a categoria L (`"漢字".isalpha()` é True),
+maiúscula e minúscula são as propriedades Uppercase e Lowercase, branco é a
+White_Space, e `upper`/`lower`/`title`/`capitalize`/`swapcase`/`casefold`
+usam a caixa completa (um caractere pode virar dois: `"ß".upper()` é `SS`,
+`"ﬁ".upper()` é `FI`), com o sigma final grego. Só o `isidentifier` segue a
+regra de nome da própria linguagem (ASCII, doc 1.4).
 
 ```ps
 post("²".isdigit(), "²".isdecimal())     # True False
@@ -100,7 +108,7 @@ caractere da classe.
 
 | Método | Faz |
 |---|---|
-| `replace(alvo, novo)` | troca todas as ocorrências. **`alvo` pode ser uma lista** de textos, todos trocados pelo mesmo `novo`: `"a-b_c".replace(["-","_"], " ")` → `"a b c"` |
+| `replace(alvo, novo, count)` | troca as ocorrências (todas, ou até `count`). **`alvo` pode ser uma lista** de textos, todos trocados pelo mesmo `novo` (`"a-b_c".replace(["-","_"], " ")` → `"a b c"`) ou, com `novo` lista do mesmo tamanho, em paralelo numa passada só (`"ab".replace(["a","b"], ["b","a"])` → `"ba"`) |
 | `removeprefix(pre)` / `removesuffix(suf)` | remove o prefixo / sufixo, se houver |
 | `maketrans(de, para)` / `translate(tab)` | tabela de tradução caractere-a-caractere e sua aplicação |
 
@@ -108,7 +116,7 @@ caractere da classe.
 
 | Método | Faz |
 |---|---|
-| `format(a, b)` | preenche `{}` e `{0}` no template — **posicional só**; não há como preencher `{nome}` por aqui |
+| `format(a, b)` | preenche `{}` e `{0}` no template — **posicional só**; não há como preencher `{nome}` por aqui. O formato de cada campo (`{:>8}`, `{:05d}`, `{:.2f}`, `{:x}`) está na página do [`format`](../str/format/format.md) |
 | `format_map(dict)` | preenche `{nome}`, pelas chaves do dict |
 | `match(padrao)` | a string **inteira** casa com a regex? (`bool`) — o mesmo que [`regex.match`](../regex/match/match.md); casamento parcial é `regex.search` |
 | `findall(padrao)` | lista de todas as ocorrências da regex |

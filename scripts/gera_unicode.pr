@@ -1,0 +1,330 @@
+# Gera vm/ps_unicode_tab.inc a partir do Unicode Character Database (UCD):
+# as tabelas que os métodos de texto consultam (caixa, classes de caractere).
+#
+# Uso: jinga scripts/gera_unicode.pr <pasta do UCD> <saida.inc>
+#
+# A pasta do UCD é a do pacote `unicode-data` (/usr/share/unicode, no Ubuntu)
+# ou o UCD.zip de https://www.unicode.org/Public/<versão>/ucd/ descompactado.
+# Usa UnicodeData.txt, SpecialCasing.txt, CaseFolding.txt, PropList.txt,
+# DerivedCoreProperties.txt e extracted/DerivedNumericType.txt.
+import os
+import sys
+
+int MAX_CP = 1114112
+
+# categoria geral: a posição na lista é o número gravado na tabela (os 5 bits
+# de baixo); a ordem casa com o enum de vm/ps_unicode.h
+list CATS = ["Cn", "Lu", "Ll", "Lt", "Lm", "Lo", "Mn", "Mc", "Me", "Nd", "Nl", "No",
+             "Pc", "Pd", "Ps", "Pe", "Pi", "Pf", "Po", "Sm", "Sc", "Sk", "So",
+             "Zs", "Zl", "Zp", "Cc", "Cf", "Cs", "Co"]
+
+# as marcas, acima da categoria
+int F_MINUSCULA = 32
+int F_MAIUSCULA = 64
+int F_CAIXA = 128
+int F_IGNORA_CAIXA = 256
+int F_BRANCO = 512
+int F_DECIMAL = 1024
+int F_DIGITO = 2048
+int F_NUMERICO = 4096
+
+int funct hexa(str h) {
+    int v = 0
+    for each c in h.strip() {
+        v = v * 16 + "0123456789ABCDEF".find(c.upper())
+    }
+    return v
+}
+
+# "0053 0073" -> [0x53, 0x73]
+list funct cps(str campo) {
+    list r = []
+    for each p in campo.strip().split() {
+        r.append(hexa(p))
+    }
+    return r
+}
+
+# as linhas de dado de um arquivo do UCD, sem comentário e sem linha vazia
+list funct linhas(str caminho) {
+    list r = []
+    for each l in os.readFile(caminho).splitlines() {
+        str s = l.split("#")[0].strip()
+        if s != "" {
+            r.append(s)
+        }
+    }
+    return r
+}
+
+# "0041..005A" ou "00AA" -> [inicio, fim]
+list funct faixa(str campo) {
+    list p = campo.strip().split("..")
+    if len(p) == 1 {
+        int v = hexa(p[0])
+        return [v, v]
+    }
+    return [hexa(p[0]), hexa(p[1])]
+}
+
+str funct hx(int v) {
+    return "0x" + hex(v)[2:].upper().zfill(4)
+}
+
+# as marcas de uma propriedade binária, lidas de um arquivo de faixas
+Null funct marca(list props, str caminho, str nome, int bit) {
+    for each l in linhas(caminho) {
+        list p = l.split(";")
+        if p[1].strip() == nome {
+            list f = faixa(p[0])
+            for each c in range(f[0], f[1] + 1) {
+                props[c] = props[c] | bit
+            }
+        }
+    }
+}
+
+if __name__ == "main" {
+    if len(sys.argv) != 3 {
+        post("uso: jinga scripts/gera_unicode.pr <pasta do UCD> <saida.inc>")
+        sys.exit(64)
+    }
+    str ucd = sys.argv[1]
+    str saida = sys.argv[2]
+    str versao = os.readFile(ucd + "/DerivedCoreProperties.txt").splitlines()[0]
+    versao = versao.replace(["# DerivedCoreProperties-", ".txt"], "").strip()
+
+    list props = [0] * MAX_CP
+    list maiu = [-1] * MAX_CP
+    list minu = [-1] * MAX_CP
+    list tit = [-1] * MAX_CP
+
+    # UnicodeData: categoria e caixa simples; "<..., First>" e "<..., Last>"
+    # marcam uma faixa inteira com a mesma categoria
+    int primeiro = -1
+    for each l in os.readFile(ucd + "/UnicodeData.txt").splitlines() {
+        if l == "" {
+            continue
+        }
+        list f = l.split(";")
+        int c = hexa(f[0])
+        int cat = CATS.index(f[2])
+        if f[1].endswith(", First>") {
+            primeiro = c
+            continue
+        }
+        if f[1].endswith(", Last>") {
+            for each x in range(primeiro, c + 1) {
+                props[x] = cat
+            }
+            continue
+        }
+        props[c] = cat
+        if f[12] != "" {
+            maiu[c] = hexa(f[12])
+        }
+        if f[13] != "" {
+            minu[c] = hexa(f[13])
+        }
+        # título vazio = o mesmo da maiúscula (UnicodeData, campo 14)
+        if f[14] != "" {
+            tit[c] = hexa(f[14])
+        } else {
+            tit[c] = maiu[c]
+        }
+    }
+
+    marca(props, ucd + "/DerivedCoreProperties.txt", "Lowercase", F_MINUSCULA)
+    marca(props, ucd + "/DerivedCoreProperties.txt", "Uppercase", F_MAIUSCULA)
+    marca(props, ucd + "/DerivedCoreProperties.txt", "Cased", F_CAIXA)
+    marca(props, ucd + "/DerivedCoreProperties.txt", "Case_Ignorable", F_IGNORA_CAIXA)
+    marca(props, ucd + "/PropList.txt", "White_Space", F_BRANCO)
+    marca(props, ucd + "/extracted/DerivedNumericType.txt", "Decimal", F_DECIMAL)
+    marca(props, ucd + "/extracted/DerivedNumericType.txt", "Digit", F_DIGITO)
+    marca(props, ucd + "/extracted/DerivedNumericType.txt", "Numeric", F_NUMERICO)
+
+    list out = []
+    out.append("/* GERADO por scripts/gera_unicode.pr a partir do Unicode Character Database")
+    out.append(" * " + versao + " — nao edite na mao: rode o gerador (JINGA-TUDO, secao 3.14). */")
+    out.append("#define UNI_VERSAO \"" + versao + "\"")
+    out.append("")
+
+    # 1. propriedades do Latin-1 direto (o caminho de quem escreve português)
+    out.append("/* propriedades de U+0000 a U+00FF, direto pelo codepoint */")
+    out.append("static const uint16_t UNI_PROPS_LATIN1[256] = {")
+    for each ini in range(0, 256, 16) {
+        list partes = []
+        for each c in range(ini, ini + 16) {
+            partes.append(str(props[c]))
+        }
+        out.append("    " + ", ".join(partes) + ",")
+    }
+    out.append("};")
+    out.append("")
+
+    # 2. propriedades por faixa: a faixa k vai do seu início até o início da
+    # seguinte (a última até U+10FFFF)
+    list inicios = [0]
+    list valores = [props[0]]
+    for each c in range(1, MAX_CP) {
+        if props[c] != props[c - 1] {
+            inicios.append(c)
+            valores.append(props[c])
+        }
+    }
+    out.append("/* propriedades por faixa: a faixa k vai de UNI_FAIXA_INICIO[k] ate o")
+    out.append(" * inicio da seguinte; categoria geral nos 5 bits de baixo, as marcas acima */")
+    out.append("static const uint32_t UNI_FAIXA_INICIO[" + str(len(inicios)) + "] = {")
+    for each ini in range(0, len(inicios), 8) {
+        list partes = []
+        for each k in range(ini, min(ini + 8, len(inicios))) {
+            partes.append(hx(inicios[k]))
+        }
+        out.append("    " + ", ".join(partes) + ",")
+    }
+    out.append("};")
+    out.append("static const uint16_t UNI_FAIXA_PROPS[" + str(len(valores)) + "] = {")
+    for each ini in range(0, len(valores), 12) {
+        list partes = []
+        for each k in range(ini, min(ini + 12, len(valores))) {
+            partes.append(str(valores[k]))
+        }
+        out.append("    " + ", ".join(partes) + ",")
+    }
+    out.append("};")
+    out.append("")
+
+    # 3. caixa simples, em faixas: cada codepoint com algum mapeamento tem o
+    # trio de deltas (maiúscula, minúscula, título); deltas iguais em
+    # codepoints seguidos viram uma faixa, e o par alternado (maiúscula no
+    # par, minúscula no ímpar: Āā Ăă...) vira uma faixa marcada UNI_ALTERNA
+    list mapeados = []
+    for each c in range(MAX_CP) {
+        if maiu[c] >= 0 or minu[c] >= 0 or tit[c] >= 0 {
+            mapeados.append(c)
+        }
+    }
+    list trios = []
+    for each c in mapeados {
+        int du = 0
+        int dl = 0
+        int dt = 0
+        if maiu[c] >= 0 {
+            du = maiu[c] - c
+        }
+        if minu[c] >= 0 {
+            dl = minu[c] - c
+        }
+        if tit[c] >= 0 {
+            dt = tit[c] - c
+        }
+        trios.append([du, dl, dt])
+    }
+    list faixas_caixa = []
+    int i = 0
+    while i < len(mapeados) {
+        int c0 = mapeados[i]
+        list t0 = trios[i]
+        # par alternado: maiúscula (0, +1, 0) seguida da minúscula (-1, 0, -1)
+        if i + 1 < len(mapeados) and mapeados[i + 1] == c0 + 1 and t0 == [0, 1, 0] and trios[i + 1] == [-1, 0, -1] {
+            int j = i + 2
+            while j + 1 < len(mapeados) and mapeados[j] == mapeados[j - 1] + 1 and mapeados[j + 1] == mapeados[j] + 1 and trios[j] == [0, 1, 0] and trios[j + 1] == [-1, 0, -1] {
+                j += 2
+            }
+            faixas_caixa.append([c0, mapeados[j - 1], "UNI_ALTERNA", "UNI_ALTERNA", "UNI_ALTERNA"])
+            i = j
+            continue
+        }
+        int j = i + 1
+        while j < len(mapeados) and mapeados[j] == mapeados[j - 1] + 1 and trios[j] == t0 {
+            j += 1
+        }
+        faixas_caixa.append([c0, mapeados[j - 1], str(t0[0]), str(t0[1]), str(t0[2])])
+        i = j
+    }
+    out.append("/* caixa simples: {primeiro, ultimo, delta da maiuscula, da minuscula, do")
+    out.append(" * titulo}; UNI_ALTERNA = pares alternados (maiuscula no par, a partir do")
+    out.append(" * primeiro) */")
+    out.append("static const UniCaixa UNI_CAIXA[" + str(len(faixas_caixa)) + "] = {")
+    for each f in faixas_caixa {
+        out.append("    { " + hx(f[0]) + ", " + hx(f[1]) + ", " + f[2] + ", " + f[3] + ", " + f[4] + " },")
+    }
+    out.append("};")
+    out.append("")
+
+    # 4. mapeamento completo sem condição (SpecialCasing): o que vira mais de
+    # um codepoint (ß -> SS, ﬁ -> FI, İ -> i + ponto). Os condicionais (sigma
+    # final, lituano, turco) ficam fora: o sigma final é regra no código, e a
+    # língua não entra
+    list especiais = []
+    for each l in linhas(ucd + "/SpecialCasing.txt") {
+        list p = l.split(";")
+        if len(p) == 5 and p[4].strip() == "" {
+            especiais.append([hexa(p[0]), cps(p[1]), cps(p[2]), cps(p[3])])
+        }
+    }
+    especiais.sort()
+    out.append("/* mapeamento completo sem condicao (SpecialCasing): {codepoint, minuscula,")
+    out.append(" * titulo, maiuscula}, cada um com ate 3 codepoints */")
+    out.append("static const UniEspecial UNI_ESPECIAL[" + str(len(especiais)) + "] = {")
+    for each e in especiais {
+        list ms = []
+        for each k in [1, 2, 3] {
+            list m = e[k]
+            list hs = []
+            for each v in m {
+                hs.append(hx(v))
+            }
+            while len(hs) < 3 {
+                hs.append("0")
+            }
+            ms.append("{ " + ", ".join(hs) + " }")
+        }
+        out.append("    { " + hx(e[0]) + ", " + ", ".join(ms) + " },")
+    }
+    out.append("};")
+    out.append("")
+
+    # 5. casefold (CaseFolding, status C e F): só onde a dobra difere da
+    # minúscula simples
+    dict dobras = {}
+    for each l in linhas(ucd + "/CaseFolding.txt") {
+        list p = l.split(";")
+        str st = p[1].strip()
+        int c = hexa(p[0])
+        if st == "F" or (st == "C" and not (c in dobras)) {
+            dobras[c] = cps(p[2])
+        }
+    }
+    list difs = []
+    for each c in range(MAX_CP) {
+        list d = [c]
+        if c in dobras {
+            d = dobras[c]
+        }
+        int ms = c
+        if minu[c] >= 0 {
+            ms = minu[c]
+        }
+        if d != [ms] {
+            difs.append([c, d])
+        }
+    }
+    out.append("/* casefold onde difere da minuscula simples (CaseFolding C + F): {codepoint,")
+    out.append(" * dobra de ate 3 codepoints} */")
+    out.append("static const UniDobra UNI_DOBRA[" + str(len(difs)) + "] = {")
+    for each e in difs {
+        list hs = []
+        for each v in e[1] {
+            hs.append(hx(v))
+        }
+        while len(hs) < 3 {
+            hs.append("0")
+        }
+        out.append("    { " + hx(e[0]) + ", { " + ", ".join(hs) + " } },")
+    }
+    out.append("};")
+
+    os.writeFile(saida, "\n".join(out) + "\n")
+    post("UCD", versao + ":", len(inicios), "faixas de propriedade,", len(faixas_caixa), "de caixa,", len(especiais), "especiais,", len(difs), "dobras")
+}

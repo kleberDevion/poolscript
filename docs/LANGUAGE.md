@@ -1199,7 +1199,9 @@ Mesmos nomes que o builtin `type(x)` — os dois já discordaram (`json` contra
 Tudo trabalha em **caractere**, não em byte: `"ção".len()` é 3, e
 `"ção"[0]` não parte o UTF-8 no meio.
 
-**Caixa** — cobre acento (`ç à é õ`), não só ASCII.
+**Caixa** — pela tabela do Unicode, de qualquer escrita (`ç`, `ș`, `ạ`, `Ω`,
+`ա`); um caractere pode virar dois (`"ß".upper()` é `"SS"`, `"ﬁ".upper()` é
+`"FI"`). As classes do `is…` também: `"漢".isalpha()` é True.
 
 | | |
 |---|---|
@@ -1246,7 +1248,7 @@ campo, inclusive vazio. São regras diferentes.
 | `.split(sep?, max?)` `.rsplit(...)` | lista |
 | `.splitlines()` | `\r\n` conta como uma quebra só |
 | `.join(lista)` | o alvo é o separador: `"-".join(["a","b"])` |
-| `.replace(velho, novo?, quantas?)` | alvo vazio casa em toda fronteira: `"a".replace("","x")` é `"xax"` |
+| `.replace(velho, novo, quantas?)` | alvo vazio casa em toda fronteira: `"a".replace("","x")` é `"xax"`; `velho` em lista troca todos por `novo`, ou em paralelo com `novo` lista: `"ab".replace(["a","b"], ["b","a"])` é `"ba"` |
 
 **Partir e cortar borda** — `partition` devolve sempre 3 partes.
 

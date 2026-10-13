@@ -16,4 +16,11 @@ post("abc".islower())
 True
 ```
 
+## Bordas
+
+- Pela propriedade Lowercase do Unicode, a regra espelhada do
+  [`isupper`](../isupper/isupper.md): `"abc 1".islower()` é True,
+  `"漢".islower()` é False, e `"ª".islower()` é True (o ordinal tem caixa
+  minúscula).
+
 [← índice](../str.md)

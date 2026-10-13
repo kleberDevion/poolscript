@@ -556,6 +556,15 @@ post(int(2) count in [2, 2, 3, 2])   # 3   (quantas vezes o valor 2 aparece)
 post(int in [2, 2, 3, 2] count)      # 4   (quantos elementos são int)
 ```
 
+`char` conta os elementos que são **um caractere**, qualquer um — o espaço e o
+TAB inclusive, a mesma regra da declaração `char sp = " "`. Numa `str`, cada
+caractere é um elemento:
+
+```ps
+post(char in "a b\tc" count)                  # 5
+post(char in ["a", " ", "ab", " "] count)  # 3   ("ab" tem dois)
+```
+
 ---
 
 ## 3.11. Operadores pós-fixados

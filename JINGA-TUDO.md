@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.14`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.15`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -1144,7 +1144,7 @@ O motor da Jinga (o `--version` o chama de **PSVM**) é um programa em C que vir
 FONTES := vm/ps_lexer.c vm/ps_ast.c vm/ps_parser.c vm/ps_compiler.c vm/ps_pilha.c
           vm/ps_hash.c vm/ps_regex.c vm/ps_mail.c vm/ps_http.c vm/ps_qr.c vm/ps_xlsx.c
           vm/ps_db.c vm/ps_mongo.c vm/ps_jinker.c vm/ps_pkg.c vm/ps_debug.c
-          vm/ps_retornos.c vm/ps_so.c vm/jinga_vm.c vm/main.c
+          vm/ps_retornos.c vm/ps_so.c vm/ps_unicode.c vm/jinga_vm.c vm/main.c
 ```
 
 Números do binário medidos neste laptop em 2026-09-28:
@@ -1655,6 +1655,26 @@ Nomes procurados, na ordem:
 | xlsx | `ps_xlsx.c/.h` | ZIP escrito à mão sobre a zlib mais XML com expat |
 | pacotes | `ps_pkg.c/.h` | `jpkg`: `~/.jinga` (ou `$JINGA_HOME`, ou `$POOLSCRIPT_HOME`) com `commands/`, `libs/` e `bin/` (shims; no Windows, `.cmd` e PATH por `setx`); `installed.json` é reescrito a partir do disco; `config.json` guarda o `registry_url`; download por HTTPS com sha256 opcional. Uma `~/.poolscript` antiga é movida para `~/.jinga` com aviso |
 | inteiro grande | `ps_gmp_min.h` | a interface `mpz` da GMP declarada à mão (símbolos `__gmpz_*`), ligada a `libgmp.so.10` no Linux e a `-lgmp` do Homebrew no macOS |
+| Unicode | `ps_unicode.c/.h`, `ps_unicode_tab.inc` | caixa e classes de caractere dos métodos de texto (`upper`, `lower`, `title`, `capitalize`, `swapcase`, `casefold`, `isalpha`, `isdigit`, `isdecimal`, `isnumeric`, `isalnum`, `isspace`, `isprintable`, `isupper`, `islower`, `istitle`, o branco do `split`/`strip`) pela tabela do Unicode inteira. Nome no código não passa por aqui (a regra do lexer, doc 1.4) |
+
+**As tabelas do Unicode.** O `vm/ps_unicode_tab.inc` é GERADO por
+`scripts/gera_unicode.pr` a partir dos arquivos oficiais do Unicode
+(UnicodeData, SpecialCasing, CaseFolding, PropList, DerivedCoreProperties e
+`extracted/DerivedNumericType`). Hoje: UCD 15.1.0, com 4.228 faixas de
+propriedade, 328 faixas de caixa, 103 mapeamentos especiais e 298 dobras.
+Pra trocar de versão do Unicode:
+
+```bash
+apt-get install unicode-data            # /usr/share/unicode (ou o UCD.zip de unicode.org, descompactado)
+jinga scripts/gera_unicode.pr /usr/share/unicode vm/ps_unicode_tab.inc
+make pool
+```
+
+Conferido em 2026-10-13 contra o Python 3.12 da VPS, caractere por
+caractere (os 1.112.064 que não são substitutos): as seis caixas batem em
+todos; nos testes, 637 diferenças são os caracteres novos do 15.1 (o Python
+3.12 é 15.0) e 4 são U+001C a U+001F, que o Python chama de branco e a
+propriedade White_Space do Unicode não.
 
 ---
 
@@ -2157,8 +2177,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.14** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.14 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.15** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.15 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2779,7 +2799,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.14"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.15"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2859,7 +2879,7 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-08 (madrugada)
 
-- Versão da linguagem **17.0.14** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.14 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.15** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.15 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: `679671d` (17.0.14, Plano 6 lote 6d), igual a `origin/main` quando subiu. No `2a668b9` (17.0.11) entrou, por engano meu (`git add -A`), o seu rename `examples/action.pr` → `examples/funct.pr` que estava na árvore (100% igual); desde então o commit leva só a lista de arquivos do lote. Fora do controle de versão ficam só arquivos seus (`examples/s.pr`, `examples/ge.pr`), que nunca entram em commit.
 - **Ordem decidida por você em 2026-10-08**: primeiro as correções (tudo o que está em andamento: os lotes 6 a 8 do Plano 6), depois o código de máquina com tabela de instruções (Plano 2), depois a volta às coberturas da linguagem; as features vêm depois das correções.
