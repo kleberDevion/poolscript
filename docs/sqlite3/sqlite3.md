@@ -39,14 +39,15 @@ O que `connect()` devolve.
 > **Precisa de `commit()`** depois de INSERT/UPDATE/DELETE, senão a mudança não
 > persiste no arquivo. SELECT não precisa.
 
-### `with` — commit e close automáticos
+### `using` — commit e close automáticos
 
-Dentro de um `with`, ao sair a conexão faz **commit + close** sozinha:
+Dentro de um `using`, ao sair do bloco a conexão faz **commit + close** sozinha:
 
 ```
-with sqlite3.connect("app.db") as conn:
+using sqlite3.connect("app.db") as conn {
     conn.execute("INSERT INTO users (nome) VALUES (?)", ("Ana",))
-# aqui já commitou e fechou
+}
+# aqui já commitou e fechou: conn.execute(...) dá "Cannot operate on a closed database."
 ```
 
 ---

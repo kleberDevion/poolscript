@@ -54,7 +54,7 @@ syn match  psDecoratorAt "@" contained
 
 " ── fluxo ───────────────────────────────────────────────────────────────────
 syn keyword psControl  if elif else while for each in is match case try catch
-      \ finally raise return yield break continue with using await async
+      \ finally raise return yield break continue using await async
       \ import from as global count to of pass base
 syn keyword psLogical  and or not Not
 syn keyword psVerb     PUSH GET POST PUT DELETE JSON

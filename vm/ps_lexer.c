@@ -29,7 +29,7 @@ static const char *KEYWORDS[] = {
     "if", "else", "elif", "while", "for", "each", "in", "is",
     "and", "or", "not", "Not",
     "funct", "return", "continue", "break", "pass", "model", "enum", "async", "await",
-    "try", "catch", "as", "with", "of", "using",
+    "try", "catch", "as", "of", "using",
     "import", "from", "PUSH", "GET",
     /* `long`: inteiro de qualquer tamanho. `int` promete caber em 64 bits e
      * por isso recusa bignum; `long` nao promete, e aceita os dois. */
