@@ -59,7 +59,8 @@ const Caso CASOS_CRASH[] = {
 { "regex: quantificador {n} acima de 9 digitos e erro, nao estouro calado",
   "import regex\ntry {\n    post(regex.match(\"a{4294967295}\", \"\"))\n} catch (e) {\n    post(\"erro:\", e)\n}\n"
   "try {\n    regex.compile(\"a{3,4294967297}\")\n} catch (e) {\n    post(\"erro:\", e)\n}\npost(regex.match(\"a{2,3}\", \"aaa\"), regex.match(\"a{2}\", \"a\"))\n",
-  "erro: the repetition number is too large at position 2 (linha 3)\nerro: the repetition number is too large at position 2 (linha 8)\nTrue False", NULL, 0 },
+  /* sem posição, como no `re` (lá é OverflowError, que não tem posição) */
+  "erro: the repetition number is too large (linha 3)\nerro: the repetition number is too large (linha 8)\nTrue False", NULL, 0 },
 /* ── sonda 2, parser e compilador: recursao e tetos (lote 3) ──────────────── */
 { "return dentro de finally nao recompila o finally sem fim (era segfault)",
   "Null funct f() {\n    try {\n        post(\"corpo\")\n    } finally {\n        return\n    }\n}\nf()\npost(\"depois\")\n", "corpo\ndepois", NULL, 0 },

@@ -3737,7 +3737,11 @@ static int fut_resolve(VM *vm, PSFuturo *fu);   /* async: resolve o future (def.
  * `["a\tb"]` imprimia com uma tabulação de verdade no meio — o certo é
  * `['a\tb']`. Texto de topo (`post("a\tb")`) continua cru.
  *
- * UTF-8 passa inteiro: só ASCII de controle (< 0x20 e 0x7f) vira escape.
+ * Fora do ASCII, a regra do `repr` do Python: o caractere imprimível passa
+ * inteiro (`'ação'`), e o que não é imprimível (a régua do `isprintable`: as
+ * categorias C* e Z*, fora o espaço) vira `\xNN`, `\uNNNN` ou `\UNNNNNNNN`.
+ * Antes todo UTF-8 passava cru: o espaço sem quebra e o U+3000 pareciam
+ * espaço comum, e o U+0085 nem aparecia (`['']`, com um caractere dentro).
  * Devolve buffer malloc'd (NUL-terminado) ou NULL sem memória. */
 static char *repr_str_dup(const char *s, int len)
 {
@@ -3747,13 +3751,35 @@ static char *repr_str_dup(const char *s, int len)
         else if (s[i] == '"') tem_duplas = 1;
     }
     char aspa = (tem_simples && !tem_duplas) ? '"' : '\'';
-    /* pior caso: todo byte vira \xNN (4) + as duas aspas + NUL */
+    /* pior caso: todo byte vira \xNN (4) — um caractere de 2, 3 ou 4 bytes
+     * vira no máximo 4, 6 ou 10 — mais as duas aspas e o NUL */
     char *out = malloc((size_t)len * 4 + 3);
     if (!out) return NULL;
     int n = 0;
     out[n++] = aspa;
     for (int i = 0; i < len; i++) {
         unsigned char c = (unsigned char)s[i];
+        if (c >= 0x80) {
+            /* o caractere inteiro; byte solto (UTF-8 quebrado) sai como \xNN */
+            uint32_t cp = 0;
+            int u = 0;
+            if ((c & 0xE0) == 0xC0) { cp = c & 0x1F; u = 2; }
+            else if ((c & 0xF0) == 0xE0) { cp = c & 0x0F; u = 3; }
+            else if ((c & 0xF8) == 0xF0) { cp = c & 0x07; u = 4; }
+            int ok = u > 0 && i + u <= len;
+            for (int k = 1; ok && k < u; k++) {
+                unsigned char d = (unsigned char)s[i + k];
+                if ((d & 0xC0) != 0x80) ok = 0;
+                else cp = (cp << 6) | (d & 0x3F);
+            }
+            if (!ok) { n += sprintf(out + n, "\\x%02x", c); continue; }
+            if (ps_uni_eh_imprimivel(cp)) { memcpy(out + n, s + i, (size_t)u); n += u; }
+            else if (cp <= 0xFF)   n += sprintf(out + n, "\\x%02x", (unsigned)cp);
+            else if (cp <= 0xFFFF) n += sprintf(out + n, "\\u%04x", (unsigned)cp);
+            else                   n += sprintf(out + n, "\\U%08x", (unsigned)cp);
+            i += u - 1;
+            continue;
+        }
         if (c == (unsigned char)aspa || c == '\\') { out[n++] = '\\'; out[n++] = (char)c; }
         else if (c == '\n') { out[n++] = '\\'; out[n++] = 'n'; }
         else if (c == '\t') { out[n++] = '\\'; out[n++] = 't'; }
@@ -10465,7 +10491,17 @@ static int json_escreve(VM *vm, SBuf *b, const Value *v, int prof, int compacto)
         case V_NULL: case V_UNSET: return sb_bytes(b, "null", 4);
         case V_BOOL: return v->as.b ? sb_bytes(b, "true", 4) : sb_bytes(b, "false", 5);
         case V_INT:  return sb_bytes(b, tmp, snprintf(tmp, sizeof(tmp), "%lld", (long long)v->as.i));
-        case V_FLOAT: return sb_bytes(b, tmp, float_para_texto(tmp, sizeof(tmp), v->as.d));
+        case V_FLOAT:
+            /* o JSON não tem nan nem infinito: escrever `nan` dava um texto
+             * que o próprio `json.parse` recusa (decisão 9 do Plano 6: erro) */
+            if (isnan(v->as.d) || isinf(v->as.d)) {
+                snprintf(vm->erro, sizeof(vm->erro),
+                         "Out of range float values are not JSON compliant: %s",
+                         isnan(v->as.d) ? "nan" : (v->as.d < 0 ? "-inf" : "inf"));
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ValueError");
+                return -1;
+            }
+            return sb_bytes(b, tmp, float_para_texto(tmp, sizeof(tmp), v->as.d));
         case V_OBJ: break;
         default:
             snprintf(vm->erro, sizeof(vm->erro),
@@ -10504,6 +10540,10 @@ static int json_escreve(VM *vm, SBuf *b, const Value *v, int prof, int compacto)
                  * serializador ja escreve um bool em posicao de VALOR. */
                 if (json_texto(b, k.as.b ? "true" : "false", k.as.b ? 4 : 5) != 0)
                     return -1;
+            } else if (k.t == V_NULL) {
+                /* chave Null sai `"null"`, como o Null em posição de valor
+                 * (antes saía "Null", o texto da linguagem) */
+                if (json_texto(b, "null", 4) != 0) return -1;
             } else {
                 TXTBUF_AUTO t = {0};
                 if (valor_para_texto(&t, &k, 0) != 0) { return -1; }
@@ -11875,10 +11915,10 @@ static int rx_findall(VM *vm, PSRegex *r, const char *s, int len, Value *out)
     if (!l) { BERRO(vm, "MemoryError", "sem memoria"); }
     if (fixa_raiz(vm, MK_OBJ(l)) != 0) { BERRO(vm, "RuntimeError", "estouro da pilha"); }
     int ng = ps_regex_ngrupos(r);
-    int de = 0;
+    int de = 0, proibido = -1;
     for (;;) {
         RxCaptura cap;
-        int achou = ps_regex_busca(r, s, len, de, &cap);
+        int achou = ps_regex_busca_vazio(r, s, len, de, proibido, &cap);
         if (achou < 0) { vm->sp--; BERRO(vm, "RuntimeError", "%s", achou == -3 ? MSG_RX_FUNDO : MSG_RX_PASSOS); }
         if (!achou) break;
         Value item;
@@ -11908,9 +11948,12 @@ static int rx_findall(VM *vm, PSRegex *r, const char *s, int len, Value *out)
         }
         if (l->len >= l->cap && cresce_lista(vm, l) != 0) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
         l->itens[l->len++] = item;
-        /* casamento vazio não pode travar o laço: anda um CARACTERE (um byte
-         * partia o UTF-8: `findall("x*", "ção")` dava 6 itens, não 4) */
-        de = (cap.fim[0] > cap.inicio[0]) ? cap.fim[0] : ps_regex_proximo(s, len, cap.fim[0]);
+        /* casamento vazio não trava o laço: a busca seguinte recomeça no
+         * mesmo ponto, mas sem aceitar outro vazio lá (o `re` desde o 3.7:
+         * `findall("a*?", "aaa")` dá ['', 'a', '', 'a', '', 'a', '']). A
+         * busca anda por CARACTERE (um byte partia o UTF-8). */
+        de = cap.fim[0];
+        proibido = (cap.fim[0] == cap.inicio[0]) ? de : -1;
         if (de > len) break;
     }
     vm->sp--;
@@ -11918,49 +11961,60 @@ static int rx_findall(VM *vm, PSRegex *r, const char *s, int len, Value *out)
     return 0;
 }
 
-/* `\1`..`\9` na substituição viram o grupo correspondente. */
-/* Expande o replacement do sub(). O texto de troca é
- * uma mini-linguagem: `\1`, `\g<1>`, `\g<nome>` e os escapes de
- * caractere (`\n`, `\t`, `\\`). Antes só `\1`-`\9` e `\\` eram
- * entendidos: `r"\n"` saía como a barra mais o 'n' literal e `\g<1>` ia cru
- * pro resultado. */
+/* O texto de troca do sub(), pela regra do `parse_template` do `re`:
+ *   `\g<nome>` `\g<N>`  o grupo pelo nome ou pelo número (`\g<0>` é o casamento)
+ *   `\N` `\NN`          o grupo N, com os dois dígitos que houver: `\20` é o
+ *                       grupo 20, não o 2 seguido de "0" (use `\g<2>0`)
+ *   `\0`..`\077`, `\ooo` octal: o caractere. `\0` NÃO é o casamento inteiro
+ *                       (era, aqui; no `re` é o caractere 0)
+ *   `\a \b \f \n \r \t \v \\`  o caractere
+ *   barra e letra ASCII sem sentido é erro (`\q`); barra e outra coisa fica
+ *   como está (`\&`).
+ * Com `cap == NULL` só confere: o `re` confere o texto de troca ANTES de
+ * procurar, e o erro sai mesmo sem casamento. Devolve -1 sem memória, -2 com
+ * a frase em `erro` (ValueError) e -3 com nome de grupo que não existe (o `re`
+ * dá IndexError). As posições contam caractere do texto de troca. */
 static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s,
                       const RxCaptura *cap, const PSRegex *r, char *erro, int erro_cap)
 {
+    int ngrupos = ps_regex_ngrupos(r);
     for (int i = 0; i < rlen; i++) {
-        if (rep[i] != '\\' || i + 1 >= rlen) {
-            if (sb_bytes(b, rep + i, 1) != 0) return -1;
+        if (rep[i] != '\\') {
+            if (cap && sb_bytes(b, rep + i, 1) != 0) return -1;
             continue;
         }
-        char e = rep[i + 1];
-        int g = -1;
+        if (i + 1 >= rlen) {
+            snprintf(erro, (size_t)erro_cap, "bad escape (end of pattern) at position %d",
+                     (int)utf8_conta(rep, i));
+            return -2;
+        }
+        unsigned char e = (unsigned char)rep[i + 1];
+        int g;
         int p_ref = i + 1;   /* posicao acusada no erro: o digito de `\5`, ou o
                               * inicio do nome em `\g<...>` (ajustado abaixo) */
-        if (e >= '0' && e <= '9') {
-            /* `\0`..`\9` sao referencia de GRUPO — `\0` e o casamento inteiro,
-             * e por isso nunca chega ao escape de caractere la embaixo.
-             * `\12` e o grupo 12 quando ele existe (ate 2 digitos). */
-            g = e - '0';
-            i++;
-            if (i + 1 < rlen && rep[i + 1] >= '0' && rep[i + 1] <= '9'
-                    && g * 10 + (rep[i + 1] - '0') <= cap->ngrupos) {
-                g = g * 10 + (rep[i + 1] - '0');
-                i++;
-            }
-        } else if (e == 'g' && i + 2 < rlen && rep[i + 2] == '<') {
-            int j = i + 3;
-            while (j < rlen && rep[j] != '>') j++;
-            if (j >= rlen) {
-                /* a posição conta CARACTERE do modelo, não byte */
-                snprintf(erro, (size_t)erro_cap,
-                         "missing >, unterminated name at position %d", (int)utf8_conta(rep, i + 3));
+        if (e == 'g') {
+            int j = i + 2;
+            if (j >= rlen || rep[j] != '<') {
+                snprintf(erro, (size_t)erro_cap, "missing < at position %d", (int)utf8_conta(rep, j));
                 return -2;
             }
-            int nlen = j - (i + 3);
-            const char *nome = rep + i + 3;
-            if (nlen <= 0) {
-                snprintf(erro, (size_t)erro_cap,
-                         "missing group name at position %d", (int)utf8_conta(rep, i + 3));
+            int n0 = j + 1, k = n0;
+            while (k < rlen && rep[k] != '>') k++;
+            if (k >= rlen) {
+                /* a posição conta CARACTERE do modelo, não byte */
+                if (k == n0)
+                    snprintf(erro, (size_t)erro_cap, "missing group name at position %d",
+                             (int)utf8_conta(rep, rlen));
+                else
+                    snprintf(erro, (size_t)erro_cap, "missing >, unterminated name at position %d",
+                             (int)utf8_conta(rep, n0));
+                return -2;
+            }
+            int nlen = k - n0;
+            const char *nome = rep + n0;
+            if (nlen == 0) {
+                snprintf(erro, (size_t)erro_cap, "missing group name at position %d",
+                         (int)utf8_conta(rep, n0));
                 return -2;
             }
             int so_digito = 1;
@@ -11968,57 +12022,97 @@ static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s,
                 if (nome[t] < '0' || nome[t] > '9') { so_digito = 0; break; }
             if (so_digito) {
                 /* COM TETO: `\g<2147483648>` transbordava o `int`, virava
-                 * indice negativo e lia `cap->inicio[g]` fora do vetor
-                 * (falha de segmentacao). Um grupo tem no maximo 2 digitos. */
-                g = 0;
-                for (int t = 0; t < nlen && g <= RX_MAX_GRUPOS; t++) g = g * 10 + (nome[t] - '0');
-                if (nlen > 2 || g > RX_MAX_GRUPOS) {
-                    snprintf(erro, (size_t)erro_cap,
-                             "invalid group reference %.*s at position %d", nlen, nome,
-                             (int)utf8_conta(rep, i + 3));
+                 * indice negativo e lia fora do vetor (falha de segmentacao).
+                 * O teto é o MAXGROUPS do `re`. */
+                long long v = 0;
+                for (int t = 0; t < nlen && v < 1073741823LL; t++) v = v * 10 + (nome[t] - '0');
+                if (v >= 1073741823LL) {
+                    snprintf(erro, (size_t)erro_cap, "invalid group reference %.*s at position %d",
+                             nlen > 40 ? 40 : nlen, nome, (int)utf8_conta(rep, n0));
                     return -2;
                 }
+                g = (int)v;
             } else {
+                if (!ps_regex_nome_valido(nome, nlen)) {
+                    snprintf(erro, (size_t)erro_cap, "bad character in group name '%.*s' at position %d",
+                             nlen > 100 ? 100 : nlen, nome, (int)utf8_conta(rep, n0));
+                    return -2;
+                }
                 g = ps_regex_grupo_por_nome(r, nome, nlen);
                 if (g < 0) {
                     /* nome que nao existe: a mensagem nao leva posicao */
                     snprintf(erro, (size_t)erro_cap, "unknown group name '%.*s'",
-                             nlen, nome);
-                    return -2;
+                             nlen > 100 ? 100 : nlen, nome);
+                    return -3;
                 }
             }
-            p_ref = i + 3;   /* o erro aponta o nome, nao a barra */
-            i = j;
+            p_ref = n0;      /* o erro aponta o nome, nao a barra */
+            i = k;
+        } else if (e == '0') {
+            /* octal: `\0` e até mais dois dígitos octais (no máximo `\077`) */
+            int k = i + 2, v = 0;
+            for (int d = 0; d < 2 && k < rlen && rep[k] >= '0' && rep[k] <= '7'; d++, k++)
+                v = v * 8 + (rep[k] - '0');
+            char c = (char)v;
+            if (cap && sb_bytes(b, &c, 1) != 0) return -1;
+            i = k - 1;
+            continue;
+        } else if (e >= '1' && e <= '9') {
+            int k = i + 2;
+            g = e - '0';
+            if (k < rlen && rep[k] >= '0' && rep[k] <= '9') {
+                unsigned char d2 = (unsigned char)rep[k];
+                if (e <= '7' && d2 <= '7' && k + 1 < rlen && rep[k + 1] >= '0' && rep[k + 1] <= '7') {
+                    /* três dígitos octais: o caractere (`\351` é "é") */
+                    uint32_t v = (uint32_t)((e - '0') * 64 + (d2 - '0') * 8 + (rep[k + 1] - '0'));
+                    if (v > 0377) {
+                        snprintf(erro, (size_t)erro_cap,
+                                 "octal escape value \\%.3s outside of range 0-0o377 at position %d",
+                                 rep + i + 1, (int)utf8_conta(rep, i));
+                        return -2;
+                    }
+                    char u[4];
+                    int nu = utf8_escreve(u, v);
+                    if (cap && sb_bytes(b, u, nu) != 0) return -1;
+                    i = k + 1;
+                    continue;
+                }
+                g = g * 10 + (d2 - '0');
+                k++;
+            }
+            i = k - 1;
         } else {
-            /* escape de caractere: o mesmo conjunto do literal da linguagem.
-             * `\0` NAO esta aqui de proposito: e o grupo 0, tratado acima. */
             char c;
             switch (e) {
-                case 'n': c = '\n';  break;
-                case 't': c = '\t';  break;
-                case 'r': c = '\r';  break;
-                case 'f': c = '\f';  break;
-                case 'v': c = '\v';  break;
                 case 'a': c = '\a';  break;
                 case 'b': c = '\b';  break;
+                case 'f': c = '\f';  break;
+                case 'n': c = '\n';  break;
+                case 'r': c = '\r';  break;
+                case 't': c = '\t';  break;
+                case 'v': c = '\v';  break;
                 case '\\': c = '\\'; break;
                 default:
-                    /* desconhecido: mantém os dois bytes — `\%` não é escape,
-                     * então a barra fica */
-                    if (sb_bytes(b, rep + i, 2) != 0) return -1;
-                    i++;
+                    if ((e >= 'a' && e <= 'z') || (e >= 'A' && e <= 'Z')) {
+                        snprintf(erro, (size_t)erro_cap, "bad escape \\%c at position %d",
+                                 e, (int)utf8_conta(rep, i));
+                        return -2;
+                    }
+                    /* outro: a barra fica, e o caractere sai na volta seguinte */
+                    if (cap && sb_bytes(b, rep + i, 1) != 0) return -1;
                     continue;
             }
-            if (sb_bytes(b, &c, 1) != 0) return -1;
+            if (cap && sb_bytes(b, &c, 1) != 0) return -1;
             i++;
             continue;
         }
-        if (g > cap->ngrupos) {
+        if (g > ngrupos) {
             snprintf(erro, (size_t)erro_cap,
                      "invalid group reference %d at position %d", g, (int)utf8_conta(rep, p_ref));
             return -2;
         }
-        if (cap->inicio[g] >= 0
+        /* grupo que não participou vale "" (o `re` faz assim desde o 3.5) */
+        if (cap && cap->inicio[g] >= 0
                 && sb_bytes(b, s + cap->inicio[g], cap->fim[g] - cap->inicio[g]) != 0) return -1;
     }
     return 0;
@@ -12033,34 +12127,40 @@ static int rx_sub(VM *vm, PSRegex *r, const char *s, int len,
     SBUF_AUTO b = {0};
     int de = 0;
     int64_t feitos = 0;
-    while (de <= len) {
+    /* o texto de troca é conferido ANTES da busca, como no `re`: o erro nele
+     * sai mesmo quando nada casa */
+    {
+        char msg[200] = {0};
+        int rc = rx_expande(NULL, rep, rlen, s, NULL, r, msg, (int)sizeof(msg));
+        /* ValueError: a MESMA classe que `rx_compila` da ao padrao invalido.
+         * Grupo inexistente na substituicao saia como TypeError — duas
+         * respostas pra "esta regex nao serve", uma em cada funcao. O nome
+         * que não existe é IndexError, como no `re`. */
+        if (rc == -2) BERRO(vm, "ValueError", "%s", msg);
+        if (rc == -3) BERRO(vm, "IndexError", "%s", msg);
+        if (rc != 0)  BERRO(vm, "MemoryError", "sem memoria");
+    }
+    /* `count` negativo não troca nada (o `re` faz assim); 0 troca todas */
+    int proibido = -1;
+    while (limite >= 0 && de <= len) {
         if (limite > 0 && feitos >= limite) break;
         RxCaptura cap;
-        int achou = ps_regex_busca(r, s, len, de, &cap);
+        int achou = ps_regex_busca_vazio(r, s, len, de, proibido, &cap);
         if (achou < 0) BERRO(vm, "RuntimeError", "%s", achou == -3 ? MSG_RX_FUNDO : MSG_RX_PASSOS);
         if (!achou) break;
         if (sb_bytes(&b, s + de, cap.inicio[0] - de) != 0) BERRO(vm, "MemoryError", "sem memoria");
         {
-            char msg[160] = {0};
-            int rc = rx_expande(&b, rep, rlen, s, &cap, r, msg, (int)sizeof(msg));
-            /* ValueError: a MESMA classe que `rx_compila` da ao padrao invalido.
-             * Grupo inexistente na substituicao saia como TypeError — duas
-             * respostas pra "esta regex nao serve", uma em cada funcao. */
-            if (rc == -2) BERRO(vm, "ValueError", "%s", msg);
-            if (rc != 0)  BERRO(vm, "MemoryError", "sem memoria");
+            char msg[200] = {0};
+            if (rx_expande(&b, rep, rlen, s, &cap, r, msg, (int)sizeof(msg)) != 0)
+                BERRO(vm, "MemoryError", "sem memoria");
         }
         feitos++;
-        if (cap.fim[0] > cap.inicio[0]) {
-            de = cap.fim[0];
-        } else {
-            /* casamento vazio: copia o CARACTERE seguinte inteiro e anda, senão
-             * repetiria pra sempre (um byte partia o UTF-8: `sub("", "-",
-             * "ção")` punha o "-" no meio do "ç") */
-            int prox = ps_regex_proximo(s, len, cap.fim[0]);
-            if (cap.fim[0] < len && sb_bytes(&b, s + cap.fim[0], (prox <= len ? prox : len) - cap.fim[0]) != 0)
-                BERRO(vm, "MemoryError", "sem memoria");
-            de = prox;
-        }
+        /* casamento vazio: a busca seguinte recomeça no mesmo ponto sem
+         * aceitar outro vazio lá, como no `re` (`sub("x*", "-", "abxd")` dá
+         * "-a-b--d-"); o texto entre um casamento e outro sai na cópia do
+         * começo da volta, por CARACTERE inteiro */
+        de = cap.fim[0];
+        proibido = (cap.fim[0] == cap.inicio[0]) ? de : -1;
     }
     if (de < len && sb_bytes(&b, s + de, len - de) != 0) BERRO(vm, "MemoryError", "sem memoria");
     PSString *res = nova_string(vm, b.b ? b.b : "", b.n);
@@ -12145,9 +12245,11 @@ static int rx_split(VM *vm, PSRegex *r, const char *src, int slen, int64_t maxsp
     if (fixa_raiz(vm, MK_OBJ(l)) != 0) BERRO(vm, "RuntimeError", "estouro");
     int de = 0, ini_campo = 0;
     int64_t cortes = 0;
-    while (de <= slen) {
+    /* `maxsplit` negativo não divide (o `re` faz assim); 0 divide tudo */
+    int proibido = -1;
+    while (maxsplit >= 0 && de <= slen) {
         RxCaptura cap;
-        int achou = ps_regex_busca(r, src, slen, de, &cap);
+        int achou = ps_regex_busca_vazio(r, src, slen, de, proibido, &cap);
         if (achou < 0) { vm->sp--; BERRO(vm, "RuntimeError", "%s", achou == -3 ? MSG_RX_FUNDO : MSG_RX_PASSOS); }
         if (!achou) break;
         if (maxsplit > 0 && cortes >= maxsplit) break;
@@ -12169,16 +12271,13 @@ static int rx_split(VM *vm, PSRegex *r, const char *src, int slen, int64_t maxsp
             if (l->len >= l->cap && cresce_lista(vm, l) != 0) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
             l->itens[l->len++] = v;
         }
-        if (cap.fim[0] == cap.inicio[0]) {
-            /* Separador VAZIO divide também: `split("", "abc")`
-             * dá ['', 'a', 'b', 'c', '']. Antes a VM pulava e devolvia ['abc'].
-             * O campo seguinte começa aqui e a busca anda um CARACTERE, senão
-             * o mesmo ponto casaria pra sempre (um byte partia o UTF-8). */
-            ini_campo = cap.fim[0];
-            de = ps_regex_proximo(src, slen, cap.fim[0]);
-        } else {
-            ini_campo = de = cap.fim[0];
-        }
+        /* Separador VAZIO divide também: `split("", "abc")` dá ['', 'a',
+         * 'b', 'c', '']. Antes a VM pulava e devolvia ['abc']. O campo
+         * seguinte começa aqui, e a busca recomeça aqui sem aceitar outro
+         * vazio no mesmo ponto (o `re` desde o 3.7), senão o mesmo ponto
+         * casaria pra sempre. */
+        ini_campo = de = cap.fim[0];
+        proibido = (cap.fim[0] == cap.inicio[0]) ? de : -1;
     }
     PSString *ultimo = nova_string(vm, src + ini_campo, slen - ini_campo);
     if (!ultimo) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
@@ -12229,7 +12328,9 @@ static int met_rx_match(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (rx_obj_str(vm, alvo, args, n, "match", &r, &s) != 0) return -1;
     RxCaptura cap;
     int v = ps_regex_casa_tudo(r, s->chars, s->len, &cap);
-    if (v < 0) MERRO(vm, "RuntimeError", "regex: backtracking demais");
+    /* as duas frases, como as funções do módulo: o Pattern dizia "backtracking
+     * demais" também quando o que acabou foi a pilha */
+    if (v < 0) MERRO(vm, "RuntimeError", "%s", v == -3 ? MSG_RX_FUNDO : MSG_RX_PASSOS);
     *out = MK_BOOL(v);
     return 0;
 }
@@ -12240,7 +12341,7 @@ static int met_rx_search(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (rx_obj_str(vm, alvo, args, n, "search", &r, &s) != 0) return -1;
     RxCaptura cap;
     int v = ps_regex_busca(r, s->chars, s->len, 0, &cap);
-    if (v < 0) MERRO(vm, "RuntimeError", "regex: backtracking demais");
+    if (v < 0) MERRO(vm, "RuntimeError", "%s", v == -3 ? MSG_RX_FUNDO : MSG_RX_PASSOS);
     *out = MK_BOOL(v);
     return 0;
 }
@@ -12327,11 +12428,12 @@ static int mod_regex_escape(VM *vm, Value *args, int n, Value *out)
     SBUF_AUTO b = {0};
     for (int i = 0; i < s->len; i++) {
         unsigned char c = (unsigned char)s->chars[i];
-        /* o `re.escape` moderno só escapa o que é especial; alfanumérico,
-         * '_' e byte alto passam intactos */
-        int alfa = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-                || (c >= '0' && c <= '9') || c == '_' || c >= 0x80;
-        if (!alfa && sb_bytes(&b, "\\", 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
+        /* o `re.escape` desde o Python 3.7 só escapa o que tem sentido num
+         * padrão: `()[]{}?*+-|^$\.&~#`, o espaço e `\t \n \r \v \f` (estes
+         * por causa do modo VERBOSE). Antes saía barra em toda pontuação
+         * (`https\:\/\/`), o `escape` do Python 3.6. */
+        int especial = c != 0 && strchr("()[]{}?*+-|^$\\.&~# \t\n\r\v\f", c) != NULL;
+        if (especial && sb_bytes(&b, "\\", 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
         if (sb_bytes(&b, s->chars + i, 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
     }
     PSString *r = nova_string(vm, b.b ? b.b : "", b.n);

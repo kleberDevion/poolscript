@@ -4194,10 +4194,11 @@ const Caso CASOS_LINGUAGEM[] = {
 { "Pattern.sub diz QUAL argumento veio errado",
   "import regex\nregex.compile(\"a\").sub(\"x\", 5)\n", "",
   "TypeError: sub() argument 2 must be str, not int", 1 },
-/* Grupo inexistente na substituicao saia TypeError; padrao invalido em
- * rx_compila ja era ValueError — duas classes pra "esta regex nao serve". */
-{ "grupo inexistente na substituicao e ValueError, como o padrao invalido",
-  "import regex\ntry { regex.sub(\"(a)\", \"\\\\g<zz>\", \"xax\") } catch (ValueError e) { post(\"pegou:\", e) }\n",
+/* Grupo inexistente na substituicao saia TypeError. O nome que nao existe e
+ * IndexError, a classe que o `re` da (o resto do texto de troca invalido e
+ * ValueError, como o padrao invalido). */
+{ "nome de grupo inexistente na substituicao e IndexError, como no re",
+  "import regex\ntry { regex.sub(\"(a)\", \"\\\\g<zz>\", \"xax\") } catch (IndexError e) { post(\"pegou:\", e) }\n",
   "pegou: unknown group name 'zz' (linha 2)", NULL, 0 },
 /* fullmatch e match sao a mesma funcao, mas cada uma assina o proprio nome. */
 { "fullmatch assina fullmatch no erro, nao match",
