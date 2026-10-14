@@ -1266,13 +1266,13 @@ campo, inclusive vazio. São regras diferentes.
 | `.zfill(n)` | zeros **depois** do sinal: `"-5".zfill(4)` é `"-005"` |
 | `.expandtabs(n=8)` | TAB vira espaço até a próxima parada |
 
-**Regex** — ver [regex](#imports-e-bibliotecas-padrão) para o que o motor cobre.
+**Regex** — a sintaxe é a do `re` do Python; ver [regex](regex/regex.md).
 
 | | |
 |---|---|
 | `.match(padrao)` | bool, casando a string **inteira** |
 | `.findall(padrao)` | lista |
-| `.sub(padrao, troca)` | `\1`..`\9` na troca viram os grupos |
+| `.sub(padrao, troca)` | `\1`..`\99`, `\g<nome>` e `\g<0>` na troca viram os grupos (a regra do [`regex.sub`](regex/sub/sub.md)) |
 
 **Número recebe método de string** por conversão automática: `(150).isdigit()`
 vale sem `str()` na frente. `len` fica de fora (não significa nada em número),

@@ -238,6 +238,22 @@ motivo.
 
 ---
 
+## Aviso não é exceção: `SyntaxWarning`
+
+O `SyntaxWarning` é um **aviso** do compilador, não uma exceção: sai no
+stderr antes de rodar, no formato `arquivo.pr:1: SyntaxWarning: ...`, e o
+programa roda normalmente e termina com 0. Nenhum `catch` o pega, porque nada
+é levantado. O `jinga --check` devolve o aviso no JSON, e o editor o
+sublinha.
+
+Hoje ele sai pra escape desconhecido num literal de texto (`"\p"`, `"\d"`) e
+pra barra no fim da linha num texto de várias linhas: a barra fica no texto, e
+o aviso diz isso. Detalhes em
+[1.6.3](../linguagem/01-estrutura-lexica.md#163-strings); pra padrão de
+regex, a saída é a string crua (`r"\d+"`), ver [regex](../regex/regex.md).
+
+---
+
 ## Os nomes são valores
 
 Cada nome da árvore acima existe como **valor** da linguagem, sem importar

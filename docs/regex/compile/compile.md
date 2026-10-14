@@ -1,85 +1,111 @@
 # `regex.compile(pattern)`
 
-Compila o padrão **uma vez** e devolve um objeto `Pattern` reusável, com os
-mesmos métodos do módulo — sem repetir o padrão a cada chamada.
+Compila o padrão de expressão regular num objeto `Pattern`, que casa com os
+métodos dele (`match`, `search` e os outros, abaixo).
 
 ```
 regex.compile(pattern: str) -> Pattern
 ```
 
-As funções soltas (`regex.match`, `regex.sub`, ...) compilam o padrão **em
-toda chamada** e jogam fora. Num laço, isso é trabalho repetido: `compile`
-paga o custo uma vez.
+A sequência
 
----
-
-## Uso
-
-```
+```ps
 import regex
 
-p = regex.compile("\\d{3}-\\d{4}")
-
-for each t in ["123-4567", "abc", "999-0000"] {
-    if (p.match(t)) {
-        post(t, "válido")
-    }
-}
+Object prog = regex.compile(r"\d+")
+post(prog.search("abc 42"))
 ```
+
+equivale a
+
+```ps
+import regex
+
+post(regex.search(r"\d+", "abc 42"))
+```
+
+mas usar `regex.compile()` e guardar o objeto pra reusar é mais eficiente
+quando a expressão é usada várias vezes no mesmo programa: as funções do
+módulo compilam o padrão a cada chamada e jogam fora. (O `re` do Python
+guarda os padrões recentes num cache; a Jinga não guarda, então num laço o
+`compile` faz diferença.)
+
+As flags vão no próprio padrão (`(?i)`, `(?m)`...): o `regex.compile` não
+tem o parâmetro `flags` do `re`. Ver [Flags](../regex.md#flags).
 
 ---
 
-## Métodos do `Pattern`
+## O objeto `Pattern`
 
-Os mesmos do módulo, **sem** o argumento do padrão:
+Os métodos são os das funções do módulo, sem o argumento do padrão:
 
-| Método | Devolve | O que faz |
+| Método | Devolve | Igual a |
 |---|---|---|
-| `.match(string)` | `bool` | a string **inteira** casa? (igual ao [`regex.match`](../match/match.md)) |
-| `.fullmatch(string)` | `bool` | idêntico a `.match` |
-| `.search(string)` | `bool` | casa em **qualquer** posição |
-| `.findall(string)` | `list` | **todas** as ocorrências |
-| `.sub(repl, string, count=0)` | `str` | substitui as ocorrências |
-| `.split(string, maxsplit=0)` | `list` | divide o texto onde o padrão bate |
+| `.match(string)` | `bool` | [`regex.match()`](../match/match.md): o texto **inteiro** casa? |
+| `.fullmatch(string)` | `bool` | [`regex.fullmatch()`](../fullmatch/fullmatch.md), o mesmo que `.match` |
+| `.search(string)` | `bool` | [`regex.search()`](../search/search.md): casa em algum lugar? |
+| `.findall(string)` | `list` | [`regex.findall()`](../findall/findall.md) |
+| `.sub(repl, string, count=0)` | `str` | [`regex.sub()`](../sub/sub.md) |
+| `.split(string, maxsplit=0)` | `list` | [`regex.split()`](../split/split.md) |
 
 E um campo (sem parênteses):
 
 | Campo | O que é |
 |---|---|
-| `.pattern` | o texto do padrão, como você escreveu |
+| `.pattern` | o texto do padrão de que o objeto foi compilado |
 
+```ps
+import regex
+
+Object p = regex.compile(r"\d+")
+post(type(p))
+post(p.pattern)
+post(p.findall("a1b22"))
+post(p.sub("#", "a1b22"))
+post(p.split("a1b22c"))
 ```
-p = regex.compile("\\d+")
-post(type(p))            # Pattern
-post(p.pattern)          # \d+
-post(p.findall("a1b22")) # ['1', '22']
-post(p.sub("#", "a1b22"))# a#b#
-post(p.split("a1b22c"))  # ['a', 'b', 'c']
+
+```saida
+Pattern
+\d+
+['1', '22']
+a#b#
+['a', 'b', 'c']
 ```
 
----
-
-## Quando compensa
-
-- **Compensa**: o mesmo padrão usado várias vezes (laço, validação de muitos
-  campos, parser de linhas de um arquivo).
-- **Tanto faz**: uma chamada só — `regex.match(p, t)` é mais curto.
+Os métodos do `re` não têm aqui os parâmetros `pos` e `endpos` (o pedaço do
+texto onde procurar), e o objeto não tem `.flags`, `.groups` nem
+`.groupindex`.
 
 ---
 
 ## Padrão inválido
 
-Erra **na hora do `compile`** (e não em cada uso), o que é a vantagem de
-compilar cedo:
+O erro sai **na hora do `compile`**, e não em cada uso, o que é a vantagem de
+compilar cedo. É `ValueError`, com a frase do `re` e a posição, contada em
+caractere do padrão:
 
+```ps
+import regex
+
+try {
+    regex.compile("[a-")
+} catch (ValueError e) {
+    post(e)
+}
 ```
-p = regex.compile("[a-")    # TypeError: classe [ ] nao fechada
+
+```saida
+unterminated character set at position 0 (linha 4)
 ```
+
+As frases são as do `re` (ver [Erros](../regex.md#erros)).
 
 ---
 
 ## Relacionados
 
+- [regex](../regex.md) — a sintaxe do padrão
 - [`regex.match()`](../match/match.md) — versão solta
 - [`regex.findall()`](../findall/findall.md) — versão solta
 - [`regex.sub()`](../sub/sub.md) — versão solta
