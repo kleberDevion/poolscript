@@ -104,18 +104,26 @@ typedef struct {
  * padrao, entao sai no formato proprio `regex: <msg> (posicao N)`. */
 static void rerro(Leitor *l, const char *msg)
 {
+    int car = 0;                                 /* a posição em CARACTERE */
+    for (int k = 0; k < l->i && k < l->n; k++)
+        if (((unsigned char)l->p[k] & 0xC0) != 0x80) car++;
     if (!l->falhou && l->erro && l->erro_cap > 0)
-        snprintf(l->erro, (size_t)l->erro_cap, "regex: %s (posicao %d)", msg, l->i);
+        snprintf(l->erro, (size_t)l->erro_cap, "regex: %s (posicao %d)", msg, car);
     l->falhou = 1;
 }
 
 /* Erro de sintaxe do padrao. A mensagem e o sufixo " at position N" sao os
  * que o teste diferencial compara entre os dois motores — e a posicao e o
- * INICIO do construto culpado, nao onde o cursor parou. */
+ * INICIO do construto culpado, nao onde o cursor parou. A posicao conta
+ * CARACTERE, como o indice do texto do padrao: em byte, `"ção[a-"` dizia
+ * "position 5" com o '[' no indice 3. */
 static void rerro_em(Leitor *l, int pos, const char *msg)
 {
+    int car = 0;
+    for (int k = 0; k < pos && k < l->n; k++)
+        if (((unsigned char)l->p[k] & 0xC0) != 0x80) car++;
     if (!l->falhou && l->erro && l->erro_cap > 0)
-        snprintf(l->erro, (size_t)l->erro_cap, "%s at position %d", msg, pos);
+        snprintf(l->erro, (size_t)l->erro_cap, "%s at position %d", msg, car);
     l->falhou = 1;
 }
 
@@ -782,20 +790,17 @@ const char *ps_regex_nome_do_grupo(const PSRegex *r, int g)
 
 #define RX_MAX_PASSOS 2000000
 
-/* TETO DE PROFUNDIDADE, e ele é obrigatório junto com o de passos.
+/* PROFUNDIDADE, e ela é obrigatória junto com o teto de passos.
  *
  * O casador é recursivo: `m_seq -> m_pos_grupo -> m_rep_grupo -> m_alt ->
- * m_seq` gasta um quadro de pilha C por caractere consumido. O teto de PASSOS
- * (2 milhões) não protege disso — a pilha de 8 MB acaba muito antes, e o
- * processo morre de SIGSEGV sem mensagem nenhuma.
+ * m_seq` gasta quadros de pilha C a cada repetição de grupo. O teto de PASSOS
+ * (2 milhões) não protege disso — a pilha acaba antes, e o processo morria de
+ * SIGSEGV sem mensagem nenhuma.
  *
  * Aconteceu de verdade: `"((?:[^"\\]|\\.)*)"` sobre um trecho de 29 mil
  * caracteres derrubou o `pool` inteiro. Um padrão vindo do usuário não pode
- * matar o processo — tem que virar erro, como qualquer outro limite.
- *
- * 6000 quadros cabem com folga nos 8 MB padrão e ainda dão conta de qualquer
- * padrão de uso real. */
-#define RX_MAX_PROF 6000
+ * matar o processo — tem que virar erro, como qualquer outro limite. Quem
+ * decide é a folga MEDIDA da pilha (`m_seq`), não um número de níveis. */
 
 typedef struct Cont { const Seq *seq; int i; const struct Cont *prox; } Cont;
 
@@ -1068,16 +1073,13 @@ static int m_rep_grupo(RepGrupo *rg, int feitos, int pos)
  * entrar e sair sempre fecham. */
 static int m_seq(Estado *e, const Seq *s, int i, int pos, const Cont *k)
 {
-    /* Alem do contador, a FOLGA MEDIDA da pilha: o 6000 foi dimensionado pros
-     * 8 MB do processo, e dentro de uma fibra (256 KB) o casador derrubava o
-     * processo com ~800 repeticoes — num handler do jinker, o servidor
-     * inteiro. `ps_pilha_apertada` sabe em que pilha esta (a fibra remarca a
-     * base ao entrar). */
-    if (e->prof >= RX_MAX_PROF || ps_pilha_apertada()) { e->estourou = RX_ESTOUROU_FUNDO; return 0; }
-    e->prof++;
-    int r = m_seq_corpo(e, s, i, pos, k);
-    e->prof--;
-    return r;
+    /* A FOLGA MEDIDA da pilha decide, e só ela: `ps_pilha_apertada` sabe em
+     * que pilha está (a fibra remarca a base ao entrar) e mede o quadro do
+     * binário de verdade (o do ASan é maior). Havia também um contador fixo
+     * de 6000 níveis, que barrava uso válido nos 8 MB do processo: um CSV de
+     * 3 mil campos com `(?:[a-z]+,)*` dava "profundo demais". */
+    if (ps_pilha_apertada()) { e->estourou = RX_ESTOUROU_FUNDO; return 0; }
+    return m_seq_corpo(e, s, i, pos, k);
 }
 
 static int m_seq_corpo(Estado *e, const Seq *s, int i, int pos, const Cont *k)
@@ -1087,6 +1089,21 @@ static int m_seq_corpo(Estado *e, const Seq *s, int i, int pos, const Cont *k)
 
     const Quant *q = &s->itens[i];
     const Atomo *a = &q->atomo;
+
+    /* Átomos simples que casam UMA vez, seguidos (o literal de um `escape`
+     * de 6 mil caracteres, o `,` de `(?:[a-z]+,)*`): cada um tem uma escolha
+     * só, então casam em laço, sem voltar atrás e sem um quadro de pilha por
+     * caractere — antes cada um descia um `m_seq`, e o literal longo
+     * esbarrava no teto de profundidade sem retrocesso nenhum. */
+    while (q->min == 1 && q->max == 1 && a->tipo != A_GRUPO && a->tipo != A_LOOK) {
+        int c = casa_simples(e, a, pos);
+        if (c < 0) return 0;
+        pos += c;
+        if (++i >= s->n) return m_cont(e, pos, k);
+        if (++e->passos > RX_MAX_PASSOS) { e->estourou = 1; return 0; }
+        q = &s->itens[i];
+        a = &q->atomo;
+    }
 
     if (a->tipo == A_GRUPO) {
         RepGrupo rg = { e, q, s, i, k };
