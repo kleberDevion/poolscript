@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.16`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.17`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -310,7 +310,7 @@ post(True, True, Null, Null, Null)     # True True Null Null Null
 | `tup` | `tup` | `(1, 2)` | Imutável. Só tem `index count contains has len` |
 | `dict` / `json` | `dict` | `{"k": v}` | Mutável. Ordem de inserção |
 | `byte` | `byte` | `b"..."` | Imutável. Indexar dá int. `bytes` é o **módulo** |
-| `Object` / `object` | nome da classe | — | Qualquer objeto: instância, servidor, conexão, arquivo, funct |
+| `Object` / `object` | nome da classe | — | Qualquer valor, menos `Null`: texto, número, coleção, instância, servidor, conexão, arquivo, funct, tipo (decisão sua de 2026-10-13, no 17.0.17: "Object deveria ser o mesmo que qualquer objeto") |
 | `Null` | `Null` | `Null` | Ausência de valor |
 
 Apelidos (valem só onde cabe um tipo): `string`/`String` = `str`, `integer`/`Integer` = `int`, `tuple`/`Tuple` = `tup`, `dictionary`/`Dictionary`/`json`/`JSON` = `dict`, `object` = `Object`, `Long` = `long`.
@@ -335,7 +335,7 @@ Apelidos (valem só onde cabe um tipo): `string`/`String` = `str`, `integer`/`In
 | `bool` | bool | int (mesmo `1`) |
 | `long` | inteiro de qualquer tamanho | o resto |
 | `byte` | bytes | str |
-| `Object` | instância, servidor, conexão, arquivo, funct | str, list, dict, tup, byte, números, Null |
+| `Object` | qualquer valor (texto, número, coleção, instância, servidor, conexão, arquivo, funct, tipo) | Null |
 
 ```ps
 int idade = 30
@@ -1316,6 +1316,8 @@ Regras gravadas no código:
 - **`Null`** não fixa tipo nem conflita numa variável sem tipo escrito. Variável declarada (`str s`, parâmetro tipado) não aceita `Null`.
 - **Resolução de nomes**: a leitura (`carrega_nome`) vai no campo static da classe (o nome solto é `Classe.x`), depois módulo, `global`, local, captura, global do arquivo. A escrita (`guarda_nome_modo`) ainda não tem o passo do static: `n = 1` solto num método cria local (achado classes:3, entra no Plano 4). O método de uma classe declarada dentro de funct é closure da funct (escopo léxico): captura o que ela declara, a própria classe inclusive, e o `MAKE_CLASS` monta a closure com as células do frame.
 - **Retorno dos nativos**: vem de `vm/ps_retornos.c`, cuja tabela é **gerada** por `scripts/mede_retornos.pr` em `vm/retornos_medidos.inc` (574 entradas, ordenadas para busca binária). Exemplo: `DbConnection.cursor -> DbCursor`. Três formatos: `"str"`, `"dict|Null"` e `"*"`.
+- **Argumentos dos nativos** (17.0.17): a outra tabela do `vm/ps_retornos.c`, `vm/aridades_medidas.inc`, é **medida** por `scripts/mede_aridades.pr` (435 nativos: builtins, funções de módulo e métodos dos donos que se criam sem serviço): por nativo, o nome que a frase de quantidade usa, a lista de nomes de parâmetro, o mínimo e o máximo (-1 = sem teto) e a frase com que ele recusa UM argumento de cada tipo básico (sondas vazias: `""`, `[]`, `b""`, pra a recusa ser do tipo e não do conteúdo). O checador (`tp_confere_nativo`) usa ela pra quantidade, nomeados e o tipo do argumento único, com a frase da VM; a frase de quantidade é uma só (`ps_frase_aridade`, a mesma do `erro_aridade`). O medidor também confere a lista de nomes de cada nativo contra o mínimo medido (opcional tem padrão escrito, obrigatório não) e a frase de quantidade contra a regra (mínimo, máximo); o `make check` roda o `--confere`. Achados ao medir, consertados: 81 listas sem o padrão dos opcionais, `Pattern.sub` sem o `count` (o terceiro argumento era recusado), o apelido falando o nome do irmão (`has()` dizia `contains()`), o `append(1, 2, 3)` dizendo "at most 1" e os métodos de serviço que liam `args[0]` sem conferir (`r.get()`, `req.header()`: lixo da pilha) — a conferência genérica de método (`checa_aridade_nat`) passou a cobrar o mínimo, com o nome chamado.
+- **Chamada com nome** (17.0.17): cada parâmetro recebe um valor. Nome repetido na chamada é `SyntaxError` no parser; nome de parâmetro já dado por posição é `got multiple values` (funct: `liga_args`; nativo: `liga_nomeados_nat`; o checador nos dois); no nativo, o vazio antes do último dado recebe o padrão escrito na lista e o sem padrão é `missing required argument`. O `format` não aceita nome nenhum (`*valores`).
 - **"Did you mean"**: `ps_nativo_sugestao` dá a mesma sugestão antes de rodar e rodando.
 - **Erro na causa**: a regra acusa na declaração e depois recupera, sintetizando o que faltou para não repetir o erro em cada uso. O modelo está em `tp_self_dos_metodos` (método sem `self`).
 - **Resultado**: com erro de tipo, o programa **não roda**. Todos os erros saem no stderr, e o código de saída é 2.
@@ -1890,9 +1892,10 @@ O `-o` embute **fonte**, e o executável compila e roda na partida. O JIT atua d
 | `ps_opcodes.def` | 277 | a lista única de opcodes: 116 opcodes, `PS_OP(NOME, NUMERO, "TEXTO", TIRA, DEIXA)` — as duas últimas colunas são o efeito na pilha de valores, que mede `pilha_max` |
 | `ps_tipos.def` | 49 | tabela única de tipos (13) e apelidos (12) |
 | `ps_tipos.h` | 73 | consulta à tabela de tipos para parser, compilador e `--metadata` |
-| `ps_retornos.c` | 55 | busca binária no tipo de retorno dos nativos |
-| `ps_retornos.h` | 52 | API de retornos, membros nativos, "Did you mean" (`ps_nativo_sugestao`) |
+| `ps_retornos.c` | 106 | busca binária no tipo de retorno e nos argumentos dos nativos; a frase de quantidade (`ps_frase_aridade`) |
+| `ps_retornos.h` | 97 | API de retornos e argumentos, membros nativos, "Did you mean" (`ps_nativo_sugestao`) |
 | `retornos_medidos.inc` | 584 | **gerado** por `scripts/mede_retornos.pr` (574 entradas); não se edita à mão |
+| `aridades_medidas.inc` | 446 | **gerado** por `scripts/mede_aridades.pr` (435 nativos); não se edita à mão |
 | `ps_vm.h` | 159 | API pública da VM: `ps_roda_fonte`, `PSErroExec`, embutidos do `-o`, `ps_verifica_fonte`, `ps_metadata_json`, `ps_debug_porta` |
 | `ps_so.h` | 223 | camada de sistema: API de eventos, aviso, memória, nomes, caminho, sockets (`ps_sock_*`) e raízes TLS (`ps_so_tls_cas`) |
 | `ps_so.c` | 653 | implementações: Linux (epoll, eventfd, `/proc`), macOS (kqueue, pipe, `_NSGetExecutablePath`, Keychain) e Windows (WSAPoll, par de sockets no loopback, VirtualAlloc/VirtualProtect, `GetModuleFileNameA`, repositório `ROOT`) |
@@ -2188,8 +2191,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.16** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.16 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.17** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.17 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2244,7 +2247,7 @@ make pool                 # o binário ./pool (o alvo continua se chamando pool)
 ./rebuild_vm.sh --install # rebuild + make check + sudo make install
 ```
 
-- O `pool` depende dos `.c`, de todos os `vm/*.h`, de `vm/ps_versao.h`, `vm/ps_build.h`, `vm/retornos_medidos.inc` e do próprio Makefile. Um bump ou mudança de flag força o relink.
+- O `pool` depende dos `.c`, de todos os `vm/*.h`, de `vm/ps_versao.h`, `vm/ps_build.h`, `vm/retornos_medidos.inc`, `vm/aridades_medidas.inc` e do próprio Makefile. Um bump ou mudança de flag força o relink.
 - `vm/ps_build.h` é gerado a cada `make` com a data da compilação, e só é trocado quando muda. Ele fica fora do git. É o que faz o `--version` distinguir dois binários da mesma versão.
 - `vm/retornos_medidos.inc` é gerado por `scripts/mede_retornos.pr` e fica versionado.
 - `vm/ps_opcodes.def` é a fonte única dos opcodes. O `scripts/audita_c.pr` reprova opcode numerado fora dele.
@@ -2471,6 +2474,7 @@ Todos em Jinga, rodados com `./pool scripts/X.pr` (ou `jinga scripts/X.pr`). Os 
 | `gera_opcodes.pr` | migração única que gerou `vm/ps_opcodes.def` |
 | `gera_realce.pr` | listas do realce do VS Code e do Neovim a partir do `--metadata`; `--portao` |
 | `mede_retornos.pr` | mede o tipo de retorno de cada nativo chamando-o e grava `vm/retornos_medidos.inc`; `--confere` |
+| `mede_aridades.pr` | mede quantos argumentos cada nativo aceita e o tipo que ele recusa, chamando-o, e grava `vm/aridades_medidas.inc`; confere a lista de nomes de parâmetro e a frase de quantidade de cada nativo; `--confere` (no `make check`), `--pool B` (mede o binário B) |
 | `migra_classe.pr` | `class Nome()` -> `class Nome`, `base(x)` -> `base().__init__(x)`; `--aplica`, `--libs`, `--confere` |
 | `migra_pr.pr` | `.ps`, `.psl` e `.p` -> `.pr` e as referências; `--aplica`, `--so-renome`, `--sem`, `--libs`. É o único script instalado (`share/jinga/scripts/`, pelo `make install`, o `build_bundle.sh`, o `instalar.sh` e o `instalar.ps1`) |
 | `para_chaves.pr` | um fonte do estilo `:` pro `{ }`, pelo lexer |
@@ -2810,7 +2814,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.16"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.17"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2890,7 +2894,7 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-13
 
-- Versão da linguagem **17.0.16** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.16 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.17** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.17 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: `5c8e50a` (17.0.16, Plano 6 lote 7b), igual a `origin/main` quando subiu. No `2a668b9` (17.0.11) entrou, por engano meu (`git add -A`), o seu rename `examples/action.pr` → `examples/funct.pr` que estava na árvore (100% igual); desde então o commit leva só a lista de arquivos do lote. Fora do controle de versão ficam só arquivos seus (`examples/s.pr`), que nunca entram em commit; a sua mudança em `vm/ps_lexer.c` (de 2026-10-12: `with` sai das palavras reservadas) segue na árvore, fora dos meus commits.
 - **Lote 7a fechado no 17.0.15** (`9c05801`, 2026-10-13): texto pela tabela do Unicode inteira, de qualquer língua (decisão sua: só em string; nome no código segue ASCII) — caixa completa, sigma final, classes de caractere, branco e imprimível (2.17, 3.14); `isidentifier` pela regra de nome; `format` (zero depois do sinal, hexa com sinal, precisão em caractere, inteiro grande, número à direita; o que formatava diferente calado é erro); `replace` com listas em paralelo, com `count` e `new` obrigatório; `rsplit` pelo codepoint e sem teto; `translate`, `chr` e `char c = N` na faixa do Unicode; `char` com uma regra só. Conferido contra o Python nos 1.112.064 caracteres. Verde na VPS em `make check`, `check-asan` e `check-debug`. Medido: os 13 casos do bench de -0,12% a +0,02% (a partida +0,33%/+0,82% é núcleo: em instruções de usuário, -30/+107); métodos de texto mais rápidos (metodo -20%, caixa em ASCII -56%, em português -23%).

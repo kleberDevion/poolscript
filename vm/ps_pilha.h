@@ -27,6 +27,11 @@
  * processo). Marcar com a pilha ainda intocada é o que faz a conta valer. */
 void ps_pilha_marca(size_t tam);
 
+/* Como `ps_pilha_marca`, mas o tamanho é a distância daqui até `baixo`, o
+ * primeiro byte utilizável da pilha. Pra pilha de fibra, cujo mapeamento se
+ * conhece: o quadro do trampolim, que ocupa o topo, fica fora da conta. */
+void ps_pilha_marca_ate(const void *baixo);
+
 /* Como `ps_pilha_marca`, mas descobre o tamanho sozinho via
  * `getrlimit(RLIMIT_STACK)` — respeita `ulimit -s`. Para o `main`. */
 void ps_pilha_marca_processo(void);

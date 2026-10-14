@@ -121,14 +121,14 @@ funct chamadas(meta, tipo, recv) {
             }
         }
         if tem_obrig {
-            fora.append([nome, recv + "." + nome + "()"])
+            fora.append([nome, recv + "." + nome, ""])
         }
         # argumentos DEMAIS
         demais = []
         for each i in range(len(ps) + 2) {
             demais.append("1")
         }
-        fora.append([nome, recv + "." + nome + "(" + ", ".join(demais) + ")"])
+        fora.append([nome, recv + "." + nome, ", ".join(demais)])
     }
     return fora
 }
@@ -158,9 +158,13 @@ funct programa(tipo, fora, divida) {
          "        CAL.append(nome)",
          "    }",
          "}", ""]
+    # O método é chamado por uma variável `Object`: a recusa tem que vir da
+    # VM, rodando. Chamado direto, o `--check` (que confere a quantidade dos
+    # nativos pela tabela medida) recusaria o programa inteiro antes de rodar.
     for each par in fora {
         L.append("try {")
-        L.append("    _r = " + par[1])
+        L.append("    Object _f = " + par[1])
+        L.append("    _r = _f(" + par[2] + ")")
         L.append("    calou_(\"" + par[0] + "\")")
         L.append("} catch (e) {")
         L.append("    pass")

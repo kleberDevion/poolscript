@@ -3498,6 +3498,95 @@ static size_t par_nome_tam(const char *seg, size_t tam)
     return tam;
 }
 
+/* O padrão escrito num segmento de `params` ("inicio=0", "readonly=True",
+ * "fim=Null"), como valor. Texto e padrão simbólico ("encoding=\"utf-8\"",
+ * "fim=len") viram Null, que é o "não veio" de todo nativo que tem padrão
+ * desses. Devolve 0 quando o segmento não tem padrão: o parâmetro é
+ * obrigatório. */
+static int par_padrao(const char *seg, size_t tam, Value *out)
+{
+    const char *ig = memchr(seg, '=', tam);
+    if (!ig) return 0;
+    const char *v = ig + 1;
+    size_t vt = tam - (size_t)(v - seg);
+    *out = MK_NULL();
+    if (vt == 4 && !memcmp(v, "True", 4)) *out = MK_BOOL(1);
+    else if (vt == 5 && !memcmp(v, "False", 5)) *out = MK_BOOL(0);
+    else if (vt > 0 && vt < 24 && (isdigit((unsigned char)v[0]) || (v[0] == '-' && vt > 1))) {
+        char num[24];
+        memcpy(num, v, vt);
+        num[vt] = '\0';
+        char *fim;
+        long long x = strtoll(num, &fim, 10);
+        if (*fim == '\0') *out = MK_INT(x);
+    }
+    return 1;
+}
+
+/* Os nomeados de uma chamada a nativo, pela lista de nomes do descritor: cada
+ * um cai na posição do parâmetro dele. Nome fora da lista, nome de parâmetro
+ * que um posicional já ocupou e parâmetro sem padrão que ficou vazio antes do
+ * último dado são TypeError; o vazio com padrão recebe o padrão. `pos` tem
+ * 16 lugares e já traz os posicionais. Devolve quantas posições valem, ou -1.
+ *
+ * Fora do laço da VM (`noinline`), e barata no caso comum: quem veio fica num
+ * mapa de bits, o tamanho do nome vem do `PSString`, e a passada que põe os
+ * padrões só roda quando ficou buraco (`split(",", maxsplit=2)` não deixa).
+ * Com vetores de 16 zerados a cada chamada, `strlen` por nome da lista e a
+ * passada sempre, a chamada com nome custava ~210 instruções a mais que antes
+ * do 17.0.17 (micro de `split`/`find` com nome: +5,8%). */
+static __attribute__((noinline)) int liga_nomeados_nat(VM *vm, const char *lista, const char *quem,
+                             Value *pos, int npos, Value *nomes, const Value *vals, int nkw)
+{
+    uint32_t veio = npos >= 16 ? 0xFFFFu : ((1u << npos) - 1u);
+    int usados = npos;
+    for (int k = 0; k < nkw; k++) {
+        if (!EH_STRING(nomes[k])) {
+            snprintf(vm->erro, sizeof(vm->erro), "nome de argumento invalido");
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+            return -1;
+        }
+        const char *alvo = COMO_STRING(nomes[k])->chars;
+        size_t lalvo = (size_t)COMO_STRING(nomes[k])->len;
+        int idx = 0, achou = -1;
+        for (const char *q = lista; *q; idx++) {
+            const char *fim = strchr(q, ',');
+            size_t tam = fim ? (size_t)(fim - q) : strlen(q);
+            if (par_nome_tam(q, tam) == lalvo && !memcmp(q, alvo, lalvo)) { achou = idx; break; }
+            q = fim ? fim + 1 : q + tam;
+        }
+        if (achou < 0 || achou >= 16) {
+            snprintf(vm->erro, sizeof(vm->erro), "'%s' is an invalid keyword argument for %s()", alvo, quem);
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+            return -1;
+        }
+        if (veio & (1u << achou)) {
+            snprintf(vm->erro, sizeof(vm->erro), "%s() got multiple values for argument '%s'", quem, alvo);
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+            return -1;
+        }
+        pos[achou] = vals[k];
+        veio |= 1u << achou;
+        if (achou + 1 > usados) usados = achou + 1;
+    }
+    /* sem buraco antes do último dado: nada de padrão a pôr */
+    uint32_t cheio = (1u << usados) - 1u;
+    if ((veio & cheio) == cheio) return usados;
+    int idx = 0;
+    for (const char *q = lista; *q && idx < usados; idx++) {
+        const char *fim = strchr(q, ',');
+        size_t tam = fim ? (size_t)(fim - q) : strlen(q);
+        if (!(veio & (1u << idx)) && !par_padrao(q, tam, &pos[idx])) {
+            snprintf(vm->erro, sizeof(vm->erro), "%s() missing required argument '%.*s'",
+                     quem, (int)par_nome_tam(q, tam), q);
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+            return -1;
+        }
+        q = fim ? fim + 1 : q + tam;
+    }
+    return usados;
+}
+
 static const ModuloNat MODULOS[];
 
 /* A VM em execução. Existe só pra `escreve_valor` conseguir o NOME do
@@ -4489,20 +4578,8 @@ static int conta_faltantes(int de, int ate, const int *marcado)
  */
 static int erro_aridade(VM *vm, const char *nome, int minimo, int maximo, int n)
 {
-    char quanto[64];
-    if (maximo == 0)
-        snprintf(quanto, sizeof(quanto), "no arguments");
-    else if (minimo == maximo)
-        snprintf(quanto, sizeof(quanto),
-                 minimo == 1 ? "exactly one argument" : "exactly %d arguments", minimo);
-    else if (n < minimo)
-        snprintf(quanto, sizeof(quanto), "at least %d argument%s",
-                 minimo, minimo == 1 ? "" : "s");
-    else
-        snprintf(quanto, sizeof(quanto), "at most %d argument%s",
-                 maximo, maximo == 1 ? "" : "s");
-    snprintf(vm->erro, sizeof(vm->erro), "%s() takes %s (%d given)",
-             nome, quanto, n);
+    /* a frase é a mesma que o checador usa antes de rodar (ps_retornos.c) */
+    ps_frase_aridade(vm->erro, sizeof(vm->erro), nome, minimo, maximo, n);
     snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
     return -1;
 }
@@ -4714,7 +4791,9 @@ static int erro_texto_numero(VM *vm, const char *frase, const char *s, int len, 
 static int nativa_int(VM *vm, Value *args, int n, Value *out)
 {
     if (n == 0) { *out = MK_INT(0); return 0; }   /* int() -> 0, como o interp */
-    EXIGE_ARGS(vm, "int", 1);
+    /* aceita 0 ou 1: a frase é a da regra (`at most 1`), não "exactly one" —
+     * o medidor de aridades pega a frase que não bate com o mínimo medido */
+    if (n > 1) return erro_aridade(vm, "int", 0, 1, n);
     Value v = args[0];
     if (v.t == V_INT)   { *out = v; return 0; }
     if (EH_BIGINT(v))   { *out = v; return 0; }   /* bignum já é int */
@@ -5723,9 +5802,16 @@ static FnNativa tipo_conversor(int32_t idx)
         case TIPO_FLO:  return nativa_flo;
         case TIPO_BOOL: return nativa_bool;
         case TIPO_LIST: return nativa_list;
+        /* `f = tup; f(x)` converte como `tup(x)`, com o MESMO nativo: antes
+         * o tipo como valor recusava ("não pode ser usado como conversor")
+         * e a chamada direta convertia — duas regras pro mesmo nome. A
+         * tabela medida dos nativos (que chama pelo valor) gravou a recusa, e
+         * o checador passou a recusar `tup(tup(x))` antes de rodar. */
+        case TIPO_TUP:  return nativa_tup;
+        case TIPO_DICT: return nativa_dict;
         case TIPO_TYPE: return nativa_type;
         case TIPO_BYTE: return mod_bytes_new;   /* `byte("a")` == `bytes.new("a")` */
-        default:        return NULL;   /* dict, tup */
+        default:        return NULL;
     }
 }
 
@@ -7486,13 +7572,13 @@ static const MetodoNat METODOS_STR[] = {
     { "isupper", met_isupper, NULL }, { "islower", met_islower, NULL }, { "isascii", met_isascii, NULL },
     { "istitle", met_istitle, NULL }, { "isprintable", met_isprintable, NULL },
     { "split", met_split, "sep=Null,maxsplit=-1" }, { "rsplit", met_rsplit, "sep=Null,maxsplit=-1" }, { "splitlines", met_splitlines, NULL },
-    { "join", met_join, "lista" }, { "replace", met_replace, "old,new,count" },
+    { "join", met_join, "lista" }, { "replace", met_replace, "old,new,count=Null" },
     { "partition", met_partition, "sep" }, { "rpartition", met_rpartition, "sep" },
     { "removeprefix", met_removeprefix, "p" }, { "removesuffix", met_removesuffix, "p" },
-    { "ljust", met_ljust, "width,fillchar" }, { "rjust", met_rjust, "width,fillchar" }, { "center", met_center, "width,fillchar" },
+    { "ljust", met_ljust, "width,fillchar=Null" }, { "rjust", met_rjust, "width,fillchar=Null" }, { "center", met_center, "width,fillchar=Null" },
     { "zfill", met_zfill, "largura" }, { "expandtabs", met_expandtabs, "tabsize=8" },
     { "match", met_match, "padrao" }, { "findall", met_findall, "padrao" }, { "sub", met_sub, "pattern,repl" },
-    { "format", met_format, "a=Null,b=Null,..." }, { "format_map", met_format_map, "dict" },
+    { "format", met_format, "*valores" }, { "format_map", met_format_map, "dict" },
     { "isidentifier", met_isidentifier, NULL },
     { "maketrans", met_maketrans, "de,para" }, { "translate", met_translate, "tabela" },
     { "encode", met_encode, "encoding=\"utf-8\",errors=\"strict\"" },
@@ -9457,8 +9543,8 @@ static const MetodoNat METODOS_BYTES[] = {
     { "splitlines", met_b_splitlines, "keepends=False" },
     { "partition", met_b_partition, "sep" }, { "rpartition", met_b_rpartition, "sep" },
     { "join", met_b_join, "lista" }, { "replace", met_b_replace, "old,new,count=-1" },
-    { "ljust", met_b_ljust, "width,fillbyte" }, { "rjust", met_b_rjust, "width,fillbyte" },
-    { "center", met_b_center, "width,fillbyte" },
+    { "ljust", met_b_ljust, "width,fillbyte=Null" }, { "rjust", met_b_rjust, "width,fillbyte=Null" },
+    { "center", met_b_center, "width,fillbyte=Null" },
     { "zfill", met_b_zfill, "largura" }, { "expandtabs", met_b_expandtabs, "tabsize=8" },
     { "maketrans", met_b_maketrans, "de,para" }, { "translate", met_b_translate, "tabela,delete=Null" },
 };
@@ -9967,7 +10053,7 @@ static int met_resp_get_json(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_resp_json(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_resp_save(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_RESP[] = {
-    { "decode", met_resp_decode, "encoding" }, { "content_type", met_resp_content_type, "esperado" },
+    { "decode", met_resp_decode, "encoding=Null" }, { "content_type", met_resp_content_type, "esperado" },
     { "get", met_resp_get, "chave" }, { "get_json", met_resp_get_json, "chave=Null" },
     { "json", met_resp_json, NULL }, { "save", met_resp_save, "caminho=Null" },
 };
@@ -10048,16 +10134,16 @@ static int met_jchan_emit(VM *vm, Value alvo, Value *args, int n, Value *out);
 
 /* Os atalhos NÃO têm `methods`: o método é o nome do membro. */
 static const MetodoNat METODOS_JINKER[] = {
-    { "route", met_jk_route, "path,methods,auth,middleware,model" },
-    { "get", met_jk_get, "path,auth,middleware,model" },
-    { "post", met_jk_post, "path,auth,middleware,model" },
-    { "put", met_jk_put, "path,auth,middleware,model" },
-    { "patch", met_jk_patch, "path,auth,middleware,model" },
-    { "delete", met_jk_delete, "path,auth,middleware,model" },
+    { "route", met_jk_route, "path,methods=Null,auth=Null,middleware=Null,model=Null" },
+    { "get", met_jk_get, "path,auth=Null,middleware=Null,model=Null" },
+    { "post", met_jk_post, "path,auth=Null,middleware=Null,model=Null" },
+    { "put", met_jk_put, "path,auth=Null,middleware=Null,model=Null" },
+    { "patch", met_jk_patch, "path,auth=Null,middleware=Null,model=Null" },
+    { "delete", met_jk_delete, "path,auth=Null,middleware=Null,model=Null" },
     { "middleware", met_jk_middleware, NULL },
 };
 static const MetodoNat METODOS_JCORS[] = {
-    { "options", met_jcors_options, "subset" },
+    { "options", met_jcors_options, "subset=Null" },
     { "origins", met_jcors_origins, NULL },
     { "permiser", met_jcors_permiser, NULL },
     { "local", met_jcors_local, NULL },
@@ -10066,8 +10152,8 @@ static const MetodoNat METODOS_JREG[] = {
     { "register", met_jreg_register, "handler" },
 };
 static const MetodoNat METODOS_JRESP[] = {
-    { "send", met_jresp_send, "text,status" },
-    { "json", met_jresp_json, "data,status" },
+    { "send", met_jresp_send, "text,status=Null" },
+    { "json", met_jresp_json, "data,status=Null" },
     { "status", met_jresp_status, "code" },
     { "header", met_jresp_header, "key,value" },
     { "cookie", met_jresp_cookie,
@@ -10081,8 +10167,8 @@ static const MetodoNat METODOS_JPROXY[] = {
     { "path_param", met_jpx_path_param, "key" },
     { "header", met_jpx_header, "key" },
     { "cookie", met_jpx_cookie, "nome" },
-    { "file", met_jpx_file, "field,allowed" },
-    { "files", met_jpx_files, "field,allowed" },
+    { "file", met_jpx_file, "field,allowed=Null" },
+    { "files", met_jpx_files, "field,allowed=Null" },
 };
 static const MetodoNat METODOS_JUPLOAD[] = {
     { "save", met_jup_save, "destino" },
@@ -10090,15 +10176,15 @@ static const MetodoNat METODOS_JUPLOAD[] = {
     { "bytes", met_jup_bytes, NULL },
 };
 static const MetodoNat METODOS_JSOCKNS[] = {
-    { "emit", met_jsock_emit, "payload,room_id,exclude_self" },
+    { "emit", met_jsock_emit, "payload=Null,room_id=Null,exclude_self=True" },
     { "status_send", met_jsock_status_send, NULL },
 };
 static const MetodoNat METODOS_JEMIT[] = {
-    { "emit", met_jsock_emit, "payload,room_id,exclude_self" },
+    { "emit", met_jsock_emit, "payload=Null,room_id=Null,exclude_self=True" },
     { "status_send", met_jsock_status_send, NULL },
 };
 static const MetodoNat METODOS_JCHAN[] = {
-    { "emit", met_jchan_emit, "payload,room_id" },
+    { "emit", met_jchan_emit, "payload=Null,room_id=Null" },
 };
 
 static int met_ws_send(VM *vm, Value alvo, Value *args, int n, Value *out);
@@ -10136,19 +10222,19 @@ static int met_sk_detach(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_sk_dup(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_SOCKET[] = {
     { "bind", met_sk_bind, "address" },
-    { "listen", met_sk_listen, "backlog" },
+    { "listen", met_sk_listen, "backlog=Null" },
     { "accept", met_sk_accept, NULL },
     { "connect", met_sk_connect, "address" },
     { "connect_ex", met_sk_connect_ex, "address" },
-    { "send", met_sk_send, "data,flags" },
-    { "sendall", met_sk_sendall, "data,flags" },
-    { "sendto", met_sk_sendto, "data,address,flags" },
-    { "recv", met_sk_recv, "bufsize,flags" },
-    { "recvfrom", met_sk_recvfrom, "bufsize,flags" },
+    { "send", met_sk_send, "data,flags=Null" },
+    { "sendall", met_sk_sendall, "data,flags=Null" },
+    { "sendto", met_sk_sendto, "data,address,flags=Null" },
+    { "recv", met_sk_recv, "bufsize,flags=Null" },
+    { "recvfrom", met_sk_recvfrom, "bufsize,flags=Null" },
     { "close", met_sk_close, NULL },
     { "shutdown", met_sk_shutdown, "how" },
     { "setsockopt", met_sk_setsockopt, "level,optname,value" },
-    { "getsockopt", met_sk_getsockopt, "level,optname,buflen" },
+    { "getsockopt", met_sk_getsockopt, "level,optname,buflen=Null" },
     { "settimeout", met_sk_settimeout, "timeout" },
     { "gettimeout", met_sk_gettimeout, NULL },
     { "setblocking", met_sk_setblocking, "flag" },
@@ -10187,8 +10273,8 @@ static int met_qrb_make_image(VM *vm, Value alvo, Value *args, int n, Value *out
 static int met_qrb_clear(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_QRBUILD[] = {
     { "add_data", met_qrb_add_data, "data" },
-    { "make", met_qrb_make, "fit" },
-    { "make_image", met_qrb_make_image, "fill_color,back_color,name" },
+    { "make", met_qrb_make, "fit=Null" },
+    { "make_image", met_qrb_make_image, "fill_color=Null,back_color=Null,name=Null" },
     { "clear", met_qrb_clear, NULL },
 };
 static int met_qri_save(VM *vm, Value alvo, Value *args, int n, Value *out);
@@ -10203,7 +10289,7 @@ static int met_mpf_write(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_mpf_read(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_mpf_save(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_MPFILE[] = {
-    { "write", met_mpf_write, "content,column,cell,celula,init,sep,size" },
+    { "write", met_mpf_write, "content=Null,column=Null,cell=Null,celula=Null,init=Null,sep=Null,size=Null" },
     { "read", met_mpf_read, NULL },
     { "save", met_mpf_save, NULL },
 };
@@ -10223,7 +10309,7 @@ static const MetodoNat METODOS_REGEX[] = {
      * zero-argumento. Quem descobriu foi a sondagem por comportamento. */
     { "match", met_rx_match, "string" }, { "fullmatch", met_rx_match, "string" },
     { "search", met_rx_search, "string" }, { "findall", met_rx_findall, "string" },
-    { "sub", met_rx_sub, "repl,string" }, { "split", met_rx_split, "string,maxsplit=0" },
+    { "sub", met_rx_sub, "repl,string,count=Null" }, { "split", met_rx_split, "string,maxsplit=0" },
 };
 
 static const MetodoNat *TABELAS[] = { METODOS_STR, METODOS_LIST, METODOS_DICT,
@@ -11095,22 +11181,16 @@ static int aceita_char(const Value *v)
 {
     return EH_STRING(*v) && utf8_conta(COMO_STRING(*v)->chars, COMO_STRING(*v)->len) == 1;
 }
-/* `Object`: qualquer objeto que não é str/list/dict/tup/bytes — instância de
- * classe, servidor, conexão, arquivo, função. `Object app = Jinker(...)`.
- *
- * FUNCT É OBJETO. O comentário já prometia "função" e o teste não entregava:
- * `V_FUNC` e `V_NATIVE` não são `V_OBJ` (o valor carrega o índice do proto,
- * não um ponteiro pro monte), então `Object f = funct(){ … }` era recusado.
- * A incoerência aparecia até dentro da mesma expressão — lambda que CAPTURA
- * vira OBJ_CLOSURE e passava, lambda que não captura não passava. Quem
- * escreve `Object` quer dizer "qualquer coisa que não é escalar nem coleção",
- * e uma funct é exatamente isso: `type()` dela responde "funct" nas seis
- * formas (V_FUNC, V_NATIVE, closure, bound, nativa, método nativo). */
+/* `Object`: QUALQUER valor — texto, número, bool, coleção, byte, instância de
+ * classe, servidor, conexão, arquivo, funct (as seis formas: V_FUNC,
+ * V_NATIVE, closure, bound, nativa, método nativo), tipo. Regra dele, de
+ * 2026-10-13: "Object deveria ser o mesmo que qualquer objeto". Só o `Null`
+ * fica de fora, como em todo tipo declarado (a variável que aceita `Null` é a
+ * da união, Plano 4). Até o 17.0.16 o `Object` recusava str/list/dict/tup/byte
+ * e os escalares, e o checador repetia essa lista (`tp_aceita_um`). */
 static int aceita_obj(const Value *v)
 {
-    if (v->t == V_FUNC || v->t == V_NATIVE) return 1;
-    return v->t == V_OBJ && !EH_STRING(*v) && !EH_LIST(*v) && !EH_DICT(*v)
-        && !EH_TUPLA(*v) && !EH_BYTES(*v);
+    return v->t != V_NULL && v->t != V_UNSET;
 }
 /* `long`: inteiro de qualquer tamanho — cabendo ou não em 64 bits. */
 static int aceita_long(const Value *v)  { return EH_INTEIRO(*v); }
@@ -11557,12 +11637,25 @@ static int liga_args(VM *vm, const Proto *np, Value *dest, const Value *self, in
             }
         }
         if (achou >= 0) {
-            /* Nomeado SOBRESCREVE posicional — `f(1, a=2)` devolve 2. */
+            /* O parâmetro já ligado — por posição (`f(1, a=2)`) ou por outro
+             * nomeado (`f(**d, a=1)`) — é erro: "o último ganha" escondia o
+             * engano. */
+            if (marcado[achou]) {
+                snprintf(vm->erro, sizeof(vm->erro), "%s() got multiple values for argument '%s'", nome, nm);
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+                return -1;
+            }
             dest[achou] = kw_vals[k];
             marcado[achou] = 1;
             continue;
         }
         if (kd) {
+            Value ja;
+            if (dict_get(kd, &kw_nomes[k], &ja) == 0) {
+                snprintf(vm->erro, sizeof(vm->erro), "%s() got multiple values for keyword argument '%s'", nome, nm);
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+                return -1;
+            }
             if (dict_set(vm, kd, &kw_nomes[k], &kw_vals[k]) != 0) {
                 snprintf(vm->erro, sizeof(vm->erro), "sem memoria em **kwarg");
                 snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
@@ -12267,8 +12360,8 @@ static const MembroMod MOD_REGEX[] = {
     { "fullmatch", mod_regex_fullmatch, 0, "pattern,string" },
     { "search", mod_regex_search, 0, "pattern,string" },
     { "findall", mod_regex_findall, 0, "pattern,string" },
-    { "sub", mod_regex_sub, 0, "pattern,repl,string,count" },
-    { "split", mod_regex_split, 0, "pattern,string,maxsplit" },
+    { "sub", mod_regex_sub, 0, "pattern,repl,string,count=Null" },
+    { "split", mod_regex_split, 0, "pattern,string,maxsplit=Null" },
     { "escape", mod_regex_escape, 0, "pattern" },
 };
 
@@ -12300,7 +12393,7 @@ static const MembroMod MOD_JSON[] = {
 static const MembroMod MOD_DATE[] = {
     { "time", mod_date_time, 0, NULL }, { "today", mod_date_today, 0, NULL },
     { "datahora", mod_date_datahora, 0, NULL }, { "now", mod_date_now, 0, NULL },
-    { "timestamp", mod_date_timestamp, 0, NULL }, { "hora", mod_date_hora, 0, "hours,minutes,days" },
+    { "timestamp", mod_date_timestamp, 0, NULL }, { "hora", mod_date_hora, 0, "hours=Null,minutes=Null,days=Null" },
     { "timestamp_ms", mod_date_timestamp_ms, 0, NULL }, { "monotonic", mod_date_monotonic, 0, NULL },
 };
 
@@ -13407,16 +13500,16 @@ static int mod_bytes_xor(VM *vm, Value *args, int n, Value *out)
 }
 
 static const MembroMod MOD_BYTES[] = {
-    { "new", mod_bytes_new, 0, "x" },
+    { "new", mod_bytes_new, 0, "x=Null" },
     { "fromhex", mod_bytes_fromhex, 0, "s" },
     { "hex", mod_bytes_hex, 0, "b" },
     { "base64", mod_bytes_base64, 0, "b" },
     { "frombase64", mod_bytes_frombase64, 0, "s" },
-    { "fromint", mod_bytes_fromint, 0, "n,length,byteorder" },
-    { "toint", mod_bytes_toint, 0, "b,byteorder" },
+    { "fromint", mod_bytes_fromint, 0, "n,length=Null,byteorder=Null" },
+    { "toint", mod_bytes_toint, 0, "b,byteorder=Null" },
     { "tolist", mod_bytes_tolist, 0, "b" },
     { "concat", mod_bytes_concat, 0, "lista" },
-    { "slice", mod_bytes_slice, 0, "b,ini,fim" },
+    { "slice", mod_bytes_slice, 0, "b,ini=Null,fim=Null" },
     { "get", mod_bytes_get, 0, "b,i" },
     { "xor", mod_bytes_xor, 0, "dados,chave" },
 };
@@ -13598,7 +13691,7 @@ static int mod_jwt_check(VM *vm, Value *args, int n, Value *out)
 }
 
 static const MembroMod MOD_JWT[] = {
-    { "gen", mod_jwt_gen, 0, "payload,secret,algorithm" }, { "check", mod_jwt_check, 0, "token,secret" },
+    { "gen", mod_jwt_gen, 0, "payload,secret,algorithm=Null" }, { "check", mod_jwt_check, 0, "token,secret" },
 };
 
 
@@ -13920,11 +14013,11 @@ static int mod_err_flush(VM *vm, Value *a, int n, Value *o)
  * que a doc mostra — era `write() takes no keyword arguments`, embora o
  * `escreve_em` ja tratasse o 2o argumento como `end`. */
 static const MembroMod MOD_STDOUT[] = {
-    { "write", mod_out_write, 0, "texto,end" }, { "writeln", mod_out_writeln, 0, "texto" },
+    { "write", mod_out_write, 0, "texto,end=Null" }, { "writeln", mod_out_writeln, 0, "texto" },
     { "flush", mod_out_flush, 0, NULL },
 };
 static const MembroMod MOD_STDERR[] = {
-    { "write", mod_err_write, 0, "texto,end" }, { "writeln", mod_err_writeln, 0, "texto" },
+    { "write", mod_err_write, 0, "texto,end=Null" }, { "writeln", mod_err_writeln, 0, "texto" },
     { "flush", mod_err_flush, 0, NULL },
 };
 
@@ -14142,7 +14235,7 @@ static int mod_in_raw(VM *vm, Value *a, int n, Value *o)
 #endif
 
 static const MembroMod MOD_STDIN[] = {
-    { "read", mod_in_read, 0, "tamanho" },
+    { "read", mod_in_read, 0, "tamanho=Null" },
     { "readline", mod_in_readline, 0, NULL },
     { "raw", mod_in_raw, 0, "ligar" },
 };
@@ -14171,7 +14264,7 @@ static int mod_sys_stdin(VM *vm, Value *a, int n, Value *o)
 
 static const MembroMod MOD_SYS[] = {
     { "argv", mod_sys_argv, 1, NULL },
-    { "exit", mod_sys_exit, 0, "code" },
+    { "exit", mod_sys_exit, 0, "code=Null" },
     { "platform", mod_sys_platform, 0, NULL },
     { "executable", mod_sys_executable, 1, NULL },
     { "RelativePath", mod_sys_relativepath, 0, "name" },
@@ -14253,7 +14346,7 @@ static int mod_dotenv_load(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
-static const MembroMod MOD_DOTENV[] = { { "load", mod_dotenv_load, 0, "path" } };
+static const MembroMod MOD_DOTENV[] = { { "load", mod_dotenv_load, 0, "path=Null" } };
 
 
 /* ── Parsing ────────────────────────────────────────────────────────────── */
@@ -14502,11 +14595,11 @@ static const MembroMod MOD_PARSING[] = {
       * omissão: dizia `Parsing.integer()` sem argumento nenhum. Quem sofre não
       * é só a auditoria de doc — o LSP lê ESTA MESMA tabela pro completion e
       * pro hover, então oferecia a assinatura vazia. */
-    { "string", par_string, 0, "value,to_type" }, { "integer", par_integer, 0, "value,to_type" },
-    { "floating", par_floating, 0, "value,to_type" }, { "boolean", par_boolean, 0, "value,to_type" },
-    { "TransientValue", par_transient, 0, "value,to_type" },
-    { "JSONformatt", par_json, 0, "value,to_type" }, { "Arrayformatt", par_array, 0, "value,to_type" },
-    { "Tuplasformatt", par_tupla, 0, "value,to_type" },
+    { "string", par_string, 0, "value,to_type=Null" }, { "integer", par_integer, 0, "value,to_type=Null" },
+    { "floating", par_floating, 0, "value,to_type=Null" }, { "boolean", par_boolean, 0, "value,to_type=Null" },
+    { "TransientValue", par_transient, 0, "value,to_type=Null" },
+    { "JSONformatt", par_json, 0, "value,to_type=Null" }, { "Arrayformatt", par_array, 0, "value,to_type=Null" },
+    { "Tuplasformatt", par_tupla, 0, "value,to_type=Null" },
 };
 
 
@@ -16260,17 +16353,17 @@ static const MembroMod MOD_OS[] = {
     /* `path,mode`: os mesmos nomes do `open()` e os que as mensagens de erro
      * ja usavam. Era `name,modo`, entao quem copiava o erro (`mode='rb'`)
      * escrevia um nome que nao existia. */
-    { "loadFile", mod_os_loadfile, 0, "path,mode" }, { "getenv", mod_os_getenv, 0, "key,default" },
-    { "readFile", mod_os_readfile, 0, "path,encoding" }, { "writeFile", mod_os_writefile, 0, "path,content,encoding" },
-    { "warn", mod_os_warn, 0, "text,color" }, { "ipmach", mod_os_ipmach, 0, NULL },
-    { "mkdir", mod_os_mkdir, 0, "path,exist_ok" }, { "rmdir", mod_os_rmdir, 0, "path,force" }, { "ls", mod_os_ls, 0, "path" },
+    { "loadFile", mod_os_loadfile, 0, "path,mode=Null" }, { "getenv", mod_os_getenv, 0, "key,default=Null" },
+    { "readFile", mod_os_readfile, 0, "path,encoding=Null" }, { "writeFile", mod_os_writefile, 0, "path,content,encoding=Null" },
+    { "warn", mod_os_warn, 0, "text=Null,color=Null" }, { "ipmach", mod_os_ipmach, 0, NULL },
+    { "mkdir", mod_os_mkdir, 0, "path,exist_ok=Null" }, { "rmdir", mod_os_rmdir, 0, "path,force=Null" }, { "ls", mod_os_ls, 0, "path=Null" },
     { "cmd", mod_os_cmd, 0, "command,capture=False" },
     { "run", mod_os_run, 0, "args,capture=False,pty=False" },
-    { "code", mod_os_code, 0, "path" },
+    { "code", mod_os_code, 0, "path=Null" },
     { "exists", mod_os_exists, 0, "path" }, { "isfile", mod_os_isfile, 0, "path" }, { "isdir", mod_os_isdir, 0, "path" },
     { "rename", mod_os_rename, 0, "src,dst" }, { "copy", mod_os_copy, 0, "src,dst" }, { "move", mod_os_move, 0, "src,dst" },
     { "size", mod_os_size, 0, "path" }, { "cwd", mod_os_cwd, 0, NULL }, { "chdir", mod_os_chdir, 0, "path" },
-    { "environ", mod_os_environ, 0, "key" }, { "PoolFile", mod_os_poolfile_tipo, 1, NULL },
+    { "environ", mod_os_environ, 0, "key=Null" }, { "PoolFile", mod_os_poolfile_tipo, 1, NULL },
 };
 
 
@@ -18069,19 +18162,19 @@ SK_CONST(IP_ADD_MEMBERSHIP) SK_CONST(IP_DROP_MEMBERSHIP) SK_CONST(IPV6_V6ONLY)
 
 #define SK_C(nome) { #nome, mod_sk_c_##nome, 1, NULL }
 static const MembroMod MOD_SOCKETS[] = {
-    { "socket", mod_sk_socket, 0, "family,type,proto" },
-    { "create_connection", mod_sk_create_connection, 0, "address,timeout,source_address" },
-    { "create_server", mod_sk_create_server, 0, "address,backlog,reuse_port" },
+    { "socket", mod_sk_socket, 0, "family=Null,type=Null,proto=Null" },
+    { "create_connection", mod_sk_create_connection, 0, "address,timeout=Null,source_address=Null" },
+    { "create_server", mod_sk_create_server, 0, "address,backlog=Null,reuse_port=Null" },
     { "socketpair", mod_sk_socketpair, 0, NULL },
     { "gethostname", mod_sk_gethostname, 0, NULL },
-    { "getfqdn", mod_sk_getfqdn, 0, "name" },
+    { "getfqdn", mod_sk_getfqdn, 0, "name=Null" },
     { "gethostbyname", mod_sk_gethostbyname, 0, "hostname" },
     { "gethostbyname_ex", mod_sk_gethostbyname_ex, 0, "hostname" },
     { "gethostbyaddr", mod_sk_gethostbyaddr, 0, "address" },
-    { "getaddrinfo", mod_sk_getaddrinfo, 0, "host,port,family,type,proto,flags" },
-    { "getnameinfo", mod_sk_getnameinfo, 0, "sockaddr,flags" },
-    { "getservbyname", mod_sk_getservbyname, 0, "servicename,protocolname" },
-    { "getservbyport", mod_sk_getservbyport, 0, "port,protocolname" },
+    { "getaddrinfo", mod_sk_getaddrinfo, 0, "host,port,family=Null,type=Null,proto=Null,flags=Null" },
+    { "getnameinfo", mod_sk_getnameinfo, 0, "sockaddr,flags=Null" },
+    { "getservbyname", mod_sk_getservbyname, 0, "servicename,protocolname=Null" },
+    { "getservbyport", mod_sk_getservbyport, 0, "port,protocolname=Null" },
     { "getprotobyname", mod_sk_getprotobyname, 0, "protocolname" },
     { "htons", mod_sk_htons, 0, "x" }, { "htonl", mod_sk_htonl, 0, "x" },
     { "ntohs", mod_sk_ntohs, 0, "x" }, { "ntohl", mod_sk_ntohl, 0, "x" },
@@ -19397,12 +19490,12 @@ static int mod_req_ws(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
-#define REQ_PARAMS "url,headers,body,timeout,stream,max_size,fields,file,save"
+#define REQ_PARAMS "url,headers=Null,body=Null,timeout=Null,stream=Null,max_size=Null,fields=Null,file=Null,save=Null"
 static const MembroMod MOD_REQUEST[] = {
     { "get", mod_req_get, 0, REQ_PARAMS }, { "post", mod_req_post, 0, REQ_PARAMS },
     { "put", mod_req_put, 0, REQ_PARAMS }, { "patch", mod_req_patch, 0, REQ_PARAMS },
     { "delete", mod_req_delete, 0, REQ_PARAMS },
-    { "head", mod_req_head, 0, "url,headers,timeout" },
+    { "head", mod_req_head, 0, "url,headers=Null,timeout=Null" },
     { "ws_connect", mod_req_ws, 0, "url" },
 };
 
@@ -19756,8 +19849,8 @@ static int mod_qr_make(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
-#define QR_PARAMS_GEN "data,save,size,border,color,bg,name,error_correction,qr32"
-#define QR_PARAMS_MAKE "data,error_correction,box_size,border,fill_color,back_color,name"
+#define QR_PARAMS_GEN "data,save=Null,size=Null,border=Null,color=Null,bg=Null,name=Null,error_correction=Null,qr32=Null"
+#define QR_PARAMS_MAKE "data,error_correction=Null,box_size=Null,border=Null,fill_color=Null,back_color=Null,name=Null"
 static int mod_qr_ecl(VM *v,Value*a,int n,Value*o){(void)a;(void)n;return devolve_texto(v,o,"L",1);}
 static int mod_qr_ecm(VM *v,Value*a,int n,Value*o){(void)a;(void)n;return devolve_texto(v,o,"M",1);}
 static int mod_qr_ecq(VM *v,Value*a,int n,Value*o){(void)a;(void)n;return devolve_texto(v,o,"Q",1);}
@@ -19766,7 +19859,7 @@ static int mod_qr_ech(VM *v,Value*a,int n,Value*o){(void)a;(void)n;return devolv
 static const MembroMod MOD_QRCODE[] = {
     { "gen", mod_qr_gen, 0, QR_PARAMS_GEN },
     { "make", mod_qr_make, 0, QR_PARAMS_MAKE },
-    { "QRCode", mod_qr_QRCode, 0, "version,error_correction,box_size,border" },
+    { "QRCode", mod_qr_QRCode, 0, "version=Null,error_correction=Null,box_size=Null,border=Null" },
     { "ERROR_CORRECT_L", mod_qr_ecl, 1, NULL },
     { "ERROR_CORRECT_M", mod_qr_ecm, 1, NULL },
     { "ERROR_CORRECT_Q", mod_qr_ecq, 1, NULL },
@@ -20578,10 +20671,10 @@ static int met_mpf_save(VM *vm, Value alvo, Value *args, int n, Value *out)
 static const MembroMod MOD_MANPU[] = {
     { "read", mod_mp_read, 0, "filepath" },
     { "load", mod_mp_load, 0, "filepath" },
-    { "write", mod_mp_write, 0, "content,column,celula,target" },
-    { "remove", mod_mp_remove, 0, "value,content,column,celula,amount,target" },
+    { "write", mod_mp_write, 0, "content=Null,column=Null,celula=Null,target=Null" },
+    { "remove", mod_mp_remove, 0, "value=Null,content=Null,column=Null,celula=Null,amount=Null,target=Null" },
     { "src", mod_mp_src, 0, "filepath" },
-    { "open", mod_mp_open, 0, "target,encoding" },
+    { "open", mod_mp_open, 0, "target,encoding=Null" },
 };
 
 /* ── módulo psodbc (db) ─────────────────────────────────────────────────── */
@@ -21056,8 +21149,8 @@ static int mod_db_query(VM *vm, Value *args, int n, Value *out)
 }
 
 static const MembroMod MOD_PSODBC[] = {
-    { "connect", mod_db_connect, 0, "driver,host,port,user,password,database,base,url" },
-    { "query", mod_db_query, 0, "base,cmd,table" },
+    { "connect", mod_db_connect, 0, "driver=Null,host=Null,port=Null,user=Null,password=Null,database=Null,base=Null,url=Null" },
+    { "query", mod_db_query, 0, "base=Null,cmd=Null,table=Null" },
 };
 
 /* ── psodbc: MongoDB ────────────────────────────────────────────────────── */
@@ -24032,10 +24125,17 @@ static void fib_trampolim(void)
 {
     /* A fibra tem pilha PRÓPRIA e pequena (FIB_CSTACK, 256 KB) — 32x menor que
      * os 8 MB do processo. A base tem que ser remarcada aqui, senão a medição
-     * de folga compara com a pilha do processo e não protege nada. */
-    ps_pilha_marca(FIB_CSTACK);
+     * de folga compara com a pilha do processo e não protege nada. O tamanho é
+     * medido até o começo do mapeamento (`f->cstack`, acima da guarda): este
+     * quadro já ocupa o topo dele. No Windows a pilha é a da fibra do sistema,
+     * reservada com o dobro (`ps_ctx_make`), e o `cstack` não é usado. */
     VM *vm = g_fib_vm;
     Fiber *f = vm->fib_atual;
+#if defined(PS_SO_WINDOWS)
+    ps_pilha_marca(FIB_CSTACK);
+#else
+    ps_pilha_marca_ate(f->cstack);
+#endif
     ps_pilha_le(&f->pilha_base, &f->pilha_tam);   /* pras retomadas seguintes */
     if (f->kind == FIB_ASYNC) {
         /* roda a async funct nocorpo da fibra; ao ceder num sleep/DB, o
@@ -25241,10 +25341,10 @@ static int mod_jk_new_request(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 static const MembroMod MOD_JINKER[] = {
-    { "Jinker", mod_jk_Jinker, 0, "name,oauth,static_folder,static_url,route_prefix" },
+    { "Jinker", mod_jk_Jinker, 0, "name=Null,oauth=Null,static_folder=Null,static_url=Null,route_prefix=Null" },
     { "cors", mod_jk_cors, 1, NULL },
     { "jsonify", mod_jk_jsonify, 0, "data" },
-    { "render", mod_jk_render, 0, "folder_or_file,file" },
+    { "render", mod_jk_render, 0, "folder_or_file,file=Null" },
     { "request", mod_jk_request, 1, NULL },
     { "JinkerResponse", mod_jk_new_response, 0, NULL },
     { "JinkerRequest", mod_jk_new_request, 0, NULL },
@@ -25806,7 +25906,7 @@ static Builtin BUILTINS[] = {
     { "removeStart", nativa_remove_start, NULL },
     { "map", nativa_map, NULL },
     { "filter", nativa_filter, NULL },
-    { "open", nativa_open, "path,mode,encoding" },
+    { "open", nativa_open, "path,mode=Null,encoding=Null" },
     { "sleep", nativa_sleep, NULL },
     { "gather", nativa_gather, NULL },
     { "input", nativa_input, NULL },
@@ -26198,18 +26298,31 @@ static int checa_aridade_nat(VM *vm, const MetodoNat *mt, int n)
         return erro_aridade(vm, mt->nome, 0, 0, n);
     }
     const char *p = mt->params;
-    if (strstr(p, "...")) return 0;                 /* variádico */
+    if (strstr(p, "...") || p[0] == '*' || strstr(p, ",*")) return 0;   /* variádico */
 
-
+    /* O mínimo também sai da lista: o parâmetro sem padrão escrito é
+     * obrigatório (scripts/mede_aridades.pr confere a lista contra o mínimo
+     * medido). Cobrado aqui, com o nome CHAMADO: `append(1, 2, 3)` dizia "at
+     * most 1" e `append()` "exactly one"; o apelido (`has`) falava o nome do
+     * irmão (`contains`) com 0 argumento; e o método de serviço que lê o 1º
+     * argumento sem conferir (`r.get()`, `req.header()`) lia o que sobrou na
+     * pilha. */
     max = 1;
-    int prof = 0;
-    for (const char *q = p; *q; q++) {
+    int obrig = 0, prof = 0, tem_padrao = 0;
+    for (const char *q = p; ; q++) {
+        if (*q == '\0' || (*q == ',' && prof == 0)) {
+            if (!tem_padrao) obrig++;
+            tem_padrao = 0;
+            if (*q == '\0') break;
+            max++;
+            continue;
+        }
         if (*q == '(' || *q == '[' || *q == '{') prof++;
         else if (*q == ')' || *q == ']' || *q == '}') prof--;
-        else if (*q == ',' && prof == 0) max++;
+        else if (*q == '=' && prof == 0) tem_padrao = 1;
     }
-    if (n <= max) return 0;
-    return erro_aridade(vm, mt->nome, 0, max, n);
+    if (n >= obrig && n <= max) return 0;
+    return erro_aridade(vm, mt->nome, obrig, max, n);
 }
 
 /* Quem é o alvo, quando ele tem protótipo: funct, closure, ou método ligado a
@@ -28092,8 +28205,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 stack[sp - 1] = mk_from_mpz(vm, z); mpz_clear(z);
             }
             else if (a.t == V_FLOAT) stack[sp - 1] = MK_FLOAT(-a.as.d);
+            /* `+x` é NEG 1 seguido de NEG 0 (negar duas vezes devolve o
+             * número, e o bool vira int, como na conta): o operando só
+             * importa aqui, pra frase dizer qual dos dois foi escrito */
             else ERRO_TF(vm, "TypeError",
-                          "bad operand type for unary -: '%s'", TIPO0(a, ta0));
+                          "bad operand type for unary %s: '%s'", arg ? "+" : "-", TIPO0(a, ta0));
             break;
         }
 
@@ -28607,6 +28723,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
                         goto erro_runtime;
                     }
+                    if (pos[achou].t != V_UNSET) {
+                        snprintf(vm->erro, sizeof(vm->erro),
+                                 "%s.__call__() got multiple values for argument '%s'",
+                                 nome_do_tipo_valor(alvo_kw), alvo_nome);
+                        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+                        goto erro_runtime;
+                    }
                     pos[achou] = stack[sp - nkw_tab + k];
                     if (achou + 1 > usados) usados = achou + 1;
                 }
@@ -28665,32 +28788,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 }
 
                 Value pos[16];
-                int usados = npos;
                 if (npos > 16) ERRO(vm, "argumentos demais na chamada");
                 for (int k = 0; k < npos; k++) pos[k] = stack[sp - total + k];
-                for (int k = npos; k < 16; k++) pos[k] = MK_NULL();
-                for (int k = 0; k < nkw_tab; k++) {
-                    Value nv = tn->itens[k];
-                    if (!EH_STRING(nv)) ERRO(vm, "nome de argumento invalido");
-                    const char *alvo_nome = COMO_STRING(nv)->chars;
-                    int idx_par = 0, achou = -1;
-                    for (const char *q = lista_nomes; *q; idx_par++) {
-                        const char *fim = strchr(q, ',');
-                        size_t tam = fim ? (size_t)(fim - q) : strlen(q);
-                        size_t tnome = par_nome_tam(q, tam);   /* para no '=' do default */
-                        if (strlen(alvo_nome) == tnome && !strncmp(q, alvo_nome, tnome)) { achou = idx_par; break; }
-                        q = fim ? fim + 1 : q + tam;
-                    }
-                    if (achou < 0 || achou >= 16) {
-                        snprintf(vm->erro, sizeof(vm->erro),
-                                 "'%s' is an invalid keyword argument for %s()",
-                                 alvo_nome, nome_nat);
-                        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
-                        goto erro_runtime;
-                    }
-                    pos[achou] = stack[sp - nkw_tab + k];
-                    if (achou + 1 > usados) usados = achou + 1;
-                }
+                int usados = liga_nomeados_nat(vm, lista_nomes, nome_nat, pos, npos,
+                                               tn->itens, &stack[sp - nkw_tab], nkw_tab);
+                if (usados < 0) goto erro_runtime;
 
                 vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                 vm->erro_tipo[0] = '\0';
@@ -28957,7 +29059,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             } else if (alvo.t == V_TIPO) {
                 /* Tipo como valor de 1ª classe: `f = str; f(x)` e `map(l, str)`
                  * convertem, usando O MESMO conversor nativo da chamada direta
-                 * `str(...)`. json/dict/tup não têm conversor -> recusam. */
+                 * `str(...)` (`tup` e `dict` também, desde o 17.0.17); o tipo
+                 * sem conversor (`char`, `PoolFile`, `Object`) recusa. */
                 FnNativa conv = tipo_conversor(alvo.as.i);
                 /* exceção chamada fora do `raise`: a frase diz onde ela vale */
                 if (!conv && tipo_eh_excecao(alvo.as.i))
@@ -30950,10 +31053,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             Value b = stack[--sp], a = stack[sp - 1];
             int r;
             /* tipo vs tipo -> IDENTIDADE (`str is str`, `int is int`); todo
-             * tipo `is type`. (json/dict já colapsam no mesmo índice.) Entre
-             * exceções vale a ÁRVORE: `FileNotFoundError is OSError`. */
+             * tipo `is type` e `is Object` (um tipo é um valor, e `Object`
+             * aceita qualquer valor: `Object x = int` vale). (json/dict já
+             * colapsam no mesmo índice.) Entre exceções vale a ÁRVORE:
+             * `FileNotFoundError is OSError`. */
             if (a.t == V_TIPO && b.t == V_TIPO) {
-                if (b.as.i == TIPO_TYPE)                                   r = 1;
+                if (b.as.i == TIPO_TYPE || b.as.i == TIPO_OBJ)             r = 1;
                 else if (tipo_eh_excecao(a.as.i) && tipo_eh_excecao(b.as.i))
                     r = excecao_eh(tipo_nome(a.as.i), tipo_nome(b.as.i));
                 else                                                       r = (a.as.i == b.as.i);

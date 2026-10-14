@@ -92,6 +92,22 @@ post(f(c=3, a=1, b=2))    # "123"
 post(f(1, c=3, b=2))      # "123"  (posicional + nomeado)
 ```
 
+Cada parâmetro recebe **um** valor (17.0.17; antes o último ganhava, calado):
+
+- o mesmo nome duas vezes na chamada é erro antes de rodar, no segundo:
+  `f(a=1, a=2)` → `SyntaxError: argumento nomeado 'a' repetido na chamada`;
+- nome de um parâmetro que um posicional já preencheu é erro:
+  `f(1, a=2)` → `TypeError: f() got multiple values for argument 'a'` (antes
+  de rodar quando a funct é conhecida; rodando, quando o nome chega por
+  `**d`);
+- nos **nativos** vale a mesma regra, pela lista de nomes de cada um (a que o
+  editor mostra): o parâmetro que fica vazio antes do último dado recebe o
+  padrão dele (`[5, 2, 7].index(7, fim=3)` usa `inicio=0`), e o que não tem
+  padrão é erro — `d.get(default=5)` →
+  `TypeError: get() missing required argument 'chave'`. Nome que o nativo não
+  tem é `'x' is an invalid keyword argument for f()`; o `format` não aceita
+  nome nenhum (os campos com nome vêm do `format_map`).
+
 ### 6.2.3. Parâmetro tipado — o tipo vem ANTES do nome
 
 Um parâmetro pode declarar o tipo, e o tipo vem **antes** do nome, como no
@@ -227,8 +243,9 @@ post(max(*[4, 9, 2]))      # 9
 ```
 
 Vale a regra de sempre: posicional (ou `*x`) antes de nomeado (ou `**d`), e
-num nome repetido o **último ganha**. `*x` exige `list` ou `tup` e `**d`
-exige `dict` — não há conversão:
+nome repetido é erro (6.2.2): com `**d`, o nome que já veio
+(`f(**{"a": 1}, a=2)`) dá `got multiple values`, rodando. `*x` exige `list` ou
+`tup` e `**d` exige `dict` — não há conversão:
 
 ```
 f(*5)

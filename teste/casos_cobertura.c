@@ -63,7 +63,7 @@ const Caso CASOS_COBERTURA[] = {
   "x = Null > 0\n"
   "post(x)\n"
   "\n",
-  "", "'>' not supported between instances of 'Null' and 'int'", 1 },
+  "", "'>' not supported between instances of 'Null' and 'int'", 2 },
 { "git: test_interpreter #62",
   "lista = [1, 2, 3]\n"
   "x = lista[99]\n"

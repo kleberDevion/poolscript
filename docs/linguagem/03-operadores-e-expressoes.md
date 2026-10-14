@@ -406,8 +406,9 @@ post(x is not dict)   # True
 da declaração: `v is T` é `True` exatamente quando `T x = v` aceitaria o
 valor. Por isso:
 
-- `x is Object` segue a regra do `Object` (o que não é escalar nem coleção:
-  instância, funct, módulo...), e `x is String` é `x is str` (o apelido);
+- `x is Object` segue a regra do `Object` (qualquer valor, menos `Null`; um
+  tipo também: `int is Object` é `True`, como `int is type`), e
+  `x is String` é `x is str` (o apelido);
 - com uma classe, a instância responde pela classe dela **e pelas ancestrais**
   (`Animal a = Cao()` vale, então `Cao() is Animal` é `True`);
 - com um enum, responde se o valor é o de um dos membros (`Cor.RED is Cor`);
@@ -519,7 +520,7 @@ Prefixos, nível 12:
 | Op | Efeito |
 |---|---|
 | `-` | negação numérica (`-x`) |
-| `+` | identidade numérica (`+x`, devolve `x`) |
+| `+` | identidade numérica (`+x`, devolve o número; `bool` vira `int`, como na conta) |
 | `~` | complemento bit a bit (`int`) |
 | `not` / `!` | negação lógica (nível 4, ver 3.4) |
 | `await` | aguarda uma corotina (ver seção de assíncrono) |
@@ -529,6 +530,22 @@ post(-5)    # -5
 post(+5)    # 5
 post(~0)    # -1
 ```
+
+`-`, `+` e `~` em algo que não é número (`~` só em `int`) são
+`TypeError: bad operand type for unary -: 'str'`, com o operador escrito. O
+`+` em texto passava calado até o 17.0.17 (não fazia nada).
+
+### 3.8.1. A recusa antes de rodar
+
+Quando os tipos dos dois lados são certos pelo que está escrito (literal,
+variável declarada, retorno conhecido), a conta que a VM recusaria é acusada
+pelo `--check` — e rodar mostra o mesmo erro, sem rodar nada —, com a mesma
+frase que sairia rodando: `str s = "a" + 1` →
+`TypeError: can only concatenate str (not "int") to str`; `"%d" % 5` →
+`unsupported operand type(s) for %: 'str' and 'int'` (o `%` não formata
+texto); `[1] < (1,)`, `-"a"`, `~1.5`. Vale também na atribuição com operador
+(`x += "a"` num `int x`). Com tipo que só se sabe rodando, o erro sai rodando,
+como antes.
 
 ---
 

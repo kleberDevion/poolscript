@@ -67,6 +67,21 @@ void ps_pilha_marca(size_t tam)
     ps_pilha_ultimo = NULL;          /* outra pilha: o degrau recomeça dela */
 }
 
+/* Marca a base aqui e mede o tamanho até `baixo`, o primeiro byte utilizável
+ * da pilha (logo acima da página de guarda). É a marca da fibra: quem chama
+ * (o trampolim) já ocupa o topo do mapeamento, e supor o mapeamento inteiro a
+ * partir daqui errava pelo tamanho do quadro dele. No clang do macOS esse
+ * quadro tem 17,6 KB e o de um nível de callback (`vm_executa_base`) 15 KB:
+ * a margem de verdade ficava menor que um nível, e o `map` recursivo dentro
+ * de `async` estourava a guarda (Bus error) em vez de dar RecursionError. */
+void ps_pilha_marca_ate(const void *baixo)
+{
+    const char *aqui = (const char *)__builtin_frame_address(0);
+    ps_pilha_base = aqui;
+    ps_pilha_tam = aqui > (const char *)baixo ? (size_t)(aqui - (const char *)baixo) : 0;
+    ps_pilha_ultimo = NULL;
+}
+
 /* Entrada do processo: a pilha é a do sistema, e o tamanho é o que RESTA daqui
  * até o limite baixo dela, perguntado ao sistema nos três. Era o `ulimit -s`
  * inteiro no Linux e no macOS, como se a marca fosse o topo: o quadro do

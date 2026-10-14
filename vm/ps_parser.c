@@ -1621,6 +1621,18 @@ static PSNode *primario(P *p)
                 return NULL;
             }
             if (acusa_encontrado(p, t)) return NULL;          /* `return x = 5` */
+            /* `x **= 3`, `y //= 2`, `m <<= 1`: operador colado no `=` que não
+             * forma atribuição — as atribuições com operador são as cinco da
+             * doc (4.x). Antes era "expressao invalida" no `=`. */
+            if (t->type == T_OP && t->texto && !strcmp(t->texto, "=") && p->pos > 0) {
+                PSToken *ant = tok_i(p, p->pos - 1);
+                if (ant && ant->type == T_OP && ant->texto && ant->line == t->line
+                        && ant->col + (int32_t)strlen(ant->texto) == t->col) {
+                    perro_f(p, ant, "'%s=' nao existe: escreva x = x %s valor (atribuicao com operador "
+                                    "so com +=, -=, *=, /= e %%=)", ant->texto, ant->texto);
+                    return NULL;
+                }
+            }
             perro(p, "expressao invalida", t);
             return NULL;
     }
@@ -1654,6 +1666,7 @@ static PSNode *posfixo(P *p)
                 for (;;) {
                     pula_separadores(p);
                     PSToken *at = atual(p);
+                    int32_t ini_arg = p->pos;
                     const char *nome_arg = NULL;
                     int estrela = estrela_de_argumento(p);   /* `*lista` / `**dict` */
                     /* argumento nomeado: NOME '=' valor. O nome é só um
@@ -1663,6 +1676,15 @@ static PSNode *posfixo(P *p)
                             && espia(p, 1)->type == T_OP
                             && espia(p, 1)->texto && strcmp(espia(p, 1)->texto, "=") == 0) {
                         nome_arg = dup_tok(p, at);
+                        /* O mesmo nome duas vezes na chamada é erro, no segundo:
+                         * "o último ganha" escondia o engano de quem escreveu. */
+                        for (int32_t q = 0; q < c->lista.n; q++) {
+                            PSNode *ant = c->lista.itens[q];
+                            if (ant->texto && !ant->i2 && nome_arg && strcmp(ant->texto, nome_arg) == 0) {
+                                perro_f(p, at, "argumento nomeado '%s' repetido na chamada", nome_arg);
+                                return NULL;
+                            }
+                        }
                         p->pos += 2;
                     }
                     PSNode *valor = expressao(p);
@@ -1712,6 +1734,9 @@ static PSNode *posfixo(P *p)
                     arg->a = valor;
                     arg->texto = nome_arg;
                     arg->i2 = estrela;
+                    /* o argumento inteiro (`sep=";"`, `*l`, o valor): é onde o
+                     * erro de argumento aponta, e sem o fim ele saía com l2/c2 0 */
+                    fecha_no(p, arg, ini_arg);
                     if (ps_vec_push(p->arena, &c->lista, arg) != 0) {
                         perro(p, "sem memoria", at); return NULL;
                     }
@@ -2151,6 +2176,74 @@ static void fstring_pos(PSNode *n, int32_t linha, int32_t col)
     for (int32_t i = 0; i < n->lista2_alias.n; i++) fstring_pos(n->lista2_alias.itens[i], linha, col);
 }
 
+/* Onde acaba a expressão de um `{...}` da f-string e começa o formato
+ * (`{x:.2f}`): o primeiro `:` fora de parêntese, colchete, chave e texto entre
+ * aspas — `{s[1:2]}`, `{d["a:b"]}` e `{ {"a": 1}["a"] }` não têm formato.
+ * -1 quando não há. O parser e o caminho do compilador que corta a f-string
+ * na mão (string tripla) usam esta mesma conta. */
+int32_t ps_fstring_formato(const char *t, int32_t len)
+{
+    int prof = 0;
+    for (int32_t i = 0; i < len; i++) {
+        char ch = t[i];
+        if (ch == '"' || ch == '\'') {
+            int tripla = i + 2 < len && t[i + 1] == ch && t[i + 2] == ch;
+            int32_t j = i + (tripla ? 3 : 1);
+            for (; j < len; j++) {
+                if (t[j] == '\\') { j++; continue; }
+                if (t[j] != ch) continue;
+                if (!tripla) break;
+                if (j + 2 < len && t[j + 1] == ch && t[j + 2] == ch) { j += 2; break; }
+            }
+            i = j;
+            continue;
+        }
+        if (ch == '(' || ch == '[' || ch == '{') prof++;
+        else if (ch == ')' || ch == ']' || ch == '}') { if (prof > 0) prof--; }
+        else if (ch == ':' && prof == 0) return i;
+    }
+    return -1;
+}
+
+/* `{x:SPEC}` vira `"{:SPEC}".format(x)`: o formato é o mesmo do `format`, com
+ * as mesmas frases de erro. Campo dentro do formato (`{x:{w}.2f}`) faz do
+ * texto do formato uma f-string, que o compilador monta antes de formatar. Os
+ * nós nascem na posição da expressão, ainda em coordenada do trecho: o
+ * `fstring_pos` de quem chama leva tudo pro arquivo. */
+static PSNode *fstring_com_formato(P *p, PSNode *e, const char *spec, size_t slen)
+{
+    int campo = memchr(spec, '{', slen) != NULL;
+    char *buf = malloc(slen + 6);
+    if (!buf) return NULL;
+    size_t nb = 0;
+    buf[nb++] = '{';
+    if (campo) buf[nb++] = '{';
+    buf[nb++] = ':';
+    memcpy(buf + nb, spec, slen);
+    nb += slen;
+    buf[nb++] = '}';
+    if (campo) buf[nb++] = '}';
+    PSNode *fmt = ps_node_novo(p->arena, N_LITERAL, e->line, e->col);
+    PSNode *m = ps_node_novo(p->arena, N_MEMBER_ACCESS, e->line, e->col);
+    PSNode *arg = ps_node_novo(p->arena, N_CALL_ARG, e->line, e->col);
+    PSNode *c = ps_node_novo(p->arena, N_CALL, e->line, e->col);
+    if (!fmt || !m || !arg || !c) { free(buf); return NULL; }
+    fmt->lit = campo ? L_FSTRING : L_STR;
+    fmt->texto = ps_arena_strdup(p->arena, buf, (int)nb);
+    fmt->texto_len = (int32_t)nb;
+    free(buf);
+    m->a = fmt;
+    m->texto = ps_arena_strdup(p->arena, "format", 6);
+    arg->a = e;
+    arg->linha_fim = e->linha_fim;
+    arg->col_fim = e->col_fim;
+    c->a = m;
+    if (ps_vec_push(p->arena, &c->lista, arg) != 0) return NULL;
+    c->linha_fim = e->linha_fim;
+    c->col_fim = e->col_fim;
+    return c;
+}
+
 /* Os `{...}` da f-string do token `i_tok` viram nós filhos do literal. Cada
  * trecho é lexado e parseado com o MESMO lexer e o MESMO parser (não há
  * segunda gramática) e nasce na arena desta árvore, então ele sobrevive ao
@@ -2162,7 +2255,9 @@ static void fstring_filhos(P *p, PSNode *n, int32_t i_tok)
         if (p->tl->interps[k].tok != i_tok || !p->tl->interps[k].txt) continue;
         const char *txt = p->tl->interps[k].txt;
         int32_t il = p->tl->interps[k].linha, ic = p->tl->interps[k].col;
-        PSTokenList *sub = ps_lexer_tokenize(txt, strlen(txt));
+        size_t tlen = strlen(txt);
+        int32_t dp = ps_fstring_formato(txt, (int32_t)tlen);
+        PSTokenList *sub = ps_lexer_tokenize(txt, dp >= 0 ? (size_t)dp : tlen);
         if (!sub) continue;
         if (!sub->ok) {
             /* erro de LEXER dentro das chaves (`{x $ y}`): sai no ponto dele,
@@ -2217,6 +2312,10 @@ static void fstring_filhos(P *p, PSNode *n, int32_t i_tok)
         }
         ps_lexer_free(sub);
         if (!e) continue;
+        if (dp >= 0) {
+            e = fstring_com_formato(p, e, txt + dp + 1, tlen - (size_t)dp - 1);
+            if (!e) { perro(p, "sem memoria", atual(p)); return; }
+        }
         fstring_pos(e, il, ic);
         ps_vec_push(p->arena, &n->lista, e);
     }
@@ -3545,6 +3644,7 @@ static PSNode *decorador_cabeca(P *p)
             for (;;) {
                 pula_separadores(p);
                 PSToken *at = atual(p);
+                int32_t ini_arg = p->pos;
                 const char *nome_arg = NULL;
                 int estrela = estrela_de_argumento(p);   /* `@app.route("/x", **opts)` */
                 if (!estrela
@@ -3559,6 +3659,7 @@ static PSNode *decorador_cabeca(P *p)
                 PSNode *arg = ps_node_novo(p->arena, N_CALL_ARG, at->line, at->col);
                 if (!arg) return NULL;
                 arg->a = v; arg->texto = nome_arg; arg->i2 = estrela;
+                fecha_no(p, arg, ini_arg);
                 if (ps_vec_push(p->arena, &dc->lista2, arg) != 0) return NULL;
                 pula_separadores(p);
                 if (!aceita(p, T_COMMA)) break;

@@ -2948,6 +2948,11 @@ static int tp_aceita_um(C *c, const char *d, const char *v, PSNode *no, int decl
 {
     /* Null só serve declarado onde o tipo É `Null` (o retorno da `Null funct`) */
     if (strcmp(v, "Null") == 0) return declarado && strcmp(d, "Null") != 0 ? T_NAO : T_SIM;
+    /* `Object` é qualquer valor (o Null saiu acima): aceita todo tipo, e um
+     * valor que só se sabe ser `Object` pode ser de qualquer tipo — quem
+     * decide é a VM rodando (`aceita_obj`, a mesma regra) */
+    if (strcmp(d, "Object") == 0) return T_SIM;
+    if (strcmp(v, "Object") == 0) return T_TALVEZ;
     if (strcmp(d, v) == 0) {
         if (declarado && strcmp(d, "int") == 0) {
             if (no && no->kind == N_LITERAL && no->lit == L_INT) return T_SIM;
@@ -2969,12 +2974,6 @@ static int tp_aceita_um(C *c, const char *d, const char *v, PSNode *no, int decl
              * o intervalo só rodando (`char c = -1` é ConversionError) */
             if (strcmp(v, "int") == 0 || strcmp(v, "bool") == 0) return declarado == 2 ? T_TALVEZ : T_NAO;
             return T_NAO;
-        }
-        if (strcmp(d, "Object") == 0) {
-            static const char *const NAO_OBJ[] = { "str", "list", "dict", "tup", "byte", "int", "flo", "bool" };
-            for (size_t i = 0; i < sizeof(NAO_OBJ) / sizeof(NAO_OBJ[0]); i++)
-                if (strcmp(v, NAO_OBJ[i]) == 0) return T_NAO;
-            return strcmp(v, "type") == 0 ? T_TALVEZ : T_SIM;
         }
         if (strcmp(d, "type") == 0 && strcmp(v, "Entity") == 0) return T_TALVEZ;
     }
@@ -3050,6 +3049,29 @@ static const char *tp_elemento(const char *t)
     if (!strcmp(t, "str")) return "str";
     if (!strcmp(t, "byte")) return "int";
     return NULL;
+}
+
+static const char *tp_uniao(C *c, const char *a, const char *b);
+
+/* O tipo de cada item que o laço (ou a compreensão) recebe de `it`. A lista
+ * e a tupla ESCRITAS têm o tipo nos itens: a união deles (`["a", "b"]` dá
+ * str, `[1, "a"]` dá int|str), e o `int i` do laço que recebe str é acusado
+ * antes de rodar. Item de tipo que não se sabe deixa o laço sem tipo. */
+static const char *tp_elemento_de(C *c, Unidade *u, PSNode *it)
+{
+    if (it && (it->kind == N_LIST_LITERAL || it->kind == N_TUPLE_LITERAL) && it->lista.n > 0) {
+        const char *t = NULL;
+        for (int32_t i = 0; i < it->lista.n; i++) {
+            PSNode *item = it->lista.itens[i];
+            if (!item) return NULL;
+            const char *ti = tp_de(c, u, item);
+            if (!ti) return NULL;
+            t = t ? tp_uniao(c, t, ti) : ti;
+            if (!t) return NULL;
+        }
+        return t;
+    }
+    return tp_elemento(tp_de(c, u, it));
 }
 
 static SimInfo *tp_sim_de(C *c, Unidade *u, const char *nome)
@@ -3860,42 +3882,105 @@ static int tp_sequencia(const char *t)
 }
 
 /* O tipo do resultado de `a op b`, pelas regras da seção 2.8. */
-static const char *tp_binario(C *c, const char *op, const char *a, const char *b)
+/* O nome que o `type()` da VM dá a um valor do tipo ESCRITO `t`, quando o
+ * tipo é um dos que a VM conhece sozinha (número, texto, coleção, Null):
+ * `long` é int e `char` é str rodando. NULL pra classe, união e desconhecido
+ * — aí só rodando se sabe. */
+static const char *tp_basico(const char *t)
 {
+    if (!t || strchr(t, '|')) return NULL;
+    static const char *const B[] = { "int", "flo", "bool", "str", "byte", "list", "tup", "dict", "Null" };
+    for (size_t i = 0; i < sizeof(B) / sizeof(B[0]); i++)
+        if (!strcmp(t, B[i])) return B[i];
+    if (!strcmp(t, "long")) return "int";
+    if (!strcmp(t, "char")) return "str";
+    return NULL;
+}
+
+/* `a op b` pelos tipos ESCRITOS, pela regra do laço da VM (os PS_CASE de
+ * ADD a BIT_SHR e o CMP_CORPO): devolve o tipo do resultado, ou NULL quando
+ * não dá pra saber. Quando os dois tipos são certos e a VM recusa a conta,
+ * `erro` recebe a frase dela, letra por letra, e o checador acusa antes de
+ * rodar. Tipo e recusa saem da mesma regra: antes o tipo vinha de uma tabela
+ * à parte, que dizia `str` pra `"%d" % 5` e `dict` pra `d | e` — as duas
+ * contas são TypeError rodando. */
+static const char *tp_op(C *c, const char *op, const char *a, const char *b, char *erro, size_t cap)
+{
+    if (erro && cap) erro[0] = '\0';
     if (!op) return NULL;
     static const char *const LOGICOS[] = { "is", "is not", "not is", "in", "not in", "and", "&&",
-                                           "or", "||", "==", "!=", "<", ">", "<=", ">=" };
+                                           "or", "||", "==", "!=" };
     for (size_t i = 0; i < sizeof(LOGICOS) / sizeof(LOGICOS[0]); i++)
         if (strcmp(op, LOGICOS[i]) == 0) return "bool";
-    if (!a || !b || strchr(a, '|') || strchr(b, '|')) return NULL;
+    /* `ba`/`bb`: o nome rodando (long é int, char é str); a recusa só sai
+     * quando os DOIS são certos, e decide pelo nome rodando. O tipo do
+     * resultado continua decidido pelo tipo escrito, como sempre foi. */
+    const char *ba = tp_basico(a), *bb = tp_basico(b);
+    int certos = ba && bb && erro && cap;
     int na = tp_numerico(a), nb = tp_numerico(b);
+    int num_rodando = tp_numerico(ba) && tp_numerico(bb);
+    int int_a = ba && (!strcmp(ba, "int") || !strcmp(ba, "bool"));
+    int int_b = bb && (!strcmp(bb, "int") || !strcmp(bb, "bool"));
+    int ordenaveis_iguais = ba && bb && !strcmp(ba, bb)
+        && (!strcmp(ba, "str") || !strcmp(ba, "byte") || !strcmp(ba, "list") || !strcmp(ba, "tup"));
+    if (!strcmp(op, "<") || !strcmp(op, ">") || !strcmp(op, "<=") || !strcmp(op, ">=")) {
+        if (certos && !num_rodando && !ordenaveis_iguais)
+            snprintf(erro, cap, "'%s' not supported between instances of '%s' and '%s'", op, ba, bb);
+        return "bool";
+    }
+    if (!a || !b || strchr(a, '|') || strchr(b, '|')) return NULL;
     int flo = !strcmp(a, "flo") || !strcmp(b, "flo");
     int inteiro_b = !strcmp(b, "int") || !strcmp(b, "bool");
     int inteiro_a = !strcmp(a, "int") || !strcmp(a, "bool");
+    int seq_a = ba && (!strcmp(ba, "str") || !strcmp(ba, "byte") || !strcmp(ba, "list") || !strcmp(ba, "tup"));
+    int seq_b = bb && (!strcmp(bb, "str") || !strcmp(bb, "byte") || !strcmp(bb, "list") || !strcmp(bb, "tup"));
     if (!strcmp(op, "+")) {
         if (na && nb) return flo ? "flo" : "int";
         if (!strcmp(a, b) && tp_sequencia(a)) return a;
+        if (certos && !num_rodando && !ordenaveis_iguais) {
+            if (!strcmp(ba, "str") || !strcmp(ba, "list") || !strcmp(ba, "tup"))
+                snprintf(erro, cap, "can only concatenate %s (not \"%s\") to %s", ba, bb, ba);
+            else if (!strcmp(ba, "byte"))
+                snprintf(erro, cap, "can't concat %s to bytes", bb);
+            else
+                snprintf(erro, cap, "unsupported operand type(s) for +: '%s' and '%s'", ba, bb);
+        }
         return NULL;
-    }
-    if (!strcmp(op, "-") || !strcmp(op, "//")) return (na && nb) ? (flo ? "flo" : "int") : NULL;
-    if (!strcmp(op, "%")) {
-        if (na && nb) return flo ? "flo" : "int";
-        return !strcmp(a, "str") ? "str" : NULL;
     }
     if (!strcmp(op, "*")) {
         if (na && nb) return flo ? "flo" : "int";
         if (tp_sequencia(a) && inteiro_b) return a;
         if (tp_sequencia(b) && inteiro_a) return b;
+        if (certos && !num_rodando && !(seq_a && int_b) && !(seq_b && int_a)) {
+            if (seq_a)      snprintf(erro, cap, "can't multiply sequence by non-int of type '%s'", bb);
+            else if (seq_b) snprintf(erro, cap, "can't multiply sequence by non-int of type '%s'", ba);
+            else            snprintf(erro, cap, "unsupported operand type(s) for *: '%s' and '%s'", ba, bb);
+        }
         return NULL;
     }
-    if (!strcmp(op, "/")) return (na && nb) ? "flo" : NULL;
-    if (!strcmp(op, "**")) return (na && nb) ? (flo ? "flo" : tp_guarda(c, "int|flo")) : NULL;
+    if (!strcmp(op, "-") || !strcmp(op, "//") || !strcmp(op, "%") || !strcmp(op, "/") || !strcmp(op, "**")) {
+        if (na && nb) {
+            if (!strcmp(op, "/")) return "flo";
+            if (!strcmp(op, "**")) return flo ? "flo" : tp_guarda(c, "int|flo");
+            return flo ? "flo" : "int";
+        }
+        if (certos && !num_rodando)
+            snprintf(erro, cap, "unsupported operand type(s) for %s: '%s' and '%s'",
+                     !strcmp(op, "**") ? "** or pow()" : op, ba, bb);
+        return NULL;
+    }
     if (!strcmp(op, "&") || !strcmp(op, "|") || !strcmp(op, "^") || !strcmp(op, "<<") || !strcmp(op, ">>")) {
         if (inteiro_a && inteiro_b) return "int";
-        if (!strcmp(op, "|") && !strcmp(a, "dict") && !strcmp(b, "dict")) return "dict";
+        if (certos && !(int_a && int_b))
+            snprintf(erro, cap, "unsupported operand type(s) for %s: '%s' and '%s'", op, ba, bb);
         return NULL;
     }
     return NULL;
+}
+
+static const char *tp_binario(C *c, const char *op, const char *a, const char *b)
+{
+    return tp_op(c, op, a, b, NULL, 0);
 }
 
 /* ── base(): o pai que `base()` / `base(Pai)` designa ──────────────────────
@@ -5037,7 +5122,16 @@ static void tp_confere_args(C *c, Unidade *u, PSNode *call, const char *nome, PS
         int achou = -1;
         for (int q = base; q < nfix; q++)
             if (fix[q] && fix[q]->texto && !strcmp(fix[q]->texto, a->texto)) { achou = q; break; }
-        if (achou >= 0) { marcado[achou] = 1; valor[achou] = a->a; continue; }
+        if (achou >= 0) {
+            /* o parâmetro já ligado (por posição, ou o self) — a frase da VM
+             * (liga_args), na mesma ordem dos nomeados */
+            if (marcado[achou]) {
+                terro(c, a, "TypeError", "%s() got multiple values for argument '%s'", nome, a->texto);
+                kw_errado = 1;
+                continue;
+            }
+            marcado[achou] = 1; valor[achou] = a->a; continue;
+        }
         if (!tem_kw) {
             terro(c, a, "TypeError", "%s() got an unexpected keyword argument '%s'", nome, a->texto);
             kw_errado = 1;
@@ -5071,13 +5165,98 @@ static void tp_confere_args(C *c, Unidade *u, PSNode *call, const char *nome, PS
  * Entity do arquivo (o `__init__` escrito ou o gerado dos campos), método de
  * instância e `Classe.metodo_static()`. Decorado por decorador geral não: o
  * decorador pode ter trocado a funct. */
+/* A chamada a um nativo MEDIDO (scripts/mede_aridades.pr, a tabela de
+ * ps_retornos.c), conferida antes de rodar pela regra que a VM aplica
+ * rodando, com a frase dela: os nomeados pela lista de nomes do nativo (a do
+ * `liga_nomeados_nat`), a quantidade, e — com um argumento só — o tipo dele.
+ * Argumento espalhado (`*x`, `**d`) só rodando se sabe. `metodo` é o tipo do
+ * dono quando é método: a frase de "sem nome" leva ele
+ * (`str.upper() takes no keyword arguments`). */
+static void tp_confere_nativo(C *c, PSNode *n, const char *dono, const char *membro,
+                              const char *metodo, const char *t_unico)
+{
+    PSAridade ar;
+    if (!ps_aridade_de(dono, membro, &ar)) return;
+    const PSAridade *a = &ar;
+    int npos = 0, nkw = 0;
+    for (int32_t i = 0; i < n->lista.n; i++) {
+        PSNode *arg = n->lista.itens[i];
+        if (arg->i2) return;
+        if (arg->texto) nkw++; else npos++;
+    }
+    int dados = npos;
+    if (nkw > 0) {
+        if (!a->params) {
+            if (metodo) terro(c, n, "TypeError", "%s.%s() takes no keyword arguments", metodo, membro);
+            else        terro(c, n, "TypeError", "%s() takes no keyword arguments", membro);
+            return;
+        }
+        int veio[16];
+        for (int k = 0; k < 16; k++) veio[k] = k < npos;
+        for (int32_t i = 0; i < n->lista.n; i++) {
+            PSNode *arg = n->lista.itens[i];
+            if (!arg->texto) continue;
+            int idx = 0, achou = -1;
+            for (const char *q = a->params; *q; idx++) {
+                const char *fim = strchr(q, ',');
+                size_t tam = fim ? (size_t)(fim - q) : strlen(q);
+                const char *ig = memchr(q, '=', tam);
+                size_t tn = ig ? (size_t)(ig - q) : tam;
+                if (strlen(arg->texto) == tn && !strncmp(q, arg->texto, tn)) { achou = idx; break; }
+                q = fim ? fim + 1 : q + tam;
+            }
+            if (achou < 0 || achou >= 16) {
+                terro(c, arg, "TypeError", "'%s' is an invalid keyword argument for %s()", arg->texto, membro);
+                return;
+            }
+            if (veio[achou]) {
+                terro(c, arg, "TypeError", "%s() got multiple values for argument '%s'", membro, arg->texto);
+                return;
+            }
+            veio[achou] = 1;
+            if (achou + 1 > dados) dados = achou + 1;
+        }
+        int idx = 0;
+        for (const char *q = a->params; *q && idx < dados; idx++) {
+            const char *fim = strchr(q, ',');
+            size_t tam = fim ? (size_t)(fim - q) : strlen(q);
+            if (!veio[idx] && !memchr(q, '=', tam)) {
+                terro(c, n, "TypeError", "%s() missing required argument '%.*s'", membro, (int)tam, q);
+                return;
+            }
+            q = fim ? fim + 1 : q + tam;
+        }
+    }
+    if (dados < a->minimo || (a->maximo >= 0 && dados > a->maximo)) {
+        char frase[160];
+        ps_frase_aridade(frase, sizeof(frase), a->nome, a->minimo, a->maximo, dados);
+        terro(c, n, "TypeError", "%s", frase);
+        return;
+    }
+    if (npos == 1 && nkw == 0) {
+        int k = ps_aridade_tipo(tp_basico(t_unico));
+        if (k >= 0 && a->recusa[k]) terro(c, n->lista.itens[0], "TypeError", "%s", a->recusa[k]);
+    }
+}
+
 static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
 {
     PSNode *f = n->a;
     if (!f) return;
+    /* o tipo do argumento único, pra recusa de tipo do nativo */
+    const char *t_unico = (n->lista.n == 1 && n->lista.itens[0]->a && !n->lista.itens[0]->texto)
+                          ? tp_de(c, u, n->lista.itens[0]->a) : NULL;
     if (f->kind == N_NAME && f->texto) {
         SimInfo *s = tp_sim_de(c, u, f->texto);
-        if (!s || !s->decl || s->decorado) return;
+        if (!s || !s->decl || s->decorado) {
+            /* builtin que o programa não sombreou: `len(5)`, `chr("a")`; e o
+             * membro de módulo trazido pelo nome (`from os import getenv`) */
+            if (!tp_nome_ligado(c, u, f->texto) && ps_nome_pre_ligado(f->texto))
+                tp_confere_nativo(c, n, "builtins", f->texto, NULL, t_unico);
+            else if (s && s->mod_nativo && s->membro_nativo)
+                tp_confere_nativo(c, n, s->mod_nativo, s->membro_nativo, NULL, t_unico);
+            return;
+        }
         if (s->decl->kind == N_FUNCT_DECL) {
             tp_confere_args(c, u, n, s->decl->texto ? s->decl->texto : "?", &s->decl->lista, 0, 0, NULL);
             return;
@@ -5129,6 +5308,15 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
         return;
     }
     {
+        /* `json.parse(5)`, `sys.exit(1, 2)`: função de módulo nativo */
+        char mb[64];
+        const char *mod = tp_modulo_de(c, u, f->a, mb, sizeof(mb));
+        if (mod) {
+            tp_confere_nativo(c, n, mod, f->texto, NULL, t_unico);
+            return;
+        }
+    }
+    {
         /* `util.soma(...)` / `util.Conta(...)` de um `.pr` importado: a
          * assinatura vem da AST do módulo (funct decorada por decorador
          * geral não vale — pode ter sido trocada) */
@@ -5169,7 +5357,16 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
         }
     }
     const char *t = tp_de(c, u, f->a);
-    if (!t || strchr(t, '|') || !tp_tipo_arq(c, t)) return;
+    if (t && !strchr(t, '|') && !tp_tipo_arq(c, t)) {
+        /* método de valor nativo: `"a".upper(1)`, `[1].index(1, 2, 3, 4)`.
+         * `char` e `long` rodam como str e int; o que nenhum tipo tem pode
+         * ser o membro de todo valor (`x.type()`) */
+        const char *dono = tp_basico(t) ? tp_basico(t) : t;
+        if (ps_aridade_de(dono, f->texto, NULL)) tp_confere_nativo(c, n, dono, f->texto, dono, t_unico);
+        else tp_confere_nativo(c, n, "__universal__", f->texto, dono, t_unico);
+        return;
+    }
+    if (!t || strchr(t, '|')) return;
     PSNode *m = tp_metodo(c, t, f->texto, 0);
     if (!m || tp_metodo_decorado(c, t, m) || tp_metodo_estatico(c, t, m)) return;
     if (tp_campo_tipo(c, t, f->texto, 0)) return;          /* campo ganha de método */
@@ -5628,6 +5825,30 @@ static void compila_fstring(C *c, Unidade *u, PSNode *n)
             memcpy(e, t + i + 1, (size_t)elen);
             e[elen] = '\0';
 
+            /* `{x:SPEC}`: o mesmo `"{:SPEC}".format(x)` que o parser monta
+             * (fstring_com_formato), aqui escrito em texto e parseado pelo
+             * mesmo parser. Campo dentro do formato faz dele uma f-string. */
+            int32_t dp = ps_fstring_formato(e, elen);
+            if (dp >= 0) {
+                const char *spec = e + dp + 1;
+                int campo = strchr(spec, '{') != NULL;
+                char aspa = !strchr(spec, '"') ? '"' : !strchr(spec, '\'') ? '\'' : 0;
+                if (!aspa) {
+                    free(e); free(buf);
+                    cerro_sx(c, n, "formato da f-string com aspas simples e duplas: use format()");
+                    return;
+                }
+                size_t cap = (size_t)elen + 32;
+                char *src = malloc(cap);
+                if (!src) { free(e); free(buf); cerro(c, "sem memoria na f-string", n); return; }
+                int ns = snprintf(src, cap, "(%s%c%s:%s%s%c).format(%.*s)",
+                                  campo ? "f" : "", aspa, campo ? "{{" : "{", spec,
+                                  campo ? "}}" : "}", aspa, (int)dp, e);
+                free(e);
+                e = src;
+                elen = ns;
+            }
+
             PSTokenList *toks = ps_lexer_tokenize(e, (size_t)elen);
             if (!toks || !toks->ok) {
                 if (toks) ps_lexer_free(toks);
@@ -5950,8 +6171,15 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                 int32_t k = fundo;
                 for (q = n; k > 0; q = q->a) cadeia[--k] = q;
                 expr(c, u, q);                           /* o termo mais à esquerda */
+                /* a conta que a VM recusaria com os tipos escritos (`"a" + 1`)
+                 * é acusada aqui, com a frase dela (tp_op) */
+                const char *t_esq = tp_de(c, u, q);
                 for (k = 0; k < fundo && !CFALHOU(c); k++) {
                     expr_direito(c, u, cadeia[k]);
+                    char recusa[200];
+                    t_esq = tp_op(c, cadeia[k]->texto, t_esq, tp_de(c, u, cadeia[k]->b),
+                                  recusa, sizeof(recusa));
+                    if (recusa[0]) terro(c, cadeia[k], "TypeError", "%s", recusa);
                     if (cadeia[k]->line) c->linha_atual = cadeia[k]->line;
                     if (cadeia[k]->col)  c->coluna_atual = cadeia[k]->col;
                     emite(c, u, op_binario(cadeia[k]->texto), 0);
@@ -5964,9 +6192,31 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
         case N_UNARY_OP:
             expr(c, u, n->a);
             if (!n->texto) return;
+            /* a recusa que a VM daria com o tipo escrito certo (`-"a"`,
+             * `+[1]`, `~1.5`, `~True`), com a frase dela, antes de rodar */
+            {
+                const char *ta = tp_basico(tp_de(c, u, n->a));
+                if (ta && (!strcmp(n->texto, "-") || !strcmp(n->texto, "+")) && !tp_numerico(ta))
+                    terro(c, n, "TypeError", "bad operand type for unary %s: '%s'", n->texto, ta);
+                else if (ta && !strcmp(n->texto, "~") && strcmp(ta, "int"))
+                    terro(c, n, "TypeError", "bad operand type for unary ~: '%s'", ta);
+            }
             if (!strcmp(n->texto, "-"))      emite(c, u, OP_NEG, 0);
             else if (!strcmp(n->texto, "~")) emite(c, u, OP_BIT_NOT, 0);
-            else if (!strcmp(n->texto, "+")) { /* no-op */ }
+            else if (!strcmp(n->texto, "+")) {
+                /* `+"abc"` passava calado (não emitia nada). Negar duas
+                 * vezes devolve o número (bool vira int) e recusa o resto,
+                 * com a frase do `+` (o NEG 1 na VM). Com o operando de
+                 * tipo certo `int`/`flo`/`long` pelo que está escrito, o `+`
+                 * não tem o que fazer e não emite nada: os dois NEG custavam
+                 * +13,9% de instruções num laço de `+i` (medido no 17.0.17) */
+                const char *tb = tp_basico(tp_de(c, u, n->a));
+                int numero_certo = tb && (!strcmp(tb, "int") || !strcmp(tb, "flo") || !strcmp(tb, "long"));
+                if (!numero_certo) {
+                    emite(c, u, OP_NEG, 1);
+                    emite(c, u, OP_NEG, 0);
+                }
+            }
             else if (!strcmp(n->texto, "not") || !strcmp(n->texto, "Not")
                      || !strcmp(n->texto, "!")) emite(c, u, OP_NOT, 0);
             else cerro(c, "operador unario ainda nao compila na VM", n);
@@ -6074,7 +6324,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             celulas_novas_da_volta(c, u, ativ_lc, na_lc);
             memset(&c->grava, 0, sizeof(c->grava));
             c->grava.tem_valor = 1;
-            c->grava.tipo = tp_elemento(tp_de(c, u, n->a));
+            c->grava.tipo = tp_elemento_de(c, u, n->a);
             c->grava.no = n;
             guarda_nome_modo(c, u, var, 1);
 
@@ -6695,7 +6945,10 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 expr(c, u, n->a);
                 emite(c, u, opc, 0);
                 SimInfo *sx = tp_sim_de(c, u, n->texto);
-                const char *tv = tp_binario(c, base, (sx && sx->estado) ? sx->tipo : NULL, tp_de(c, u, n->a));
+                char recusa[200];
+                const char *tv = tp_op(c, base, (sx && sx->estado) ? sx->tipo : NULL, tp_de(c, u, n->a),
+                                       recusa, sizeof(recusa));
+                if (recusa[0]) terro(c, n, "TypeError", "%s", recusa);
                 memset(&c->grava, 0, sizeof(c->grava));
                 c->grava.tem_valor = 1;
                 c->grava.tipo = tv;
@@ -6905,7 +7158,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             else {
                 memset(&c->grava, 0, sizeof(c->grava));
                 c->grava.tem_valor = 1;
-                c->grava.tipo = usa_range ? "int" : tp_elemento(tp_de(c, u, n->a));
+                c->grava.tipo = usa_range ? "int" : tp_elemento_de(c, u, n->a);
                 c->grava.no = n;
                 guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
             }
@@ -7655,6 +7908,14 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
         }
 
         case N_INDEX_ASSIGNMENT: {
+            /* `s[0] = "x"` em str, tup ou byte: a VM recusa no INDEX_SET; com
+             * o tipo escrito certo, a recusa sai antes de rodar, com a frase
+             * dela */
+            {
+                const char *tc = tp_basico(tp_de(c, u, n->a));
+                if (tc && (!strcmp(tc, "str") || !strcmp(tc, "tup") || !strcmp(tc, "byte")))
+                    terro(c, n, "TypeError", "'%s' object does not support item assignment", tc);
+            }
             expr(c, u, n->a);                 /* container */
             expr(c, u, n->b);                 /* índice    */
             if (n->texto && strcmp(n->texto, "=") != 0) {

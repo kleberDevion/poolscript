@@ -439,8 +439,15 @@ PREAMBULO = ("funct ordena(l) {\n"
     + "    }\n"
     + "    return p\n"
     + "}\n"
+    # a lei e sobre a recusa da VM RODANDO: o valor chega com o tipo que o
+    # checador nao sabe (como o que vem de json.parse). Com `tup` escrito, o
+    # --check recusa `t[0] = ...` antes de rodar (17.0.17), e o lote inteiro
+    # morria com rc 2 sem testar lei nenhuma.
+    + "funct opaco(x) {\n"
+    + "    return x\n"
+    + "}\n"
     + "funct tupla_recusa_escrita(l) {\n"
-    + "    t = tup(l)\n"
+    + "    t = opaco(tup(l))\n"
     + "    if len(t) == 0 {\n"
     + "        return True\n"
     + "    }\n"

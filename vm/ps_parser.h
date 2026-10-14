@@ -83,4 +83,8 @@ const char *const *ps_parser_tipos_decl(void);
  * são palavra reservada (valem por posição). Terminada em NULL. */
 const char *const *ps_parser_mods_de_posicao(void);
 
+/* Posição do `:` que separa a expressão do formato num `{...}` da f-string
+ * (`{x:.2f}`), fora de parêntese, colchete, chave e aspas; -1 sem formato. */
+int32_t ps_fstring_formato(const char *t, int32_t len);
+
 #endif /* PS_PARSER_H */

@@ -1,4 +1,4 @@
-# Jinga v17.0.16
+# Jinga v17.0.17
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 jinga --version
-# Jinga 17.0.16 [PSVM] (2026-09-24) Runtime standalone
+# Jinga 17.0.17 [PSVM] (2026-09-24) Runtime standalone
 #                       ^ a data da compilação DESTE binário: duas
 #                         cópias da mesma versão se distinguem por ela
 ```
@@ -136,6 +136,19 @@ cat meu_arquivo.pr | jinga --check     # sem arquivo, lê da entrada padrão
 
 O mesmo veredito vale ao rodar: `jinga arquivo.pr` não executa um programa com
 erro de tipo — lista os erros e sai com código 2.
+
+Nos **nativos** (builtins, funções de módulo e métodos de `str`, `list`,
+`dict`, `tup`, `byte` e dos objetos que se criam sem serviço), o `--check`
+confere a quantidade de argumentos, os argumentos com nome e, na chamada de um
+argumento só, o tipo dele, com a frase que o nativo dá rodando
+(`"a".upper(1)` → `upper() takes no arguments (1 given)`; `len(5)` →
+`object of type 'int' has no len()`). A régua é a tabela
+`vm/aridades_medidas.inc`, **medida** chamando cada nativo
+(`scripts/mede_aridades.pr`; o `make check` confere que ela bate com o motor).
+O método de objeto que só existe com serviço (banco, resposta HTTP, objetos de
+dentro da rota) é conferido rodando. Conta com tipo errado entre valores de
+tipo certo também é acusada (`"a" + 1`, `"%d" % 5`, `-"a"`), e a atribuição
+por índice em `str`, `tup` e `byte`.
 
 O campo `ok` diz o veredito, e o **código de saída acompanha**: `0` com
 `{"ok":true}`, `1` com `{"ok":false}`. Quem chama pode olhar qualquer um dos

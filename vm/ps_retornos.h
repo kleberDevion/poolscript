@@ -67,4 +67,35 @@ int ps_excecao_eh(const char *levantado, const char *pedido);
  * tipo e a rede do `int funct` deixam passar. */
 #define PS_TIPO_FECHA "<gerador.fecha>"
 
+/* Quantos argumentos cada nativo aceita e com que frase ele recusa UM
+ * argumento de cada tipo básico — a tabela MEDIDA por
+ * scripts/mede_aridades.pr (vm/aridades_medidas.inc). O checador confere a
+ * chamada por ela antes de rodar; rodando, quem confere é o próprio nativo.
+ * Dono que só existe com serviço (banco, resposta HTTP) não é medido: NULL. */
+#include <stddef.h>
+#define PS_ARIDADE_NTIPOS 9
+typedef struct {
+    const char *dono;
+    const char *membro;
+    const char *nome;        /* o nome que a frase de quantidade usa */
+    const char *params;      /* "sub,inicio=0,fim=Null"; NULL = não aceita nome */
+    int minimo;
+    int maximo;              /* -1 = sem teto */
+    const char *recusa[PS_ARIDADE_NTIPOS];   /* int flo str list tup dict byte bool Null; NULL = aceita */
+} PSAridade;
+
+/* 1 = o nativo foi medido, e `out` (se não for NULL) recebe a entrada; 0 =
+ * não foi. A tabela guarda os textos num bloco só e as posições deles (sem
+ * ponteiro em dado inicializado, que é relocação em toda partida); os
+ * ponteiros de `out` são montados aqui, apontando pra dentro do bloco. */
+int ps_aridade_de(const char *dono, const char *membro, PSAridade *out);
+
+/* A posição de um tipo básico em `recusa`, ou -1. */
+int ps_aridade_tipo(const char *tipo);
+
+/* A frase da recusa de quantidade, uma só pra VM e pro checador:
+ * `upper() takes no arguments (1 given)`, `round() takes at most 2
+ * arguments (3 given)`. */
+void ps_frase_aridade(char *buf, size_t cap, const char *nome, int minimo, int maximo, int n);
+
 #endif

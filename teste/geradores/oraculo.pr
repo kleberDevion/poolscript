@@ -21,6 +21,7 @@
 import os
 import sys
 import regex
+import json
 
 SAIDA = "teste/casos_oraculo.c"
 TMP = "/tmp/ps_oraculo"
@@ -347,6 +348,10 @@ funct repr_py(s) {
 
 funct monta_caso(nome, expr, saida) {
     fonte = cstr("post(" + expr + ")\n")
+    if saida.startswith("<<CHECK>> ") {
+        # recusada antes de rodar: nada sai no stdout e o código é 2
+        return "{ \"" + nome + "\", " + fonte + ", \"\", " + cstr(saida[len("<<CHECK>> "):]) + ", 2 },"
+    }
     if saida.startswith("<<ERRO>> ") {
         # o texto do erro traz " (linha N)" do programa em LOTE — inútil aqui
         msg = saida[len("<<ERRO>> "):]
@@ -395,6 +400,41 @@ if __name__ == "main" {
     using open(TMP + "/todos.pr", "w") as f {
         f.write("\n".join(linhas) + "\n")
     }
+    # O que o checador recusa ANTES de rodar (`len(0)`: tipo e quantidade de
+    # argumento dos nativos, desde o 17.0.17) nem roda — e no lote derrubaria
+    # o programa inteiro. Essas expressões saem do lote e viram caso próprio,
+    # com a recusa e o código 2. `post(e)` de cada expressão é a 2ª das 6
+    # linhas dela.
+    os.cmd("./pool --check " + TMP + "/todos.pr > " + TMP + "/check.json 2>&1")
+    recusa = {}
+    chk = json.parse(open(TMP + "/check.json").read())
+    if not chk["ok"] {
+        for each er in chk.get("erros", [chk]) {
+            k = (er["linha"] - 2) // 6
+            if not (k in recusa) {
+                recusa[k] = er["msg"]
+            }
+        }
+        linhas = []
+        k = 0
+        for each e in uniq {
+            if k in recusa {
+                linhas.append("post(\"<<CHECK>>\")")
+            }
+            else {
+                linhas.append("try {")
+                linhas.append("    post(" + e + ")")
+                linhas.append("} catch (e) {")
+                linhas.append("    post(\"<<ERRO>>\", e)")
+                linhas.append("}")
+            }
+            linhas.append("post(\"" + SENT + "\")")
+            k = k + 1
+        }
+        using open(TMP + "/todos.pr", "w") as f {
+            f.write("\n".join(linhas) + "\n")
+        }
+    }
     os.cmd("./pool " + TMP + "/todos.pr > " + TMP + "/ps.out 2> " + TMP + "/ps.err")
     ps_out = fatia_por_sentinela(open(TMP + "/ps.out").read(), len(uniq))
     if len(ps_out) != len(uniq) {
@@ -402,6 +442,10 @@ if __name__ == "main" {
         post("stderr:", open(TMP + "/ps.err").read()[0:400])
         sys.exit(1)
     }
+    for each k in recusa.keys() {
+        ps_out[k] = "<<CHECK>> " + recusa[k]
+    }
+    post("recusadas antes de rodar:", len(recusa.keys()))
 
     # ── 4. o oráculo: CPython avaliando o mesmo lote ────────────────────────
     # O driver é escrito aqui e vive só em /tmp. `py_repr` reproduz o que o
@@ -465,8 +509,8 @@ if __name__ == "main" {
             continue
         }
         comparavel = obtido
-        if obtido.startswith("<<ERRO>>") {
-            comparavel = obtido.split(" ")[0]
+        if obtido.startswith("<<ERRO>>") or obtido.startswith("<<CHECK>>") {
+            comparavel = "<<ERRO>>"
         }
         if esp == comparavel {
             iguais.append([e, obtido])

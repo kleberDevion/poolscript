@@ -187,7 +187,7 @@ const Caso CASOS_LIBS[] = {
    * nomeia os dois e ainda diz qual é o estranho: `can only concatenate str
    * (not "int") to str`. */
   "try {\n"
-  "    post(\"a\" + 1)\n"
+  "    post(\"a\" + [1][0])\n"
   "} catch (e) {\n"
   "    post(\"can only concatenate str (not \\\"int\\\") to str\" in str(e))\n"
   "}\n", "True", NULL, 0 },
@@ -196,11 +196,11 @@ const Caso CASOS_LIBS[] = {
    * frase própria em `+` e em `*`. O que este caso cobra continua sendo o
    * mesmo — que os DOIS tipos apareçam, com o nome que o `type()` devolve. */
   "n = 0\n"
-  "try { post(\"a\" + 1) } catch (e) { if \"str\" in str(e) and \"int\" in str(e) { n = n + 1 } }\n"
-  "try { post(1 - \"a\") } catch (e) { if \"'int' and 'str'\" in str(e) { n = n + 1 } }\n"
-  "try { post([1] * \"a\") } catch (e) { if \"non-int of type 'str'\" in str(e) { n = n + 1 } }\n"
-  "try { post(\"a\" / 2) } catch (e) { if \"'str' and 'int'\" in str(e) { n = n + 1 } }\n"
-  "try { post(\"a\" % []) } catch (e) { if \"'str' and 'list'\" in str(e) { n = n + 1 } }\n"
+  "try { post(\"a\" + [1][0]) } catch (e) { if \"str\" in str(e) and \"int\" in str(e) { n = n + 1 } }\n"
+  "try { post(1 - [\"a\"][0]) } catch (e) { if \"'int' and 'str'\" in str(e) { n = n + 1 } }\n"
+  "try { post([1] * [\"a\"][0]) } catch (e) { if \"non-int of type 'str'\" in str(e) { n = n + 1 } }\n"
+  "try { post([\"a\"][0] / 2) } catch (e) { if \"'str' and 'int'\" in str(e) { n = n + 1 } }\n"
+  "try { post([\"a\"][0] % [[]][0]) } catch (e) { if \"'str' and 'list'\" in str(e) { n = n + 1 } }\n"
   "post(n)\n", "5", NULL, 0 },
 { "AttributedValueError escrito certo",
   /* I7: o tipo era publicado com a grafia errada (`Atributted`).
@@ -221,7 +221,7 @@ const Caso CASOS_LIBS[] = {
   "pegou", NULL, 0 },
 { "'+' entre tipos que nao somam e TypeError, nao AttributedValueError",
   "try {\n"
-  "    post(\"a\" + 1)\n"
+  "    post(\"a\" + [1][0])\n"
   "} catch (TypeError e) {\n"
   "    post(\"pegou\")\n"
   "}\n", "pegou", NULL, 0 },
@@ -296,7 +296,7 @@ const Caso CASOS_LIBS[] = {
   "    post(str(e).split(\" (linha \")[0])\n"
   "}\n"
   "try {\n"
-  "    \"abc\".encode().find(\"z\")\n"
+  "    \"abc\".encode().find([\"z\"][0])\n"
   "} catch (TypeError e) {\n"
   "    post(str(e).split(\" (linha \")[0])\n"
   "}\n"
@@ -314,7 +314,7 @@ const Caso CASOS_LIBS[] = {
   "post(b.startswith((\"x\".encode(), \"ab\".encode())))\n"
   "post(b.startswith(\"cd\".encode(), 2), b.endswith(\"cd\".encode(), 0, 4))\n"
   "try {\n"
-  "    b.startswith(\"a\")\n"
+  "    b.startswith([\"a\"][0])\n"
   "} catch (TypeError e) {\n"
   "    post(str(e).split(\" (linha \")[0])\n"
   "}\n",
@@ -465,12 +465,12 @@ const Caso CASOS_LIBS[] = {
 { "bytes: os operadores recusam com a frase do CPython",
   "b = \"ab\".encode()\n"
   "try {\n"
-  "    post(b * \"x\")\n"
+  "    post(b * [\"x\"][0])\n"
   "} catch (TypeError e) {\n"
   "    post(str(e).split(\" (linha \")[0])\n"
   "}\n"
   "try {\n"
-  "    post(b < \"x\")\n"
+  "    post(b < [\"x\"][0])\n"
   "} catch (TypeError e) {\n"
   "    post(str(e).split(\" (linha \")[0])\n"
   "}\n"
@@ -572,7 +572,7 @@ const Caso CASOS_LIBS[] = {
   "[0, 3, 5, 1000, 5, 4, 2, 3, 4, 2, 7]\ndivergiram: []", NULL, 0 },
 { "bytes.len() recusa argumento, como os outros len()",
   "try {\n"
-  "    post(\"ab\".encode().len(1))\n"
+  "    Object tam = \"ab\".encode().len; post(tam(1))\n"
   "} catch (e) {\n"
   "    post(\"recusou\")\n"
   "}\n",
@@ -1076,7 +1076,7 @@ const Caso CASOS_LIBS[] = {
   /* `true - "a"` respondia `int - str`. O bool vira int antes da mensagem, e
    * quem lia procurava um int que nao existe no codigo. */
   "try {\n"
-  "    post(True - \"a\")\n"
+  "    post(True - [\"a\"][0])\n"
   "} catch (e) {\n"
   "    post(\"bool\" in str(e))\n"
   "}\n", "True", NULL, 0 },
@@ -1167,7 +1167,7 @@ const Caso CASOS_LIBS[] = {
    * acabou de errar a conta. O CPython tem duas redacoes pra isto; a
    * escolhida e a que 97 dos 131 nomes medidos usam. */
   "try {\n"
-  "    post(round(1, 2, 3))\n"
+  "    Object r = round; post(r(1, 2, 3))\n"
   "} catch (e) {\n"
   "    post(\"(3 given)\" in str(e))\n"
   "}\n", "True", NULL, 0 },
@@ -1221,7 +1221,7 @@ const Caso CASOS_LIBS[] = {
   "n = 0\n"
   "try { post(1.0 / 0) } catch (e) { if \"flo\" in str(e) { n = n + 1 } }\n"
   "try { post((1,2)[9]) } catch (e) { if \"tup\" in str(e) { n = n + 1 } }\n"
-  "try { post(Null + 1) } catch (e) { if \"Null\" in str(e) { n = n + 1 } }\n"
+  "try { post([Null][0] + 1) } catch (e) { if \"Null\" in str(e) { n = n + 1 } }\n"
   "post(n)\n", "3", NULL, 0 },
 
 /* ── L4a DO PLANO DAS CONTRADICOES: nativas de modulo, aridade e tipo ──────
@@ -1234,31 +1234,31 @@ const Caso CASOS_LIBS[] = {
   "import date\ndate.hora(1, 2, [3])\n", "", "TypeError: 'list' object cannot be interpreted as an integer", 1 },
 /* toint converte bytes PARA int; dizia "cannot convert 'str' object to bytes". */
 { "bytes.toint diz que pede bytes, nao que converte pra bytes",
-  "import bytes\nbytes.toint(\"abc\")\n", "", "TypeError: toint() argument 1 must be byte, not str", 1 },
+  "import bytes\nbytes.toint(\"abc\")\n", "", "TypeError: toint() argument 1 must be byte, not str", 2 },
 { "bytes.concat diz o tipo recebido",
-  "import bytes\nbytes.concat(\"abc\")\n", "", "TypeError: concat() argument 1 must be list or tup, not str", 1 },
+  "import bytes\nbytes.concat(\"abc\")\n", "", "TypeError: concat() argument 1 must be list or tup, not str", 2 },
 { "bytes.join recusa dict dizendo o que aceita",
-  "import bytes\nbytes.new(\"-\").join({\"a\": 1})\n", "", "TypeError: join() argument 1 must be list, tup, str or bytes, not dict", 1 },
+  "import bytes\nbytes.new(\"-\").join({\"a\": 1})\n", "", "TypeError: join() argument 1 must be list, tup, str or bytes, not dict", 2 },
 { "writelines diz o que pede",
-  "f = open(\"wl.txt\", \"w\")\nf.writelines(\"abc\")\n", "", "TypeError: writelines() argument 1 must be list or tup, not str", 1 },
+  "f = open(\"wl.txt\", \"w\")\nf.writelines(\"abc\")\n", "", "TypeError: writelines() argument 1 must be list or tup, not str", 2 },
 /* request.* assinava o VERBO HTTP ("GET() argument 1 ..."), funcao que nao
  * existe na linguagem. */
 { "request.get assina get(), nao GET()",
-  "import request\nrequest.get(123)\n", "", "TypeError: get() argument 1 must be str, not int", 1 },
+  "import request\nrequest.get(123)\n", "", "TypeError: get() argument 1 must be str, not int", 2 },
 { "request.get sem argumento assina get()",
-  "import request\nrequest.get()\n", "", "TypeError: get() takes at least 1 argument (0 given)", 1 },
+  "import request\nrequest.get()\n", "", "TypeError: get() takes at least 1 argument (0 given)", 2 },
 { "request.head assina head()",
-  "import request\nrequest.head(123)\n", "", "TypeError: head() argument 1 must be str, not int", 1 },
+  "import request\nrequest.head(123)\n", "", "TypeError: head() argument 1 must be str, not int", 2 },
 /* Sem argumento nao existe args[0]: manpu.open() e app.route() liam lixo do
  * slot e saiam "argument 1 must be str, not str". */
 { "manpu.open sem argumento e erro de aridade, nao 'not str'",
-  "import manpu\nmanpu.open()\n", "", "TypeError: open() takes at least 1 argument (0 given)", 1 },
+  "import manpu\nmanpu.open()\n", "", "TypeError: open() takes at least 1 argument (0 given)", 2 },
 { "manpu.open recusa argumento sobrando",
-  "import manpu\nmanpu.open(\"nao_existe.mp\", \"r\", \"SOBRA\", 1)\n", "", "TypeError: open() takes at most 2 arguments (4 given)", 1 },
+  "import manpu\nmanpu.open(\"nao_existe.mp\", \"r\", \"SOBRA\", 1)\n", "", "TypeError: open() takes at most 2 arguments (4 given)", 2 },
 { "route() sem argumento e erro de aridade, nao 'not str'",
-  "import jinker\napp = jinker.Jinker()\napp.route()\n", "", "TypeError: route() takes at least 1 argument (0 given)", 1 },
+  "import jinker\napp = jinker.Jinker()\napp.route()\n", "", "TypeError: route() takes at least 1 argument (0 given)", 2 },
 { "get() sem argumento assina get",
-  "import jinker\napp = jinker.Jinker()\napp.get()\n", "", "TypeError: get() takes at least 1 argument (0 given)", 1 },
+  "import jinker\napp = jinker.Jinker()\napp.get()\n", "", "TypeError: get() takes at least 1 argument (0 given)", 2 },
 
 /* ── cors(app, ...): o primeiro argumento e o SERVIDOR, e pode ser mais de um ──
  * A lista era posicional "options,origins,permiser": `cors(http, origins=...)`
@@ -1283,13 +1283,13 @@ const Caso CASOS_LIBS[] = {
 /* writeFile aceita 3 (path, content, encoding) e dizia "exactly 2"; ela e
  * readFile deixavam o argumento sobrando passar calado. */
 { "os.writeFile com 1 argumento diz 'at least 2', nao 'exactly 2'",
-  "import os\nos.writeFile(\"f.txt\")\n", "", "TypeError: writeFile() takes at least 2 arguments (1 given)", 1 },
+  "import os\nos.writeFile(\"f.txt\")\n", "", "TypeError: writeFile() takes at least 2 arguments (1 given)", 2 },
 { "os.writeFile recusa argumento sobrando",
-  "import os\nos.writeFile(\"f.txt\", \"a\", \"utf-8\", \"SOBRA\")\n", "", "TypeError: writeFile() takes at most 3 arguments (4 given)", 1 },
+  "import os\nos.writeFile(\"f.txt\", \"a\", \"utf-8\", \"SOBRA\")\n", "", "TypeError: writeFile() takes at most 3 arguments (4 given)", 2 },
 { "os.writeFile com encoding segue aceito",
   "import os\nos.writeFile(\"wf3.txt\", \"acao\", \"latin-1\")\npost(os.readFile(\"wf3.txt\", \"latin-1\"))\n", "acao", NULL, 0 },
 { "os.readFile recusa argumento sobrando",
-  "import os\nos.writeFile(\"f.txt\", \"a\")\npost(os.readFile(\"f.txt\", \"utf-8\", \"SOBRA\"))\n", "", "TypeError: readFile() takes at most 2 arguments (3 given)", 1 },
+  "import os\nos.writeFile(\"f.txt\", \"a\")\npost(os.readFile(\"f.txt\", \"utf-8\", \"SOBRA\"))\n", "", "TypeError: readFile() takes at most 2 arguments (3 given)", 2 },
 /* os.run tinha `char *vetor[64]`: lista com 63+ itens saia como erro de
  * ARIDADE ("takes at most 2 arguments (2 given)") e a string truncava calada
  * em 62 palavras / 4096 bytes. O vetor cresce; nenhum teto. */

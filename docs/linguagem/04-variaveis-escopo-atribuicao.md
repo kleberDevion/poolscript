@@ -27,7 +27,7 @@ str nome = "ana"      # declaração com tipo (checada/coagida em toda escrita)
   como `int x = 5.0`; converter é `int("7")`) — ver a seção 2.6. O tipo fica
   **na variável**: toda escrita seguinte é conferida igual — ver 4.6.4. Os tipos
   declaráveis: `str`, `int`, `flo`, `bool`, `char`, `list`, `dict`/`json`,
-  `tup` e `Object` (qualquer objeto: instância, servidor, conexão, arquivo).
+  `tup` e `Object` (qualquer valor, menos `Null`).
   `string`/`String`, `integer`/`Integer`, `tuple`/`Tuple` e
   `dictionary`/`Dictionary` são apelidos de `str`, `int`, `tup` e `dict`, com
   a mesma regra — e só valem na posição de tipo: não são palavras reservadas,
@@ -70,6 +70,9 @@ exatamente as regras de tipo do operador binário correspondente (seção 3).
 | `x *= e` | `x = x * e` |
 | `x /= e` | `x = x / e` |
 | `x %= e` | `x = x % e` |
+
+São só essas cinco. `x **= 2`, `x //= 2`, `x <<= 1` não existem, e a frase diz
+a forma certa: `SyntaxError: '**=' nao existe: escreva x = x ** valor`.
 
 ```ps
 n = 10
@@ -333,8 +336,10 @@ x = "a"             # AttributedValueError: variável x é int (tipo fixado na p
 ```
 
 Declarar o mesmo nome de novo com outro tipo também é erro (`int y = 1` e,
-depois, `long y = 2`). `Object` é o tipo de qualquer objeto — instância de
-classe, servidor, conexão, arquivo — e é como se declara o que uma lib devolve:
+depois, `long y = 2`). `Object` é o tipo de qualquer valor — texto, número,
+coleção, instância de classe, servidor, conexão, arquivo, funct — e é como se
+declara o que uma lib devolve. Só o `Null` fica de fora, como em todo tipo
+declarado:
 
 ```ps
 from jinker import Jinker
@@ -342,7 +347,8 @@ Entity Conta { nome: str }
 
 Object app = Jinker(__name__)
 object c = Conta("ana")      # `object` e `Object` são o mesmo tipo
-Object s = "texto"           # AttributedValueError: variável s esperava Object
+Object s = "texto"           # vale: texto também é Object
+Object n = Null              # AttributedValueError: variável n esperava Object, recebeu Null
 ```
 
 ### 4.6.5. Funções e o escopo de módulo

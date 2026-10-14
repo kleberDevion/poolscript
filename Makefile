@@ -46,15 +46,20 @@ CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter -Wduplicated-branches \
            -D__USE_MINGW_ANSI_STDIO=1 -I$(PREF_W)/include/mariadb
 else ifeq ($(SO),Darwin)
 # Homebrew: o prefixo geral (/usr/local no Mac Intel) e os pacotes "keg-only",
-# que ficam fora dele (openssl@3, libpq, o cliente Mongo 1.x)
+# que ficam fora dele (openssl@3, libpq, o cliente Mongo 1.x).
+# Os prefixos dos pacotes vêm ANTES do geral: o `openssl@4`, que entra como
+# dependência do libpq e do mariadb-connector-c, se liga em
+# `$(BREW)/include/openssl`, e com o geral na frente o motor compilava com os
+# cabeçalhos do 4.0 e ligava as bibliotecas do 3 (`SSL_set1_host` obsoleto,
+# `X509_get_subject_name` const: conferido em 2026-10-13 com o 4.0.3).
 BREW     := $(shell brew --prefix 2>/dev/null)
 BREW_SSL := $(shell brew --prefix openssl@3 2>/dev/null)
 BREW_PQ  := $(shell brew --prefix libpq 2>/dev/null)
 BREW_MY  := $(shell brew --prefix mariadb-connector-c 2>/dev/null)
 BREW_MG  := $(shell brew --prefix mongo-c-driver@1 2>/dev/null)
 CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter \
-           -I$(BREW)/include -I$(BREW_SSL)/include -I$(BREW_PQ)/include -I$(BREW_MY)/include/mariadb \
-           -I$(BREW_MG)/include/libmongoc-1.0 -I$(BREW_MG)/include/libbson-1.0
+           -I$(BREW_SSL)/include -I$(BREW_PQ)/include -I$(BREW_MY)/include/mariadb \
+           -I$(BREW_MG)/include/libmongoc-1.0 -I$(BREW_MG)/include/libbson-1.0 -I$(BREW)/include
 else
 CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter -Wduplicated-branches \
            -I/usr/include/postgresql -I/usr/include/mariadb -DUTF8PROC_EXPORTS -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0
@@ -165,8 +170,10 @@ $(VM)/ps_build.h: FORCE
 # não refazia o binário — o make olhava os `.c`, via tudo em dia, e o `pool`
 # seguia com o comportamento velho.
 # `ps_unicode_tab.inc` é GERADO (scripts/gera_unicode.pr) e incluído pelo
-# `ps_unicode.c`: na lista, regerar as tabelas recompila todos os alvos.
-CABECALHOS := $(wildcard $(VM)/*.h) $(VM)/ps_unicode_tab.inc
+# `ps_unicode.c`: na lista, regerar as tabelas recompila todos os alvos. O
+# mesmo vale pras tabelas medidas dos nativos que o `ps_retornos.c` inclui
+# (scripts/mede_retornos.pr e scripts/mede_aridades.pr).
+CABECALHOS := $(wildcard $(VM)/*.h) $(VM)/ps_unicode_tab.inc $(VM)/retornos_medidos.inc $(VM)/aridades_medidas.inc
 
 pool$(EXE): $(FONTES) $(CABECALHOS) $(VM)/ps_versao.h $(VM)/ps_build.h $(VM)/retornos_medidos.inc $(RECURSOS) $(MK)
 	$(CC) $(CFLAGS) -I$(VM) -o $@ $(FONTES) $(RECURSOS) $(LIBS_POOL)
@@ -656,6 +663,12 @@ check: pool testar
 	@$(MAKE) --no-print-directory unidade
 	@echo
 	@./pool teste/confere_metadata.pr
+	@echo
+	# A tabela que o --check usa pra quantidade e tipo dos argumentos dos
+	# nativos (vm/aridades_medidas.inc) tem que bater com o motor: ela e
+	# MEDIDA chamando cada nativo, e a lista de nomes de cada um tem que marcar
+	# os opcionais pelo minimo medido. Nativo mudou sem regerar = vermelho.
+	@./pool scripts/mede_aridades.pr --confere
 	@echo
 	# ASSERCOES: nenhum caso pode conferir menos do que o runner sabe conferir.
 	# Eram 1577 gravados como `NULL, "<stderr>", -1` — sem stdout e sem rc.

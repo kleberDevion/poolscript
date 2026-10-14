@@ -1,0 +1,500 @@
+# Descobre QUANTOS argumentos cada nativo aceita e QUAL TIPO o primeiro
+# argumento recusa, CHAMANDO o nativo.
+#
+#     jinga scripts/mede_aridades.pr             # mede e grava vm/aridades_medidas.inc
+#     jinga scripts/mede_aridades.pr --confere   # mede e compara com o gravado (portao)
+#
+# POR QUE ELE EXISTE. O `--check` acusa `"a".upper(1)`, `len(5)`,
+# `sys.exit(1, 2)`, `chr("a")` e `json.parse(5)` antes de rodar. Pra isso o
+# checador precisa saber o que o nativo aceita de VERDADE, e a verdade esta
+# espalhada no C de cada nativo (muitos repassam pra uma funcao comum). O
+# metodo e o do projeto, o mesmo do `mede_retornos.pr`: MEDIR, nao deduzir.
+#
+# Pra cada membro publicado no `--metadata` (builtins, funcoes de modulo e
+# metodos dos tipos cujo dono se cria sem servico) o script chama:
+#   - com 0 a 6 argumentos Null: a recusa de QUANTIDADE (a frase do
+#     erro_aridade) marca o minimo e o maximo; 6 aceitos = sem teto;
+#   - com UM argumento de cada tipo basico (quando 1 cabe na quantidade): o
+#     TypeError que nao e de quantidade e a recusa do tipo, com a frase.
+# Cada membro roda num programa proprio (cwd na pasta de trabalho). Programa
+# que nao chega ao fim (sys.exit, chamada que espera pra sempre) e refeito
+# uma chamada por programa; a chamada que nao volta em 4 s foi ACEITA (estava
+# executando).
+#
+# Junto, confere a lista de nomes de parametro de cada nativo contra o minimo
+# medido: parametro abaixo do minimo e obrigatorio e nao pode ter padrao; a
+# partir dele e opcional e TEM que ter padrao escrito ("fillchar=Null"). E a
+# regra da chamada com nome (`liga_nomeados_nat`): o vazio sem padrao e erro.
+import os
+import sys
+import json
+
+# a pasta de trabalho, absoluta e com `/` (o caminho entra no fonte das sondas,
+# e a barra invertida do Windows viraria escape la dentro)
+str TMP = os.cwd().replace("\\", "/") + "/ps_mede_aridade_tmp"
+str SAIDA = "vm/aridades_medidas.inc"
+str POOL = ""
+list TIPOS = ["int", "flo", "str", "list", "tup", "dict", "byte", "bool", "Null"]
+# Texto, bytes e coleção VAZIOS: a recusa tem que ser do tipo, nunca do
+# conteúdo (`", ".join([1])` recusa o int de dentro e a lista vale;
+# `b"".join("x")` recusa o caractere de dentro e o texto vazio vale).
+dict VALOR = {"int": "0", "flo": "1.5", "str": "\"\"", "list": "[]", "tup": "()",
+              "dict": "{}", "byte": "b\"\"", "bool": "True", "Null": "Null"}
+
+# dono -> [import, expressao que cria o dono]. Dono que so existe com servico
+# (banco, mongo, resposta HTTP, objetos de dentro da rota) fica de fora: o
+# checador nao confere a quantidade dos metodos dele (a VM confere rodando).
+dict DONOS = {
+    "str": ["", "\"abc\""],
+    "list": ["", "[3, 1, 2]"],
+    "dict": ["", "{\"a\": 1}"],
+    "tup": ["", "(1, 2)"],
+    "byte": ["", "b\"abc\""],
+    "__universal__": ["", "1"],
+    "PoolFile": ["", "open(\"@TMP@/f.txt\", \"w\")"],
+    "Pattern": ["import regex", "regex.compile(\"a\")"],
+    "PoolQRCode": ["import qrcode", "qrcode.QRCode()"],
+    "QRImage": ["import qrcode", "qrcode.make(\"x\")"],
+    "QRPoolFile": ["import qrcode", "qrcode.gen(\"x\")"],
+    "socket": ["import sockets", "sockets.socket()"],
+    "Jinker": ["import jinker", "jinker.Jinker()"],
+    "CorsConfig": ["import jinker", "jinker.cors(jinker.Jinker())"],
+    "JinkerResponse": ["import jinker", "jinker.jsonify({})"],
+    "Process": ["import os", "os.run([\"true\"], capture=\"live\")"],
+    "PoolConnection": ["import sqlite3", "sqlite3.connect(\":memory:\")"],
+    "PoolCursor": ["import sqlite3", "sqlite3.connect(\":memory:\").cursor()"],
+    "MailServer": ["import mail", "mail.MailServer()"],
+    "MailMessage": ["import mail", "mail.MailMessage()"],
+    "MailReader": ["import mail", "mail.MailReader()"]
+}
+
+# Chamada com valor de verdade que mexe fora do programa: so a quantidade
+# (com Null) e medida. `os.kill(0)` mandaria sinal pro grupo de processos.
+list SO_QUANTIDADE = ["os|kill", "Process|kill"]
+
+list ERROS = []
+list AVISOS = []
+
+
+bool funct eh_aridade(str msg) {
+    for each m in ["takes no arguments", "takes exactly", "takes at least", "takes at most",
+                   "takes from", "takes no keyword"] {
+        if m in msg {
+            return True
+        }
+    }
+    return False
+}
+
+
+# O caminho do binario, absoluto: as sondas rodam com a pasta de trabalho
+# como diretorio corrente, e `./pool` (o do `make check`) deixaria de valer la.
+str funct absoluto(str p) {
+    str q = p.replace("\\", "/")
+    if q.startswith("/") or (len(q) > 1 and q[1] == ":") {
+        return q
+    }
+    return os.cwd().replace("\\", "/") + "/" + q
+}
+
+
+# A frase cita o tipo `t` como palavra (`'str' object`, `not int`, `int found`)?
+bool funct cita_tipo(str msg, str t) {
+    int k = msg.find(t)
+    while k >= 0 {
+        bool antes = k == 0 or not (msg[k - 1].isalnum() or msg[k - 1] == "_")
+        int d = k + len(t)
+        bool depois = d >= len(msg) or not (msg[d].isalnum() or msg[d] == "_")
+        if antes and depois {
+            return True
+        }
+        k = msg.find(t, k + 1)
+    }
+    return False
+}
+
+
+# A frase de quantidade pela regra (minimo, maximo) — a mesma conta do
+# ps_frase_aridade (vm/ps_retornos.c), que a VM e o checador usam.
+str funct frase(str nome, int minimo, int maximo, int n) {
+    str quanto = ""
+    if maximo == 0 {
+        quanto = "no arguments"
+    }
+    elif minimo == maximo {
+        quanto = "exactly one argument" if minimo == 1 else "exactly " + str(minimo) + " arguments"
+    }
+    elif n < minimo {
+        quanto = "at least " + str(minimo) + " argument" + ("" if minimo == 1 else "s")
+    }
+    else {
+        quanto = "at most " + str(maximo) + " argument" + ("" if maximo == 1 else "s")
+    }
+    return nome + "() takes " + quanto + " (" + str(n) + " given)"
+}
+
+
+# A frase sem o " (linha N)" que o `catch` junta.
+str funct sem_linha(str msg) {
+    int k = msg.rfind(" (linha ")
+    if k >= 0 {
+        return msg[:k]
+    }
+    return msg
+}
+
+
+str funct args_de(int n, str valor) {
+    list partes = []
+    for each i in range(n) {
+        addEnd(partes, valor)
+    }
+    return ", ".join(partes)
+}
+
+
+# Uma chamada vigiada: anota `rotulo|ok`, `rotulo|T|frase` (TypeError) ou
+# `rotulo|o|frase` (outro erro). O nativo e chamado por uma variavel `Object`:
+# a recusa tem que vir do NATIVO, rodando — chamado direto, o checador (que
+# usa esta tabela) recusaria a sonda antes de rodar.
+str funct sonda(str chamado, str args, str rotulo) {
+    return ("try {\n    Object mr_f" + rotulo + " = " + chamado + "\n    mr_f" + rotulo + "(" + args + ")\n"
+            + "    mr_anota(\"" + rotulo + "|ok\")\n"
+            + "} catch (TypeError mr_e) {\n    mr_anota(\"" + rotulo + "|T|\" + mr_e)\n"
+            + "} catch (Exception mr_e) {\n    mr_anota(\"" + rotulo + "|o|\" + mr_e)\n}\n")
+}
+
+
+str funct cabeca(str imp) {
+    return (imp + "\nNull funct mr_anota(str mr_linha) {\n    using open(\"" + TMP + "/r.txt\", \"a\") as mr_arq {\n"
+            + "        mr_arq.write(mr_linha.replace(\"\\n\", \" \") + \"\\n\")\n    }\n}\n")
+}
+
+
+# Roda o programa na pasta de trabalho, sem shell (o `make check` roda no
+# Linux, no macOS e no Windows): `os.run` com a entrada fechada (a sonda do
+# `input()` le o fim) e a saida lida ate o fim. A sonda nao tem prazo: medido
+# em 2026-10-13, nenhum nativo trava com argumento Null ou vazio, e o que
+# encerra o programa (`sys.exit`) cai no modo de uma chamada por programa.
+Null funct executa(str fonte) {
+    os.writeFile(TMP + "/p.pr", fonte)
+    os.writeFile(TMP + "/r.txt", "")
+    str volta = os.cwd()
+    os.chdir(TMP)
+    using os.run([POOL, "p.pr"], capture="live") as mr_proc {
+        mr_proc.close()
+        str parte = mr_proc.read()
+        while parte != "" {
+            parte = mr_proc.read()
+        }
+        parte = mr_proc.read_err()
+        while parte != "" {
+            parte = mr_proc.read_err()
+        }
+        mr_proc.wait()
+    }
+    os.chdir(volta)
+}
+
+
+# Roda um programa e devolve as linhas anotadas.
+list funct roda(str fonte) {
+    executa(fonte)
+    if not os.exists(TMP + "/r.txt") {
+        return []
+    }
+    list linhas = []
+    for each l in os.readFile(TMP + "/r.txt").split("\n") {
+        if len(l) > 0 {
+            addEnd(linhas, l)
+        }
+    }
+    return linhas
+}
+
+
+# As sondas de um membro: rotulo -> chamada.
+dict funct sondas_de(str chave, str chamado) {
+    dict s = {}
+    for each n in range(7) {
+        s["A" + str(n)] = [chamado, args_de(n, "Null")]
+    }
+    if not (chave in SO_QUANTIDADE) {
+        for each t in TIPOS {
+            s["Y" + t] = [chamado, VALOR[t]]
+        }
+    }
+    return s
+}
+
+
+# Mede um membro: devolve {rotulo: "ok" | "T|frase" | "o|frase"}.
+dict funct mede(str imp, str chamado, str chave) {
+    dict s = sondas_de(chave, chamado)
+    str fonte = cabeca(imp)
+    for each r in s.keys() {
+        fonte = fonte + sonda(s[r][0], s[r][1], r)
+    }
+    fonte = fonte + "mr_anota(\"FIM\")\n"
+    list linhas = roda(fonte)
+    dict res = {}
+    bool fim = False
+    for each l in linhas {
+        if l == "FIM" {
+            fim = True
+            continue
+        }
+        int k = l.find("|")
+        res[l[:k]] = sem_linha(l[k + 1:])
+    }
+    if fim {
+        return res
+    }
+    # nao chegou ao fim (uma sonda encerrou o programa, como a do `sys.exit`):
+    # uma chamada por programa; a que encerra foi aceita (estava executando)
+    res = {}
+    for each r in s.keys() {
+        list um = roda(cabeca(imp) + sonda(s[r][0], s[r][1], r) + "mr_anota(\"FIM\")\n")
+        res[r] = "ok"
+        for each l in um {
+            if l != "FIM" and l.startswith(r + "|") {
+                res[r] = sem_linha(l[len(r) + 1:])
+            }
+        }
+    }
+    return res
+}
+
+
+# Minimo e maximo medidos: -1 no maximo = sem teto. [-2, -2] = nenhuma
+# quantidade aceita (o dono nao foi criado, ou o membro nao e chamavel).
+list funct faixa(dict res) {
+    int minimo = -2
+    int maximo = -2
+    for each n in range(7) {
+        str r = res.get("A" + str(n), "ok")
+        bool recusou = r.startswith("T|") and eh_aridade(r[2:])
+        if not recusou {
+            if minimo == -2 {
+                minimo = n
+            }
+            maximo = n
+        }
+    }
+    if maximo == 6 {
+        maximo = -1
+    }
+    return [minimo, maximo]
+}
+
+
+str funct texto_c(str s) {
+    return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+}
+
+
+# A posicao de `s` no bloco de textos da tabela, gravando-o na primeira vez;
+# o texto vazio e o "nenhum" (NULL no C), posicao 0 — nenhum campo da tabela
+# e vazio de verdade. A tabela guarda posicoes, nao ponteiros: ponteiro em
+# dado inicializado e uma relocacao que o carregador faz em toda partida do
+# binario (eram 2.975, 39 mil instrucoes ate pro programa vazio). `bloco`
+# junta as linhas do C; `tam[0]` e o tamanho em bytes ate aqui.
+int funct posicao(dict pos_de, list bloco, list tam, str s) {
+    if s == "" {
+        return 0
+    }
+    if s in pos_de {
+        return pos_de[s]
+    }
+    int p = tam[0]
+    pos_de[s] = p
+    str lit = texto_c(s)
+    addEnd(bloco, "    " + lit[0:len(lit) - 1] + "\\0\"")
+    tam[0] = p + len(s.encode()) + 1
+    return p
+}
+
+
+if __name__ == "main" {
+    bool confere = "--confere" in sys.argv
+    os.mkdir(TMP, exist_ok=True)
+    # `--pool B`: mede o binario B (o recem-compilado) rodando este script com
+    # outro jinga. Precisa quando a tabela compilada no B esta errada: o
+    # checador dele usa a tabela, e recusaria a chamada que ela erra.
+    POOL = absoluto(sys.executable)
+    if "--pool" in sys.argv {
+        POOL = absoluto(sys.argv[sys.argv.index("--pool") + 1])
+    }
+    dict meta = json.parse(os.run([POOL, "--metadata"], capture=True))
+
+    # (dono, membro, import, chamado, params)
+    list membros = []
+    for each b in meta["builtins"] {
+        addEnd(membros, ["builtins", b["nome"], "", b["nome"], b["params"]])
+    }
+    for each mod in meta["modulos"].keys() {
+        str imp = "import " + mod.split(".")[0]
+        for each m in meta["modulos"][mod] {
+            if m.get("kind", "function") != "function" {
+                continue
+            }
+            addEnd(membros, [mod, m["nome"], imp, mod + "." + m["nome"], m["params"]])
+        }
+    }
+    for each t in meta["tipos"].keys() {
+        if not (t in DONOS) {
+            continue
+        }
+        for each m in meta["tipos"][t] {
+            str criado = DONOS[t][1].replace("@TMP@", TMP)
+            addEnd(membros, [t, m["nome"], DONOS[t][0], criado + "." + m["nome"], m["params"]])
+        }
+    }
+
+    dict linhas_inc = {}
+    int n_medidos = 0
+    for each mb in membros {
+        str dono = mb[0]
+        str membro = mb[1]
+        str chave = dono + "|" + membro
+        dict res = mede(mb[2], mb[3], chave)
+        list fx = faixa(res)
+        if fx[0] == -2 {
+            addEnd(AVISOS, chave + ": nenhuma quantidade aceita (" + str(res.get("A0", "?")) + ")")
+            continue
+        }
+        n_medidos = n_medidos + 1
+        # o nome que a frase de quantidade usa (`upper() takes ...`): medido
+        # da propria frase, porque nativo que repassa pra uma funcao comum
+        # pode falar com outro nome
+        str nome_frase = membro
+        for each n in range(7) {
+            str r = res.get("A" + str(n), "ok")
+            if r.startswith("T|") and eh_aridade(r[2:]) and "() takes" in r {
+                nome_frase = r[2:r.find("() takes")]
+                break
+            }
+        }
+        # a frase que o nativo deu pra cada quantidade recusada tem que ser a
+        # da regra (minimo, maximo): e a que o checador da antes de rodar
+        for each n in range(7) {
+            str r = res.get("A" + str(n), "ok")
+            if r.startswith("T|") and eh_aridade(r[2:]) and "() takes" in r {
+                str esperada = frase(nome_frase, fx[0], fx[1], n)
+                if r[2:] != esperada {
+                    addEnd(ERROS, chave + ": com " + str(n) + " argumento(s) a VM diz '" + r[2:]
+                           + "'; pela quantidade medida seria '" + esperada + "'")
+                }
+            }
+        }
+        list recusas = []
+        for each t in TIPOS {
+            str r = res.get("Y" + t, "ok")
+            bool um_cabe = fx[0] <= 1 and (fx[1] == -1 or fx[1] >= 1)
+            # a frase tem que citar o PROPRIO tipo: a que fala de outro (o do
+            # conteudo, o de outro argumento) nao e recusa deste tipo
+            if um_cabe and r.startswith("T|") and not eh_aridade(r[2:]) and cita_tipo(r[2:], t) {
+                addEnd(recusas, r[2:])
+            }
+            else {
+                addEnd(recusas, "")
+            }
+        }
+        # a lista de nomes x o minimo medido
+        list nomes = []
+        int i = 0
+        for each p in mb[4] {
+            str nm = p["nome"]
+            bool tem_padrao = p["default"] != Null
+            if tem_padrao {
+                nm = nm + "=" + str(p["default"])
+            }
+            addEnd(nomes, nm)
+            if not p["nome"].startswith("*") {
+                if i < fx[0] and tem_padrao {
+                    addEnd(ERROS, chave + ": '" + p["nome"] + "' e obrigatorio (minimo " + str(fx[0])
+                           + ") mas a lista de nomes da padrao")
+                }
+                if i >= fx[0] and not tem_padrao {
+                    addEnd(ERROS, chave + ": '" + p["nome"] + "' e opcional (minimo " + str(fx[0])
+                           + ") e a lista de nomes nao da padrao")
+                }
+            }
+            i = i + 1
+        }
+        str lista = ""
+        if len(nomes) > 0 {
+            lista = ",".join(nomes)
+        }
+        linhas_inc[dono + " " + membro] = [dono, membro, nome_frase, lista, fx[0], fx[1], recusas]
+    }
+
+    # os textos num bloco so, cada um uma vez, na ordem em que a tabela os cita
+    # pela primeira vez; o bloco comeca com um byte nulo, a posicao 0 (= NULL)
+    dict pos_de = {}
+    list bloco = ["    \"\\0\""]
+    list tam = [1]
+    list tabela = []
+    for each k in sorted(linhas_inc.keys()) {
+        list e = linhas_inc[k]
+        list rs = []
+        for each r in e[6] {
+            addEnd(rs, str(posicao(pos_de, bloco, tam, r)))
+        }
+        addEnd(tabela, "    { " + str(posicao(pos_de, bloco, tam, e[0])) + ", "
+            + str(posicao(pos_de, bloco, tam, e[1])) + ", "
+            + str(posicao(pos_de, bloco, tam, e[2])) + ", "
+            + str(posicao(pos_de, bloco, tam, e[3])) + ", "
+            + str(e[4]) + ", " + str(e[5]) + ", { " + ", ".join(rs) + " } },")
+    }
+    bloco[len(bloco) - 1] = bloco[len(bloco) - 1] + ";"
+
+    list saida = ["/* GERADO por scripts/mede_aridades.pr — NAO edite a mao.",
+                  " *",
+                  " * Por nativo: dono, membro, o nome que a frase de quantidade usa, a lista",
+                  " * de nomes de parametro (0 = nao aceita nome), quantos argumentos aceita",
+                  " * (minimo, maximo; -1 = sem teto) e a frase com que recusa UM argumento de",
+                  " * cada tipo basico, na ordem int flo str list tup dict byte bool Null",
+                  " * (0 = aceita). MEDIDO: o script chama o nativo. Ordenado por (dono,",
+                  " * membro) em ordem de bytes: vm/ps_retornos.c faz bsearch.",
+                  " *",
+                  " * Cada texto e uma POSICAO em AR_TEXTO (0 = NULL), nao um ponteiro:",
+                  " * ponteiro em dado inicializado e relocacao em toda partida do binario.",
+                  " *",
+                  " *     jinga scripts/mede_aridades.pr",
+                  " */",
+                  "static const char AR_TEXTO[] ="]
+    for each b in bloco {
+        addEnd(saida, b)
+    }
+    addEnd(saida, "static const PSAridadeBruta AR_TAB[] = {")
+    for each t in tabela {
+        addEnd(saida, t)
+    }
+    addEnd(saida, "};")
+    str texto = "\n".join(saida) + "\n"
+    os.rmdir(TMP, force=True)
+
+    for each a in AVISOS {
+        post("aviso:", a)
+    }
+    if len(ERROS) > 0 {
+        post("")
+        post("nativo fora da quantidade medida —", len(ERROS), "problema(s):")
+        for each e in ERROS {
+            post("  ", e)
+        }
+    }
+    post("medidos:", n_medidos)
+    if confere {
+        str atual = os.readFile(SAIDA) if os.exists(SAIDA) else ""
+        if atual != texto {
+            post("vm/aridades_medidas.inc nao bate com o medido: rode jinga scripts/mede_aridades.pr")
+            sys.exit(1)
+        }
+        sys.exit(1 if len(ERROS) > 0 else 0)
+    }
+    os.writeFile(SAIDA, texto)
+    post("gravado em", SAIDA)
+    sys.exit(1 if len(ERROS) > 0 else 0)
+}

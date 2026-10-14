@@ -1102,8 +1102,11 @@ for each linha in r["saida"].split("\n")
 }
 confere("a frase do .ps cita o migrador por um caminho que existe",
         r["rc"] == 66 and migra != "" and os.exists(migra))
-# pasta com caminho longo (mais de 1024 caracteres) acha o módulo vizinho
-if not WINDOWS
+# pasta com caminho longo (mais de 1024 caracteres) acha o módulo vizinho.
+# Só onde o sistema aceita um caminho desses: no macOS o limite (PATH_MAX) é
+# 1024, e o próprio `mkdir` da pasta dá "File name too long" — não há pasta
+# pra o motor errar.
+if not WINDOWS and sys.platform() != "darwin"
 {
     longa = PASTA + "/" + "d" * 200 + "/" + "e" * 200 + "/" + "f" * 200 + "/" + "g" * 200 + "/" + "h" * 200
     os.mkdir(longa, exist_ok=True)

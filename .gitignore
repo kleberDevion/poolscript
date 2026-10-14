@@ -92,6 +92,8 @@ pool-debug
 
 # binario dos testes de unidade em C (make unidade o gera)
 unidade
+# no macOS o clang grava os simbolos de depuracao do `-g` numa pasta ao lado
+*.dSYM/
 
 # Os contraexemplos das LEIS entram, pelo mesmo motivo dos achados do fuzz:
 # o sorteio muda a cada execução, e o valor que já quebrou uma vez tem que

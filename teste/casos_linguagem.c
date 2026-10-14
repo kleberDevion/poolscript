@@ -1319,10 +1319,10 @@ const Caso CASOS_LINGUAGEM[] = {
  * `Pattern.match/search/findall`, que leem o argumento por um helper. A regra
  * só voltou depois de sondar as 91 entradas por COMPORTAMENTO. */
 { "metodo nativo recusa argumento demais",
-  "post([1,2].append(1,2,3))\n", "", "TypeError: append() takes at most 1 argument (3 given)", 1 },
+  "post([1,2].append(1,2,3))\n", "", "TypeError: append() takes exactly one argument (3 given)", 2 },
 { "metodo de zero argumento recusa argumento",
   "import sockets\ns = sockets.socket()\npost(s.fileno(1,2))\n",
-  "", "TypeError: fileno() takes no arguments (2 given)", 1 },
+  "", "TypeError: fileno() takes no arguments (2 given)", 2 },
 { "format continua variadico",
   "post(\"{} {}\".format(1,2,3,4,5))\n", "1 2", NULL, 0 },
 { "Pattern le o argumento pelo helper e continua funcionando",
@@ -2156,9 +2156,17 @@ const Caso CASOS_LINGUAGEM[] = {
   "object c = C()\n"
   "post(c.m())\n",
   "1", NULL, 0 },
-{ "tipagem estatica: Object recusa str e lista",
-  "Object o = \"x\"\n",
-  "", "AttributedValueError: variável o esperava Object, recebeu str", 2 },
+/* `Object` e QUALQUER valor (decisao dele, 2026-10-13, 17.0.17: "Object
+ * deveria ser o mesmo que qualquer objeto"); so o Null fica de fora, como em
+ * todo tipo declarado. Ate o 17.0.16 ele recusava texto, colecao e escalar. */
+{ "tipagem estatica: Object aceita qualquer valor, de todo tipo (17.0.17)",
+  "Object o = \"x\"\nObject l = [1]\nObject n = 5\nObject b = True\nObject t = (1,)\n"
+  "Object y = b\"ab\"\nObject d = {\"k\": 1}\nObject f = 2.5\nObject k = int\n"
+  "post(o, l, n, b, t, y, d, f, k)\n",
+  "x [1] 5 True (1,) b'ab' {'k': 1} 2.5 int", NULL, 0 },
+{ "tipagem estatica: Object recusa o Null antes de rodar (17.0.17)",
+  "Object o = Null\n",
+  "", "AttributedValueError: variável o esperava Object, recebeu Null", 2 },
 
 /* ── FUNCT E OBJETO, 2026-09-10 ────────────────────────────────────────────
  * `Object f = funct(){ … }` era recusado: `V_FUNC`/`V_NATIVE` nao sao
@@ -2177,9 +2185,9 @@ const Caso CASOS_LINGUAGEM[] = {
 { "Object no parametro aceita funct",
   "funct roda(Object cb) { return cb() }\npost(roda(funct(){ return 7 }))\n",
   "7", NULL, 0 },
-{ "Object continua recusando escalar e colecao",
-  "Object o = 1\n",
-  "", "AttributedValueError: variável o esperava Object, recebeu int", 2 },
+{ "Object recusa o Null que so aparece rodando (17.0.17)",
+  "funct nada() {\n    return Null\n}\nObject o = nada()\npost(\"nao chega\")\n",
+  "", "AttributedValueError: variável o esperava Object, recebeu Null", 1 },
 
 /* Funct e igual a si mesma. `V_FUNC`/`V_NATIVE` caiam no `return 0` final do
  * comparador, entao `f == f` respondia False — inclusive pra builtin. */
@@ -2217,7 +2225,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "for each s in [1, 2] {\n"
   "    post(s)\n"
   "}\n",
-  "", "AttributedValueError: variável s esperava str, recebeu int", 1 },
+  "", "AttributedValueError: variável s esperava str, recebeu int", 2 },
 { "sem tipo escrito, o tipo e FIXADO na primeira atribuicao: `x = 1` depois `x = \"a\"` e erro",
   "x = 1\n"
   "x = \"a\"\n"
@@ -2883,7 +2891,16 @@ const Caso CASOS_LINGUAGEM[] = {
   "True True False\nTrue False", NULL, 0 },
 { "is com nome de tipo declaravel segue a regra da declaracao",
   "int a = 1\npost(a is Object, a is int, a is str, \"x\" is String)\npost(a not is str)\n",
-  "False True False True\nTrue", NULL, 0 },
+  "True True False True\nTrue", NULL, 0 },
+{ "todo tipo e Object, como todo tipo e type (17.0.17)",
+  "Object k = int\npost(int is Object, ValueError is Object, k is Object, Null is Object, int is type)\n",
+  "True True True False True", NULL, 0 },
+/* `f = tup; f(x)` recusava ("tipo 'tup' nao pode ser usado como conversor")
+ * e `tup(x)` convertia: a tabela medida dos nativos, que chama pelo valor,
+ * gravou a recusa, e o --check passou a recusar `tup(tup(x))`. */
+{ "tipo como valor converte como a chamada direta: tup e dict tambem (17.0.17)",
+  "Object f = tup\nObject g = dict\npost(f([1, 2]), g({\"a\": 1}), tup(tup([0])) == (0,), dict(dict({\"b\": 2})))\n",
+  "(1, 2) {'a': 1} True {'b': 2}", NULL, 0 },
 { "is Object com instancia",
   "class A {\n}\nA a = A()\npost(a is Object)\n", "True", NULL, 0 },
 { "is com enum: o valor de um dos membros",
@@ -3412,7 +3429,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * Agora a tabela EXCECOES[] diz o pai de cada tipo num lugar so, e o `catch`
  * compila pra OP_EXC_CASA, que sobe a cadeia. */
 { "catch (Exception e) pega qualquer erro",
-  "try { post(1 + \"a\") }\ncatch (Exception e) { post(\"pegou\") }\n",
+  "try { post(1 + [\"a\"][0]) }\ncatch (Exception e) { post(\"pegou\") }\n",
   "pegou", NULL, 0 },
 { "catch (Exception e) pega raise explicito",
   "try { raise ValueError(\"x\") }\ncatch (Exception e) { post(\"pegou\") }\n",
@@ -3442,7 +3459,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "try { raise ValueError(\"x\") }\ncatch (TypeError e) { post(\"NAO DEVIA\") }\n", "",
   "ValueError: x", 1 },
 { "OSError NAO pega TypeError",
-  "try { post(1 + \"a\") }\ncatch (OSError e) { post(\"NAO DEVIA\") }\n", "",
+  "try { post(1 + [\"a\"][0]) }\ncatch (OSError e) { post(\"NAO DEVIA\") }\n", "",
   "TypeError: unsupported operand type(s) for +: 'int' and 'str' (linha 1)", 1 },
 { "IOError segue IRMAO de OSError, nao pai — a doc do open() promete isso",
   "import os\ntry { os.loadFile(\"/nao/existe/xyz.txt\") }\ncatch (IOError e) { post(\"NAO DEVIA\") }\n",
@@ -4185,15 +4202,15 @@ const Caso CASOS_LINGUAGEM[] = {
 /* fullmatch e match sao a mesma funcao, mas cada uma assina o proprio nome. */
 { "fullmatch assina fullmatch no erro, nao match",
   "import regex\nregex.fullmatch(\"a\")\n", "",
-  "TypeError: fullmatch() takes exactly 2 arguments (1 given)", 1 },
+  "TypeError: fullmatch() takes exactly 2 arguments (1 given)", 2 },
 /* A tabela anunciava `flags` em sete funcoes e nenhuma o lia: por nome dava
  * keyword invalido, por posicao o compile ENGOLIA o 2o argumento calado. */
 { "regex.compile nao aceita mais um 2o argumento que era ignorado",
   "import regex\nregex.compile(\"a\", 0)\n", "",
-  "TypeError: compile() takes exactly one argument (2 given)", 1 },
+  "TypeError: compile() takes exactly one argument (2 given)", 2 },
 { "flags= nao existe em regex.match",
   "import regex\nregex.match(\"a\", \"a\", flags=0)\n", "",
-  "'flags' is an invalid keyword argument for match()", 1 },
+  "'flags' is an invalid keyword argument for match()", 2 },
 { "match e fullmatch seguem casando a string inteira",
   "import regex\npost(regex.fullmatch(\"a+\", \"aaa\"), regex.match(\"a\", \"aaa\"))\n",
   "True False", NULL, 0 },
@@ -4204,19 +4221,19 @@ const Caso CASOS_LINGUAGEM[] = {
  * agora dizem o que pedem e o tipo que veio, numa funcao so (arg_exige_seq
  * / arg_exige_dict). Nada que rodava mudou: str segue recusado. */
 { "sum recusa str dizendo o que pede, nao negando que str itera",
-  "sum(\"abc\")\n", "", "TypeError: sum() argument 1 must be list or tup, not str", 1 },
+  "sum(\"abc\")\n", "", "TypeError: sum() argument 1 must be list or tup, not str", 2 },
 { "sum recusa bytes pelo mesmo caminho",
-  "sum(\"abc\".encode())\n", "", "TypeError: sum() argument 1 must be list or tup, not byte", 1 },
+  "sum(\"abc\".encode())\n", "", "TypeError: sum() argument 1 must be list or tup, not byte", 2 },
 { "str.join diz o tipo recebido",
-  "\", \".join(\"abc\")\n", "", "TypeError: join() argument 1 must be list or tup, not str", 1 },
+  "\", \".join(\"abc\")\n", "", "TypeError: join() argument 1 must be list or tup, not str", 2 },
 { "str.join recusa dict",
-  "\", \".join({\"a\": 1})\n", "", "TypeError: join() argument 1 must be list or tup, not dict", 1 },
+  "\", \".join({\"a\": 1})\n", "", "TypeError: join() argument 1 must be list or tup, not dict", 2 },
 { "list.extend recusa str dizendo o que pede",
-  "l = [1]\nl.extend(\"ab\")\n", "", "TypeError: extend() argument 1 must be list or tup, not str", 1 },
+  "l = [1]\nl.extend(\"ab\")\n", "", "TypeError: extend() argument 1 must be list or tup, not str", 2 },
 { "dict.update recusa list dizendo que pede dict",
-  "d = {}\nd.update([1])\n", "", "TypeError: update() argument 1 must be dict, not list", 1 },
+  "d = {}\nd.update([1])\n", "", "TypeError: update() argument 1 must be dict, not list", 2 },
 { "translate recusa str dizendo que pede dict, nao 'not subscriptable'",
-  "\"abc\".translate(\"xyz\")\n", "", "TypeError: translate() argument 1 must be dict, not str", 1 },
+  "\"abc\".translate(\"xyz\")\n", "", "TypeError: translate() argument 1 must be dict, not str", 2 },
 { "map diz o que pede no 1o argumento",
   "map(5, funct(x) { return x })\n", "", "TypeError: map() argument 1 must be list or tup, not int", 1 },
 { "filter diz o que pede no 1o argumento",
@@ -4248,14 +4265,14 @@ const Caso CASOS_LINGUAGEM[] = {
 { "oct aceita inteiro grande",
   "post(oct(10 ** 30))\n", "0o1447626234640431647336510000000000", NULL, 0 },
 { "hex segue recusando str",
-  "hex(\"a\")\n", "", "TypeError: 'str' object cannot be interpreted as an integer", 1 },
+  "hex(\"a\")\n", "", "TypeError: 'str' object cannot be interpreted as an integer", 2 },
 /* ~ era o unico bit-a-bit que recusava bignum, e dizia "bad operand type
  * ... 'int'". */
 { "~ aceita inteiro grande como | ^ & << >>",
   "long g = 2 ** 100\npost(~g)\npost(~(-(2 ** 100)))\n",
   "-1267650600228229401496703205377\n1267650600228229401496703205375", NULL, 0 },
 { "~ segue recusando bool",
-  "post(~True)\n", "", "TypeError: bad operand type for unary ~: 'bool'", 1 },
+  "post(~True)\n", "", "TypeError: bad operand type for unary ~: 'bool'", 2 },
 /* round conferia as casas duas vezes com respostas diferentes: bool passava
  * com n int e estourava com n flo. */
 { "round(flo, bool) usa bool como 0/1 de casas",
@@ -5105,7 +5122,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "sleep(0) numa tarefa cede, e sleep de texto diz que aceita int ou flo (lote 6a)",
   "list ordem = []\nasync funct a() {\n    ordem.append(\"a1\")\n    sleep(0)\n    ordem.append(\"a2\")\n}\n"
   "async funct b() {\n    ordem.append(\"b1\")\n    sleep(0)\n    ordem.append(\"b2\")\n}\n"
-  "gather(a(), b())\npost(ordem)\ntry {\n    sleep(\"x\")\n} catch (TypeError e) {\n    post(e)\n}\n",
+  "gather(a(), b())\npost(ordem)\ntry {\n    sleep([\"x\"][0])\n} catch (TypeError e) {\n    post(e)\n}\n",
   "['a1', 'b1', 'a2', 'b2']\nsleep() argument must be int or flo, not str (linha 15)", NULL, 0 },
 { "nonnull do gerador acusa na chamada, nao no primeiro pedido (lote 6a)",
   "nonnull funct gen(v) {\n    yield v\n}\ntry {\n    Object g = gen(Null)\n    post(\"nao chega\")\n"
@@ -5742,7 +5759,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "    return fs\n"
   "}\n"
   "post(len(f()))\n",
-  "", "AttributedValueError: variável i esperava int, recebeu str", 1 },
+  "", "AttributedValueError: variável i esperava int, recebeu str", 2 },
 { "alvo do desempacotamento com o nome de uma global grava nela, com ou sem closure (lote 6b)",
   "int i = 99\n"
   "int funct h() { return i }\n"
@@ -6445,7 +6462,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "} catch (TypeError e) {\n"
   "    post(e)\n"
   "}\n"
-  "post(\"banana\".replace(\"a\"))\n",
+  "Object rep = \"banana\".replace; post(rep(\"a\"))\n",
   "replace(): 2 alvo(s) e 1 novo(s); em paralelo, as duas listas tem o mesmo tamanho (linha 4)\n"
   "replace(): o item 0 da lista de alvos e vazio; o alvo vazio vale sozinho: replace(\"\", novo) (linha 4)\n"
   "replace() argument 1 item 0 must be str, not int (linha 10)\n"
@@ -6610,7 +6627,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "int too large to convert to flo (linha 1)\n"
   "int too large to convert to flo (linha 1)", NULL, 0 },
 { "list e tup nao se ordenam entre si; NaN nao se ordena com nada (lote 7b)",
-  "for each p in [funct() { return [1, 2] <= (1, 2) }, funct() { return sorted([[1], (2,)]) }] {\n"
+  "for each p in [funct() { return [[1, 2]][0] <= (1, 2) }, funct() { return sorted([[1], (2,)]) }] {\n"
   "    try {\n"
   "        post(p())\n"
   "    } catch (TypeError e) {\n"
@@ -6709,7 +6726,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(round(0.1, 2 ** 70), round(123.456, -(2 ** 70)), round(1e300, 2) == 1e300)\n"
   "post(date.hora(1, 30), date.hora(days=True), date.hora(2 ** 62))\n"
   "try {\n"
-  "    post(date.hora(1.5))\n"
+  "    post(date.hora([1.5][0]))\n"
   "} catch (TypeError e) {\n"
   "    post(e)\n"
   "}\n",
@@ -6721,6 +6738,129 @@ const Caso CASOS_LINGUAGEM[] = {
   "import sys\n"
   "sys.exit(2 ** 70 + 3)\n",
   "", NULL, 3 },
+
+/* ── Plano 6, lote 7c (17.0.17): o checador e a chamada com nome ───────────
+ * O valor que passa por uma lista (`["a"][0]`) e a funcao guardada em `Object`
+ * tem tipo que so se sabe rodando: e o jeito de provar o caminho da VM. */
+{ "f-string com formato: o mesmo do format, campo dentro do formato, ':' dentro de colchete e aspas, string tripla (lote 7c)",
+  "flo x = 3.14159\n"
+  "int n = 42\n"
+  "int w = 9\n"
+  "str s = \"abc\"\n"
+  "dict d = {\"a:b\": 1}\n"
+  "post(f\"[{x:.2f}]\", f\"[{n:05d}]\", f\"[{s:>5}]\", f\"[{n:x}]\", f\"[{x:{w}.3f}]\")\n"
+  "post(f\"[{s[0:2]}]\", f\"[{d['a:b']}]\", f\"[{n if n > 1 else 0:d}]\")\n"
+  "post(f\"\"\"t{x:.1f}\"\"\")\n",
+  "[3.14] [00042] [  abc] [2a] [    3.142]\n[ab] [1] [42]\nt3.1", NULL, 0 },
+{ "f-string com formato invalido da a frase do format, rodando (lote 7c)",
+  "int n = 42\npost(f\"[{n:zz}]\")\n",
+  "", "ValueError: format: especificador 'zz' invalido; a forma e [preenche][<>^][0][largura][.precisao][tipo]", 1 },
+{ "argumento nomeado repetido na chamada e erro antes de rodar, no segundo (lote 7c)",
+  "funct f(int a = 1) {\n    return a\n}\npost(f(a=1, a=2))\n",
+  "", "SyntaxError: argumento nomeado 'a' repetido na chamada", 2 },
+{ "nomeado num parametro ja dado por posicao e erro: funct (lote 7c)",
+  "funct f(int a = 1) {\n    return a\n}\npost(f(1, a=2))\n",
+  "", "TypeError: f() got multiple values for argument 'a'", 2 },
+{ "nomeado num parametro ja dado por posicao e erro: nativo (lote 7c)",
+  "post(\"a,b;c\".split(\",\", sep=\";\"))\n",
+  "", "TypeError: split() got multiple values for argument 'sep'", 2 },
+{ "parametro obrigatorio vazio na chamada com nome e erro: get (lote 7c)",
+  "dict d = {\"a\": 1}\npost(d.get(default=5))\n",
+  "", "TypeError: get() missing required argument 'chave'", 2 },
+{ "parametro obrigatorio vazio na chamada com nome e erro: center (lote 7c)",
+  "post(\"abc\".center(fillchar=\"*\"))\n",
+  "", "TypeError: center() missing required argument 'width'", 2 },
+{ "format nao aceita nome nenhum (lote 7c)",
+  "post(\"{} e {}\".format(b=2))\n",
+  "", "TypeError: 'b' is an invalid keyword argument for format()", 2 },
+{ "chamada com nome rodando: o vazio com padrao recebe o padrao, o sem padrao e erro, o apelido fala o proprio nome (lote 7c)",
+  "Object h = [1].has\n"
+  "try {\n"
+  "    h()\n"
+  "} catch (TypeError e) {\n"
+  "    post(e)\n"
+  "}\n"
+  "Object g = {\"a\": 1}.get\n"
+  "try {\n"
+  "    post(g(default=5))\n"
+  "} catch (TypeError e) {\n"
+  "    post(e)\n"
+  "}\n"
+  "post([5, 2, 7, 2, 9].index(7, fim=3), \"x\".center(5, fillchar=\"*\"))\n",
+  "has() takes exactly one argument (0 given) (linha 3)\n"
+  "get() missing required argument 'chave' (linha 9)\n"
+  "2 **x**", NULL, 0 },
+{ "Pattern.sub aceita o count, que a lista de nomes nao tinha (lote 7c)",
+  "import regex\nPattern p = regex.compile(\"a\")\npost(p.sub(\"x\", \"aaa\", 2), p.sub(\"x\", \"aaa\"))\n",
+  "xxa xxx", NULL, 0 },
+{ "--check: atribuicao por indice em str (lote 7c)",
+  "str s = \"abc\"\ns[0] = \"X\"\n",
+  "", "TypeError: 'str' object does not support item assignment", 2 },
+{ "--check: atribuicao por indice em tup (lote 7c)",
+  "tup t = (1, 2)\nt[0] = 5\n",
+  "", "TypeError: 'tup' object does not support item assignment", 2 },
+{ "--check: atribuicao por indice em byte (lote 7c)",
+  "byte b = b\"abc\"\nb[0] = 65\n",
+  "", "TypeError: 'byte' object does not support item assignment", 2 },
+{ "--check: + que a VM recusa, com a frase dela (lote 7c)",
+  "str s = \"a\" + 1\n",
+  "", "TypeError: can only concatenate str (not \"int\") to str", 2 },
+{ "--check: % entre texto e numero nao formata, e recusa como rodando (lote 7c)",
+  "post(\"%d\" % 5)\n",
+  "", "TypeError: unsupported operand type(s) for %: 'str' and 'int'", 2 },
+{ "--check: | entre dicts recusa como rodando (lote 7c)",
+  "dict a = {}\ndict b = {}\npost(a | b)\n",
+  "", "TypeError: unsupported operand type(s) for |: 'dict' and 'dict'", 2 },
+{ "--check: ordem entre list e tup (lote 7c)",
+  "post([1] < (1,))\n",
+  "", "TypeError: '<' not supported between instances of 'list' and 'tup'", 2 },
+{ "--check: atribuicao com operador confere os tipos (lote 7c)",
+  "int x = 1\nx += \"a\"\n",
+  "", "TypeError: unsupported operand type(s) for +: 'int' and 'str'", 2 },
+{ "--check: menos unario em texto (lote 7c)",
+  "post(-\"a\")\n",
+  "", "TypeError: bad operand type for unary -: 'str'", 2 },
+{ "--check: mais unario em lista (lote 7c)",
+  "post(+[1])\n",
+  "", "TypeError: bad operand type for unary +: 'list'", 2 },
+{ "--check: ~ em flo (lote 7c)",
+  "post(~1.5)\n",
+  "", "TypeError: bad operand type for unary ~: 'flo'", 2 },
+{ "mais unario rodando: numero fica, bool vira int, o resto e TypeError (antes passava calado) (lote 7c)",
+  "try {\n"
+  "    post(+[\"a\"][0])\n"
+  "} catch (TypeError e) {\n"
+  "    post(e)\n"
+  "}\n"
+  "post(+True, +2.5, +(-0.0), -(-3))\n",
+  "bad operand type for unary +: 'str' (linha 2)\n1 2.5 -0.0 3", NULL, 0 },
+{ "--check: tipo do item da lista escrita no for each (lote 7c)",
+  "int i = 0\nfor each i in [\"a\", \"b\"] {\n    post(i)\n}\n",
+  "", "AttributedValueError: variável i esperava int, recebeu str", 2 },
+{ "--check: quantidade de argumento de metodo nativo (lote 7c)",
+  "post(\"a\".upper(1))\n",
+  "", "TypeError: upper() takes no arguments (1 given)", 2 },
+{ "--check: tipo do argumento de builtin, frase medida da VM (lote 7c)",
+  "post(len(5))\n",
+  "", "TypeError: object of type 'int' has no len()", 2 },
+{ "--check: quantidade de argumento de funcao de modulo (lote 7c)",
+  "import sys\nsys.exit(1, 2)\n",
+  "", "TypeError: exit() takes at most 1 argument (2 given)", 2 },
+{ "--check: chr de texto (lote 7c)",
+  "post(chr(\"a\"))\n",
+  "", "TypeError: 'str' object cannot be interpreted as an integer", 2 },
+{ "--check: json.parse de int (lote 7c)",
+  "import json\npost(json.parse(5))\n",
+  "", "TypeError: parse() argument 1 must be str, not int", 2 },
+{ "--check: membro de modulo trazido pelo nome tambem e conferido (lote 7c)",
+  "from os import getenv\npost(getenv())\n",
+  "", "TypeError: getenv() takes at least 1 argument (0 given)", 2 },
+{ "--check: chamada certa de nativo passa (lote 7c)",
+  "post(\"a\".upper(), len(\"ab\"), chr(97), \"x\".join([\"a\", \"b\"]))\n",
+  "A 2 a axb", NULL, 0 },
+{ "'**=' nao existe: a frase diz a forma certa (lote 7c)",
+  "int x = 2\nx **= 3\n",
+  "", "SyntaxError: '**=' nao existe: escreva x = x ** valor (atribuicao com operador so com +=, -=, *=, /= e %=)", 2 },
 
 /* ── CLI ── */
 { "--check não executa o script",

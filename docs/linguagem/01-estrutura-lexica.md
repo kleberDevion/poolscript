@@ -314,10 +314,28 @@ com a frase do erro e `dentro da f-string` no fim.
 |---|---|---|
 | Simples/dupla | `"oi"` / `'oi'` | equivalentes |
 | Multi-linha | `''' ... '''` | aspas **simples** triplas (as duplas triplas são comentário) |
-| f-string | `f"olá {nome}"` | interpola expressões entre `{ }` — **uma** expressão por `{}`; o que sobrar depois dela (`{nome sobrenome}`, `{x = }`) é `SyntaxError: sobrou '...' dentro de {} da f-string` |
+| f-string | `f"olá {nome}"` | interpola expressões entre `{ }` — **uma** expressão por `{}`, com formato opcional depois de `:` (`{x:.2f}`); o que sobrar depois dela (`{nome sobrenome}`, `{x = }`) é `SyntaxError: sobrou '...' dentro de {} da f-string` |
 | f-string multi-linha | `f''' ... {x} ... '''` | |
 | raw | `r"\n literal"` | não processa escapes |
 | raw multi-linha | `r''' ... '''` | |
+
+**Formato na f-string.** `{expr:formato}` formata como
+`"{:formato}".format(expr)`: a mesma forma
+`[preenche][<>^][0][largura][.precisao][tipo]` e as mesmas frases de erro
+(`f"{n:zz}"` dá, rodando, `ValueError: format: especificador 'zz' invalido`).
+O `:` que separa a expressão do formato é o primeiro fora de parêntese,
+colchete, chave e aspas: `{s[1:2]}` e `{d['a:b']}` não têm formato. Campo
+dentro do formato vale: `{x:{w}.2f}` usa a largura guardada em `w`.
+
+```ps
+flo preco = 3.14159
+int n = 42
+post(f"[{preco:.2f}] [{n:05d}] [{n:x}] [{preco:{8}.1f}]")
+```
+
+```saida
+[3.14] [00042] [2a] [     3.1]
+```
 
 **Escapes** (processados fora de raw strings):
 

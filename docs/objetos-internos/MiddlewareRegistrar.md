@@ -20,7 +20,7 @@ app = Jinker(__name__)
 @app.middleware()
 funct exige_token() {
     if request.header("Authorization") == Null {
-        return jsonify({"erro": "sem token"}, 401)
+        return jsonify({"erro": "sem token"}), 401
     }
 }
 ```

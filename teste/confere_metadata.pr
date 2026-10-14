@@ -64,7 +64,9 @@ for each tipo in tipos.keys() {
         metodo = m["nome"]
         obrigatorios = 0
         for each p in m["params"] {
-            if p["default"] == Null {
+            # `*valores` (o do `format`) é variádico: recebe zero ou mais,
+            # nunca é obrigatório, e não tem padrão escrito
+            if p["default"] == Null and not p["nome"].startswith("*") {
                 obrigatorios = obrigatorios + 1
             }
         }
