@@ -49,6 +49,12 @@ int ps_regex_busca(PSRegex *r, const char *s, int len, int de, RxCaptura *cap);
 /* Casa a string INTEIRA (equivalente ao `fullmatch`). */
 int ps_regex_casa_tudo(PSRegex *r, const char *s, int len, RxCaptura *cap);
 
+/* A posição do caractere seguinte ao que começa em `pos` (pos + os bytes
+ * dele em UTF-8); no fim do texto, pos + 1. É o passo de quem procura de novo
+ * e de quem anda depois de um casamento vazio: andar um BYTE recomeçava no
+ * meio do caractere (`[^ç]` casava o resto do "ç"). */
+int ps_regex_proximo(const char *s, int len, int pos);
+
 int ps_regex_ngrupos(const PSRegex *r);
 
 /* Índice do grupo nomeado `(?P<nome>...)`, ou -1 se não existe. O nome é

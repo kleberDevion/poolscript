@@ -1070,9 +1070,20 @@ static int m_seq_corpo(Estado *e, const Seq *s, int i, int pos, const Cont *k)
     return 0;
 }
 
+int ps_regex_proximo(const char *s, int len, int pos)
+{
+    if (pos >= len) return pos + 1;
+    unsigned int cp;
+    int u = cp_le(s, len, pos, &cp);
+    return pos + (u > 0 ? u : 1);
+}
+
 int ps_regex_busca(PSRegex *r, const char *s, int len, int de, RxCaptura *cap)
 {
-    for (int inicio = de; inicio <= len; inicio++) {
+    /* recomeça em cada CARACTERE, não em cada byte: no meio de um UTF-8 o
+     * byte de continuação era lido como Latin-1 e `[^ç]` casava o resto do
+     * "ç", devolvendo texto que não é UTF-8 */
+    for (int inicio = de; inicio <= len; inicio = ps_regex_proximo(s, len, inicio)) {
         Estado e = { s, len, cap, 0, 0, 0, r->flags, 0 };
         for (int g = 0; g < RX_MAX_GRUPOS; g++) { cap->inicio[g] = -1; cap->fim[g] = -1; }
         cap->ngrupos = r->ngrupos;
