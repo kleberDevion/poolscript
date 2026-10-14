@@ -864,9 +864,9 @@ check-e2e-local: pool
 # seguinte (o do `check`) dizia "is up to date" e saía 0 sem rodar caso
 # nenhum. Compilar toda vez também tira o binário velho de quando só um
 # cabeçalho da VM mudou, que esta regra não lista.
-unidade: teste/unidade.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(MK)
+unidade: teste/unidade.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(MK)
 	$(CC) $(CFLAGS) -g -I$(VM) -o $@$(EXE) teste/unidade.c \
-	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(LIBS_UNIDADE)
+	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(LIBS_UNIDADE)
 	@./$@$(EXE)
 
 .PHONY: unidade
@@ -1008,7 +1008,7 @@ cobertura: pool testar
 	# nunca entrou na medição. Falha de link ou de teste agora derruba o alvo.
 	@echo "rodando os testes de unidade instrumentados…"
 	@$(CC) -O0 -g --coverage $(CFLAGS_BASE) -I$(VM) -o cob/unidade teste/unidade.c \
-	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(LIBS_UNIDADE)
+	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(LIBS_UNIDADE)
 	@./cob/unidade > /dev/null
 	@echo "rodando os drivers .pr e o e2e local contra o mesmo binario…"
 	@for d in teste/confere_metadata.pr scripts/audita_doc.pr \

@@ -11903,8 +11903,9 @@ static int rx_findall(VM *vm, PSRegex *r, const char *s, int len, Value *out)
         }
         if (l->len >= l->cap && cresce_lista(vm, l) != 0) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
         l->itens[l->len++] = item;
-        /* casamento vazio não pode travar o laço: anda um caractere */
-        de = (cap.fim[0] > cap.inicio[0]) ? cap.fim[0] : cap.fim[0] + 1;
+        /* casamento vazio não pode travar o laço: anda um CARACTERE (um byte
+         * partia o UTF-8: `findall("x*", "ção")` dava 6 itens, não 4) */
+        de = (cap.fim[0] > cap.inicio[0]) ? cap.fim[0] : ps_regex_proximo(s, len, cap.fim[0]);
         if (de > len) break;
     }
     vm->sp--;
@@ -12045,9 +12046,13 @@ static int rx_sub(VM *vm, PSRegex *r, const char *s, int len,
         if (cap.fim[0] > cap.inicio[0]) {
             de = cap.fim[0];
         } else {
-            /* casamento vazio: copia um byte e anda, senão repetiria pra sempre */
-            if (cap.fim[0] < len && sb_bytes(&b, s + cap.fim[0], 1) != 0) BERRO(vm, "MemoryError", "sem memoria");
-            de = cap.fim[0] + 1;
+            /* casamento vazio: copia o CARACTERE seguinte inteiro e anda, senão
+             * repetiria pra sempre (um byte partia o UTF-8: `sub("", "-",
+             * "ção")` punha o "-" no meio do "ç") */
+            int prox = ps_regex_proximo(s, len, cap.fim[0]);
+            if (cap.fim[0] < len && sb_bytes(&b, s + cap.fim[0], (prox <= len ? prox : len) - cap.fim[0]) != 0)
+                BERRO(vm, "MemoryError", "sem memoria");
+            de = prox;
         }
     }
     if (de < len && sb_bytes(&b, s + de, len - de) != 0) BERRO(vm, "MemoryError", "sem memoria");
@@ -12160,10 +12165,10 @@ static int rx_split(VM *vm, PSRegex *r, const char *src, int slen, int64_t maxsp
         if (cap.fim[0] == cap.inicio[0]) {
             /* Separador VAZIO divide também: `split("", "abc")`
              * dá ['', 'a', 'b', 'c', '']. Antes a VM pulava e devolvia ['abc'].
-             * O campo seguinte começa aqui e a busca anda um byte, senão o
-             * mesmo ponto casaria pra sempre. */
+             * O campo seguinte começa aqui e a busca anda um CARACTERE, senão
+             * o mesmo ponto casaria pra sempre (um byte partia o UTF-8). */
             ini_campo = cap.fim[0];
-            de = cap.fim[0] + 1;
+            de = ps_regex_proximo(src, slen, cap.fim[0]);
         } else {
             ini_campo = de = cap.fim[0];
         }
