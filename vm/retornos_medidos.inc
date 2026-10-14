@@ -351,7 +351,7 @@
     { "os", "ipmach", "str" },
     { "os", "isdir", "bool" },
     { "os", "isfile", "bool" },
-    { "os", "loadFile", "PoolFile" },
+    { "os", "loadFile", "str|dict|list|PoolFile" },
     { "os", "ls", "list" },
     { "os", "mkdir", "Null" },
     { "os", "move", "Null" },

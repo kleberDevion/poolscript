@@ -37,6 +37,11 @@ for each chave in todas.keys() {
 
 Pra ler uma config específica, prefira `getenv` (tem o `default`).
 
+Os dois veem o `.env` do mesmo jeito: antes de ler, carregam o `.env` que
+acharem subindo a partir da pasta atual, sem passar por cima de variável que
+já está no ambiente. Antes só o `getenv` carregava, e uma variável do `.env`
+era `Null` no `environ` até alguém chamar o `getenv`.
+
 ---
 
 ## Relacionados

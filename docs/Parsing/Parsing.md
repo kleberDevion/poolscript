@@ -34,6 +34,45 @@ post(Parsing.integer("R$ 1.234"))     # 1234
 
 ---
 
+## O número dentro do texto
+
+`integer` e `floating` acham o número num texto sujo pela MESMA regra, a do
+formato brasileiro:
+
+- O número é o primeiro trecho de dígitos do texto, com `.` e `,` no meio. O
+  `-` colado antes dele (só brancos no meio) é o sinal: `"R$ -19,90"` é
+  -19,9. O `e` colado depois, com dígitos, é o expoente: `"1e5"`, `"2,5e-3"`.
+- Os separadores:
+  - vírgula **e** ponto: o ponto é milhar, e a vírgula, o decimal
+    (`"1.299,90"` é 1299,9);
+  - só vírgula: uma é o decimal (`"19,90"`); mais de uma é milhar
+    (`"1,234,567"`);
+  - só ponto: um ponto seguido de exatamente 3 dígitos é milhar (`"1.234"` é
+    1234), e mais de um ponto também (`"1.234.567"`); senão é o decimal
+    (`"12.7"`, `"3.14"`).
+- Sem dígito nenhum, o resultado é `0` (ou `0.0`): o `Parsing` não quebra.
+
+A regra tem um custo, e ele é de propósito: `"3.141"` é lido como milhar
+(3141). Texto com ponto decimal de três casas é do formato americano, e vai no
+`flo()` (`flo("3.141")` é 3.141).
+
+```ps
+import Parsing
+
+post(Parsing.integer("R$ 1.234"), Parsing.integer("R$ 19,90"), Parsing.integer("12.7"), Parsing.integer("-5"))
+post(Parsing.floating("1.299,90"), Parsing.floating("3.14"), Parsing.floating("1.234"), Parsing.floating("2,5e-3"))
+```
+
+```saida
+1234 19 12 -5
+1299.9 3.14 1234.0 0.0025
+```
+
+O texto tem qualquer tamanho (era cortado em 256 caracteres, e o `string` em
+1.024).
+
+---
+
 ## `Parsing` vs `int()`/`flo()` builtins
 
 - **`int("abc")`** — quebra com erro se o texto não for um número limpo.

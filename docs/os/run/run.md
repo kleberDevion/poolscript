@@ -159,14 +159,32 @@ redirecionamento, variável) numa string que **você** controla.
 
 ## Forma com string
 
-Também aceita string, dividida respeitando aspas, **sem** interpretar shell:
+Também aceita string, dividida em argumentos pela regra das palavras do shell
+POSIX (a do `shlex.split` do Python), **sem** interpretar o resto do shell
+(`$`, `|`, `;`, `>` continuam texto):
 
-```
-os.run("jinga -e \"post(1+1)\"", capture=True)   # "2"
+- aspa em qualquer ponto da palavra: `--titulo="dois nomes"` é UM argumento,
+  `--titulo=dois nomes` (antes a aspa só valia no começo da palavra, e este
+  se partia no espaço);
+- palavras coladas se juntam: `a"b c"d` é `ab cd`, e `""` sozinho é um
+  argumento vazio;
+- a barra escapa o caractere seguinte fora das aspas (`x\ y` é `x y`) e,
+  dentro das duplas, só `\"` e `\\`; entre aspas simples tudo é literal;
+- aspa sem fechar é `ValueError: No closing quotation`, e a barra no fim,
+  `ValueError: No escaped character`.
+
+```ps
+import os
+post(os.run("printf [%s] --titulo=\"dois nomes\" fim", capture=True))
+post(os.run("printf [%s] a\"b c\"d", capture=True))
 ```
 
-A forma com lista é a recomendada — não depende das regras de divisão por
-aspas.
+```saida
+[--titulo=dois nomes][fim]
+[ab cd]
+```
+
+A forma com lista é a recomendada: não depende de regra de divisão nenhuma.
 
 ---
 

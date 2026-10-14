@@ -8525,6 +8525,24 @@ static const char *utf8_porque(const unsigned char *b, int len, int i)
     return "invalid start byte";
 }
 
+/* O texto lido de arquivo é UTF-8? Se não é, `UnicodeDecodeError` com a frase
+ * do `bytes.decode()` (a do Python). 0 ok, -1 com o erro armado. */
+static int confere_utf8(VM *vm, const char *s, int n)
+{
+    const unsigned char *p = (const unsigned char *)s;
+    for (int i = 0; i < n; ) {
+        if (p[i] < 0x80) { i++; continue; }
+        uint32_t cp;
+        int k = utf8_le_estrito(p, n, i, &cp);
+        if (k < 0)
+            BERRO(vm, "UnicodeDecodeError",
+                  "'utf-8' codec can't decode byte 0x%02x in position %d: %s",
+                  p[i], i, utf8_porque(p, n, i));
+        i += k;
+    }
+    return 0;
+}
+
 static int met_encode(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     int codec, pol;
@@ -10748,7 +10766,20 @@ static int j_valor(VM *vm, JLeitor *j, Value *out, int prof)
                 l->itens[l->len++] = v;
             }
             j_espaco(j);
-            if (j->i < j->n && j->s[j->i] == ',') { j->i++; continue; }
+            if (j->i < j->n && j->s[j->i] == ',') {
+                /* a vírgula logo antes do fecho tem frase própria, na posição
+                 * DELA, como no `json` do Python desde o 3.13 (antes, a frase
+                 * do item que faltava, na posição do fecho) */
+                int virgula = j->i;
+                j->i++;
+                j_espaco(j);
+                if (j->i < j->n && j->s[j->i] == fecha) {
+                    vm->sp--;
+                    return j_erro(vm, j, virgula, eh_obj ? "Illegal trailing comma before end of object"
+                                                         : "Illegal trailing comma before end of array");
+                }
+                continue;
+            }
             if (j->i < j->n && j->s[j->i] == fecha) { j->i++; break; }
             vm->sp--;
             return j_erro(vm, j, j->i, "Expecting ',' delimiter");
@@ -14420,10 +14451,23 @@ static int mod_dotenv_load(VM *vm, Value *args, int n, Value *out)
     if (!caminho[0]) return 0;                /* sem .env: dict vazio, não erro */
     FILE *f = fopen(caminho, "rb");
     if (!f) return 0;
-    if (fixa_raiz(vm, MK_OBJ(d)) != 0) { fclose(f); BERRO(vm, "RuntimeError", "estouro da pilha"); }
+    /* O arquivo inteiro, e as linhas dentro dele: com um buffer de 4096 por
+     * linha, a linha maior se partia e o resto virava OUTRA chave (a chave
+     * de 5000 'A' de um token longo). */
+    SBUF_AUTO txt = {0};
+    char pedaco[4096];
+    size_t lidos;
+    while ((lidos = fread(pedaco, 1, sizeof(pedaco), f)) > 0)
+        if (sb_bytes(&txt, pedaco, (int)lidos) != 0) { fclose(f); BERRO(vm, "MemoryError", "sem memoria"); }
+    fclose(f);
+    if (sb_bytes(&txt, "", 1) != 0) BERRO(vm, "MemoryError", "sem memoria");   /* o NUL do fim */
+    if (fixa_raiz(vm, MK_OBJ(d)) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
 
-    char linha[4096];
-    while (fgets(linha, sizeof(linha), f)) {
+    char *prox = txt.b;
+    while (prox && *prox) {
+        char *linha = prox;
+        char *nl = strchr(linha, '\n');
+        if (nl) { *nl = '\0'; prox = nl + 1; } else prox = NULL;
         char *p = linha;
         while (*p == ' ' || *p == '\t') p++;
         char *fim = p + strlen(p);
@@ -14451,11 +14495,10 @@ static int mod_dotenv_load(VM *vm, Value *args, int n, Value *out)
         setenv(chave, valor, 0);              /* 0 = não sobrescreve */
         PSString *kc = nova_string(vm, chave, (int)strlen(chave));
         PSString *vc = kc ? nova_string(vm, valor, (int)strlen(valor)) : NULL;
-        if (!kc || !vc) { fclose(f); vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
+        if (!kc || !vc) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
         Value kv = MK_OBJ(kc), vv = MK_OBJ(vc);
-        if (dict_set(vm, d, &kv, &vv) != 0) { fclose(f); vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
+        if (dict_set(vm, d, &kv, &vv) != 0) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
     }
-    fclose(f);
     vm->sp--;
     return 0;
 }
@@ -14473,89 +14516,149 @@ static const MembroMod MOD_DOTENV[] = { { "load", mod_dotenv_load, 0, "path=Null
  * devolvemos o valor puro, e `.type()` responde igual.
  */
 
-/* Só os dígitos: tudo que não é 0-9 é descartado. */
-static void so_digitos(const char *s, int n, char *saida, size_t cap)
+/* O número dentro de um texto sujo, pela regra BR do `Parsing` (decisão
+ * dele, 2026-10-14): o primeiro trecho de dígitos com `.` e `,` entre eles,
+ * o sinal `-` colado antes (só brancos no meio) e o expoente `e` colado
+ * depois (`1e5`, `2,5e-3`). Os separadores:
+ *   - vírgula E ponto: o ponto é milhar, e a última vírgula, o decimal
+ *     (`1.299,90`);
+ *   - só vírgula: uma é o decimal (`19,90`); mais de uma, milhar;
+ *   - só ponto: um ponto seguido de EXATAMENTE 3 dígitos é milhar (`1.234`),
+ *     e mais de um ponto também (`1.234.567`); senão é o decimal (`12.7`).
+ * Sai o número normalizado em ASCII, `[-]int[.frac][e[-]exp]` (malloc,
+ * quem chama libera), e o tamanho da parte inteira e da fração. NULL = não
+ * há dígito no texto. Sem teto: era cortado em 256 (e 1024 no `string`). */
+typedef struct { char *txt; int ni, nf, tem_exp, neg; } NumSujo;
+
+static int numero_sujo(const char *s, int n, NumSujo *r)
 {
-    size_t o = 0;
-    for (int i = 0; i < n && o + 1 < cap; i++)
-        if (s[i] >= '0' && s[i] <= '9') saida[o++] = s[i];
-    saida[o] = '\0';
+    memset(r, 0, sizeof(*r));
+    int f = 0;
+    while (f < n && !(s[f] >= '0' && s[f] <= '9')) f++;
+    if (f >= n) return 1;
+    int k = f - 1;
+    while (k >= 0 && (s[k] == ' ' || s[k] == '\t')) k--;
+    r->neg = (k >= 0 && s[k] == '-');
+    int fim = f;
+    while (fim < n && ((s[fim] >= '0' && s[fim] <= '9') || s[fim] == '.' || s[fim] == ',')) fim++;
+    int fim_num = fim;
+    while (fim_num > f && (s[fim_num - 1] == '.' || s[fim_num - 1] == ',')) fim_num--;
+    int virgulas = 0, pontos = 0, ult_virgula = -1, ult_ponto = -1;
+    for (int i = f; i < fim_num; i++) {
+        if (s[i] == ',') { virgulas++; ult_virgula = i; }
+        else if (s[i] == '.') { pontos++; ult_ponto = i; }
+    }
+    int decimal = -1;                          /* posição do separador decimal */
+    if (virgulas && pontos) decimal = ult_virgula;
+    else if (virgulas == 1) decimal = ult_virgula;
+    else if (pontos == 1 && fim_num - ult_ponto - 1 != 3) decimal = ult_ponto;
+    /* o expoente: `e`/`E`, sinal opcional e pelo menos um dígito, colado */
+    int e0 = -1, e1 = -1;
+    if (fim_num == fim && fim < n && (s[fim] == 'e' || s[fim] == 'E')) {
+        int j = fim + 1;
+        if (j < n && (s[j] == '+' || s[j] == '-')) j++;
+        int d0 = j;
+        while (j < n && s[j] >= '0' && s[j] <= '9') j++;
+        if (j > d0) { e0 = fim + 1; e1 = j; }
+    }
+    r->txt = malloc((size_t)(fim_num - f) + (size_t)(e1 > 0 ? e1 - e0 : 0) + 4);
+    if (!r->txt) return -1;
+    int o = 0;
+    if (r->neg) r->txt[o++] = '-';
+    for (int i = f; i < fim_num; i++) {
+        if (s[i] >= '0' && s[i] <= '9') { r->txt[o++] = s[i]; if (decimal >= 0 && i > decimal) r->nf++; else r->ni++; }
+        else if (i == decimal) r->txt[o++] = '.';
+    }
+    if (e1 > 0) {
+        r->txt[o++] = 'e';
+        for (int i = e0; i < e1; i++) r->txt[o++] = s[i];
+        r->tem_exp = 1;
+    }
+    r->txt[o] = '\0';
+    return 0;
 }
 
-/* Número em formato BR: `1.299,90` vira `1299.90`. A regra: se tem
- * vírgula E ponto, o ponto é milhar; só vírgula, ela é o decimal. */
-static void limpa_flo(const char *s, int n, char *saida, size_t cap)
+/* O texto de um argumento que não é texto (lista, None...), sem teto. */
+static int texto_do_valor(Value v, TxtBuf *t)
 {
-    char semespaco[256];
-    size_t k = 0;
-    for (int i = 0; i < n && k + 1 < sizeof(semespaco); i++)
-        if (s[i] != ' ') semespaco[k++] = s[i];
-    semespaco[k] = '\0';
-
-    int tem_virgula = strchr(semespaco, ',') != NULL;
-    int tem_ponto   = strchr(semespaco, '.') != NULL;
-    char norm[256];
-    size_t o = 0;
-    for (size_t i = 0; i < k && o + 1 < sizeof(norm); i++) {
-        char c = semespaco[i];
-        if (tem_virgula && tem_ponto) {
-            if (c == '.') continue;            /* milhar some */
-            norm[o++] = (c == ',') ? '.' : c;
-        } else if (tem_virgula) {
-            norm[o++] = (c == ',') ? '.' : c;
-        } else {
-            norm[o++] = c;
-        }
-    }
-    norm[o] = '\0';
-
-    /* sobra só dígito e ponto; ponto extra é descartado, fica só o primeiro */
-    size_t p = 0;
-    int vistos = 0;
-    for (size_t i = 0; i < o && p + 1 < cap; i++) {
-        char c = norm[i];
-        if (c >= '0' && c <= '9') { saida[p++] = c; }
-        else if (c == '.') { if (++vistos == 1) saida[p++] = c; }
-    }
-    saida[p] = '\0';
+    return valor_para_texto(t, &v, 0);
 }
 
-static int texto_do_arg(VM *vm, Value v, char *saida, size_t cap, int *n)
+/* `flo` truncado pra inteiro, de qualquer tamanho; nan e infinito não têm
+ * número inteiro: o `Parsing` é tolerante, dá 0. */
+static int par_trunca_flo(VM *vm, double d, Value *out)
 {
-    TXTBUF_AUTO t = {0};
-    if (valor_para_texto(&t, &v, 0) != 0) { return -1; }
-    int len = t.n < (int)cap - 1 ? t.n : (int)cap - 1;
-    memcpy(saida, t.b ? t.b : "", (size_t)len);
-    saida[len] = '\0';
-    *n = len;
+    if (isnan(d) || isinf(d)) { *out = MK_INT(0); return 0; }
+    if (d >= 9223372036854775808.0 || d <= -9223372036854775809.0) {
+        mpz_t z; mpz_init(z);
+        mpz_set_d(z, trunc(d));
+        *out = mk_from_mpz(vm, z);
+        mpz_clear(z);
+        return out->t == V_NULL ? -1 : 0;
+    }
+    *out = MK_INT((int64_t)d);
     return 0;
 }
 
 static int par_integer(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "integer", 1, 2, n);
+    Value v = args[0];
+    if (v.t == V_INT || EH_BIGINT(v)) { *out = v; return 0; }
+    if (v.t == V_BOOL)  { *out = MK_INT(v.as.b ? 1 : 0); return 0; }
     /* número já é número: float TRUNCA, não vira os dígitos concatenados —
      * `123.7` dá 123, não 1237. */
-    if (args[0].t == V_INT)   { *out = args[0]; return 0; }
-    if (args[0].t == V_FLOAT) { *out = MK_INT((int64_t)args[0].as.d); return 0; }
-    char txt[256], dig[256];
-    int len;
-    if (texto_do_arg(vm, args[0], txt, sizeof(txt), &len) != 0) BERRO(vm, "MemoryError", "sem memoria");
-    so_digitos(txt, len, dig, sizeof(dig));
-    *out = MK_INT(dig[0] ? strtoll(dig, NULL, 10) : 0);
+    if (v.t == V_FLOAT) {
+        if (par_trunca_flo(vm, v.as.d, out) != 0) BERRO(vm, "MemoryError", "sem memoria");
+        return 0;
+    }
+    TXTBUF_AUTO t = {0};
+    const char *s; int ns;
+    if (EH_STRING(v)) { s = COMO_STRING(v)->chars; ns = COMO_STRING(v)->len; }
+    else {
+        if (texto_do_valor(v, &t) != 0) BERRO(vm, "MemoryError", "sem memoria");
+        s = t.b ? t.b : ""; ns = t.n;
+    }
+    NumSujo r;
+    int rc = numero_sujo(s, ns, &r);
+    if (rc < 0) BERRO(vm, "MemoryError", "sem memoria");
+    if (rc > 0) { *out = MK_INT(0); return 0; }          /* nada de número: 0 */
+    if (r.tem_exp) {
+        /* com expoente, o valor passa pelo `flo`, como o `int(float(...))` */
+        double d = strtod(r.txt, NULL);
+        free(r.txt);
+        if (par_trunca_flo(vm, d, out) != 0) BERRO(vm, "MemoryError", "sem memoria");
+        return 0;
+    }
+    /* sem expoente, a parte inteira EXATA, de qualquer tamanho: a fração cai
+     * (trunca pra zero, não arredonda); `-0,5` é 0 */
+    int ini = r.neg ? 1 : 0;
+    rc = digitos_para_int(vm, r.txt + ini, r.ni, r.neg, out);
+    free(r.txt);
+    if (rc != 0) BERRO(vm, "MemoryError", "sem memoria");
     return 0;
 }
 
 static int par_floating(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "floating", 1, 2, n);
-    if (args[0].t == V_INT)   { *out = MK_FLOAT((double)args[0].as.i); return 0; }
-    if (args[0].t == V_FLOAT) { *out = args[0]; return 0; }
-    char txt[256], limpo[256];
-    int len;
-    if (texto_do_arg(vm, args[0], txt, sizeof(txt), &len) != 0) BERRO(vm, "MemoryError", "sem memoria");
-    limpa_flo(txt, len, limpo, sizeof(limpo));
-    *out = MK_FLOAT(limpo[0] ? strtod(limpo, NULL) : 0.0);
+    Value v = args[0];
+    if (v.t == V_INT)   { *out = MK_FLOAT((double)v.as.i); return 0; }
+    if (v.t == V_FLOAT) { *out = v; return 0; }
+    if (v.t == V_BOOL)  { *out = MK_FLOAT(v.as.b ? 1.0 : 0.0); return 0; }
+    TXTBUF_AUTO t = {0};
+    const char *s; int ns;
+    if (EH_STRING(v)) { s = COMO_STRING(v)->chars; ns = COMO_STRING(v)->len; }
+    else {
+        if (texto_do_valor(v, &t) != 0) BERRO(vm, "MemoryError", "sem memoria");
+        s = t.b ? t.b : ""; ns = t.n;
+    }
+    NumSujo r;
+    int rc = numero_sujo(s, ns, &r);
+    if (rc < 0) BERRO(vm, "MemoryError", "sem memoria");
+    if (rc > 0) { *out = MK_FLOAT(0.0); return 0; }      /* nada de número: 0.0 */
+    *out = MK_FLOAT(strtod(r.txt, NULL));
+    free(r.txt);
     return 0;
 }
 
@@ -14568,28 +14671,18 @@ static int par_string(VM *vm, Value *args, int n, Value *out)
                                       nome_do_tipo_valor(args[1]));
         para = COMO_STRING(args[1])->chars;
     }
+    /* Com `to int`/`to flo`, a doc manda pro `integer()`/`floating()`. Era
+     * outro caminho, herdado do interpretador antigo: só os dígitos, sem a
+     * regra BR (`string("R$ 1.299,90", to flo)` dava 129990.0). */
     if (!strcmp(para, "int")) return par_integer(vm, args, 1, out);
-    if (!strcmp(para, "flo") || !strcmp(para, "float")) {
-        /* NÃO é o caminho do floating(): o string() limpa como TEXTO — só
-         * dígitos, sem tratar vírgula BR — e converte o que sobrou. É a
-         * definição do os_lib: `string("R$ 1.299,90", "flo")` dá 129990.0,
-         * enquanto `floating("R$ 1.299,90")` dá 1299.9. Estranho, mas o
-         * interpretador é a autoridade. */
-        char txt2[256], so_dig[256];
-        int len2, nd = 0;
-        if (texto_do_arg(vm, args[0], txt2, sizeof(txt2), &len2) != 0)
-            BERRO(vm, "MemoryError", "sem memoria");
-        for (int k = 0; k < len2 && nd < (int)sizeof(so_dig) - 1; k++)
-            if (txt2[k] >= '0' && txt2[k] <= '9') so_dig[nd++] = txt2[k];
-        so_dig[nd] = '\0';
-        *out = MK_FLOAT(nd ? strtod(so_dig, NULL) : 0.0);
-        return 0;
-    }
+    if (!strcmp(para, "flo") || !strcmp(para, "float")) return par_floating(vm, args, 1, out);
 
-    /* `" ".join(s.split())`: colapsa qualquer corrida de branco em um espaço */
-    char txt[1024];
-    int len;
-    if (texto_do_arg(vm, args[0], txt, sizeof(txt), &len) != 0) BERRO(vm, "MemoryError", "sem memoria");
+    /* `" ".join(s.split())`: colapsa qualquer corrida de branco em um espaço,
+     * sem teto (cortava em 1024) */
+    TXTBUF_AUTO t = {0};
+    if (texto_do_valor(args[0], &t) != 0) BERRO(vm, "MemoryError", "sem memoria");
+    const char *txt = t.b ? t.b : "";
+    int len = t.n;
     SBUF_AUTO b = {0};
     int i = 0, primeiro = 1;
     while (i < len) {
@@ -14607,17 +14700,31 @@ static int par_string(VM *vm, Value *args, int n, Value *out)
 static int par_boolean(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "boolean", 1, 2, n);
-    /* Texto tem regra PRÓPRIA: `"false"` e `"0"` são falsos, embora string
-     * não-vazia seja verdadeira em todo o resto da linguagem. */
+    /* Texto tem regra PRÓPRIA (decisão dele, 2026-10-14): os falsos são "",
+     * "0", "false", "no", "off", "não", "nao", "null" e "none", sem olhar a
+     * caixa (a do Unicode: "NÃO" vale) e sem os brancos das pontas; o resto é
+     * verdadeiro. Antes "não" dava True, e a página dizia False. */
     if (EH_STRING(args[0])) {
         PSString *s = COMO_STRING(args[0]);
-        char b[16];
+        int i = 0, j = s->len;
+        while (i < j && (s->chars[i] == ' ' || s->chars[i] == '\t' || s->chars[i] == '\n' || s->chars[i] == '\r')) i++;
+        while (j > i && (s->chars[j - 1] == ' ' || s->chars[j - 1] == '\t' || s->chars[j - 1] == '\n' || s->chars[j - 1] == '\r')) j--;
+        char b[24];
         int k = 0;
-        for (; k < s->len && k < 15; k++)
-            b[k] = (s->chars[k] >= 'A' && s->chars[k] <= 'Z') ? (char)(s->chars[k] + 32) : s->chars[k];
-        b[k] = '\0';
-        int falso = s->len == 0 || !strcmp(b, "0") || !strcmp(b, "false")
-                 || !strcmp(b, "null") || !strcmp(b, "none");
+        for (int p = i; p < j; ) {
+            uint32_t cp;
+            int u = utf8_le(s->chars, j, p, &cp);
+            if (!u || k + 4 >= (int)sizeof(b)) { k = -1; break; }    /* longo: não é da lista */
+            k += utf8_escreve(b + k, ps_uni_minuscula(cp));
+            p += u;
+        }
+        int falso = 0;
+        if (k >= 0) {
+            static const char *FALSOS[] = { "", "0", "false", "no", "off", "n\xc3\xa3o", "nao", "null", "none" };
+            b[k] = '\0';
+            for (size_t f = 0; f < sizeof(FALSOS) / sizeof(FALSOS[0]) && !falso; f++)
+                falso = !strcmp(b, FALSOS[f]);
+        }
         *out = MK_BOOL(!falso);
         return 0;
     }
@@ -14636,14 +14743,11 @@ static int par_transient(VM *vm, Value *args, int n, Value *out)
     }
     if (!strcmp(para, "int")) return par_integer(vm, args, 1, out);
     if (!strcmp(para, "flo") || !strcmp(para, "float")) return par_floating(vm, args, 1, out);
-    if (!strcmp(para, "str")) {
-        TXTBUF_AUTO t = {0};
-        if (valor_para_texto(&t, &args[0], 0) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
-        int r = devolve_texto(vm, out, t.b ? t.b : "", t.n);
-        return r;
-    }
-    *out = args[0];
-    return 0;
+    /* `str` e qualquer outro alvo: o texto, como a doc diz (um alvo
+     * desconhecido devolvia o próprio valor: a lista, num `str q = ...`) */
+    TXTBUF_AUTO t = {0};
+    if (valor_para_texto(&t, &args[0], 0) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
+    return devolve_texto(vm, out, t.b ? t.b : "", t.n);
 }
 
 static int par_json(VM *vm, Value *args, int n, Value *out)
@@ -14652,9 +14756,15 @@ static int par_json(VM *vm, Value *args, int n, Value *out)
     if (EH_DICT(args[0]) || EH_SEQ(args[0])) { *out = args[0]; return 0; }
     if (EH_STRING(args[0])) {
         Value um[1] = { args[0] };
-        if (mod_json_parse(vm, um, 1, out) == 0) return 0;
-        /* JSON quebrado devolve dict vazio, não erro — igual ao interpretador */
-        vm->erro[0] = '\0'; vm->erro_tipo[0] = '\0';
+        if (mod_json_parse(vm, um, 1, out) == 0) {
+            /* o JSON que é dict ou lista; um escalar (`"123"`) não é o que a
+             * função promete (`dict | list`) e cai no dict vazio, como o JSON
+             * quebrado — num `dict d = ...` ele quebrava rodando */
+            if (EH_DICT(*out) || EH_SEQ(*out)) return 0;
+        } else {
+            /* JSON quebrado devolve dict vazio, não erro — igual ao interpretador */
+            vm->erro[0] = '\0'; vm->erro_tipo[0] = '\0';
+        }
     }
     PSDict *d = novo_dict(vm, 1);
     if (!d) BERRO(vm, "MemoryError", "sem memoria");
@@ -14784,6 +14894,13 @@ static int csv_para_lista(VM *vm, const char *texto, int tam, Value *out)
     }
 
     while (c.i < c.n) {
+        /* linha vazia não é registro, como no `csv.DictReader` (uma linha com
+         * `""` é: o campo vazio existe). Virava um dict com tudo vazio. */
+        if (c.s[c.i] == '\n' || c.s[c.i] == '\r') {
+            if (c.s[c.i] == '\r' && c.i + 1 < c.n && c.s[c.i + 1] == '\n') c.i++;
+            c.i++;
+            continue;
+        }
         PSDict *d = novo_dict(vm, cab->len + 1);
         if (!d) goto sem_memoria;
         Value dv = MK_OBJ(d);
@@ -14966,6 +15083,13 @@ static int mod_os_loadfile(VM *vm, Value *args, int n, Value *out)
     fclose(f);
     vm->sp--;
 
+    /* texto é UTF-8: o que não é sai como o `UnicodeDecodeError` do
+     * `readFile`, em vez de um `str` com bytes soltos */
+    if (confere_utf8(vm, b.b ? b.b : "", b.n) != 0) return -1;
+    /* `mode="r"` devolve o TEXTO em qualquer caminho, como a doc diz: o
+     * `.json` e o `.csv` só viram dict/lista sem `mode` */
+    if (mode) return devolve_sbuf(vm, &b, out);
+
     if (!strcmp(ext, ".csv")) {
         int rc = csv_para_lista(vm, b.b ? b.b : "", b.n, out);
         return rc;
@@ -15015,21 +15139,25 @@ static int mod_os_readfile(VM *vm, Value *args, int n, Value *out)
         return erro_sistema(vm, EISDIR, p->chars, NULL);
     FILE *f = fopen(p->chars, "rb");
     if (!f) return erro_sistema(vm, errno, p->chars, NULL);
-    fseek(f, 0, SEEK_END); long t = ftell(f); if (t < 0) t = 0; fseek(f, 0, SEEK_SET);
-    char *buf = malloc((size_t)t + 1);
-    if (!buf) { fclose(f); BERRO(vm, "MemoryError", "sem memoria"); }
-    size_t rd = fread(buf, 1, (size_t)t, f);
-    fclose(f); buf[rd] = '\0';
+    /* Lê até o FIM, e não pelo tamanho: pipe, FIFO e `/dev/stdin` não têm
+     * tamanho, o `ftell` dava 0 e o texto saía vazio. */
+    SBUF_AUTO b = {0};
+    char pedaco[8192];
+    size_t lidos;
+    while ((lidos = fread(pedaco, 1, sizeof(pedaco), f)) > 0)
+        if (sb_bytes(&b, pedaco, (int)lidos) != 0) { fclose(f); BERRO(vm, "MemoryError", "sem memoria"); }
+    int falhou = ferror(f) ? errno : 0;
+    fclose(f);
+    if (falhou) return erro_sistema(vm, falhou, p->chars, NULL);
     Value enc[1]; int ne = os_enc_args(args, n, 1, enc);
-    if (ne == 0) {                            /* sem encoding: o texto e os bytes */
-        PSString *s = nova_string(vm, buf, (int)rd);
-        free(buf);
-        if (!s) BERRO(vm, "MemoryError", "sem memoria");
-        *out = MK_OBJ(s);
-        return 0;
+    if (ne == 0) {
+        /* sem encoding é UTF-8, como o `open().read()` do Python: o que não
+         * é sai como `UnicodeDecodeError` (antes virava um `str` com os bytes
+         * soltos dentro, e o erro só aparecia longe dali) */
+        if (confere_utf8(vm, b.b ? b.b : "", b.n) != 0) return -1;
+        return devolve_sbuf(vm, &b, out);
     }
-    PSString *bt = novo_bytes(vm, buf, (int)rd);
-    free(buf);
+    PSString *bt = novo_bytes(vm, b.b ? b.b : "", b.n);
     if (!bt) BERRO(vm, "MemoryError", "sem memoria");
     /* O decode ALOCA, e alocar pode disparar o GC: sem fixar, o bytes recem
      * criado (que ninguem mais aponta) seria recolhido no meio da conversao. */
@@ -15088,13 +15216,24 @@ static int mod_os_mkdir(VM *vm, Value *args, int n, Value *out)
     char tmp[PS_CAMINHO_MAX];
     if (junta_caminho(tmp, sizeof(tmp), p->chars, NULL) != 0)
         return erro_sistema(vm, ENAMETOOLONG, p->chars, NULL);
+    /* a barra do fim não é mais uma pasta: `mkdir("d/m1/")` criava `d/m1` no
+     * laço e o último `mkdir` dava "File exists" */
+    size_t nt = strlen(tmp);
+    while (nt > 1 && ps_eh_sep(tmp[nt - 1])) tmp[--nt] = '\0';
     for (char *q = tmp + 1; *q; q++) {
         if (!ps_eh_sep(*q)) continue;
         char s = *q;
         *q = '\0'; mkdir(tmp, 0755); *q = s;
     }
-    if (mkdir(tmp, 0755) != 0 && !(errno == EEXIST && ok_existir))
-        return erro_sistema(vm, errno, p->chars, NULL);
+    if (mkdir(tmp, 0755) != 0) {
+        /* com `exist_ok`, o que já existe só vale se for PASTA, como no
+         * `os.makedirs` do Python: sobre um arquivo é "File exists" (antes
+         * passava calado, e a pasta pedida não existia) */
+        int e = errno;
+        struct stat st;
+        if (!(ok_existir && e == EEXIST && stat(tmp, &st) == 0 && S_ISDIR(st.st_mode)))
+            return erro_sistema(vm, e, p->chars, NULL);
+    }
     *out = MK_NULL();
     return 0;
 }
@@ -15111,35 +15250,72 @@ static int remove_link(const char *caminho, int e_pasta)
  * descer apagava o conteúdo do DESTINO — medido: com `arvore/link ->
  * ../alvo`, o `os.rmdir("arvore", force=True)` apagava alvo/precioso.txt. O
  * `rm -rf` também só tira o link. */
-static int apaga_arvore(const char *caminho, int prof)
+/* Sem teto de profundidade e sem recursão no C: era recursiva e desistia
+ * acima de 32 níveis ("Directory not empty", nada apagado); recursiva sem
+ * teto, uma árvore funda estouraria a pilha de uma fibra (256 KB). A pilha é
+ * própria, no heap: cada pasta entra, os filhos dela são tirados (arquivo e
+ * link na hora, pasta empilhada), e ela sai depois deles. */
+typedef struct { char *cam; int esvaziada; } PastaPend;
+
+static int apaga_arvore(const char *caminho)
 {
-    if (prof > 32) return -1;
     int link_pasta = 0;
     if (ps_e_link(caminho, &link_pasta)) return remove_link(caminho, link_pasta);
-    DIR *d = opendir(caminho);
-    if (!d) return unlink(caminho);
-    /* do heap: 4 KB por nível na pilha, em até 33 níveis, estourariam a pilha
-     * de uma fibra (256 KB) */
+    struct stat st0;
+    if (stat(caminho, &st0) != 0) return -1;
+    if (!S_ISDIR(st0.st_mode)) return unlink(caminho);
+    int n = 0, cap = 16, rc = 0, err = 0;
+    PastaPend *pilha = malloc(sizeof(PastaPend) * (size_t)cap);
     char *sub = malloc(PS_CAMINHO_MAX);
-    if (!sub) { closedir(d); errno = ENOMEM; return -1; }
-    struct dirent *e;
-    int longo = 0;
-    while ((e = readdir(d))) {
-        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
-        /* O filho cujo caminho não cabe para a remoção com o erro: o caminho
-         * CORTADO pode ser outro arquivo, e o `unlink` apagaria ele. */
-        if (junta_caminho(sub, PS_CAMINHO_MAX, caminho, e->d_name) != 0) { longo = 1; break; }
-        struct stat st;
-        if (ps_e_link(sub, &link_pasta)) remove_link(sub, link_pasta);
-        else if (stat(sub, &st) == 0 && S_ISDIR(st.st_mode)) {
-            if (apaga_arvore(sub, prof + 1) != 0 && errno == ENAMETOOLONG) { longo = 1; break; }
-        }
-        else unlink(sub);
+    if (!pilha || !sub || !(pilha[0].cam = strdup(caminho))) {
+        free(pilha); free(sub); errno = ENOMEM; return -1;
     }
+    pilha[0].esvaziada = 0;
+    n = 1;
+    while (n > 0 && !err) {
+        PastaPend *topo = &pilha[n - 1];
+        if (topo->esvaziada) {
+            /* os filhos já saíram: a pasta sai; a raiz decide o resultado */
+            int r = rmdir(topo->cam);
+            if (n == 1) { rc = r; if (r != 0) err = errno; }
+            free(topo->cam);
+            n--;
+            continue;
+        }
+        topo->esvaziada = 1;
+        /* o caminho do pai fica guardado: empilhar um filho muda o topo (e o
+         * `realloc` pode mover a pilha), mas a string do pai não sai do lugar */
+        const char *pai = topo->cam;
+        DIR *d = opendir(pai);
+        if (!d) continue;                       /* o rmdir dela dirá o porquê */
+        struct dirent *e;
+        while ((e = readdir(d))) {
+            if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+            /* O filho cujo caminho não cabe para a remoção com o erro: o
+             * caminho CORTADO pode ser outro arquivo, e o `unlink` apagaria ele. */
+            if (junta_caminho(sub, PS_CAMINHO_MAX, pai, e->d_name) != 0) { err = ENAMETOOLONG; break; }
+            struct stat st;
+            if (ps_e_link(sub, &link_pasta)) remove_link(sub, link_pasta);
+            else if (stat(sub, &st) == 0 && S_ISDIR(st.st_mode)) {
+                if (n + 1 > cap) {
+                    int nc = cap * 2;
+                    PastaPend *np = realloc(pilha, sizeof(PastaPend) * (size_t)nc);
+                    if (!np) { err = ENOMEM; break; }
+                    pilha = np; cap = nc;
+                }
+                if (!(pilha[n].cam = strdup(sub))) { err = ENOMEM; break; }
+                pilha[n].esvaziada = 0;
+                n++;
+            }
+            else unlink(sub);
+        }
+        closedir(d);
+    }
+    for (int i = 0; i < n; i++) free(pilha[i].cam);
+    free(pilha);
     free(sub);
-    closedir(d);
-    if (longo) { errno = ENAMETOOLONG; return -1; }
-    return rmdir(caminho);
+    if (err) { errno = err; return -1; }
+    return rc;
 }
 
 static int mod_os_rmdir(VM *vm, Value *args, int n, Value *out)
@@ -15150,7 +15326,7 @@ static int mod_os_rmdir(VM *vm, Value *args, int n, Value *out)
     int forca = (n == 2) && val_truthy(&args[1]);
     /* Sem `force`, só remove diretório VAZIO — apagar conteúdo sem o usuário
      * pedir é destrutivo demais pra ser o padrão. */
-    int rc = forca ? apaga_arvore(p->chars, 0) : rmdir(p->chars);
+    int rc = forca ? apaga_arvore(p->chars) : rmdir(p->chars);
     if (rc != 0) return erro_sistema(vm, errno, p->chars, NULL);
     *out = MK_NULL();
     return 0;
@@ -15304,6 +15480,11 @@ extern char **environ;              /* no Windows o stdlib.h já o declara */
 static int mod_os_environ(VM *vm, Value *args, int n, Value *out)
 {
     if (n > 1) return erro_aridade(vm, "environ", 0, 1, n);
+    /* o `.env` vale aqui como no `getenv`: o mesmo carregamento antes de ler
+     * (antes a variável do arquivo era `Null` no `environ` e existia no
+     * `getenv`, e depois do `getenv` passava a existir nos dois) */
+    Value ignora;
+    mod_dotenv_load(vm, NULL, 0, &ignora);
     if (n == 1 && args[0].t != V_NULL) {
         PSString *k;
         if (os_str(vm, args[0], "environ", &k) != 0
@@ -16331,26 +16512,56 @@ static int mod_os_run(VM *vm, Value *args, int n, Value *out)
             }
         }
     } else if (EH_STRING(args[0])) {
-        /* string é dividida respeitando aspas, SEM interpretar shell */
+        /* O texto é dividido pela regra do shell POSIX, a do `shlex.split` do
+         * Python, SEM interpretar o resto do shell (nada de `$`, `|`, `;`):
+         * aspa em qualquer ponto da palavra (`--titulo="dois nomes"` é UM
+         * argumento; antes partia no espaço), `a"b c"d` é `ab cd`, `""` é um
+         * argumento vazio, a barra escapa fora das aspas e, dentro das duplas,
+         * só `\"` e `\\`; entre aspas simples tudo é literal. As frases de
+         * erro são as do `shlex`. */
         PSString *c = COMO_STRING(args[0]);
         if (sem_byte_nulo(vm, c, "o comando", "argumento de programa") != 0) return -1;
-        copia = malloc((size_t)c->len + 1);
+        /* cada palavra cabe no lugar dela e no separador de antes: o texto
+         * mais um basta pras palavras e os NUL */
+        copia = malloc((size_t)c->len + 2);
         if (!copia) BERRO(vm, "MemoryError", "sem memoria em run()");
-        memcpy(copia, c->chars, (size_t)c->len);
-        copia[c->len] = '\0';
-        char *p = copia;
-        while (*p) {
-            while (*p == ' ' || *p == '\t') p++;
-            if (!*p) break;
-            char aspas = 0;
-            if (*p == '"' || *p == '\'') { aspas = *p; p++; }
-            if (os_run_empurra(&vetor, &q, &cap, p) != 0) {
+        const char *s = c->chars;
+        int i = 0, ns = c->len;
+        char *w = copia;
+        const char *falha = NULL;
+        #define RUN_BRANCO(ch) ((ch) == ' ' || (ch) == '\t' || (ch) == '\n' || (ch) == '\r')
+        for (;;) {
+            while (i < ns && RUN_BRANCO(s[i])) i++;
+            if (i >= ns) break;
+            char *palavra = w;
+            while (i < ns && !RUN_BRANCO(s[i]) && !falha) {
+                char ch = s[i];
+                if (ch == '\'') {
+                    for (i++; i < ns && s[i] != '\''; i++) *w++ = s[i];
+                    if (i >= ns) falha = "No closing quotation"; else i++;
+                } else if (ch == '"') {
+                    for (i++; i < ns && s[i] != '"'; ) {
+                        if (s[i] == '\\' && i + 1 < ns && (s[i + 1] == '"' || s[i + 1] == '\\')) { *w++ = s[i + 1]; i += 2; }
+                        else *w++ = s[i++];
+                    }
+                    if (i >= ns) falha = "No closing quotation"; else i++;
+                } else if (ch == '\\') {
+                    if (i + 1 >= ns) falha = "No escaped character";
+                    else { *w++ = s[i + 1]; i += 2; }
+                } else {
+                    *w++ = ch;
+                    i++;
+                }
+            }
+            if (falha) break;
+            *w++ = '\0';
+            if (os_run_empurra(&vetor, &q, &cap, palavra) != 0) {
                 free(vetor); free(copia);
                 BERRO(vm, "MemoryError", "sem memoria em run()");
             }
-            while (*p && (aspas ? *p != aspas : (*p != ' ' && *p != '\t'))) p++;
-            if (*p) { *p = '\0'; p++; }
         }
+        #undef RUN_BRANCO
+        if (falha) { free(vetor); free(copia); BERRO(vm, "ValueError", "%s", falha); }
     } else {
         BERRO(vm, "TypeError", "run() argument 1 must be list or str, not %s",
           nome_do_tipo_valor(args[0]));

@@ -532,7 +532,11 @@ int main(int argc, char **argv)
         for (int i = 0; i < n; i++) {
             const Caso *c = &GRUPOS[g].casos[i];
             if (filtro && !strstr(nome_g, filtro) && !strstr(c->nome, filtro)) continue;
-            if (c->so && strcmp(c->so, so_aqui) != 0) {
+            /* "unix" = Linux e macOS: recurso de POSIX (FIFO, sinal) que o
+             * Windows não tem — um caso só, em vez de uma cópia por sistema */
+            int so_ok = !c->so || strcmp(c->so, so_aqui) == 0
+                        || (strcmp(c->so, "unix") == 0 && strcmp(so_aqui, "windows") != 0);
+            if (!so_ok) {
                 /* recurso que este sistema não tem: não roda, e é dito no fim */
                 if (outro_so < 64) nomes_outro[outro_so] = c->nome;
                 outro_so++;

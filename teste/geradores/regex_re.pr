@@ -141,7 +141,7 @@ str funct cstr(str s) {
 str funct monta_caso(str nome, str expr, str saida) {
     str fonte = cstr("import regex\npost(" + expr + ")\n")
     if saida.startswith("<<ERRO>> ") {
-        # erro não pego: nada no stdout, a frase no stderr e o código 1
+        # erro não pego: nada no stdout, `Tipo: frase` no stderr e o código 1
         return "{ \"" + nome + "\", " + fonte + ", \"\", " + cstr(saida[len("<<ERRO>> "):]) + ", 1 },"
     }
     return "{ \"" + nome + "\", " + fonte + ", " + cstr(saida) + ", NULL, 0 },"
@@ -161,12 +161,17 @@ if __name__ == "main" {
     post("chamadas:", len(jinga))
 
     # ── o lado Jinga, num programa só ─────────────────────────────────────
+    # O erro sai com o TIPO na frente (`IndexError: ...`): o caso gerado confere
+    # o stderr por trecho, e a frase sozinha pode ser o começo de outra
+    # (`unknown group name 'x'` x `unknown group name 'x' at position 4`).
     list linhas = ["import regex"]
     for each x in jinga {
         linhas.append("try {")
         linhas.append("    post(" + x + ")")
-        linhas.append("} catch (Exception e) {")
-        linhas.append("    post(\"<<ERRO>>\", e)")
+        for each tipo in ["ValueError", "IndexError", "TypeError", "RuntimeError", "Exception"] {
+            linhas.append("} catch (" + tipo + " e) {")
+            linhas.append("    post(\"<<ERRO>> " + tipo + ":\", e)")
+        }
         linhas.append("}")
         linhas.append("post(\"" + SENT + "\")")
     }
@@ -207,7 +212,9 @@ if __name__ == "main" {
     for each x in jinga {
         str obtido = regex.sub(" \\(linha \\d+\\)$", "", ps_out[i])
         str esp = py_out[i]
-        if obtido == esp {
+        # com o Python compara só a frase: o tipo dele é outro (PatternError)
+        str so_frase = regex.sub("^<<ERRO>> [A-Za-z]+: ", "<<ERRO>> ", obtido)
+        if so_frase == esp {
             iguais.append([x, obtido])
         }
         else {

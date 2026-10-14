@@ -27,6 +27,30 @@ mesmo `.decode()`**, então o que funciona num funciona no outro.
 Erros são os de lá: byte que não cabe no charset é `UnicodeDecodeError`, nome
 que não existe é `LookupError: unknown encoding: …`.
 
+Sem `encoding`, o arquivo é lido como UTF-8, como o `open().read()` do Python:
+o que não é UTF-8 é `UnicodeDecodeError`, com a posição do byte. Antes saía um
+`str` com o byte solto dentro, e o erro só aparecia longe dali.
+
+```ps
+import os
+os.writeFile("legado.txt", "café", encoding="latin-1")
+try {
+    str t = os.readFile("legado.txt")
+} catch (UnicodeDecodeError e) {
+    post(e)
+}
+post(os.readFile("legado.txt", encoding="latin-1"))
+```
+
+```saida
+'utf-8' codec can't decode byte 0xe9 in position 3: unexpected end of data (linha 4)
+café
+```
+
+A leitura vai até o fim do que o arquivo entrega, sem medir o tamanho antes:
+pipe, FIFO e `/dev/stdin` também são lidos inteiros (`printf 'a\nb' | jinga
+p.pr` com `os.readFile("/dev/stdin")` dá `"a\nb"`; antes dava `""`).
+
 ## Retorno
 
 `str` — o conteúdo do arquivo.

@@ -51,7 +51,14 @@ PORT=8080
 SECRET_KEY='pode usar aspas simples ou duplas'
 ```
 
-As aspas ao redor do valor são removidas. Valor sem aspas também funciona.
+As aspas ao redor do valor são removidas. Valor sem aspas também funciona. A
+linha pode ter qualquer tamanho (um token longo de API cabe; antes a linha
+era cortada em 4.096 bytes, e o resto virava outra chave).
+
+O [`os.getenv`](../../os/getenv/getenv.md) e o
+[`os.environ`](../../os/environ/environ.md) carregam sozinhos o `.env` achado
+a partir da pasta atual: o `load()` é pra apontar outro arquivo, ou pra ter o
+dict do que foi lido.
 
 ---
 

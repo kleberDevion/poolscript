@@ -1536,6 +1536,48 @@ const Caso CASOS_LIBS[] = {
 { "byte: assinatura de PNG real lida em rb bate com o literal",
   "import qrcode\nqrcode.make(\"oi\").save(\"q.png\")\nusing open(\"q.png\", \"rb\") as f {\n    sig = f.read(8)\n    post(sig == b\"\\x89PNG\\r\\n\\x1a\\n\", sig)\n}\n",
   "True b'\\x89PNG\\r\\n\\x1a\\n'", NULL, 0 },
+
+/* ── Plano 6, lote 8 (2026-10-14): libs ────────────────────────────────────
+ * O regex que o `re` sabe conferir está em casos_regex_re.c (gerado, com o
+ * Python de oráculo); aqui o que não cabe lá. As frases e posições do json
+ * são as do Python 3.15 (conferidas); a regra do Parsing é a decisão dele
+ * (milhar no formato BR, "não" é False). */
+{ "lote 8: regex de padrao linear longo (CSV de 3 mil campos, literal de 6 mil) casa sem teto fixo",
+  "import regex\nstr csv = \"ab,\" * 3000 + \"fim\"\npost(regex.match(\"(\?:[a-z]+,)*[a-z]+\", csv))\npost(regex.search(regex.escape(\"ab\" * 3100), \"zz\" + \"ab\" * 3100 + \"zz\"))\n",
+  "True\nTrue", NULL, 0 },
+{ "lote 8: json.stringify de nan/inf e ValueError; chave Null/True/numero vira texto",
+  "import json\nfor each v in [flo(\"nan\"), [flo(\"inf\")], {\"a\": -flo(\"inf\")}] {\n    try {\n        post(json.stringify(v))\n    } catch (ValueError e) {\n        post(e)\n    }\n}\npost(json.stringify({Null: 1, True: 2, 3: \"x\"}))\n",
+  "Out of range float values are not JSON compliant: nan (linha 4)\nOut of range float values are not JSON compliant: inf (linha 4)\nOut of range float values are not JSON compliant: -inf (linha 4)\n{\"null\": 1, \"true\": 2, \"3\": \"x\"}", NULL, 0 },
+{ "lote 8: json.parse conta caractere na posicao e acusa a virgula sobrando como o Python 3.13+",
+  "import json\nfor each s in [\"{\\\"ação\\\": \\\"não\\\" \\\"x\\\": 1}\", \"[1, ]\", \"{\\\"a\\\": 1 , }\", \"[1,,2]\", \"[\\\"ç\\\", x]\"] {\n    try {\n        json.parse(s)\n    } catch (ValueError e) {\n        post(e)\n    }\n}\n",
+  "Expecting ',' delimiter: line 1 column 16 (char 15) (linha 4)\nIllegal trailing comma before end of array: line 1 column 3 (char 2) (linha 4)\nIllegal trailing comma before end of object: line 1 column 9 (char 8) (linha 4)\nExpecting value: line 1 column 4 (char 3) (linha 4)\nExpecting value: line 1 column 7 (char 6) (linha 4)", NULL, 0 },
+{ "lote 8: os.loadFile tipa pelo arquivo, mode r devolve o texto, linha vazia do CSV nao e registro",
+  "import os\nos.writeFile(\"nota.txt\", \"nota\")\nos.writeFile(\"v.csv\", \"a,b\\n1,2\\n\\n3,4\\n\\n\")\nos.writeFile(\"config.json\", \"{\\\"versao\\\": 3}\")\nstr t = os.loadFile(\"nota.txt\")\nlist l = os.loadFile(\"v.csv\")\nstr a = os.loadFile(\"config.json\", mode=\"r\")\ndict c = os.loadFile(\"config.json\")\npost(t, len(l), l)\npost(a, c)\ntry {\n    PoolFile p = os.loadFile(\"nota.txt\")\n} catch (Exception e) {\n    post(e)\n}\n",
+  "nota 2 [{'a': '1', 'b': '2'}, {'a': '3', 'b': '4'}]\n{\"versao\": 3} {'versao': 3}\nvariável p esperava PoolFile, recebeu str (linha 12)", NULL, 0 },
+{ "lote 8: os.readFile sem encoding confere o UTF-8",
+  "import os\nos.writeFile(\"l1.txt\", \"café\", encoding=\"latin-1\")\ntry {\n    str x = os.readFile(\"l1.txt\")\n} catch (UnicodeDecodeError e) {\n    post(e)\n}\npost(os.readFile(\"l1.txt\", encoding=\"latin-1\"))\n",
+  "'utf-8' codec can't decode byte 0xe9 in position 3: unexpected end of data (linha 4)\ncafé", NULL, 0 },
+{ "lote 8: os.readFile le FIFO ate o fim, e nao pelo tamanho",
+  "import os\nos.run([\"mkfifo\", \"canal\"])\nObject w = os.run([\"sh\", \"-c\", \"printf 'linha1\\\\nlinha2\\\\n' > canal\"], capture=\"live\")\nstr t = os.readFile(\"canal\")\npost(len(t), t.split(\"\\n\"))\n",
+  "14 ['linha1', 'linha2', '']", NULL, 0, NULL, 0, "unix" },
+{ "lote 8: os.mkdir com barra no fim, exist_ok sobre arquivo e erro, rmdir force sem teto de 32",
+  "import os\nos.mkdir(\"d/m1/\")\npost(os.isdir(\"d/m1\"))\nos.mkdir(\"d/m1/\", exist_ok=True)\nos.writeFile(\"d/nota.txt\", \"x\")\ntry {\n    os.mkdir(\"d/nota.txt\", exist_ok=True)\n} catch (FileExistsError e) {\n    post(e)\n}\nstr c = \"arv\"\nint i = 0\nwhile (i < 40) {\n    c = c + \"/n\" + str(i)\n    i++\n}\nos.mkdir(c)\nos.writeFile(c + \"/folha.txt\", \"x\")\nos.writeFile(\"arv/n0/outra.txt\", \"y\")\nos.rmdir(\"arv\", True)\npost(os.exists(\"arv\"))\n",
+  "True\n[Errno 17] File exists: 'd/nota.txt' (linha 7)\nFalse", NULL, 0 },
+{ "lote 8: os.run com texto divide pela regra do shlex",
+  "import os\nimport sys\nstr eu = \"'\" + sys.executable + \"'\"\npost(os.run(eu + \" -e \\\"import sys; post(sys.argv[1:])\\\" --titulo=\\\"dois nomes\\\" a\\\"b c\\\"d \\\"\\\" x\\\\ y 'a\\\\b'\", capture=True).strip())\nfor each cmd in [\"printf \\\"aberta\", \"printf x\\\\\"] {\n    try {\n        os.run(cmd, capture=True)\n    } catch (ValueError e) {\n        post(e)\n    }\n}\n",
+  "['--titulo=dois nomes', 'ab cd', '', 'x y', 'a\\\\b']\nNo closing quotation (linha 7)\nNo escaped character (linha 7)", NULL, 0, NULL, 0, "unix" },
+{ "lote 8: dotenv sem teto de linha, e o environ ve o .env como o getenv",
+  "import os\nfrom dotenv import load\nos.writeFile(\"longo.env\", \"CHAVE_XYZ=\" + \"A\" * 5000 + \"==\\nDEPOIS_XYZ=ok\\n\")\ndict d = load(\"longo.env\")\nfor each k in d.keys() {\n    post(k, len(d[k]))\n}\nos.writeFile(\".env\", \"SEGREDO_L8=abc\\r\\n\")\npost(os.environ(\"SEGREDO_L8\"), os.getenv(\"SEGREDO_L8\"))\n",
+  "CHAVE_XYZ 5002\nDEPOIS_XYZ 2\nabc abc", NULL, 0 },
+{ "lote 8: Parsing com sinal, regra BR de milhar, inteiro grande, expoente, sem teto e o boolean do nao",
+  "import Parsing\npost(Parsing.integer(\"-5\"), Parsing.integer(\"R$ 19,90\"), Parsing.integer(\"12.7\"), Parsing.integer(\"R$ 1.234\"), Parsing.integer(\"127.abc\"))\npost(Parsing.integer(\"99999999999999999999\"), Parsing.integer(True), Parsing.integer(flo(\"inf\")), Parsing.integer(\"1e5\"))\npost(Parsing.floating(\"-19,90\"), Parsing.floating(\"1e5\"), Parsing.floating(\"1.299,90\"), Parsing.floating(\"1.234\"), Parsing.floating(\"3.14\"))\nstr longo = \"palavra \" * 300\npost(len(Parsing.string(longo)), Parsing.integer(\" \" * 300 + \"42\"), Parsing.floating(\"R$\" + \" \" * 300 + \"19,90\"))\npost(Parsing.string(\"R$ 1.299,90\", to flo), Parsing.boolean(\"não\"), Parsing.boolean(\"NÃO\"), Parsing.boolean(\" off \"), Parsing.boolean(\"sim\"))\npost(type(Parsing.TransientValue([1, 2], to list)), Parsing.JSONformatt(\"123\"), Parsing.JSONformatt(\"[1]\"))\n",
+  "-5 19 12 1234 127\n99999999999999999999 1 0 100000\n-19.9 100000.0 1299.9 1234.0 3.14\n2399 42 19.9\n1299.9 False False False True\nstr {} [1]", NULL, 0 },
+{ "lote 8: apelido JSON usado como modulo e NameError antes de rodar",
+  "import json\nlist l = JSON.parse(\"[1]\")\npost(l)\n",
+  "", "NameError: name 'JSON' is not defined", 2 },
+{ "lote 8: apelido String usado como valor e NameError antes de rodar",
+  "post(String.upper(\"a\"))\n",
+  "", "NameError: name 'String' is not defined", 2 },
 };
 
 const int NC_LIBS = N_CASOS(CASOS_LIBS);

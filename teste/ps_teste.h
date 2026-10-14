@@ -32,7 +32,8 @@ typedef struct {
      * sozinha e ninguém percebe — foi o que aconteceu com os 29 achados de
      * 2026-08-25, todos corrigidos, com o cabeçalho ainda dizendo o contrário. */
     int         pendente;
-    /* Sistema em que o caso vale: NULL = todos; "linux", "darwin", "windows".
+    /* Sistema em que o caso vale: NULL = todos; "linux", "darwin", "windows",
+     * ou "unix" (Linux e macOS: o recurso de POSIX que o Windows não tem).
      * Só pra caso que depende de um recurso que só UM sistema tem — o
      * `/dev/full` do Linux, que simula disco cheio. Nos outros ele não roda, e
      * o relatório diz quantos e quais: nunca conta como passou. */
