@@ -149,6 +149,9 @@ if __name__ == "main" {
             k = k + 1
         }
     }
+    # as rodadas acabaram e o que se relata está na memória: a pasta de
+    # trabalho sai antes de qualquer saída, e nada fica no /tmp
+    os.rmdir(TMP, force=True)
 
     post("")
     post("rodadas:", rodadas, " formas executadas:", formas, " semente:", semente_inicial)

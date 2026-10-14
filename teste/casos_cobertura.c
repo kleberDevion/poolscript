@@ -1959,21 +1959,21 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "\n1", NULL, 0 },
 { "matriz: char em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    char c = 64\n"
   "    post(c)\n"
   "}\n"
   "\n",
   "@", NULL, 0 },
 { "matriz: char_texto em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    char c = \"ç\"\n"
   "    post(c, len(c))\n"
   "}\n"
   "\n",
   "ç 1", NULL, 0 },
 { "matriz: closure em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    a = 1\n"
   "    funct inc() {\n"
   "        a = a + 1\n"
@@ -1984,7 +1984,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "2 3", NULL, 0 },
 { "matriz: closure_self em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    x = 5\n"
   "    funct le() {\n"
   "        return x\n"
@@ -1994,71 +1994,71 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "5", NULL, 0 },
 { "matriz: startswith em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    post(\"abc\".startswith((\"z\", \"a\")))\n"
   "}\n"
   "\n",
   "True", NULL, 0 },
 { "matriz: index_faixa em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    l = [1, 2, 3, 2]\n"
   "    post(l.index(2, 2))\n"
   "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: encode em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    post(\"café\".encode(\"latin-1\"))\n"
   "}\n"
   "\n",
   "b'caf\\xe9'", NULL, 0 },
 { "matriz: decode em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
   "}\n"
   "\n",
   "café", NULL, 0 },
 { "matriz: num_base em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    post(0x1F, 0b101, 1_000, 1e3)\n"
   "}\n"
   "\n",
   "31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    post(\"Ω\".lower(), \"ß\".upper())\n"
   "}\n"
   "\n",
   "ω SS", NULL, 0 },
 { "matriz: isdigit em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    post(\"²\".isdigit(), \"²\".isdecimal())\n"
   "}\n"
   "\n",
   "True False", NULL, 0 },
 { "matriz: regex_split em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    import regex\n"
   "    post(regex.split(r\"(,)\", \"a,b\"))\n"
   "}\n"
   "\n",
   "['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    import regex\n"
   "    post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
   "}\n"
   "\n",
   "a[1]", NULL, 0 },
 { "matriz: json_par_surrogate em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    import json\n"
   "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "}\n"
   "\n",
   "{'a': '𠮷'}", NULL, 0 },
 { "matriz: await_lista em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    async funct d(n) {\n"
   "        return n * 2\n"
   "    }\n"
@@ -2067,7 +2067,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "[2, 4]", NULL, 0 },
 { "matriz: int_inf em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    try {\n"
   "        post(int(flo(\"inf\")))\n"
   "    } catch(e) {\n"
@@ -2077,13 +2077,13 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "ok-erro", NULL, 0 },
 { "matriz: nul em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    post(len(\"a\\x00b\"))\n"
   "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: fatia em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "using open(\"ps_mtz.txt\", \"w\") as _f {\n"
   "    post(\"abcdef\"[999999999999999999999:])\n"
   "}\n"
   "\n",

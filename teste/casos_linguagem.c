@@ -556,8 +556,8 @@ const Caso CASOS_LINGUAGEM[] = {
 /* ── arquivo ── */
 { "read(n) não consome o arquivo",
   "import os\n"
-  "os.writeFile(\"/tmp/ps_teste_leitura.txt\", \"abcdef\")\n"
-  "using open(\"/tmp/ps_teste_leitura.txt\") as f {\n"
+  "os.writeFile(\"ps_teste_leitura.txt\", \"abcdef\")\n"
+  "using open(\"ps_teste_leitura.txt\") as f {\n"
   "    post(f.read(3))\n"
   "    post(f.read(2))\n"
   "    post(f.read())\n"
@@ -1232,13 +1232,13 @@ const Caso CASOS_LINGUAGEM[] = {
  * mostrava `<sqlite3.Connection>` e `str(conn)` devolvia STRING VAZIA. Agora
  * os dois leem da mesma `descreve_obj`. */
 { "str() de conexao sqlite",
-  "import sqlite3\nc = sqlite3.connect(\"/tmp/ps_str1.db\")\npost(\"[\" + str(c) + \"]\")\n",
+  "import sqlite3\nc = sqlite3.connect(\"ps_str1.db\")\npost(\"[\" + str(c) + \"]\")\n",
   "[<sqlite3.Connection>]", NULL, 0 },
 { "str() de arquivo aberto",
-  "using open(\"/tmp/ps_str2.txt\", \"w\") as f {\n"
+  "using open(\"ps_str2.txt\", \"w\") as f {\n"
   "    post(\"[\" + str(f) + \"]\")\n"
   "}\n",
-  "[<arquivo /tmp/ps_str2.txt>]", NULL, 0 },
+  "[<arquivo ps_str2.txt>]", NULL, 0 },
 { "str() de gerador",
   "funct g() {\n"
   "    yield 1\n"
@@ -3121,15 +3121,15 @@ const Caso CASOS_LINGUAGEM[] = {
   "f = open(\"/dev/full\", \"w\")\n"
   "f.writelines([\"x\" * 200000])\n", "", "OSError: [Errno 28] No space left on device", 1, NULL, 0, "linux" },
 { "write() continua devolvendo quantos bytes gravou",
-  "using open(\"/tmp/ps_t_w.txt\", \"w\") as f {\n"
+  "using open(\"ps_t_w.txt\", \"w\") as f {\n"
   "    post(f.write(\"abcde\"), f.write(\"xy\"))\n"
   "}\n", "5 2", NULL, 0 },
 { "close() em arquivo bom nao levanta nada",
-  "f = open(\"/tmp/ps_t_c.txt\", \"w\")\n"
+  "f = open(\"ps_t_c.txt\", \"w\")\n"
   "f.write(\"ok\")\n"
   "f.close()\n"
   "f.close()\n"
-  "post(open(\"/tmp/ps_t_c.txt\").read())\n", "ok", NULL, 0 },
+  "post(open(\"ps_t_c.txt\").read())\n", "ok", NULL, 0 },
 
 /* ── o runner nao pode travar com muita saida ───────────────────────────────
  * Cada cano guarda 64 KB. O runner lia o stdout ATÉ O FIM e só então o stderr:
@@ -3381,7 +3381,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "", "AttributedValueError: parâmetro a de fala() esperava Animal, recebeu Carro", 2 },
 { "PoolFile serve de tipo de parametro — o handle do open() E PoolFile",
   "funct pega(PoolFile f) { post(type(f)) }\n"
-  "using open(\"/tmp/ps_param_tipo.txt\", \"w\") as f { pega(f) }\n",
+  "using open(\"ps_param_tipo.txt\", \"w\") as f { pega(f) }\n",
   "PoolFile", NULL, 0 },
 { "char no parametro pede UM caractere",
   "funct f(char c) { post(c) }\nf(\"a\")\nf(\"ab\")\n",
@@ -3411,7 +3411,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * aceitava OBJ_POOLFILE, contra a regra "todo arquivo e PoolFile" — o mesmo
  * `type()` ja respondia "PoolFile" pros dois. */
 { "open() e PoolFile tambem pro `is` e pra declaracao tipada",
-  "using open(\"/tmp/ps_param_tipo2.txt\", \"w\") as f {\n"
+  "using open(\"ps_param_tipo2.txt\", \"w\") as f {\n"
   "    post(f is PoolFile)\n"
   "    PoolFile g = f\n"
   "    post(type(g))\n"
@@ -6151,10 +6151,10 @@ const Caso CASOS_LINGUAGEM[] = {
   "} catch (Quebrou e) {\n"
   "    post(\"pegou:\", e)\n"
   "}\n"
-  "for each v in gen_u(\"/tmp/ps_6d_gen_u.txt\") {\n"
+  "for each v in gen_u(\"ps_6d_gen_u.txt\") {\n"
   "    break\n"
   "}\n"
-  "post(\"using fechou:\", len(os.readFile(\"/tmp/ps_6d_gen_u.txt\")))\n"
+  "post(\"using fechou:\", len(os.readFile(\"ps_6d_gen_u.txt\")))\n"
   "Object g = gen(\"variavel\")\n"
   "for each v in g {\n"
   "    break\n"
@@ -6243,7 +6243,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "flo funct ajuda(int x) {\n"
   "    return 10 / x\n"
   "}\n"
-  "using open(\"/tmp/ps_6d_g06.txt\", \"w\") as h {\n"
+  "using open(\"ps_6d_g06.txt\", \"w\") as h {\n"
   "    flo z = ajuda(0)\n"
   "}\n",
   "", ", linha 5\n  |     flo z = ajuda(0)", 1 },
@@ -6324,7 +6324,7 @@ const Caso CASOS_LINGUAGEM[] = {
   NULL, 0 },
 { "using fecha no return, no break e no continue (lote 6d)",
   "import os\n"
-  "str CAM = \"/tmp/ps_6d_using.txt\"\n"
+  "str CAM = \"ps_6d_using.txt\"\n"
   "Null funct grava() {\n"
   "    using open(CAM, \"w\") as h {\n"
   "        h.write(\"dado\")\n"
@@ -6350,7 +6350,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "depois do return: 4\ndepois do break: 5\ndepois do continue: 4", NULL, 0 },
 { "erro que atravessa um using mantem o tipo (lote 6d)",
   "try {\n"
-  "    using open(\"/tmp/ps_6d_tipo.txt\", \"w\") as h {\n"
+  "    using open(\"ps_6d_tipo.txt\", \"w\") as h {\n"
   "        flo z = 1 / 0\n"
   "    }\n"
   "} catch (ZeroDivisionError e) {\n"
@@ -6359,7 +6359,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "    post(\"outro tipo:\", e)\n"
   "}\n"
   "try {\n"
-  "    using open(\"/tmp/ps_6d_tipo.txt\", \"w\") as h2 {\n"
+  "    using open(\"ps_6d_tipo.txt\", \"w\") as h2 {\n"
   "        raise Quebrou(\"dentro do using\")\n"
   "    }\n"
   "} catch (Quebrou e) {\n"
@@ -6370,7 +6370,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "pegou ZeroDivisionError: division by zero (linha 3)\npegou Quebrou: dentro do using (linha 12)", NULL, 0 },
 { "sys.exit dentro de using fecha o recurso e sai com o codigo (lote 6d)",
   "import sys\n"
-  "using open(\"/tmp/ps_6d_exit.txt\", \"w\") as h {\n"
+  "using open(\"ps_6d_exit.txt\", \"w\") as h {\n"
   "    h.write(\"x\")\n"
   "    sys.exit(3)\n"
   "}\n"

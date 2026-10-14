@@ -109,8 +109,10 @@ static const char *dir_novo(char *out, size_t cap)
 #endif
 }
 
-/* Apaga o diretório do caso. Um nível de recursão basta: caso que cria
- * subpasta (`__DIR__/sub/`) não passa de dois. */
+/* Apaga o diretório do caso, com as subpastas que o caso criou (desce em
+ * todas: o que não sai com `unlink` é pasta). É também por isso que o caso
+ * grava com caminho relativo: o que fica na pasta dele some aqui, e o que vai
+ * pra um caminho fixo do `/tmp` sobra depois da rodada. */
 static void apaga_arvore(const char *dir)
 {
     DIR *d = opendir(dir);

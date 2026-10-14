@@ -205,8 +205,8 @@ for each par in [["[1, 7, 7, 2, 7]", "7"], ["[1, 2, 3]", "9"]] {
 # `catch` é obrigatório na linguagem (não existe try/finally puro), então a
 # forma equivalente ao `using` usa close() explícito.
 F("using fecha o arquivo", [
-  'using open("/tmp/ps_eq.txt", "w") as f:\n    f.write("x")\nusing open("/tmp/ps_eq.txt") as g:\n    post(g.read())',
-  'f = open("/tmp/ps_eq2.txt", "w")\nf.write("x")\nf.close()\ng = open("/tmp/ps_eq2.txt")\npost(g.read())\ng.close()'])
+  'using open("ps_eq.txt", "w") as f:\n    f.write("x")\nusing open("ps_eq.txt") as g:\n    post(g.read())',
+  'f = open("ps_eq2.txt", "w")\nf.write("x")\nf.close()\ng = open("ps_eq2.txt")\npost(g.read())\ng.close()'])
 
 # ── f-string x concatenação x format ────────────────────────────────────────
 for each par in [["1", '"x"'], ["-3", '"ção"']] {
@@ -264,7 +264,11 @@ funct roda(src, n) {
     using open(fonte, "w") as f {
         f.write(fim)
     }
-    os.cmd("./pool " + fonte + " > " + TMP + "/out 2> " + TMP + "/err; echo $? > " + TMP + "/rc")
+    # roda DENTRO da pasta de trabalho, como o runner roda cada caso na
+    # pasta dele: o programa que grava arquivo grava lá, e a pasta sai no
+    # fim. Antes rodava na raiz do repositório, e a família do `using`
+    # gravava em caminho fixo do /tmp, que sobrava em toda rodada da suíte.
+    os.cmd("cd " + TMP + " && '" + sys.executable + "' p" + str(n) + ".pr > out 2> err; echo $? > rc")
     saida = open(TMP + "/out").read()
     erro = open(TMP + "/err").read()
     rc = int(open(TMP + "/rc").read().strip())
@@ -359,6 +363,7 @@ if __name__ == "main" {
     using open(SAIDA, "w") as f {
         f.write("\n".join(out) + "\n")
     }
+    os.rmdir(TMP, force=True)
 
     post("casos gerados:", n, "  familias fora (divergentes):", len(fora))
     for each x in fora {

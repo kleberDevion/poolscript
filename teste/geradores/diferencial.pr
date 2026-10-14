@@ -470,6 +470,8 @@ funct principal() {
     addEnd(linhas, "const int NC_DIFERENCIAL = N_CASOS(CASOS_DIFERENCIAL);")
     addEnd(linhas, "")
     os.writeFile(SAIDA, "\n".join(linhas))
+    # a pasta de trabalho sai no fim: nada do gerador fica no /tmp
+    os.rmdir(TMP, force=True)
     post("diferencial:", str(n), "casos gravados em", SAIDA)
     post("  lidos:", str(lidos), " fora por dependencia externa:", str(fora_dependencia),
          " instaveis:", str(fora_instavel), " binario/falha:", str(fora_binario),

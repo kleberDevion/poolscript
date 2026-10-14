@@ -20,20 +20,24 @@ TMP = "/tmp/ps_para_chaves"
 # Tokens do lexer do motor, na ordem.
 funct tokens_de(fonte) {
     os.mkdir(TMP, exist_ok=True)
-    alvo = TMP + "/e.pr"
-    using open(alvo, "w") as f {
-        f.write(fonte)
-    }
+    str alvo = TMP + "/e.pr"
+    os.writeFile(alvo, fonte)
     # Apaga a saída ANTES: sem isto, um subprocesso que falhasse deixava o
     # JSON da chamada ANTERIOR no lugar, e as posições de um programa eram
     # aplicadas em outro — o conversor corrompia o fonte em silêncio.
     os.cmd("rm -f " + TMP + "/t.json")
     os.cmd("'" + sys.executable + "' --tokens < " + alvo + " > " + TMP + "/t.json 2>/dev/null")
-    if not os.exists(TMP + "/t.json") {
+    bool rodou = os.exists(TMP + "/t.json")
+    str bruto = ""
+    if rodou {
+        bruto = os.readFile(TMP + "/t.json").strip()
+    }
+    # a pasta sai a cada chamada: nada fica no /tmp depois da conversão
+    os.rmdir(TMP, force=True)
+    if not rodou {
         sys.stderr.write("[para_chaves] AVISO: --tokens nao rodou; fonte deixado como esta\n")
         return []
     }
-    bruto = open(TMP + "/t.json").read().strip()
     if bruto == "" {
         # O corpus tem programas que MATAM o lexer de propósito. Aí não há o
         # que converter — mas o fonte volta INTACTO e o aviso sai no stderr:
@@ -42,7 +46,17 @@ funct tokens_de(fonte) {
         sys.stderr.write("[para_chaves] AVISO: --tokens vazio; fonte deixado como esta\n")
         return []
     }
-    return json.parse(bruto)
+    # Desde o 17.0.4 o `--tokens` devolve {"tokens": [...], "erros": [...]};
+    # antes, a lista pura. Lida como lista, a resposta nova quebrava aqui
+    # (`toks[0]` num dict), e o gerador do equivalencia parou de rodar. Com
+    # erro de lexer o fonte fica como está, que era o que a lista vazia de
+    # antes fazia.
+    dict resp = json.parse(bruto)
+    if "erros" in resp {
+        sys.stderr.write("[para_chaves] AVISO: o lexer acusou erro; fonte deixado como esta\n")
+        return []
+    }
+    return resp["tokens"]
 }
 
 

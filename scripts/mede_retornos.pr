@@ -1214,6 +1214,7 @@ if __name__ == "main" {
     }
     if len(so) > 0 and achados_so != len(so) {
         post("--so: algum nome nao e grupo:", so)
+        os.rmdir(TMP, force=True)
         sys.exit(1)
     }
     if len(so) == 0 {
@@ -1222,6 +1223,10 @@ if __name__ == "main" {
         post("medindo: mail")
         mede_mail()
     }
+    # a medicao acabou e o --metadata ja esta em `meta`: a pasta de trabalho
+    # sai aqui, antes de qualquer saida do script (o --confere e o erro
+    # tambem terminam sem deixar nada no /tmp)
+    os.rmdir(TMP, force=True)
 
     # ── cobertura: publicado x medido ───────────────────────────────────────
     publicados = {}

@@ -28,41 +28,93 @@ ANTIGAS = ["action", "reaction"]
 
 funct roda_motor(bandeira, fonte) {
     os.mkdir(TMP, exist_ok=True)
-    alvo = TMP + "/e.pr"
-    using open(alvo, "w") as f {
-        f.write(fonte)
-    }
+    str alvo = TMP + "/e.pr"
+    os.writeFile(alvo, fonte)
     # Apaga a saida ANTES: um subprocesso que falhe deixaria o resultado da
     # chamada anterior no lugar, e um arquivo seria julgado pela arvore de
     # outro — a mesma armadilha que o para_chaves.pr documenta.
     os.cmd("rm -f " + TMP + "/saida.json")
     os.cmd("'" + sys.executable + "' " + bandeira + " < " + alvo + " > " + TMP + "/saida.json 2>/dev/null")
-    if not os.exists(TMP + "/saida.json") {
-        return ""
+    str saida = ""
+    if os.exists(TMP + "/saida.json") {
+        saida = os.readFile(TMP + "/saida.json").strip()
     }
-    return open(TMP + "/saida.json").read().strip()
+    # a pasta sai a cada chamada: nada fica no /tmp
+    os.rmdir(TMP, force=True)
+    return saida
 }
 
 
-# Os tokens KW que sao a grafia antiga, agrupados por linha.
-funct alvos_por_linha(fonte) {
-    bruto = roda_motor("--tokens", fonte)
-    if bruto == "" or not bruto.startswith("[") {
-        return {}
+# Os tokens do fonte, pelo lexer do motor. Desde o 17.0.4 o `--tokens`
+# devolve {"tokens": [...], "erros": [...]} (antes, a lista pura): lida como
+# lista, a resposta nova virava "sem ocorrencia" calado em todo arquivo.
+# Fonte com erro de lexer devolve a lista vazia, e o arquivo fica como esta.
+list funct tokens_do(str fonte) {
+    str bruto = roda_motor("--tokens", fonte)
+    if bruto == "" {
+        return []
     }
+    dict resp = json.parse(bruto)
+    if "erros" in resp {
+        return []
+    }
+    return resp["tokens"]
+}
+
+
+# `action`/`reaction` sairam da linguagem em 2026-09-07 (90561cf), e desde
+# entao o lexer as le como nome comum (IDENT), nao como palavra (KW): antes
+# daqui o script procurava KW e nao achava nada. O alvo e a palavra na
+# posicao da declaracao, `action nome(` ou `action(` (a funct sem nome), e
+# nunca depois de `.` (metodo) ou de `funct` (o nome de uma funct). O resto
+# do script confere: o fluxo de tokens tem que ser o mesmo, e o convertido
+# tem que passar no `--check`.
+bool funct eh_alvo(list toks, int i) {
+    dict t = toks[i]
+    if not (t["v"] in ANTIGAS) or not (t["t"] == "KW" or t["t"] == "IDENT") {
+        return False
+    }
+    if i > 0 and (toks[i - 1]["t"] == "DOT" or toks[i - 1]["v"] == "funct") {
+        return False
+    }
+    if i + 1 < len(toks) and toks[i + 1]["t"] == "LPAREN" {
+        # a funct sem nome tem o corpo logo depois do `)`: `action(x) {`;
+        # sem o `{` e a chamada de uma funct que se chama `action`
+        int prof = 0
+        int j = i + 1
+        while (j < len(toks)) {
+            if toks[j]["t"] == "LPAREN" {
+                prof += 1
+            }
+            elif toks[j]["t"] == "RPAREN" {
+                prof -= 1
+                if prof == 0 {
+                    return j + 1 < len(toks) and toks[j + 1]["t"] == "LBRACE"
+                }
+            }
+            j += 1
+        }
+        return False
+    }
+    return i + 2 < len(toks) and toks[i + 1]["t"] == "IDENT" and toks[i + 2]["t"] == "LPAREN"
+}
+
+
+# Os tokens da grafia antiga, agrupados por linha.
+funct alvos_por_linha(fonte) {
+    list toks = tokens_do(fonte)
     porlinha = {}
-    for each t in json.parse(bruto) {
-        if t["t"] != "KW" {
-            continue
+    int i = 0
+    while (i < len(toks)) {
+        if eh_alvo(toks, i) {
+            dict t = toks[i]
+            str chave = str(t["l"])
+            if not (chave in porlinha) {
+                porlinha[chave] = []
+            }
+            addEnd(porlinha[chave], t)
         }
-        if not (t["v"] in ANTIGAS) {
-            continue
-        }
-        chave = str(t["l"])
-        if not (chave in porlinha.value()) and not (chave in porlinha) {
-            porlinha[chave] = []
-        }
-        addEnd(porlinha[chave], t)
+        i += 1
     }
     return porlinha
 }
@@ -102,17 +154,21 @@ funct converte(fonte) {
 # antiga ja normalizada pra `funct`. Sem linha, sem coluna, sem tamanho — o
 # que muda de posicao ao encurtar a palavra nao pode contar como diferenca.
 funct assinatura(fonte) {
-    bruto = roda_motor("--tokens", fonte)
-    if bruto == "" or not bruto.startswith("[") {
+    list toks = tokens_do(fonte)
+    if len(toks) == 0 {
         return ""
     }
-    partes = []
-    for each t in json.parse(bruto) {
-        v = t["v"]
-        if t["t"] == "KW" and v in ANTIGAS {
-            v = "funct"
+    list partes = []
+    int i = 0
+    while (i < len(toks)) {
+        dict t = toks[i]
+        if eh_alvo(toks, i) {
+            partes.append("KW:funct")
         }
-        addEnd(partes, t["t"] + ":" + v)
+        else {
+            partes.append(t["t"] + ":" + t["v"])
+        }
+        i += 1
     }
     return "|".join(partes)
 }
