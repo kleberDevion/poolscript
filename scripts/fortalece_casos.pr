@@ -30,6 +30,10 @@ import os
 import sys
 import regex
 import bytes
+# Uma regra só pra desfazer o escape de C (bytes, pela regra do C11): a do
+# gerador do diferencial. A cópia que morava aqui era a mesma e errava junto
+# (`\?` e o octal).
+from "../teste/geradores/diferencial.pr" import des_c
 
 ARQS = ["teste/casos_diferencial.c", "teste/casos_linguagem.c",
         "teste/casos_erros.c", "teste/casos_crash.c",
@@ -37,50 +41,6 @@ ARQS = ["teste/casos_diferencial.c", "teste/casos_linguagem.c",
         "teste/casos_libs.c", "teste/casos_inteiros.c"]
 
 TMP = "/tmp/ps_fortalece"
-
-
-# Desfaz o escape de C e devolve a LISTA DE BYTES do texto original.
-#
-# Bytes, e não string, porque `\xc3\xa7` (o "ç" de um caso) tem que voltar como
-# os dois bytes que eram. Montar com `chr(0xc3) + chr(0xa7)` daria dois
-# CODEPOINTS, que em UTF-8 ocupam quatro bytes — outro programa.
-funct des_c(s) {
-    out = []
-    i = 0
-    while i < len(s) {
-        c = s[i]
-        if c == "\\" and i + 1 < len(s) {
-            d = s[i + 1]
-            if d == "n" { addEnd(out, 10); i = i + 2; continue }
-            if d == "t" { addEnd(out, 9); i = i + 2; continue }
-            if d == "r" { addEnd(out, 13); i = i + 2; continue }
-            if d == "0" { addEnd(out, 0); i = i + 2; continue }
-            if d == "\\" { addEnd(out, 92); i = i + 2; continue }
-            if d == "\"" { addEnd(out, 34); i = i + 2; continue }
-            if d == "x" and i + 3 < len(s) {
-                addEnd(out, hex2(s[i+2]) * 16 + hex2(s[i+3]))
-                i = i + 4
-                continue
-            }
-            for each b in c.encode() { addEnd(out, b) }
-            i = i + 1
-            continue
-        }
-        for each b in c.encode() { addEnd(out, b) }
-        i = i + 1
-    }
-    return out
-}
-
-
-# Um dígito hexadecimal -> valor. O `int()` da linguagem não recebe base.
-funct hex2(c) {
-    d = "0123456789abcdef".find(c.lower())
-    if d < 0 {
-        return 0
-    }
-    return d
-}
 
 
 funct esc_c(s) {

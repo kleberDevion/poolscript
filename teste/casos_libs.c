@@ -41,10 +41,13 @@ const Caso CASOS_LIBS[] = {
   "erro: origem e destino sao o mesmo arquivo: 'c2.txt' (linha 14)\nconteudo importante", NULL, 0 },
 { "os.pathFile e sys.RelativePath com links simbolicos em ciclo respondem na hora",
   /* `a -> .` e `b -> .` na pasta: a busca que seguia link virava 2^prof
-   * caminhos e ficava travada ate o timeout. Link pra pasta nao e descido. */
-  "import os\nimport sys\nos.mkdir(\"ciclo\", exist_ok=True)\nos.run([\"ln\", \"-sf\", \".\", \"ciclo/a\"])\nos.run([\"ln\", \"-sf\", \".\", \"ciclo/b\"])\n"
-  "os.chdir(\"ciclo\")\ntry {\n    post(os.pathFile(\"nao_existe_xyz.txt\"))\n} catch (e) {\n    post(\"erro:\", e)\n}\npost(sys.RelativePath(\"nao_existe_xyz.txt\"))\n",
-  "erro: [Errno 2] No such file or directory: 'nao_existe_xyz.txt' (linha 8)\nNull", NULL, 0, NULL, 0, "linux" },
+   * caminhos e ficava travada ate o timeout. Link pra pasta nao e descido.
+   * O `ln` com `capture=True`, que espera: sem capture o `run` dispara e
+   * volta, e o caso corria contra o `ln` (sem os links ele passava sem
+   * testar o ciclo). O `isdir("a/b/a/b")` prova que o ciclo existe. */
+  "import os\nimport sys\nos.mkdir(\"ciclo\", exist_ok=True)\nos.run([\"ln\", \"-sf\", \".\", \"ciclo/a\"], capture=True)\nos.run([\"ln\", \"-sf\", \".\", \"ciclo/b\"], capture=True)\n"
+  "os.chdir(\"ciclo\")\npost(os.isdir(\"a/b/a/b\"))\ntry {\n    post(os.pathFile(\"nao_existe_xyz.txt\"))\n} catch (e) {\n    post(\"erro:\", e)\n}\npost(sys.RelativePath(\"nao_existe_xyz.txt\"))\n",
+  "True\nerro: [Errno 2] No such file or directory: 'nao_existe_xyz.txt' (linha 9)\nNull", NULL, 0, NULL, 0, "unix" },
 
 /* ── save= : o corpo vai pro DISCO, nao pra memoria (2026-09-11) ───────────
  * `request.get(url)` guarda o corpo inteiro: baixar 237 MB custava 480 MB de
@@ -1557,9 +1560,12 @@ const Caso CASOS_LIBS[] = {
 { "lote 8: os.readFile sem encoding confere o UTF-8",
   "import os\nos.writeFile(\"l1.txt\", \"café\", encoding=\"latin-1\")\ntry {\n    str x = os.readFile(\"l1.txt\")\n} catch (UnicodeDecodeError e) {\n    post(e)\n}\npost(os.readFile(\"l1.txt\", encoding=\"latin-1\"))\n",
   "'utf-8' codec can't decode byte 0xe9 in position 3: unexpected end of data (linha 4)\ncafé", NULL, 0 },
+/* o `mkfifo` com `capture=True`, que espera: sem capture o `run` dispara e
+ * volta com o PID (a doc do run), e o `readFile` corria contra o `mkfifo` —
+ * na VPS perdia 2 de 3 vezes */
 { "lote 8: os.readFile le FIFO ate o fim, e nao pelo tamanho",
-  "import os\nos.run([\"mkfifo\", \"canal\"])\nObject w = os.run([\"sh\", \"-c\", \"printf 'linha1\\\\nlinha2\\\\n' > canal\"], capture=\"live\")\nstr t = os.readFile(\"canal\")\npost(len(t), t.split(\"\\n\"))\n",
-  "14 ['linha1', 'linha2', '']", NULL, 0, NULL, 0, "unix" },
+  "import os\nos.run([\"mkfifo\", \"canal\"], capture=True)\nObject w = os.run([\"sh\", \"-c\", \"printf 'linha1\\\\nlinha2\\\\n' > canal\"], capture=\"live\")\nstr t = os.readFile(\"canal\")\npost(len(t), t.split(\"\\n\"))\npost(w.wait())\n",
+  "14 ['linha1', 'linha2', '']\n0", NULL, 0, NULL, 0, "unix" },
 { "lote 8: os.mkdir com barra no fim, exist_ok sobre arquivo e erro, rmdir force sem teto de 32",
   "import os\nos.mkdir(\"d/m1/\")\npost(os.isdir(\"d/m1\"))\nos.mkdir(\"d/m1/\", exist_ok=True)\nos.writeFile(\"d/nota.txt\", \"x\")\ntry {\n    os.mkdir(\"d/nota.txt\", exist_ok=True)\n} catch (FileExistsError e) {\n    post(e)\n}\nstr c = \"arv\"\nint i = 0\nwhile (i < 40) {\n    c = c + \"/n\" + str(i)\n    i++\n}\nos.mkdir(c)\nos.writeFile(c + \"/folha.txt\", \"x\")\nos.writeFile(\"arv/n0/outra.txt\", \"y\")\nos.rmdir(\"arv\", True)\npost(os.exists(\"arv\"))\n",
   "True\n[Errno 17] File exists: 'd/nota.txt' (linha 7)\nFalse", NULL, 0 },

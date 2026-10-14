@@ -118,41 +118,77 @@ funct sem_comentario(texto) {
 
 # Desfaz o escape de C e devolve a LISTA DE BYTES — bytes, e não string, pra
 # `\xc3\xa7` voltar como os dois bytes que eram.
-funct des_c(s) {
-    out = []
-    i = 0
-    while i < len(s) {
-        c = s[i]
-        if c == "\\" and i + 1 < len(s) {
-            d = s[i + 1]
-            if d == "n" { addEnd(out, 10); i = i + 2; continue }
-            if d == "t" { addEnd(out, 9); i = i + 2; continue }
-            if d == "r" { addEnd(out, 13); i = i + 2; continue }
-            if d == "0" { addEnd(out, 0); i = i + 2; continue }
-            if d == "\\" { addEnd(out, 92); i = i + 2; continue }
-            if d == "\"" { addEnd(out, 34); i = i + 2; continue }
-            if d == "x" and i + 3 < len(s) {
-                addEnd(out, hex2(s[i + 2]) * 16 + hex2(s[i + 3]))
-                i = i + 4
-                continue
-            }
-            for each b in c.encode() { addEnd(out, b) }
-            i = i + 1
+#
+# A regra é a do C (C11 6.4.4.4), porque o que vale é o que o compilador grava
+# no binário da suíte: os escapes simples (`\a \b \f \n \r \t \v \' \" \? \\`),
+# o octal de 1 a 3 dígitos (`\0`, `\012`), o hexadecimal com todos os dígitos
+# que vierem, e o `\u`/`\U` (4 e 8 dígitos) em UTF-8. Escape que o C não
+# define vale o próprio caractere, como no gcc. Antes só `\n \t \r \0 \\ \"`
+# e `\x` eram lidos: o `\?` de um caso chegava como barra e `?` (o padrão
+# `(?:...)` virava `(\?:...)`), e `\012` virava o byte 0 e o texto "12".
+list funct des_c(str s) {
+    list out = []
+    str simples = "abfnrtv'\"?\\"
+    list valores = [7, 8, 12, 10, 13, 9, 11, 39, 34, 63, 92]
+    int i = 0
+    while (i < len(s)) {
+        str c = s[i]
+        if c != "\\" or i + 1 >= len(s) {
+            for each b in c.encode() { out.append(b) }
+            i += 1
             continue
         }
-        for each b in c.encode() { addEnd(out, b) }
-        i = i + 1
+        str d = s[i + 1]
+        int k = simples.find(d)
+        if k >= 0 {
+            out.append(valores[k])
+            i += 2
+            continue
+        }
+        if d >= "0" and d <= "7" {
+            int v = 0
+            int j = i + 1
+            while (j < len(s) and j < i + 4 and s[j] >= "0" and s[j] <= "7") {
+                v = v * 8 + int(s[j])
+                j += 1
+            }
+            out.append(v % 256)
+            i = j
+            continue
+        }
+        if d == "x" or d == "u" or d == "U" {
+            int teto = len(s)
+            if d == "u" {
+                teto = min(len(s), i + 6)
+            }
+            elif d == "U" {
+                teto = min(len(s), i + 10)
+            }
+            int v = 0
+            int j = i + 2
+            while (j < teto and hex2(s[j]) >= 0) {
+                v = v * 16 + hex2(s[j])
+                j += 1
+            }
+            if d == "x" {
+                out.append(v % 256)
+            }
+            else {
+                for each b in chr(v).encode() { out.append(b) }
+            }
+            i = j
+            continue
+        }
+        for each b in d.encode() { out.append(b) }
+        i += 2
     }
     return out
 }
 
 
-funct hex2(c) {
-    d = "0123456789abcdef".find(c.lower())
-    if d < 0 {
-        return 0
-    }
-    return d
+# Um dígito hexadecimal -> valor; -1 se não for dígito hexadecimal.
+int funct hex2(str c) {
+    return "0123456789abcdef".find(c.lower())
 }
 
 
@@ -263,6 +299,16 @@ funct casos_de(arq) {
 }
 
 
+# O caso vale neste sistema? A regra do runner (`so_ok` em teste/ps_teste.c):
+# sem sistema vale em todos, e "unix" é todo sistema menos o Windows. Antes
+# só valia o nome igual ao `sys.platform()`, e os casos "unix" saíam daqui
+# calados, sem entrar em nenhuma conta.
+bool funct vale_aqui(str so) {
+    str aqui = sys.platform()
+    return so == "" or so == aqui or (so == "unix" and aqui != "windows")
+}
+
+
 # Roda o programa e devolve [rc, stdout_bytes, primeira_linha_do_stderr].
 funct roda(fonte_bytes) {
     # pasta LIMPA a cada programa: o que um deixa (pasta, link em ciclo) mudava
@@ -360,13 +406,17 @@ funct principal() {
     fora_dependencia = 0
     fora_instavel = 0
     fora_binario = 0
+    int fora_outro_so = 0
+    # quem ficou de fora, pelo nome: o relatório diz quais, não só quantos
+    list nomes_fora = []
     for each arq in ARQS {
         for each caso in casos_de(arq) {
             lidos = lidos + 1
             fonte = caso[1]
             so = caso[2]
             # caso de OUTRO sistema: a saída gravada aqui seria a deste
-            if so != "" and so != sys.platform() {
+            if not vale_aqui(so) {
+                fora_outro_so += 1
                 continue
             }
             texto = ""
@@ -374,6 +424,7 @@ funct principal() {
                 texto = texto_de(fonte)
             } catch (e) {
                 fora_binario = fora_binario + 1
+                nomes_fora.append(caso[0] + " (o fonte nao e UTF-8)")
                 continue
             }
             depende = False
@@ -393,10 +444,12 @@ funct principal() {
                 r2 = roda(fonte)
             } catch (e) {
                 fora_binario = fora_binario + 1
+                nomes_fora.append(caso[0] + " (falhou ao rodar: " + str(e) + ")")
                 continue
             }
             if not iguais(r1, r2) {
                 fora_instavel = fora_instavel + 1
+                nomes_fora.append(caso[0] + " (instavel)")
                 continue
             }
             addEnd(linhas, "{ \"dif #" + str(n) + "\",")
@@ -419,7 +472,11 @@ funct principal() {
     os.writeFile(SAIDA, "\n".join(linhas))
     post("diferencial:", str(n), "casos gravados em", SAIDA)
     post("  lidos:", str(lidos), " fora por dependencia externa:", str(fora_dependencia),
-         " instaveis:", str(fora_instavel), " binario/falha:", str(fora_binario))
+         " instaveis:", str(fora_instavel), " binario/falha:", str(fora_binario),
+         " de outro sistema:", str(fora_outro_so))
+    for each nome in nomes_fora {
+        post("  fora:", nome)
+    }
 }
 
 

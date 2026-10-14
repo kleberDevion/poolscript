@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.18`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.19`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -375,7 +375,7 @@ p.nome = 5       -> AttributedValueError: campo nome de P esperava str, recebeu 
 - Builtins `int()`, `flo()`, `str()`, `bool()`, `list()`, `tup()`, `dict()`, `long()`. Se não der para converter, estouram (`int("abc")` dá `ValueError`).
 - `int()`, `flo()` e `json.parse` leem número com o mesmo leitor (17.0.16): branco nas pontas, sinal, dígitos de qualquer escrita (`int("١٢")` é 12), sem byte NUL; texto que não é número dá `ValueError` com o texto em repr. `int()` e `flo()` aceitam `byte`; `json.parse` segue a gramática do JSON (`01`, `1.` e `-` são erro). Inteiro que não cabe no `flo` dá `OverflowError: int too large to convert to flo` (em `flo()`, na conta com `flo`, em `pow`, `sum` e `format`).
 - Onde se pede inteiro (índice, fatia, largura, contagem, porta, código de saída...), `bool` e inteiro grande valem, e o resto dá `TypeError: 'flo' object cannot be interpreted as an integer`. O inteiro grande acima do que a operação aceita é erro dizendo o limite, nunca corte calado. `range` só aceita inteiro (decisão sua de 2026-10-13: `range(2.9)` e `range("3")` são `TypeError`).
-- `Parsing` é lib (`import Parsing`, desde o 17.0.0; antes nascia ligado, sem import) e faz conversão tolerante com alvo `to <tipo>`: `Parsing.integer("  127.abc ", to int)` devolve `127`. `"7" to int` sozinho não converte nada. Lib do motor usada sem import dá `NameError: name 'Parsing' is not defined. Did you forget to import 'Parsing'?`.
+- `Parsing` é lib (`import Parsing`, desde o 17.0.0; antes nascia ligado, sem import) e faz conversão tolerante com alvo `to <tipo>`: `Parsing.integer("  127.abc ", to int)` devolve `127`. `"7" to int` sozinho não converte nada. Lib do motor usada sem import dá `NameError: name 'Parsing' is not defined. Did you forget to import 'Parsing'?`. O número dentro do texto segue a regra brasileira com milhar (17.0.19, decisão sua de 2026-10-14; doc `Parsing.md`, "O número dentro do texto"): com vírgula e ponto, o ponto é milhar e a vírgula o decimal (`"R$ 1.299,90"` é 1299,9); só vírgula, uma é o decimal e mais de uma é milhar; só ponto, ponto seguido de exatamente 3 dígitos é milhar (`"1.234"` é 1234, `"3.14"` é 3,14), e mais de um ponto também; o `-` colado antes do primeiro dígito (só brancos no meio) é o sinal. `Parsing.boolean("não")` é `False`.
 - `input()` devolve `str`, ou `Null` no fim da entrada. Para número, escreva `int(input())`.
 
 #### 2.4.4 Dict: chave é expressão
@@ -1033,7 +1033,7 @@ A lista viva está em `jinga --help` e em `jinga --metadata` (`modulos`). Todos 
 
 | Módulo | Uma linha |
 |---|---|
-| `os` | Arquivos e pastas (`readFile writeFile exists isfile isdir mkdir rmdir ls rename copy move size cwd chdir`), ambiente (`getenv environ loadFile`), `pathFile`/`pathFolder` (olham a pasta do `.pr`), `cmd(c, capture=False)` via shell (com `capture=True` devolve a saída), `run(lista)` sem shell (a forma segura contra injeção), `ipmach`, `warn`, `code`, `PoolFile` |
+| `os` | Arquivos e pastas (`readFile writeFile exists isfile isdir mkdir rmdir ls rename copy move size cwd chdir`), `loadFile` (lê já no formato: texto vira `str`, JSON vira dict/lista, CSV vira lista de dicts, binário vira `PoolFile`; o `mode` manda), ambiente (`getenv environ`; os dois carregam sozinhos o `.env` que acharem subindo a partir da pasta atual, sem passar por cima do que já está no ambiente), `pathFile`/`pathFolder` (olham a pasta do `.pr`), `cmd(c, capture=False)` via shell (com `capture=True` devolve a saída), `run(lista)` sem shell (a forma segura contra injeção; com texto, divide pela regra do `shlex` do Python, também sem shell; sem `capture` dispara e volta com o PID, sem esperar), `ipmach`, `warn`, `code`, `PoolFile` |
 | `sys` | `argv` (`argv[0]` é o caminho do `.pr`), `exit(code)`, `platform`, `executable`, `RelativePath`, `stdout`/`stderr` (`write writeln flush`), `stdin` (`read readline raw`) |
 | `json` | `parse(texto)` e `stringify(valor)`. `Null` vira `null` no texto JSON |
 | `date` | `time today datahora now timestamp timestamp_ms monotonic` e `hora(hours, minutes, days)`, que devolve segundos |
@@ -1143,7 +1143,12 @@ Toda mensagem vem com o quadro `em arquivo.pr, linha N` e o cursor `^^^` no pont
 - `docs/LANGUAGE.md`, seção Tipos: diz que `int n = input()` converte. O motor recusa (`esperava int, recebeu str|Null`). O certo é `int(input())`.
 - `docs/LANGUAGE.md`: as frases do `try`/`finally` sem `catch` e do `for each` que não desempacotava foram corrigidas no 17.0.14.
 - `docs/LANGUAGE.md`: diz que redeclarar com outro tipo passa. O motor recusa (`já foi declarada como int e não pode ser redeclarada como long`). Redeclarar com o mesmo tipo passa.
-- `docs/INDEX.md`, tabela "Apelidos": lista `db`, `mp`, `qr`, `JSON`, `dataentity` e o plural de `request`. Todos dão `ImportError`.
+- `docs/INDEX.md`: a tabela "Apelidos" (listava `db`, `mp`, `qr`, `JSON`, `dataentity` e o plural de `request`, todos com `ImportError`) saiu no 17.0.19; no lugar dela, "Um nome de import por lib".
+- **Blocos de saída da doc, rodados** (2026-10-14, no Mac, no 17.0.19): cada bloco ```ps seguido de um ```saida foi rodado e comparado. São 300 blocos e 12 diferentes, nenhum das páginas que o lote 8 mexeu:
+  - erro da doc: `sockets/recv`, `sockets/recvfrom` e `sockets/getsockopt` dizem `bytes`, e o tipo é `byte`; `sockets/close` sem o ` (linha N)` que o `post(e)` mostra; o primeiro exemplo de `sockets/getpeername` mostra uma saída que não é a do código (`tup 2` numa linha à parte); `str/rsplit` com dois espaços sobrando no bloco;
+  - exemplo sem garantia: `sockets/send` conta com os dois `send` chegando num `recv` só (no Mac chegou só o primeiro);
+  - saída que muda com o sistema (a escrita é a do Linux): o errno em `sockets/connect_ex` (111; no macOS, 61), `sockets/detach` (98; 48) e `sockets/getpeername` (107; 57), e o valor de opção booleana em `sockets/getsockopt` e `sockets/setsockopt` (1 no Linux; no macOS, o bit da opção, 4 ou 8, como no Python de lá).
+  - O `scripts/audita_exemplos_doc.pr` passa o `--check` em cada bloco, mas não roda nem compara a saída. O conferidor que achou essas 12 ainda é de rascunho: entra no repositório e no `make check` quando elas forem corrigidas.
 - `docs/Jinga.md`, cabeçalho: diz v16.1.9, igual ao fonte (`vm/ps_versao.h`) e ao binário instalado (conferido no fim de 2026-09-28; mais cedo no mesmo dia o instalado respondia 16.1.6 e o cabeçalho dizia 16.1.7).
 - `jinga.md`, seção "Aprofundar": aponta para `notas/` e `notas/CLAUDE.md`. A pasta `notas/` não existe mais (foi apagada pelo dono em 2026-09-05).
 
@@ -1663,7 +1668,7 @@ Nomes procurados, na ordem:
 | cliente HTTP/HTTPS | `ps_http.c/.h` | socket mais OpenSSL, sem libcurl. **Verifica** o certificado (`SSL_VERIFY_PEER` mais `SSL_set1_host`) contra as raízes do OpenSSL e as do sistema (`ps_so_tls_cas`, desde `3c245e7`); lê o corpo por Content-Length, chunked ou até fechar; segue 3xx; tem teto de corpo, timeout e modo de fluxo para arquivo (`nbaixado`) |
 | SMTP, IMAP e MIME | `ps_mail.c/.h` | uma conexão para os dois protocolos. O TLS **verifica** a cadeia e o hostname, com as mesmas raízes (`ps_so_tls_cas`); só `PS_MAIL_TLS_INSEGURO=1` desliga. O comentário do `ps_mail.h` ainda diz "SEM verificação"; o código em `liga_tls` verifica |
 | hash | `ps_hash.c/.h` | SHA-256/384/512 (RFC 6234), HMAC (RFC 2104), PBKDF2-HMAC-SHA256 (RFC 8018), base64 e base64 urlsafe (RFC 4648), sem OpenSSL; no Windows o sorteio vem de `BCryptGenRandom` |
-| regex | `ps_regex.c/.h` | backtracking recursivo com codepoint (não byte). Tem classes, quantificadores gulosos e preguiçosos, grupos, `\1`..`\9`, `(?P<n>...)`, `(?i)`, `(?m)`, `(?s)`, `(?i:...)`, lookahead e lookbehind de largura fixa, e `\b`, `\B`, `\A`, `\Z`. Recusa com erro: `(?>...)`, `(?(id)...)`, `(?#...)` e `\D`/`\W`/`\S` dentro de `[...]` |
+| regex | `ps_regex.c/.h` | a sintaxe do módulo `re` do Python, e as frases de erro dele, com a posição em caractere (17.0.19, lote 8). Backtracking por caractere (não byte), com continuações explícitas e sem teto fixo de tamanho (o padrão linear longo casa): classes (com `\d \w \s` e as negadas dentro de `[...]`), quantificadores gulosos, preguiçosos e possessivos, grupos (com nome, atômico `(?>...)`), retrorreferência por número e por nome, condicional `(?(n)sim\|não)`, comentário `(?#...)`, âncoras `^ $ \A \Z \z \b \B`, lookahead e lookbehind (este de largura fixa), os escapes do `re` (`\xHH \uHHHH \UHHHHHHHH` e octal) e as flags `(?aimsux)` e `(?ims-ims:...)`; `\d \w \s \b` pelo Unicode (com `(?a)`, só ASCII). O `re` é o oráculo: `teste/geradores/regex_re.pr` roda 357 chamadas nos dois e grava `teste/casos_regex_re.c` (352 iguais ao Python 3.15; as 5 que divergem estão explicadas no arquivo). Fora: `\N{nome}` (Plano 12) e a flag `L` (é de padrão em bytes) |
 | QR Code | `ps_qr.c/.h`, `ps_qr_tables.h` | ISO/IEC 18004 em modo byte, versões 1 a 40, níveis L/M/Q/H, Reed-Solomon, escolha de máscara pelas 4 regras de penalidade; o PNG sai pela libpng |
 | xlsx | `ps_xlsx.c/.h` | ZIP escrito à mão sobre a zlib mais XML com expat |
 | pacotes | `ps_pkg.c/.h` | `jpkg`: `~/.jinga` (ou `$JINGA_HOME`, ou `$POOLSCRIPT_HOME`) com `commands/`, `libs/` e `bin/` (shims; no Windows, `.cmd` e PATH por `setx`); `installed.json` é reescrito a partir do disco; `config.json` guarda o `registry_url`; download por HTTPS com sha256 opcional. Uma `~/.poolscript` antiga é movida para `~/.jinga` com aviso |
@@ -2191,8 +2196,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.18** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.18 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.19** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.19 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.11 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2473,7 +2478,7 @@ Todos em Jinga, rodados com `./pool scripts/X.pr` (ou `jinga scripts/X.pr`). Os 
 | `gera_logo.pr` | a logo em SVG e PNG, com rasterizador próprio |
 | `gera_opcodes.pr` | migração única que gerou `vm/ps_opcodes.def` |
 | `gera_realce.pr` | listas do realce do VS Code e do Neovim a partir do `--metadata`; `--portao` |
-| `mede_retornos.pr` | mede o tipo de retorno de cada nativo chamando-o e grava `vm/retornos_medidos.inc`; `--confere` |
+| `mede_retornos.pr` | mede o tipo de retorno de cada nativo chamando-o e grava `vm/retornos_medidos.inc`; `--confere`; `--so os,regex` mede só esses grupos e mantém o resto da tabela gravada, inclusive o que este sistema não publica (`AF_PACKET`, `TCP_KEEPIDLE` só existem no Linux) |
 | `mede_aridades.pr` | mede quantos argumentos cada nativo aceita e o tipo que ele recusa, chamando-o, e grava `vm/aridades_medidas.inc`; confere a lista de nomes de parâmetro e a frase de quantidade de cada nativo; `--confere` (no `make check`), `--pool B` (mede o binário B) |
 | `migra_classe.pr` | `class Nome()` -> `class Nome`, `base(x)` -> `base().__init__(x)`; `--aplica`, `--libs`, `--confere` |
 | `migra_pr.pr` | `.ps`, `.psl` e `.p` -> `.pr` e as referências; `--aplica`, `--so-renome`, `--sem`, `--libs`. É o único script instalado (`share/jinga/scripts/`, pelo `make install`, o `build_bundle.sh`, o `instalar.sh` e o `instalar.ps1`) |
@@ -2814,7 +2819,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.18"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.19"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2894,7 +2899,7 @@ O que o código e o CI já mostram do macOS:
 
 ### 6.2 Estado medido em 2026-10-13
 
-- Versão da linguagem **17.0.18** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.18 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **17.0.19** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.19 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.11** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código: o do 17.0.18 (`with`, 2026-10-14, subido do Linux), sobre o `0568e56` (17.0.17, Plano 6 lote 7c, fechado no Mac). O lote 8, em andamento no Mac, sai como 17.0.19. No `2a668b9` (17.0.11) entrou, por engano meu (`git add -A`), o seu rename `examples/action.pr` → `examples/funct.pr` que estava na árvore (100% igual); desde então o commit leva só a lista de arquivos do lote. Fora do controle de versão ficam só arquivos seus (`examples/s.pr`), que nunca entram em commit. A sua mudança em `vm/ps_lexer.c` (de 2026-10-12: `with` sai das palavras reservadas) entrou no 17.0.18, por ordem sua de 2026-10-14.
 - **Lote 7a fechado no 17.0.15** (`9c05801`, 2026-10-13): texto pela tabela do Unicode inteira, de qualquer língua (decisão sua: só em string; nome no código segue ASCII) — caixa completa, sigma final, classes de caractere, branco e imprimível (2.17, 3.14); `isidentifier` pela regra de nome; `format` (zero depois do sinal, hexa com sinal, precisão em caractere, inteiro grande, número à direita; o que formatava diferente calado é erro); `replace` com listas em paralelo, com `count` e `new` obrigatório; `rsplit` pelo codepoint e sem teto; `translate`, `chr` e `char c = N` na faixa do Unicode; `char` com uma regra só. Conferido contra o Python nos 1.112.064 caracteres. Verde na VPS em `make check`, `check-asan` e `check-debug`. Medido: os 13 casos do bench de -0,12% a +0,02% (a partida +0,33%/+0,82% é núcleo: em instruções de usuário, -30/+107); métodos de texto mais rápidos (metodo -20%, caixa em ASCII -56%, em português -23%).
