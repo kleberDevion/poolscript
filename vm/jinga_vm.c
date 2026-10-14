@@ -10551,7 +10551,9 @@ typedef struct { const char *s; int n; int i; } JLeitor;
  * A posição é o que faltava: "json: esperado ',' ou fechamento" num payload de
  * 40 KB não diz nada. Linha e coluna saem do offset contando as quebras — o
  * leitor já carrega o texto inteiro, então é uma varredura só, no caminho de
- * erro. `char` é o offset em BYTES.
+ * erro. Coluna e `char` contam CARACTERE, como o índice do texto: em byte, um
+ * acento antes do erro empurrava a posição pra frente ("char 26" num texto de
+ * 24 caracteres).
  *
  * O tipo é ValueError: o texto tem o tipo certo (str), é o conteúdo que não
  * serve.
@@ -10560,13 +10562,16 @@ static int j_erro(VM *vm, const JLeitor *j, int onde, const char *oque)
 {
     if (onde > j->n) onde = j->n;
     if (onde < 0)    onde = 0;
-    int linha = 1, col = 1;
+    int linha = 1, col = 1, car = 0;
     for (int k = 0; k < onde; k++) {
-        if (j->s[k] == '\n') { linha++; col = 1; }
+        unsigned char b = (unsigned char)j->s[k];
+        if ((b & 0xC0) == 0x80) continue;    /* continuação do mesmo caractere */
+        car++;
+        if (b == '\n') { linha++; col = 1; }
         else col++;
     }
     snprintf(vm->erro, sizeof(vm->erro), "%s: line %d column %d (char %d)",
-             oque, linha, col, onde);
+             oque, linha, col, car);
     snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ValueError");
     return -1;
 }
@@ -11903,8 +11908,9 @@ static int rx_findall(VM *vm, PSRegex *r, const char *s, int len, Value *out)
         }
         if (l->len >= l->cap && cresce_lista(vm, l) != 0) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
         l->itens[l->len++] = item;
-        /* casamento vazio não pode travar o laço: anda um caractere */
-        de = (cap.fim[0] > cap.inicio[0]) ? cap.fim[0] : cap.fim[0] + 1;
+        /* casamento vazio não pode travar o laço: anda um CARACTERE (um byte
+         * partia o UTF-8: `findall("x*", "ção")` dava 6 itens, não 4) */
+        de = (cap.fim[0] > cap.inicio[0]) ? cap.fim[0] : ps_regex_proximo(s, len, cap.fim[0]);
         if (de > len) break;
     }
     vm->sp--;
@@ -11945,15 +11951,16 @@ static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s,
             int j = i + 3;
             while (j < rlen && rep[j] != '>') j++;
             if (j >= rlen) {
+                /* a posição conta CARACTERE do modelo, não byte */
                 snprintf(erro, (size_t)erro_cap,
-                         "missing >, unterminated name at position %d", i + 3);
+                         "missing >, unterminated name at position %d", (int)utf8_conta(rep, i + 3));
                 return -2;
             }
             int nlen = j - (i + 3);
             const char *nome = rep + i + 3;
             if (nlen <= 0) {
                 snprintf(erro, (size_t)erro_cap,
-                         "missing group name at position %d", i + 3);
+                         "missing group name at position %d", (int)utf8_conta(rep, i + 3));
                 return -2;
             }
             int so_digito = 1;
@@ -11967,7 +11974,8 @@ static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s,
                 for (int t = 0; t < nlen && g <= RX_MAX_GRUPOS; t++) g = g * 10 + (nome[t] - '0');
                 if (nlen > 2 || g > RX_MAX_GRUPOS) {
                     snprintf(erro, (size_t)erro_cap,
-                             "invalid group reference %.*s at position %d", nlen, nome, i + 3);
+                             "invalid group reference %.*s at position %d", nlen, nome,
+                             (int)utf8_conta(rep, i + 3));
                     return -2;
                 }
             } else {
@@ -12007,7 +12015,7 @@ static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s,
         }
         if (g > cap->ngrupos) {
             snprintf(erro, (size_t)erro_cap,
-                     "invalid group reference %d at position %d", g, p_ref);
+                     "invalid group reference %d at position %d", g, (int)utf8_conta(rep, p_ref));
             return -2;
         }
         if (cap->inicio[g] >= 0
@@ -12045,9 +12053,13 @@ static int rx_sub(VM *vm, PSRegex *r, const char *s, int len,
         if (cap.fim[0] > cap.inicio[0]) {
             de = cap.fim[0];
         } else {
-            /* casamento vazio: copia um byte e anda, senão repetiria pra sempre */
-            if (cap.fim[0] < len && sb_bytes(&b, s + cap.fim[0], 1) != 0) BERRO(vm, "MemoryError", "sem memoria");
-            de = cap.fim[0] + 1;
+            /* casamento vazio: copia o CARACTERE seguinte inteiro e anda, senão
+             * repetiria pra sempre (um byte partia o UTF-8: `sub("", "-",
+             * "ção")` punha o "-" no meio do "ç") */
+            int prox = ps_regex_proximo(s, len, cap.fim[0]);
+            if (cap.fim[0] < len && sb_bytes(&b, s + cap.fim[0], (prox <= len ? prox : len) - cap.fim[0]) != 0)
+                BERRO(vm, "MemoryError", "sem memoria");
+            de = prox;
         }
     }
     if (de < len && sb_bytes(&b, s + de, len - de) != 0) BERRO(vm, "MemoryError", "sem memoria");
@@ -12160,10 +12172,10 @@ static int rx_split(VM *vm, PSRegex *r, const char *src, int slen, int64_t maxsp
         if (cap.fim[0] == cap.inicio[0]) {
             /* Separador VAZIO divide também: `split("", "abc")`
              * dá ['', 'a', 'b', 'c', '']. Antes a VM pulava e devolvia ['abc'].
-             * O campo seguinte começa aqui e a busca anda um byte, senão o
-             * mesmo ponto casaria pra sempre. */
+             * O campo seguinte começa aqui e a busca anda um CARACTERE, senão
+             * o mesmo ponto casaria pra sempre (um byte partia o UTF-8). */
             ini_campo = cap.fim[0];
-            de = cap.fim[0] + 1;
+            de = ps_regex_proximo(src, slen, cap.fim[0]);
         } else {
             ini_campo = de = cap.fim[0];
         }

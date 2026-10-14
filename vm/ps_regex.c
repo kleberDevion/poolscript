@@ -4,6 +4,7 @@
 
 #include "ps_regex.h"
 #include "ps_pilha.h"
+#include "ps_unicode.h"
 
 /* Os dois motivos de parar: passos (retrocesso) e profundidade (pilha). Quem
  * chama distingue pelo retorno: -1 e -3. */
@@ -44,6 +45,7 @@ typedef struct {
     unsigned int *faixas;         /* pares lo,hi para cp >= 128 */
     int           nfaixas, cap_faixas;
     int           negado;
+    unsigned int  props;          /* P_*: propriedade do Unicode acima de 127 (`\w \s \d`) */
 } Classe;
 
 typedef struct {
@@ -102,18 +104,26 @@ typedef struct {
  * padrao, entao sai no formato proprio `regex: <msg> (posicao N)`. */
 static void rerro(Leitor *l, const char *msg)
 {
+    int car = 0;                                 /* a posição em CARACTERE */
+    for (int k = 0; k < l->i && k < l->n; k++)
+        if (((unsigned char)l->p[k] & 0xC0) != 0x80) car++;
     if (!l->falhou && l->erro && l->erro_cap > 0)
-        snprintf(l->erro, (size_t)l->erro_cap, "regex: %s (posicao %d)", msg, l->i);
+        snprintf(l->erro, (size_t)l->erro_cap, "regex: %s (posicao %d)", msg, car);
     l->falhou = 1;
 }
 
 /* Erro de sintaxe do padrao. A mensagem e o sufixo " at position N" sao os
  * que o teste diferencial compara entre os dois motores — e a posicao e o
- * INICIO do construto culpado, nao onde o cursor parou. */
+ * INICIO do construto culpado, nao onde o cursor parou. A posicao conta
+ * CARACTERE, como o indice do texto do padrao: em byte, `"ção[a-"` dizia
+ * "position 5" com o '[' no indice 3. */
 static void rerro_em(Leitor *l, int pos, const char *msg)
 {
+    int car = 0;
+    for (int k = 0; k < pos && k < l->n; k++)
+        if (((unsigned char)l->p[k] & 0xC0) != 0x80) car++;
     if (!l->falhou && l->erro && l->erro_cap > 0)
-        snprintf(l->erro, (size_t)l->erro_cap, "%s at position %d", msg, pos);
+        snprintf(l->erro, (size_t)l->erro_cap, "%s at position %d", msg, car);
     l->falhou = 1;
 }
 
@@ -153,13 +163,50 @@ static int classe_add(Classe *cl, unsigned int cp)
     return faixa_add(cl, cp, cp);
 }
 
-static int classe_contem(const Classe *cl, unsigned int cp)
+/* Propriedades do Unicode acima de 127, que as classes `\w \s \d` carregam no
+ * lugar de faixas: a de letra tem centenas de faixas, e materializá-las a cada
+ * padrão compilado custava mais que perguntar à tabela (vm/ps_unicode.c, a
+ * mesma do `isalnum`, do `isspace` e do `isdecimal` do texto). O ASCII delas
+ * continua no bitmap. Cada uma tem a negada: é como `[\W]` e `[a\S]` entram
+ * numa classe. Antes o `\w` punha [128, 0x10FFFF] inteiro (`€`, `—`, aspas e
+ * reticências eram "palavra") e o `\s` só via o branco ASCII (o NBSP não). */
+#define P_PALAVRA      0x01u   /* letra ou número: a régua do `isalnum` */
+#define P_NAO_PALAVRA  0x02u
+#define P_BRANCO       0x04u   /* White_Space: a régua do `isspace` */
+#define P_NAO_BRANCO   0x08u
+#define P_DIGITO       0x10u   /* dígito decimal (Nd): a régua do `isdecimal` */
+#define P_NAO_DIGITO   0x20u
+
+static int rx_palavra_unicode(unsigned int cp)
 {
-    int dentro = tem_bit(cl->mapa, cp);
-    if (!dentro)
-        for (int i = 0; i < cl->nfaixas && !dentro; i++)
-            if (cp >= cl->faixas[i * 2] && cp <= cl->faixas[i * 2 + 1]) dentro = 1;
-    return cl->negado ? !dentro : dentro;
+    return ps_uni_eh_letra(cp) || ps_uni_eh_numerico(cp);
+}
+
+static int props_casa(unsigned int props, unsigned int cp)
+{
+    if (props & (P_PALAVRA | P_NAO_PALAVRA)) {
+        int w = rx_palavra_unicode(cp);
+        if (((props & P_PALAVRA) && w) || ((props & P_NAO_PALAVRA) && !w)) return 1;
+    }
+    if (props & (P_BRANCO | P_NAO_BRANCO)) {
+        int b = ps_uni_eh_branco(cp);
+        if (((props & P_BRANCO) && b) || ((props & P_NAO_BRANCO) && !b)) return 1;
+    }
+    if (props & (P_DIGITO | P_NAO_DIGITO)) {
+        int d = ps_uni_eh_decimal(cp);
+        if (((props & P_DIGITO) && d) || ((props & P_NAO_DIGITO) && !d)) return 1;
+    }
+    return 0;
+}
+
+/* Pertence ao conjunto ESCRITO, sem a negação `[^...]` — quem casa a classe
+ * aplica a negação depois de olhar as duas caixas (ver A_CLASSE). */
+static int classe_dentro(const Classe *cl, unsigned int cp)
+{
+    if (tem_bit(cl->mapa, cp)) return 1;
+    for (int i = 0; i < cl->nfaixas; i++)
+        if (cp >= cl->faixas[i * 2] && cp <= cl->faixas[i * 2 + 1]) return 1;
+    return cp >= 128 && cl->props && props_casa(cl->props, cp);
 }
 
 /* Decodifica o codepoint em `s[pos]`; devolve quantos bytes ocupou. */
@@ -193,17 +240,17 @@ static int classe_escape(unsigned char e, Classe *cl)
     if (e == 'D' || e == 'W' || e == 'S') { letra = (unsigned char)(e + 32); cl->negado = 1; }
     if (letra == 'd') {
         for (unsigned c = '0'; c <= '9'; c++) classe_add(cl, c);
+        cl->props |= P_DIGITO;                 /* e os dígitos das outras escritas */
     } else if (letra == 'w') {
         for (unsigned c = '0'; c <= '9'; c++) classe_add(cl, c);
         for (unsigned c = 'a'; c <= 'z'; c++) classe_add(cl, c);
         for (unsigned c = 'A'; c <= 'Z'; c++) classe_add(cl, c);
         classe_add(cl, '_');
-        /* fora do ASCII entra inteiro: `\w` é Unicode-aware, e sem isso
-         * "ção" não casaria com `\w+` */
-        faixa_add(cl, 128, 0x10FFFF);
+        cl->props |= P_PALAVRA;                /* fora do ASCII, letra ou número */
     } else if (letra == 's') {
         classe_add(cl, ' '); classe_add(cl, '\t'); classe_add(cl, '\n');
         classe_add(cl, '\r'); classe_add(cl, '\f'); classe_add(cl, '\v');
+        cl->props |= P_BRANCO;                 /* NBSP, U+2000..U+200A, U+3000... */
     } else {
         return 0;
     }
@@ -232,6 +279,20 @@ static int classe_uniao_negada(Classe *cl, const Classe *sub)
 {
     for (unsigned int c = 0; c < 128; c++)
         if (!tem_bit(sub->mapa, c)) mapa_bit(cl->mapa, c);
+
+    /* acima de 127, o complemento de uma propriedade é a propriedade negada
+     * (o `sub` de um escape não tem faixa: só o ASCII e a propriedade) */
+    if (sub->props) {
+        unsigned int p = 0;
+        if (sub->props & P_PALAVRA)     p |= P_NAO_PALAVRA;
+        if (sub->props & P_NAO_PALAVRA) p |= P_PALAVRA;
+        if (sub->props & P_BRANCO)      p |= P_NAO_BRANCO;
+        if (sub->props & P_NAO_BRANCO)  p |= P_BRANCO;
+        if (sub->props & P_DIGITO)      p |= P_NAO_DIGITO;
+        if (sub->props & P_NAO_DIGITO)  p |= P_DIGITO;
+        cl->props |= p;
+        return 0;
+    }
 
     unsigned int *f = NULL;
     int nf = 0;
@@ -315,6 +376,7 @@ static void le_classe(Leitor *l, Atomo *a)
                 for (int k = 0; k < 16; k++) cl->mapa[k] |= sub.mapa[k];
                 for (int k = 0; k < sub.nfaixas; k++)
                     faixa_add(cl, sub.faixas[k * 2], sub.faixas[k * 2 + 1]);
+                cl->props |= sub.props;
                 free(sub.faixas);
                 continue;
             }
@@ -728,20 +790,17 @@ const char *ps_regex_nome_do_grupo(const PSRegex *r, int g)
 
 #define RX_MAX_PASSOS 2000000
 
-/* TETO DE PROFUNDIDADE, e ele é obrigatório junto com o de passos.
+/* PROFUNDIDADE, e ela é obrigatória junto com o teto de passos.
  *
  * O casador é recursivo: `m_seq -> m_pos_grupo -> m_rep_grupo -> m_alt ->
- * m_seq` gasta um quadro de pilha C por caractere consumido. O teto de PASSOS
- * (2 milhões) não protege disso — a pilha de 8 MB acaba muito antes, e o
- * processo morre de SIGSEGV sem mensagem nenhuma.
+ * m_seq` gasta quadros de pilha C a cada repetição de grupo. O teto de PASSOS
+ * (2 milhões) não protege disso — a pilha acaba antes, e o processo morria de
+ * SIGSEGV sem mensagem nenhuma.
  *
  * Aconteceu de verdade: `"((?:[^"\\]|\\.)*)"` sobre um trecho de 29 mil
  * caracteres derrubou o `pool` inteiro. Um padrão vindo do usuário não pode
- * matar o processo — tem que virar erro, como qualquer outro limite.
- *
- * 6000 quadros cabem com folga nos 8 MB padrão e ainda dão conta de qualquer
- * padrão de uso real. */
-#define RX_MAX_PROF 6000
+ * matar o processo — tem que virar erro, como qualquer outro limite. Quem
+ * decide é a folga MEDIDA da pilha (`m_seq`), não um número de níveis. */
 
 typedef struct Cont { const Seq *seq; int i; const struct Cont *prox; } Cont;
 
@@ -761,27 +820,27 @@ typedef struct {
  * É UMA regra, por CODEPOINT, nos três caminhos que comparam texto: o literal
  * (A_CHAR), a classe (A_CLASSE) e o retrovisor (A_BACKREF). O retrovisor
  * dobrava por BYTE, só A-Z, e `(?i)(é)\1` não casava `éÉ`. */
-static unsigned int  rx_lower_cp(unsigned int cp)
+/* Caixa do IGNORECASE: o mapeamento simples do Unicode, a mesma tabela do
+ * `lower()`/`upper()` do texto. Antes só ASCII e Latin-1: `(?i)ç` casava "Ç",
+ * mas `(?i)ğ` não casava "Ğ" nem `(?i)σ` "Σ". */
+static unsigned int rx_lower_cp(unsigned int cp) { return ps_uni_minuscula(cp); }
+static unsigned int rx_upper_cp(unsigned int cp) { return ps_uni_maiuscula(cp); }
+
+/* Dois codepoints iguais sem olhar a caixa: pela minúscula OU pela maiúscula
+ * (`ς` e `σ` só se encontram na `Σ`). */
+static int rx_mesma_letra(unsigned int a, unsigned int b)
 {
-    if (cp >= 'A' && cp <= 'Z') return cp + 32;
-    if (cp >= 0xC0 && cp <= 0xDE && cp != 0xD7) return cp + 0x20;   /* À-Þ -> à-þ */
-    return cp;
-}
-static unsigned int  rx_swap_cp(unsigned int cp)
-{
-    if (cp >= 'A' && cp <= 'Z') return cp + 32;
-    if (cp >= 'a' && cp <= 'z') return cp - 32;
-    if (cp >= 0xC0 && cp <= 0xDE && cp != 0xD7) return cp + 0x20;   /* maiúscula Latin-1 */
-    if (cp >= 0xE0 && cp <= 0xFE && cp != 0xF7) return cp - 0x20;   /* minúscula Latin-1 */
-    return cp;
+    return a == b || rx_lower_cp(a) == rx_lower_cp(b) || rx_upper_cp(a) == rx_upper_cp(b);
 }
 
-/* Caractere de palavra (\w): igual ao classe_escape('w') — ASCII alnum + '_'
- * e qualquer não-ASCII (\w é Unicode-aware). */
+/* Caractere de palavra (\w, \b): ASCII alfanumérico e '_', e fora do ASCII
+ * letra ou número pela tabela do Unicode — a mesma régua da classe `\w`. */
 static int rx_is_word(unsigned int cp)
 {
-    return (cp >= '0' && cp <= '9') || (cp >= 'a' && cp <= 'z')
-        || (cp >= 'A' && cp <= 'Z') || cp == '_' || cp >= 128;
+    if (cp < 128)
+        return (cp >= '0' && cp <= '9') || (cp >= 'a' && cp <= 'z')
+            || (cp >= 'A' && cp <= 'Z') || cp == '_';
+    return rx_palavra_unicode(cp);
 }
 
 /* Codepoint que TERMINA em `pos` (o caractere logo antes). 0 se pos<=0. */
@@ -882,7 +941,7 @@ static int casa_simples(Estado *e, const Atomo *a, int pos)
             int u = cp_le(e->s, e->n, pos, &cp);
             if (!u) return -1;
             if (a->flags & RX_I)
-                return rx_lower_cp(cp) == rx_lower_cp(a->cp) ? u : -1;
+                return rx_mesma_letra(cp, a->cp) ? u : -1;
             return cp == a->cp ? u : -1;
         }
         case A_CLASSE: {
@@ -890,11 +949,17 @@ static int casa_simples(Estado *e, const Atomo *a, int pos)
             unsigned int cp;
             int u = cp_le(e->s, e->n, pos, &cp);
             if (!u) return -1;
-            int ok = classe_contem(&a->classe, cp);
-            if (!ok && (a->flags & RX_I)) {          /* IGNORECASE: tenta o outro caso */
-                unsigned int alt = rx_swap_cp(cp);
-                if (alt != cp) ok = classe_contem(&a->classe, alt);
+            /* IGNORECASE: o caractere ou outra caixa dele está no conjunto
+             * escrito, e a negação `[^...]` vale DEPOIS. Antes a outra caixa
+             * só era tentada quando o teste já com a negação falhava, e
+             * `(?i)[^a-z]` casava "A" ("A" não está em a-z, logo passava). */
+            int dentro = classe_dentro(&a->classe, cp);
+            if (!dentro && (a->flags & RX_I)) {
+                unsigned int lo = rx_lower_cp(cp), up = rx_upper_cp(cp);
+                if (lo != cp) dentro = classe_dentro(&a->classe, lo);
+                if (!dentro && up != cp) dentro = classe_dentro(&a->classe, up);
             }
+            int ok = a->classe.negado ? !dentro : dentro;
             return ok ? u : -1;
         }
         case A_STARTA: return pos == 0    ? 0 : -1;   /* \A */
@@ -921,16 +986,17 @@ static int casa_simples(Estado *e, const Atomo *a, int pos)
                 if (pos + len > e->n) return -1;
                 return memcmp(e->s + pos, e->s + gi_ini, (size_t)len) == 0 ? len : -1;
             }
-            /* IGNORECASE: por CODEPOINT, com o mesmo `rx_lower_cp` do literal e
-             * da classe. Os comprimentos em bytes podem diferir entre as duas
-             * caixas, então o retorno é o que foi consumido do lado do texto. */
+            /* IGNORECASE: por CODEPOINT, com a mesma régua do literal e da
+             * classe (`rx_mesma_letra`). Os comprimentos em bytes podem diferir
+             * entre as duas caixas, então o retorno é o que foi consumido do
+             * lado do texto. */
             int px = pos, py = gi_ini;
             while (py < gi_fim) {
                 unsigned int cx, cy;
                 int uy = cp_le(e->s, e->n, py, &cy);
                 int ux = (px < e->n) ? cp_le(e->s, e->n, px, &cx) : 0;
                 if (!ux || !uy) return -1;
-                if (rx_lower_cp(cx) != rx_lower_cp(cy)) return -1;
+                if (!rx_mesma_letra(cx, cy)) return -1;
                 px += ux; py += uy;
             }
             return px - pos;
@@ -1007,16 +1073,13 @@ static int m_rep_grupo(RepGrupo *rg, int feitos, int pos)
  * entrar e sair sempre fecham. */
 static int m_seq(Estado *e, const Seq *s, int i, int pos, const Cont *k)
 {
-    /* Alem do contador, a FOLGA MEDIDA da pilha: o 6000 foi dimensionado pros
-     * 8 MB do processo, e dentro de uma fibra (256 KB) o casador derrubava o
-     * processo com ~800 repeticoes — num handler do jinker, o servidor
-     * inteiro. `ps_pilha_apertada` sabe em que pilha esta (a fibra remarca a
-     * base ao entrar). */
-    if (e->prof >= RX_MAX_PROF || ps_pilha_apertada()) { e->estourou = RX_ESTOUROU_FUNDO; return 0; }
-    e->prof++;
-    int r = m_seq_corpo(e, s, i, pos, k);
-    e->prof--;
-    return r;
+    /* A FOLGA MEDIDA da pilha decide, e só ela: `ps_pilha_apertada` sabe em
+     * que pilha está (a fibra remarca a base ao entrar) e mede o quadro do
+     * binário de verdade (o do ASan é maior). Havia também um contador fixo
+     * de 6000 níveis, que barrava uso válido nos 8 MB do processo: um CSV de
+     * 3 mil campos com `(?:[a-z]+,)*` dava "profundo demais". */
+    if (ps_pilha_apertada()) { e->estourou = RX_ESTOUROU_FUNDO; return 0; }
+    return m_seq_corpo(e, s, i, pos, k);
 }
 
 static int m_seq_corpo(Estado *e, const Seq *s, int i, int pos, const Cont *k)
@@ -1026,6 +1089,21 @@ static int m_seq_corpo(Estado *e, const Seq *s, int i, int pos, const Cont *k)
 
     const Quant *q = &s->itens[i];
     const Atomo *a = &q->atomo;
+
+    /* Átomos simples que casam UMA vez, seguidos (o literal de um `escape`
+     * de 6 mil caracteres, o `,` de `(?:[a-z]+,)*`): cada um tem uma escolha
+     * só, então casam em laço, sem voltar atrás e sem um quadro de pilha por
+     * caractere — antes cada um descia um `m_seq`, e o literal longo
+     * esbarrava no teto de profundidade sem retrocesso nenhum. */
+    while (q->min == 1 && q->max == 1 && a->tipo != A_GRUPO && a->tipo != A_LOOK) {
+        int c = casa_simples(e, a, pos);
+        if (c < 0) return 0;
+        pos += c;
+        if (++i >= s->n) return m_cont(e, pos, k);
+        if (++e->passos > RX_MAX_PASSOS) { e->estourou = 1; return 0; }
+        q = &s->itens[i];
+        a = &q->atomo;
+    }
 
     if (a->tipo == A_GRUPO) {
         RepGrupo rg = { e, q, s, i, k };
@@ -1070,9 +1148,20 @@ static int m_seq_corpo(Estado *e, const Seq *s, int i, int pos, const Cont *k)
     return 0;
 }
 
+int ps_regex_proximo(const char *s, int len, int pos)
+{
+    if (pos >= len) return pos + 1;
+    unsigned int cp;
+    int u = cp_le(s, len, pos, &cp);
+    return pos + (u > 0 ? u : 1);
+}
+
 int ps_regex_busca(PSRegex *r, const char *s, int len, int de, RxCaptura *cap)
 {
-    for (int inicio = de; inicio <= len; inicio++) {
+    /* recomeça em cada CARACTERE, não em cada byte: no meio de um UTF-8 o
+     * byte de continuação era lido como Latin-1 e `[^ç]` casava o resto do
+     * "ç", devolvendo texto que não é UTF-8 */
+    for (int inicio = de; inicio <= len; inicio = ps_regex_proximo(s, len, inicio)) {
         Estado e = { s, len, cap, 0, 0, 0, r->flags, 0 };
         for (int g = 0; g < RX_MAX_GRUPOS; g++) { cap->inicio[g] = -1; cap->fim[g] = -1; }
         cap->ngrupos = r->ngrupos;
