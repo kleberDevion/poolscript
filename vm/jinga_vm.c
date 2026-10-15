@@ -3647,20 +3647,145 @@ static int ps_em_ciclo(const void *o)
 }
 
 
+static char *repr_str_dup(const char *s, int len);
+
 /* Descrição de UMA LINHA dos objetos "opacos" (os que não têm conteúdo
  * navegável: arquivo, conexão, servidor, socket, registrar...).
  *
- * Existe pra `post(x)` e `str(x)` não divergirem. Eram dois caminhos
- * independentes — `escreve_valor` (que imprime) e `valor_para_texto` (que
- * monta string) — e o segundo não conhecia 33 dos tipos: `post(conn)` mostrava
- * `<sqlite3.Connection>` e `str(conn)` devolvia STRING VAZIA. Agora os dois
- * leem daqui, então não tem como um saber e o outro não.
+ * Existe pra `post(x)`, `str(x)` e `post([x])` não divergirem: é a ÚNICA
+ * lista dos opacos, e `escreve_valor` (que imprime) e `valor_para_texto` (que
+ * monta string) só leem daqui. Eram duas listas, e cada uma esquecia tipos: o
+ * `str()` dava texto vazio pra PoolFile, módulo, Response, cursor e os
+ * registradores do jinker, e nenhuma das duas conhecia o Pattern nem a
+ * closure (`post([regex.compile("a")])` imprimia `[]`).
  *
- * Devolve 1 se escreveu em `buf`, 0 se o tipo não é destes. */
+ * Devolve 0 só pros tipos de conteúdo navegável, que quem chama escreve
+ * (texto, bytes, inteiro grande, lista, tupla, dict, instância). Todo o resto
+ * sai daqui; tipo sem descrição própria sai `<nome do tipo>`, nunca vazio. */
 static int descreve_obj(const Value *v, char *buf, size_t cap)
 {
     if (v->t != V_OBJ) return 0;
-    switch (v->as.obj->type) {
+    Obj *o = v->as.obj;
+    switch (o->type) {
+        case OBJ_STRING: case OBJ_BYTES: case OBJ_BIGINT:
+        case OBJ_LIST: case OBJ_TUPLE: case OBJ_DICT: case OBJ_INSTANCE:
+            return 0;
+        case OBJ_REGEX: {
+            /* o repr do `re` do Python: `re.compile('a+')`, com o texto do
+             * padrão cortado em 200 caracteres (o `%.200R` do CPython) */
+            PSRegexObj *rx = (PSRegexObj *)o;
+            char *r = repr_str_dup(rx->pat ? rx->pat : "", rx->npat);
+            if (!r) { snprintf(buf, cap, "<Pattern>"); return 1; }
+            int corte = 0, nchars = 0;
+            while (r[corte] && nchars < 200) {
+                corte++;
+                while (r[corte] && ((unsigned char)r[corte] & 0xC0) == 0x80) corte++;
+                nchars++;
+            }
+            snprintf(buf, cap, "regex.compile(%.*s)", corte, r);
+            free(r);
+            return 1;
+        }
+        case OBJ_CLOSURE:   /* a funct aninhada que capturou: igual à funct */
+            snprintf(buf, cap, "<funct #%d>", (int)((PSClosure *)o)->proto);
+            return 1;
+        case OBJ_CLASS:
+            snprintf(buf, cap, "<Entity %.200s>", ((PSClass *)o)->nome);
+            return 1;
+        case OBJ_ENUM:
+            snprintf(buf, cap, "<enum %.200s>", ((PSEnum *)o)->nome ? ((PSEnum *)o)->nome : "?");
+            return 1;
+        case OBJ_BOUND:
+        case OBJ_METODO_NAT: snprintf(buf, cap, "<metodo>"); return 1;
+        case OBJ_FUTURO:     snprintf(buf, cap, "<future>"); return 1;
+        case OBJ_MODULO: {
+            /* módulo oculto sai sem o `_` de registro: o usuário escreveu
+             * `sys.stdout`, não `_stdout` */
+            const char *nm = MODULOS[((PSModulo *)o)->idx].nome;
+            if (nm[0] == '_') snprintf(buf, cap, "<%s>", nm + 1);
+            else              snprintf(buf, cap, "<modulo %s>", nm);
+            return 1;
+        }
+        case OBJ_MODULO_PS:
+            snprintf(buf, cap, "<modulo %.200s>", ((PSModuloPS *)o)->nome);
+            return 1;
+        case OBJ_POOLFILE: {
+            PSPoolFile *f = (PSPoolFile *)o;
+            snprintf(buf, cap, "<PoolFile '%.200s' (%lld bytes)>", f->nome, (long long)f->tamanho);
+            return 1;
+        }
+        case OBJ_RESPONSE: {
+            PSResponse *rp = (PSResponse *)o;
+            snprintf(buf, cap, "<Response status=%ld url='%.200s' (%zu bytes)>", rp->status,
+                     EH_STRING(rp->url) ? COMO_STRING(rp->url)->chars : "",
+                     rp->nbytes);   /* o tamanho, sem trazer o corpo pra memória */
+            return 1;
+        }
+        case OBJ_JREG: {
+            PSJReg *rg = (PSJReg *)o;
+            if (rg->kind == JREG_MIDDLEWARE) snprintf(buf, cap, "<MiddlewareRegistrar>");
+            else if (rg->kind == JREG_SOCKET) snprintf(buf, cap, "<SocketRegistrar %.200s>", rg->path);
+            else {
+                /* mesmo formato do repr do wrapper: lista de métodos */
+                size_t n = (size_t)snprintf(buf, cap, "<RouteRegistrar [");
+                for (int i = 0; i < rg->nmetodos && n < cap; i++)
+                    n += (size_t)snprintf(buf + n, cap - n, "%s'%s'", i ? ", " : "", rg->metodos[i]);
+                if (n < cap) snprintf(buf + n, cap - n, "] %.200s>", rg->path);
+            }
+            return 1;
+        }
+        case OBJ_JRESP:   snprintf(buf, cap, "<JinkerResponse>"); return 1;
+        case OBJ_JREQ:    snprintf(buf, cap, "<jinker.request>"); return 1;
+        case OBJ_JUPLOAD: {
+            PSJUpload *up = (PSJUpload *)o;
+            snprintf(buf, cap, "<PoolFileUpload '%.200s' (%d bytes)>", up->nome,
+                     EH_BYTES(up->dados) ? COMO_BYTES(up->dados)->len : 0);
+            return 1;
+        }
+        case OBJ_JEMIT: {
+            PSJEmit *em = (PSJEmit *)o;
+            snprintf(buf, cap, "<SocketEmitter %s>",
+                     EH_JINKER(em->app) ? COMO_JINKER(em->app)->nome : "?");
+            return 1;
+        }
+        case OBJ_JCHAN: {
+            PSJChan *ch = (PSJChan *)o;
+            int conexoes = 0, salas = 0;
+            if (EH_JINKER(ch->app)) {
+                PSJinker *jk = COMO_JINKER(ch->app);
+                conexoes = jk->nws;
+                for (int i = 0; i < jk->nws; i++) {
+                    if (!jk->ws[i].sala) continue;
+                    int visto = 0;
+                    for (int q = 0; q < i; q++)
+                        if (jk->ws[q].sala && strcmp(jk->ws[q].sala, jk->ws[i].sala) == 0) { visto = 1; break; }
+                    if (!visto) salas++;
+                }
+            }
+            snprintf(buf, cap, "<Channel connections=%d rooms=%d>", conexoes, salas);
+            return 1;
+        }
+        case OBJ_WSCONN: {
+            PSWsConn *w = (PSWsConn *)o;
+            snprintf(buf, cap, "<WsConnection %.200s [%s]>", w->url,
+                     w->conn ? "conectado" : "desconectado");
+            return 1;
+        }
+        case OBJ_QRBUILD: snprintf(buf, cap, "<PoolQRCode>"); return 1;
+        case OBJ_MANPU_FILE: {
+            const char *cam = ((PSManpuFile *)o)->caminho;
+            const char *barra = ps_ultimo_sep(cam);
+            snprintf(buf, cap, "<ManpuFile %.200s>", barra ? barra + 1 : cam);
+            return 1;
+        }
+        case OBJ_DBCUR: {
+            static const char *DN[] = { "sqlite", "postgres", "mysql", "mssql" };
+            snprintf(buf, cap, "<db.cursor [%s]>", DN[((PSDbCursor *)o)->drv]);
+            return 1;
+        }
+        case OBJ_MONGOCOL:
+            snprintf(buf, cap, "<db.collection [%.200s]>", ((PSMongoCol *)o)->nome);
+            return 1;
         case OBJ_GERADOR:
             snprintf(buf, cap, "<generator %s>",
                      vm_corrente && ((PSGerador *)v->as.obj)->proto < vm_corrente->nprotos
@@ -3681,7 +3806,6 @@ static int descreve_obj(const Value *v, char *buf, size_t cap)
         case OBJ_JCORS:     snprintf(buf, cap, "<CorsConfig>");         return 1;
         case OBJ_JPROXY:    snprintf(buf, cap, "<jinker.request>");     return 1;
         case OBJ_NATIVA:    snprintf(buf, cap, "<builtin>");            return 1;
-        case OBJ_METODO_NAT:snprintf(buf, cap, "<metodo>");             return 1;
         case OBJ_MONGOCONN: snprintf(buf, cap, "<db.connection [mongo]>"); return 1;
         case OBJ_MANPU_RES:
             snprintf(buf, cap, "%s", ((PSManpuRes *)v->as.obj)->status);
@@ -3724,7 +3848,11 @@ static int descreve_obj(const Value *v, char *buf, size_t cap)
                      EH_JINKER(ns->app) ? COMO_JINKER(ns->app)->nome : "?");
             return 1;
         }
-        default: return 0;
+        default:
+            /* tipo sem descrição própria (a célula da closure, que não chega
+             * à linguagem): o nome do tipo, nunca texto vazio */
+            snprintf(buf, cap, "<%s>", nome_do_tipo_valor(*v));
+            return 1;
     }
 }
 
@@ -3835,7 +3963,7 @@ static char *repr_bytes_dup(const char *s, int len)
 static void escreve_valor(const Value *v, int dentro)
 {
     {   /* objetos opacos: mesma descrição que o `str()` usa */
-        char d[256];
+        char d[512];
         if (descreve_obj(v, d, sizeof(d))) { fputs(d, stdout); return; }
     }
     /* Mesma guarda de ciclo do valor_para_texto: `l.append(l)` descia até
@@ -3892,8 +4020,6 @@ static void escreve_valor(const Value *v, int dentro)
                 /* tupla de 1 elemento imprime `(x,)` */
                 if (tupla && l->len == 1) putchar(',');
                 putchar(tupla ? ')' : ']');
-            } else if (v->as.obj->type == OBJ_CLASS) {
-                printf("<Entity %s>", ((PSClass *)v->as.obj)->nome);
             } else if (v->as.obj->type == OBJ_INSTANCE) {
                 /* <Nome {campos}> — igual ao interp (campos como dict) */
                 PSInstance *inst = (PSInstance *)v->as.obj;
@@ -3905,140 +4031,10 @@ static void escreve_valor(const Value *v, int dentro)
                     fputs("{}", stdout);
                 }
                 putchar('>');
-            } else if (v->as.obj->type == OBJ_GERADOR) {
-                printf("<generator %s>",
-                       vm_corrente && ((PSGerador *)v->as.obj)->proto < vm_corrente->nprotos
-                       ? vm_corrente->protos[((PSGerador *)v->as.obj)->proto].nome : "?");
-            } else if (v->as.obj->type == OBJ_POOLFILE) {
-                PSPoolFile *f = (PSPoolFile *)v->as.obj;
-                printf("<PoolFile '%s' (%lld bytes)>", f->nome, (long long)f->tamanho);
-            } else if (v->as.obj->type == OBJ_SQLCONN) {
-                fputs("<sqlite3.Connection>", stdout);
-            } else if (v->as.obj->type == OBJ_SQLCUR) {
-                fputs("<sqlite3.Cursor>", stdout);
-            } else if (v->as.obj->type == OBJ_MAILSRV) {
-                fputs("<MailServer>", stdout);
-            } else if (v->as.obj->type == OBJ_MAILMSG) {
-                fputs("<MailMessage>", stdout);
-            } else if (v->as.obj->type == OBJ_MAILRD) {
-                fputs("<MailReader>", stdout);
-            } else if (v->as.obj->type == OBJ_RESPONSE) {
-                PSResponse *rp = (PSResponse *)v->as.obj;
-                printf("<Response status=%ld url='%s' (%zu bytes)>", rp->status,
-                       EH_STRING(rp->url) ? COMO_STRING(rp->url)->chars : "",
-                       rp->nbytes);   /* o tamanho, sem trazer o corpo pra memória */
-            } else if (v->as.obj->type == OBJ_QRFILE) {
-                PSQRFile *q = (PSQRFile *)v->as.obj;
-                printf("<QRCode '%s' %lld bytes>", q->nome, (long long)q->tamanho);
-            } else if (v->as.obj->type == OBJ_MANPU_RES) {
-                fputs(((PSManpuRes *)v->as.obj)->status, stdout);
-            } else if (v->as.obj->type == OBJ_JINKER) {
-                printf("<Jinker '%s'>", ((PSJinker *)v->as.obj)->nome);
-            } else if (v->as.obj->type == OBJ_JCORS) {
-                fputs("<CorsConfig>", stdout);
-            } else if (v->as.obj->type == OBJ_JREG) {
-                PSJReg *rg = (PSJReg *)v->as.obj;
-                if (rg->kind == JREG_MIDDLEWARE) fputs("<MiddlewareRegistrar>", stdout);
-                else if (rg->kind == JREG_SOCKET) printf("<SocketRegistrar %s>", rg->path);
-                else {
-                    /* mesmo formato do repr do wrapper: lista de métodos */
-                    fputs("<RouteRegistrar [", stdout);
-                    for (int i = 0; i < rg->nmetodos; i++)
-                        printf("%s'%s'", i ? ", " : "", rg->metodos[i]);
-                    printf("] %s>", rg->path);
-                }
-            } else if (v->as.obj->type == OBJ_JRESP) {
-                fputs("<JinkerResponse>", stdout);
-            } else if (v->as.obj->type == OBJ_JPROXY) {
-                fputs("<jinker.request>", stdout);
-            } else if (v->as.obj->type == OBJ_JUPLOAD) {
-                PSJUpload *up = (PSJUpload *)v->as.obj;
-                printf("<PoolFileUpload '%s' (%d bytes)>", up->nome,
-                       EH_BYTES(up->dados) ? COMO_BYTES(up->dados)->len : 0);
-            } else if (v->as.obj->type == OBJ_JSOCKNS) {
-                PSJSockNs *ns = (PSJSockNs *)v->as.obj;
-                printf("<SocketNamespace %s>",
-                       EH_JINKER(ns->app) ? COMO_JINKER(ns->app)->nome : "?");
-            } else if (v->as.obj->type == OBJ_JEMIT) {
-                PSJEmit *em = (PSJEmit *)v->as.obj;
-                printf("<SocketEmitter %s>",
-                       EH_JINKER(em->app) ? COMO_JINKER(em->app)->nome : "?");
-            } else if (v->as.obj->type == OBJ_JCHAN) {
-                PSJChan *ch = (PSJChan *)v->as.obj;
-                if (EH_JINKER(ch->app)) {
-                    PSJinker *jk = COMO_JINKER(ch->app);
-                    int salas = 0;
-                    for (int i = 0; i < jk->nws; i++) {
-                        if (!jk->ws[i].sala) continue;
-                        int visto = 0;
-                        for (int q = 0; q < i; q++)
-                            if (jk->ws[q].sala && strcmp(jk->ws[q].sala, jk->ws[i].sala) == 0) { visto = 1; break; }
-                        if (!visto) salas++;
-                    }
-                    printf("<Channel connections=%d rooms=%d>", jk->nws, salas);
-                } else fputs("<Channel connections=0 rooms=0>", stdout);
-            } else if (v->as.obj->type == OBJ_JCHST) {
-                fputs(((PSJChSt *)v->as.obj)->sucesso ? "Success" : "Error", stdout);
-            } else if (v->as.obj->type == OBJ_WSCONN) {
-                PSWsConn *w = (PSWsConn *)v->as.obj;
-                printf("<WsConnection %s [%s]>", w->url,
-                       w->conn ? "conectado" : "desconectado");
-            } else if (v->as.obj->type == OBJ_SOCKET) {
-                PSSocket *sk = (PSSocket *)v->as.obj;
-                if (sk->fd < 0) fputs("<socket fechado>", stdout);
-                else printf("<socket family=%d type=%d proto=%d fd=%d>",
-                            sk->familia, sk->tipo, sk->proto, sk->fd);
-            } else if (v->as.obj->type == OBJ_PROCESSO) {
-                PSProcesso *p = (PSProcesso *)v->as.obj;
-                if (p->terminou) printf("<Process pid=%d returncode=%d>", p->pid, p->codigo);
-                else printf("<Process pid=%d rodando%s>", p->pid, p->eh_pty ? " pty" : "");
-            } else if (v->as.obj->type == OBJ_QRBUILD) {
-                fputs("<PoolQRCode>", stdout);
-            } else if (v->as.obj->type == OBJ_QRIMAGE) {
-                printf("<QRImage '%s'>", ((PSQRImage *)v->as.obj)->nome);
-            } else if (v->as.obj->type == OBJ_MANPU_FILE) {
-                const char *cam = ((PSManpuFile *)v->as.obj)->caminho;
-                const char *barra = ps_ultimo_sep(cam);
-                printf("<ManpuFile %s>", barra ? barra + 1 : cam);
-            } else if (v->as.obj->type == OBJ_DBCONN) {
-                static const char *DN[]={"sqlite","postgres","mysql","mssql"};
-                printf("<db.connection [%s]>", DN[((PSDbConexao *)v->as.obj)->drv]);
-            } else if (v->as.obj->type == OBJ_DBCUR) {
-                static const char *DN[]={"sqlite","postgres","mysql","mssql"};
-                printf("<db.cursor [%s]>", DN[((PSDbCursor *)v->as.obj)->drv]);
-            } else if (v->as.obj->type == OBJ_MONGOCONN) {
-                fputs("<db.connection [mongo]>", stdout);
-            } else if (v->as.obj->type == OBJ_MONGOCOL) {
-                printf("<db.collection [%s]>", ((PSMongoCol *)v->as.obj)->nome);
             } else if (v->as.obj->type == OBJ_BYTES) {
                 PSString *b = (PSString *)v->as.obj;
                 char *r = repr_bytes_dup(b->chars, b->len);
                 if (r) { fputs(r, stdout); free(r); }
-            } else if (v->as.obj->type == OBJ_MODULO_PS) {
-                printf("<modulo %s>", ((PSModuloPS *)v->as.obj)->nome);
-            } else if (v->as.obj->type == OBJ_ARQUIVO) {
-                printf("<arquivo %s>", ((PSArquivo *)v->as.obj)->caminho);
-            } else if (v->as.obj->type == OBJ_MODEL) {
-                printf("<model %s>", ((PSModel *)v->as.obj)->nome);
-            } else if (v->as.obj->type == OBJ_ENUM) {
-                printf("<enum %s>", ((PSEnum *)v->as.obj)->nome);
-            } else if (v->as.obj->type == OBJ_MODULO) {
-                {
-                    /* módulo oculto sai sem o `_` de registro: o usuário
-                     * escreveu `sys.stdout`, não `_stdout` */
-                    const char *nm = MODULOS[((PSModulo *)v->as.obj)->idx].nome;
-                    if (nm[0] == '_') printf("<%s>", nm + 1);
-                    else              printf("<modulo %s>", nm);
-                }
-            } else if (v->as.obj->type == OBJ_NATIVA) {
-                fputs("<builtin>", stdout);
-            } else if (v->as.obj->type == OBJ_FUTURO) {
-                /* Future não resolvido: sem este ramo ele caía no fim da
-                 * cadeia e imprimia NADA — `post([f1, f2])` saía `[, ]`. */
-                fputs("<future>", stdout);
-            } else if (v->as.obj->type == OBJ_BOUND
-                    || v->as.obj->type == OBJ_METODO_NAT) {
-                fputs("<metodo>", stdout);
             } else if (v->as.obj->type == OBJ_DICT) {
                 PSDict *d = (PSDict *)v->as.obj;
                 putchar('{');
@@ -4088,7 +4084,7 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
     {   /* objetos opacos: a MESMA descrição que o `post()` imprime. Sem isto,
          * `str(conn)` devolvia string vazia enquanto `post(conn)` mostrava
          * `<sqlite3.Connection>` — 33 tipos caíam nesse silêncio. */
-        char d[256];
+        char d[512];
         if (descreve_obj(v, d, sizeof(d))) return txt_put(t, d, (int)strlen(d));
     }
     char tmp[64];
@@ -4147,9 +4143,6 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
                 if (tup && l->len == 1 && txt_put(t, ",", 1) != 0) return -1;
                 return txt_put(t, tup ? ")" : "]", 1);
             }
-            if (v->as.obj->type == OBJ_CLASS)
-                return txt_put(t, tmp, snprintf(tmp, sizeof(tmp), "<Entity %s>",
-                                                ((PSClass *)v->as.obj)->nome));
             if (v->as.obj->type == OBJ_INSTANCE) {
                 /* <Nome {campos}> — igual ao interp */
                 PSInstance *inst = (PSInstance *)v->as.obj;
@@ -4166,17 +4159,6 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
                     if (txt_put(t, "{}", 2) != 0) return -1;
                 }
                 return txt_put(t, ">", 1);
-            }
-            if (v->as.obj->type == OBJ_FUTURO) return txt_put(t, "<future>", 8);
-            if (v->as.obj->type == OBJ_BOUND) return txt_put(t, "<metodo>", 8);
-            if (v->as.obj->type == OBJ_BYTES) {
-                /* mesmo repr do `escreve_valor`; sem isto `str(b)` saía vazio */
-                PSString *b = (PSString *)v->as.obj;
-                char *r = repr_bytes_dup(b->chars, b->len);
-                if (!r) return -1;
-                int rc = txt_put(t, r, (int)strlen(r));
-                free(r);
-                return rc;
             }
             if (v->as.obj->type == OBJ_DICT) {
                 PSDict *d = (PSDict *)v->as.obj;
@@ -4199,31 +4181,7 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
                 }
                 return txt_put(t, "}", 1);
             }
-            /* ChannelStatus vira "Success"/"Error" também em str()/f-string */
-            if (v->as.obj->type == OBJ_JCHST) {
-                const char *st = ((PSJChSt *)v->as.obj)->sucesso ? "Success" : "Error";
-                return txt_put(t, st, (int)strlen(st));
-            }
-            if (v->as.obj->type == OBJ_JPROXY)
-                return txt_put(t, "<jinker.request>", 16);
-            if (v->as.obj->type == OBJ_MODEL) {
-                char buf[300];
-                const char *nm = ((PSModel *)v->as.obj)->nome;
-                int nn = snprintf(buf, sizeof(buf), "<model %s>", nm ? nm : "?");
-                if (nn < 0) nn = 0;
-                if (nn >= (int)sizeof(buf)) nn = (int)sizeof(buf) - 1;
-                return txt_put(t, buf, nn);
-            }
-            if (v->as.obj->type == OBJ_ENUM) {
-                char buf[300];
-                const char *nm = ((PSEnum *)v->as.obj)->nome;
-                int nn = snprintf(buf, sizeof(buf), "<enum %s>", nm ? nm : "?");
-                /* o retorno é o que TERIA cabido: com nome gigante, o txt_put
-                 * leria além do buf */
-                if (nn < 0) nn = 0;
-                if (nn >= (int)sizeof(buf)) nn = (int)sizeof(buf) - 1;
-                return txt_put(t, buf, nn);
-            }
+            /* todo outro tipo de objeto saiu pelo `descreve_obj` lá em cima */
             return 0;
     }
     return 0;

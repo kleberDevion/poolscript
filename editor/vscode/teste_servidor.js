@@ -1830,10 +1830,18 @@ async function main() {
     conf('fora de model, parênteses de chamada não oferecem os parâmetros do campo', !L5.includes('regex='), L5.slice(0, 6));
   }
 
+  apagaPastaDeTeste();
   console.log('');
   const naoRodaram = pulos ? `; ${pulos} PULARAM (ver os PULOU acima)` : '';
   if (falhas) { console.log(`lsp: ${feitos} checagens, ${falhas} FALHARAM${naoRodaram}`); process.exit(1); }
   console.log(`lsp: ${feitos} checagens, todas passaram${naoRodaram}`);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+/* A pasta dos arquivos de teste sai no fim, e também quando o teste quebra no
+ * meio: nada fica na pasta temporária do sistema (antes ela sobrava em toda
+ * rodada do `make check`). */
+function apagaPastaDeTeste() {
+  fs.rmSync(path.join(os.tmpdir(), 'ps_lsp_t'), { recursive: true, force: true });
+}
+
+main().catch((e) => { apagaPastaDeTeste(); console.error(e); process.exit(1); });

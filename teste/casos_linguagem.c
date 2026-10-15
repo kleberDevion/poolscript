@@ -1250,6 +1250,28 @@ const Caso CASOS_LINGUAGEM[] = {
   "[<socket fechado>]", NULL, 0 },
 { "str() e post() concordam no builtin",
   "post(\"[\" + str(len) + \"]\")\n", "[<builtin>]", NULL, 0 },
+/* As duas listas de opacos ainda divergiam (2026-10-15): o `str()` dava texto
+ * vazio pra PoolFile do loadFile, módulo e os registradores do jinker, e
+ * nenhuma das duas conhecia o Pattern nem a closure — `post([regex.compile("a")])`
+ * imprimia `[]`. Agora a `descreve_obj` é a lista única, e tipo sem descrição
+ * própria sai `<nome do tipo>`. O Pattern segue o repr do `re` do Python,
+ * com o padrão cortado em 200 caracteres (o `%.200R` do CPython). */
+{ "post, str, lista e f-string iguais pra Pattern, closure, PoolFile, modulo, enum, Entity e metodo",
+  "import regex\nimport os\nenum Cor {\n    RED\n}\nclass Conta {\n    int saldo = 0\n}\n"
+  "funct externo() {\n    int a = 1\n    funct dentro() {\n        return a\n    }\n    return dentro\n}\n"
+  "os.writeFile(\"a.txt\", \"x\")\n"
+  "list coisas = [regex.compile(\"a+\"), regex.compile(\"(\?i)ção\\\\d\"), externo(), os.loadFile(\"a.txt\", mode=\"rb\"), os, Cor, Conta, \"a\".upper]\n"
+  "for each c in coisas {\n    post(c, \"|\" + str(c) + \"|\", [c], f\"{c}\")\n}\n"
+  "str longo = str(regex.compile(\"x\" * 300))\npost(len(longo), longo[len(longo) - 3:])\n",
+  "regex.compile('a+') |regex.compile('a+')| [regex.compile('a+')] regex.compile('a+')\n"
+  "regex.compile('(\?i)ção\\\\d') |regex.compile('(\?i)ção\\\\d')| [regex.compile('(\?i)ção\\\\d')] regex.compile('(\?i)ção\\\\d')\n"
+  "<funct #4> |<funct #4>| [<funct #4>] <funct #4>\n"
+  "<PoolFile 'a.txt' (1 bytes)> |<PoolFile 'a.txt' (1 bytes)>| [<PoolFile 'a.txt' (1 bytes)>] <PoolFile 'a.txt' (1 bytes)>\n"
+  "<modulo os> |<modulo os>| [<modulo os>] <modulo os>\n"
+  "<enum Cor> |<enum Cor>| [<enum Cor>] <enum Cor>\n"
+  "<Entity Conta> |<Entity Conta>| [<Entity Conta>] <Entity Conta>\n"
+  "<metodo> |<metodo>| [<metodo>] <metodo>\n"
+  "215 xx)", NULL, 0 },
 
 /* ── dicionário multilinha x bloco de chaves ─────────────────────────────
  * O `{` é as DUAS coisas na linguagem: abre bloco e abre dicionário. Quando
