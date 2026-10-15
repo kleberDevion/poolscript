@@ -67,13 +67,9 @@ Neovim…) com completion type-aware e diagnóstico do parser real, veja
 
 ---
 
-## Apelidos (mesma lib, outro nome de import)
+## Um nome de import por lib
 
-| Você importa | É a mesma lib de |
-|---|---|
-| `db` | `psodbc` |
-| `mp` | `manpu` |
-| `qr` | `qrcode` |
-| `requests` | `request` |
-| `JSON` | `json` |
-| `dataentity` | `datasentity` |
+Cada lib tem um nome só. Os apelidos antigos (`db` pro `psodbc`, `mp` pro
+`manpu`, `qr` pro `qrcode`, `requests` pro `request`, `JSON` pro `json`,
+`dataentity` pro `datasentity`) saíram: `import db` é `ImportError: No module
+named 'db'`, e `JSON.parse(...)` é `NameError` antes de rodar.

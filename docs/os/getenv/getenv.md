@@ -25,17 +25,17 @@ SECRET_KEY="abc123"
 PORT="8080"
 ```
 
-No código, carregue o `.env` uma vez e leia:
+No código, é só ler: o `getenv` carrega sozinho o `.env` que achar subindo a
+partir da pasta atual (o mesmo que o [`dotenv.load()`](../../dotenv/load/load.md)
+sem argumento faz), sem passar por cima de variável que já está no ambiente.
+O `load()` serve pra apontar outro arquivo ou pra pegar o dict do que foi lido.
 
 ```
 import os
-from dotenv import load
-
-load()                                   # carrega o .env pro ambiente
 
 str banco = os.getenv("DB_PATH")         # "dados.db"
-str key = os.getenv("SECRET_KEY")      # "abc123"
-porta = int(os.getenv("PORT", "3000"))   # "8080" → 8080
+str key = os.getenv("SECRET_KEY")        # "abc123"
+int porta = int(os.getenv("PORT", "3000"))   # "8080" → 8080
 ```
 
 ---
@@ -70,5 +70,5 @@ vale no [`os.environ(nome)`](../environ/environ.md).
 
 ## Relacionados
 
-- `dotenv.load()` — carrega o `.env` (necessário antes de `getenv`)
-- [`os.environ()`](../environ/environ.md) — todas as variáveis de uma vez
+- [`dotenv.load()`](../../dotenv/load/load.md) — carrega um `.env` apontado, e devolve o dict
+- [`os.environ()`](../environ/environ.md) — todas as variáveis de uma vez (também vê o `.env`)

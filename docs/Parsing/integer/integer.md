@@ -1,7 +1,7 @@
 # `Parsing.integer(value, to_type="int")`
 
-Converte um valor pra **inteiro**, de forma tolerante — extrai os dígitos e
-trunca decimais (não arredonda).
+Converte um valor pra **inteiro**, de forma tolerante: acha o número dentro do
+texto e trunca a fração (não arredonda).
 
 ```
 Parsing.integer(value, to_type="int") -> int
@@ -14,14 +14,33 @@ Parsing.integer(value, to_type="int") -> int
 
 ## Uso
 
-```
+```ps
 import Parsing
 
-Parsing.integer("12 unidades")   # 12    (extrai o número)
-Parsing.integer("R$ 1.234")      # 1234
-Parsing.integer(123.7)           # 123   (trunca, não arredonda)
-Parsing.integer("abc")           # 0     (nada de número → 0)
+post(Parsing.integer("12 unidades"), Parsing.integer("R$ 1.234"), Parsing.integer("R$ 19,90"), Parsing.integer("12.7"))
+post(Parsing.integer("-5"), Parsing.integer(123.7), Parsing.integer("abc"), Parsing.integer(True))
+post(Parsing.integer("99999999999999999999"), Parsing.integer("1e5"))
 ```
+
+```saida
+12 1234 19 12
+-5 123 0 1
+99999999999999999999 100000
+```
+
+O número no texto segue a regra de [O número dentro do texto](../Parsing.md#o-número-dentro-do-texto):
+o primeiro trecho de dígitos, com o sinal colado antes, o milhar e o decimal do
+formato brasileiro e o expoente. Daí sai a parte inteira, de qualquer tamanho
+(`"99999999999999999999"` não trava em 9223372036854775807, como travava).
+
+Valor que não é texto:
+
+| Valor | Resultado |
+|---|---|
+| `int` | ele mesmo |
+| `flo` | truncado pra zero (`123.7` é 123, `-2.9` é -2), de qualquer tamanho; `nan` e infinito dão `0` |
+| `bool` | `1` ou `0` |
+| outro (lista, dict...) | o número do texto dele (`[7, 8]` é 7) |
 
 ---
 

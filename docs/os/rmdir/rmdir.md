@@ -28,7 +28,9 @@ os.rmdir("cache", force=True)      # remove a pasta e tudo dentro dela
 
 Com `force=False` (padrão), remover uma pasta que **tem arquivos** dá erro — é
 uma proteção. Com `force=True`, a pasta e **todo o conteúdo** são apagados
-recursivamente, sem confirmação e **sem volta**.
+recursivamente, sem confirmação e **sem volta**, em qualquer profundidade
+(antes desistia acima de 32 níveis de pasta, com "Directory not empty" e nada
+apagado).
 
 Um **link** dentro da pasta (link simbólico; no Windows também a junção de
 pasta) sai como link: o `force` não entra nele e não apaga o que está do

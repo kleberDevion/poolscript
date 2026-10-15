@@ -217,8 +217,10 @@ funct tipos_do_motor() {
         }
         # E os que o motor escreve DIRETO no stderr, sem passar pelo campo de
         # tipo — o `IndexOutOfBoundsWarning` e o caso, e e justamente o que a
-        # doc precisa citar pra avisar que ele NAO e capturavel.
-        for each m in regex.findall("\"([A-Z][A-Za-z]*(?:Error|Warning)): ", fonte) {
+        # doc precisa citar pra avisar que ele NAO e capturavel. O nome vem
+        # logo depois da aspa ou depois de `: ` (o `SyntaxWarning` sai como
+        # "%s:%d: SyntaxWarning: %s", com o arquivo e a linha na frente).
+        for each m in regex.findall("(?:\"|: )([A-Z][A-Za-z]*(?:Error|Warning)): ", fonte) {
             vistos[m] = 1
         }
     }

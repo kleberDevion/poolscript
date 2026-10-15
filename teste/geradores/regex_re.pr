@@ -1,0 +1,259 @@
+# Gera `teste/casos_regex_re.c`: cada caso é uma chamada do módulo `regex`
+# rodada no ./pool, com o resultado que ela dá hoje.
+#
+# O `re` do Python é o ORÁCULO. O `regex` da Jinga segue o `re` (os nomes, a
+# sintaxe do padrão, as frases de erro e a posição delas), e a doc do `re` é a
+# base da doc do `regex`. Os casos (`regex_re.json`) são os exemplos da doc do
+# `re` e do Regular Expression HOWTO, mais os de escape, flag, Unicode e frase
+# de erro. Divergência não some: vira caso com o comportamento da Jinga
+# travado e o comentário dizendo o que o Python daria. Como no `oraculo.pr`, o
+# CPython é ferramenta consultada: o driver dele é escrito em /tmp na hora e
+# apagado com o resto.
+#
+# Cada caso do JSON é [função, padrão, texto, ...]:
+#   ["fa", p, s]        findall          ["se", p, s]      search (bool)
+#   ["fm", p, s]        match: o texto INTEIRO (o `fullmatch` do `re`)
+#   ["su", p, r, s, n]  sub com count    ["sp", p, s, n]   split com maxsplit
+#   ["es", s]           escape           ["co", p]         compile (o .pattern)
+# No JSON, `<BS>` é uma barra (onde o editor trocaria a barra, o `u` e quatro
+# dígitos pelo caractere) e `<<U160>>` é o caractere de código 160.
+#
+# Rodar:  ./pool teste/geradores/regex_re.pr
+import os
+import sys
+import json
+import regex
+
+str SAIDA = "teste/casos_regex_re.c"
+str DADOS = "teste/geradores/regex_re.json"
+str TMP = "/tmp/ps_regex_re"
+str SENT = "<<|>>"
+
+
+# Os marcadores do JSON viram o texto de verdade.
+str funct dec(str s) {
+    str r = s.replace("<BS>", "\\")
+    int i = r.find("<<U")
+    while (i >= 0) {
+        int j = r.find(">>", i)
+        r = r[0:i] + chr(int(r[i + 3:j])) + r[j + 2:]
+        i = r.find("<<U")
+    }
+    return r
+}
+
+
+# Literal de texto que vale igual na Jinga e no Python: barra, aspa e
+# controle escapados; o resto (UTF-8 inclusive) como está.
+str funct lit(str s) {
+    str hexa = "0123456789abcdef"
+    str out = "\""
+    for each c in s {
+        int o = ord(c)
+        if c == "\\" {
+            out = out + "\\\\"
+        }
+        elif c == "\"" {
+            out = out + "\\\""
+        }
+        elif c == "\n" {
+            out = out + "\\n"
+        }
+        elif c == "\t" {
+            out = out + "\\t"
+        }
+        elif o < 32 or o == 127 {
+            out = out + "\\x" + hexa[o // 16] + hexa[o % 16]
+        }
+        else {
+            out = out + c
+        }
+    }
+    return out + "\""
+}
+
+
+# A chamada nos dois lados, [Jinga, Python]. O `match` da Jinga é o texto
+# inteiro e o `search` devolve bool: quem traduz é o lado do Python. Tudo sai
+# dentro de uma lista, pra os dois imprimirem a forma escapada (a Jinga não
+# tem `repr`, e o `post` de uma lista mostra o texto entre aspas).
+list funct chamada(list c) {
+    str f = c[0]
+    if f == "fa" {
+        str a = lit(dec(c[1])) + ", " + lit(dec(c[2]))
+        return ["[regex.findall(" + a + ")]", "[re.findall(" + a + ")]"]
+    }
+    if f == "se" {
+        str a = lit(dec(c[1])) + ", " + lit(dec(c[2]))
+        return ["[regex.search(" + a + ")]", "[re.search(" + a + ") is not None]"]
+    }
+    if f == "fm" {
+        str a = lit(dec(c[1])) + ", " + lit(dec(c[2]))
+        return ["[regex.match(" + a + ")]", "[re.fullmatch(" + a + ") is not None]"]
+    }
+    if f == "su" {
+        str a = lit(dec(c[1])) + ", " + lit(dec(c[2])) + ", " + lit(dec(c[3]))
+        str n = str(c[4])
+        return ["[regex.sub(" + a + ", " + n + ")]", "[re.sub(" + a + ", count=" + n + ")]"]
+    }
+    if f == "sp" {
+        str a = lit(dec(c[1])) + ", " + lit(dec(c[2]))
+        str n = str(c[3])
+        return ["[regex.split(" + a + ", " + n + ")]", "[re.split(" + a + ", maxsplit=" + n + ")]"]
+    }
+    if f == "es" {
+        str a = lit(dec(c[1]))
+        return ["[regex.escape(" + a + ")]", "[re.escape(" + a + ")]"]
+    }
+    str a = lit(dec(c[1]))
+    return ["[regex.compile(" + a + ").pattern]", "[re.compile(" + a + ").pattern]"]
+}
+
+
+# A saída de um lote, um pedaço por chamada. Sentinela, e não linha, porque
+# um resultado pode ter mais de uma linha.
+list funct fatia(str bruto) {
+    list partes = bruto.split(SENT + "\n")
+    if len(partes) > 0 and partes[len(partes) - 1] == "" {
+        partes.pop()
+    }
+    list limpas = []
+    for each s in partes {
+        if s.endswith("\n") {
+            limpas.append(s[0:len(s) - 1])
+        }
+        else {
+            limpas.append(s)
+        }
+    }
+    return limpas
+}
+
+
+# Texto de C. O `?` também sai escapado: `??(` é trígrafo.
+str funct cstr(str s) {
+    str e = s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+    e = e.replace("\t", "\\t").replace("?", "\\?")
+    return "\"" + e + "\""
+}
+
+
+str funct monta_caso(str nome, str expr, str saida) {
+    str fonte = cstr("import regex\npost(" + expr + ")\n")
+    if saida.startswith("<<ERRO>> ") {
+        # erro não pego: nada no stdout, `Tipo: frase` no stderr e o código 1
+        return "{ \"" + nome + "\", " + fonte + ", \"\", " + cstr(saida[len("<<ERRO>> "):]) + ", 1 },"
+    }
+    return "{ \"" + nome + "\", " + fonte + ", " + cstr(saida) + ", NULL, 0 },"
+}
+
+
+if __name__ == "main" {
+    list casos = json.parse(os.readFile(DADOS))
+    os.mkdir(TMP, exist_ok=True)
+    list jinga = []
+    list python = []
+    for each c in casos {
+        list par = chamada(c)
+        jinga.append(par[0])
+        python.append(par[1])
+    }
+    post("chamadas:", len(jinga))
+
+    # ── o lado Jinga, num programa só ─────────────────────────────────────
+    # O erro sai com o TIPO na frente (`IndexError: ...`): o caso gerado confere
+    # o stderr por trecho, e a frase sozinha pode ser o começo de outra
+    # (`unknown group name 'x'` x `unknown group name 'x' at position 4`).
+    list linhas = ["import regex"]
+    for each x in jinga {
+        linhas.append("try {")
+        linhas.append("    post(" + x + ")")
+        for each tipo in ["ValueError", "IndexError", "TypeError", "RuntimeError", "Exception"] {
+            linhas.append("} catch (" + tipo + " e) {")
+            linhas.append("    post(\"<<ERRO>> " + tipo + ":\", e)")
+        }
+        linhas.append("}")
+        linhas.append("post(\"" + SENT + "\")")
+    }
+    os.writeFile(TMP + "/todos.pr", "\n".join(linhas) + "\n")
+    os.cmd("./pool " + TMP + "/todos.pr > " + TMP + "/ps.out 2> " + TMP + "/ps.err")
+    list ps_out = fatia(os.readFile(TMP + "/ps.out"))
+    if len(ps_out) != len(jinga) {
+        post("ERRO:", len(jinga), "chamadas,", len(ps_out), "saidas.")
+        post("stderr:", os.readFile(TMP + "/ps.err")[0:400])
+        sys.exit(1)
+    }
+
+    # ── o oráculo: o `re` do CPython nas mesmas chamadas ──────────────────
+    list drv = ["import re, sys",
+                "SENT = '" + SENT + "'",
+                "for linha in open(sys.argv[1], encoding='utf-8').read().split('\\n'):",
+                "    if linha == '': continue",
+                "    try:",
+                "        out = repr(eval(linha, {'re': re}, {}))",
+                "    except Exception as e:",
+                "        out = '<<ERRO>> ' + str(e)",
+                "    sys.stdout.write(out + '\\n' + SENT + '\\n')"]
+    os.writeFile(TMP + "/driver.py", "\n".join(drv) + "\n")
+    os.writeFile(TMP + "/exprs.txt", "\n".join(python) + "\n")
+    os.cmd("python3 -I -W ignore " + TMP + "/driver.py " + TMP + "/exprs.txt > " + TMP + "/py.out 2>&1")
+    os.cmd("python3 --version > " + TMP + "/versao.txt 2>&1")
+    str versao = os.readFile(TMP + "/versao.txt").strip()
+    list py_out = fatia(os.readFile(TMP + "/py.out"))
+    if len(py_out) != len(jinga) {
+        post("ERRO no oraculo:", len(jinga), "chamadas,", len(py_out), "saidas.")
+        sys.exit(1)
+    }
+
+    # ── classifica ────────────────────────────────────────────────────────
+    list iguais = []
+    list difere = []
+    int i = 0
+    for each x in jinga {
+        str obtido = regex.sub(" \\(linha \\d+\\)$", "", ps_out[i])
+        str esp = py_out[i]
+        # com o Python compara só a frase: o tipo dele é outro (PatternError)
+        str so_frase = regex.sub("^<<ERRO>> [A-Za-z]+: ", "<<ERRO>> ", obtido)
+        if so_frase == esp {
+            iguais.append([x, obtido])
+        }
+        else {
+            difere.append([x, obtido, esp])
+        }
+        i += 1
+    }
+    post("  bate com o", versao + ":", len(iguais))
+    post("  diverge:", len(difere))
+    for each d in difere {
+        post("   ", d[0], "->", d[1], "|", d[2])
+    }
+
+    # ── o arquivo C ───────────────────────────────────────────────────────
+    list out = ["/*", " * GERADO por teste/geradores/regex_re.pr — nao edite na mao.",
+                " *",
+                " * Cada caso e uma chamada do modulo `regex` rodada no ./pool, com o que a",
+                " * linguagem da hoje. O oraculo na geracao foi o `re` do " + versao + ": caso",
+                " * marcado DIVERGE tem no comentario o que o Python daria.",
+                " *",
+                " * chamadas: " + str(len(jinga)) + "  |  batem: " + str(len(iguais)) + "  |  divergem: " + str(len(difere)),
+                " */",
+                "#include \"ps_teste.h\"", "", "const Caso CASOS_REGEX_RE[] = {"]
+    int n = 0
+    for each p in iguais {
+        out.append(monta_caso("regex_re #" + str(n), p[0], p[1]))
+        n += 1
+    }
+    out.append("")
+    out.append("/* ── divergem do Python: comportamento da Jinga, travado ────────────── */")
+    for each p in difere {
+        out.append("/* Python daria: " + p[2].replace("*/", "* /") + " */")
+        out.append(monta_caso("regex_re #" + str(n) + " (DIVERGE)", p[0], p[1]))
+        n += 1
+    }
+    out.append("};")
+    out.append("const int NC_REGEX_RE = N_CASOS(CASOS_REGEX_RE);")
+    os.writeFile(SAIDA, "\n".join(out) + "\n")
+    os.cmd("rm -rf " + TMP)
+    post("")
+    post(SAIDA + ":", n, "casos")
+}

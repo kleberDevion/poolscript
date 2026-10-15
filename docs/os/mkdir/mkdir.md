@@ -1,6 +1,8 @@
 # `os.mkdir(path, exist_ok=False)`
 
-Cria uma pasta (diretório).
+Cria uma pasta (diretório), e as pastas do caminho que faltarem, como o
+`os.makedirs` do Python. A barra no fim não muda nada: `"dados/2026/"` cria
+`dados/2026`.
 
 ```
 os.mkdir(path: str, exist_ok: bool = False) -> Null
@@ -27,6 +29,23 @@ Use `exist_ok=True` quando "garantir que a pasta exista" for a intenção:
 
 ```
 os.mkdir("cache", exist_ok=True)   # roda quantas vezes quiser, sem erro
+```
+
+O `exist_ok` aceita o que já existe só se for **pasta**. Sobre um arquivo, a
+pasta pedida não existe, e o erro diz isso (antes passava calado):
+
+```ps
+import os
+os.writeFile("nota.txt", "x")
+try {
+    os.mkdir("nota.txt", exist_ok=True)
+} catch (FileExistsError e) {
+    post(e)
+}
+```
+
+```saida
+[Errno 17] File exists: 'nota.txt' (linha 4)
 ```
 
 ---

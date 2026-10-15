@@ -42,7 +42,6 @@ funct junta_ps(alvo, acc) {
 
 
 if __name__ == "main" {
-    os.mkdir(TMP, exist_ok=True)
     grava = False
     alvos = []
     for each a in sys.argv[1:] {   # sys.argv[0] é o nome do script
@@ -57,6 +56,7 @@ if __name__ == "main" {
         post("uso: jinga scripts/converte_tudo.pr <arquivo|pasta> ... [--grava]")
         sys.exit(1)
     }
+    os.mkdir(TMP, exist_ok=True)
 
     arquivos = []
     for each a in alvos {
@@ -109,6 +109,8 @@ if __name__ == "main" {
             difere.append([caminho, str(a[0]) + "/" + str(b[0])])
         }
     }
+    # a pasta de trabalho sai antes do relato: nada fica no /tmp
+    os.rmdir(TMP, force=True)
 
     post("")
     post("ja em chaves (nada a fazer):", sem_dois_pontos)

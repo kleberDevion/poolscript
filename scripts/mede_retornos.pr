@@ -29,6 +29,7 @@ import os
 import sys
 import json
 import qrcode
+import regex
 
 TMP = "/tmp/ps_mede_retorno"
 META = TMP + "/meta.json"
@@ -432,12 +433,20 @@ addEnd(GRUPOS, {
     "env": "PATH='@TMP@/bin':\"$PATH\"",
     "prep": '''import os
 os.writeFile("@TMP@/os.txt", "a")
+os.writeFile("@TMP@/os.json", "{\\"a\\": 1}")
+os.writeFile("@TMP@/os2.json", "[1]")
+os.writeFile("@TMP@/os.csv", "a,b\\n1,2\\n")
 ''',
     "chamadas": [
         # sem o arquivo, os dois levantam FileNotFoundError: nao ha retorno Null
         ["os", "pathFile", 'os.pathFile("os.txt")'],
         ["os", "pathFolder", 'os.pathFolder("bin")'],
-        ["os", "loadFile", 'os.loadFile("@PNG@", "rb")'],
+        # o tipo e o do ARQUIVO (a doc: str | dict | list | PoolFile): uma
+        # amostra de cada. Com uma so (o PNG), o `--check` recusava
+        # `str t = os.loadFile("nota.txt")`, que roda e devolve str.
+        ["os", "loadFile", 'os.loadFile("@TMP@/os.txt")', 'os.loadFile("@TMP@/os.json")',
+         'os.loadFile("@TMP@/os2.json")', 'os.loadFile("@TMP@/os.csv")', 'os.loadFile("@PNG@", "rb")',
+         'os.loadFile("@PNG@", mode="r")'],
         ["os", "getenv", 'os.getenv("HOME")', 'os.getenv("MR_NAO_EXISTE")'],
         ["os", "readFile", 'os.readFile("@TMP@/os.txt")'],
         ["os", "writeFile", 'os.writeFile("@TMP@/os2.txt", "b")'],
@@ -1133,8 +1142,34 @@ funct mede_valores(meta, feitos) {
 }
 
 
+# A tabela gravada hoje, como {"dono|membro": "tipo"}: o `--so` reaproveita
+# dela o que nao mede de novo.
+dict funct tabela_gravada() {
+    dict t = {}
+    for each l in os.readFile(SAIDA).split("\n") {
+        list m = regex.findall("^\\s*\\{ \"([^\"]*)\", \"([^\"]*)\", \"([^\"]*)\" \\},$", l)
+        if len(m) == 1 {
+            t[m[0][0] + "|" + m[0][1]] = m[0][2]
+        }
+    }
+    return t
+}
+
+
 if __name__ == "main" {
     confere = "--confere" in sys.argv
+    # `--so os,regex`: mede so os grupos com esses nomes (o "nome" de GRUPOS)
+    # e reaproveita da tabela gravada o resto. E o que deixa medir de novo um
+    # membro que nao precisa de servico (o `os.loadFile`, o modulo `regex`)
+    # sem os bancos de teste no ar.
+    list so = []
+    int ia = 0
+    while (ia < len(sys.argv)) {
+        if sys.argv[ia] == "--so" and ia + 1 < len(sys.argv) {
+            so = sys.argv[ia + 1].split(",")
+        }
+        ia += 1
+    }
     os.mkdir(TMP, exist_ok=True)
     os.mkdir(TMP + "/bin", exist_ok=True)
     POOL = os.run(["readlink", "-f", sys.executable], capture=True).strip()
@@ -1162,18 +1197,36 @@ if __name__ == "main" {
         feitos["MailReader|" + m] = 1
     }
 
-    for each t in AMOSTRAS.keys() {
-        mede_tipo(t, meta, feitos)
+    if len(so) == 0 {
+        for each t in AMOSTRAS.keys() {
+            mede_tipo(t, meta, feitos)
+        }
+        mede_valores(meta, feitos)
     }
-    mede_valores(meta, feitos)
+    int achados_so = 0
     for each g in GRUPOS {
+        if len(so) > 0 and not so.contains(g["nome"]) {
+            continue
+        }
         post("medindo:", g["nome"])
         roda_grupo(g)
+        achados_so += 1
     }
-    post("medindo: jinker de pe")
-    mede_jinker()
-    post("medindo: mail")
-    mede_mail()
+    if len(so) > 0 and achados_so != len(so) {
+        post("--so: algum nome nao e grupo:", so)
+        os.rmdir(TMP, force=True)
+        sys.exit(1)
+    }
+    if len(so) == 0 {
+        post("medindo: jinker de pe")
+        mede_jinker()
+        post("medindo: mail")
+        mede_mail()
+    }
+    # a medicao acabou e o --metadata ja esta em `meta`: a pasta de trabalho
+    # sai aqui, antes de qualquer saida do script (o --confere e o erro
+    # tambem terminam sem deixar nada no /tmp)
+    os.rmdir(TMP, force=True)
 
     # ── cobertura: publicado x medido ───────────────────────────────────────
     publicados = {}
@@ -1190,12 +1243,40 @@ if __name__ == "main" {
     for each b in meta["builtins"] {
         publicados["builtins|" + b["nome"]] = b.get("retorna")
     }
+    finais = {}
+    # com `--so`, o que nao foi medido agora vem da tabela gravada; membro
+    # novo, que nao esta nela, tem que estar num grupo medido
+    dict gravada = {}
+    if len(so) > 0 {
+        gravada = tabela_gravada()
+    }
+    list fora = []
     for each chave in publicados.keys() {
         if not (chave in RES) and not (chave in NAO_RETORNA) {
-            addEnd(ERROS, chave + ": publicado no --metadata e nao medido")
+            if chave in gravada {
+                finais[chave] = gravada[chave]
+            }
+            elif len(so) > 0 {
+                # membro do sistema onde roda (a tabela e gerada no Linux, e o
+                # macOS publica, por exemplo, `sockets.TCP_KEEPALIVE`): fica
+                # fora, como ficaria se a tabela fosse gerada la
+                fora.append(chave)
+            }
+            else {
+                addEnd(ERROS, chave + ": publicado no --metadata e nao medido")
+            }
         }
     }
-    finais = {}
+    if len(fora) > 0 {
+        post("--so: fora da tabela (nao medidos agora e ausentes da gravada):", ", ".join(fora))
+    }
+    # e o contrario: o que a tabela gravada tem e este sistema nao publica
+    # (`sockets.AF_PACKET`, `TCP_KEEPIDLE`, que o macOS nao tem) continua nela
+    for each chave in gravada.keys() {
+        if not (chave in publicados) and not (chave in RES) {
+            finais[chave] = gravada[chave]
+        }
+    }
     for each chave in RES.keys() {
         if not (chave in publicados) {
             addEnd(ERROS, chave + ": medido, mas o --metadata nao publica esse membro")
@@ -1215,6 +1296,9 @@ if __name__ == "main" {
 
     diferentes = []
     for each chave in sorted(finais.keys()) {
+        if not (chave in publicados) {
+            continue       # do outro sistema, guardado pelo --so
+        }
         declarado = publicados.get(chave)
         if declarado != finais[chave] {
             addEnd(diferentes, chave.replace("|", ".").ljust(40) + " publicado: " + str(declarado) + "  medido: " + finais[chave])

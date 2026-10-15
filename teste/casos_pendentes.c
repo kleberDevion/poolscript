@@ -131,7 +131,7 @@ const Caso CASOS_PENDENTES[] = {
 { "open() de diretório é erro",
   "f = open(\"/tmp\")\npost(f.read())\n", "", "[Errno 21] Is a directory", 1 },
 { "writelines com bytes grava os bytes",
-  "p = \"/tmp/ps_teste_wl.bin\"\nusing open(p, \"wb\") as f { f.writelines([\"a\".encode()]) }\n"
+  "p = \"ps_teste_wl.bin\"\nusing open(p, \"wb\") as f { f.writelines([\"a\".encode()]) }\n"
   "using open(p, \"rb\") as f { post(f.read()) }\n",
   "b'a'", NULL, 0 },
 

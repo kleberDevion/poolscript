@@ -1,7 +1,8 @@
 # `s.sub(pattern, repl)`
 
 Substitui **todas** as ocorrências do padrão regex. Não há `count` aqui — a
-lib `regex` tem.
+lib `regex` tem. O padrão e o texto de troca (`\1`, `\g<nome>`, `\g<0>`,
+escapes) seguem a regra do [`regex.sub`](../../regex/sub/sub.md).
 
 ## Parâmetros
 

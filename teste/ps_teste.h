@@ -32,7 +32,8 @@ typedef struct {
      * sozinha e ninguém percebe — foi o que aconteceu com os 29 achados de
      * 2026-08-25, todos corrigidos, com o cabeçalho ainda dizendo o contrário. */
     int         pendente;
-    /* Sistema em que o caso vale: NULL = todos; "linux", "darwin", "windows".
+    /* Sistema em que o caso vale: NULL = todos; "linux", "darwin", "windows",
+     * ou "unix" (Linux e macOS: o recurso de POSIX que o Windows não tem).
      * Só pra caso que depende de um recurso que só UM sistema tem — o
      * `/dev/full` do Linux, que simula disco cheio. Nos outros ele não roda, e
      * o relatório diz quantos e quais: nunca conta como passou. */
@@ -58,5 +59,6 @@ extern const Caso CASOS_EQUIVALENCIA[]; extern const int NC_EQUIVALENCIA;
 extern const Caso CASOS_ORACULO[];      extern const int NC_ORACULO;
 extern const Caso CASOS_ROBUSTEZ[];     extern const int NC_ROBUSTEZ;
 extern const Caso CASOS_LIBS[];         extern const int NC_LIBS;
+extern const Caso CASOS_REGEX_RE[];     extern const int NC_REGEX_RE;
 
 #endif /* PS_TESTE_H */

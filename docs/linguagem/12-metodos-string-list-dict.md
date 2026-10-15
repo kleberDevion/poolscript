@@ -33,8 +33,9 @@ acima do teto (`"a".ljust(2 ** 70)` é `MemoryError` com o número pedido) ou
 | `swapcase()` | inverte a caixa de cada letra |
 | `casefold()` | minúsculo agressivo (comparação sem caixa) |
 
-A tabela de caixa cobre **ASCII, Latin-1/Ext-A, grego e cirílico**, com os dois
-casos que não são 1-pra-1:
+A tabela de caixa é a do **Unicode inteiro** (a mesma do `upper`/`lower` do
+Python: `"ա".upper()` é `"Ա"`, `"ɐ".upper()` é `"Ɐ"`), com os dois casos que
+não são 1-pra-1:
 
 ```ps
 post("ΣΟΦΟΣ".lower())   # σοφος  — Σ no fim de palavra vira ς, não σ

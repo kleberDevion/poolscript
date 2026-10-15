@@ -10,30 +10,29 @@
  * preenchidos) é o requisito, e os dois motores têm que dar a mesma resposta
  * — um autômato daria outra em casos como `(a|ab)c`.
  *
- * Suporta: classes, quantificadores (gulosos/preguiçosos), alternância,
- * grupos, âncoras `^ $ \A \Z \b \B`, `\d \w \s` e negações, retrovisor
- * (`\1`..`\9`), grupo nomeado `(?P<n>...)` (tratado como numerado), flags
- * inline global e com escopo `(?i)`/`(?m)`/`(?s)`/`(?i:...)`, e
- * lookahead/lookbehind `(?=)`/`(?!)`/`(?<=)`/`(?<!)` (lookbehind de largura
- * fixa). IGNORECASE dobra ASCII + Latin-1 (café/CAFÉ); outros
- * scripts (grego, cirílico) não dobram.
- *
- * O que NÃO suporta, e para com erro em vez de errar em silêncio: grupo
- * atômico `(?>...)`, condicional `(?(id)...)`, comentário `(?#...)`, e
- * `\D`/`\W`/`\S` negado DENTRO de `[...]`.
+ * A sintaxe é a do módulo `re` do Python (a referência, frase por frase, nos
+ * erros também): classes, quantificadores gulosos, preguiçosos e possessivos,
+ * alternância, grupos (capturante, `(?:...)`, nomeado `(?P<n>...)`, atômico
+ * `(?>...)`), retrovisor `\N` e `(?P=n)`, condicional `(?(n)sim|não)`,
+ * comentário `(?#...)`, âncoras `^ $ \A \Z \z \b \B`, `\d \w \s` e negações
+ * pelo Unicode, lookahead e lookbehind (este de largura fixa), os escapes
+ * `\a \f \n \r \t \v \\ \xHH \uHHHH \UHHHHHHHH` e octal, e as flags `(?aimsux)`
+ * global (só no começo) e com escopo `(?ims-ims:...)`. Além do `re`, a forma
+ * `(?<nome>...)` do grupo nomeado. Fora: `\N{nome}` (falta a tabela de nomes
+ * do Unicode) e a flag `L` (é de padrão em bytes).
  */
 #ifndef PS_REGEX_H
 #define PS_REGEX_H
 
-#define RX_MAX_GRUPOS 32
-
 typedef struct PSRegex PSRegex;
 
-/* Posições de início/fim de cada grupo, em BYTES. -1 = não participou. */
+/* Posições de início/fim de cada grupo (0..ngrupos), em BYTES. -1 = não
+ * participou. Os vetores são do PSRegex (do tamanho do padrão, sem teto de
+ * grupos) e valem até a próxima busca com ele. */
 typedef struct {
-    int inicio[RX_MAX_GRUPOS];
-    int fim[RX_MAX_GRUPOS];
-    int ngrupos;              /* quantos grupos capturantes o padrão tem */
+    int *inicio;
+    int *fim;
+    int  ngrupos;             /* quantos grupos capturantes o padrão tem */
 } RxCaptura;
 
 /* Compila. Devolve NULL e escreve em `erro` se o padrão for inválido ou usar
@@ -45,6 +44,12 @@ void     ps_regex_free(PSRegex *r);
  * grupo 0 = casamento inteiro), 0 se não achou, -1 em estouro de
  * backtracking. */
 int ps_regex_busca(PSRegex *r, const char *s, int len, int de, RxCaptura *cap);
+
+/* A mesma busca, sem aceitar o casamento VAZIO que comece em `proibido` (-1 =
+ * aceita): é o passo seguinte a um casamento vazio em p, que no `re` (desde o
+ * 3.7) recomeça em p e só aceita lá um casamento não vazio. Pular um caractere
+ * perdia o "a" de `findall("a*?", "aaa")`. */
+int ps_regex_busca_vazio(PSRegex *r, const char *s, int len, int de, int proibido, RxCaptura *cap);
 
 /* Casa a string INTEIRA (equivalente ao `fullmatch`). */
 int ps_regex_casa_tudo(PSRegex *r, const char *s, int len, RxCaptura *cap);
@@ -63,5 +68,9 @@ int ps_regex_ngrupos(const PSRegex *r);
 int ps_regex_grupo_por_nome(const PSRegex *r, const char *nome, int len);
 /* Nome do grupo `g` (1..ngrupos), ou NULL se o grupo não tem nome. */
 const char *ps_regex_nome_do_grupo(const PSRegex *r, int g);
+
+/* O nome serve pra grupo? A regra do `re` (`str.isidentifier`), a mesma do
+ * `(?P<nome>...)`, pro `\g<nome>` do texto de troca. */
+int ps_regex_nome_valido(const char *s, int len);
 
 #endif /* PS_REGEX_H */

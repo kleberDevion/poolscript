@@ -14,16 +14,23 @@ Parsing.JSONformatt(value, to_type="json") -> dict | list
 
 ## Uso
 
-```
+```ps
 import Parsing
 
-Parsing.JSONformatt('{"a": 1}')      # {"a": 1}   (parseia a string)
-Parsing.JSONformatt({"a": 1})        # {"a": 1}   (já é dict)
-Parsing.JSONformatt("texto inválido") # {}        (não deu → dict vazio)
+post(Parsing.JSONformatt("{\"a\": 1}"), Parsing.JSONformatt("[1, 2]"), Parsing.JSONformatt({"a": 1}))
+post(Parsing.JSONformatt("texto inválido"), Parsing.JSONformatt("123"))
+```
+
+```saida
+{'a': 1} [1, 2] {'a': 1}
+{} {}
 ```
 
 Diferente de [`json.parse`](../../json/parse/parse.md), não quebra com JSON
-inválido — devolve um dict vazio.
+inválido — devolve um dict vazio. O JSON válido que não é objeto nem lista
+(`"123"`, `"true"`) também dá o dict vazio: a função devolve `dict | list`, e
+antes um `dict d = Parsing.JSONformatt("123")` passava no `--check` e quebrava
+rodando.
 
 ---
 

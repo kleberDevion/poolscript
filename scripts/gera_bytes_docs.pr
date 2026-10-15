@@ -136,7 +136,8 @@ CASOS = {
 funct assinaturas_do_motor() {
     tmp = "/tmp/ps_meta_bytes.json"
     os.cmd("'" + sys.executable + "' --metadata > " + tmp)
-    meta = json.parse(open(tmp).read())
+    meta = json.parse(os.readFile(tmp))
+    os.cmd("rm -f " + tmp)
     out = {}
     for each m in meta["tipos"]["byte"] {
         ps = []
@@ -164,8 +165,10 @@ funct roda_exemplo(codigo) {
     }
     os.cmd("'" + sys.executable + "' /tmp/ps_doc_bytes.pr > /tmp/ps_doc_bytes.out 2>&1"
            + "; echo $? > /tmp/ps_doc_bytes.rc")
-    rc = int(open("/tmp/ps_doc_bytes.rc").read().strip())
-    saida = open("/tmp/ps_doc_bytes.out").read()
+    rc = int(os.readFile("/tmp/ps_doc_bytes.rc").strip())
+    saida = os.readFile("/tmp/ps_doc_bytes.out")
+    # os três arquivos saem na hora: nada fica no /tmp
+    os.cmd("rm -f /tmp/ps_doc_bytes.pr /tmp/ps_doc_bytes.out /tmp/ps_doc_bytes.rc")
     if rc != 0 {
         post("EXEMPLO QUEBRADO (rc " + str(rc) + "):")
         post(fonte)
@@ -229,7 +232,8 @@ if __name__ == "main" {
 
     tmp = "/tmp/ps_meta_bytes.json"
     os.cmd("'" + sys.executable + "' --metadata > " + tmp)
-    meta = json.parse(open(tmp).read())
+    meta = json.parse(os.readFile(tmp))
+    os.cmd("rm -f " + tmp)
 
     # todo método do motor tem que ter caso escrito aqui: método novo sem
     # entrada em CASOS reprova, senão a doc silenciosamente fica pra trás

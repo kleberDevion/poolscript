@@ -49,8 +49,17 @@ ninguém previu — não há lista consultada.
 |---|---|
 | tem byte NUL nos primeiros 8 KB | [`PoolFile`](../PoolFile/PoolFile.md) |
 | não tem, e o nome termina em `.json` | dict ou lista (JSON parseado) |
-| não tem, e o nome termina em `.csv` | lista de dicts (cabeçalho = chaves) |
+| não tem, e o nome termina em `.csv` | lista de dicts (cabeçalho = chaves), como o `csv.DictReader` do Python: linha vazia não é registro |
 | não tem | `str` (o texto) |
+
+O texto é UTF-8: o que não é sai como o `UnicodeDecodeError` do
+[`readFile`](../readFile/readFile.md) (pra outro charset, `os.readFile(path,
+encoding=...)`).
+
+Como o tipo depende do arquivo, o `--check` aceita a variável de qualquer um
+dos quatro (`str t = os.loadFile("nota.txt")`, `dict cfg =
+os.loadFile("config.json")`), e confere rodando: um `PoolFile p =
+os.loadFile("nota.txt")` é o erro de tipo da declaração, na linha dela.
 
 ```ps
 import os

@@ -109,8 +109,10 @@ static const char *dir_novo(char *out, size_t cap)
 #endif
 }
 
-/* Apaga o diretório do caso. Um nível de recursão basta: caso que cria
- * subpasta (`__DIR__/sub/`) não passa de dois. */
+/* Apaga o diretório do caso, com as subpastas que o caso criou (desce em
+ * todas: o que não sai com `unlink` é pasta). É também por isso que o caso
+ * grava com caminho relativo: o que fica na pasta dele some aqui, e o que vai
+ * pra um caminho fixo do `/tmp` sobra depois da rodada. */
 static void apaga_arvore(const char *dir)
 {
     DIR *d = opendir(dir);
@@ -139,6 +141,7 @@ static const Grupo GRUPOS[] = {
     { "oraculo",   CASOS_ORACULO,   0 },
     { "robustez",  CASOS_ROBUSTEZ,  0 },
     { "libs",      CASOS_LIBS,      0 },
+    { "regex_re",  CASOS_REGEX_RE,  0 },
 };
 
 /* preenchido em tempo de execução (os `extern int` vivem nos casos_*.c) */
@@ -155,6 +158,7 @@ static int tamanho_do_grupo(const char *g)
     if (!strcmp(g, "oraculo"))   return NC_ORACULO;
     if (!strcmp(g, "robustez"))  return NC_ROBUSTEZ;
     if (!strcmp(g, "libs"))      return NC_LIBS;
+    if (!strcmp(g, "regex_re"))  return NC_REGEX_RE;
     return 0;
 }
 
@@ -493,6 +497,23 @@ static const char *confere(const Caso *c, Resultado *r)
     return NULL;
 }
 
+/* O caso vale neste sistema? Sem `so`, vale em todos; senão, só no sistema
+ * daqui, e "unix" é Linux e macOS: recurso de POSIX (FIFO, sinal) que o
+ * Windows não tem — um caso só, em vez de uma cópia por sistema. O gerador
+ * do diferencial (`vale_aqui` em teste/geradores/diferencial.pr) segue a
+ * mesma regra. */
+static int vale_aqui(const Caso *c, const char *so_aqui)
+{
+    return !c->so || strcmp(c->so, so_aqui) == 0
+           || (strcmp(c->so, "unix") == 0 && strcmp(so_aqui, "windows") != 0);
+}
+
+/* O filtro da linha de comando casa com o grupo ou com o nome do caso. */
+static int no_filtro(const char *filtro, const char *grupo, const Caso *c)
+{
+    return !filtro || strstr(grupo, filtro) || strstr(c->nome, filtro);
+}
+
 /* ── principal ───────────────────────────────────────────────────────────── */
 
 int main(int argc, char **argv)
@@ -522,17 +543,15 @@ int main(int argc, char **argv)
     const char *so_aqui = "linux";
 #endif
     int total = 0, passou = 0, falhou = 0, outro_so = 0;
-    const char *nomes_outro[64];
     for (int g = 0; g < (int)(sizeof(GRUPOS) / sizeof(GRUPOS[0])); g++) {
         const char *nome_g = GRUPOS[g].grupo;
         int n = tamanho_do_grupo(nome_g);
         int cabecalho = 0;
         for (int i = 0; i < n; i++) {
             const Caso *c = &GRUPOS[g].casos[i];
-            if (filtro && !strstr(nome_g, filtro) && !strstr(c->nome, filtro)) continue;
-            if (c->so && strcmp(c->so, so_aqui) != 0) {
+            if (!no_filtro(filtro, nome_g, c)) continue;
+            if (!vale_aqui(c, so_aqui)) {
                 /* recurso que este sistema não tem: não roda, e é dito no fim */
-                if (outro_so < 64) nomes_outro[outro_so] = c->nome;
                 outro_so++;
                 continue;
             }
@@ -585,7 +604,16 @@ int main(int argc, char **argv)
 
     if (outro_so > 0) {
         printf("\n%d caso(s) valem so em outro sistema (este e %s) e nao rodaram:\n", outro_so, so_aqui);
-        for (int i = 0; i < outro_so && i < 64; i++) printf("  - %s\n", nomes_outro[i]);
+        /* todos pelo nome, numa 2a volta pelos grupos: a lista guardada
+         * tinha 64 lugares e cortava o resto calada */
+        for (int g = 0; g < (int)(sizeof(GRUPOS) / sizeof(GRUPOS[0])); g++) {
+            int n = tamanho_do_grupo(GRUPOS[g].grupo);
+            for (int i = 0; i < n; i++) {
+                const Caso *c = &GRUPOS[g].casos[i];
+                if (no_filtro(filtro, GRUPOS[g].grupo, c) && !vale_aqui(c, so_aqui))
+                    printf("  - %s\n", c->nome);
+            }
+        }
     }
     printf("\n%d casos: %d passaram, %d falharam\n", total, passou, falhou);
     if (total == 0) {

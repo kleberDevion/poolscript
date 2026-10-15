@@ -43,6 +43,23 @@ json.parse(texto)                   # {"a": 1}  (de volta)
 
 ---
 
+## Bordas
+
+- O JSON não tem `nan` nem infinito: `json.stringify(flo("nan"))` dá
+  `ValueError: Out of range float values are not JSON compliant: nan` (e
+  `inf`, `-inf`), em qualquer profundidade — dentro de lista e como valor
+  de dict também. Antes saía um texto (`[nan, inf]`) que o próprio
+  `json.parse` recusava.
+- A chave de dict sempre vira texto, porque o JSON só tem chave de texto:
+  `Null` vira `"null"` e `True`/`False` viram `"true"`/`"false"` (a mesma
+  grafia de quando são valor), e número vira o texto dele:
+
+```
+json.stringify({Null: 1, True: 2, 3: "x"})    # '{"null": 1, "true": 2, "3": "x"}'
+```
+
+---
+
 ## Relacionados
 
 - [`json.parse()`](../parse/parse.md) — o caminho inverso (texto → dados)

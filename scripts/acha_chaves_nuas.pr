@@ -22,15 +22,25 @@ ABRE_BLOCO = ["RPAREN", "IDENT", "IDENT_UPPER", "KW", "RBRACK"]
 # `os.cmd` mostra a saída do comando em vez de devolvê-la: os tokens vão pra
 # um arquivo e são lidos de lá (como o gera_realce.pr faz com o --metadata).
 funct tokens_de(texto) {
-    tmp = "/tmp/ps_chaves_nuas.pr"
-    tmp_toks = "/tmp/ps_chaves_nuas_tokens.json"
+    str tmp = "/tmp/ps_chaves_nuas.pr"
+    str tmp_toks = "/tmp/ps_chaves_nuas_tokens.json"
     os.writeFile(tmp, texto)
-    os.cmd(sys.executable + " --tokens < " + tmp + " > " + tmp_toks + " 2>/dev/null")
-    saida = os.readFile(tmp_toks)
-    if saida.strip() == "" or not saida.strip().startswith("[") {
+    os.cmd("rm -f " + tmp_toks)
+    os.cmd("'" + sys.executable + "' --tokens < " + tmp + " > " + tmp_toks + " 2>/dev/null")
+    str saida = ""
+    if os.exists(tmp_toks) {
+        saida = os.readFile(tmp_toks).strip()
+    }
+    # os dois arquivos saem na hora: nada fica no /tmp
+    os.cmd("rm -f " + tmp + " " + tmp_toks)
+    # Desde o 17.0.4 o `--tokens` devolve {"tokens": [...], "erros": [...]};
+    # antes, a lista pura. Lida como lista, a resposta nova virava "nenhum
+    # token" calado, e o script dizia que nao havia chave nua em lugar nenhum.
+    if saida == "" {
+        sys.stderr.write("[acha_chaves_nuas] AVISO: --tokens nao rodou\n")
         return []
     }
-    return json.parse(saida)
+    return json.parse(saida)["tokens"]
 }
 
 

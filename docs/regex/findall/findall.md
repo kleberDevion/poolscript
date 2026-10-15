@@ -1,43 +1,72 @@
 # `regex.findall(pattern, string)`
 
-Acha **todas** as ocorrências do padrão e devolve uma **lista** com elas
-(lista vazia se não achar nada).
+Devolve todos os casamentos de *pattern* em *string* que não se sobrepõem,
+numa lista de textos ou de tuplas. O texto é percorrido da esquerda pra
+direita, e os casamentos voltam na ordem em que foram achados. Casamentos
+vazios entram no resultado.
 
 ```
 regex.findall(pattern: str, string: str) -> list
 ```
 
+O resultado depende do número de grupos de captura do padrão. Sem grupo, uma
+lista de textos que casaram o padrão inteiro. Com exatamente um grupo, uma
+lista de textos que casaram esse grupo. Com vários grupos, uma lista de
+tuplas de textos que casaram os grupos. Grupos não capturantes (`(?:...)`)
+não mudam a forma do resultado. Um grupo que não participou do casamento vale
+`""`.
+
 ---
 
 ## Uso
 
-```
+```ps
 import regex
 
-# todos os números
-nums = regex.findall(r"\d+", "tenho 3 gatos, 2 cães e 10 peixes")
-post(nums)          # ["3", "2", "10"]
+post(regex.findall(r"\bf[a-z]*", "which foot or hand fell fastest"))
+post(regex.findall(r"(\w+)=(\d+)", "set width=20 and height=10"))
+post(regex.findall(r"\d+", "tenho 3 gatos, 2 cães e 10 peixes"))
+post(regex.findall(r"\w+", "olá, mundo!"))
+```
 
-# todas as palavras
-palavras = regex.findall(r"\w+", "olá, mundo!")
-post(palavras)      # ["olá", "mundo"]
+```saida
+['foot', 'fell', 'fastest']
+[('width', '20'), ('height', '10')]
+['3', '2', '10']
+['olá', 'mundo']
+```
 
-# todos os e-mails de um texto
-emails = regex.findall(r"[^@\s]+@[^@\s]+\.[^@\s]+", string)
+Um casamento não vazio pode começar logo depois de um casamento vazio (a
+regra do `re` desde o Python 3.7). Por isso o preguiçoso `a*?` acha o vazio e
+o `'a'` em cada posição:
+
+```ps
+import regex
+
+post(regex.findall(r"a*?", "aaa"))
+post(regex.findall(r"x*", "ção"))
+```
+
+```saida
+['', 'a', '', 'a', '', 'a', '']
+['', '', '', '']
 ```
 
 ---
 
-## `findall` vs `search`
+## `findall` x `search`
 
-- **[`search`](../search/search.md)** — acha a **primeira** ocorrência (ou nada).
-- **`findall`** — acha **todas**, numa lista.
+- **[`search`](../search/search.md)** diz se há um casamento (`bool`).
+- **`findall`** devolve **todos**, numa lista.
 
-Use `findall` pra extrair vários pedaços de uma vez.
+O `re` do Python tem também o `finditer`, que dá a posição de cada
+casamento; a Jinga não tem.
 
 ---
 
 ## Relacionados
 
-- [`regex.search()`](../search/search.md) — só a primeira
-- [`regex.sub()`](../sub/sub.md) — substituir as ocorrências
+- [regex](../regex.md) — a sintaxe do padrão
+- [`regex.search()`](../search/search.md) — há um casamento?
+- [`regex.sub()`](../sub/sub.md) — trocar os casamentos
+- [`regex.split()`](../split/split.md) — dividir onde o padrão casa

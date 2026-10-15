@@ -556,8 +556,8 @@ const Caso CASOS_LINGUAGEM[] = {
 /* ── arquivo ── */
 { "read(n) não consome o arquivo",
   "import os\n"
-  "os.writeFile(\"/tmp/ps_teste_leitura.txt\", \"abcdef\")\n"
-  "using open(\"/tmp/ps_teste_leitura.txt\") as f {\n"
+  "os.writeFile(\"ps_teste_leitura.txt\", \"abcdef\")\n"
+  "using open(\"ps_teste_leitura.txt\") as f {\n"
   "    post(f.read(3))\n"
   "    post(f.read(2))\n"
   "    post(f.read())\n"
@@ -1232,13 +1232,13 @@ const Caso CASOS_LINGUAGEM[] = {
  * mostrava `<sqlite3.Connection>` e `str(conn)` devolvia STRING VAZIA. Agora
  * os dois leem da mesma `descreve_obj`. */
 { "str() de conexao sqlite",
-  "import sqlite3\nc = sqlite3.connect(\"/tmp/ps_str1.db\")\npost(\"[\" + str(c) + \"]\")\n",
+  "import sqlite3\nc = sqlite3.connect(\"ps_str1.db\")\npost(\"[\" + str(c) + \"]\")\n",
   "[<sqlite3.Connection>]", NULL, 0 },
 { "str() de arquivo aberto",
-  "using open(\"/tmp/ps_str2.txt\", \"w\") as f {\n"
+  "using open(\"ps_str2.txt\", \"w\") as f {\n"
   "    post(\"[\" + str(f) + \"]\")\n"
   "}\n",
-  "[<arquivo /tmp/ps_str2.txt>]", NULL, 0 },
+  "[<arquivo ps_str2.txt>]", NULL, 0 },
 { "str() de gerador",
   "funct g() {\n"
   "    yield 1\n"
@@ -1250,6 +1250,28 @@ const Caso CASOS_LINGUAGEM[] = {
   "[<socket fechado>]", NULL, 0 },
 { "str() e post() concordam no builtin",
   "post(\"[\" + str(len) + \"]\")\n", "[<builtin>]", NULL, 0 },
+/* As duas listas de opacos ainda divergiam (2026-10-15): o `str()` dava texto
+ * vazio pra PoolFile do loadFile, módulo e os registradores do jinker, e
+ * nenhuma das duas conhecia o Pattern nem a closure — `post([regex.compile("a")])`
+ * imprimia `[]`. Agora a `descreve_obj` é a lista única, e tipo sem descrição
+ * própria sai `<nome do tipo>`. O Pattern segue o repr do `re` do Python,
+ * com o padrão cortado em 200 caracteres (o `%.200R` do CPython). */
+{ "post, str, lista e f-string iguais pra Pattern, closure, PoolFile, modulo, enum, Entity e metodo",
+  "import regex\nimport os\nenum Cor {\n    RED\n}\nclass Conta {\n    int saldo = 0\n}\n"
+  "funct externo() {\n    int a = 1\n    funct dentro() {\n        return a\n    }\n    return dentro\n}\n"
+  "os.writeFile(\"a.txt\", \"x\")\n"
+  "list coisas = [regex.compile(\"a+\"), regex.compile(\"(\?i)ção\\\\d\"), externo(), os.loadFile(\"a.txt\", mode=\"rb\"), os, Cor, Conta, \"a\".upper]\n"
+  "for each c in coisas {\n    post(c, \"|\" + str(c) + \"|\", [c], f\"{c}\")\n}\n"
+  "str longo = str(regex.compile(\"x\" * 300))\npost(len(longo), longo[len(longo) - 3:])\n",
+  "regex.compile('a+') |regex.compile('a+')| [regex.compile('a+')] regex.compile('a+')\n"
+  "regex.compile('(\?i)ção\\\\d') |regex.compile('(\?i)ção\\\\d')| [regex.compile('(\?i)ção\\\\d')] regex.compile('(\?i)ção\\\\d')\n"
+  "<funct #4> |<funct #4>| [<funct #4>] <funct #4>\n"
+  "<PoolFile 'a.txt' (1 bytes)> |<PoolFile 'a.txt' (1 bytes)>| [<PoolFile 'a.txt' (1 bytes)>] <PoolFile 'a.txt' (1 bytes)>\n"
+  "<modulo os> |<modulo os>| [<modulo os>] <modulo os>\n"
+  "<enum Cor> |<enum Cor>| [<enum Cor>] <enum Cor>\n"
+  "<Entity Conta> |<Entity Conta>| [<Entity Conta>] <Entity Conta>\n"
+  "<metodo> |<metodo>| [<metodo>] <metodo>\n"
+  "215 xx)", NULL, 0 },
 
 /* ── dicionário multilinha x bloco de chaves ─────────────────────────────
  * O `{` é as DUAS coisas na linguagem: abre bloco e abre dicionário. Quando
@@ -3121,15 +3143,15 @@ const Caso CASOS_LINGUAGEM[] = {
   "f = open(\"/dev/full\", \"w\")\n"
   "f.writelines([\"x\" * 200000])\n", "", "OSError: [Errno 28] No space left on device", 1, NULL, 0, "linux" },
 { "write() continua devolvendo quantos bytes gravou",
-  "using open(\"/tmp/ps_t_w.txt\", \"w\") as f {\n"
+  "using open(\"ps_t_w.txt\", \"w\") as f {\n"
   "    post(f.write(\"abcde\"), f.write(\"xy\"))\n"
   "}\n", "5 2", NULL, 0 },
 { "close() em arquivo bom nao levanta nada",
-  "f = open(\"/tmp/ps_t_c.txt\", \"w\")\n"
+  "f = open(\"ps_t_c.txt\", \"w\")\n"
   "f.write(\"ok\")\n"
   "f.close()\n"
   "f.close()\n"
-  "post(open(\"/tmp/ps_t_c.txt\").read())\n", "ok", NULL, 0 },
+  "post(open(\"ps_t_c.txt\").read())\n", "ok", NULL, 0 },
 
 /* ── o runner nao pode travar com muita saida ───────────────────────────────
  * Cada cano guarda 64 KB. O runner lia o stdout ATÉ O FIM e só então o stderr:
@@ -3381,7 +3403,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "", "AttributedValueError: parâmetro a de fala() esperava Animal, recebeu Carro", 2 },
 { "PoolFile serve de tipo de parametro — o handle do open() E PoolFile",
   "funct pega(PoolFile f) { post(type(f)) }\n"
-  "using open(\"/tmp/ps_param_tipo.txt\", \"w\") as f { pega(f) }\n",
+  "using open(\"ps_param_tipo.txt\", \"w\") as f { pega(f) }\n",
   "PoolFile", NULL, 0 },
 { "char no parametro pede UM caractere",
   "funct f(char c) { post(c) }\nf(\"a\")\nf(\"ab\")\n",
@@ -3411,7 +3433,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * aceitava OBJ_POOLFILE, contra a regra "todo arquivo e PoolFile" — o mesmo
  * `type()` ja respondia "PoolFile" pros dois. */
 { "open() e PoolFile tambem pro `is` e pra declaracao tipada",
-  "using open(\"/tmp/ps_param_tipo2.txt\", \"w\") as f {\n"
+  "using open(\"ps_param_tipo2.txt\", \"w\") as f {\n"
   "    post(f is PoolFile)\n"
   "    PoolFile g = f\n"
   "    post(type(g))\n"
@@ -4194,10 +4216,11 @@ const Caso CASOS_LINGUAGEM[] = {
 { "Pattern.sub diz QUAL argumento veio errado",
   "import regex\nregex.compile(\"a\").sub(\"x\", 5)\n", "",
   "TypeError: sub() argument 2 must be str, not int", 1 },
-/* Grupo inexistente na substituicao saia TypeError; padrao invalido em
- * rx_compila ja era ValueError — duas classes pra "esta regex nao serve". */
-{ "grupo inexistente na substituicao e ValueError, como o padrao invalido",
-  "import regex\ntry { regex.sub(\"(a)\", \"\\\\g<zz>\", \"xax\") } catch (ValueError e) { post(\"pegou:\", e) }\n",
+/* Grupo inexistente na substituicao saia TypeError. O nome que nao existe e
+ * IndexError, a classe que o `re` da (o resto do texto de troca invalido e
+ * ValueError, como o padrao invalido). */
+{ "nome de grupo inexistente na substituicao e IndexError, como no re",
+  "import regex\ntry { regex.sub(\"(a)\", \"\\\\g<zz>\", \"xax\") } catch (IndexError e) { post(\"pegou:\", e) }\n",
   "pegou: unknown group name 'zz' (linha 2)", NULL, 0 },
 /* fullmatch e match sao a mesma funcao, mas cada uma assina o proprio nome. */
 { "fullmatch assina fullmatch no erro, nao match",
@@ -6150,10 +6173,10 @@ const Caso CASOS_LINGUAGEM[] = {
   "} catch (Quebrou e) {\n"
   "    post(\"pegou:\", e)\n"
   "}\n"
-  "for each v in gen_u(\"/tmp/ps_6d_gen_u.txt\") {\n"
+  "for each v in gen_u(\"ps_6d_gen_u.txt\") {\n"
   "    break\n"
   "}\n"
-  "post(\"using fechou:\", len(os.readFile(\"/tmp/ps_6d_gen_u.txt\")))\n"
+  "post(\"using fechou:\", len(os.readFile(\"ps_6d_gen_u.txt\")))\n"
   "Object g = gen(\"variavel\")\n"
   "for each v in g {\n"
   "    break\n"
@@ -6242,7 +6265,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "flo funct ajuda(int x) {\n"
   "    return 10 / x\n"
   "}\n"
-  "using open(\"/tmp/ps_6d_g06.txt\", \"w\") as h {\n"
+  "using open(\"ps_6d_g06.txt\", \"w\") as h {\n"
   "    flo z = ajuda(0)\n"
   "}\n",
   "", ", linha 5\n  |     flo z = ajuda(0)", 1 },
@@ -6323,7 +6346,7 @@ const Caso CASOS_LINGUAGEM[] = {
   NULL, 0 },
 { "using fecha no return, no break e no continue (lote 6d)",
   "import os\n"
-  "str CAM = \"/tmp/ps_6d_using.txt\"\n"
+  "str CAM = \"ps_6d_using.txt\"\n"
   "Null funct grava() {\n"
   "    using open(CAM, \"w\") as h {\n"
   "        h.write(\"dado\")\n"
@@ -6349,7 +6372,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "depois do return: 4\ndepois do break: 5\ndepois do continue: 4", NULL, 0 },
 { "erro que atravessa um using mantem o tipo (lote 6d)",
   "try {\n"
-  "    using open(\"/tmp/ps_6d_tipo.txt\", \"w\") as h {\n"
+  "    using open(\"ps_6d_tipo.txt\", \"w\") as h {\n"
   "        flo z = 1 / 0\n"
   "    }\n"
   "} catch (ZeroDivisionError e) {\n"
@@ -6358,7 +6381,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "    post(\"outro tipo:\", e)\n"
   "}\n"
   "try {\n"
-  "    using open(\"/tmp/ps_6d_tipo.txt\", \"w\") as h2 {\n"
+  "    using open(\"ps_6d_tipo.txt\", \"w\") as h2 {\n"
   "        raise Quebrou(\"dentro do using\")\n"
   "    }\n"
   "} catch (Quebrou e) {\n"
@@ -6369,7 +6392,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "pegou ZeroDivisionError: division by zero (linha 3)\npegou Quebrou: dentro do using (linha 12)", NULL, 0 },
 { "sys.exit dentro de using fecha o recurso e sai com o codigo (lote 6d)",
   "import sys\n"
-  "using open(\"/tmp/ps_6d_exit.txt\", \"w\") as h {\n"
+  "using open(\"ps_6d_exit.txt\", \"w\") as h {\n"
   "    h.write(\"x\")\n"
   "    sys.exit(3)\n"
   "}\n"

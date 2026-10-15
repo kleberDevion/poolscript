@@ -244,4 +244,7 @@ if __name__ == "main" {
     if not so_http {
         carga_motor()
     }
+    # a pasta de trabalho (programas, logs dos servidores) sai no fim: nada
+    # fica no /tmp
+    os.rmdir(PASTA, force=True)
 }

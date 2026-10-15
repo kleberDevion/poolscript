@@ -1323,6 +1323,17 @@ else
     srv_tls.kill()
 }
 
+# as pastas dos dois alvos saem no fim, com os servidores já parados: a
+# rodada não deixa nada no /tmp (antes a do HTTP ficava, e a do TLS só era
+# apagada no começo da rodada seguinte)
+for each pasta in [PASTA, "/tmp/ps_jinker_tls"]
+{
+    if os.exists(pasta)
+    {
+        os.rmdir(pasta, force=True)
+    }
+}
+
 # ── relatório ───────────────────────────────────────────────────────────────
 post("")
 post("jinker:", ok, "checagens passaram")

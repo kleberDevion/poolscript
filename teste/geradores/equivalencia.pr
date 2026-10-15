@@ -138,11 +138,17 @@ F("async lista", [
   'async funct d(n):\n    return n * 2\npost(gather(d(1), d(2), d(3)))'])
 
 # ── declaração tipada x conversão explícita ─────────────────────────────────
-for each par in [['"7"', "int", "int"], ["1", "flo", "flo"], ["64", "char", "chr"]] {
+# Sem conversão implícita (2026-09-09): `int x = "7"` e `flo x = 1` são erro,
+# e a equivalência que sobrevive é a explícita, `int x = int("7")` ==
+# `int("7")`. O `char x = 64` não é conversão (regra dele) e fica. A correção
+# tinha sido feita à mão no arquivo gerado; regerado, ele perdia as duas
+# famílias por "divergentes".
+for each par in [['"7"', "int", 'int("7")', "int"], ["1", "flo", "flo(1)", "flo"], ["64", "char", "64", "chr"]] {
     v = par[0]
     t = par[1]
-    conv = par[2]
-    F(f"{t} de {v}", [f'{t} x = {v}\npost(x)', f'post({conv}({v}))'])
+    decl = par[2]
+    conv = par[3]
+    F(f"{t} de {v}", [f'{t} x = {decl}\npost(x)', f'post({conv}({v}))'])
 }
 
 # ── string: método x fatia x laço ───────────────────────────────────────────
@@ -205,8 +211,8 @@ for each par in [["[1, 7, 7, 2, 7]", "7"], ["[1, 2, 3]", "9"]] {
 # `catch` é obrigatório na linguagem (não existe try/finally puro), então a
 # forma equivalente ao `using` usa close() explícito.
 F("using fecha o arquivo", [
-  'using open("/tmp/ps_eq.txt", "w") as f:\n    f.write("x")\nusing open("/tmp/ps_eq.txt") as g:\n    post(g.read())',
-  'f = open("/tmp/ps_eq2.txt", "w")\nf.write("x")\nf.close()\ng = open("/tmp/ps_eq2.txt")\npost(g.read())\ng.close()'])
+  'using open("ps_eq.txt", "w") as f:\n    f.write("x")\nusing open("ps_eq.txt") as g:\n    post(g.read())',
+  'f = open("ps_eq2.txt", "w")\nf.write("x")\nf.close()\ng = open("ps_eq2.txt")\npost(g.read())\ng.close()'])
 
 # ── f-string x concatenação x format ────────────────────────────────────────
 for each par in [["1", '"x"'], ["-3", '"ção"']] {
@@ -264,7 +270,11 @@ funct roda(src, n) {
     using open(fonte, "w") as f {
         f.write(fim)
     }
-    os.cmd("./pool " + fonte + " > " + TMP + "/out 2> " + TMP + "/err; echo $? > " + TMP + "/rc")
+    # roda DENTRO da pasta de trabalho, como o runner roda cada caso na
+    # pasta dele: o programa que grava arquivo grava lá, e a pasta sai no
+    # fim. Antes rodava na raiz do repositório, e a família do `using`
+    # gravava em caminho fixo do /tmp, que sobrava em toda rodada da suíte.
+    os.cmd("cd " + TMP + " && '" + sys.executable + "' p" + str(n) + ".pr > out 2> err; echo $? > rc")
     saida = open(TMP + "/out").read()
     erro = open(TMP + "/err").read()
     rc = int(open(TMP + "/rc").read().strip())
@@ -359,6 +369,7 @@ if __name__ == "main" {
     using open(SAIDA, "w") as f {
         f.write("\n".join(out) + "\n")
     }
+    os.rmdir(TMP, force=True)
 
     post("casos gerados:", n, "  familias fora (divergentes):", len(fora))
     for each x in fora {

@@ -3293,7 +3293,12 @@ static int tp_ligado_no_escopo(C *c, Unidade *u, const char *nome)
 static int tp_nome_inexistente(C *c, Unidade *u, const char *nome)
 {
     if (tp_ligado_no_escopo(c, u, nome)) return 0;
-    if (ps_nome_pre_ligado(nome) || ps_tipo_info(nome)) return 0;
+    /* Nome de TIPO só existe como nome se a VM o liga: o parser faz do tipo
+     * sozinho uma carga de tipo (`post(JSON)` é o `dict`), mas seguido de `(`
+     * ou `.` ele é nome comum, e rodando o apelido não existe (`JSON.parse`,
+     * `String.upper`, `char(1)` davam NameError rodando e passavam aqui,
+     * porque a pergunta era "está na tabela de tipos?"). */
+    if (ps_nome_pre_ligado(nome)) return 0;
     if (c->usa_jinker && (!strcmp(nome, "request") || !strcmp(nome, "channel"))) return 0;
     return 1;
 }
