@@ -776,8 +776,6 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(gather(d(1), d(2), d(3)))\n"
   "\n",
   "[2, 4, 6]", NULL, 0 },
-/* Sem conversao implicita (2026-09-09): `int x = "7"` e erro. A equivalencia
- * que sobrevive e a explicita — `int x = int("7")` == `int("7")`. */
 { "equiv: int de '7' [1/2]",
   "int x = int(\"7\")\n"
   "post(x)\n"
@@ -1072,19 +1070,19 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "0", NULL, 0 },
 { "equiv: using fecha o arquivo [1/2]",
-  "using open(\"/tmp/ps_eq.txt\", \"w\") as f {\n"
+  "using open(\"ps_eq.txt\", \"w\") as f {\n"
   "    f.write(\"x\")\n"
   "}\n"
-  "using open(\"/tmp/ps_eq.txt\") as g {\n"
+  "using open(\"ps_eq.txt\") as g {\n"
   "    post(g.read())\n"
   "}\n"
   "\n",
   "x", NULL, 0 },
 { "equiv: using fecha o arquivo [2/2]",
-  "f = open(\"/tmp/ps_eq2.txt\", \"w\")\n"
+  "f = open(\"ps_eq2.txt\", \"w\")\n"
   "f.write(\"x\")\n"
   "f.close()\n"
-  "g = open(\"/tmp/ps_eq2.txt\")\n"
+  "g = open(\"ps_eq2.txt\")\n"
   "post(g.read())\n"
   "g.close()\n"
   "\n",

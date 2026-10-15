@@ -138,11 +138,17 @@ F("async lista", [
   'async funct d(n):\n    return n * 2\npost(gather(d(1), d(2), d(3)))'])
 
 # ── declaração tipada x conversão explícita ─────────────────────────────────
-for each par in [['"7"', "int", "int"], ["1", "flo", "flo"], ["64", "char", "chr"]] {
+# Sem conversão implícita (2026-09-09): `int x = "7"` e `flo x = 1` são erro,
+# e a equivalência que sobrevive é a explícita, `int x = int("7")` ==
+# `int("7")`. O `char x = 64` não é conversão (regra dele) e fica. A correção
+# tinha sido feita à mão no arquivo gerado; regerado, ele perdia as duas
+# famílias por "divergentes".
+for each par in [['"7"', "int", 'int("7")', "int"], ["1", "flo", "flo(1)", "flo"], ["64", "char", "64", "chr"]] {
     v = par[0]
     t = par[1]
-    conv = par[2]
-    F(f"{t} de {v}", [f'{t} x = {v}\npost(x)', f'post({conv}({v}))'])
+    decl = par[2]
+    conv = par[3]
+    F(f"{t} de {v}", [f'{t} x = {decl}\npost(x)', f'post({conv}({v}))'])
 }
 
 # ── string: método x fatia x laço ───────────────────────────────────────────
