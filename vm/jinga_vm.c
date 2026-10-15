@@ -63,6 +63,7 @@
 #include "ps_gmp_min.h"
 #include "ps_so.h"
 #include "ps_unicode.h"
+#include "ps_c.h"           /* a biblioteca padrão do C na Jinga (Plano 1) */
 #include <pthread.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -166,6 +167,8 @@ typedef enum {
     OBJ_REGEX,     /* regex.compile() — padrao ja compilado (re.Pattern) */
     OBJ_CELULA,    /* caixa de uma variável capturada por funct aninhada */
     OBJ_CLOSURE,   /* funct aninhada + as células que ela capturou */
+    OBJ_CFUNC,     /* função da biblioteca padrão do C (`printf`): o índice na tabela de ps_c.h */
+    OBJ_CDADO,     /* dado do C (ponteiro, array, struct, caixa), com o tipo do C */
     OBJ__COUNT     /* sentinela: nº de tipos — tamanho da tabela de GC */
 } ObjType;
 
@@ -863,6 +866,25 @@ typedef struct {
     const char *params;   /* nomes dos parâmetros, pra chamada nomeada */
 } PSNativa;
 
+/* Função da biblioteca padrão do C como valor (`printf`, `f = strlen`): o
+ * índice na tabela de vm/ps_c.h, de onde saem o nome, o protótipo e o
+ * endereço (achado na primeira chamada). */
+typedef struct {
+    Obj     obj;
+    int32_t idx;
+} PSCFuncObj;
+
+/* Dado do C. `ptr` é o endereço onde as operações agem: o valor de um
+ * ponteiro (`int *`, `FILE *`) ou a memória de um array, struct ou caixa.
+ * `tam_dono` > 0 = a memória é deste objeto e sai com ele (como a variável
+ * do C, que acaba com o escopo dela); 0 = é de outro (o ponteiro). */
+typedef struct {
+    Obj      obj;
+    PSCTipo *tipo;
+    void    *ptr;
+    size_t   tam_dono;
+} PSCDado;
+
 /* Dict COMPACTO: um array denso em ordem de inserção
  * mais uma tabela de índices que resolve o hash.
  *
@@ -963,6 +985,10 @@ static int model_campo_aceita(int32_t tipo, const Value *v);
 #define EH_NATIVA(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_NATIVA)
 #define COMO_MODULO(v) ((PSModulo*)(v).as.obj)
 #define COMO_NATIVA(v) ((PSNativa*)(v).as.obj)
+#define EH_CFUNC(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_CFUNC)
+#define COMO_CFUNC(v)  ((PSCFuncObj*)(v).as.obj)
+#define EH_CDADO(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_CDADO)
+#define COMO_CDADO(v)  ((PSCDado*)(v).as.obj)
 #define EH_MODEL(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_MODEL)
 #define EH_ENUM(v)     ((v).t == V_OBJ && (v).as.obj->type == OBJ_ENUM)
 #define COMO_MODEL(v)  ((PSModel*)(v).as.obj)
@@ -1503,6 +1529,15 @@ struct VM_ {
     /* o frame e o topo da pilha de onde o último erro pego saiu (ver
      * `msg_do_pego`) */
     int     pego_fp, pego_sp;
+    /* O C na Jinga (Plano 1), no fim da estrutura pra não mexer na posição
+     * de nada que o JIT lê. `c_errno`: o errno do C, guardado logo depois de
+     * cada chamada a uma função do C (a própria VM mexe no errno do sistema
+     * entre uma linha e a seguinte); `c_slots_errno`: os globais que o nome
+     * `errno` ocupa (no programa e em cada módulo que o lê), atualizados
+     * junto. */
+    int      c_errno;
+    int32_t *c_slots_errno;
+    int      c_nslots_errno, c_cap_slots_errno;
 };
 
 /* Handler de `try`: onde saltar e qual estado restaurar. Guardar fp/sp/
@@ -1804,6 +1839,11 @@ static uint32_t hash_valor(const Value *v)
                 free(s);
                 return h;
             }
+            /* o ponteiro do C e a função do C: pelo que a igualdade compara */
+            if (v->as.obj->type == OBJ_CDADO && ((PSCDado *)v->as.obj)->tipo->kind == PSC_PONT)
+                return (uint32_t)((uint64_t)(uintptr_t)((PSCDado *)v->as.obj)->ptr * 2654435761u);
+            if (v->as.obj->type == OBJ_CFUNC)
+                return 0xc0f0u ^ (uint32_t)((PSCFuncObj *)v->as.obj)->idx;
             return (uint32_t)(uintptr_t)v->as.obj;
         default:
             return (uint32_t)(uintptr_t)v->as.obj;
@@ -2294,6 +2334,15 @@ static void fin_regex(VM *vm, Obj *o) {
     free(r->pat);
 }
 
+/* o dado do C solta a memória de que é dono; o ponteiro não é dono de nada */
+static void fin_cdado(VM *vm, Obj *o) {
+    PSCDado *d = (PSCDado *)o;
+    if (d->tam_dono) {
+        free(d->ptr);
+        vm->alocado -= d->tam_dono;
+    }
+}
+
 /* Finalizers de lib/servidor (lote 2): DEFINIDOS mais abaixo, junto do
  * libera_obj, porque usam tipos/funções de lib que só existem lá. Aqui só o
  * forward-declare pra a GC_INFO poder referenciá-los. Cada um faz o
@@ -2366,6 +2415,8 @@ static const GcInfo GC_INFO[OBJ__COUNT] = {
     [OBJ_QRIMAGE]    = { GC_LEAF, 0, NULL, 0, fin_qrimage },
     [OBJ_MANPU_FILE] = { GC_LEAF, 0, NULL, 0, fin_manpu_file },
     [OBJ_BIGINT]     = { GC_LEAF, 0, NULL, sizeof(PSBigInt), fin_bigint },
+    [OBJ_CFUNC]      = { GC_LEAF, 0, NULL, sizeof(PSCFuncObj), NULL },
+    [OBJ_CDADO]      = { GC_LEAF, 0, NULL, sizeof(PSCDado), fin_cdado },
 };
 
 /* Boot: recusa qualquer ObjType que não declarou seu tracer (GC_UNSET).
@@ -3433,6 +3484,14 @@ static int val_iguais(const Value *a, const Value *b)
      * continua batendo com a igualdade.) */
     if (a->t == V_FUNC   && b->t == V_FUNC)   return a->as.proto  == b->as.proto;
     if (a->t == V_NATIVE && b->t == V_NATIVE) return a->as.nativa == b->as.nativa;
+    /* O C: dois ponteiros são iguais quando apontam pro mesmo endereço, como
+     * no C (o array, a struct e a caixa só são iguais a si mesmos); duas
+     * funções do C, quando são a mesma da tabela. O ponteiro nulo é o `Null`
+     * da Jinga, que só é igual a Null. (`hash_valor` lê o mesmo.) */
+    if (EH_CDADO(*a) && EH_CDADO(*b) && COMO_CDADO(*a)->tipo->kind == PSC_PONT
+            && COMO_CDADO(*b)->tipo->kind == PSC_PONT)
+        return COMO_CDADO(*a)->ptr == COMO_CDADO(*b)->ptr;
+    if (EH_CFUNC(*a) && EH_CFUNC(*b)) return COMO_CFUNC(*a)->idx == COMO_CFUNC(*b)->idx;
     if (a->t == V_OBJ && b->t == V_OBJ) return a->as.obj == b->as.obj;
     return 0;
 }
@@ -3689,6 +3748,23 @@ static int descreve_obj(const Value *v, char *buf, size_t cap)
         case OBJ_CLOSURE:   /* a funct aninhada que capturou: igual à funct */
             snprintf(buf, cap, "<funct #%d>", (int)((PSClosure *)o)->proto);
             return 1;
+        case OBJ_CFUNC:     /* a função do C, com o protótipo do padrão */
+            snprintf(buf, cap, "<funct do C %.200s>", ps_c_decl(((PSCFuncObj *)o)->idx));
+            return 1;
+        case OBJ_CDADO: {
+            /* o ponteiro como o C o mostraria num cast: `(FILE *) 0x7f…`; o
+             * nulo, `(void *) 0x0`. O array, a struct e a caixa: o tipo e
+             * onde moram. */
+            /* O endereço em hexadecimal com `0x`, escrito aqui: o `%p` de cada
+             * sistema escreve diferente (o nulo sai `(nil)` na glibc). */
+            PSCDado *d = (PSCDado *)o;
+            unsigned long long ender = (unsigned long long)(uintptr_t)d->ptr;
+            if (d->tipo->kind == PSC_PONT)
+                snprintf(buf, cap, "(%.200s) 0x%llx", d->tipo->nome, ender);
+            else
+                snprintf(buf, cap, "<%.200s em 0x%llx>", d->tipo->nome, ender);
+            return 1;
+        }
         case OBJ_CLASS:
             snprintf(buf, cap, "<Entity %.200s>", ((PSClass *)o)->nome);
             return 1;
@@ -4081,10 +4157,28 @@ static int txt_put(TxtBuf *t, const char *s, int n)
     return 0;
 }
 
+/* O `dentro` do valor_para_texto: 0 é o topo, 1 é dentro de um container, e
+ * VPT_STR é o topo do str(), onde o texto do C (`char *`, `char buf[64]`)
+ * sai como texto (c_texto_em). Os erros dele voltam como código, porque o
+ * erro precisa da VM: VPT_NAO_UTF8 (os bytes ficam no buffer, pro nativa_str
+ * dizer qual byte) e VPT_C_GRANDE. A pergunta fica no ramo dos objetos
+ * opacos, onde número e texto não chegam: no começo do nativa_str ela custava
+ * 5 instruções por str(). O VPT_STR é negativo e o topo é `dentro <= 0`
+ * (VPT_TOPO): o mesmo teste de sinal do `!dentro` de antes, com a mesma
+ * previsão do compilador. Medido com o cachegrind: com `dentro != 1` a
+ * previsão invertia e o texto dentro de lista pagava uma instrução, e com
+ * `!(dentro & 1)` toda chamada pagava uma. */
+#define VPT_STR       (-1)
+#define VPT_TOPO(d)   ((d) <= 0)
+#define VPT_NAO_UTF8  1
+#define VPT_C_GRANDE  2
+#define VPT_NAO_TEXTO 3   /* do c_texto_em: o dado do C não é texto */
+static int c_texto_em(TxtBuf *t, const Value *v);
+
 static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
 {
     char tmp[64];
-    if (!dentro) ps_prof_texto = 0;   /* topo: zera a pilha de ciclo */
+    if (VPT_TOPO(dentro)) ps_prof_texto = 0;   /* topo: zera a pilha de ciclo */
     switch (v->t) {
         case V_NULL:   return txt_put(t, "Null", 4);
         case V_BOOL:   return v->as.b ? txt_put(t, "True", 4) : txt_put(t, "False", 5);
@@ -4114,7 +4208,7 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
             }
             if (v->as.obj->type == OBJ_STRING) {
                 PSString *st = (PSString *)v->as.obj;
-                if (!dentro) return txt_put(t, st->chars, st->len);
+                if (VPT_TOPO(dentro)) return txt_put(t, st->chars, st->len);
                 char *r = repr_str_dup(st->chars, st->len);
                 if (!r) return -1;
                 int rc = txt_put(t, r, (int)strlen(r));
@@ -4182,6 +4276,10 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
                  * `post(conn)` mostrava `<sqlite3.Connection>`. Fica no fim,
                  * depois dos tipos de conteúdo: chamada na frente de todo
                  * valor, ela custava 0,5% no `str(i)` e na f-string. */
+                if (dentro == VPT_STR && v->as.obj->type == OBJ_CDADO) {
+                    int rc = c_texto_em(t, v);
+                    if (rc != VPT_NAO_TEXTO) return rc;
+                }
                 char d[512];
                 if (descreve_obj(v, d, sizeof(d))) return txt_put(t, d, (int)strlen(d));
             }
@@ -4608,11 +4706,16 @@ static int devolve_texto(VM *vm, Value *out, const char *buf, int len)
     return 0;
 }
 
+static int str_falhou(VM *vm, int rc, const char *b, int nb);
+
 static int nativa_str(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "str", 1);
     TXTBUF_AUTO t = {0};
-    if (valor_para_texto(&t, &args[0], 0) != 0) { BERRO(vm, "MemoryError", "sem memoria em str()"); }
+    /* `t.b` e `t.n` por valor, e não `&t`: com o endereço, o compilador o
+     * guardava num registrador em toda chamada, só pro caminho do erro */
+    int rc = valor_para_texto(&t, &args[0], VPT_STR);
+    if (rc != 0) return str_falhou(vm, rc, t.b, t.n);
     int r = devolve_texto(vm, out, t.b ? t.b : "", t.n);
     return r;
 }
@@ -4726,11 +4829,14 @@ static int texto_para_flo(const char *s, int len, int so_ascii, double *out)
     int k = i, neg = 0;
     if (s[k] == '+' || s[k] == '-') { neg = s[k] == '-'; k++; }
     int resto = j - k;
-    if ((resto == 3 || resto == 8) && strncasecmp(s + k, "infinity", (size_t)resto) == 0) {
+    /* a 1ª letra antes do strncasecmp: `1.5` tem o tamanho de `inf` e de
+     * `nan`, e o número comum não chega na chamada */
+    char c0 = resto > 0 ? (char)(s[k] | 0x20) : 0;
+    if (c0 == 'i' && (resto == 3 || resto == 8) && strncasecmp(s + k, "infinity", (size_t)resto) == 0) {
         *out = neg ? -INFINITY : INFINITY;
         return 0;
     }
-    if (resto == 3 && strncasecmp(s + k, "nan", 3) == 0) { *out = NAN; return 0; }
+    if (c0 == 'n' && resto == 3 && strncasecmp(s + k, "nan", 3) == 0) { *out = NAN; return 0; }
     char *b = malloc((size_t)(j - i) + 2);
     if (!b) return -1;
     int n = 0, dig = 0, dig_exp = 0, ponto = 0, expo = 0;
@@ -4943,6 +5049,11 @@ static const char *nome_do_tipo_valor(Value v)
     if (v.t == V_OBJ) {
         ObjType ot = v.as.obj->type;
         if (ot == OBJ_INSTANCE) return COMO_INST(v)->classe->nome;
+        /* o C: a função é `funct`, como a builtin; o dado é o tipo do C dele
+         * (`FILE *`, `int[6]`). No código, e não na tabela de nomes: a
+         * entrada da tabela seria uma relocação a mais na partida. */
+        if (ot == OBJ_CFUNC) return "funct";
+        if (ot == OBJ_CDADO) return COMO_CDADO(v)->tipo->nome;
         if (ot == OBJ_JREG) {
             PSJReg *rg = (PSJReg *)v.as.obj;
             return rg->kind == JREG_MIDDLEWARE ? NOMES_JREG[0]
@@ -7922,7 +8033,9 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
                 case OBJ_CLOSURE:
                 case OBJ_BOUND:
                 case OBJ_NATIVA:
-                case OBJ_METODO_NAT:  t = "funct"; break;
+                case OBJ_METODO_NAT:
+                case OBJ_CFUNC:       t = "funct"; break;
+                case OBJ_CDADO:       t = COMO_CDADO(alvo)->tipo->nome; break;   /* o tipo do C */
                 case OBJ_MODULO:      t = "module"; break;
                 case OBJ_MODEL:       t = "PoolModel"; break;
                 case OBJ_ENUM:        t = "enum";   break;
@@ -10369,11 +10482,17 @@ static const int TAM_TABELA[] = {
     (int)(sizeof(METODOS_TUPLA) / sizeof(METODOS_TUPLA[0])),
 };
 
-/* Resolve `alvo.nome`. `.type()` vem primeiro porque vale pra todo valor. */
+/* Resolve `alvo.nome`. `.type()` vem primeiro porque vale pra todo valor.
+ * A 1ª letra é comparada antes do strcmp: o strcmp da glibc escolhe o caminho
+ * pelo endereço dos dois textos (perto do fim da página vai pelo lento), e o
+ * texto da tabela muda de lugar a cada build. Com a letra, quase nenhum nome
+ * chega no strcmp, e o custo da busca não depende mais de onde o texto caiu. */
 static int acha_metodo_valor(Value alvo, const char *nome, int *tab, int *idx)
 {
     for (int i = 0; i < TAM_TABELA[T_MET_UNIV]; i++)
-        if (strcmp(METODOS_UNIV[i].nome, nome) == 0) { *tab = T_MET_UNIV; *idx = i; return 0; }
+        if (METODOS_UNIV[i].nome[0] == nome[0] && strcmp(METODOS_UNIV[i].nome, nome) == 0) {
+            *tab = T_MET_UNIV; *idx = i; return 0;
+        }
     int qual;
     /* Só texto tem método de texto. Número já recebeu por conversão calada
      * (`(150).isdigit()` virava `"150".isdigit()`) — conversão que ninguém
@@ -10414,7 +10533,9 @@ static int acha_metodo_valor(Value alvo, const char *nome, int *tab, int *idx)
     else if (EH_REGEX(alvo))   qual = T_MET_REGEX;
     else return -1;
     for (int i = 0; i < TAM_TABELA[qual]; i++)
-        if (strcmp(TABELAS[qual][i].nome, nome) == 0) { *tab = qual; *idx = i; return 0; }
+        if (TABELAS[qual][i].nome[0] == nome[0] && strcmp(TABELAS[qual][i].nome, nome) == 0) {
+            *tab = qual; *idx = i; return 0;
+        }
     return -1;
 }
 
@@ -25644,9 +25765,580 @@ static const MembroMod MOD_JINKER[] = {
     { "JinkerRequest", mod_jk_new_request, 0, NULL },
 };
 
+/* ── o C na Jinga (Plano 1): a chamada da biblioteca padrão ───────────────
+ * A função do C é um valor (`PSCFuncObj`) que a carga do programa liga no
+ * global do nome (`c_liga_global`, pelo `globais_c` que o compilador marca).
+ * Chamar converte cada argumento pro tipo do protótipo, chama pela libffi
+ * (vm/ps_c.c) e converte o retorno. A conversão é a da FFI do LuaJIT: o
+ * número continua da Jinga, e o tipo do C manda na memória do C (o inteiro dá
+ * a volta no tamanho dele, como a atribuição do C). Sem conversão implícita
+ * entre famílias: `flo` não entra onde o C pede inteiro, nem texto onde pede
+ * número. O argumento a mais das variádicas tem o tipo que o formato pede,
+ * como o C promove (`%d` int, `%ld` long, `%f` double). O ponteiro nulo é o
+ * `Null` da Jinga, nos dois sentidos. */
+
+#define C_MAX_ARGS 32
+
+static PSCFuncObj *c_nova_funcao(VM *vm, int32_t idx)
+{
+    PSCFuncObj *f = calloc(1, sizeof *f);
+    if (!f) return NULL;
+    f->obj.type = OBJ_CFUNC; f->obj.marked = 0;
+    f->obj.next = vm->objetos; vm->objetos = (Obj *)f;
+    f->idx = idx;
+    vm->alocado += sizeof *f;
+    return f;
+}
+
+static PSCDado *c_novo_dado(VM *vm, PSCTipo *tipo, void *ptr, size_t tam_dono)
+{
+    PSCDado *d = calloc(1, sizeof *d);
+    if (!d) return NULL;
+    d->obj.type = OBJ_CDADO; d->obj.marked = 0;
+    d->obj.next = vm->objetos; vm->objetos = (Obj *)d;
+    d->tipo = tipo; d->ptr = ptr; d->tam_dono = tam_dono;
+    vm->alocado += sizeof *d + tam_dono;
+    return d;
+}
+
+/* o ponteiro do C como valor da Jinga; o nulo é o Null */
+static int c_valor_ponteiro(VM *vm, PSCTipo *tipo, void *ptr, Value *out)
+{
+    if (!ptr) { *out = MK_NULL(); return 0; }
+    PSCDado *d = c_novo_dado(vm, tipo, ptr, 0);
+    if (!d) BERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(d);
+    return 0;
+}
+
+/* inteiro sem sinal do C como int da Jinga: acima de 2^63 vira o inteiro grande */
+static Value c_valor_u64(VM *vm, uint64_t u)
+{
+    if (u <= (uint64_t)INT64_MAX) return MK_INT((int64_t)u);
+    mpz_t z, um;
+    mpz_init(z); mpz_init(um);
+    ps_mpz_set_i64(z, (int64_t)(u >> 1));
+    mpz_mul_2exp(z, z, 1);
+    mpz_set_si(um, (long)(u & 1));
+    mpz_add(z, z, um);
+    Value v = mk_from_mpz(vm, z);
+    mpz_clear(z); mpz_clear(um);
+    return v;
+}
+
+/* os 64 bits de baixo de um inteiro grande, com a volta do C (módulo 2^64:
+ * o negativo vira o complemento de dois) */
+static uint64_t c_mpz_mod64(mpz_srcptr z)
+{
+    mpz_t m, r;
+    mpz_init(m); mpz_init(r);
+    mpz_set_si(m, 1);
+    mpz_mul_2exp(m, m, 64);
+    mpz_fdiv_r(r, z, m);
+    uint64_t u = 0;
+#if defined(_WIN32)
+    ps_mpz_mag64(r, &u);
+#else
+    u = (uint64_t)mpz_get_ui(r);
+#endif
+    mpz_clear(m); mpz_clear(r);
+    return u;
+}
+
+/* grava no tamanho do tipo: o que passa dá a volta, como a atribuição do C */
+static void c_grava_int(void *mem, size_t tam, uint64_t u)
+{
+    switch (tam) {
+        case 1: { uint8_t v = (uint8_t)u;   memcpy(mem, &v, 1); break; }
+        case 2: { uint16_t v = (uint16_t)u; memcpy(mem, &v, 2); break; }
+        case 4: { uint32_t v = (uint32_t)u; memcpy(mem, &v, 4); break; }
+        default: memcpy(mem, &u, 8); break;
+    }
+}
+
+/* o tipo sem typedef e sem const: o que o C compara */
+static PSCTipo *c_tipo_nu(PSCTipo *t)
+{
+    while (t && (t->canon || t->sem_const)) t = t->canon ? t->canon : t->sem_const;
+    return t;
+}
+
+static int c_eh_char(PSCTipo *t)
+{
+    t = c_tipo_nu(t);
+    return t && t->kind == PSC_INT && t->eh_char;
+}
+
+/* `A` e `B` são o mesmo tipo do C, fora o const e o typedef */
+static int c_mesmo_tipo(PSCTipo *a, PSCTipo *b)
+{
+    a = c_tipo_nu(a); b = c_tipo_nu(b);
+    if (a == b) return 1;
+    if (!a || !b || a->kind != b->kind) return 0;
+    switch (a->kind) {
+        case PSC_PONT:  return c_mesmo_tipo(a->alvo, b->alvo);
+        case PSC_ARRAY: return a->n == b->n && c_mesmo_tipo(a->alvo, b->alvo);
+        case PSC_FUNC:
+            if (a->nparams != b->nparams || a->variadica != b->variadica || !c_mesmo_tipo(a->ret, b->ret))
+                return 0;
+            for (int i = 0; i < a->nparams; i++)
+                if (!c_mesmo_tipo(a->params[i], b->params[i])) return 0;
+            return 1;
+        default: return 0;   /* escalar e struct: o mesmo objeto, visto acima */
+    }
+}
+
+/* O dado `d` entra onde o C pede o ponteiro `t`? O ponteiro vale pelo que
+ * aponta, o array pelo primeiro elemento (o array do C vira ponteiro), e a
+ * struct ou a caixa pelo endereço delas. Vale como no C: `void *` com
+ * qualquer um, o mesmo tipo apontado, e o `const` só pode ser acrescentado. */
+static int c_ponteiro_aceita(PSCTipo *t, PSCDado *d)
+{
+    PSCTipo *alvo_param = t->alvo;
+    PSCTipo *alvo_arg = d->tipo->kind == PSC_PONT  ? d->tipo->alvo
+                      : d->tipo->kind == PSC_ARRAY ? d->tipo->alvo : d->tipo;
+    if (alvo_arg->constante && !alvo_param->constante) return 0;
+    PSCTipo *a = c_tipo_nu(alvo_param), *b = c_tipo_nu(alvo_arg);
+    if (a->kind == PSC_VOID || b->kind == PSC_VOID) return 1;
+    if (c_eh_char(a) && c_eh_char(b)) return 1;   /* char, signed char e unsigned char */
+    return c_mesmo_tipo(a, b);
+}
+
+static int c_erro_arg(VM *vm, const char *fn, int pos, const char *conv, PSCTipo *t, Value v)
+{
+    if (conv)
+        BERRO(vm, "TypeError", "%s: %s espera %s, recebeu %s", fn, conv, t->nome, nome_do_tipo_valor(v));
+    BERRO(vm, "TypeError", "%s(): o argumento %d é %s no C, e veio %s", fn, pos + 1, t->nome,
+          nome_do_tipo_valor(v));
+}
+
+/* Um valor da Jinga na memória do C, no tipo `t` (o parâmetro do protótipo
+ * ou o que o formato pede). `mem` tem 16 bytes alinhados (cabe o long
+ * double). `conv` é a conversão do formato, pra frase do erro. */
+static int c_arg(VM *vm, const char *fn, int pos, Value v, PSCTipo *t, void *mem, const char *conv)
+{
+    PSCTipo *nu = c_tipo_nu(t);
+    switch (nu->kind) {
+        case PSC_INT:
+        case PSC_BOOL: {
+            uint64_t u;
+            if (v.t == V_INT) u = (uint64_t)v.as.i;
+            else if (v.t == V_BOOL) u = v.as.b ? 1 : 0;
+            else if (EH_BIGINT(v)) u = c_mpz_mod64(COMO_BIGINT(v)->v);
+            else return c_erro_arg(vm, fn, pos, conv, t, v);
+            if (nu->kind == PSC_BOOL) u = u != 0;
+            c_grava_int(mem, nu->tam, u);
+            return 0;
+        }
+        case PSC_FLUT: {
+            /* o inteiro grande vira flo pela regra do `flo()`: arredondado
+             * ao mais próximo, e OverflowError quando não cabe */
+            double d = 0.0;
+            if (EH_BIGINT(v) && bigint_para_double(COMO_BIGINT(v)->v, &d) != 0)
+                BERRO(vm, "OverflowError", "%s", MSG_INT_FLO);
+            if (nu == &ps_c_ldouble) {
+                long double ld;
+                if (v.t == V_FLOAT) ld = v.as.d;
+                else if (v.t == V_INT) ld = (long double)v.as.i;
+                else if (EH_BIGINT(v)) ld = d;
+                else return c_erro_arg(vm, fn, pos, conv, t, v);
+                memcpy(mem, &ld, sizeof ld);
+                return 0;
+            }
+            if (v.t == V_FLOAT) d = v.as.d;
+            else if (v.t == V_INT) d = (double)v.as.i;
+            else if (!EH_BIGINT(v)) return c_erro_arg(vm, fn, pos, conv, t, v);
+            if (nu == &ps_c_float) { float f = (float)d; memcpy(mem, &f, sizeof f); }
+            else memcpy(mem, &d, sizeof d);
+            return 0;
+        }
+        case PSC_PONT: {
+            void *p = NULL;
+            if (v.t == V_NULL) {
+                p = NULL;
+            } else if (EH_CDADO(v)) {
+                if (!c_ponteiro_aceita(nu, COMO_CDADO(v))) return c_erro_arg(vm, fn, pos, conv, t, v);
+                p = COMO_CDADO(v)->ptr;
+            } else if (EH_STRING(v) || EH_BYTES(v)) {
+                /* O texto da Jinga entra só onde o C não escreve (`const char
+                 * *`, `const void *`): ele é imutável. A memória dele vale
+                 * enquanto a chamada dura (ele está na pilha da VM). */
+                PSCTipo *alvo = nu->alvo;
+                PSCTipo *alvo_nu = c_tipo_nu(alvo);
+                int de_ler = alvo->constante && (c_eh_char(alvo_nu) || alvo_nu->kind == PSC_VOID);
+                if (!de_ler && (c_eh_char(alvo_nu) || alvo_nu->kind == PSC_VOID))
+                    BERRO(vm, "TypeError", "%s() altera o texto (%s), e o %s da Jinga só entra como "
+                          "const char *: copie pra um buffer", fn, t->nome, nome_do_tipo_valor(v));
+                if (!de_ler) return c_erro_arg(vm, fn, pos, conv, t, v);
+                p = (void *)COMO_STRING(v)->chars;
+            } else {
+                return c_erro_arg(vm, fn, pos, conv, t, v);
+            }
+            memcpy(mem, &p, sizeof p);
+            return 0;
+        }
+        default:
+            return c_erro_arg(vm, fn, pos, conv, t, v);
+    }
+}
+
+/* ponteiro ou array de char (`char *`, `const char *`, `char buf[64]`): o
+ * texto do C */
+static int c_eh_texto(PSCTipo *t)
+{
+    t = c_tipo_nu(t);
+    return t && (t->kind == PSC_PONT || t->kind == PSC_ARRAY) && c_eh_char(t->alvo);
+}
+
+/* O texto C de um valor: o str da Jinga, ou o ponteiro/array de char. */
+static const char *c_texto_de(Value v)
+{
+    if (EH_STRING(v)) return COMO_STRING(v)->chars;
+    if (EH_CDADO(v) && c_eh_texto(COMO_CDADO(v)->tipo)) return (const char *)COMO_CDADO(v)->ptr;
+    return NULL;
+}
+
+/* O texto do C no str(): o valor_para_texto chega aqui com todo dado do C no
+ * topo do str() (o VPT_STR). Os bytes até o `\0`, como o C os lê (o array, no
+ * máximo o tamanho dele), vão pra `t`, e têm que ser UTF-8, como todo texto
+ * da Jinga: senão é o VPT_NAO_UTF8, e o str_falhou levanta o
+ * UnicodeDecodeError do `bytes.decode()`. O dado que não é texto volta
+ * VPT_NAO_TEXTO e sai descrito, como no post(). O memchr, e não o strnlen,
+ * que seria um nome a mais pro carregador na partida. Fora de linha: embutida
+ * no valor_para_texto, ela pesava em toda chamada dele. */
+static __attribute__((noinline, cold)) int c_texto_em(TxtBuf *t, const Value *v)
+{
+    PSCDado *d = COMO_CDADO(*v);
+    if (!c_eh_texto(d->tipo)) return VPT_NAO_TEXTO;
+    PSCTipo *tn = c_tipo_nu(d->tipo);
+    const unsigned char *p = d->ptr;
+    size_t len;
+    if (tn->kind == PSC_ARRAY) {
+        const unsigned char *fim = memchr(p, '\0', tn->n);
+        len = fim ? (size_t)(fim - p) : tn->n;
+    } else {
+        len = strlen((const char *)p);
+    }
+    if (len > (size_t)INT32_MAX) return VPT_C_GRANDE;
+    if (txt_put(t, (const char *)p, (int)len) != 0) return -1;
+    for (int i = 0; i < (int)len; ) {
+        if (p[i] < 0x80) { i++; continue; }
+        uint32_t cp;
+        int k = utf8_le_estrito(p, (int)len, i, &cp);
+        if (k < 0) return VPT_NAO_UTF8;
+        i += k;
+    }
+    return 0;
+}
+
+/* O erro do str(), fora do caminho de todo dia: o texto do C que não é UTF-8
+ * (os bytes estão em `b`; o confere_utf8 diz qual), o que passa do tamanho de
+ * um texto da Jinga, e a falta de memória. */
+static __attribute__((noinline, cold)) int str_falhou(VM *vm, int rc, const char *b, int nb)
+{
+    if (rc == VPT_NAO_UTF8 && confere_utf8(vm, b, nb) != 0) return -1;
+    if (rc == VPT_C_GRANDE) BERRO(vm, "MemoryError", "texto do C grande demais pra str()");
+    BERRO(vm, "MemoryError", "sem memoria em str()");
+}
+
+/* O tipo de um nome do padrão (`intmax_t`, `size_t`), da tabela. */
+static PSCTipo *c_tipo(const char *nome) { return ps_c_tipo_por_nome(nome); }
+
+/* Os tipos dos argumentos a mais de uma variádica, pelo formato (C11 7.21.6.1
+ * no printf, 7.21.6.2 no scanf). Cada conversão consome um argumento (o `*`
+ * de largura e de precisão do printf consome um int; o `*` do scanf, que
+ * suprime a gravação, nenhum), e o tipo é o que a conversão pede com o
+ * modificador de tamanho, depois da promoção das variádicas. Formato que
+ * pede mais ou menos argumentos do que vieram é erro: no C seria
+ * comportamento indefinido. `conv[k]` guarda o texto da conversão (`%ld`). */
+static int c_tipos_do_formato(VM *vm, const char *fn, const char *fmt, int eh_scanf,
+                              PSCTipo **tipos, char conv[][24], int nvar)
+{
+    int k = 0;
+    for (const char *s = fmt; *s; s++) {
+        if (*s != '%') continue;
+        const char *ini = s++;
+        if (*s == '%') continue;
+        int suprime = 0;
+        if (eh_scanf && *s == '*') { suprime = 1; s++; }
+        /* bandeiras, largura e precisão */
+        while (!eh_scanf && *s && strchr("-+ #0'", *s)) s++;
+        for (int vez = 0; vez < 2; vez++) {
+            if (vez == 1) { if (eh_scanf || *s != '.') break; s++; }
+            if (!eh_scanf && *s == '*') {
+                if (k < nvar) {
+                    tipos[k] = &ps_c_int;
+                    snprintf(conv[k], sizeof conv[k], "o * de %.10s", ini);
+                }
+                k++; s++;
+            } else {
+                while (*s >= '0' && *s <= '9') s++;
+            }
+        }
+        /* o modificador de tamanho */
+        char mod[3] = "";
+        if ((s[0] == 'h' && s[1] == 'h') || (s[0] == 'l' && s[1] == 'l')) { mod[0] = s[0]; mod[1] = s[1]; s += 2; }
+        else if (*s && strchr("hljztL", *s)) { mod[0] = *s; s++; }
+        char c = *s;
+        if (!c) BERRO(vm, "ValueError", "%s: o formato acaba no meio de uma conversão (%s)", fn, ini);
+        int tam_conv = (int)(s - ini) + 1;
+        PSCTipo *t = NULL;
+        const char *grande = NULL;   /* o modificador do wchar_t: lote C2 */
+        if (strchr("di", c) || strchr("ouxX", c) || c == 'n') {
+            int sem = strchr("ouxX", c) != NULL;
+            if (!strcmp(mod, "hh")) t = eh_scanf || c == 'n' ? (sem ? &ps_c_uchar : &ps_c_schar) : &ps_c_int;
+            else if (!strcmp(mod, "h")) t = eh_scanf || c == 'n' ? (sem ? &ps_c_ushort : &ps_c_short) : &ps_c_int;
+            else if (!strcmp(mod, "l")) t = sem ? &ps_c_ulong : &ps_c_long;
+            else if (!strcmp(mod, "ll")) t = sem ? &ps_c_ullong : &ps_c_llong;
+            else if (!strcmp(mod, "j")) t = c_tipo(sem ? "uintmax_t" : "intmax_t");
+            else if (!strcmp(mod, "z")) t = c_tipo(sem ? "size_t" : "ptrdiff_t");
+            else if (!strcmp(mod, "t")) t = c_tipo(sem ? "size_t" : "ptrdiff_t");
+            else if (!mod[0]) t = sem ? &ps_c_uint : &ps_c_int;
+            if (t && (eh_scanf || c == 'n')) t = ps_c_ponteiro(t);
+        } else if (strchr("fFeEgGaA", c)) {
+            if (eh_scanf) t = ps_c_ponteiro(!strcmp(mod, "L") ? &ps_c_ldouble : !strcmp(mod, "l") ? &ps_c_double : &ps_c_float);
+            else t = !strcmp(mod, "L") ? &ps_c_ldouble : &ps_c_double;
+        } else if (c == 'c' || c == 's' || c == '[') {
+            if (!strcmp(mod, "l")) grande = "l";
+            else if (eh_scanf) t = ps_c_ponteiro(&ps_c_char);
+            else t = c == 'c' ? &ps_c_int : ps_c_ponteiro(ps_c_const(&ps_c_char));
+            if (c == '[') {
+                if (!eh_scanf) BERRO(vm, "ValueError", "%s: %%[ é conversão do scanf", fn);
+                s++;
+                if (*s == '^') s++;
+                if (*s == ']') s++;
+                while (*s && *s != ']') s++;
+                if (!*s) BERRO(vm, "ValueError", "%s: falta o ] no formato (%s)", fn, ini);
+                tam_conv = (int)(s - ini) + 1;
+            }
+        } else if (c == 'p') {
+            t = eh_scanf ? ps_c_ponteiro(ps_c_ponteiro(&ps_c_void)) : ps_c_ponteiro(&ps_c_void);
+        }
+        if (grande)
+            BERRO(vm, "NotImplementedError", "%s: %.*s é do texto largo (wchar.h), que entra no lote C2 do C",
+                  fn, tam_conv, ini);
+        if (!t) BERRO(vm, "ValueError", "%s: conversão desconhecida no formato: %.*s", fn, tam_conv, ini);
+        if (suprime) continue;
+        if (k < nvar) {
+            tipos[k] = t;
+            snprintf(conv[k], sizeof conv[k], "%.*s", tam_conv > 23 ? 23 : tam_conv, ini);
+        }
+        k++;
+    }
+    if (k != nvar)
+        BERRO(vm, "TypeError", "%s: o formato pede %d argumento%s depois dele, e %s %d", fn, k,
+              k == 1 ? "" : "s", nvar == 1 ? "veio" : "vieram", nvar);
+    return 0;
+}
+
+/* o retorno do C como valor da Jinga */
+static int c_retorno(VM *vm, const char *fn, PSCTipo *rt, const void *buf, Value *out)
+{
+    PSCTipo *nu = c_tipo_nu(rt);
+    switch (nu->kind) {
+        case PSC_VOID: *out = MK_NULL(); return 0;
+        case PSC_BOOL: *out = MK_BOOL(ps_c_ret_uint(nu, buf) != 0); return 0;
+        case PSC_INT:
+            *out = nu->sem_sinal ? c_valor_u64(vm, ps_c_ret_uint(nu, buf)) : MK_INT(ps_c_ret_int(nu, buf));
+            return 0;
+        case PSC_FLUT: {
+            double d;
+            if (nu == &ps_c_float) { float f; memcpy(&f, buf, sizeof f); d = f; }
+            else if (nu == &ps_c_ldouble) { long double ld; memcpy(&ld, buf, sizeof ld); d = (double)ld; }
+            else memcpy(&d, buf, sizeof d);
+            *out = MK_FLOAT(d);
+            return 0;
+        }
+        case PSC_PONT: {
+            void *p;
+            memcpy(&p, buf, sizeof p);
+            return c_valor_ponteiro(vm, rt, p, out);
+        }
+        case PSC_STRUCT: {
+            /* struct por valor (o div_t do div): uma cópia que é do objeto */
+            void *m = malloc(nu->tam);
+            if (!m) BERRO(vm, "MemoryError", "sem memoria");
+            memcpy(m, buf, nu->tam);
+            PSCDado *d = c_novo_dado(vm, rt, m, nu->tam);
+            if (!d) { free(m); BERRO(vm, "MemoryError", "sem memoria"); }
+            *out = MK_OBJ(d);
+            return 0;
+        }
+        default:
+            BERRO(vm, "TypeError", "%s(): o retorno %s ainda não vira valor da Jinga", fn, rt->nome);
+    }
+}
+
+/* o errno que a chamada deixou: guardado, e nos globais que o nome ocupa */
+static void c_guarda_errno(VM *vm, int e)
+{
+    vm->c_errno = e;
+    for (int k = 0; k < vm->c_nslots_errno; k++) {
+        int32_t s = vm->c_slots_errno[k];
+        if (s >= 0 && s < vm->nglobals) vm->globals[s] = MK_INT(e);
+    }
+}
+
+/* Chama a função do C `fn` com os argumentos da Jinga. */
+static int c_chama(VM *vm, Value fn, Value *args, int n, Value *out)
+{
+    int32_t idx = COMO_CFUNC(fn)->idx;
+    const char *nome = ps_c_nome(idx);
+    PSCTipo *ft = ps_c_tipo_de(idx);
+    if (!ft || ft->kind != PSC_FUNC)
+        BERRO(vm, "RuntimeError", "%s: o protótipo da tabela do C não se lê", nome);
+    if (ps_c_marcas(idx) & PSC_MARCA_VM)
+        BERRO(vm, "NotImplementedError", "%s() do C ainda não tem o lado da VM", nome);
+    char motivo[320];
+    if (ps_c_pronto(motivo, sizeof motivo) != 0)
+        BERRO(vm, "OSError", "%.40s() não pode ser chamada: %.180s", nome, motivo);
+    void (*f)(void) = ps_c_endereco(idx);
+    if (!f) BERRO(vm, "OSError", "%s() não existe neste sistema", nome);
+    int nfixos = ft->nparams;
+    if (n < nfixos || (!ft->variadica && n > nfixos)) {
+        ps_frase_aridade(vm->erro, sizeof(vm->erro), nome, nfixos, ft->variadica ? INT_MAX : nfixos, n);
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+        return -1;
+    }
+    if (n > C_MAX_ARGS)
+        BERRO(vm, "TypeError", "%s(): argumentos demais pra uma chamada do C (o máximo é %d)", nome, C_MAX_ARGS);
+    union { long double ld; void *p; unsigned char b[16]; } mem[C_MAX_ARGS];
+    void *ptrs[C_MAX_ARGS];
+    PSCTipo *var[C_MAX_ARGS];
+    char conv[C_MAX_ARGS][24];
+    int nvar = n - nfixos;
+    if (ft->variadica) {
+        int marcas = ps_c_marcas(idx);
+        if (nfixos < 1 || !(marcas & (PSC_MARCA_PRINTF | PSC_MARCA_SCANF)))
+            BERRO(vm, "TypeError", "%s(): variádica sem formato que diga os tipos", nome);
+        const char *fmt = c_texto_de(args[nfixos - 1]);
+        if (!fmt)
+            BERRO(vm, "TypeError", "%s(): o formato é texto (str ou char *), e veio %s", nome,
+                  nome_do_tipo_valor(args[nfixos - 1]));
+        if (c_tipos_do_formato(vm, nome, fmt, (marcas & PSC_MARCA_SCANF) != 0, var, conv, nvar) != 0)
+            return -1;
+    }
+    for (int i = 0; i < n; i++) {
+        PSCTipo *t = i < nfixos ? ft->params[i] : var[i - nfixos];
+        if (c_arg(vm, nome, i, args[i], t, &mem[i], i < nfixos ? NULL : conv[i - nfixos]) != 0) return -1;
+        ptrs[i] = &mem[i];
+    }
+    union { long double ld; void *p; unsigned char b[64]; } ret;
+    if (ps_c_tam_ret(ft->ret) > sizeof ret.b)
+        BERRO(vm, "TypeError", "%s(): o retorno %s é grande demais", nome, ft->ret->nome);
+    /* O errno do C entra como a Jinga guardou e sai guardado: é o que o
+     * `ctypes` do Python faz com `use_errno` */
+    errno = vm->c_errno;
+    int rc = ps_c_chama(f, ft, ptrs, n, ft->variadica ? var : NULL, ret.b);
+    int e = errno;
+    if (rc != 0) BERRO(vm, "TypeError", "%s(): a libffi recusou os tipos desta chamada", nome);
+    c_guarda_errno(vm, e);
+    return c_retorno(vm, nome, ft->ret, ret.b, out);
+}
+
+/* o despacho do OP_CALL (pelo `jk_obj_callable`): o alvo vem junto */
+static int c_chama_alvo(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    return c_chama(vm, alvo, args, n, out);
+}
+
+/* O nome do chamável que não aceita argumento nomeado (o tipo como valor,
+ * `f = list`, e a função do C), pra a frase do OP_CALL_KW. Fora do laço da
+ * VM e sem embutir: um ramo novo dentro do laço muda a alocação de
+ * registradores do laço inteiro (medido: +1 instrução por chamada no fib). */
+static __attribute__((noinline)) const char *nome_chamavel_sem_kw(Value alvo)
+{
+    if (EH_CFUNC(alvo)) return ps_c_nome(COMO_CFUNC(alvo)->idx);
+    return tipo_nome(alvo.as.i);
+}
+
+/* O global de um nome do C, ligado na carga do programa ou do módulo, como os
+ * builtins: a função vira valor chamável, a constante o número ou o texto, o
+ * `NULL` o Null, o valor (stdin) o que ele é, e o `errno` o que a última
+ * chamada deixou (e passa a ser atualizado depois de cada uma). */
+static int c_liga_global(VM *vm, int32_t slot, int32_t idx)
+{
+    Value v = MK_NULL();
+    switch (ps_c_especie(idx)) {
+        case PSC_NOME_FUNCAO:
+        case PSC_NOME_MACRO:
+        case PSC_NOME_LITERAL: {
+            PSCFuncObj *f = c_nova_funcao(vm, idx);
+            if (!f) BERRO(vm, "MemoryError", "sem memoria");
+            v = MK_OBJ(f);
+            break;
+        }
+        case PSC_NOME_CONST:
+        case PSC_NOME_TALVEZ: {
+            PSCTipo *t;
+            uint64_t u;
+            if (ps_c_const_int(idx, &t, &u) != 0) BERRO(vm, "NameError", "%s não está definida neste sistema", ps_c_nome(idx));
+            v = t->sem_sinal ? c_valor_u64(vm, u) : MK_INT((int64_t)u);
+            break;
+        }
+        case PSC_NOME_CONSTFLO: {
+            PSCTipo *t;
+            long double ld;
+            if (ps_c_const_flo(idx, &t, &ld) != 0) BERRO(vm, "NameError", "%s não está definida neste sistema", ps_c_nome(idx));
+            v = MK_FLOAT((double)ld);
+            break;
+        }
+        case PSC_NOME_TEXTO: {
+            const char *s = ps_c_const_texto(idx);
+            PSString *ps = nova_string(vm, s, (int)strlen(s));
+            if (!ps) BERRO(vm, "MemoryError", "sem memoria");
+            v = MK_OBJ(ps);
+            break;
+        }
+        case PSC_NOME_NULO:
+            v = MK_NULL();
+            break;
+        case PSC_NOME_VALOR:
+            if (ps_c_marcas(idx) & PSC_MARCA_VM) {
+                /* o errno: o global entra na lista dos que cada chamada atualiza */
+                if (vm->c_nslots_errno == vm->c_cap_slots_errno) {
+                    int novo = vm->c_cap_slots_errno ? vm->c_cap_slots_errno * 2 : 4;
+                    int32_t *nv = realloc(vm->c_slots_errno, sizeof(int32_t) * (size_t)novo);
+                    if (!nv) BERRO(vm, "MemoryError", "sem memoria");
+                    vm->c_slots_errno = nv;
+                    vm->c_cap_slots_errno = novo;
+                }
+                vm->c_slots_errno[vm->c_nslots_errno++] = slot;
+                v = MK_INT(vm->c_errno);
+            } else {
+                union { long double ld; void *p; unsigned char b[32]; } buf;
+                PSCTipo *t = ps_c_tipo_de(idx);
+                char motivo[320];
+                if (!t || ps_c_le_valor(idx, buf.b, motivo, sizeof motivo) != 0)
+                    BERRO(vm, "OSError", "%.40s do C não pode ser lido: %.180s", ps_c_nome(idx), motivo);
+                PSCTipo *nu = c_tipo_nu(t);
+                if (nu->kind == PSC_PONT) {
+                    if (c_valor_ponteiro(vm, t, buf.p, &v) != 0) return -1;
+                } else if (nu->kind == PSC_INT) {
+                    uint64_t u = 0;
+                    memcpy(&u, buf.b, nu->tam < 8 ? nu->tam : 8);
+                    if (!nu->sem_sinal && nu->tam < 8) {
+                        int desl = 64 - 8 * (int)nu->tam;
+                        u = (uint64_t)(((int64_t)(u << desl)) >> desl);
+                    }
+                    v = nu->sem_sinal ? c_valor_u64(vm, u) : MK_INT((int64_t)u);
+                } else {
+                    BERRO(vm, "TypeError", "%s do C: o tipo %s ainda não vira valor da Jinga", ps_c_nome(idx), t->nome);
+                }
+            }
+            break;
+        default:
+            return 0;
+    }
+    vm->globals[slot] = v;
+    return 0;
+}
+
 /* despacho de chamada em objetos jinker (usado por OP_CALL/OP_CALL_KW) */
 static int jk_obj_callable(Value alvo, const char **params, FnMetodoChamavel *fn)
 {
+    /* a função do C: sem parâmetro nomeado (o C não tem) */
+    if (EH_CFUNC(alvo))   { *params = NULL; *fn = c_chama_alvo; return 1; }
     if (EH_JINKER(alvo))  { *params = "debug,host,port,reload,workers"; *fn = jk_app_run;  return 1; }
     if (EH_JCORS(alvo))   { *params = "*apps,options,origins,permiser,local"; *fn = jcors_call; return 1; }
     if (EH_JSOCKNS(alvo)) { *params = "path,channel"; *fn = jsockns_call; return 1; }
@@ -26482,10 +27174,12 @@ enum { MEMBRO_ACHOU = 0, MEMBRO_PRIVADO = 1, MEMBRO_AUSENTE = 2 };
  * membro nativo calculado roda código e aloca. */
 static int membro_de_modulo(VM *vm, Value alvo, const char *nome, Value *out)
 {
+    /* a 1ª letra antes do strcmp, como no acha_metodo_valor: roda a cada
+     * `json.parse(...)`, e assim o custo não depende de onde o texto caiu */
     if (EH_MODPS(alvo)) {
         PSModuloPS *m = COMO_MODPS(alvo);
         for (int32_t k = 0; k < m->n; k++) {
-            if (strcmp(m->nomes[k], nome) != 0) continue;
+            if (m->nomes[k][0] != nome[0] || strcmp(m->nomes[k], nome) != 0) continue;
             /* `private funct` e `private class` não saem do arquivo — nem a
              * classe private atrás de outro nome (`Q = P`) */
             Value v = vm->globals[m->base + k];
@@ -26500,7 +27194,7 @@ static int membro_de_modulo(VM *vm, Value alvo, const char *nome, Value *out)
     const ModuloNat *mn = &MODULOS[COMO_MODULO(alvo)->idx];
     for (int k = 0; k < mn->n; k++) {
         const MembroMod *mm = &mn->membros[k];
-        if (strcmp(mm->nome, nome) != 0) continue;
+        if (mm->nome[0] != nome[0] || strcmp(mm->nome, nome) != 0) continue;
         if (mm->eh_valor) {
             vm->erro_tipo[0] = '\0';
             if (mm->fn(vm, NULL, 0, out) != 0) {
@@ -27043,17 +27737,19 @@ static int chama_valor_modo(VM *vm, Value fn, Value *args, int n,
                             const Value *kw_nomes, const Value *kw_vals, int nkw,
                             int async_no_lugar, Value *out)
 {
-    if (nkw > 0 && (fn.t == V_NATIVE || EH_NATIVA(fn) || EH_METNAT(fn) || fn.t == V_TIPO)) {
+    if (nkw > 0 && (fn.t == V_NATIVE || EH_NATIVA(fn) || EH_METNAT(fn) || fn.t == V_TIPO || EH_CFUNC(fn))) {
         snprintf(vm->erro, sizeof(vm->erro), "%s() takes no keyword arguments",
                  fn.t == V_NATIVE ? BUILTINS[fn.as.nativa].nome
                  : EH_NATIVA(fn) ? COMO_NATIVA(fn)->nome
                  : EH_METNAT(fn) ? TABELAS[COMO_METNAT(fn)->tabela][COMO_METNAT(fn)->idx].nome
+                 : EH_CFUNC(fn) ? ps_c_nome(COMO_CFUNC(fn)->idx)
                  : tipo_nome(fn.as.i));
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
         return -1;
     }
     if (fn.t == V_NATIVE) return BUILTINS[fn.as.nativa].fn(vm, args, n, out);
     if (EH_NATIVA(fn)) return COMO_NATIVA(fn)->fn(vm, args, n, out);
+    if (EH_CFUNC(fn)) return c_chama(vm, fn, args, n, out);
     if (EH_METNAT(fn)) {
         PSMetodoNat *m = COMO_METNAT(fn);
         if (checa_aridade_nat(vm, &TABELAS[m->tabela][m->idx], n) != 0) return -1;
@@ -29101,11 +29797,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 sp = sp - total - 1;
                 stack[sp++] = rv;
                 break;
-            } else if (alvo_kw.t == V_TIPO) {
+            } else if (alvo_kw.t == V_TIPO || EH_CFUNC(alvo_kw)) {
                 /* `f = list; f(a=1)`: o tipo E chamavel, so nao aceita nome —
-                 * dizer "not callable" aqui seria mentira. */
+                 * dizer "not callable" aqui seria mentira. A função do C
+                 * também (o C não tem argumento nomeado). */
                 ERRO_TF(vm, "TypeError", "%s() takes no keyword arguments",
-                        tipo_nome(alvo_kw.as.i));
+                        nome_chamavel_sem_kw(alvo_kw));
             } else {
                 ERRO_TF(vm, "TypeError", "'%s' object is not callable",
                         nome_do_tipo_valor(alvo_kw));
@@ -31802,6 +32499,8 @@ static void libera_vm(VM *vm)
     estrela_cache_solta(); /* o que cada arquivo exporta, lembrado pro `import *` */
     free(vm->ger_abertos);   /* só o vetor: os geradores são do coletor */
     vm->ger_abertos = NULL; vm->n_ger_abertos = vm->cap_ger_abertos = 0;
+    free(vm->c_slots_errno);
+    vm->c_slots_errno = NULL; vm->c_nslots_errno = vm->c_cap_slots_errno = 0;
     if (vm->nomes_globais) {
         for (int i = 0; i < vm->n_nomes_globais; i++) free(vm->nomes_globais[i]);
         free(vm->nomes_globais);
@@ -33393,6 +34092,13 @@ static int carrega_modulo_ps_em(VM *vm, const char *nome, Value *out, CaminhosIm
             if (nm) vm->globals[bg + i] = MK_OBJ(nm);
             continue;
         }
+        /* a biblioteca padrão do C vale no módulo também (o builtin, ligado
+         * acima, ganha dela) */
+        if (prog->globais_c && prog->globais_c[i] >= 0 && vm->globals[bg + i].t == V_UNSET
+                && c_liga_global(vm, bg + i, prog->globais_c[i]) != 0) {
+            ps_compila_free(prog);
+            return -1;
+        }
     }
 
     PSModuloPS *m = calloc(1, sizeof(PSModuloPS));
@@ -34489,6 +35195,16 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         if (!ligou) {
             int64_t k = excecao_indice(prog->globais[i]);
             if (k >= 0) { vm.globals[i] = MK_TIPO(TIPO_EXC_BASE + k); ligou = 1; }
+        }
+        /* a biblioteca padrão do C, abaixo de tudo isso: o compilador marcou
+         * o global que é nome do C (`globais_c`), sem busca nenhuma aqui */
+        if (!ligou && prog->globais_c && prog->globais_c[i] >= 0
+                && c_liga_global(&vm, i, prog->globais_c[i]) != 0) {
+            e->tipo = PS_ERRO_RUNTIME;
+            snprintf(e->msg, sizeof(e->msg), "%s", vm.erro);
+            snprintf(e->tipo_nome, sizeof(e->tipo_nome), "%s", vm.erro_tipo);
+            libera_vm(&vm); ps_compila_free(prog);
+            return -1;
         }
     }
     /* Nomes das globais sobrevivem ao prog: o jinker usa pra achar os slots

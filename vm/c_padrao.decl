@@ -47,6 +47,10 @@
 #   @glibc <símbolo>    na glibc o símbolo do C99 tem outro nome: o `scanf`
 #                       pelo nome é o da GNU antiga (`%as` aloca), e o que o
 #                       compilador C liga em C99 ou depois é o `__isoc99_scanf`
+#   @printf, @scanf     a função é variádica e o último parâmetro fixo é um
+#                       formato do printf ou do scanf: a VM lê o formato e
+#                       passa cada argumento a mais no tipo que a conversão
+#                       pede (`%d` int, `%ld` long, `%f` double...)
 #   @expansao           (valor) a macro chama uma função interna da biblioteca
 #                       do C ou lê uma variável dela (o MB_CUR_MAX é
 #                       `(__ctype_get_mb_cur_max ())` na glibc e `__mb_cur_max`
@@ -360,13 +364,13 @@ funcao FILE *fopen(const char * restrict filename, const char * restrict mode);
 funcao FILE *freopen(const char * restrict filename, const char * restrict mode, FILE * restrict stream);
 funcao void setbuf(FILE * restrict stream, char * restrict buf);
 funcao int setvbuf(FILE * restrict stream, char * restrict buf, int mode, size_t size);
-funcao int fprintf(FILE * restrict stream, const char * restrict format, ...);
-funcao int fscanf(FILE * restrict stream, const char * restrict format, ...); @glibc __isoc99_fscanf
-funcao int printf(const char * restrict format, ...);
-funcao int scanf(const char * restrict format, ...); @glibc __isoc99_scanf
-funcao int snprintf(char * restrict s, size_t n, const char * restrict format, ...);
-funcao int sprintf(char * restrict s, const char * restrict format, ...);
-funcao int sscanf(const char * restrict s, const char * restrict format, ...); @glibc __isoc99_sscanf
+funcao int fprintf(FILE * restrict stream, const char * restrict format, ...); @printf
+funcao int fscanf(FILE * restrict stream, const char * restrict format, ...); @scanf @glibc __isoc99_fscanf
+funcao int printf(const char * restrict format, ...); @printf
+funcao int scanf(const char * restrict format, ...); @scanf @glibc __isoc99_scanf
+funcao int snprintf(char * restrict s, size_t n, const char * restrict format, ...); @printf
+funcao int sprintf(char * restrict s, const char * restrict format, ...); @printf
+funcao int sscanf(const char * restrict s, const char * restrict format, ...); @scanf @glibc __isoc99_sscanf
 funcao int fgetc(FILE *stream);
 funcao char *fgets(char * restrict s, int n, FILE * restrict stream);
 funcao int fputc(int c, FILE *stream);

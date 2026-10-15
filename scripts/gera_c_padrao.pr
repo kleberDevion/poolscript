@@ -115,7 +115,7 @@ Null funct novo(int linha, str nome, str especie, str decl) {
     vistos[nome] = linha
     entradas.append({"nome": nome, "especie": especie, "decl": decl, "cab": len(cabecalhos) - 1,
                      "vm": False, "glibc": "", "ligador_avisa": False, "expansao": False, "corpo": "",
-                     "campos": [], "linha": linha})
+                     "formato": "", "campos": [], "linha": linha})
 }
 
 # `funcao int scanf(...); @glibc __isoc99_scanf` -> o protótipo e as marcas;
@@ -154,6 +154,11 @@ Null funct le_prototipo(int linha, str especie, str resto) {
             e["ligador_avisa"] = True
         } elif marcas[k] == "@expansao" and especie == "valor" {
             e["expansao"] = True
+        } elif (marcas[k] == "@printf" or marcas[k] == "@scanf") and especie == "funcao" {
+            if not proto.endswith("...)") {
+                falha(linha, marcas[k] + " só vale em função variádica")
+            }
+            e["formato"] = marcas[k][1:]
         } elif marcas[k] == "@glibc" and k + 1 < len(marcas) {
             e["glibc"] = marcas[k + 1]
             k = k + 1
@@ -298,9 +303,18 @@ for each n in ordem {
     if e["glibc"] != "" {
         pg = no_bloco(e["glibc"])
     }
-    str marcas = "0"
+    list ms = []
     if e["vm"] {
-        marcas = "PSC_MARCA_VM"
+        ms.append("PSC_MARCA_VM")
+    }
+    if e["formato"] == "printf" {
+        ms.append("PSC_MARCA_PRINTF")
+    } elif e["formato"] == "scanf" {
+        ms.append("PSC_MARCA_SCANF")
+    }
+    str marcas = "0"
+    if len(ms) > 0 {
+        marcas = " | ".join(ms)
     }
     int ie = ESPECIES.index(e["especie"])
     t.append("    { " + str(pn) + ", " + str(pd) + ", " + str(e["idx"]) + ", " + str(pg) + ", "

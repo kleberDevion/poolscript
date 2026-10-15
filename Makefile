@@ -458,7 +458,7 @@ TESTE_FONTES := teste/ps_teste.c teste/casos_crash.c teste/casos_inteiros.c \
                 teste/casos_pendentes.c teste/casos_cobertura.c \
                 teste/casos_diferencial.c teste/casos_equivalencia.c \
                 teste/casos_oraculo.c teste/casos_robustez.c \
-                teste/casos_libs.c teste/casos_regex_re.c
+                teste/casos_libs.c teste/casos_regex_re.c teste/casos_c.c
 
 # o binário se chama `testar` porque `teste` é a PASTA dos casos
 testar$(EXE): $(TESTE_FONTES) teste/ps_teste.h $(VM)/ps_ext.h $(RECURSOS)

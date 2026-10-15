@@ -270,6 +270,11 @@ typedef struct {
 
     char   **globais;   /* nome de cada global, indexado */
     int32_t  nglobais;
+    /* Paralelo a `globais`: o índice na tabela da biblioteca padrão do C
+     * (vm/ps_c.h) do global que é nome do C (`printf`, `EOF`, `NULL`), ou -1.
+     * A VM liga cada um na carga, como liga os builtins. NULL quando o
+     * programa não usa nome do C: aí ninguém procura nada na tabela. */
+    int32_t *globais_c;
 
     PSClassDef *classes;
     int32_t     nclasses;

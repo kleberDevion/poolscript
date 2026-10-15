@@ -19,6 +19,7 @@
 #include "ps_regex.h"        /* `regex=` do campo de model: compilado aqui só pra validar */
 #include "ps_retornos.h"
 #include "ps_caminho.h"      /* nome do módulo a partir do caminho: `/` e, no Windows, `\` */
+#include "ps_c.h"            /* a biblioteca padrão do C: os nomes que valem em todo arquivo */
 
 #include <stdarg.h>
 
@@ -580,6 +581,12 @@ typedef struct {
      * que não envolve a funct: a frase do NameError diz isso. */
     int      nome_oculto;
     int      nomes_incertos;
+    /* Os nomes da biblioteca padrão do C que o programa usa como valor
+     * (`printf`, `EOF`), achados pelo checador quando nada mais liga o nome:
+     * nome -> índice na tabela do C. A chave é o nome da própria tabela
+     * (estático). Vazio = o programa não usa o C, e a tabela nunca é
+     * consultada. */
+    IdxNomes ix_nomes_c;
     /* o arquivo importa o jinker: `request` e `channel` são injetados quando
      * o app sobe */
     int      usa_jinker;
@@ -3300,6 +3307,17 @@ static int tp_nome_inexistente(C *c, Unidade *u, const char *nome)
      * porque a pergunta era "está na tabela de tipos?"). */
     if (ps_nome_pre_ligado(nome)) return 0;
     if (c->usa_jinker && (!strcmp(nome, "request") || !strcmp(nome, "channel"))) return 0;
+    /* A biblioteca padrão do C vale em todo arquivo, abaixo de tudo isso: o
+     * nome do programa e o builtin ganham do C. Só chega aqui o nome que nada
+     * mais liga, então programa sem C nunca consulta a tabela. */
+    {
+        int32_t ci = ps_c_valor_indice(nome);
+        if (ci >= 0) {
+            if (ix_busca(&c->ix_nomes_c, nome) < 0 && ix_poe(&c->ix_nomes_c, ps_c_nome(ci), ci) != 0)
+                cerro(c, "sem memoria", NULL);
+            return 0;
+        }
+    }
     return 1;
 }
 
@@ -3357,6 +3375,15 @@ static void tp_acusa_nome(C *c, Unidade *u, const char *nome, PSNode *onde, int 
 {
     if (!tp_ligado_no_escopo(c, u, nome) && c->nome_oculto) { tp_acusa_oculto(c, onde, nome); return; }
     if (ps_nativo_eh_modulo(nome)) { tp_acusa_sem_import(c, onde, nome); return; }
+    /* nome do C que não é valor: o que fica de fora, com o motivo; o tipo
+     * escrito onde vai valor */
+    {
+        char frase[300];
+        if (ps_c_por_que_nao(nome, frase, sizeof frase)) {
+            terro(c, onde, "NameError", "%s", frase);
+            return;
+        }
+    }
     /* Membro de instância lido pelo nome solto, dentro do método: só se
      * alcança por `self`, e a dica é essa. Saía o nome parecido de outro
      * lugar (`saldo` -> 'False', `m` -> 'A'), que não conserta nada. */
@@ -9775,6 +9802,23 @@ static void compila_termina(C *c, Unidade *u)
     PSPrograma *out = c->out;
     emite(c, u, OP_HALT, 0);
     if (out->ok) calcula_exportados(c, u);
+    /* os globais que são nomes do C, pra a VM ligar na carga. Com `import *`
+     * incerto o checador não conferiu os nomes (ver `nomes_incertos`), então
+     * o nome que o arquivo não liga é procurado aqui mesmo. */
+    if (out->ok && out->nglobais > 0 && (c->ix_nomes_c.cap || c->nomes_incertos)) {
+        out->globais_c = malloc(sizeof(int32_t) * (size_t)out->nglobais);
+        if (!out->globais_c) cerro(c, "sem memoria", NULL);
+        int tem = 0;
+        for (int32_t i = 0; out->globais_c && i < out->nglobais; i++) {
+            const char *nm = out->globais[i];
+            int32_t k = ix_busca(&c->ix_nomes_c, nm);
+            if (k < 0 && c->nomes_incertos && ix_busca(&c->ix_ligados_mod, nm) < 0)
+                k = ps_c_valor_indice(nm);
+            out->globais_c[i] = k;
+            if (k >= 0) tem = 1;
+        }
+        if (!tem) { free(out->globais_c); out->globais_c = NULL; }
+    }
 
     /* Erro de tipo: o programa não roda, e a lista vai INTEIRA, na ordem do
      * fonte. Erro de sintaxe achado no caminho manda (a compilação parou ali
@@ -9818,6 +9862,7 @@ static void compila_termina(C *c, Unidade *u)
     for (int32_t i = 0; i < c->nligados_mod_raso; i++) free(c->ligados_mod_raso[i]);
     free(c->ligados_mod_raso);
     ix_solta(&c->ix_ligados_mod_raso);
+    ix_solta(&c->ix_nomes_c);        /* as chaves são os nomes da tabela do C (estáticos) */
     ix_solta(&c->ix_globais);        /* as chaves são do programa de saída: só o índice sai */
     free(c->tipos_arq);
     free(c->gemeos);
@@ -9939,6 +9984,7 @@ void ps_compila_free(PSPrograma *p)
     free(p->priv_cols);
     for (int32_t i = 0; i < p->nexportados; i++) free(p->exportados[i]);
     free(p->exportados);
+    free(p->globais_c);
     free(p->erros_tipo);
     free(p);
 }

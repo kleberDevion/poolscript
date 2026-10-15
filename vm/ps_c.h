@@ -124,10 +124,20 @@ typedef enum {
     PSC_NOME_FORA         /* nome do padrão que fica de fora: a declaração é o motivo */
 } PSCEspecie;
 
-#define PSC_MARCA_VM 1    /* a VM faz o papel (atexit, exit, errno) */
+#define PSC_MARCA_VM     1   /* a VM faz o papel (atexit, exit, errno) */
+#define PSC_MARCA_PRINTF 2   /* variádica: o último parâmetro fixo é um formato do printf */
+#define PSC_MARCA_SCANF  4   /* variádica: o último parâmetro fixo é um formato do scanf */
 
 /* O índice do nome na tabela, ou -1. "struct tm" acha a struct pela etiqueta. */
 int         ps_c_busca(const char *nome);
+/* O nome que vale como VALOR num programa (função, macro, literal, constante,
+ * valor lido na hora, NULL; a `talvez` só se o sistema a define): o índice na
+ * tabela, ou -1. */
+int         ps_c_valor_indice(const char *nome);
+/* Por que um nome da tabela não vale como valor: o que fica de fora (com o
+ * motivo), o tipo usado como valor, a `talvez` que o sistema não define, o
+ * operador. A frase vai em `buf`; NULL se o nome não é do C ou se vale. */
+const char *ps_c_por_que_nao(const char *nome, char *buf, size_t cap);
 int         ps_c_nnomes(void);
 const char *ps_c_nome(int i);
 PSCEspecie  ps_c_especie(int i);

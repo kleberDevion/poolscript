@@ -60,5 +60,6 @@ extern const Caso CASOS_ORACULO[];      extern const int NC_ORACULO;
 extern const Caso CASOS_ROBUSTEZ[];     extern const int NC_ROBUSTEZ;
 extern const Caso CASOS_LIBS[];         extern const int NC_LIBS;
 extern const Caso CASOS_REGEX_RE[];     extern const int NC_REGEX_RE;
+extern const Caso CASOS_C[];            extern const int NC_C;
 
 #endif /* PS_TESTE_H */

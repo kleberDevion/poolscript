@@ -240,6 +240,54 @@ int ps_c_busca(const char *nome)
 
 int ps_c_nnomes(void) { return PS_C_NNOMES; }
 
+int ps_c_valor_indice(const char *nome)
+{
+    int i = ps_c_busca(nome);
+    if (i < 0) return -1;
+    switch (PS_C_NOMES[i].especie) {
+        case PSC_NOME_FUNCAO:
+        case PSC_NOME_MACRO:
+        case PSC_NOME_LITERAL:
+        case PSC_NOME_CONST:
+        case PSC_NOME_CONSTFLO:
+        case PSC_NOME_TEXTO:
+        case PSC_NOME_VALOR:
+        case PSC_NOME_NULO:
+            return i;
+        case PSC_NOME_TALVEZ:
+            return PS_C_KTALVEZ[PS_C_NOMES[i].idx] ? i : -1;
+        default:
+            return -1;
+    }
+}
+
+const char *ps_c_por_que_nao(const char *nome, char *buf, size_t cap)
+{
+    int i = ps_c_busca(nome);
+    if (i < 0 || ps_c_valor_indice(nome) >= 0 || !buf || !cap) return NULL;
+    const PSCNome *n = &PS_C_NOMES[i];
+    const char *cab = PS_C_TEXTO + PS_C_CAB[n->cab];
+    switch (n->especie) {
+        case PSC_NOME_FORA:
+            snprintf(buf, cap, "%s fica de fora: %s (doc: o C na Jinga)", nome, PS_C_TEXTO + n->decl);
+            return buf;
+        case PSC_NOME_TALVEZ:
+            snprintf(buf, cap, "%s não está definida neste sistema (o %s a deixa opcional)", nome, cab);
+            return buf;
+        case PSC_NOME_TIPO:
+        case PSC_NOME_OPACO:
+        case PSC_NOME_ESTRUTURA:
+            snprintf(buf, cap, "%s é tipo do C (%s): vale em declaração, cast e sizeof, e não como valor",
+                     nome, cab);
+            return buf;
+        case PSC_NOME_SINTAXE:
+            snprintf(buf, cap, "%s é operador do C: %s", nome, PS_C_TEXTO + n->decl);
+            return buf;
+        default:
+            return NULL;
+    }
+}
+
 static int fora_da_tabela(int i) { return i < 0 || i >= PS_C_NNOMES; }
 
 const char *ps_c_nome(int i) { return fora_da_tabela(i) ? NULL : PS_C_TEXTO + PS_C_NOMES[i].nome; }

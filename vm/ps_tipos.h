@@ -44,14 +44,19 @@ static const struct { const char *grafia; int cod; } PS_TIPOS_APELIDOS[] = {
 #define PS_N_APELIDOS ((int)(sizeof(PS_TIPOS_APELIDOS) / sizeof(PS_TIPOS_APELIDOS[0])))
 
 /* O tipo por nome canônico ou apelido; NULL se o nome não é tipo da tabela
- * (aí pode ser classe, Entity ou objeto nativo — quem decide é o chamador). */
+ * (aí pode ser classe, Entity ou objeto nativo — quem decide é o chamador).
+ * O parser pergunta a cada identificador, então a 1ª letra é comparada antes
+ * do strcmp: quase nenhum nome chega nele, e o custo não depende de onde o
+ * texto da tabela caiu no binário (o strcmp da glibc escolhe o caminho pelo
+ * endereço). */
 static inline const PSTipoInfo *ps_tipo_info(const char *nome)
 {
     if (!nome) return NULL;
     for (int i = 0; i < PS_N_TIPOS; i++)
-        if (strcmp(PS_TIPOS_INFO[i].nome, nome) == 0) return &PS_TIPOS_INFO[i];
+        if (PS_TIPOS_INFO[i].nome[0] == nome[0] && strcmp(PS_TIPOS_INFO[i].nome, nome) == 0)
+            return &PS_TIPOS_INFO[i];
     for (int i = 0; i < PS_N_APELIDOS; i++)
-        if (strcmp(PS_TIPOS_APELIDOS[i].grafia, nome) == 0)
+        if (PS_TIPOS_APELIDOS[i].grafia[0] == nome[0] && strcmp(PS_TIPOS_APELIDOS[i].grafia, nome) == 0)
             return &PS_TIPOS_INFO[PS_TIPOS_APELIDOS[i].cod];
     return NULL;
 }

@@ -142,6 +142,7 @@ static const Grupo GRUPOS[] = {
     { "robustez",  CASOS_ROBUSTEZ,  0 },
     { "libs",      CASOS_LIBS,      0 },
     { "regex_re",  CASOS_REGEX_RE,  0 },
+    { "c",         CASOS_C,         0 },
 };
 
 /* preenchido em tempo de execução (os `extern int` vivem nos casos_*.c) */
@@ -159,6 +160,7 @@ static int tamanho_do_grupo(const char *g)
     if (!strcmp(g, "robustez"))  return NC_ROBUSTEZ;
     if (!strcmp(g, "libs"))      return NC_LIBS;
     if (!strcmp(g, "regex_re"))  return NC_REGEX_RE;
+    if (!strcmp(g, "c"))         return NC_C;
     return 0;
 }
 

@@ -318,8 +318,10 @@ static int eh_mod_funct(PSToken *t)
 {
     if (!t->texto) return 0;
     if (t->type != T_KW && t->type != T_IDENT && t->type != T_IDENT_UPPER) return 0;
+    /* a 1ª letra antes do strcmp, como no ps_tipo_info: roda a cada token da
+     * cabeça de uma declaração */
     for (int i = 0; MODS_DE_POSICAO[i]; i++)
-        if (strcmp(t->texto, MODS_DE_POSICAO[i]) == 0) return 1;
+        if (t->texto[0] == MODS_DE_POSICAO[i][0] && strcmp(t->texto, MODS_DE_POSICAO[i]) == 0) return 1;
     return 0;
 }
 

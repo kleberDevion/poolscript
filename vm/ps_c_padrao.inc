@@ -1564,7 +1564,7 @@ static const PSCNome PS_C_NOMES[PS_C_NNOMES] = {
     { 7820, 1552, 10, 0, 9, PSC_NOME_FORA, 0 },  /* fopen_s */
     { 7828, 7839, 0, 0, 5, PSC_NOME_MACRO, 0 },  /* fpclassify */
     { 7864, 0, 1, 0, 9, PSC_NOME_OPACO, 0 },  /* fpos_t */
-    { 7871, 7879, 99, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fprintf */
+    { 7871, 7879, 99, 0, 9, PSC_NOME_FUNCAO, PSC_MARCA_PRINTF },  /* fprintf */
     { 7950, 1552, 11, 0, 9, PSC_NOME_FORA, 0 },  /* fprintf_s */
     { 7960, 7966, 100, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fputc */
     { 7997, 8003, 101, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fputs */
@@ -1575,7 +1575,7 @@ static const PSCNome PS_C_NOMES[PS_C_NNOMES] = {
     { 8295, 8301, 105, 0, 5, PSC_NOME_FUNCAO, 0 },  /* frexp */
     { 8338, 8345, 106, 0, 5, PSC_NOME_FUNCAO, 0 },  /* frexpf */
     { 8381, 8388, 107, 0, 5, PSC_NOME_FUNCAO, 0 },  /* frexpl */
-    { 8436, 8443, 108, 8513, 9, PSC_NOME_FUNCAO, 0 },  /* fscanf */
+    { 8436, 8443, 108, 8513, 9, PSC_NOME_FUNCAO, PSC_MARCA_SCANF },  /* fscanf */
     { 8529, 1552, 13, 0, 9, PSC_NOME_FORA, 0 },  /* fscanf_s */
     { 8538, 8544, 109, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fseek */
     { 8597, 8605, 110, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fsetpos */
@@ -1712,7 +1712,7 @@ static const PSCNome PS_C_NOMES[PS_C_NNOMES] = {
     { 13209, 13213, 201, 0, 5, PSC_NOME_FUNCAO, 0 },  /* pow */
     { 13244, 13249, 202, 0, 5, PSC_NOME_FUNCAO, 0 },  /* powf */
     { 13278, 13283, 203, 0, 5, PSC_NOME_FUNCAO, 0 },  /* powl */
-    { 13330, 13337, 204, 0, 9, PSC_NOME_FUNCAO, 0 },  /* printf */
+    { 13330, 13337, 204, 0, 9, PSC_NOME_FUNCAO, PSC_MARCA_PRINTF },  /* printf */
     { 13383, 1552, 24, 0, 9, PSC_NOME_FORA, 0 },  /* printf_s */
     { 13392, 0, 18, 0, 7, PSC_NOME_TIPO, 0 },  /* ptrdiff_t */
     { 13402, 13407, 205, 0, 9, PSC_NOME_FUNCAO, 0 },  /* putc */
@@ -1745,7 +1745,7 @@ static const PSCNome PS_C_NOMES[PS_C_NNOMES] = {
     { 14513, 14520, 230, 0, 5, PSC_NOME_FUNCAO, 0 },  /* scalbn */
     { 14551, 14559, 231, 0, 5, PSC_NOME_FUNCAO, 0 },  /* scalbnf */
     { 14589, 14597, 232, 0, 5, PSC_NOME_FUNCAO, 0 },  /* scalbnl */
-    { 14639, 14645, 233, 14690, 9, PSC_NOME_FUNCAO, 0 },  /* scanf */
+    { 14639, 14645, 233, 14690, 9, PSC_NOME_FUNCAO, PSC_MARCA_SCANF },  /* scanf */
     { 14705, 1552, 27, 0, 9, PSC_NOME_FORA, 0 },  /* scanf_s */
     { 14713, 1552, 28, 0, 10, PSC_NOME_FORA, 0 },  /* set_constraint_handler_s */
     { 14738, 14745, 234, 0, 9, PSC_NOME_FUNCAO, 0 },  /* setbuf */
@@ -1758,15 +1758,15 @@ static const PSCNome PS_C_NOMES[PS_C_NNOMES] = {
     { 15024, 15030, 240, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sinhl */
     { 15063, 15068, 241, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sinl */
     { 15100, 0, 19, 0, 7, PSC_NOME_TIPO, 0 },  /* size_t */
-    { 15107, 15116, 242, 0, 9, PSC_NOME_FUNCAO, 0 },  /* snprintf */
+    { 15107, 15116, 242, 0, 9, PSC_NOME_FUNCAO, PSC_MARCA_PRINTF },  /* snprintf */
     { 15193, 1552, 29, 0, 9, PSC_NOME_FORA, 0 },  /* snprintf_s */
-    { 15204, 15212, 243, 0, 9, PSC_NOME_FUNCAO, 0 },  /* sprintf */
+    { 15204, 15212, 243, 0, 9, PSC_NOME_FUNCAO, PSC_MARCA_PRINTF },  /* sprintf */
     { 15278, 1552, 30, 0, 9, PSC_NOME_FORA, 0 },  /* sprintf_s */
     { 15288, 15293, 244, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sqrt */
     { 15315, 15321, 245, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sqrtf */
     { 15342, 15348, 246, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sqrtl */
     { 15381, 15387, 247, 0, 10, PSC_NOME_FUNCAO, 0 },  /* srand */
-    { 15417, 15424, 248, 15495, 9, PSC_NOME_FUNCAO, 0 },  /* sscanf */
+    { 15417, 15424, 248, 15495, 9, PSC_NOME_FUNCAO, PSC_MARCA_SCANF },  /* sscanf */
     { 15511, 1552, 31, 0, 9, PSC_NOME_FORA, 0 },  /* sscanf_s */
     { 15520, 15527, 4, 0, 9, PSC_NOME_VALOR, 0 },  /* stderr */
     { 15540, 15546, 5, 0, 9, PSC_NOME_VALOR, 0 },  /* stdin */
