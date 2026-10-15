@@ -87,6 +87,11 @@ CFLAGS  ?= -O2 $(CFLAGS_BASE)
 # O sqlite, o TLS, o PNG, o XML e o zlib entram ESTÁTICOS no `pool`: o binário
 # roda em máquina sem as .so deles, e estático não custa nada na partida. O
 # gmp (inteiro grande) é da linguagem, não de um módulo.
+#
+# A libffi (a chamada das funções do C, vm/ps_c.c) entra estática no Linux e
+# no Windows. No macOS ela é do próprio sistema (`/usr/lib/libffi.dylib`, no
+# cache do dyld, com o cabeçalho em `ffi/ffi.h` no SDK): não se instala nada,
+# e o pacote não a leva (o `build_bundle.sh` deixa de fora o que é do sistema).
 ifeq ($(E_WIN),1)
 # Windows: `-static` liga TUDO que tem `.a` (sqlite, TLS, PNG, XML, zlib, gmp,
 # as threads e o runtime do gcc); o que sobra são as DLLs do próprio Windows.
@@ -94,26 +99,26 @@ ifeq ($(E_WIN),1)
 # repositório de certificados (crypt32). A pilha da thread principal é de 8 MB,
 # a mesma do Linux (a do Windows é 1 MB de fábrica).
 LIBS_SISTEMA   := -lws2_32 -liphlpapi -lbcrypt -lcrypt32 -luser32 -ladvapi32
-LIBS_POOL      := -static -Wl,--stack,8388608 -lsqlite3 -lssl -lcrypto -lpng16 -lexpat -lz -lgmp \
+LIBS_POOL      := -static -Wl,--stack,8388608 -lsqlite3 -lssl -lcrypto -lpng16 -lexpat -lz -lgmp -lffi \
                   -lpthread $(LIBS_SISTEMA)
 LIBS_TESTE     := $(LIBS_POOL)
 else ifeq ($(SO),Darwin)
 # macOS: o ligador da Apple não tem -Bstatic; o estático é o próprio arquivo
 # `.a` do Homebrew (TLS e PNG). sqlite, expat e zlib vêm do próprio macOS.
-LIBS_SISTEMA   := -lpthread -lm -L$(BREW)/lib -lgmp -framework Security -framework CoreFoundation
+LIBS_SISTEMA   := -lpthread -lm -lffi -L$(BREW)/lib -lgmp -framework Security -framework CoreFoundation
 LIBS_POOL      := $(BREW_SSL)/lib/libssl.a $(BREW_SSL)/lib/libcrypto.a $(BREW)/lib/libpng.a \
                   -lsqlite3 -lexpat -lz $(LIBS_SISTEMA)
 LIBS_TESTE     := -L$(BREW_SSL)/lib -lssl -lcrypto -L$(BREW)/lib -lpng -lsqlite3 -lexpat -lz $(LIBS_SISTEMA)
 else
 LIBS_SISTEMA   := -lrt -lpthread -ldl -lm -l:libgmp.so.10
-LIBS_POOL      := -Wl,-Bstatic -lsqlite3 -lssl -lcrypto -lpng -lexpat -lz -Wl,-Bdynamic $(LIBS_SISTEMA)
+LIBS_POOL      := -Wl,-Bstatic -lsqlite3 -lssl -lcrypto -lpng -lexpat -lz -lffi -Wl,-Bdynamic $(LIBS_SISTEMA)
 # as variantes de teste (asan, debug, fuzz, oom, cobertura) ligam dinâmico
-LIBS_TESTE     := -lsqlite3 -lssl -lcrypto -lpng -lexpat -lz $(LIBS_SISTEMA)
+LIBS_TESTE     := -lsqlite3 -lssl -lcrypto -lpng -lexpat -lz -lffi $(LIBS_SISTEMA)
 endif
 # A UNIDADE (teste/unidade.c) liga só os módulos puros: zlib e expat (o xlsx)
 # e, no Windows, a bcrypt — lá o aleatório do ps_hash.c é o BCryptGenRandom,
 # e sem ela o link para em `undefined reference to BCryptGenRandom`.
-LIBS_UNIDADE := -lz -lexpat -lm
+LIBS_UNIDADE := -lz -lexpat -lm -lffi
 ifeq ($(E_WIN),1)
 LIBS_UNIDADE += -lbcrypt
 endif
@@ -131,7 +136,7 @@ endif
 TIMEOUT := $(shell command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null)
 VM      := vm
 FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
-           $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_pkg.c $(VM)/ps_debug.c $(VM)/ps_retornos.c $(VM)/ps_so.c $(VM)/ps_unicode.c $(VM)/jinga_vm.c $(VM)/main.c
+           $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_pkg.c $(VM)/ps_debug.c $(VM)/ps_retornos.c $(VM)/ps_so.c $(VM)/ps_unicode.c $(VM)/ps_c.c $(VM)/jinga_vm.c $(VM)/main.c
 
 # A sqlite entra ESTÁTICA (libsqlite3.a): o binário continua rodando em
 # máquina que não tem libsqlite3.so. Ela é domínio público, sem custo de
@@ -864,9 +869,9 @@ check-e2e-local: pool
 # seguinte (o do `check`) dizia "is up to date" e saía 0 sem rodar caso
 # nenhum. Compilar toda vez também tira o binário velho de quando só um
 # cabeçalho da VM mudou, que esta regra não lista.
-unidade: teste/unidade.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(MK)
+unidade: teste/unidade.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(VM)/ps_c.c $(MK)
 	$(CC) $(CFLAGS) -g -I$(VM) -o $@$(EXE) teste/unidade.c \
-	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(LIBS_UNIDADE)
+	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(VM)/ps_c.c $(LIBS_UNIDADE)
 	@./$@$(EXE)
 
 .PHONY: unidade
@@ -1003,12 +1008,13 @@ cobertura: pool testar
 	# do portão manda corrigir o que já está coberto.
 	# A unidade em C tem que entrar na MEDIÇÃO, senão os ramos que só ela
 	# alcança continuam contando como descobertos.
-	# O MESMO link do alvo `unidade` (com ps_xlsx.c e LIBS_UNIDADE): sem o xlsx o
-	# link falhava, o `2>/dev/null` escondia e o `|| true` seguia — a unidade
-	# nunca entrou na medição. Falha de link ou de teste agora derruba o alvo.
+	# O MESMO link do alvo `unidade` (com ps_xlsx.c, ps_c.c e LIBS_UNIDADE): sem
+	# o xlsx o link falhava, o `2>/dev/null` escondia e o `|| true` seguia — a
+	# unidade nunca entrou na medição. Falha de link ou de teste agora derruba o
+	# alvo.
 	@echo "rodando os testes de unidade instrumentados…"
 	@$(CC) -O0 -g --coverage $(CFLAGS_BASE) -I$(VM) -o cob/unidade teste/unidade.c \
-	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(LIBS_UNIDADE)
+	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(VM)/ps_c.c $(LIBS_UNIDADE)
 	@./cob/unidade > /dev/null
 	@echo "rodando os drivers .pr e o e2e local contra o mesmo binario…"
 	@for d in teste/confere_metadata.pr scripts/audita_doc.pr \

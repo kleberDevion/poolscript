@@ -37,6 +37,7 @@
 #include "ps_ast.h"
 #include "ps_pilha.h"
 #include "ps_xlsx.h"
+#include "ps_c.h"
 
 static int falhas = 0;
 static int total = 0;
@@ -372,12 +373,24 @@ static void teste_regex(void)
  * base marcada fica praticamente na mesma altura do quadro — a subtração dava
  * NEGATIVA e virava um número gigante ao converter. O teste reprovava por causa
  * da própria medição, não do módulo. É a mesma classe de erro que o
- * `ps_pilha_apertada` trata com o `usado < 0`. */
+ * `ps_pilha_apertada` trata com o `usado < 0`.
+ *
+ * E a descida não pode ser achatada: `return f(n - 1) + x` é recursão de
+ * acumulador, que o clang com -O2 pode virar laço (um quadro só pra 40
+ * níveis). Foi o que aconteceu em 2026-10-15, quando o arquivo cresceu e o
+ * compilador decidiu diferente: o raso deu 1360 e o fundo 1280. Agora cada
+ * nível escreve no PRÓPRIO bloco depois da volta (os 40 blocos vivem juntos)
+ * e a função não é embutida. */
+__attribute__((noinline))
 static ptrdiff_t fundo_gasta(int n)
 {
     volatile char bloco[64];
     bloco[0] = (char)n;
-    if (n > 0) return fundo_gasta(n - 1) + (ptrdiff_t)(bloco[0] == 0);
+    if (n > 0) {
+        ptrdiff_t r = fundo_gasta(n - 1);
+        bloco[1] = (char)r;
+        return r + (ptrdiff_t)(bloco[0] == 0 && bloco[1] == 0);
+    }
     const char *base = NULL;
     size_t tam = 0;
     ps_pilha_le(&base, &tam);
@@ -822,6 +835,111 @@ static void teste_xlsx(void)
     CONF(roda_xlsx(z, n) == -1, "zip honesto sem sheet1 devia devolver -1 sem quebrar");
 }
 
+/* ── o C pela libffi (vm/ps_c.c) ─────────────────────────────────────────
+ * Tudo conferido contra o próprio compilador C: a forma do struct contra o
+ * `offsetof`, e cada chamada contra o que a função do C devolve chamada
+ * direto. */
+static unsigned char devolve_uchar(void) { return 200; }
+static signed char devolve_schar(void) { return -5; }
+static short soma_short(short a, short b) { return (short)(a + b); }
+
+static void trata_compara(void *ret, void **args, void *dados)
+{
+    (void)dados;
+    const int *a = *(const int **)args[0];
+    const int *b = *(const int **)args[1];
+    ps_c_ret_grava_int(&ps_c_int, ret, (*a > *b) - (*a < *b));
+}
+
+static void teste_c(void)
+{
+    grupo("c/tipos");
+    PSCTipo *sz = ps_c_tipo_por_nome("size_t");
+    CONF(sz && sz->tam == sizeof(size_t) && sz->sem_sinal == 1, "size_t com o tamanho e o sinal do sistema");
+    CONF(ps_c_tipo_por_nome("unsigned long int") == &ps_c_ulong, "grafia longa do unsigned long");
+    CONF(ps_c_tipo_por_nome("long double")->tam == sizeof(long double), "long double");
+    CONF(ps_c_tipo_por_nome("int32_t")->tam == 4 && !ps_c_tipo_por_nome("int32_t")->sem_sinal, "int32_t");
+    CONF(ps_c_tipo_por_nome("nao_existe") == NULL, "nome que nao e tipo do C");
+    CONF(ps_c_ponteiro(&ps_c_char) == ps_c_ponteiro(&ps_c_char), "o mesmo ponteiro e o mesmo objeto");
+    CONF(strcmp(ps_c_ponteiro(ps_c_const(&ps_c_char))->nome, "const char *") == 0,
+         "nome do const char *: '%s'", ps_c_ponteiro(ps_c_const(&ps_c_char))->nome);
+    struct trio { char c; int i; double d; };
+    const char *nomes[] = { "c", "i", "d" };
+    PSCTipo *tps[] = { &ps_c_char, &ps_c_int, &ps_c_double };
+    PSCTipo *st = ps_c_struct("struct trio", 0, nomes, tps, 3, NULL, 0, 0);
+    CONF(st && st->campos[1].desloc == offsetof(struct trio, i)
+         && st->campos[2].desloc == offsetof(struct trio, d)
+         && st->tam == sizeof(struct trio) && st->alinha == _Alignof(struct trio),
+         "struct pela regra do C igual ao do compilador");
+
+    grupo("c/chamada");
+    unsigned char ret[64];
+    PSCTipo *pchar = ps_c_ponteiro(ps_c_const(&ps_c_char));
+    PSCTipo *f_strlen = ps_c_funcao(sz, &pchar, 1, 0);
+    const char *texto = "jinga";
+    void *a1[] = { &texto };
+    CONF(ps_c_chama((void (*)(void))strlen, f_strlen, a1, 1, NULL, ret) == 0
+         && ps_c_ret_uint(sz, ret) == 5, "strlen pela libffi");
+    PSCTipo *f_uc = ps_c_funcao(&ps_c_uchar, NULL, 0, 0);
+    CONF(ps_c_chama((void (*)(void))devolve_uchar, f_uc, NULL, 0, NULL, ret) == 0
+         && ps_c_ret_uint(&ps_c_uchar, ret) == 200, "unsigned char de volta");
+    PSCTipo *f_sc = ps_c_funcao(&ps_c_schar, NULL, 0, 0);
+    CONF(ps_c_chama((void (*)(void))devolve_schar, f_sc, NULL, 0, NULL, ret) == 0
+         && ps_c_ret_int(&ps_c_schar, ret) == -5, "signed char negativo de volta");
+    PSCTipo *dois_short[] = { &ps_c_short, &ps_c_short };
+    PSCTipo *f_ss = ps_c_funcao(&ps_c_short, dois_short, 2, 0);
+    short sa = 30000, sb = 10000;
+    void *a2[] = { &sa, &sb };
+    CONF(ps_c_chama((void (*)(void))soma_short, f_ss, a2, 2, NULL, ret) == 0
+         && ps_c_ret_int(&ps_c_short, ret) == (short)(30000 + 10000), "short que da a volta, como no C");
+    /* variádica: int snprintf(char *, size_t, const char *, ...) */
+    PSCTipo *fixos[] = { ps_c_ponteiro(&ps_c_char), sz, pchar };
+    PSCTipo *f_snprintf = ps_c_funcao(&ps_c_int, fixos, 3, 1);
+    char buf[64];
+    char *pbuf = buf;
+    size_t cap = sizeof buf;
+    const char *fmt = "x=%d y=%.2f s=%s";
+    int vi = 42;
+    double vd = 2.5;
+    const char *vs = "ok";
+    void *a3[] = { &pbuf, &cap, &fmt, &vi, &vd, &vs };
+    PSCTipo *var[] = { &ps_c_int, &ps_c_double, pchar };
+    buf[0] = '\0';
+    CONF(ps_c_chama((void (*)(void))snprintf, f_snprintf, a3, 6, var, ret) == 0
+         && ps_c_ret_int(&ps_c_int, ret) == 16 && strcmp(buf, "x=42 y=2.50 s=ok") == 0,
+         "snprintf variadica: '%s'", buf);
+    /* struct por valor: div_t div(int, int), com a forma do sistema */
+    const char *nd[] = { "quot", "rem" };
+    PSCTipo *td[] = { &ps_c_int, &ps_c_int };
+    size_t dd[] = { offsetof(div_t, quot), offsetof(div_t, rem) };
+    PSCTipo *t_div = ps_c_struct("div_t", 0, nd, td, 2, dd, sizeof(div_t), _Alignof(div_t));
+    PSCTipo *dois_int[] = { &ps_c_int, &ps_c_int };
+    PSCTipo *f_div = ps_c_funcao(t_div, dois_int, 2, 0);
+    int num = 17, den = 5;
+    void *a4[] = { &num, &den };
+    div_t r = { 0, 0 };
+    CONF(ps_c_tam_ret(t_div) <= sizeof ret && ps_c_chama((void (*)(void))div, f_div, a4, 2, NULL, ret) == 0
+         && (memcpy(&r, ret, sizeof r), r.quot == 3 && r.rem == 2), "div_t por valor");
+
+    grupo("c/callback");
+    PSCTipo *pvoid = ps_c_ponteiro(ps_c_const(&ps_c_void));
+    PSCTipo *dois_pv[] = { pvoid, pvoid };
+    PSCTipo *f_cmp = ps_c_funcao(&ps_c_int, dois_pv, 2, 0);
+    void (*codigo)(void) = NULL;
+    void *fecho = ps_c_closure_nova(f_cmp, trata_compara, NULL, &codigo);
+    CONF(fecho && codigo, "closure da libffi");
+    if (fecho && codigo) {
+        int v[6] = { 5, 3, 9, 1, 7, 2 };
+        qsort(v, 6, sizeof(int), (int (*)(const void *, const void *))codigo);
+        CONF(v[0] == 1 && v[1] == 2 && v[2] == 3 && v[3] == 5 && v[4] == 7 && v[5] == 9,
+             "qsort com comparador closure");
+        ps_c_closure_solta(fecho);
+    }
+    PSCTipo *f_var = ps_c_funcao(&ps_c_int, dois_pv, 2, 1);
+    CONF(ps_c_closure_nova(f_var, trata_compara, NULL, &codigo) == NULL,
+         "closure variadica recusada (a libffi nao tem)");
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1) filtro = argv[1];
@@ -836,6 +954,7 @@ int main(int argc, char **argv)
     teste_ast();
     teste_pilha();
     teste_xlsx();
+    teste_c();
 
     printf("\nunidade: %d checagens, %d falharam\n", total, falhas);
     /* Filtro que não casa nada = 0 checagens = "passou"? Não: é erro de quem

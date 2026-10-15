@@ -169,7 +169,7 @@ baixa() {   # baixa <destino> <url>
 # necessários pra ligar a libpq estática, e saíram.
 DEPS_BUILD="build-essential git pkg-config nodejs npm
             libsqlite3-dev libpq-dev unixodbc-dev libssl-dev libpng-dev
-            libexpat1-dev zlib1g-dev libmariadb-dev
+            libexpat1-dev zlib1g-dev libffi-dev libmariadb-dev
             libmongoc-dev libbson-dev libgmp-dev"
 
 compila_do_fonte() {   # compila_do_fonte <pasta_temporária>

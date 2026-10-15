@@ -175,10 +175,11 @@ dispara, acompanha e baixa o pacote. Precisa do `gh` logado
 
 ### Compilando do fonte
 
-Precisa de `gcc` e das libs de dev: postgresql, mysql, mongoc, openssl. Do lado
-do PostgreSQL são **dois** pacotes: `libpq-dev` e `postgresql-server-dev-all` —
-a libpq entra estática, e a `libpq.a` referencia símbolos que moram na
-`libpgcommon.a`/`libpgport.a`, que só o segundo instala.
+Precisa do `gcc` e das bibliotecas de desenvolvimento. Umas o binário liga:
+sqlite, OpenSSL, libpng, expat, zlib, libffi e gmp. Dos clientes de banco
+(libpq, MariaDB, ODBC e mongoc), só os cabeçalhos: o motor abre a biblioteca
+deles na primeira conexão. No macOS, a libffi, o sqlite, o expat e a zlib são
+do próprio sistema.
 
 A lista completa, que é a mesma que o `instalar.sh` usa quando compila sozinho,
 está em `DEPS_BUILD` no [`instalar.sh`](instalar.sh).
@@ -213,23 +214,25 @@ mostra o **gráfico de execução** com a linha que quebrou em vermelho — ver
 
 O binário **PSVM** (`jinga`) já traz **embutido** (não precisa instalar nada):
 
-> **sqlite, libpq (postgres), mysqlclient, odbc, openssl (TLS), png, expat, z.**
-> Ou seja: Todas as libs que são padrão da linguagem ja estão com suas dependencias embutidas no ELF, so existem
-> algumas que são estaticas e e necessario o ``.so`` dela para o ELF chamar em Runtime
+> **sqlite, OpenSSL (TLS), libpng, expat, zlib e libffi.**
 
-O binário **chama de fora** (a `.so` precisa existir no servidor):
-- **Mongo** — `libmongoc-1.0-0 libbson-1.0-0 libmongocrypt0 libsnappy1v5` (só se usar MongoDB).
-- **Cauda de auth do libpq** (LDAP/Kerberos/GnuTLS — `libldap-2.5-0 libsasl2-2 libgssapi-krb5-2 libgnutls30`.
-- **Sistema** — `libltdl7 libzstd1 libstdc++6 libgcc-s1`.
-- **glibc** (`libc`, `libm`, `pthread`, `dl`, `resolv`) — todo Linux já tem. 
+Do sistema, ele pede só a glibc (`libc`, `libm`) e a `libgmp.so.10` (o
+inteiro grande), que todo Debian e Ubuntu já tem. É o que o `ldd` mostra.
 
-**VPS (Debian/Ubuntu), uma linha:**
+Os clientes de banco não são ligados ao binário: o motor abre a biblioteca na
+primeira conexão. Então ela só precisa existir no servidor se o programa usa
+aquele banco:
+- **Postgres**: `libpq5` (`libpq.so.5`);
+- **MySQL/MariaDB**: `libmariadb3` (`libmariadb.so.3`; a `libmysqlclient.so.21` também serve);
+- **ODBC**: `unixodbc` (`libodbc.so.2`);
+- **Mongo**: `libmongoc-1.0-0` (`libmongoc-1.0.so.0`).
+
+**VPS (Debian/Ubuntu), uma linha** (deixe de fora os bancos que o programa não usa):
 ```bash
-sudo apt update && sudo apt install -y \
-  libmongoc-1.0-0 libbson-1.0-0 libmongocrypt0 libsnappy1v5 \
-  libldap-2.5-0 libsasl2-2 libgssapi-krb5-2 libgnutls30 libzstd1 libltdl7
+sudo apt update && sudo apt install -y libpq5 libmariadb3 unixodbc libmongoc-1.0-0
 ```
-Se faltar alguma: `ldd ./pool | grep "not found"` mostra o nome exato.
+Se faltar o cliente de um banco, o `connect` diz qual:
+`o driver postgres precisa da biblioteca libpq.so.5, que nao foi encontrada (...)`.
 
 **Alternativa sem instalar nada** — bundle portátil (`make bundle`): gera
 `dist/jinga-portable/` = binário + pasta `lib/` com todas as `.so`, e o wrapper

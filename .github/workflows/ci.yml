@@ -46,7 +46,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             gcc libsqlite3-dev libpq-dev libmariadb-dev libmariadb-dev-compat unixodbc-dev \
-            libssl-dev libpng-dev libexpat1-dev zlib1g-dev \
+            libssl-dev libpng-dev libexpat1-dev zlib1g-dev libffi-dev \
             libgmp-dev libx11-dev libmongoc-dev libbson-dev
       - run: make pool testar
       # `make check` é o portão INTEIRO e é o mesmo comando que roda na máquina:
@@ -67,7 +67,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             gcc libsqlite3-dev libpq-dev libmariadb-dev libmariadb-dev-compat unixodbc-dev \
-            libssl-dev libpng-dev libexpat1-dev zlib1g-dev \
+            libssl-dev libpng-dev libexpat1-dev zlib1g-dev libffi-dev \
             libgmp-dev libx11-dev libmongoc-dev libbson-dev
       - run: make pool
       # A SEMENTE MUDA a cada dia, de propósito: teste de propriedade com
@@ -94,7 +94,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             gcc clang libsqlite3-dev libpq-dev libmariadb-dev libmariadb-dev-compat unixodbc-dev \
-            libssl-dev libpng-dev libexpat1-dev zlib1g-dev \
+            libssl-dev libpng-dev libexpat1-dev zlib1g-dev libffi-dev \
             libgmp-dev libx11-dev libmongoc-dev libbson-dev
       - run: make pool testar
       # A MESMA suíte sob sanitizer: o binário -O2 é justamente o que esconde
@@ -180,7 +180,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             gcc lcov libsqlite3-dev libpq-dev libmariadb-dev libmariadb-dev-compat unixodbc-dev \
-            libssl-dev libpng-dev libexpat1-dev zlib1g-dev \
+            libssl-dev libpng-dev libexpat1-dev zlib1g-dev libffi-dev \
             libgmp-dev libx11-dev libmongoc-dev libbson-dev
       # `make cobertura` termina no PORTÃO (teste/cobertura_portao.pr): compara
       # arquivo por arquivo com teste/cobertura_base.txt e sai != 0 se algum

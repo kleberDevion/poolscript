@@ -148,7 +148,7 @@ Cada linha traz a regra e o porquê.
 | Matar todo processo que o assistente criou (servidor LSP, jinker, xvfb). | Processo órfão segura a máquina. |
 | `ulimit -v` em toda ferramenta de análise. | `gcc -fanalyzer` no arquivo grande da VM passa de 6 GB, e o OOM derrubou a sessão duas vezes. |
 | E2E com editor real só na validação final. | É o job mais pesado. |
-| Build, suíte inteira, ASan, OOM e e2e rodam na **VPS `tecsol-vps`** (desde 2026-09-20), inclusive o `make pool` de cada iteração: o binário vem pra cá por `scp` (os dois têm glibc 2.39 e gcc 13.3; o `pool` liga estático sqlite, ssl, png, expat e zlib, e daqui só pede a `libgmp.so.10`) e aqui só se instala. Detalhes logo abaixo da tabela. | "Tá impossível essa máquina, faça build e rode a suíte lá"; "não deixe resquício nenhum"; "o certo seria na vps" (2026-10-07, depois de um `make pool` aqui com 833 MB livres e o swap cheio). |
+| Build, suíte inteira, ASan, OOM e e2e rodam na **VPS `tecsol-vps`** (desde 2026-09-20), inclusive o `make pool` de cada iteração: o binário vem pra cá por `scp` (os dois têm glibc 2.39 e gcc 13.3; o `pool` liga estático sqlite, ssl, png, expat, zlib e, desde o 17.1.0, a libffi, e daqui só pede a `libgmp.so.10`) e aqui só se instala. Detalhes logo abaixo da tabela. | "Tá impossível essa máquina, faça build e rode a suíte lá"; "não deixe resquício nenhum"; "o certo seria na vps" (2026-10-07, depois de um `make pool` aqui com 833 MB livres e o swap cheio). |
 | Na VPS, o Postgres 16 da porta 5432 é **seu**. O banco `ps_teste` é criado antes e apagado depois de cada rodada. | Dado seu não se destrói. |
 | As regras de carga foram escritas pra este laptop (i3-1115G4, 7,7 GB). O Mac (i9-9880H, 16 GB) ainda não foi medido: medir lá antes de relaxar qualquer uma. | Número só medido. |
 
@@ -1154,13 +1154,13 @@ Toda mensagem vem com o quadro `em arquivo.pr, linha N` e o cursor `^^^` no pont
 
 ## 3. O motor (`vm/`)
 
-O motor da Jinga (o `--version` o chama de **PSVM**) é um programa em C que vira **um executável só**. Todo o fonte dele mora em `vm/`: no commit `b180807` são 53 arquivos (52 versionados e o `ps_build.h`, gerado pelo Makefile) e 62.006 linhas (`.c`, `.h`, `.def` e `.inc`), contadas com `wc -l` em 2026-09-28. O `Makefile` compila os 20 `.c` numa única chamada do compilador. Os `.h` que carregam código (`ps_jit_x64.h`, `ps_dl.h`, `ps_tipos.h`, `ps_pgerr.h`, `ps_qr_tables.h`) entram por `#include`.
+O motor da Jinga (o `--version` o chama de **PSVM**) é um programa em C que vira **um executável só**. Todo o fonte dele mora em `vm/`: no commit `b180807` são 53 arquivos (52 versionados e o `ps_build.h`, gerado pelo Makefile) e 62.006 linhas (`.c`, `.h`, `.def` e `.inc`), contadas com `wc -l` em 2026-09-28. O `Makefile` compila os `.c` da lista `FONTES` numa única chamada do compilador. Os `.h` que carregam código (`ps_jit_x64.h`, `ps_dl.h`, `ps_tipos.h`, `ps_pgerr.h`, `ps_qr_tables.h`) entram por `#include`.
 
 ```
 FONTES := vm/ps_lexer.c vm/ps_ast.c vm/ps_parser.c vm/ps_compiler.c vm/ps_pilha.c
           vm/ps_hash.c vm/ps_regex.c vm/ps_mail.c vm/ps_http.c vm/ps_qr.c vm/ps_xlsx.c
           vm/ps_db.c vm/ps_mongo.c vm/ps_jinker.c vm/ps_pkg.c vm/ps_debug.c
-          vm/ps_retornos.c vm/ps_so.c vm/ps_unicode.c vm/jinga_vm.c vm/main.c
+          vm/ps_retornos.c vm/ps_so.c vm/ps_unicode.c vm/ps_c.c vm/jinga_vm.c vm/main.c
 ```
 
 Números do binário medidos neste laptop em 2026-09-28:
@@ -1170,8 +1170,8 @@ Números do binário medidos neste laptop em 2026-09-28:
 | `./pool --version` | `Jinga 16.1.9 [PSVM] (2026-09-28) Runtime standalone` |
 | Arquivo | `./pool`, na raiz do repo, com 9.066.080 bytes (igual byte a byte ao `/usr/local/bin/jinga`) |
 | Dependências dinâmicas (`ldd ./pool`) | só `libm.so.6`, `libgmp.so.10` e `libc.so.6`, além do `linux-vdso` e do `ld-linux` |
-| Bibliotecas estáticas (Linux, via `-Wl,-Bstatic`) | sqlite, OpenSSL (libssl/libcrypto), libpng, expat, zlib |
-| Bibliotecas estáticas (macOS) | os `.a` do Homebrew para OpenSSL e libpng; sqlite, expat e zlib vêm do próprio macOS; gmp vem do Homebrew (`-lgmp`); desde `3c245e7` também os frameworks Security e CoreFoundation (raízes TLS do Keychain) |
+| Bibliotecas estáticas (Linux, via `-Wl,-Bstatic`) | sqlite, OpenSSL (libssl/libcrypto), libpng, expat, zlib; desde o 17.1.0 também a libffi (a chamada das funções do C) |
+| Bibliotecas estáticas (macOS) | os `.a` do Homebrew para OpenSSL e libpng; sqlite, expat, zlib e libffi vêm do próprio macOS; gmp vem do Homebrew (`-lgmp`); desde `3c245e7` também os frameworks Security e CoreFoundation (raízes TLS do Keychain) |
 | Carregadas só no primeiro `connect` (dlopen) | clientes do Postgres, do MariaDB/MySQL, do unixODBC e do Mongo (ver 3.13) |
 | Versão | constante `PS_VERSAO` em `vm/ps_versao.h` (a de hoje está na 5.1) |
 | Data de build | `vm/ps_build.h`, gerado pelo Makefile |
@@ -1657,7 +1657,7 @@ Nomes procurados, na ordem:
 - **Postgres**: um erro vira classe de exceção pelo SQLSTATE, com a tabela `vm/ps_pgerr.h` (252 entradas, todas filhas de `DatabaseError`; por exemplo, `catch (UniqueViolation e)`).
 - **Placeholders**: passam por um varredor só (`sql_varre_placeholders`). O sqlite e o MySQL usam `?`, o Postgres usa `%s`.
 - **Mongo**: a ponte é JSON. `Value -> JSON -> BSON` na entrada, `BSON -> JSON relaxado -> Value` na saída, e o `_id` é removido.
-- **Nota**: a seção "Guia de deploy" do `jinga.md` ainda lista libpq, mysqlclient e odbc como embutidos no ELF. O `Makefile` e o `ldd ./pool` (só libm, libgmp e libc) mostram que não estão: eles vêm por `dlopen`.
+- O "Guia de deploy" do `jinga.md` diz o mesmo que o `Makefile` e o `ldd ./pool` (só libm, libgmp e libc): os clientes de banco vêm por `dlopen`, na conexão. Até 2026-10-15 ele dizia que libpq, mysqlclient e odbc vinham embutidos no ELF.
 
 ---
 
@@ -1674,6 +1674,7 @@ Nomes procurados, na ordem:
 | pacotes | `ps_pkg.c/.h` | `jpkg`: `~/.jinga` (ou `$JINGA_HOME`, ou `$POOLSCRIPT_HOME`) com `commands/`, `libs/` e `bin/` (shims; no Windows, `.cmd` e PATH por `setx`); `installed.json` é reescrito a partir do disco; `config.json` guarda o `registry_url`; download por HTTPS com sha256 opcional. Uma `~/.poolscript` antiga é movida para `~/.jinga` com aviso |
 | inteiro grande | `ps_gmp_min.h` | a interface `mpz` da GMP declarada à mão (símbolos `__gmpz_*`), ligada a `libgmp.so.10` no Linux e a `-lgmp` do Homebrew no macOS |
 | Unicode | `ps_unicode.c/.h`, `ps_unicode_tab.inc` | caixa e classes de caractere dos métodos de texto (`upper`, `lower`, `title`, `capitalize`, `swapcase`, `casefold`, `isalpha`, `isdigit`, `isdecimal`, `isnumeric`, `isalnum`, `isspace`, `isprintable`, `isupper`, `islower`, `istitle`, o branco do `split`/`strip`) pela tabela do Unicode inteira. Nome no código não passa por aqui (a regra do lexer, doc 1.4) |
+| a biblioteca do C | `ps_c.c/.h` | Plano 1, lote C1, em obra no ramo `obra/c1`. Os tipos do C: os escalares com o tamanho e o alinhamento do sistema do build, os typedefs do padrão (`size_t`, `int32_t`, `time_t`...), ponteiro, array, struct e union pela regra de layout do C, e o tipo de função. A chamada é pela libffi: o `ffi_cif` é preparado uma vez por função; na variádica, a cada chamada (`ffi_prep_cif_var`, com a promoção do C); o retorno estreito vem alargado no registro. O callback é por closure da libffi. O módulo não depende da VM |
 
 **As tabelas do Unicode.** O `vm/ps_unicode_tab.inc` é GERADO por
 `scripts/gera_unicode.pr` a partir dos arquivos oficiais do Unicode
@@ -2216,7 +2217,7 @@ O Makefile, os fontes e o binário ficam todos na raiz do repositório: `make <a
 ```bash
 sudo apt-get install -y build-essential git pkg-config nodejs npm \
   libsqlite3-dev libpq-dev unixodbc-dev libssl-dev libpng-dev \
-  libexpat1-dev zlib1g-dev libmariadb-dev libmongoc-dev libbson-dev libgmp-dev
+  libexpat1-dev zlib1g-dev libffi-dev libmariadb-dev libmongoc-dev libbson-dev libgmp-dev
 ```
 
 Pra `make check` completo também entram: `clang` (fuzz), `lcov` (cobertura), `valgrind` (memcheck), `nvim` e `node`.
@@ -2239,8 +2240,8 @@ brew install lcov gh neovim node
   ```
 
 Como o Makefile muda por sistema (`SO := $(shell uname -s)`):
-- **Linux:** gcc, com `-Wduplicated-branches` e `--param=max-goto-duplication-insns=64` (sem esse parâmetro o laço da VM fica 16% mais lento em instruções, medido com perf stat). Sqlite, TLS, PNG, expat e zlib entram estáticos (`-Wl,-Bstatic`).
-- **Darwin:** clang da Apple, sem os dois parâmetros acima. TLS e PNG entram pelos `.a` do Homebrew; sqlite, expat e zlib vêm do macOS; desde `3c245e7` liga também os frameworks Security e CoreFoundation.
+- **Linux:** gcc, com `-Wduplicated-branches` e `--param=max-goto-duplication-insns=64` (sem esse parâmetro o laço da VM fica 16% mais lento em instruções, medido com perf stat). Sqlite, TLS, PNG, expat, zlib e libffi entram estáticos (`-Wl,-Bstatic`).
+- **Darwin:** clang da Apple, sem os dois parâmetros acima. TLS e PNG entram pelos `.a` do Homebrew; sqlite, expat, zlib e libffi vêm do macOS (a libffi com o cabeçalho em `ffi/ffi.h`, no SDK); desde `3c245e7` liga também os frameworks Security e CoreFoundation.
 - **Os dois:** os clientes de banco (Postgres, MySQL, ODBC, Mongo) não são ligados. Cada driver abre a biblioteca no primeiro `connect` (`vm/ps_dl.h`), e os cabeçalhos entram só pra compilar.
 
 ### 5.3 Compilar
@@ -3832,7 +3833,7 @@ O Makefile tem ramo Darwin:
 - Compila com o clang da Apple.
 - Pega cabeçalhos e bibliotecas por `brew --prefix`.
 - Liga o OpenSSL e o libpng estáticos (os `.a` do Homebrew).
-- Usa o sqlite, o expat e o zlib do próprio macOS, mais os frameworks Security e CoreFoundation.
+- Usa o sqlite, o expat, o zlib e a libffi do próprio macOS, mais os frameworks Security e CoreFoundation.
 - Os clientes de banco não são ligados: o motor abre o `.dylib` no primeiro `connect`.
 
 1. **Dependências de compilação.** É a mesma lista do `scripts/compila.pr` e do `build.yml`.
@@ -4046,7 +4047,7 @@ Os timers da Tecsol (`~/.config/systemd/user`) não sobem no Mac, porque o macOS
    ```bash
    sudo apt-get update
    sudo apt-get install -y git gcc make libsqlite3-dev libpq-dev libmariadb-dev unixodbc-dev \
-       libssl-dev libpng-dev libexpat1-dev zlib1g-dev libgmp-dev libmongoc-dev libbson-dev nodejs npm
+       libssl-dev libpng-dev libexpat1-dev zlib1g-dev libffi-dev libgmp-dev libmongoc-dev libbson-dev nodejs npm
    git clone https://github.com/kleberDevion/poolscript.git ~/poolscript-lang
    cd ~/poolscript-lang
    (cd editor/vscode && npm install --omit=dev --no-audit --no-fund)

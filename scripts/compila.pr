@@ -23,14 +23,15 @@ ALVOS = ["linux", "mac", "windows"]
 ARTEFATO = {"linux": "jinga-linux-x86_64", "mac": "jinga-macos-x86_64", "windows": "jinga-windows-x86_64"}
 
 # Dependências de compilação de cada sistema (os clientes de banco entram só
-# pelos cabeçalhos: o motor abre a biblioteca no primeiro `connect`).
+# pelos cabeçalhos: o motor abre a biblioteca no primeiro `connect`). A libffi
+# (a chamada das funções do C) não está no BREW: no macOS ela é do sistema.
 BREW = ["openssl@3", "libpng", "gmp", "libpq", "mariadb-connector-c", "unixodbc",
         "mongo-c-driver@1", "coreutils"]
-APT = "sudo apt-get install -y gcc make libsqlite3-dev libpq-dev libmariadb-dev unixodbc-dev libssl-dev libpng-dev libexpat1-dev zlib1g-dev libgmp-dev libmongoc-dev libbson-dev"
+APT = "sudo apt-get install -y gcc make libsqlite3-dev libpq-dev libmariadb-dev unixodbc-dev libssl-dev libpng-dev libexpat1-dev zlib1g-dev libffi-dev libgmp-dev libmongoc-dev libbson-dev"
 PACMAN = ["mingw-w64-ucrt-x86_64-gcc", "mingw-w64-ucrt-x86_64-openssl", "mingw-w64-ucrt-x86_64-sqlite3",
           "mingw-w64-ucrt-x86_64-libpng", "mingw-w64-ucrt-x86_64-expat", "mingw-w64-ucrt-x86_64-zlib",
-          "mingw-w64-ucrt-x86_64-gmp", "mingw-w64-ucrt-x86_64-postgresql", "mingw-w64-ucrt-x86_64-libmariadbclient",
-          "mingw-w64-ucrt-x86_64-mongo-c-driver", "make"]
+          "mingw-w64-ucrt-x86_64-libffi", "mingw-w64-ucrt-x86_64-gmp", "mingw-w64-ucrt-x86_64-postgresql",
+          "mingw-w64-ucrt-x86_64-libmariadbclient", "mingw-w64-ucrt-x86_64-mongo-c-driver", "make"]
 
 
 # O sistema desta máquina, no nome que a ferramenta usa.
