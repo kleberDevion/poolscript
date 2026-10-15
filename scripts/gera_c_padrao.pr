@@ -1,0 +1,588 @@
+# Gera a tabela da biblioteca padrão do C (Plano 1) a partir de
+# vm/c_padrao.decl:
+#   vm/ps_c_padrao.inc            a tabela que o motor usa (incluída por vm/ps_c.c)
+#   teste/c_padrao_enderecos.inc  o endereço de cada função, ligado pelo
+#                                 compilador em C11, pro teste de unidade
+#
+#     ./pool scripts/gera_c_padrao.pr           confere: os dois batem com o .decl?
+#     ./pool scripts/gera_c_padrao.pr --grava   escreve os dois
+#
+# O formato do .decl está no topo dele. Aqui só se lê, se ordena e se escreve.
+# Quem confere protótipo, tipo e valor é o compilador C, na hora do build: o
+# .inc declara de novo cada função contra o cabeçalho do sistema e passa cada
+# tipo por um `_Static_assert`.
+import os
+import sys
+
+str FONTE = "vm/c_padrao.decl"
+str DESTINO = "vm/ps_c_padrao.inc"
+str DESTINO_TESTE = "teste/c_padrao_enderecos.inc"
+
+# as espécies, na ordem do enum PSCEspecie de vm/ps_c.h (a 0 é "nenhuma")
+list ESPECIES = ["", "funcao", "macro", "literal", "const", "constflo", "texto", "talvez",
+                 "valor", "nulo", "tipo", "opaco", "estrutura", "sintaxe", "fora"]
+list ENUM_ESPECIE = ["", "PSC_NOME_FUNCAO", "PSC_NOME_MACRO", "PSC_NOME_LITERAL", "PSC_NOME_CONST",
+                     "PSC_NOME_CONSTFLO", "PSC_NOME_TEXTO", "PSC_NOME_TALVEZ", "PSC_NOME_VALOR",
+                     "PSC_NOME_NULO", "PSC_NOME_TIPO", "PSC_NOME_OPACO", "PSC_NOME_ESTRUTURA",
+                     "PSC_NOME_SINTAXE", "PSC_NOME_FORA"]
+
+Null funct falha(int linha, str msg) {
+    post(FONTE + ":" + str(linha) + ": " + msg)
+    sys.exit(1)
+}
+
+bool funct letra_de_nome(str c) {
+    return c.isalnum() or c == "_"
+}
+
+# O nome declarado num protótipo: o identificador colado no primeiro "(" que
+# vem logo depois de um identificador. Em `void (*signal(int s, ...))(int)`
+# é o `signal`; o "(" depois de `void ` não conta.
+str funct nome_do_prototipo(str p) {
+    int i = 0
+    while i < len(p) {
+        if p[i] == "(" and i > 0 and letra_de_nome(p[i - 1]) {
+            int j = i - 1
+            while j > 0 and letra_de_nome(p[j - 1]) {
+                j = j - 1
+            }
+            return p[j:i]
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+# o último identificador de uma declaração: "FILE *stdin" -> "stdin"
+str funct ultimo_nome(str d) {
+    int fim = len(d)
+    while fim > 0 and not letra_de_nome(d[fim - 1]) {
+        fim = fim - 1
+    }
+    int ini = fim
+    while ini > 0 and letra_de_nome(d[ini - 1]) {
+        ini = ini - 1
+    }
+    return d[ini:fim]
+}
+
+# os nomes dos parâmetros de um protótipo sem ponteiro de função
+list funct nomes_dos_parametros(str p) {
+    str dentro = p[p.find("(") + 1:p.rfind(")")].strip()
+    list r = []
+    if dentro == "void" or dentro == "" {
+        return r
+    }
+    for each parte in dentro.split(",") {
+        r.append(ultimo_nome(parte))
+    }
+    return r
+}
+
+# o protótipo com o nome entre parênteses: `int (isalnum)(int c)`. Assim uma
+# macro de cara de função com o mesmo nome não expande.
+str funct entre_parenteses(str p, str nome) {
+    int i = p.find(nome + "(")
+    return p[:i] + "(" + nome + ")" + p[i + len(nome):]
+}
+
+# o protótipo com outro nome: `int ps_c_m_isnan(double x)`
+str funct renomeia(str p, str nome, str novo) {
+    int i = p.find(nome + "(")
+    return p[:i] + novo + p[i + len(nome):]
+}
+
+# texto pra dentro de um literal de string do C (sem as aspas)
+str funct escapa_c(str s) {
+    return s.replace("\\", "\\\\").replace("\"", "\\\"")
+}
+
+# ── a leitura do .decl ──────────────────────────────────────────────────────
+list cabecalhos = []
+list entradas = []
+dict vistos = {}
+
+Null funct novo(int linha, str nome, str especie, str decl) {
+    if nome == "" {
+        falha(linha, "não achei o nome em: " + decl)
+    }
+    if nome in vistos {
+        falha(linha, "nome repetido: " + nome + " (já na linha " + str(vistos[nome]) + ")")
+    }
+    if len(cabecalhos) == 0 {
+        falha(linha, "declaração antes do primeiro `cabecalho`")
+    }
+    vistos[nome] = linha
+    entradas.append({"nome": nome, "especie": especie, "decl": decl, "cab": len(cabecalhos) - 1,
+                     "vm": False, "glibc": "", "ligador_avisa": False, "expansao": False, "corpo": "",
+                     "campos": [], "linha": linha})
+}
+
+# `funcao int scanf(...); @glibc __isoc99_scanf` -> o protótipo e as marcas;
+# `macro int fpclassify(double x); = <expressão>` -> o protótipo e o corpo
+Null funct le_prototipo(int linha, str especie, str resto) {
+    int pv = resto.find(";")
+    if pv < 0 {
+        falha(linha, "falta o `;` no fim do protótipo")
+    }
+    str proto = resto[:pv].strip()
+    str depois = resto[pv + 1:].strip()
+    str corpo = ""
+    list marcas = []
+    if depois.startswith("=") {
+        if especie != "macro" {
+            falha(linha, "só `macro` tem corpo depois do `=`")
+        }
+        corpo = depois[1:].strip()
+    } else {
+        marcas = depois.split()
+    }
+    str nome = ""
+    if especie == "valor" {
+        nome = ultimo_nome(proto)
+    } else {
+        nome = nome_do_prototipo(proto)
+    }
+    novo(linha, nome, especie, proto)
+    dict e = entradas[len(entradas) - 1]
+    e["corpo"] = corpo
+    int k = 0
+    while k < len(marcas) {
+        if marcas[k] == "@vm" {
+            e["vm"] = True
+        } elif marcas[k] == "@ligador-avisa" {
+            e["ligador_avisa"] = True
+        } elif marcas[k] == "@expansao" and especie == "valor" {
+            e["expansao"] = True
+        } elif marcas[k] == "@glibc" and k + 1 < len(marcas) {
+            e["glibc"] = marcas[k + 1]
+            k = k + 1
+        } else {
+            falha(linha, "marca desconhecida: " + marcas[k])
+        }
+        k = k + 1
+    }
+}
+
+int nlinha = 0
+for each bruta in os.readFile(FONTE).splitlines() {
+    nlinha = nlinha + 1
+    str l = bruta.strip()
+    if l == "" or l.startswith("#") {
+        continue
+    }
+    tuple tp = l.partition(" ")
+    str especie = tp[0]
+    str resto = tp[2].strip()
+    if especie == "cabecalho" {
+        cabecalhos.append(resto)
+    } elif especie == "funcao" or especie == "macro" or especie == "literal" or especie == "valor" {
+        le_prototipo(nlinha, especie, resto)
+    } elif especie == "const" or especie == "constflo" or especie == "texto" or especie == "talvez" or especie == "tipo" or especie == "opaco" or especie == "nulo" {
+        for each n in resto.split() {
+            novo(nlinha, n, especie, "")
+        }
+    } elif especie == "sintaxe" {
+        novo(nlinha, nome_do_prototipo(resto), especie, resto)
+    } elif especie == "estrutura" {
+        int a = resto.find("{")
+        int b = resto.rfind("}")
+        if a < 0 or b < a {
+            falha(nlinha, "estrutura sem { campos }")
+        }
+        str tipo = resto[:a].strip()
+        novo(nlinha, tipo, especie, tipo)
+        dict e = entradas[len(entradas) - 1]
+        for each c in resto[a + 1:b].split(";") {
+            str campo = c.strip()
+            if campo != "" {
+                e["campos"].append(campo)
+            }
+        }
+    } elif especie == "fora" {
+        tuple fp = resto.partition(":")
+        str motivo = fp[2].strip()
+        if motivo == "" {
+            falha(nlinha, "`fora` sem o motivo depois do `:`")
+        }
+        for each n in fp[0].split() {
+            novo(nlinha, n, especie, motivo)
+        }
+    } else {
+        falha(nlinha, "linha de espécie desconhecida: " + especie)
+    }
+}
+
+# ── o bloco de texto: nomes, protótipos e motivos, um `\0` depois de cada ──
+# A posição 0 é o texto vazio: "nenhum".
+list bloco = [""]
+dict pos_texto = {"": 0}
+list tam_bloco = [1]
+
+int funct no_bloco(str s) {
+    if s in pos_texto {
+        return pos_texto[s]
+    }
+    int p = tam_bloco[0]
+    pos_texto[s] = p
+    bloco.append(s)
+    tam_bloco[0] = p + len(s.encode()) + 1
+    return p
+}
+
+# os nomes em ordem de strcmp (o código do caractere: os nomes são ASCII)
+dict por_nome = {}
+for each e in entradas {
+    por_nome[e["nome"]] = e
+}
+list ordem = sorted(por_nome.keys())
+
+# índices por espécie, na ordem dos nomes
+dict conta = {}
+for each esp in ESPECIES {
+    conta[esp] = 0
+}
+for each n in ordem {
+    dict e = por_nome[n]
+    e["idx"] = conta[e["especie"]]
+    conta[e["especie"]] = conta[e["especie"]] + 1
+}
+
+list cab_pos = []
+for each c in cabecalhos {
+    cab_pos.append(no_bloco(c))
+}
+
+# ── o .inc ──────────────────────────────────────────────────────────────────
+list s = []
+s.append("/* GERADO por scripts/gera_c_padrao.pr a partir de vm/c_padrao.decl: não se")
+s.append(" * edita à mão. Mude o .decl e rode `./pool scripts/gera_c_padrao.pr --grava`.")
+s.append(" * Incluído só por vm/ps_c.c, que define os tipos das tabelas e o PS_C_TIPO. */")
+s.append("")
+s.append("#define PS_C_NCAB " + str(len(cabecalhos)))
+s.append("#define PS_C_NNOMES " + str(len(ordem)))
+s.append("")
+
+# a tabela dos nomes (o bloco de texto vai no fim, quando estiver completo)
+list t = []
+t.append("/* Os nomes em ordem de strcmp: a busca é binária. Os números são posições")
+t.append(" * em PS_C_TEXTO; `idx` é a linha na tabela da espécie. */")
+t.append("static const PSCNome PS_C_NOMES[PS_C_NNOMES] = {")
+t.append("    /* nome, decl, idx, glibc, cab, especie, marcas */")
+list campos_c = []
+list estruturas_c = []
+list checagens = []
+int ncampos = 0
+for each n in ordem {
+    dict e = por_nome[n]
+    int pn = no_bloco(n)
+    int pd = 0
+    if e["especie"] == "estrutura" {
+        pd = no_bloco(e["decl"])
+        int primeiro = ncampos
+        for each campo in e["campos"] {
+            str cn = ultimo_nome(campo)
+            str ct = campo[:len(campo) - len(cn)].strip()
+            campos_c.append("    { " + str(no_bloco(cn)) + ", " + str(no_bloco(campo)) + ", offsetof("
+                            + n + ", " + cn + ") },  /* " + n + "." + cn + " */")
+            checagens.append("_Static_assert(_Generic(((" + n + " *)0)->" + cn + ", " + ct
+                             + ": 1, default: 0), \"" + n + "." + cn + ": o tipo de vm/c_padrao.decl\");")
+            ncampos = ncampos + 1
+        }
+        estruturas_c.append("    { " + str(primeiro) + ", " + str(len(e["campos"])) + ", sizeof(" + n
+                            + "), _Alignof(" + n + ") },  /* " + n + " */")
+    } elif e["decl"] != "" {
+        pd = no_bloco(e["decl"])
+    }
+    int pg = 0
+    if e["glibc"] != "" {
+        pg = no_bloco(e["glibc"])
+    }
+    str marcas = "0"
+    if e["vm"] {
+        marcas = "PSC_MARCA_VM"
+    }
+    int ie = ESPECIES.index(e["especie"])
+    t.append("    { " + str(pn) + ", " + str(pd) + ", " + str(e["idx"]) + ", " + str(pg) + ", "
+             + str(e["cab"]) + ", " + ENUM_ESPECIE[ie] + ", " + marcas + " },  /* " + n + " */")
+}
+t.append("};")
+
+if tam_bloco[0] > 65535 {
+    post("o bloco de texto passou de 65535 bytes: as posições são uint16_t em PSCNome")
+    sys.exit(1)
+}
+
+s.append("static const char PS_C_TEXTO[] =")
+int ib = 0
+while ib < len(bloco) {
+    str fim = ""
+    if ib == len(bloco) - 1 {
+        fim = ";"
+    }
+    s.append("    \"" + escapa_c(bloco[ib]) + "\\0\"" + fim)
+    ib = ib + 1
+}
+s.append("")
+list cps = []
+for each p in cab_pos {
+    cps.append(str(p))
+}
+s.append("/* os cabeçalhos, na ordem do .decl: o `cab` de cada nome */")
+s.append("static const uint16_t PS_C_CAB[PS_C_NCAB] = { " + ", ".join(cps) + " };")
+s.append("")
+s.extend(t)
+s.append("")
+
+# os protótipos, conferidos pelo compilador contra os do sistema
+s.append("/* ── os protótipos, conferidos contra os do sistema ───────────────────────")
+s.append(" * Declarar de novo com outro tipo é erro de compilação: o protótipo do .decl")
+s.append(" * é o do cabeçalho do sistema. O nome entre parênteses impede uma macro de")
+s.append(" * cara de função de expandir. Nada aqui é referência: o carregador não")
+s.append(" * resolve nenhum destes nomes na partida.")
+s.append(" * A glibc declara `tmpnam(char[L_tmpnam])`, o mesmo tipo do `char *` do")
+s.append(" * padrão (parâmetro array é ponteiro); o gcc avisa só pela forma. */")
+s.append("#if defined(__GNUC__) && !defined(__clang__)")
+s.append("#pragma GCC diagnostic push")
+s.append("#pragma GCC diagnostic ignored \"-Warray-parameter\"")
+s.append("#endif")
+for each n in ordem {
+    dict e = por_nome[n]
+    if e["especie"] == "funcao" {
+        s.append(entre_parenteses(e["decl"], n) + ";")
+    }
+}
+s.append("#if defined(__GNUC__) && !defined(__clang__)")
+s.append("#pragma GCC diagnostic pop")
+s.append("#endif")
+s.append("")
+
+# as funções nossas: macros, literais e valores
+s.append("/* ── as funções nossas: macro com cara de função, INTN_C e valor lido na hora ── */")
+list locais = []
+list locais_win = []
+list valores = []
+list exp_lit = []
+list exp_enum = []
+for each n in ordem {
+    dict e = por_nome[n]
+    if e["especie"] == "macro" {
+        str corpo = e["corpo"]
+        if corpo == "" {
+            corpo = n + "(" + ", ".join(nomes_dos_parametros(e["decl"])) + ")"
+        }
+        s.append("static " + renomeia(e["decl"], n, "ps_c_m_" + n) + " { return " + corpo + "; }")
+        locais.append("        case " + str(ordem.index(n)) + ": return (void (*)(void))ps_c_m_" + n + ";")
+    } elif e["especie"] == "literal" {
+        str rt = e["decl"][:e["decl"].find(n + "(")].strip()
+        s.append("static " + renomeia(e["decl"], n, "ps_c_m_" + n) + " { return value; }")
+        checagens.append("_Static_assert(_Generic(" + n + "(0), " + rt + ": 1, default: 0), \"" + n
+                         + ": o tipo de vm/c_padrao.decl\");")
+        locais.append("        case " + str(ordem.index(n)) + ": return (void (*)(void))ps_c_m_" + n + ";")
+    } elif e["especie"] == "valor" {
+        # O valor sai pela função nossa, no tipo do padrão. Aritmético pode ter
+        # outro tipo aritmético no sistema (o MB_CUR_MAX do macOS é int, e o
+        # padrão diz size_t): a função converte, como a atribuição do C.
+        # Ponteiro tem que ser o tipo exato.
+        str vt = e["decl"][:len(e["decl"]) - len(n)].strip()
+        checagens.append("_Static_assert(_Generic((" + n + "), " + vt + ": 1, default: PS_C_TIPO(" + n
+                         + ") != PSC_T_NADA && PS_C_TIPO((" + vt + ")0) != PSC_T_NADA), \"" + n
+                         + ": o tipo de vm/c_padrao.decl\");")
+        str pos = "0"
+        if e["expansao"] {
+            # no Windows não há busca pelo nome: lá é a função nossa
+            s.append("#ifdef _WIN32")
+            s.append("static " + vt + " ps_c_v_" + n + "(void) { return " + n + "; }")
+            s.append("#endif")
+            locais_win.append("        case " + str(ordem.index(n)) + ": return (void (*)(void))ps_c_v_" + n + ";")
+            int k = len(exp_lit)
+            if k == 0 {
+                exp_enum.append("    PS_C_VE0 = 1,")
+            } else {
+                exp_enum.append("    PS_C_VE" + str(k) + " = PS_C_VE" + str(k - 1) + " + sizeof(PS_C_XSTR("
+                                + exp_lit[k - 1] + ")),")
+            }
+            exp_lit.append(n)
+            pos = "PS_C_VE" + str(k)
+        } elif not e["vm"] {
+            s.append("static " + vt + " ps_c_v_" + n + "(void) { return " + n + "; }")
+            locais.append("        case " + str(ordem.index(n)) + ": return (void (*)(void))ps_c_v_" + n + ";")
+        }
+        valores.append("    { " + pos + ", PS_C_TIPO(" + n + ") },  /* " + n + " */")
+    }
+}
+s.append("")
+s.append("/* O endereço de uma função nossa, pelo índice do nome. É um switch, e não uma")
+s.append(" * tabela de ponteiros: tabela de ponteiros vira relocação que o carregador")
+s.append(" * aplica na partida de todo programa. */")
+s.append("static void (*ps_c_local(int i))(void)")
+s.append("{")
+s.append("    switch (i) {")
+s.extend(locais)
+s.append("#ifdef _WIN32")
+s.extend(locais_win)
+s.append("#endif")
+s.append("    }")
+s.append("    return NULL;")
+s.append("}")
+s.append("")
+s.append("/* ── os valores lidos na hora: o tipo da expressão e, nos `@expansao`, o")
+s.append(" * texto da expansão da macro, guardado pelo compilador (vm/ps_c.c lê dele o")
+s.append(" * nome da função ou da variável e acha pelo nome na primeira leitura) ── */")
+list exp_txt = []
+for each n in exp_lit {
+    exp_txt.append("    PS_C_XSTR(" + n + ") \"\\0\"")
+}
+s.append("static const char PS_C_KEXP[] = \"\\0\"")
+s.extend(exp_txt)
+s.append("    ;")
+s.append("enum {")
+s.extend(exp_enum)
+s.append("};")
+s.append("static const PSCValorPadrao PS_C_VALORES[] = {")
+s.extend(valores)
+s.append("};")
+s.append("")
+
+# os tipos de cada coisa, conferidos
+s.append("/* ── os tipos do .decl, conferidos pelo compilador ───────────────────────── */")
+s.extend(checagens)
+s.append("")
+
+# constantes
+list kint = []
+list kflo = []
+list ktal = []
+list ktxt = []
+list ktxt_enum = []
+list tipos = []
+list opacos = []
+for each n in ordem {
+    dict e = por_nome[n]
+    str esp = e["especie"]
+    if esp == "const" {
+        kint.append("    { (unsigned long long)(" + n + "), PS_C_TIPO(" + n + ") },  /* " + n + " */")
+    } elif esp == "constflo" {
+        kflo.append("    { (long double)(" + n + "), PS_C_TIPO(" + n + ") },  /* " + n + " */")
+    } elif esp == "talvez" {
+        ktal.append("#ifdef " + n)
+        ktal.append("    1,  /* " + n + " */")
+        ktal.append("#else")
+        ktal.append("    0,  /* " + n + " */")
+        ktal.append("#endif")
+    } elif esp == "texto" {
+        int k = len(ktxt)
+        ktxt.append(n)
+        if k == 0 {
+            ktxt_enum.append("    PS_C_KT0 = 0,")
+        } else {
+            ktxt_enum.append("    PS_C_KT" + str(k) + " = PS_C_KT" + str(k - 1) + " + sizeof(" + ktxt[k - 1] + "),")
+        }
+    } elif esp == "tipo" {
+        tipos.append("    PS_C_TIPO((" + n + ")0),  /* " + n + " */")
+    } elif esp == "opaco" {
+        opacos.append("    { sizeof(" + n + "), _Alignof(" + n + ") },  /* " + n + " */")
+    }
+}
+s.append("/* ── constantes: o valor e o tipo vêm do compilador deste sistema ─────────── */")
+s.append("static const PSCConstInt PS_C_KINT[] = {")
+s.extend(kint)
+s.append("};")
+s.append("static const PSCConstFlo PS_C_KFLO[] = {")
+s.extend(kflo)
+s.append("};")
+s.append("/* a macro que o sistema define ou não: 1 se definiu */")
+s.append("static const unsigned char PS_C_KTALVEZ[] = {")
+s.extend(ktal)
+s.append("};")
+s.append("/* as de texto num bloco só; a posição de cada uma é medida pelo compilador */")
+list ktxt_lit = []
+for each n in ktxt {
+    ktxt_lit.append("    " + n + " \"\\0\"")
+}
+s.append("static const char PS_C_KTEXTO[] =")
+s.extend(ktxt_lit)
+s.append("    ;")
+s.append("enum {")
+s.extend(ktxt_enum)
+s.append("};")
+list kpos = []
+int kk = 0
+while kk < len(ktxt) {
+    kpos.append("PS_C_KT" + str(kk))
+    kk = kk + 1
+}
+s.append("static const uint16_t PS_C_KTEXTO_POS[] = { " + ", ".join(kpos) + " };")
+s.append("")
+s.append("/* ── tipos: o escalar que cada typedef é neste sistema ───────────────────── */")
+s.append("static const unsigned char PS_C_TIPOS[] = {")
+s.extend(tipos)
+s.append("};")
+s.append("static const PSCOpacoPadrao PS_C_OPACOS[] = {")
+s.extend(opacos)
+s.append("};")
+s.append("static const PSCCampoPadrao PS_C_CAMPOS[] = {")
+s.extend(campos_c)
+s.append("};")
+s.append("static const PSCEstruturaPadrao PS_C_ESTRUTURAS[] = {")
+s.extend(estruturas_c)
+s.append("};")
+s.append("")
+
+# Windows: o endereço de cada função, ligado pelo compilador
+s.append("/* ── Windows: o endereço de cada função, ligado pelo compilador ────────────")
+s.append(" * Lá o MinGW liga estáticas várias funções da biblioteca (o printf é o dele),")
+s.append(" * e o que é estático não se acha pelo nome. No Linux e no macOS o endereço")
+s.append(" * sai do dlsym na primeira chamada (vm/ps_c.c). */")
+s.append("#ifdef _WIN32")
+s.append("static void (*ps_c_endereco_win(int i))(void)")
+s.append("{")
+s.append("    switch (i) {")
+for each n in ordem {
+    dict e = por_nome[n]
+    if e["especie"] == "funcao" and not e["vm"] {
+        s.append("        case " + str(ordem.index(n)) + ": return (void (*)(void))" + n + ";")
+    }
+}
+s.append("    }")
+s.append("    return NULL;")
+s.append("}")
+s.append("#endif")
+str inc = "\n".join(s) + "\n"
+
+# ── o .inc do teste: o endereço que o compilador liga em C11 ────────────────
+list te = []
+te.append("/* GERADO por scripts/gera_c_padrao.pr a partir de vm/c_padrao.decl: não se")
+te.append(" * edita à mão. O endereço de cada função do C, ligado pelo compilador em C11")
+te.append(" * (teste/unidade_c11.c): o teste de unidade compara com o que o motor acha.")
+te.append(" * Ficam de fora as que a VM faz (@vm) e as que fazem o ligador avisar")
+te.append(" * (@ligador-avisa, o tmpnam). */")
+for each n in ordem {
+    dict e = por_nome[n]
+    if e["especie"] == "funcao" and not e["vm"] and not e["ligador_avisa"] {
+        te.append("{ \"" + n + "\", (void (*)(void))" + n + " },")
+    }
+}
+str inc_teste = "\n".join(te) + "\n"
+
+# ── conferir ou gravar ──────────────────────────────────────────────────────
+post("c_padrao:", len(ordem), "nomes,", conta["funcao"], "funções,", len(cabecalhos), "cabeçalhos")
+if "--grava" in sys.argv {
+    os.writeFile(DESTINO, inc)
+    os.writeFile(DESTINO_TESTE, inc_teste)
+    post("gravei", DESTINO, "e", DESTINO_TESTE)
+    sys.exit(0)
+}
+int erros = 0
+if not os.exists(DESTINO) or os.readFile(DESTINO) != inc {
+    post(DESTINO, "está desatualizado: rode ./pool scripts/gera_c_padrao.pr --grava")
+    erros = erros + 1
+}
+if not os.exists(DESTINO_TESTE) or os.readFile(DESTINO_TESTE) != inc_teste {
+    post(DESTINO_TESTE, "está desatualizado: rode ./pool scripts/gera_c_padrao.pr --grava")
+    erros = erros + 1
+}
+if erros > 0 {
+    sys.exit(1)
+}
+post("os dois .inc batem com", FONTE)

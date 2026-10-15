@@ -88,10 +88,12 @@ CFLAGS  ?= -O2 $(CFLAGS_BASE)
 # roda em máquina sem as .so deles, e estático não custa nada na partida. O
 # gmp (inteiro grande) é da linguagem, não de um módulo.
 #
-# A libffi (a chamada das funções do C, vm/ps_c.c) entra estática no Linux e
-# no Windows. No macOS ela é do próprio sistema (`/usr/lib/libffi.dylib`, no
-# cache do dyld, com o cabeçalho em `ffi/ffi.h` no SDK): não se instala nada,
-# e o pacote não a leva (o `build_bundle.sh` deixa de fora o que é do sistema).
+# A libffi (a chamada das funções do C, vm/ps_c.c) não é ligada no Linux nem
+# no macOS: o motor a abre na primeira chamada ao C (dlopen), como os clientes
+# de banco. Ligada, ela trazia nomes que o carregador resolvia na partida de
+# todo programa. Pra compilar basta o cabeçalho: `libffi-dev` no Linux; no
+# macOS o `ffi/ffi.h` do SDK, com a `/usr/lib/libffi.dylib` do próprio sistema.
+# No Windows ela entra estática, como o resto.
 ifeq ($(E_WIN),1)
 # Windows: `-static` liga TUDO que tem `.a` (sqlite, TLS, PNG, XML, zlib, gmp,
 # as threads e o runtime do gcc); o que sobra são as DLLs do próprio Windows.
@@ -105,22 +107,23 @@ LIBS_TESTE     := $(LIBS_POOL)
 else ifeq ($(SO),Darwin)
 # macOS: o ligador da Apple não tem -Bstatic; o estático é o próprio arquivo
 # `.a` do Homebrew (TLS e PNG). sqlite, expat e zlib vêm do próprio macOS.
-LIBS_SISTEMA   := -lpthread -lm -lffi -L$(BREW)/lib -lgmp -framework Security -framework CoreFoundation
+LIBS_SISTEMA   := -lpthread -lm -L$(BREW)/lib -lgmp -framework Security -framework CoreFoundation
 LIBS_POOL      := $(BREW_SSL)/lib/libssl.a $(BREW_SSL)/lib/libcrypto.a $(BREW)/lib/libpng.a \
                   -lsqlite3 -lexpat -lz $(LIBS_SISTEMA)
 LIBS_TESTE     := -L$(BREW_SSL)/lib -lssl -lcrypto -L$(BREW)/lib -lpng -lsqlite3 -lexpat -lz $(LIBS_SISTEMA)
 else
 LIBS_SISTEMA   := -lrt -lpthread -ldl -lm -l:libgmp.so.10
-LIBS_POOL      := -Wl,-Bstatic -lsqlite3 -lssl -lcrypto -lpng -lexpat -lz -lffi -Wl,-Bdynamic $(LIBS_SISTEMA)
+LIBS_POOL      := -Wl,-Bstatic -lsqlite3 -lssl -lcrypto -lpng -lexpat -lz -Wl,-Bdynamic $(LIBS_SISTEMA)
 # as variantes de teste (asan, debug, fuzz, oom, cobertura) ligam dinâmico
-LIBS_TESTE     := -lsqlite3 -lssl -lcrypto -lpng -lexpat -lz -lffi $(LIBS_SISTEMA)
+LIBS_TESTE     := -lsqlite3 -lssl -lcrypto -lpng -lexpat -lz $(LIBS_SISTEMA)
 endif
 # A UNIDADE (teste/unidade.c) liga só os módulos puros: zlib e expat (o xlsx)
 # e, no Windows, a bcrypt — lá o aleatório do ps_hash.c é o BCryptGenRandom,
-# e sem ela o link para em `undefined reference to BCryptGenRandom`.
-LIBS_UNIDADE := -lz -lexpat -lm -lffi
+# e sem ela o link para em `undefined reference to BCryptGenRandom` — e a
+# libffi, que lá é estática (no Linux e no macOS o ps_c.c a abre sozinho).
+LIBS_UNIDADE := -lz -lexpat -lm
 ifeq ($(E_WIN),1)
-LIBS_UNIDADE += -lbcrypt
+LIBS_UNIDADE += -lbcrypt -lffi
 endif
 # O analisador (-fanalyzer) e os avisos extra são do gcc de verdade: no macOS
 # é o do Homebrew (`brew install gcc`), já que ali o `gcc` é o clang. A imagem
@@ -177,8 +180,10 @@ $(VM)/ps_build.h: FORCE
 # `ps_unicode_tab.inc` é GERADO (scripts/gera_unicode.pr) e incluído pelo
 # `ps_unicode.c`: na lista, regerar as tabelas recompila todos os alvos. O
 # mesmo vale pras tabelas medidas dos nativos que o `ps_retornos.c` inclui
-# (scripts/mede_retornos.pr e scripts/mede_aridades.pr).
-CABECALHOS := $(wildcard $(VM)/*.h) $(VM)/ps_unicode_tab.inc $(VM)/retornos_medidos.inc $(VM)/aridades_medidas.inc
+# (scripts/mede_retornos.pr e scripts/mede_aridades.pr) e pra tabela da
+# biblioteca padrão do C que o `ps_c.c` inclui (scripts/gera_c_padrao.pr).
+CABECALHOS := $(wildcard $(VM)/*.h) $(VM)/ps_unicode_tab.inc $(VM)/retornos_medidos.inc $(VM)/aridades_medidas.inc \
+              $(VM)/ps_c_padrao.inc
 
 pool$(EXE): $(FONTES) $(CABECALHOS) $(VM)/ps_versao.h $(VM)/ps_build.h $(VM)/retornos_medidos.inc $(RECURSOS) $(MK)
 	$(CC) $(CFLAGS) -I$(VM) -o $@ $(FONTES) $(RECURSOS) $(LIBS_POOL)
@@ -755,6 +760,11 @@ check: pool testar
 	# gramatica divergiu (JSON, Long, PoolFile) e ninguem viu.
 	@./pool scripts/gera_realce.pr --portao
 	@echo
+	# A BIBLIOTECA DO C: a tabela (vm/ps_c_padrao.inc) e a lista do teste
+	# (teste/c_padrao_enderecos.inc) sao geradas de vm/c_padrao.decl. Mudar o
+	# .decl sem regerar deixaria o motor com a tabela velha.
+	@./pool scripts/gera_c_padrao.pr
+	@echo
 	# NEOVIM: a config do editor tambem apodrece. A do desenvolvedor ficou DIAS
 	# truncada, sem o fechamento de () [] {}, e nada acusava.
 	@editor/nvim/teste_nvim.sh
@@ -869,9 +879,16 @@ check-e2e-local: pool
 # seguinte (o do `check`) dizia "is up to date" e saía 0 sem rodar caso
 # nenhum. Compilar toda vez também tira o binário velho de quando só um
 # cabeçalho da VM mudou, que esta regra não lista.
-unidade: teste/unidade.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(VM)/ps_c.c $(MK)
-	$(CC) $(CFLAGS) -g -I$(VM) -o $@$(EXE) teste/unidade.c \
+#
+# `teste/unidade_c11.c` compila à parte, com `-std=c11`: é o endereço que um
+# programa C11 liga pra cada função da biblioteca padrão, e o teste compara
+# com o que o motor acha pelo nome (na glibc, o `scanf` pelo nome é outro).
+UNIDADE_C11 = $(CC) $(CFLAGS) -std=c11 -c -o unidade_c11.o teste/unidade_c11.c
+unidade: teste/unidade.c teste/unidade_c11.c teste/c_padrao_enderecos.inc $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(VM)/ps_c.c $(VM)/ps_c_padrao.inc $(MK)
+	$(UNIDADE_C11)
+	$(CC) $(CFLAGS) -g -I$(VM) -o $@$(EXE) teste/unidade.c unidade_c11.o \
 	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(VM)/ps_c.c $(LIBS_UNIDADE)
+	@rm -f unidade_c11.o
 	@./$@$(EXE)
 
 .PHONY: unidade
@@ -1013,8 +1030,10 @@ cobertura: pool testar
 	# unidade nunca entrou na medição. Falha de link ou de teste agora derruba o
 	# alvo.
 	@echo "rodando os testes de unidade instrumentados…"
-	@$(CC) -O0 -g --coverage $(CFLAGS_BASE) -I$(VM) -o cob/unidade teste/unidade.c \
+	@$(UNIDADE_C11)
+	@$(CC) -O0 -g --coverage $(CFLAGS_BASE) -I$(VM) -o cob/unidade teste/unidade.c unidade_c11.o \
 	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(VM)/ps_c.c $(LIBS_UNIDADE)
+	@rm -f unidade_c11.o
 	@./cob/unidade > /dev/null
 	@echo "rodando os drivers .pr e o e2e local contra o mesmo binario…"
 	@for d in teste/confere_metadata.pr scripts/audita_doc.pr \

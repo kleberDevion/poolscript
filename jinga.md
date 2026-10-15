@@ -176,10 +176,10 @@ dispara, acompanha e baixa o pacote. Precisa do `gh` logado
 ### Compilando do fonte
 
 Precisa do `gcc` e das bibliotecas de desenvolvimento. Umas o binário liga:
-sqlite, OpenSSL, libpng, expat, zlib, libffi e gmp. Dos clientes de banco
-(libpq, MariaDB, ODBC e mongoc), só os cabeçalhos: o motor abre a biblioteca
-deles na primeira conexão. No macOS, a libffi, o sqlite, o expat e a zlib são
-do próprio sistema.
+sqlite, OpenSSL, libpng, expat, zlib e gmp. Das outras, só os cabeçalhos: o
+motor abre a libffi na primeira chamada a uma função do C, e os clientes de
+banco (libpq, MariaDB, ODBC e mongoc) na primeira conexão. No macOS, o
+sqlite, o expat, a zlib e a libffi são do próprio sistema.
 
 A lista completa, que é a mesma que o `instalar.sh` usa quando compila sozinho,
 está em `DEPS_BUILD` no [`instalar.sh`](instalar.sh).
@@ -214,22 +214,23 @@ mostra o **gráfico de execução** com a linha que quebrou em vermelho — ver
 
 O binário **PSVM** (`jinga`) já traz **embutido** (não precisa instalar nada):
 
-> **sqlite, OpenSSL (TLS), libpng, expat, zlib e libffi.**
+> **sqlite, OpenSSL (TLS), libpng, expat e zlib.**
 
 Do sistema, ele pede só a glibc (`libc`, `libm`) e a `libgmp.so.10` (o
 inteiro grande), que todo Debian e Ubuntu já tem. É o que o `ldd` mostra.
 
-Os clientes de banco não são ligados ao binário: o motor abre a biblioteca na
-primeira conexão. Então ela só precisa existir no servidor se o programa usa
-aquele banco:
+As outras não são ligadas ao binário: o motor abre cada uma na primeira vez
+que o programa precisa dela. Então ela só precisa existir no servidor se o
+programa usa aquilo:
+- **as funções do C** (`printf`, `malloc`...): `libffi8` (`libffi.so.8`), aberta na primeira chamada;
 - **Postgres**: `libpq5` (`libpq.so.5`);
 - **MySQL/MariaDB**: `libmariadb3` (`libmariadb.so.3`; a `libmysqlclient.so.21` também serve);
 - **ODBC**: `unixodbc` (`libodbc.so.2`);
 - **Mongo**: `libmongoc-1.0-0` (`libmongoc-1.0.so.0`).
 
-**VPS (Debian/Ubuntu), uma linha** (deixe de fora os bancos que o programa não usa):
+**VPS (Debian/Ubuntu), uma linha** (deixe de fora o que o programa não usa):
 ```bash
-sudo apt update && sudo apt install -y libpq5 libmariadb3 unixodbc libmongoc-1.0-0
+sudo apt update && sudo apt install -y libffi8 libpq5 libmariadb3 unixodbc libmongoc-1.0-0
 ```
 Se faltar o cliente de um banco, o `connect` diz qual:
 `o driver postgres precisa da biblioteca libpq.so.5, que nao foi encontrada (...)`.

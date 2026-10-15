@@ -1,0 +1,483 @@
+# A biblioteca padrão do C na Jinga (Plano 1): as declarações do C11, uma
+# vez, cabeçalho por cabeçalho.
+#
+# Fonte: o Anexo B ("Library summary") do N1570, o rascunho final do C11
+# (ISO/IEC 9899:2011), com os nomes de parâmetro de lá. Uma correção: o N1570
+# escreve `int timespec_get(timespec *ts, int base)`; o padrão publicado (e a
+# 7.27.2.5 do próprio N1570) diz `struct timespec *ts`.
+#
+# `scripts/gera_c_padrao.pr` lê este arquivo e gera o `vm/ps_c_padrao.inc`.
+# O compilador C confere cada linha na hora do build: o protótipo de cada
+# função é declarado de novo contra o do sistema (protótipo errado aqui é erro
+# de compilação), e o tipo de cada valor, campo e macro passa por um
+# `_Static_assert`. Valor de constante, tamanho, alinhamento e posição de
+# campo saem do compilador de cada sistema (o `long` tem 8 bytes no Linux e no
+# macOS e 4 no Windows).
+#
+# Uma linha por declaração; `#` começa comentário de linha inteira.
+#   cabecalho <nome.h>                  os nomes de baixo são deste cabeçalho
+#   funcao <protótipo>;                 função da biblioteca
+#   macro <protótipo>; [= <expressão>]  macro com cara de função (fpclassify,
+#                                       isgreater...): a VM chama uma função
+#                                       nossa que usa a macro, ou a expressão
+#                                       depois do `=`. O padrão diz
+#                                       `real-floating`; na Jinga o número
+#                                       chega como `flo`, então é `double`
+#   literal <protótipo>;                as macros INTN_C(value): o valor, com o
+#                                       tipo que a macro dá
+#   const <NOME>...                     constante inteira
+#   constflo <NOME>...                  constante de ponto flutuante
+#   texto <NOME>...                     constante de texto (PRId64...)
+#   talvez <NOME>...                    constante inteira que o sistema define
+#                                       ou não (FP_FAST_FMA)
+#   valor <declaração>;                 macro que é uma expressão, lida na hora
+#                                       (stdin, MB_CUR_MAX)
+#   nulo NULL                           o ponteiro nulo
+#   tipo <nome>...                      typedef de inteiro ou de ponto flutuante
+#   opaco <nome>...                     tipo que só se usa pelo tamanho (FILE)
+#   estrutura <tipo> { <campo>; ... }   struct do padrão, com os campos que o
+#                                       padrão lista (o sistema pode ter mais)
+#   sintaxe <forma>                     operador escrito como função (offsetof)
+#   fora <NOME>... : <motivo>           nome do padrão que fica de fora; usá-lo
+#                                       é erro antes de rodar, com o motivo
+#
+# Marcas no fim da linha de `funcao` e `valor`:
+#   @vm                 a VM faz o papel (atexit roda funct da Jinga; errno é a
+#                       cópia que a VM guarda depois de cada chamada)
+#   @glibc <símbolo>    na glibc o símbolo do C99 tem outro nome: o `scanf`
+#                       pelo nome é o da GNU antiga (`%as` aloca), e o que o
+#                       compilador C liga em C99 ou depois é o `__isoc99_scanf`
+#   @expansao           (valor) a macro chama uma função interna da biblioteca
+#                       do C ou lê uma variável dela (o MB_CUR_MAX é
+#                       `(__ctype_get_mb_cur_max ())` na glibc e `__mb_cur_max`
+#                       no macOS). Uma função nossa que usasse a macro faria o
+#                       carregador resolver esse nome em toda partida, de todo
+#                       programa. O valor sai do texto da expansão, que o
+#                       compilador guarda, e o nome é achado na primeira leitura
+#   @ligador-avisa      o ligador da GNU avisa em todo programa que liga a
+#                       função (o `tmpnam`: outro processo pode criar o arquivo
+#                       entre o nome e o `fopen`). O teste de unidade não liga
+#                       o endereço dela pra comparar; confere só que ela existe
+
+cabecalho ctype.h
+funcao int isalnum(int c);
+funcao int isalpha(int c);
+funcao int isblank(int c);
+funcao int iscntrl(int c);
+funcao int isdigit(int c);
+funcao int isgraph(int c);
+funcao int islower(int c);
+funcao int isprint(int c);
+funcao int ispunct(int c);
+funcao int isspace(int c);
+funcao int isupper(int c);
+funcao int isxdigit(int c);
+funcao int tolower(int c);
+funcao int toupper(int c);
+
+cabecalho errno.h
+const EDOM EILSEQ ERANGE
+valor int errno; @vm
+fora errno_t __STDC_WANT_LIB_EXT1__ : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS
+
+cabecalho float.h
+valor int FLT_ROUNDS;
+const FLT_EVAL_METHOD FLT_HAS_SUBNORM DBL_HAS_SUBNORM LDBL_HAS_SUBNORM FLT_RADIX
+const FLT_MANT_DIG DBL_MANT_DIG LDBL_MANT_DIG FLT_DECIMAL_DIG DBL_DECIMAL_DIG LDBL_DECIMAL_DIG DECIMAL_DIG
+const FLT_DIG DBL_DIG LDBL_DIG FLT_MIN_EXP DBL_MIN_EXP LDBL_MIN_EXP FLT_MIN_10_EXP DBL_MIN_10_EXP LDBL_MIN_10_EXP
+const FLT_MAX_EXP DBL_MAX_EXP LDBL_MAX_EXP FLT_MAX_10_EXP DBL_MAX_10_EXP LDBL_MAX_10_EXP
+constflo FLT_MAX DBL_MAX LDBL_MAX FLT_EPSILON DBL_EPSILON LDBL_EPSILON
+constflo FLT_MIN DBL_MIN LDBL_MIN FLT_TRUE_MIN DBL_TRUE_MIN LDBL_TRUE_MIN
+
+cabecalho inttypes.h
+estrutura imaxdiv_t { intmax_t quot; intmax_t rem; }
+texto PRId8 PRId16 PRId32 PRId64 PRIdLEAST8 PRIdLEAST16 PRIdLEAST32 PRIdLEAST64 PRIdFAST8 PRIdFAST16 PRIdFAST32 PRIdFAST64 PRIdMAX PRIdPTR
+texto PRIi8 PRIi16 PRIi32 PRIi64 PRIiLEAST8 PRIiLEAST16 PRIiLEAST32 PRIiLEAST64 PRIiFAST8 PRIiFAST16 PRIiFAST32 PRIiFAST64 PRIiMAX PRIiPTR
+texto PRIo8 PRIo16 PRIo32 PRIo64 PRIoLEAST8 PRIoLEAST16 PRIoLEAST32 PRIoLEAST64 PRIoFAST8 PRIoFAST16 PRIoFAST32 PRIoFAST64 PRIoMAX PRIoPTR
+texto PRIu8 PRIu16 PRIu32 PRIu64 PRIuLEAST8 PRIuLEAST16 PRIuLEAST32 PRIuLEAST64 PRIuFAST8 PRIuFAST16 PRIuFAST32 PRIuFAST64 PRIuMAX PRIuPTR
+texto PRIx8 PRIx16 PRIx32 PRIx64 PRIxLEAST8 PRIxLEAST16 PRIxLEAST32 PRIxLEAST64 PRIxFAST8 PRIxFAST16 PRIxFAST32 PRIxFAST64 PRIxMAX PRIxPTR
+texto PRIX8 PRIX16 PRIX32 PRIX64 PRIXLEAST8 PRIXLEAST16 PRIXLEAST32 PRIXLEAST64 PRIXFAST8 PRIXFAST16 PRIXFAST32 PRIXFAST64 PRIXMAX PRIXPTR
+texto SCNd8 SCNd16 SCNd32 SCNd64 SCNdLEAST8 SCNdLEAST16 SCNdLEAST32 SCNdLEAST64 SCNdFAST8 SCNdFAST16 SCNdFAST32 SCNdFAST64 SCNdMAX SCNdPTR
+texto SCNi8 SCNi16 SCNi32 SCNi64 SCNiLEAST8 SCNiLEAST16 SCNiLEAST32 SCNiLEAST64 SCNiFAST8 SCNiFAST16 SCNiFAST32 SCNiFAST64 SCNiMAX SCNiPTR
+texto SCNo8 SCNo16 SCNo32 SCNo64 SCNoLEAST8 SCNoLEAST16 SCNoLEAST32 SCNoLEAST64 SCNoFAST8 SCNoFAST16 SCNoFAST32 SCNoFAST64 SCNoMAX SCNoPTR
+texto SCNu8 SCNu16 SCNu32 SCNu64 SCNuLEAST8 SCNuLEAST16 SCNuLEAST32 SCNuLEAST64 SCNuFAST8 SCNuFAST16 SCNuFAST32 SCNuFAST64 SCNuMAX SCNuPTR
+texto SCNx8 SCNx16 SCNx32 SCNx64 SCNxLEAST8 SCNxLEAST16 SCNxLEAST32 SCNxLEAST64 SCNxFAST8 SCNxFAST16 SCNxFAST32 SCNxFAST64 SCNxMAX SCNxPTR
+funcao intmax_t imaxabs(intmax_t j);
+funcao imaxdiv_t imaxdiv(intmax_t numer, intmax_t denom);
+funcao intmax_t strtoimax(const char * restrict nptr, char ** restrict endptr, int base);
+funcao uintmax_t strtoumax(const char * restrict nptr, char ** restrict endptr, int base);
+funcao intmax_t wcstoimax(const wchar_t * restrict nptr, wchar_t ** restrict endptr, int base);
+funcao uintmax_t wcstoumax(const wchar_t * restrict nptr, wchar_t ** restrict endptr, int base);
+
+cabecalho limits.h
+const CHAR_BIT SCHAR_MIN SCHAR_MAX UCHAR_MAX CHAR_MIN CHAR_MAX MB_LEN_MAX
+const SHRT_MIN SHRT_MAX USHRT_MAX INT_MIN INT_MAX UINT_MAX
+const LONG_MIN LONG_MAX ULONG_MAX LLONG_MIN LLONG_MAX ULLONG_MAX
+
+cabecalho math.h
+tipo float_t double_t
+constflo HUGE_VAL HUGE_VALF HUGE_VALL INFINITY NAN
+const FP_INFINITE FP_NAN FP_NORMAL FP_SUBNORMAL FP_ZERO FP_ILOGB0 FP_ILOGBNAN MATH_ERRNO MATH_ERREXCEPT
+talvez FP_FAST_FMA FP_FAST_FMAF FP_FAST_FMAL
+valor int math_errhandling; @expansao
+# No macOS a macro fpclassify chama a __fpclassifyd da libm, e uma função
+# nossa que a usasse faria o carregador resolver o nome em toda partida. Esta
+# é a definição do C11 (7.12.3.1), com as outras macros de classificação, que
+# nos dois compiladores são internas (não chamam nada).
+macro int fpclassify(double x); = isnan(x) ? FP_NAN : isinf(x) ? FP_INFINITE : x == 0 ? FP_ZERO : isnormal(x) ? FP_NORMAL : FP_SUBNORMAL
+macro int isfinite(double x);
+macro int isinf(double x);
+macro int isnan(double x);
+macro int isnormal(double x);
+macro int signbit(double x);
+funcao double acos(double x);
+funcao float acosf(float x);
+funcao long double acosl(long double x);
+funcao double asin(double x);
+funcao float asinf(float x);
+funcao long double asinl(long double x);
+funcao double atan(double x);
+funcao float atanf(float x);
+funcao long double atanl(long double x);
+funcao double atan2(double y, double x);
+funcao float atan2f(float y, float x);
+funcao long double atan2l(long double y, long double x);
+funcao double cos(double x);
+funcao float cosf(float x);
+funcao long double cosl(long double x);
+funcao double sin(double x);
+funcao float sinf(float x);
+funcao long double sinl(long double x);
+funcao double tan(double x);
+funcao float tanf(float x);
+funcao long double tanl(long double x);
+funcao double acosh(double x);
+funcao float acoshf(float x);
+funcao long double acoshl(long double x);
+funcao double asinh(double x);
+funcao float asinhf(float x);
+funcao long double asinhl(long double x);
+funcao double atanh(double x);
+funcao float atanhf(float x);
+funcao long double atanhl(long double x);
+funcao double cosh(double x);
+funcao float coshf(float x);
+funcao long double coshl(long double x);
+funcao double sinh(double x);
+funcao float sinhf(float x);
+funcao long double sinhl(long double x);
+funcao double tanh(double x);
+funcao float tanhf(float x);
+funcao long double tanhl(long double x);
+funcao double exp(double x);
+funcao float expf(float x);
+funcao long double expl(long double x);
+funcao double exp2(double x);
+funcao float exp2f(float x);
+funcao long double exp2l(long double x);
+funcao double expm1(double x);
+funcao float expm1f(float x);
+funcao long double expm1l(long double x);
+funcao double frexp(double value, int *exp);
+funcao float frexpf(float value, int *exp);
+funcao long double frexpl(long double value, int *exp);
+funcao int ilogb(double x);
+funcao int ilogbf(float x);
+funcao int ilogbl(long double x);
+funcao double ldexp(double x, int exp);
+funcao float ldexpf(float x, int exp);
+funcao long double ldexpl(long double x, int exp);
+funcao double log(double x);
+funcao float logf(float x);
+funcao long double logl(long double x);
+funcao double log10(double x);
+funcao float log10f(float x);
+funcao long double log10l(long double x);
+funcao double log1p(double x);
+funcao float log1pf(float x);
+funcao long double log1pl(long double x);
+funcao double log2(double x);
+funcao float log2f(float x);
+funcao long double log2l(long double x);
+funcao double logb(double x);
+funcao float logbf(float x);
+funcao long double logbl(long double x);
+funcao double modf(double value, double *iptr);
+funcao float modff(float value, float *iptr);
+funcao long double modfl(long double value, long double *iptr);
+funcao double scalbn(double x, int n);
+funcao float scalbnf(float x, int n);
+funcao long double scalbnl(long double x, int n);
+funcao double scalbln(double x, long int n);
+funcao float scalblnf(float x, long int n);
+funcao long double scalblnl(long double x, long int n);
+funcao double cbrt(double x);
+funcao float cbrtf(float x);
+funcao long double cbrtl(long double x);
+funcao double fabs(double x);
+funcao float fabsf(float x);
+funcao long double fabsl(long double x);
+funcao double hypot(double x, double y);
+funcao float hypotf(float x, float y);
+funcao long double hypotl(long double x, long double y);
+funcao double pow(double x, double y);
+funcao float powf(float x, float y);
+funcao long double powl(long double x, long double y);
+funcao double sqrt(double x);
+funcao float sqrtf(float x);
+funcao long double sqrtl(long double x);
+funcao double erf(double x);
+funcao float erff(float x);
+funcao long double erfl(long double x);
+funcao double erfc(double x);
+funcao float erfcf(float x);
+funcao long double erfcl(long double x);
+funcao double lgamma(double x);
+funcao float lgammaf(float x);
+funcao long double lgammal(long double x);
+funcao double tgamma(double x);
+funcao float tgammaf(float x);
+funcao long double tgammal(long double x);
+funcao double ceil(double x);
+funcao float ceilf(float x);
+funcao long double ceill(long double x);
+funcao double floor(double x);
+funcao float floorf(float x);
+funcao long double floorl(long double x);
+funcao double nearbyint(double x);
+funcao float nearbyintf(float x);
+funcao long double nearbyintl(long double x);
+funcao double rint(double x);
+funcao float rintf(float x);
+funcao long double rintl(long double x);
+funcao long int lrint(double x);
+funcao long int lrintf(float x);
+funcao long int lrintl(long double x);
+funcao long long int llrint(double x);
+funcao long long int llrintf(float x);
+funcao long long int llrintl(long double x);
+funcao double round(double x);
+funcao float roundf(float x);
+funcao long double roundl(long double x);
+funcao long int lround(double x);
+funcao long int lroundf(float x);
+funcao long int lroundl(long double x);
+funcao long long int llround(double x);
+funcao long long int llroundf(float x);
+funcao long long int llroundl(long double x);
+funcao double trunc(double x);
+funcao float truncf(float x);
+funcao long double truncl(long double x);
+funcao double fmod(double x, double y);
+funcao float fmodf(float x, float y);
+funcao long double fmodl(long double x, long double y);
+funcao double remainder(double x, double y);
+funcao float remainderf(float x, float y);
+funcao long double remainderl(long double x, long double y);
+funcao double remquo(double x, double y, int *quo);
+funcao float remquof(float x, float y, int *quo);
+funcao long double remquol(long double x, long double y, int *quo);
+funcao double copysign(double x, double y);
+funcao float copysignf(float x, float y);
+funcao long double copysignl(long double x, long double y);
+funcao double nan(const char *tagp);
+funcao float nanf(const char *tagp);
+funcao long double nanl(const char *tagp);
+funcao double nextafter(double x, double y);
+funcao float nextafterf(float x, float y);
+funcao long double nextafterl(long double x, long double y);
+funcao double nexttoward(double x, long double y);
+funcao float nexttowardf(float x, long double y);
+funcao long double nexttowardl(long double x, long double y);
+funcao double fdim(double x, double y);
+funcao float fdimf(float x, float y);
+funcao long double fdiml(long double x, long double y);
+funcao double fmax(double x, double y);
+funcao float fmaxf(float x, float y);
+funcao long double fmaxl(long double x, long double y);
+funcao double fmin(double x, double y);
+funcao float fminf(float x, float y);
+funcao long double fminl(long double x, long double y);
+funcao double fma(double x, double y, double z);
+funcao float fmaf(float x, float y, float z);
+funcao long double fmal(long double x, long double y, long double z);
+macro int isgreater(double x, double y);
+macro int isgreaterequal(double x, double y);
+macro int isless(double x, double y);
+macro int islessequal(double x, double y);
+macro int islessgreater(double x, double y);
+macro int isunordered(double x, double y);
+
+cabecalho stdbool.h
+tipo bool
+const __bool_true_false_are_defined
+
+cabecalho stddef.h
+tipo ptrdiff_t size_t wchar_t
+opaco max_align_t
+nulo NULL
+sintaxe offsetof(type, member-designator)
+fora rsize_t : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS
+
+cabecalho stdint.h
+tipo int8_t int16_t int32_t int64_t uint8_t uint16_t uint32_t uint64_t
+tipo int_least8_t int_least16_t int_least32_t int_least64_t uint_least8_t uint_least16_t uint_least32_t uint_least64_t
+tipo int_fast8_t int_fast16_t int_fast32_t int_fast64_t uint_fast8_t uint_fast16_t uint_fast32_t uint_fast64_t
+tipo intptr_t uintptr_t intmax_t uintmax_t
+const INT8_MIN INT16_MIN INT32_MIN INT64_MIN INT8_MAX INT16_MAX INT32_MAX INT64_MAX
+const UINT8_MAX UINT16_MAX UINT32_MAX UINT64_MAX
+const INT_LEAST8_MIN INT_LEAST16_MIN INT_LEAST32_MIN INT_LEAST64_MIN INT_LEAST8_MAX INT_LEAST16_MAX INT_LEAST32_MAX INT_LEAST64_MAX
+const UINT_LEAST8_MAX UINT_LEAST16_MAX UINT_LEAST32_MAX UINT_LEAST64_MAX
+const INT_FAST8_MIN INT_FAST16_MIN INT_FAST32_MIN INT_FAST64_MIN INT_FAST8_MAX INT_FAST16_MAX INT_FAST32_MAX INT_FAST64_MAX
+const UINT_FAST8_MAX UINT_FAST16_MAX UINT_FAST32_MAX UINT_FAST64_MAX
+const INTPTR_MIN INTPTR_MAX UINTPTR_MAX INTMAX_MIN INTMAX_MAX UINTMAX_MAX
+const PTRDIFF_MIN PTRDIFF_MAX SIG_ATOMIC_MIN SIG_ATOMIC_MAX SIZE_MAX WCHAR_MIN WCHAR_MAX WINT_MIN WINT_MAX
+literal int INT8_C(int value);
+literal int INT16_C(int value);
+literal int_least32_t INT32_C(int_least32_t value);
+literal int_least64_t INT64_C(int_least64_t value);
+literal int UINT8_C(int value);
+literal int UINT16_C(int value);
+literal uint_least32_t UINT32_C(uint_least32_t value);
+literal uint_least64_t UINT64_C(uint_least64_t value);
+literal intmax_t INTMAX_C(intmax_t value);
+literal uintmax_t UINTMAX_C(uintmax_t value);
+fora RSIZE_MAX : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS
+
+cabecalho stdio.h
+opaco FILE fpos_t
+const _IOFBF _IOLBF _IONBF BUFSIZ EOF FOPEN_MAX FILENAME_MAX L_tmpnam SEEK_CUR SEEK_END SEEK_SET TMP_MAX
+valor FILE *stderr;
+valor FILE *stdin;
+valor FILE *stdout;
+funcao int remove(const char *filename);
+funcao int rename(const char *old, const char *new);
+funcao FILE *tmpfile(void);
+funcao char *tmpnam(char *s); @ligador-avisa
+funcao int fclose(FILE *stream);
+funcao int fflush(FILE *stream);
+funcao FILE *fopen(const char * restrict filename, const char * restrict mode);
+funcao FILE *freopen(const char * restrict filename, const char * restrict mode, FILE * restrict stream);
+funcao void setbuf(FILE * restrict stream, char * restrict buf);
+funcao int setvbuf(FILE * restrict stream, char * restrict buf, int mode, size_t size);
+funcao int fprintf(FILE * restrict stream, const char * restrict format, ...);
+funcao int fscanf(FILE * restrict stream, const char * restrict format, ...); @glibc __isoc99_fscanf
+funcao int printf(const char * restrict format, ...);
+funcao int scanf(const char * restrict format, ...); @glibc __isoc99_scanf
+funcao int snprintf(char * restrict s, size_t n, const char * restrict format, ...);
+funcao int sprintf(char * restrict s, const char * restrict format, ...);
+funcao int sscanf(const char * restrict s, const char * restrict format, ...); @glibc __isoc99_sscanf
+funcao int fgetc(FILE *stream);
+funcao char *fgets(char * restrict s, int n, FILE * restrict stream);
+funcao int fputc(int c, FILE *stream);
+funcao int fputs(const char * restrict s, FILE * restrict stream);
+funcao int getc(FILE *stream);
+funcao int getchar(void);
+funcao int putc(int c, FILE *stream);
+funcao int putchar(int c);
+funcao int puts(const char *s);
+funcao int ungetc(int c, FILE *stream);
+funcao size_t fread(void * restrict ptr, size_t size, size_t nmemb, FILE * restrict stream);
+funcao size_t fwrite(const void * restrict ptr, size_t size, size_t nmemb, FILE * restrict stream);
+funcao int fgetpos(FILE * restrict stream, fpos_t * restrict pos);
+funcao int fseek(FILE *stream, long int offset, int whence);
+funcao int fsetpos(FILE *stream, const fpos_t *pos);
+funcao long int ftell(FILE *stream);
+funcao void rewind(FILE *stream);
+funcao void clearerr(FILE *stream);
+funcao int feof(FILE *stream);
+funcao int ferror(FILE *stream);
+funcao void perror(const char *s);
+fora vfprintf vfscanf vprintf vscanf vsnprintf vsprintf vsscanf : o va_list só existe dentro de uma função variádica do C
+fora gets : saiu do C11, porque lia sem limite e passava do fim do buffer; use fgets
+fora L_tmpnam_s TMP_MAX_S tmpfile_s tmpnam_s fopen_s freopen_s fprintf_s fscanf_s printf_s scanf_s snprintf_s sprintf_s sscanf_s : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS
+fora vfprintf_s vfscanf_s vprintf_s vscanf_s vsnprintf_s vsprintf_s vsscanf_s gets_s : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS
+
+cabecalho stdlib.h
+estrutura div_t { int quot; int rem; }
+estrutura ldiv_t { long int quot; long int rem; }
+estrutura lldiv_t { long long int quot; long long int rem; }
+const EXIT_FAILURE EXIT_SUCCESS RAND_MAX
+valor size_t MB_CUR_MAX; @expansao
+funcao double atof(const char *nptr);
+funcao int atoi(const char *nptr);
+funcao long int atol(const char *nptr);
+funcao long long int atoll(const char *nptr);
+funcao double strtod(const char * restrict nptr, char ** restrict endptr);
+funcao float strtof(const char * restrict nptr, char ** restrict endptr);
+funcao long double strtold(const char * restrict nptr, char ** restrict endptr);
+funcao long int strtol(const char * restrict nptr, char ** restrict endptr, int base);
+funcao long long int strtoll(const char * restrict nptr, char ** restrict endptr, int base);
+funcao unsigned long int strtoul(const char * restrict nptr, char ** restrict endptr, int base);
+funcao unsigned long long int strtoull(const char * restrict nptr, char ** restrict endptr, int base);
+funcao int rand(void);
+funcao void srand(unsigned int seed);
+funcao void *aligned_alloc(size_t alignment, size_t size);
+funcao void *calloc(size_t nmemb, size_t size);
+funcao void free(void *ptr);
+funcao void *malloc(size_t size);
+funcao void *realloc(void *ptr, size_t size);
+funcao _Noreturn void abort(void);
+funcao int atexit(void (*func)(void)); @vm
+funcao int at_quick_exit(void (*func)(void)); @vm
+funcao _Noreturn void exit(int status); @vm
+funcao _Noreturn void _Exit(int status);
+funcao char *getenv(const char *name);
+funcao _Noreturn void quick_exit(int status); @vm
+funcao int system(const char *string);
+funcao void *bsearch(const void *key, const void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *));
+funcao void qsort(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *));
+funcao int abs(int j);
+funcao long int labs(long int j);
+funcao long long int llabs(long long int j);
+funcao div_t div(int numer, int denom);
+funcao ldiv_t ldiv(long int numer, long int denom);
+funcao lldiv_t lldiv(long long int numer, long long int denom);
+funcao int mblen(const char *s, size_t n);
+funcao int mbtowc(wchar_t * restrict pwc, const char * restrict s, size_t n);
+funcao int wctomb(char *s, wchar_t wchar);
+funcao size_t mbstowcs(wchar_t * restrict pwcs, const char * restrict s, size_t n);
+funcao size_t wcstombs(char * restrict s, const wchar_t * restrict pwcs, size_t n);
+fora constraint_handler_t set_constraint_handler_s abort_handler_s ignore_handler_s getenv_s bsearch_s qsort_s wctomb_s mbstowcs_s wcstombs_s : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS
+
+cabecalho string.h
+funcao void *memcpy(void * restrict s1, const void * restrict s2, size_t n);
+funcao void *memmove(void *s1, const void *s2, size_t n);
+funcao char *strcpy(char * restrict s1, const char * restrict s2);
+funcao char *strncpy(char * restrict s1, const char * restrict s2, size_t n);
+funcao char *strcat(char * restrict s1, const char * restrict s2);
+funcao char *strncat(char * restrict s1, const char * restrict s2, size_t n);
+funcao int memcmp(const void *s1, const void *s2, size_t n);
+funcao int strcmp(const char *s1, const char *s2);
+funcao int strcoll(const char *s1, const char *s2);
+funcao int strncmp(const char *s1, const char *s2, size_t n);
+funcao size_t strxfrm(char * restrict s1, const char * restrict s2, size_t n);
+funcao void *memchr(const void *s, int c, size_t n);
+funcao char *strchr(const char *s, int c);
+funcao size_t strcspn(const char *s1, const char *s2);
+funcao char *strpbrk(const char *s1, const char *s2);
+funcao char *strrchr(const char *s, int c);
+funcao size_t strspn(const char *s1, const char *s2);
+funcao char *strstr(const char *s1, const char *s2);
+funcao char *strtok(char * restrict s1, const char * restrict s2);
+funcao void *memset(void *s, int c, size_t n);
+funcao char *strerror(int errnum);
+funcao size_t strlen(const char *s);
+fora memcpy_s memmove_s strcpy_s strncpy_s strcat_s strncat_s strtok_s memset_s strerror_s strerrorlen_s strnlen_s : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS
+
+cabecalho time.h
+estrutura struct tm { int tm_sec; int tm_min; int tm_hour; int tm_mday; int tm_mon; int tm_year; int tm_wday; int tm_yday; int tm_isdst; }
+estrutura struct timespec { time_t tv_sec; long tv_nsec; }
+tipo clock_t time_t
+const CLOCKS_PER_SEC TIME_UTC
+funcao clock_t clock(void);
+funcao double difftime(time_t time1, time_t time0);
+funcao time_t mktime(struct tm *timeptr);
+funcao time_t time(time_t *timer);
+funcao int timespec_get(struct timespec *ts, int base);
+funcao char *asctime(const struct tm *timeptr);
+funcao char *ctime(const time_t *timer);
+funcao struct tm *gmtime(const time_t *timer);
+funcao struct tm *localtime(const time_t *timer);
+funcao size_t strftime(char * restrict s, size_t maxsize, const char * restrict format, const struct tm * restrict timeptr);
+fora asctime_s ctime_s gmtime_s localtime_s : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS

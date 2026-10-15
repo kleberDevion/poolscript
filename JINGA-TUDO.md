@@ -148,7 +148,7 @@ Cada linha traz a regra e o porquê.
 | Matar todo processo que o assistente criou (servidor LSP, jinker, xvfb). | Processo órfão segura a máquina. |
 | `ulimit -v` em toda ferramenta de análise. | `gcc -fanalyzer` no arquivo grande da VM passa de 6 GB, e o OOM derrubou a sessão duas vezes. |
 | E2E com editor real só na validação final. | É o job mais pesado. |
-| Build, suíte inteira, ASan, OOM e e2e rodam na **VPS `tecsol-vps`** (desde 2026-09-20), inclusive o `make pool` de cada iteração: o binário vem pra cá por `scp` (os dois têm glibc 2.39 e gcc 13.3; o `pool` liga estático sqlite, ssl, png, expat, zlib e, desde o 17.1.0, a libffi, e daqui só pede a `libgmp.so.10`) e aqui só se instala. Detalhes logo abaixo da tabela. | "Tá impossível essa máquina, faça build e rode a suíte lá"; "não deixe resquício nenhum"; "o certo seria na vps" (2026-10-07, depois de um `make pool` aqui com 833 MB livres e o swap cheio). |
+| Build, suíte inteira, ASan, OOM e e2e rodam na **VPS `tecsol-vps`** (desde 2026-09-20), inclusive o `make pool` de cada iteração: o binário vem pra cá por `scp` (os dois têm glibc 2.39 e gcc 13.3; o `pool` liga estático sqlite, ssl, png, expat e zlib, e daqui só pede a `libgmp.so.10`) e aqui só se instala. Detalhes logo abaixo da tabela. | "Tá impossível essa máquina, faça build e rode a suíte lá"; "não deixe resquício nenhum"; "o certo seria na vps" (2026-10-07, depois de um `make pool` aqui com 833 MB livres e o swap cheio). |
 | Na VPS, o Postgres 16 da porta 5432 é **seu**. O banco `ps_teste` é criado antes e apagado depois de cada rodada. | Dado seu não se destrói. |
 | As regras de carga foram escritas pra este laptop (i3-1115G4, 7,7 GB). O Mac (i9-9880H, 16 GB) ainda não foi medido: medir lá antes de relaxar qualquer uma. | Número só medido. |
 
@@ -1170,9 +1170,10 @@ Números do binário medidos neste laptop em 2026-09-28:
 | `./pool --version` | `Jinga 16.1.9 [PSVM] (2026-09-28) Runtime standalone` |
 | Arquivo | `./pool`, na raiz do repo, com 9.066.080 bytes (igual byte a byte ao `/usr/local/bin/jinga`) |
 | Dependências dinâmicas (`ldd ./pool`) | só `libm.so.6`, `libgmp.so.10` e `libc.so.6`, além do `linux-vdso` e do `ld-linux` |
-| Bibliotecas estáticas (Linux, via `-Wl,-Bstatic`) | sqlite, OpenSSL (libssl/libcrypto), libpng, expat, zlib; desde o 17.1.0 também a libffi (a chamada das funções do C) |
-| Bibliotecas estáticas (macOS) | os `.a` do Homebrew para OpenSSL e libpng; sqlite, expat, zlib e libffi vêm do próprio macOS; gmp vem do Homebrew (`-lgmp`); desde `3c245e7` também os frameworks Security e CoreFoundation (raízes TLS do Keychain) |
+| Bibliotecas estáticas (Linux, via `-Wl,-Bstatic`) | sqlite, OpenSSL (libssl/libcrypto), libpng, expat, zlib |
+| Bibliotecas estáticas (macOS) | os `.a` do Homebrew para OpenSSL e libpng; sqlite, expat e zlib vêm do próprio macOS; gmp vem do Homebrew (`-lgmp`); desde `3c245e7` também os frameworks Security e CoreFoundation (raízes TLS do Keychain) |
 | Carregadas só no primeiro `connect` (dlopen) | clientes do Postgres, do MariaDB/MySQL, do unixODBC e do Mongo (ver 3.13) |
+| Carregada só na primeira chamada a uma função do C (dlopen) | a libffi (desde o 17.1.0, ver 3.14): `libffi.so.8` no Linux, `/usr/lib/libffi.dylib` no macOS; no Windows ela é estática |
 | Versão | constante `PS_VERSAO` em `vm/ps_versao.h` (a de hoje está na 5.1) |
 | Data de build | `vm/ps_build.h`, gerado pelo Makefile |
 
@@ -1674,7 +1675,7 @@ Nomes procurados, na ordem:
 | pacotes | `ps_pkg.c/.h` | `jpkg`: `~/.jinga` (ou `$JINGA_HOME`, ou `$POOLSCRIPT_HOME`) com `commands/`, `libs/` e `bin/` (shims; no Windows, `.cmd` e PATH por `setx`); `installed.json` é reescrito a partir do disco; `config.json` guarda o `registry_url`; download por HTTPS com sha256 opcional. Uma `~/.poolscript` antiga é movida para `~/.jinga` com aviso |
 | inteiro grande | `ps_gmp_min.h` | a interface `mpz` da GMP declarada à mão (símbolos `__gmpz_*`), ligada a `libgmp.so.10` no Linux e a `-lgmp` do Homebrew no macOS |
 | Unicode | `ps_unicode.c/.h`, `ps_unicode_tab.inc` | caixa e classes de caractere dos métodos de texto (`upper`, `lower`, `title`, `capitalize`, `swapcase`, `casefold`, `isalpha`, `isdigit`, `isdecimal`, `isnumeric`, `isalnum`, `isspace`, `isprintable`, `isupper`, `islower`, `istitle`, o branco do `split`/`strip`) pela tabela do Unicode inteira. Nome no código não passa por aqui (a regra do lexer, doc 1.4) |
-| a biblioteca do C | `ps_c.c/.h` | Plano 1, lote C1, em obra no ramo `obra/c1`. Os tipos do C: os escalares com o tamanho e o alinhamento do sistema do build, os typedefs do padrão (`size_t`, `int32_t`, `time_t`...), ponteiro, array, struct e union pela regra de layout do C, e o tipo de função. A chamada é pela libffi: o `ffi_cif` é preparado uma vez por função; na variádica, a cada chamada (`ffi_prep_cif_var`, com a promoção do C); o retorno estreito vem alargado no registro. O callback é por closure da libffi. O módulo não depende da VM |
+| a biblioteca do C | `ps_c.c/.h`, `ps_c_padrao.inc`, `c_padrao.decl` | Plano 1, lote C1, em obra no ramo `obra/c1`. Os tipos do C: os escalares com o tamanho e o alinhamento do sistema do build, os typedefs do padrão (`size_t`, `int32_t`, `time_t`...), ponteiro, array, struct e union pela regra de layout do C, e o tipo de função; um leitor de declarações do C (o `dcl` do K&R com a gramática do C11 6.7.6). A tabela da biblioteca padrão (funções, constantes, tipos, structs, o que fica de fora e por quê) é escrita uma vez em `vm/c_padrao.decl`, a partir do Anexo B do N1570, e o `scripts/gera_c_padrao.pr` gera dela o `vm/ps_c_padrao.inc`; o compilador C confere cada protótipo contra o do sistema e dá o valor de cada constante. A chamada é pela libffi: o `ffi_cif` é preparado uma vez por função; na variádica, a cada chamada (`ffi_prep_cif_var`, com a promoção do C); o retorno estreito vem alargado no registro. O callback é por closure da libffi. Custo zero pra quem não usa o C: a libffi é aberta na primeira chamada, o endereço de cada função do sistema é achado pelo nome (`dlsym`) na primeira chamada dela, e as tabelas não têm ponteiro (nada pro carregador na partida). O módulo não depende da VM |
 
 **As tabelas do Unicode.** O `vm/ps_unicode_tab.inc` é GERADO por
 `scripts/gera_unicode.pr` a partir dos arquivos oficiais do Unicode
@@ -2240,9 +2241,10 @@ brew install lcov gh neovim node
   ```
 
 Como o Makefile muda por sistema (`SO := $(shell uname -s)`):
-- **Linux:** gcc, com `-Wduplicated-branches` e `--param=max-goto-duplication-insns=64` (sem esse parâmetro o laço da VM fica 16% mais lento em instruções, medido com perf stat). Sqlite, TLS, PNG, expat, zlib e libffi entram estáticos (`-Wl,-Bstatic`).
-- **Darwin:** clang da Apple, sem os dois parâmetros acima. TLS e PNG entram pelos `.a` do Homebrew; sqlite, expat, zlib e libffi vêm do macOS (a libffi com o cabeçalho em `ffi/ffi.h`, no SDK); desde `3c245e7` liga também os frameworks Security e CoreFoundation.
-- **Os dois:** os clientes de banco (Postgres, MySQL, ODBC, Mongo) não são ligados. Cada driver abre a biblioteca no primeiro `connect` (`vm/ps_dl.h`), e os cabeçalhos entram só pra compilar.
+- **Linux:** gcc, com `-Wduplicated-branches` e `--param=max-goto-duplication-insns=64` (sem esse parâmetro o laço da VM fica 16% mais lento em instruções, medido com perf stat). Sqlite, TLS, PNG, expat e zlib entram estáticos (`-Wl,-Bstatic`).
+- **Darwin:** clang da Apple, sem os dois parâmetros acima. TLS e PNG entram pelos `.a` do Homebrew; sqlite, expat e zlib vêm do macOS; desde `3c245e7` liga também os frameworks Security e CoreFoundation.
+- **Os dois:** os clientes de banco (Postgres, MySQL, ODBC, Mongo) não são ligados. Cada driver abre a biblioteca no primeiro `connect` (`vm/ps_dl.h`), e os cabeçalhos entram só pra compilar. A libffi também não (desde o 17.1.0): o `vm/ps_c.c` a abre na primeira chamada a uma função do C, a `libffi.so.8` no Linux e a do sistema no macOS (o cabeçalho é o `ffi/ffi.h` do SDK). Ligada, ela trazia nomes que o carregador resolvia na partida de todo programa.
+- **Windows:** a libffi entra estática no `jinga.exe`, com o resto (`-static`).
 
 ### 5.3 Compilar
 
@@ -3833,8 +3835,8 @@ O Makefile tem ramo Darwin:
 - Compila com o clang da Apple.
 - Pega cabeçalhos e bibliotecas por `brew --prefix`.
 - Liga o OpenSSL e o libpng estáticos (os `.a` do Homebrew).
-- Usa o sqlite, o expat, o zlib e a libffi do próprio macOS, mais os frameworks Security e CoreFoundation.
-- Os clientes de banco não são ligados: o motor abre o `.dylib` no primeiro `connect`.
+- Usa o sqlite, o expat e o zlib do próprio macOS, mais os frameworks Security e CoreFoundation.
+- Os clientes de banco não são ligados: o motor abre o `.dylib` no primeiro `connect`. A libffi do próprio macOS também não: o motor a abre na primeira chamada a uma função do C.
 
 1. **Dependências de compilação.** É a mesma lista do `scripts/compila.pr` e do `build.yml`.
    - No Mac Intel o Homebrew não tem mais pacote pronto e compila cada um do fonte, então a primeira vez demora.

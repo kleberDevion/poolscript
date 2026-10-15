@@ -189,7 +189,9 @@ done
 # de PG_NOMES, MY_NOMES, OD_NOMES (vm/ps_db.c) e MG_NOMES (vm/ps_mongo.c). Cada
 # um vai com o que ELE arrasta (Kerberos, LDAP, gnutls...). Faltando um nesta
 # máquina, o bundle sairia sem aquele driver: para aqui em vez de sair capenga.
-for nome in libpq.so.5 libmariadb.so.3 libodbc.so.2 libmongoc-1.0.so.0; do
+# A libffi também: a `jinga` a abre na primeira chamada a uma função do C
+# (FFI_NOME, em vm/ps_c.c).
+for nome in libpq.so.5 libmariadb.so.3 libodbc.so.2 libmongoc-1.0.so.0 libffi.so.8; do
     so=$(ldconfig -p | awk -v n="$nome" '$1 == n {print $NF; exit}')
     [ -n "$so" ] || { echo "falta $nome nesta maquina: o bundle sairia sem esse driver" >&2; exit 1; }
     for dep in "$so" $(ldd "$so" | awk '{print $3}' | grep '^/'); do
