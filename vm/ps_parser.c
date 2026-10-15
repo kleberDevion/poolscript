@@ -17,6 +17,7 @@
  * em silêncio.
  */
 #include "ps_parser.h"
+#include "ps_c.h"
 #include "ps_caminho.h"
 #include "ps_pilha.h"
 #include "ps_retornos.h"
@@ -1869,6 +1870,164 @@ static PSNode *posfixo(P *p)
     return no;
 }
 
+/* ── o C na Jinga: o tipo do C escrito no código ────────────────────────────
+ * As palavras com que o C escreve um tipo (C11 6.7.2 e 6.7.3). `int`, `char`,
+ * `long` e `bool` também são tipos da Jinga: na declaração, eles só contam
+ * como C quando o resto da forma é do C (ponteiro, mais de uma palavra); no
+ * `sizeof` e no cast, são sempre os do C. */
+static int eh_palavra_do_c(const char *s, int *qualificador)
+{
+    static const char *const BASICOS[] = { "void", "char", "short", "int", "long", "float", "double",
+                                           "signed", "unsigned", "_Bool", "bool", NULL };
+    static const char *const QUALIF[] = { "const", "volatile", "restrict", NULL };
+    *qualificador = 0;
+    if (!s) return 0;
+    for (int i = 0; BASICOS[i]; i++)
+        if (s[0] == BASICOS[i][0] && strcmp(s, BASICOS[i]) == 0) return 1;
+    for (int i = 0; QUALIF[i]; i++)
+        if (s[0] == QUALIF[i][0] && strcmp(s, QUALIF[i]) == 0) { *qualificador = 1; return 1; }
+    return 0;
+}
+
+/* Nome de tipo da tabela do C (`size_t`, `FILE`, `div_t`): o typedef. */
+static int eh_nome_de_tipo_do_c(const char *s)
+{
+    int i = s ? ps_c_busca(s) : -1;
+    if (i < 0) return 0;
+    PSCEspecie e = ps_c_especie(i);
+    return e == PSC_NOME_TIPO || e == PSC_NOME_OPACO || e == PSC_NOME_ESTRUTURA;
+}
+
+static void junta_texto(char *buf, size_t cap, size_t *n, const char *s)
+{
+    size_t m = strlen(s);
+    if (*n + m + 1 > cap) { *n = cap; return; }   /* não cabe: o chamador recusa */
+    memcpy(buf + *n, s, m);
+    *n += m;
+    buf[*n] = '\0';
+}
+
+/* O tipo do C escrito a partir do token `k0`, sem consumir: qualificadores e
+ * especificadores, `struct tag`, um nome de tipo da tabela, e as estrelas do
+ * ponteiro (cada uma com os qualificadores dela). Devolve quantos tokens ele
+ * ocupa (0 = não é tipo do C), o texto normalizado em `buf` ("const char *",
+ * "unsigned long", "struct tm *", "char *const"), que o leitor de declarações
+ * do C entende, e quantas palavras e quantas estrelas ele tem. */
+static int tipo_do_c_adiante(P *p, int k0, char *buf, size_t cap, int *palavras, int *estrelas)
+{
+    int k = k0, base = 0, nome_de_tipo = 0;
+    size_t n = 0;
+    buf[0] = '\0';
+    *palavras = 0; *estrelas = 0;
+    for (;;) {
+        PSToken *t = espia(p, k);
+        if ((t->type != T_KW && t->type != T_IDENT && t->type != T_IDENT_UPPER) || !t->texto) break;
+        int qual = 0;
+        if (eh_palavra_do_c(t->texto, &qual)) {
+            if (nome_de_tipo && !qual) break;
+            if (!qual) base = 1;
+        } else if ((!strcmp(t->texto, "struct") || !strcmp(t->texto, "union"))
+                   && (espia(p, k + 1)->type == T_IDENT || espia(p, k + 1)->type == T_IDENT_UPPER)) {
+            if (base) break;
+            if (n) junta_texto(buf, cap, &n, " ");
+            junta_texto(buf, cap, &n, t->texto);
+            junta_texto(buf, cap, &n, " ");
+            junta_texto(buf, cap, &n, espia(p, k + 1)->texto);
+            k += 2; *palavras += 2; base = nome_de_tipo = 1;
+            continue;
+        } else if (!base && eh_nome_de_tipo_do_c(t->texto)) {
+            base = nome_de_tipo = 1;
+        } else {
+            break;
+        }
+        if (n) junta_texto(buf, cap, &n, " ");
+        junta_texto(buf, cap, &n, t->texto);
+        k++; (*palavras)++;
+    }
+    if (!base) return 0;
+    int primeira = 1;
+    for (;;) {
+        PSToken *t = espia(p, k);
+        if (t->type != T_OP || !t->texto || (strcmp(t->texto, "*") && strcmp(t->texto, "**"))) break;
+        int m = t->texto[1] ? 2 : 1;
+        if (primeira) junta_texto(buf, cap, &n, " ");
+        primeira = 0;
+        junta_texto(buf, cap, &n, m == 2 ? "**" : "*");
+        *estrelas += m;
+        k++;
+        for (;;) {                                 /* `char *const p` */
+            PSToken *q = espia(p, k);
+            int qual = 0;
+            if ((q->type != T_KW && q->type != T_IDENT) || !eh_palavra_do_c(q->texto, &qual) || !qual) break;
+            junta_texto(buf, cap, &n, q->texto);
+            junta_texto(buf, cap, &n, " ");
+            k++;
+        }
+    }
+    if (n >= cap) return 0;                        /* tipo comprido demais pro buffer */
+    while (n > 0 && buf[n - 1] == ' ') buf[--n] = '\0';
+    return k - k0;
+}
+
+/* `*p`, `**pp`, `&x` e `sizeof`, os operadores do C sobre ponteiro e memória.
+ * Ficam ENTRE a potência e o posfixo: `*p ** 2` é `(*p) ** 2`, `-*p` é
+ * `-(*p)`, e o posfixo liga mais forte, como no C (`*p[1]` é `*(p[1])`,
+ * `&v[2]` é o endereço do elemento). Hoje nenhum deles valia em posição de
+ * operando (`&x` e `*p` davam SyntaxError, `sizeof` NameError). O `*` no
+ * começo de um argumento de chamada continua passando pelo espalhamento
+ * (`estrela_de_argumento`), e quem decide se é o `*` do C é o compilador,
+ * pelo tipo do operando. */
+static PSNode *prefixo_c(P *p)
+{
+    PSToken *t = atual(p);
+    if (t->type == T_OP && t->texto
+            && (!strcmp(t->texto, "*") || !strcmp(t->texto, "**") || !strcmp(t->texto, "&"))) {
+        if (ps_pilha_apertada()) { perro(p, "expressao aninhada demais", t); return NULL; }
+        p->pos++;
+        PSNode *operando = prefixo_c(p);
+        if (FALHOU(p)) return NULL;
+        PSNode *n = ps_node_novo(p->arena, t->texto[0] == '&' ? N_C_ADDR : N_C_DEREF, t->line, t->col);
+        if (!n) return NULL;
+        n->a = operando;
+        if (t->texto[1] == '*') {                  /* `**pp`: duas derreferências */
+            PSNode *de_fora = ps_node_novo(p->arena, N_C_DEREF, t->line, t->col);
+            if (!de_fora) return NULL;
+            de_fora->a = n;
+            n = de_fora;
+        }
+        return n;
+    }
+    /* `sizeof(T)` com o tipo do C, e `sizeof x`/`sizeof(expr)` com o tipo da
+     * expressão. `sizeof` sozinho (`post(sizeof)`) continua nome. */
+    if (t->type == T_IDENT && t->texto && !strcmp(t->texto, "sizeof")) {
+        PSToken *dep = espia(p, 1);
+        if (dep->type == T_LPAREN) {
+            char tipo[160];
+            int palavras, estrelas;
+            int k = tipo_do_c_adiante(p, 2, tipo, sizeof(tipo), &palavras, &estrelas);
+            if (k > 0 && espia(p, 2 + k)->type == T_RPAREN) {
+                p->pos += 3 + k;
+                PSNode *n = ps_node_novo(p->arena, N_C_SIZEOF, t->line, t->col);
+                if (!n) return NULL;
+                n->texto = dup_str(p, tipo);
+                return n;
+            }
+        }
+        if (dep->type == T_LPAREN || dep->type == T_IDENT || dep->type == T_IDENT_UPPER
+                || (dep->type == T_OP && dep->texto && (!strcmp(dep->texto, "*") || !strcmp(dep->texto, "&")))) {
+            if (ps_pilha_apertada()) { perro(p, "expressao aninhada demais", t); return NULL; }
+            p->pos++;
+            PSNode *operando = prefixo_c(p);
+            if (FALHOU(p)) return NULL;
+            PSNode *n = ps_node_novo(p->arena, N_C_SIZEOF, t->line, t->col);
+            if (!n) return NULL;
+            n->a = operando;
+            return n;
+        }
+    }
+    return posfixo(p);
+}
+
 /* ── unário ─────────────────────────────────────────────────────────────── */
 static PSNode *unario(P *p)
 {
@@ -1902,7 +2061,7 @@ static PSNode *unario(P *p)
  */
 static PSNode *potencia(P *p)
 {
-    PSNode *base = posfixo(p);
+    PSNode *base = prefixo_c(p);
     if (FALHOU(p)) return NULL;
     PSToken *t = atual(p);
     if (t->type == T_OP && t->texto && strcmp(t->texto, "**") == 0) {
@@ -4892,6 +5051,37 @@ static PSNode *statement_no(P *p)
         return n;
     }
 
+    /* Declaração com tipo do C que a Jinga não tem: ponteiro (`int *p = ...`,
+     * `FILE *f = ...`) ou tipo de mais de uma palavra (`unsigned long n = ...`,
+     * `const char *s = ...`, `struct tm *t = ...`). Vira um N_VAR_DECL com o
+     * texto do tipo do C em `texto2`. O tipo de uma palavra só chega pelos
+     * caminhos de sempre: `size_t n = 5` e `double d = 1.5` pela forma de
+     * dois nomes, e `int x = 1` continua o `int` da Jinga. A tabela do C só é
+     * consultada quando o segundo token é `*` ou outra palavra: `x = 5` e
+     * `post(1)` não pagam nada. */
+    if ((t->type == T_KW || t->type == T_IDENT || t->type == T_IDENT_UPPER)
+            && (checa_op_em(p, 1, "*") || checa_op_em(p, 1, "**") || espia(p, 1)->type == T_KW
+                || espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
+        char tipo[160];
+        int palavras, estrelas;
+        int k = tipo_do_c_adiante(p, 0, tipo, sizeof(tipo), &palavras, &estrelas);
+        if (k > 0 && (estrelas > 0 || palavras > 1) && eh_nome_de_declaracao(p, k, 0)
+                && checa_op_em(p, k + 1, "=")) {
+            PSToken *nt = espia(p, k);
+            p->pos += k;
+            const char *nome = exige_nome(p, "variavel");
+            if (FALHOU(p)) return NULL;
+            p->pos++;                                  /* o `=` */
+            PSNode *n = ps_node_novo(p->arena, N_VAR_DECL, nt->line, nt->col);
+            if (!n) return NULL;
+            n->texto = nome;
+            n->texto2 = dup_str(p, tipo);
+            n->a = expressao(p);
+            if (FALHOU(p)) return NULL;
+            return n;
+        }
+    }
+
     /* tipo de retorno antes de funct: `int funct f()`; ou declaracao tipada
      * `int x = 1`. So entra aqui se o que vem depois do tipo e uma FUNCT ou
      * um NOME — `list(x)`, `json.parse(s)`, `str(n)` como statement continuam
@@ -5025,6 +5215,22 @@ static PSNode *statement_no(P *p)
         n->b = e->b;          /* índice    */
         n->texto = op;
         n->c = expressao(p);
+        if (FALHOU(p)) return NULL;
+        return n;
+    }
+
+    /* `*p += v`, `**pp = v`, `*(p + 1) = v`: a escrita na memória do C. O
+     * `*nome = v` sozinho chega antes como desempacotamento (`*a = [1, 2]` dá
+     * a lista ao `a`, e vale hoje), e o compilador decide pelo tipo do nome. */
+    if (e->kind == N_C_DEREF && checa(p, T_OP) && atual(p)->texto
+            && eh_op_atribuicao(atual(p)->texto)) {
+        const char *op = dup_tok(p, atual(p));
+        p->pos++;
+        PSNode *n = ps_node_novo(p->arena, N_C_STORE, e->line, e->col);
+        if (!n) return NULL;
+        n->a = e->a;
+        n->texto = op;
+        n->b = expressao(p);
         if (FALHOU(p)) return NULL;
         return n;
     }

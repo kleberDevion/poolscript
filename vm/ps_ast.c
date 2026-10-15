@@ -175,6 +175,11 @@ const char *ps_node_nome(PSNodeKind k)
         case N_UNPACK_ASSIGNMENT: return "UnpackAssignment";
         case N_UNPACK_TARGET:   return "UnpackTarget";
         case N_FIELD_DECL:      return "FieldDecl";
+        case N_C_DEREF:         return "CDeref";
+        case N_C_ADDR:          return "CAddr";
+        case N_C_SIZEOF:        return "CSizeof";
+        case N_C_CAST:          return "CCast";
+        case N_C_STORE:         return "CStore";
     }
     return "?";
 }

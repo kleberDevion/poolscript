@@ -93,7 +93,17 @@ typedef enum {
      * objeto declarado no construtor, com visibilidade. Não é o
      * `N_ENTITY_FIELD` (que é `nome: tipo` no corpo da classe) nem o
      * `N_VAR_DECL` (que é local). texto = nome, texto2 = tipo, a = valor. */
-    N_FIELD_DECL
+    N_FIELD_DECL,
+    /* ── o C na Jinga (Plano 1): ponteiro e memória ──
+     * A declaração com tipo do C (`int *p = ...`, `unsigned long n = ...`,
+     * `size_t n = ...`) é um N_VAR_DECL comum, com o texto do tipo do C em
+     * `texto2` ("int *", "const char *"): o compilador lê o tipo pelo leitor
+     * de declarações do C (ps_c_le_decl). */
+    N_C_DEREF,        /* `*p`: a = o ponteiro */
+    N_C_ADDR,         /* `&x`: a = o operando (nome, `p[i]`, `*p`) */
+    N_C_SIZEOF,       /* `sizeof(T)`: texto = o tipo do C; `sizeof x`: a = a expressão */
+    N_C_CAST,         /* `(T) x`: texto = o tipo do C, a = o operando */
+    N_C_STORE         /* `*p = v`, `*p += v`: a = o ponteiro, b = o valor, texto = o operador */
 } PSNodeKind;
 
 /* Qual campo do literal vale */
