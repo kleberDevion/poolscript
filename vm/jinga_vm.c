@@ -3962,10 +3962,6 @@ static char *repr_bytes_dup(const char *s, int len)
 
 static void escreve_valor(const Value *v, int dentro)
 {
-    {   /* objetos opacos: mesma descrição que o `str()` usa */
-        char d[512];
-        if (descreve_obj(v, d, sizeof(d))) { fputs(d, stdout); return; }
-    }
     /* Mesma guarda de ciclo do valor_para_texto: `l.append(l)` descia até
      * estourar a pilha do C (segfault sem mensagem). Container que já está
      * sendo escrito vira `[...]`. */
@@ -4047,6 +4043,12 @@ static void escreve_valor(const Value *v, int dentro)
                     ps_prof_texto++; escreve_valor(&d->entradas[i].valor, 1); ps_prof_texto--;
                 }
                 putchar('}');
+            } else {
+                /* objetos opacos: a mesma descrição que o `str()` usa. Fica
+                 * no fim, depois dos tipos de conteúdo: chamada na frente de
+                 * todo valor, ela custava 0,5% no `str(i)` e na f-string */
+                char d[512];
+                if (descreve_obj(v, d, sizeof(d))) fputs(d, stdout);
             }
             break;
     }
@@ -4081,12 +4083,6 @@ static int txt_put(TxtBuf *t, const char *s, int n)
 
 static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
 {
-    {   /* objetos opacos: a MESMA descrição que o `post()` imprime. Sem isto,
-         * `str(conn)` devolvia string vazia enquanto `post(conn)` mostrava
-         * `<sqlite3.Connection>` — 33 tipos caíam nesse silêncio. */
-        char d[512];
-        if (descreve_obj(v, d, sizeof(d))) return txt_put(t, d, (int)strlen(d));
-    }
     char tmp[64];
     if (!dentro) ps_prof_texto = 0;   /* topo: zera a pilha de ciclo */
     switch (v->t) {
@@ -4181,7 +4177,14 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
                 }
                 return txt_put(t, "}", 1);
             }
-            /* todo outro tipo de objeto saiu pelo `descreve_obj` lá em cima */
+            {   /* objetos opacos: a MESMA descrição que o `post()` imprime.
+                 * Sem isto, `str(conn)` devolvia string vazia enquanto
+                 * `post(conn)` mostrava `<sqlite3.Connection>`. Fica no fim,
+                 * depois dos tipos de conteúdo: chamada na frente de todo
+                 * valor, ela custava 0,5% no `str(i)` e na f-string. */
+                char d[512];
+                if (descreve_obj(v, d, sizeof(d))) return txt_put(t, d, (int)strlen(d));
+            }
             return 0;
     }
     return 0;
@@ -10703,8 +10706,10 @@ static int j_valor(VM *vm, JLeitor *j, Value *out, int prof)
         j_espaco(j);
         char fecha = eh_obj ? '}' : ']';
         if (j->i < j->n && j->s[j->i] == fecha) { j->i++; vm->sp--; *out = cont; return 0; }
+        /* toda volta entra com os brancos já pulados: a primeira pelo pulo
+         * logo acima, as outras pelo pulo depois da vírgula (que confere a
+         * vírgula sobrando); pular de novo aqui custava uma chamada por item */
         for (;;) {
-            j_espaco(j);
             if (eh_obj) {
                 if (j->i >= j->n || j->s[j->i] != '"') { vm->sp--; return j_erro(vm, j, j->i, "Expecting property name enclosed in double quotes"); }
                 Value k, v;
@@ -12131,6 +12136,11 @@ static int rx_sub(VM *vm, PSRegex *r, const char *s, int len,
     }
     /* `count` negativo não troca nada (o `re` faz assim); 0 troca todas */
     int proibido = -1;
+    /* texto de troca sem barra (o caso comum, `sub("\\d", "#", s)`) não tem
+     * o que expandir: vai direto, sem passar pelo `rx_expande` a cada
+     * casamento (era 1,4% do `sub`) */
+    int literal = memchr(rep, '\\', (size_t)rlen) == NULL;
+    char msg[200];   /* já conferido acima: aqui só falta de memória */
     while (limite >= 0 && de <= len) {
         if (limite > 0 && feitos >= limite) break;
         RxCaptura cap;
@@ -12138,10 +12148,11 @@ static int rx_sub(VM *vm, PSRegex *r, const char *s, int len,
         if (achou < 0) BERRO(vm, "RuntimeError", "%s", achou == -3 ? MSG_RX_FUNDO : MSG_RX_PASSOS);
         if (!achou) break;
         if (sb_bytes(&b, s + de, cap.inicio[0] - de) != 0) BERRO(vm, "MemoryError", "sem memoria");
-        {
-            char msg[200] = {0};
-            if (rx_expande(&b, rep, rlen, s, &cap, r, msg, (int)sizeof(msg)) != 0)
-                BERRO(vm, "MemoryError", "sem memoria");
+        if (literal) {
+            if (sb_bytes(&b, rep, rlen) != 0) BERRO(vm, "MemoryError", "sem memoria");
+        }
+        else if (rx_expande(&b, rep, rlen, s, &cap, r, msg, (int)sizeof(msg)) != 0) {
+            BERRO(vm, "MemoryError", "sem memoria");
         }
         feitos++;
         /* casamento vazio: a busca seguinte recomeça no mesmo ponto sem
