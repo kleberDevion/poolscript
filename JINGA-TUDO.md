@@ -2930,6 +2930,14 @@ O que o código e o CI já mostram do macOS:
     - o `gera_bytes_docs.pr --confere` acusa 3 páginas de `bytes` fora de dia;
     - o `converte_tudo.pr` não prova mais nada, porque o original no estilo `:` não roda desde que o `:` saiu (rc 2);
     - as 12 saídas da doc antiga, em 2.21.
+- **C1 do Plano 1 em andamento, no ramo `obra/c1`** (desenvolvido no Mac; o `main` segue no 17.0.19 com a logo). O C1 sai em fatias que funcionam de ponta a ponta:
+  - passo 1 (`c22fd9a`): os tipos do C e a chamada pela libffi (`vm/ps_c.c`);
+  - passo 2 (`2a8d39e`): a tabela da biblioteca padrão (`vm/c_padrao.decl` → `scripts/gera_c_padrao.pr` → `vm/ps_c_padrao.inc`: 13 cabeçalhos, 735 nomes, 300 funções), conferida pelo compilador C contra os cabeçalhos do sistema e sem custo na partida (o endereço de cada função é achado pelo nome na 1ª chamada, e a libffi é aberta na 1ª chamada);
+  - fatia 1 (`a7bf818`): a função do C pelo nome em todo arquivo, sem import (`printf`, `strlen`, `sqrt`...), as constantes (`EOF`, `INT_MAX`, `PRId64`), o `NULL` (é o `Null`), o ponteiro opaco que uma função devolve (`FILE *`, `char *`), o `str()` do texto do C, o `errno`, e os erros com a frase (tipo do argumento, quantidade, formato do `printf`, o que fica de fora, tipo usado como valor). Grupo `c` da suíte, 32 casos. No Mac, unidade 308/308 e suíte 10.025/10.025 com e sem JIT.
+  - Medido contra o 17.0.19 (instruções, `perf stat` na VPS), a fatia 1 não deixa nenhum caso mais caro: os 13 do bench e os micros de texto de -0,80% a 0,00%; partida -0,75%; json -0,57%; `Parsing` -1,35%. No caminho:
+    - o `strcmp` da glibc custa conforme o endereço dos dois textos, e o texto novo no binário mudava o custo de toda busca por nome (metodo +0,44%). As buscas que rodam muito (método, membro de módulo, tipo, modificador, e o `inf`/`nan` do `flo()`) comparam a 1ª letra antes, e o custo deixou de depender de onde o texto cai;
+    - o ramo da função do C no `CALL_KW` trocava a alocação de registradores do laço da VM (fib +0,19%), e a pergunta "é dado do C?" no começo do `str()` custava 5 instruções por chamada (dict +0,22%): os dois saíram do caminho comum. A forma do teste do topo no `valor_para_texto` também mudava a previsão do compilador (lista_str +0,11% numa das formas); ficou o mesmo teste de sinal do 17.0.19.
+  - Falta no C1: ponteiro e memória (`*p`, `&x`, `->`, cast, `sizeof`, `malloc`), array e struct, callbacks (`qsort`) e `atexit`/`exit`, o tratador de queda, o checador, o editor, a doc (traduzida da cppreference) e o oráculo do `cc`; a tabela conferida no Windows; a rodada na VPS e o merge como 17.1.0.
 - **Próximos, na ordem sua:**
   1. o Plano 1, a biblioteca do C na Jinga, aprovado em 2026-10-15: C1 é o 17.1.0 e C2 o 17.2.0;
   2. o Plano 12, como 17.3.0;
