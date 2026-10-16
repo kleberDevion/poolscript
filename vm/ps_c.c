@@ -316,6 +316,21 @@ static void *simbolo_do_sistema(const char *nome)
 }
 #endif
 
+/* O símbolo do sistema pelo nome, pra função que o binário NÃO importa: o
+ * binário é ligado com BIND_NOW, e cada nome importado é resolvido na
+ * partida de todo programa (medido no `partida` do bench: 2 nomes a mais,
+ * 11.165 instruções, +0,7%). O que só quem usa o C precisa (o `sigaltstack`
+ * do tratador de queda) é achado aqui, no 1º uso. */
+void *ps_c_simbolo(const char *nome)
+{
+#ifndef _WIN32
+    return simbolo_do_sistema(nome);
+#else
+    (void)nome;
+    return NULL;
+#endif
+}
+
 void (*ps_c_endereco(int i))(void)
 {
     if (fora_da_tabela(i)) return NULL;

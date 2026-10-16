@@ -166,6 +166,9 @@ int         ps_c_marcas(int i);
  * nada disso na partida); NULL quando o sistema não tem a função e nas que a
  * VM faz (PSC_MARCA_VM). */
 void      (*ps_c_endereco(int i))(void);
+/* O símbolo do sistema pelo nome (dlsym no programa), pra função que o
+ * binário não importa de propósito; NULL se não existe (e no Windows). */
+void       *ps_c_simbolo(const char *nome);
 /* Função, macro e literal: o tipo da função. Valor: o tipo do valor (o
  * endereço é de uma função sem parâmetro que devolve esse tipo). Tipo,
  * opaco e estrutura: o próprio tipo. NULL nas outras espécies. */

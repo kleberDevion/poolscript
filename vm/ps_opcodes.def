@@ -298,6 +298,8 @@ PS_OP(DONO_SAI,           117, "DONO_SAI", 0, 0)
  *   6 SOMA      [p, n] -> [p + n]  (o passo é o tamanho do apontado, como no C)
  *   7 DIF       [p, q] -> [p - q]  (em elementos, o ptrdiff_t do C)
  *   8 CAST      [v] -> [(T) v]  (o cast do C: inteiro e ponteiro um no outro, flo cortado)
+ *   9 COPIA     [dado, v] -> []  (a atribuição a um array/struct: copia pra memória dele)
+ *  10 ENDERECO  [dado] -> [&dado]  (o endereço do array/struct que é variável)
  * O compilador só emite quando sabe o tipo do C pelo que foi declarado; o
  * valor sem tipo conhecido segue pelos opcodes de sempre (INDEX_GET, ADD). */
-PS_OP(C_OP,               118, "C_OP", "\1\1\2\2\3\1\2\2\1\0\0\0\0\0\0\0"[(arg) & 15], "\1\1\0\1\0\1\1\1\1\0\0\0\0\0\0\0"[(arg) & 15])
+PS_OP(C_OP,               118, "C_OP", "\1\1\2\2\3\1\2\2\1\2\1\0\0\0\0\0"[(arg) & 15], "\1\1\0\1\0\1\1\1\1\0\1\0\0\0\0\0"[(arg) & 15])

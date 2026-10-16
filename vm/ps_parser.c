@@ -1016,6 +1016,7 @@ static PSNode *alvos_unpack(P *p);
 static int eh_tipo_count(const char *s);
 static int count_esquerda(P *p, PSNode *no, PSToken *tok, const char **tipo, PSNode **valor);
 static PSNode *statement(P *p);
+static int tipo_do_c_adiante(P *p, int k0, char *buf, size_t cap, int *palavras, int *estrelas);
 static PSNode *bloco(P *p);
 static PSNode *bloco_entrada(P *p);
 
@@ -1062,13 +1063,25 @@ static int parse_parametros(P *p, PSNode *n, int lambda, PSToken *abre)
         const char *ptipo = NULL;
         PSToken *tt = atual(p);
         if (recusa_tipo_de_valor(p, "o parametro")) return -1;
-        if (!estrela && eh_tipo_de_retorno(tt)) {
-            PSToken *op = espia(p, 1), *nx = espia(p, 2);
-            if (op->type == T_OP && op->texto && (!strcmp(op->texto, "*") || !strcmp(op->texto, "**"))
-                    && (nx->type == T_IDENT || nx->type == T_IDENT_UPPER))
-                return recusa_tipo_em_estrela(p, tt, op->texto[1] ? 2 : 1, nx->texto);
+        /* O tipo do C no parâmetro (`const void *a`, `struct tm *t`, `int *p`):
+         * a funct que o C chama de volta (o comparador do qsort) ou que recebe
+         * o dado do C. `int *args` era a recusa do "tipo em estrela"; com o
+         * ponteiro na linguagem, é o ponteiro (o `*int args` continua a recusa). */
+        if (!estrela) {
+            char ctipo[160];
+            int palavras, estrelas_c;
+            int k = tipo_do_c_adiante(p, 0, ctipo, sizeof ctipo, &palavras, &estrelas_c);
+            if (k > 0 && (estrelas_c > 0 || palavras > 1) && eh_nome_de_declaracao(p, k, 1)) {
+                ptipo = dup_str(p, ctipo);
+                p->pos += k;
+            } else if (k == 0 && (tt->type == T_IDENT || tt->type == T_IDENT_UPPER || eh_tipo_de_retorno(tt))) {
+                /* `String *args`, `dict **kw`: tipo que NÃO é do C antes da
+                 * estrela é o tipo em estrela de sempre, com a recusa dele */
+                int e2 = checa_op_em(p, 1, "**") ? 2 : checa_op_em(p, 1, "*") ? 1 : 0;
+                if (e2 && eh_nome_de_declaracao(p, 2, 1)) return recusa_tipo_em_estrela(p, tt, e2, espia(p, 2)->texto);
+            }
         }
-        if (eh_tipo_de_retorno(tt) && eh_nome_de_declaracao(p, 1, 1)) {
+        if (!ptipo && eh_tipo_de_retorno(tt) && eh_nome_de_declaracao(p, 1, 1)) {
             if (estrela) return recusa_tipo_em_estrela(p, tt, estrela, espia(p, 1)->texto);
             ptipo = tipo_retorno_dup(p, tt);
             p->pos++;

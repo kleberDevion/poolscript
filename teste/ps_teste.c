@@ -452,7 +452,11 @@ static const char *confere(const Caso *c, Resultado *r)
         snprintf(motivo, sizeof motivo, "TRAVOU (passou de %ds)", TEMPO_MAX);
         return motivo;
     }
-    if (r->sinal) {
+    /* A morte pelo sinal era o ESPERADO (o ponteiro nulo do C derruba, como
+     * no C): o `rc` do caso é 128 + sinal, a convenção do shell (139 =
+     * SIGSEGV). Aí o caso confere como os outros: a saída e o stderr. */
+    if (r->sinal && c->rc == 128 + r->sinal) r->rc = c->rc;
+    else if (r->sinal) {
 #if defined(_WIN32)
         /* no Windows a morte é uma exceção: 0xC0000005 acesso inválido,
          * 0xC00000FD estouro de pilha */

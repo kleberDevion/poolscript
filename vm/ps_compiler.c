@@ -3001,8 +3001,47 @@ static int tp_conta_utf8(const char *s, int32_t n)
  * caractere daquele codepoint — regra dele, só ali; em retorno, parâmetro e
  * campo `char` é um caractere de texto). `no` é o valor, quando se tem:
  * literal diz mais que o tipo (`int` promete 64 bits, `char` é um caractere). */
+static PSCTipo *tp_tipo_c(C *c, const char *t);
+static PSCTipo *ct_nu(PSCTipo *t);
+
+/* O tipo do C (`const void *a`, `size_t n`) aceita o valor da Jinga? A regra
+ * da fronteira, a mesma da chamada (c_arg): inteiro em inteiro e em flutuante
+ * (dá a volta), flo só em flutuante, Null e `str` (só no `const char *`/`const
+ * void *`) e funct (no ponteiro de função) em ponteiro; o resto não vira
+ * ponteiro sem cast. Array e struct: a VM decide (a cópia do mesmo tipo, o
+ * inicializador). */
+static int tp_aceita_c(PSCTipo *ct, const char *v)
+{
+    PSCTipo *nu = ct_nu(ct);
+    if (strcmp(v, "Object") == 0) return T_TALVEZ;
+    switch (nu->kind) {
+        case PSC_INT:
+        case PSC_BOOL:
+            return (!strcmp(v, "int") || !strcmp(v, "bool") || !strcmp(v, "long")) ? T_SIM : T_NAO;
+        case PSC_FLUT:
+            return (!strcmp(v, "flo") || !strcmp(v, "int") || !strcmp(v, "bool") || !strcmp(v, "long")) ? T_SIM : T_NAO;
+        case PSC_PONT: {
+            if (!strcmp(v, "Null")) return T_SIM;
+            PSCTipo *al = ct_nu(nu->alvo);
+            if (!strcmp(v, "str") || !strcmp(v, "byte"))
+                return nu->alvo->constante && (al->kind == PSC_VOID || (al->kind == PSC_INT && al->eh_char))
+                       ? T_SIM : T_NAO;
+            if (!strcmp(v, "funct")) return al->kind == PSC_FUNC ? T_SIM : T_NAO;
+            return T_NAO;
+        }
+        default:
+            return T_TALVEZ;
+    }
+}
+
 static int tp_aceita_um(C *c, const char *d, const char *v, PSNode *no, int declarado)
 {
+    /* o tipo do C declarado (parâmetro `const void *a`): a regra do C, e só
+     * quando o programa usa o C, pra ninguém mais pagar a pergunta */
+    if ((c->tem_tipo_c || c->ix_nomes_c.cap) && !ps_tipo_info(d)) {
+        PSCTipo *ct = tp_tipo_c(c, d);
+        if (ct) return tp_aceita_c(ct, v);
+    }
     /* Null só serve declarado onde o tipo É `Null` (o retorno da `Null funct`) */
     if (strcmp(v, "Null") == 0) return declarado && strcmp(d, "Null") != 0 ? T_NAO : T_SIM;
     /* `Object` é qualquer valor (o Null saiu acima): aceita todo tipo, e um
@@ -9517,7 +9556,12 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
         if (par->texto2) {
             u.sim[pi].estado = 2;
             u.sim[pi].tipo = tp_canon(par->texto2);
-            if (!tp_tipo_existe(c, &u, par->texto2))
+            /* `const void *a`: o tipo do C do parâmetro, pro corpo saber o que
+             * `a` é (`*(const int *) a`) e pra chamada ser conferida pela
+             * regra do C (tp_aceita_c) */
+            u.sim[pi].ctipo = tp_tipo_c(c, par->texto2);
+            if (u.sim[pi].ctipo) c->tem_tipo_c = 1;
+            else if (!tp_tipo_existe(c, &u, par->texto2))
                 terro(c, par, "AttributedValueError", "tipo %s não existe (parâmetro %s de %s())",
                       par->texto2, par->texto ? par->texto : "?", nome_f);
         }
@@ -9564,7 +9608,9 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
             else {
                 for (int32_t i = 0; i < nfix; i++) {
                     const char *pt = n->lista.itens[i]->texto2;
-                    if (!pt) continue;
+                    /* o parâmetro com tipo do C não entra na conferência por
+                     * nome da VM: o prólogo abaixo o converte pela regra do C */
+                    if (!pt || u.sim[i].ctipo) continue;
                     size_t lt = strlen(pt);
                     tipos[i] = malloc(lt + 1);
                     if (tipos[i]) memcpy(tipos[i], pt, lt + 1);
@@ -9654,6 +9700,17 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
         }
         emite(c, &u, OP_STORE_LOCAL, i);
         if (pula >= 0) UP(c, (&u))->code[pula + 1] = UP(c, (&u))->ncode;
+    }
+
+    /* Parâmetro com tipo do C (`int *p`, `const void *a`): o valor da chamada
+     * entra convertido pela regra do C, como a escrita numa variável com esse
+     * tipo (`int *p = x`): NULL vira o ponteiro nulo, o array vira o endereço
+     * do 1º elemento, e o que não cabe dá o erro da conversão. */
+    for (int32_t i = 0; i < nfix && !CFALHOU(c); i++) {
+        if (!u.sim[i].ctipo) continue;
+        emite(c, &u, OP_LOAD_LOCAL, i);
+        emite_c_op(c, &u, C_OP_CONVERTE, 0, n->lista.itens[i]->texto2);
+        emite(c, &u, OP_STORE_LOCAL, i);
     }
 
     /* Depois do prólogo: um default que avalie pra Null também é violação.
@@ -10542,6 +10599,14 @@ static void compila_termina(C *c, Unidade *u)
             int32_t k = ix_busca(&c->ix_nomes_c, nm);
             if (k < 0 && c->nomes_incertos && ix_busca(&c->ix_ligados_mod, nm) < 0)
                 k = ps_c_valor_indice(nm);
+            /* a VARIÁVEL do C escrita pelo programa (`errno = 0`): o global é
+             * ela mesma, ligado na carga pra escrita entrar na chamada
+             * seguinte. Função e constante do C não são variáveis: o nome
+             * escrito é um nome seu, como `abs = 5` com o builtin. */
+            if (k < 0 && c->ix_nomes_c.cap) {
+                int32_t kv = ps_c_valor_indice(nm);
+                if (kv >= 0 && ps_c_especie(kv) == PSC_NOME_VALOR && (ps_c_marcas(kv) & PSC_MARCA_VM)) k = kv;
+            }
             out->globais_c[i] = k;
             if (k >= 0) tem = 1;
         }

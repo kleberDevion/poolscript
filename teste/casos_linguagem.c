@@ -4904,21 +4904,24 @@ const Caso CASOS_LINGUAGEM[] = {
   "0", NULL, 0 },
 
 /* ── tipo escrito junto da estrela: a mesma frase nas duas ordens ─────────── */
-{ "variadico: tipo antes da estrela (int *args) recebe a mensagem dedicada do tipo em estrela",
-  "funct f(int *args) {\n    return args\n}\n",
-  "", "SyntaxError: parametro `*int args` nao aceita tipo: `*args` e sempre tup e `**kwarg` sempre dict — escreva `*args`", 2 },
+/* `int *args` era a frase do tipo em estrela; com o ponteiro do C na
+ * linguagem (Plano 1), `int *p` no parâmetro É o ponteiro — o `*int args` de
+ * baixo continua a recusa. */
+{ "int *p no parametro e ponteiro do C, nao o *args tipado",
+  "int funct primeiro(int *p) {\n    return *p\n}\nint v[2] = {7, 8}\npost(primeiro(v), primeiro(v + 1))\n",
+  "7 8", NULL, 0 },
 { "variadico: tipo antes da estrela (String *args) recebe a mensagem dedicada do tipo em estrela",
   "funct f(String *args) {\n    return args\n}\n",
   "", "SyntaxError: parametro `*String args` nao aceita tipo: `*args` e sempre tup e `**kwarg` sempre dict — escreva `*args`", 2 },
 { "tipo em estrela: dict **kw",
   "funct f(dict **kw) {\n    return kw\n}\n",
   "", "SyntaxError: parametro `**dict kw` nao aceita tipo: `*args` e sempre tup e `**kwarg` sempre dict — escreva `**kw`", 2 },
-{ "tipo em estrela: lambda funct(int *a)",
-  "f = funct(int *a) {\n    return a\n}\n",
-  "", "SyntaxError: parametro `*int a` nao aceita tipo: `*args` e sempre tup e `**kwarg` sempre dict — escreva `*a`", 2 },
-{ "tipo em estrela: metodo m(self, int *a)",
-  "Entity E {\n    funct m(self, int *a) {\n        return a\n    }\n}\n",
-  "", "SyntaxError: parametro `*int a` nao aceita tipo: `*args` e sempre tup e `**kwarg` sempre dict — escreva `*a`", 2 },
+{ "ponteiro do C no parametro da lambda: int *a e o ponteiro, nao o *a tipado",
+  "f = funct(int *a) {\n    return *a\n}\nint v[1] = {5}\npost(f(v))\n",
+  "5", NULL, 0 },
+{ "ponteiro do C no parametro do metodo: m(self, int *a)",
+  "Entity E {\n    int funct m(self, int *a) {\n        return *a + 1\n    }\n}\nint v[1] = {5}\npost(E().m(v))\n",
+  "6", NULL, 0 },
 
 /* ── o frame corrente é raiz: closure e instância durante o C ────────────────
  * O registro do frame só era escrito quando ele CHAMAVA uma funct. O catch lia

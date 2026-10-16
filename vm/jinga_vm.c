@@ -1541,6 +1541,12 @@ struct VM_ {
     int      c_errno;
     int32_t *c_slots_errno;
     int      c_nslots_errno, c_cap_slots_errno;
+    /* as functs registradas no atexit e no at_quick_exit do C (raízes do
+     * coletor); o tratador de queda, ligado no 1º uso do C, e a posição que
+     * ele lê: o proto e o ip da última operação do C (a linha do fonte) */
+    Value   *c_atexit, *c_quick;
+    int      c_natexit, c_cap_atexit, c_nquick, c_cap_quick;
+    int      c_queda_ligada, c_proto_idx, c_ip;
 };
 
 /* Handler de `try`: onde saltar e qual estado restaurar. Guardar fp/sp/
@@ -2665,6 +2671,8 @@ static void gc_coleta(VM *vm)
      * da lista o que foi fechado, então nada fica enraizado além da vida. */
     for (int i = 0; i < vm->n_ws_vivos; i++)  marca_obj(vm, (Obj *)vm->ws_vivos[i]);
     for (int i = 0; i < vm->sp; i++)         marca_valor(vm, &vm->stack[i]);
+    for (int i = 0; i < vm->c_natexit; i++)  marca_valor(vm, &vm->c_atexit[i]);   /* o atexit do C */
+    for (int i = 0; i < vm->c_nquick; i++)   marca_valor(vm, &vm->c_quick[i]);
     for (int i = 0; i < vm->locals_top; i++) marca_valor(vm, &vm->locals[i]);
     /* closures dos frames em execução (não aparecem na pilha de valores) */
     if (vm->gc_cl) marca_obj(vm, (Obj *)vm->gc_cl);
@@ -4181,6 +4189,7 @@ static int txt_put(TxtBuf *t, const char *s, int n)
 static int c_texto_em(TxtBuf *t, const Value *v);
 static int c_len_array(Value v, int64_t *n);
 static int len_raro(VM *vm, const Value *args, Value *out);
+static int c_roda_atexit(VM *vm);
 
 static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
 {
@@ -14096,8 +14105,12 @@ static int fecha_geradores_no_fim(VM *vm, int *saida)
 /* Encerra o processo AGORA, com o código: o que o `sys.exit` fazia sempre.
  * Fica pra quem não pode desenrolar até o topo do programa (ver
  * mod_sys_exit). */
-static void sai_agora(VM *vm, int codigo)
+static void sai_agora_modo(VM *vm, int codigo, int com_atexit)
 {
+    /* as functs do atexit do C rodam antes de sair, com a VM viva (o
+     * quick_exit do C não as roda: só as do at_quick_exit, que quem chama
+     * já rodou) */
+    if (com_atexit) c_roda_atexit(vm);
     fflush(stdout);
     avisa_futures_com_erro(vm);   /* erro de tarefa não some nem pelo exit() */
     /* `exit()` não passa pelo `libera_vm`, então os finalizadores não rodam e
@@ -14110,6 +14123,8 @@ static void sai_agora(VM *vm, int codigo)
         }
     exit(codigo);
 }
+
+static void sai_agora(VM *vm, int codigo) { sai_agora_modo(vm, codigo, 1); }
 
 static int fib_e_de_rota(VM *vm);
 
@@ -25925,6 +25940,21 @@ static int c_ponteiro_aceita(PSCTipo *t, PSCDado *d)
     return c_mesmo_tipo(a, b);
 }
 
+/* O callback: a funct da Jinga onde o C pede um ponteiro de função (o
+ * comparador do qsort), por uma closure da libffi (vm/ps_c.c) que chama a
+ * funct pelo `chama_valor`. Um por argumento da chamada, solto quando ela
+ * volta. `erro`: a funct falhou; as chamadas seguintes devolvem zero sem
+ * rodar, e o erro sobe quando a função do C volta (o C não desenrola). */
+typedef struct { VM *vm; Value fn; PSCTipo *ftipo; void *closure; int erro; } CFecho;
+static void *c_fecho_novo(VM *vm, Value fn, PSCTipo *ftipo, CFecho **fechos, int *nfechos);
+static void  c_fechos_solta(CFecho **fechos, int nfechos);
+
+static int c_eh_chamavel(Value v)
+{
+    return v.t == V_FUNC || v.t == V_NATIVE
+        || (v.t == V_OBJ && (EH_CLOSURE(v) || EH_NATIVA(v) || EH_METNAT(v) || EH_CFUNC(v)));
+}
+
 static int c_erro_arg(VM *vm, const char *fn, int pos, const char *conv, PSCTipo *t, Value v)
 {
     /* pos < 0: a escrita na memória do C (`int *p = 5`, `*p = "a"`), a frase
@@ -25948,7 +25978,8 @@ static int c_erro_arg(VM *vm, const char *fn, int pos, const char *conv, PSCTipo
 /* Um valor da Jinga na memória do C, no tipo `t` (o parâmetro do protótipo
  * ou o que o formato pede). `mem` tem 16 bytes alinhados (cabe o long
  * double). `conv` é a conversão do formato, pra frase do erro. */
-static int c_arg(VM *vm, const char *fn, int pos, Value v, PSCTipo *t, void *mem, const char *conv)
+static int c_arg(VM *vm, const char *fn, int pos, Value v, PSCTipo *t, void *mem, const char *conv,
+                 CFecho **fechos, int *nfechos)
 {
     PSCTipo *nu = c_tipo_nu(t);
     switch (nu->kind) {
@@ -25987,8 +26018,28 @@ static int c_arg(VM *vm, const char *fn, int pos, Value v, PSCTipo *t, void *mem
         }
         case PSC_PONT: {
             void *p = NULL;
+            PSCTipo *alvo_f = c_tipo_nu(nu->alvo);
             if (v.t == V_NULL) {
                 p = NULL;
+            } else if (alvo_f && alvo_f->kind == PSC_FUNC && !EH_CDADO(v)) {
+                /* o ponteiro de função: a função do C pelo endereço dela (o
+                 * protótipo tem que ser o mesmo), ou a funct da Jinga pela
+                 * closure da libffi, que só vive durante a chamada */
+                if (EH_CFUNC(v)) {
+                    int32_t ci = COMO_CFUNC(v)->idx;
+                    if (!c_mesmo_tipo(alvo_f, ps_c_tipo_de(ci)))
+                        BERRO(vm, "TypeError", "%s() tem o protótipo %s, e o C pede %s",
+                              ps_c_nome(ci), ps_c_decl(ci), t->nome);
+                    p = (void *)ps_c_endereco(ci);
+                    if (!p) BERRO(vm, "OSError", "%s() não existe neste sistema", ps_c_nome(ci));
+                } else if (c_eh_chamavel(v)) {
+                    if (!fechos)
+                        BERRO(vm, "TypeError", "a funct da Jinga só entra no C como argumento de uma chamada (%s)", t->nome);
+                    p = c_fecho_novo(vm, v, alvo_f, fechos, nfechos);
+                    if (!p) return -1;
+                } else {
+                    return c_erro_arg(vm, fn, pos, conv, t, v);
+                }
             } else if (EH_CDADO(v)) {
                 if (!c_ponteiro_aceita(nu, COMO_CDADO(v))) return c_erro_arg(vm, fn, pos, conv, t, v);
                 p = COMO_CDADO(v)->ptr;
@@ -26215,6 +26266,226 @@ static void c_guarda_errno(VM *vm, int e)
     }
 }
 
+/* ── o tratador de queda ─────────────────────────────────────────────────
+ * Ponteiro errado, memória já liberada, divisão inteira por zero no C: o
+ * processo morre pelo sinal, como no C. Antes de morrer, o motor escreve qual
+ * sinal foi, o endereço e a linha da Jinga, e morre pelo MESMO sinal (o
+ * tratador volta ao de fábrica e a instrução roda de novo). Ligado no
+ * primeiro uso do C: quem não usa o C fica como sempre. A linha vem da
+ * posição publicada antes de cada operação de memória do C e de cada
+ * chamada (c_publica_posicao). Só o que é seguro dentro de um tratador:
+ * `write` num buffer montado à mão. */
+static VM *g_vm_queda;
+
+static size_t queda_poe(char *b, size_t n, size_t cap, const char *s)
+{
+    while (*s && n + 1 < cap) b[n++] = *s++;
+    return n;
+}
+
+static size_t queda_num(char *b, size_t n, size_t cap, unsigned long long v, int hex)
+{
+    char d[32];
+    int k = 0;
+    do { unsigned r = (unsigned)(v % (hex ? 16u : 10u)); d[k++] = (char)(r < 10 ? '0' + r : 'a' + r - 10); v /= hex ? 16u : 10u; } while (v);
+    while (k > 0 && n + 1 < cap) b[n++] = d[--k];
+    return n;
+}
+
+static size_t queda_posicao(VM *vm, char *b, size_t n, size_t cap)
+{
+    if (!vm || vm->c_proto_idx < 0 || vm->c_proto_idx >= vm->nprotos) return n;
+    Proto *p = &vm->protos[vm->c_proto_idx];
+    int ip = vm->c_ip;
+    int linha = (p->linhas && ip >= 2 && ip - 2 < p->ncode) ? p->linhas[(ip - 2) / 2] : 0;
+    if (linha <= 0) return n;
+    const char *arq = p->arquivo ? p->arquivo : vm->nome_script;
+    const char *base = arq;
+    for (const char *s = arq; *s; s++) if (*s == '/' || *s == '\\') base = s + 1;
+    n = queda_poe(b, n, cap, " na linha ");
+    n = queda_num(b, n, cap, (unsigned long long)linha, 0);
+    n = queda_poe(b, n, cap, " de ");
+    n = queda_poe(b, n, cap, base);
+    return n;
+}
+
+static const char *queda_frase(int sig)
+{
+    switch (sig) {
+        case SIGSEGV: return "Segmentation fault: memória inválida";
+        case SIGFPE:  return "Floating point exception: conta inválida no C (divisão inteira por zero)";
+        case SIGILL:  return "Illegal instruction: instrução inválida";
+#ifdef SIGBUS
+        case SIGBUS:  return "Bus error: memória inválida";
+#endif
+        default:      return "sinal";
+    }
+}
+
+static void queda_escreve(const char *b, size_t n)
+{
+    ssize_t r = write(2, b, n);
+    (void)r;
+}
+
+#if !defined(_WIN32)
+static void c_tratador_queda(int sig, siginfo_t *si, void *ctx)
+{
+    (void)ctx;
+    char b[512];
+    size_t n = queda_poe(b, 0, sizeof b, queda_frase(sig));
+    if (sig == SIGSEGV || sig == SIGBUS) {
+        n = queda_poe(b, n, sizeof b, " (endereço 0x");
+        n = queda_num(b, n, sizeof b, (unsigned long long)(uintptr_t)(si ? si->si_addr : NULL), 1);
+        n = queda_poe(b, n, sizeof b, ")");
+    }
+    n = queda_posicao(g_vm_queda, b, n, sizeof b);
+    n = queda_poe(b, n, sizeof b, "\n");
+    queda_escreve(b, n);
+    signal(sig, SIG_DFL);   /* a instrução roda de novo e o processo morre pelo mesmo sinal */
+}
+#else
+static void c_tratador_queda_win(int sig)
+{
+    char b[512];
+    size_t n = queda_poe(b, 0, sizeof b, queda_frase(sig));
+    n = queda_posicao(g_vm_queda, b, n, sizeof b);
+    n = queda_poe(b, n, sizeof b, "\n");
+    queda_escreve(b, n);
+    signal(sig, SIG_DFL);
+}
+#endif
+
+static void c_liga_queda(VM *vm)
+{
+    if (vm->c_queda_ligada) return;
+    vm->c_queda_ligada = 1;
+    g_vm_queda = vm;
+#if !defined(_WIN32)
+    /* pilha própria: o estouro da pilha do C também é SIGSEGV, e o tratador
+     * precisa de onde rodar. O `sigaltstack` é achado pelo nome aqui, e não
+     * importado: cada nome importado custa na partida de TODO programa
+     * (BIND_NOW), e este só quem usa o C precisa. */
+    static char pilha_sinal[64 * 1024];
+    stack_t ss;
+    memset(&ss, 0, sizeof ss);
+    ss.ss_sp = pilha_sinal;
+    ss.ss_size = sizeof pilha_sinal;
+    int (*alt)(const stack_t *, stack_t *) = (int (*)(const stack_t *, stack_t *))ps_c_simbolo("sigaltstack");
+    if (alt) alt(&ss, NULL);
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);   /* a máscara zerada é o sigemptyset */
+    sa.sa_sigaction = c_tratador_queda;
+    sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+    int sinais[] = { SIGSEGV, SIGBUS, SIGFPE, SIGILL };
+    for (size_t i = 0; i < sizeof sinais / sizeof sinais[0]; i++) sigaction(sinais[i], &sa, NULL);
+#else
+    signal(SIGSEGV, c_tratador_queda_win);
+    signal(SIGFPE, c_tratador_queda_win);
+    signal(SIGILL, c_tratador_queda_win);
+#endif
+}
+
+/* a posição da chamada do C que está começando: o frame corrente (o CALL
+ * publica o ip dele antes de despachar a função do C) */
+static void c_publica_posicao(VM *vm)
+{
+    if (vm->frame_topo <= 0) return;
+    Frame *fr = &vm->frames[vm->frame_topo - 1];
+    vm->c_proto_idx = fr->proto;
+    vm->c_ip = fr->ip;
+}
+
+/* ── atexit, at_quick_exit, exit e quick_exit (os @vm da tabela) ──────── */
+/* As functs de uma lista, na ordem inversa do registro (como o C), com a
+ * VM viva. O erro numa delas sai no stderr e conta como erro do programa; o
+ * `exit()` dentro de uma delas não para as outras. */
+static int c_roda_lista(VM *vm, Value **lista, int *n, int *cap, const char *onde)
+{
+    int k = *n;
+    if (k == 0) return 0;
+    /* o erro (ou o `sys.exit`) do principal fica como estava: é ele que se
+     * relata depois, como no fecho dos geradores (fecha_geradores_no_fim) */
+    static char erro[sizeof(((VM *)0)->erro)], tipo[sizeof(((VM *)0)->erro_tipo)];
+    static char tb[sizeof(((VM *)0)->tb)];
+    memcpy(erro, vm->erro, sizeof erro);
+    memcpy(tipo, vm->erro_tipo, sizeof tipo);
+    memcpy(tb, vm->tb, sizeof tb);
+    int ntb = vm->ntb, codigo = vm->codigo_saida, erros = 0;
+    for (int i = k - 1; i >= 0; i--) {
+        Value ign, nada = MK_NULL();
+        vm->erro_tipo[0] = '\0';
+        vm->ntb = 0;
+        if (chama_valor(vm, (*lista)[i], &nada, 0, &ign) != 0) {
+            if (strcmp(vm->erro_tipo, PS_TIPO_SAIDA) == 0) continue;
+            fflush(stdout);
+            fprintf(stderr, "%s: %s\n", vm->erro_tipo[0] ? vm->erro_tipo : "RuntimeError", vm->erro);
+            for (int q = 0; q < vm->ntb; q++) {
+                int pi = vm->tb[q].proto;
+                if (pi < 0 || pi >= vm->nprotos || vm->tb[q].linha <= 0) continue;
+                Proto *pe = &vm->protos[pi];
+                const char *arq = pe->arquivo && pe->arquivo[0] ? pe->arquivo
+                                : (vm->nome_script[0] ? vm->nome_script : "<script>");
+                if (ps_gancho_quadro) ps_gancho_quadro(arq, vm->tb[q].linha, vm->tb[q].col);
+                else fprintf(stderr, "  em %s, linha %d\n", arq, vm->tb[q].linha);
+            }
+            fprintf(stderr, "  na funct registrada no %s do C\n", onde);
+            fflush(stderr);
+            erros++;
+        }
+    }
+    free(*lista);
+    *lista = NULL; *n = 0; *cap = 0;
+    memcpy(vm->erro, erro, sizeof erro);
+    memcpy(vm->erro_tipo, tipo, sizeof tipo);
+    memcpy(vm->tb, tb, sizeof tb);
+    vm->ntb = ntb;
+    vm->codigo_saida = codigo;
+    return erros;
+}
+
+static int c_roda_atexit(VM *vm)
+{
+    return c_roda_lista(vm, &vm->c_atexit, &vm->c_natexit, &vm->c_cap_atexit, "atexit");
+}
+
+static int c_registra(VM *vm, Value **lista, int *n, int *cap, Value fn)
+{
+    if (*n == *cap) {
+        int novo = *cap ? *cap * 2 : 4;
+        Value *nv = realloc(*lista, sizeof(Value) * (size_t)novo);
+        if (!nv) BERRO(vm, "MemoryError", "sem memoria");
+        *lista = nv; *cap = novo;
+    }
+    (*lista)[(*n)++] = fn;
+    return 0;
+}
+
+static int c_chama_vm(VM *vm, const char *nome, Value *args, int n, Value *out)
+{
+    int quick = strcmp(nome, "at_quick_exit") == 0;
+    if (quick || strcmp(nome, "atexit") == 0) {
+        if (n != 1 || !c_eh_chamavel(args[0]))
+            BERRO(vm, "TypeError", "%s() recebe uma funct da Jinga; veio %s", nome,
+                  n == 1 ? nome_do_tipo_valor(args[0]) : "nada");
+        if (c_registra(vm, quick ? &vm->c_quick : &vm->c_atexit, quick ? &vm->c_nquick : &vm->c_natexit,
+                       quick ? &vm->c_cap_quick : &vm->c_cap_atexit, args[0]) != 0) return -1;
+        *out = MK_INT(0);
+        return 0;
+    }
+    /* o exit do C é o sys.exit da Jinga: os finally rodam, e o atexit roda no
+     * fim, com a VM viva */
+    if (strcmp(nome, "exit") == 0) return mod_sys_exit(vm, args, n, out);
+    if (strcmp(nome, "quick_exit") == 0) {
+        int64_t cod = 0;
+        if (n != 1 || !arg_inteiro(args[0], &cod))
+            BERRO(vm, "TypeError", "quick_exit() recebe o código de saída, um int");
+        c_roda_lista(vm, &vm->c_quick, &vm->c_nquick, &vm->c_cap_quick, "at_quick_exit");
+        sai_agora_modo(vm, (int)cod, 0);
+    }
+    BERRO(vm, "NotImplementedError", "%s() do C ainda não tem o lado da VM", nome);
+}
+
 /* Chama a função do C `fn` com os argumentos da Jinga. */
 static int c_chama(VM *vm, Value fn, Value *args, int n, Value *out)
 {
@@ -26223,25 +26494,28 @@ static int c_chama(VM *vm, Value fn, Value *args, int n, Value *out)
     PSCTipo *ft = ps_c_tipo_de(idx);
     if (!ft || ft->kind != PSC_FUNC)
         BERRO(vm, "RuntimeError", "%s: o protótipo da tabela do C não se lê", nome);
-    if (ps_c_marcas(idx) & PSC_MARCA_VM)
-        BERRO(vm, "NotImplementedError", "%s() do C ainda não tem o lado da VM", nome);
-    char motivo[320];
-    if (ps_c_pronto(motivo, sizeof motivo) != 0)
-        BERRO(vm, "OSError", "%.40s() não pode ser chamada: %.180s", nome, motivo);
-    void (*f)(void) = ps_c_endereco(idx);
-    if (!f) BERRO(vm, "OSError", "%s() não existe neste sistema", nome);
     int nfixos = ft->nparams;
     if (n < nfixos || (!ft->variadica && n > nfixos)) {
         ps_frase_aridade(vm->erro, sizeof(vm->erro), nome, nfixos, ft->variadica ? INT_MAX : nfixos, n);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
         return -1;
     }
+    if (ps_c_marcas(idx) & PSC_MARCA_VM) return c_chama_vm(vm, nome, args, n, out);
+    char motivo[320];
+    if (ps_c_pronto(motivo, sizeof motivo) != 0)
+        BERRO(vm, "OSError", "%.40s() não pode ser chamada: %.180s", nome, motivo);
+    void (*f)(void) = ps_c_endereco(idx);
+    if (!f) BERRO(vm, "OSError", "%s() não existe neste sistema", nome);
     if (n > C_MAX_ARGS)
         BERRO(vm, "TypeError", "%s(): argumentos demais pra uma chamada do C (o máximo é %d)", nome, C_MAX_ARGS);
+    c_liga_queda(vm);
+    c_publica_posicao(vm);
     union { long double ld; void *p; unsigned char b[16]; } mem[C_MAX_ARGS];
     void *ptrs[C_MAX_ARGS];
     PSCTipo *var[C_MAX_ARGS];
     char conv[C_MAX_ARGS][24];
+    CFecho *fechos[C_MAX_ARGS];
+    int nfechos = 0;
     int nvar = n - nfixos;
     if (ft->variadica) {
         int marcas = ps_c_marcas(idx);
@@ -26256,19 +26530,38 @@ static int c_chama(VM *vm, Value fn, Value *args, int n, Value *out)
     }
     for (int i = 0; i < n; i++) {
         PSCTipo *t = i < nfixos ? ft->params[i] : var[i - nfixos];
-        if (c_arg(vm, nome, i, args[i], t, &mem[i], i < nfixos ? NULL : conv[i - nfixos]) != 0) return -1;
+        if (c_arg(vm, nome, i, args[i], t, &mem[i], i < nfixos ? NULL : conv[i - nfixos], fechos, &nfechos) != 0) {
+            c_fechos_solta(fechos, nfechos);
+            return -1;
+        }
         ptrs[i] = &mem[i];
     }
     union { long double ld; void *p; unsigned char b[64]; } ret;
-    if (ps_c_tam_ret(ft->ret) > sizeof ret.b)
+    if (ps_c_tam_ret(ft->ret) > sizeof ret.b) {
+        c_fechos_solta(fechos, nfechos);
         BERRO(vm, "TypeError", "%s(): o retorno %s é grande demais", nome, ft->ret->nome);
+    }
     /* O errno do C entra como a Jinga guardou e sai guardado: é o que o
-     * `ctypes` do Python faz com `use_errno` */
+     * `ctypes` do Python faz com `use_errno`. O programa pode ter escrito no
+     * global `errno` (`errno = 0`): o valor dele é o que entra. */
+    for (int k = 0; k < vm->c_nslots_errno; k++) {
+        int32_t s = vm->c_slots_errno[k];
+        if (s >= 0 && s < vm->nglobals && vm->globals[s].t == V_INT && (int)vm->globals[s].as.i != vm->c_errno) {
+            vm->c_errno = (int)vm->globals[s].as.i;
+            break;
+        }
+    }
     errno = vm->c_errno;
     int rc = ps_c_chama(f, ft, ptrs, n, ft->variadica ? var : NULL, ret.b);
     int e = errno;
+    /* o erro de dentro de um callback: já está na VM (chama_valor), e sobe
+     * agora que a função do C voltou */
+    int erro_cb = 0;
+    for (int i = 0; i < nfechos; i++) if (fechos[i]->erro) erro_cb = 1;
+    c_fechos_solta(fechos, nfechos);
     if (rc != 0) BERRO(vm, "TypeError", "%s(): a libffi recusou os tipos desta chamada", nome);
     c_guarda_errno(vm, e);
+    if (erro_cb) return -1;
     return c_retorno(vm, nome, ft->ret, ret.b, out);
 }
 
@@ -26460,7 +26753,7 @@ static int c_grava_mem(VM *vm, PSCTipo *t, void *mem, Value v)
     }
     if (nu->kind != PSC_INT && nu->kind != PSC_BOOL && nu->kind != PSC_FLUT && nu->kind != PSC_PONT)
         BERRO(vm, "TypeError", "o %s do C ainda não recebe valor da Jinga", t->nome);
-    return c_arg(vm, NULL, -1, v, t, mem, NULL);
+    return c_arg(vm, NULL, -1, v, t, mem, NULL, NULL, NULL);
 }
 
 /* O inicializador do C (`{5, 3, 9}`, `{{1, 2}, {3, 4}}`, `{1, 2.5}` num
@@ -26876,6 +27169,101 @@ static __attribute__((noinline)) int c_op_corpo(VM *vm, const Value *consts, Val
         }
         default:
             BERRO(vm, "RuntimeError", "C_OP: operação %d não existe", sub);
+    }
+}
+
+/* ── o callback: a funct da Jinga chamada pelo C ──────────────────────── */
+/* o retorno da funct no tipo do C que o protótipo do callback declara; o
+ * inteiro menor que a palavra da libffi vai alargado, como ela pede */
+static int c_grava_retorno(VM *vm, PSCTipo *rt, void *ret, Value v)
+{
+    PSCTipo *nu = c_tipo_nu(rt);
+    switch (nu->kind) {
+        case PSC_INT:
+        case PSC_BOOL: {
+            int64_t iv;
+            if (v.t == V_INT) iv = v.as.i;
+            else if (v.t == V_BOOL) iv = v.as.b ? 1 : 0;
+            else if (EH_BIGINT(v)) iv = (int64_t)c_mpz_mod64(COMO_BIGINT(v)->v);
+            else BERRO(vm, "TypeError", "o callback devolveu %s, e o C espera %s", nome_do_tipo_valor(v), rt->nome);
+            if (nu->kind == PSC_BOOL) iv = iv != 0;
+            ps_c_ret_grava_int(rt, ret, iv);
+            return 0;
+        }
+        case PSC_FLUT: {
+            double d;
+            if (v.t == V_FLOAT) d = v.as.d;
+            else if (v.t == V_INT) d = (double)v.as.i;
+            else if (v.t == V_BOOL) d = v.as.b ? 1.0 : 0.0;
+            else BERRO(vm, "TypeError", "o callback devolveu %s, e o C espera %s", nome_do_tipo_valor(v), rt->nome);
+            if (nu == &ps_c_float) { float f = (float)d; memcpy(ret, &f, sizeof f); }
+            else if (nu == &ps_c_ldouble) { long double ld = d; memcpy(ret, &ld, sizeof ld); }
+            else memcpy(ret, &d, sizeof d);
+            return 0;
+        }
+        case PSC_PONT: {
+            union { void *p; unsigned char b[16]; } mem;
+            memset(&mem, 0, sizeof mem);
+            if (c_arg(vm, "callback", -1, v, rt, &mem, NULL, NULL, NULL) != 0) return -1;
+            memcpy(ret, &mem.p, sizeof(void *));
+            return 0;
+        }
+        default:
+            BERRO(vm, "TypeError", "o callback não devolve %s", rt->nome);
+    }
+}
+
+/* a ponte da closure da libffi: os argumentos do C viram valores da Jinga
+ * (pelo tipo do protótipo), a funct roda, e o retorno volta no tipo do C */
+static void c_callback_ponte(void *ret, void **args, void *dados)
+{
+    CFecho *f = (CFecho *)dados;
+    VM *vm = f->vm;
+    PSCTipo *ft = f->ftipo;
+    if (ft->ret->kind != PSC_VOID) memset(ret, 0, ps_c_tam_ret(ft->ret));
+    if (f->erro) return;                        /* o erro de antes está subindo */
+    Value vals[C_MAX_ARGS];
+    int n = ft->nparams > C_MAX_ARGS ? C_MAX_ARGS : ft->nparams;
+    for (int i = 0; i < n; i++)
+        if (c_le_mem(vm, ft->params[i], args[i], &vals[i]) != 0) { f->erro = 1; return; }
+    Value out = MK_NULL(), nada = MK_NULL();
+    vm->erro_tipo[0] = '\0';
+    if (chama_valor(vm, f->fn, n ? vals : &nada, n, &out) != 0) { f->erro = 1; return; }
+    if (ft->ret->kind == PSC_VOID) return;
+    if (c_grava_retorno(vm, ft->ret, ret, out) != 0) f->erro = 1;
+}
+
+static void *c_fecho_novo(VM *vm, Value fn, PSCTipo *ftipo, CFecho **fechos, int *nfechos)
+{
+    if (*nfechos >= C_MAX_ARGS) {
+        snprintf(vm->erro, sizeof(vm->erro), "callbacks demais numa chamada do C");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+        return NULL;
+    }
+    CFecho *f = calloc(1, sizeof *f);
+    if (!f) {
+        snprintf(vm->erro, sizeof(vm->erro), "sem memoria");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+        return NULL;
+    }
+    f->vm = vm; f->fn = fn; f->ftipo = ftipo;
+    void (*codigo)(void) = NULL;
+    f->closure = ps_c_closure_nova(ftipo, c_callback_ponte, f, &codigo);
+    if (!f->closure) {
+        free(f);
+        snprintf(vm->erro, sizeof(vm->erro), "a libffi não monta um callback com o protótipo %s", ftipo->nome);
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+        return NULL;
+    }
+    fechos[(*nfechos)++] = f;
+    return (void *)codigo;
+}
+
+static void c_fechos_solta(CFecho **fechos, int nfechos)
+{
+    for (int i = 0; i < nfechos; i++) {
+        ps_c_closure_solta(fechos[i]->closure);
+        free(fechos[i]);
     }
 }
 
@@ -30619,6 +31007,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 const char *jp; FnMetodoChamavel jf;
                 if (jk_obj_callable(alvo, &jp, &jf)) {
                     vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
+                    vm->frames[fp].ip = ip;   /* a linha da chamada, pro tratador de queda do C */
                     /* `*apps` na frente da lista: os posicionais viram UMA tup
                      * (como no CALL_KW), fixa na pilha durante a chamada */
                     Value pos_e[16];
@@ -31399,6 +31788,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             /* o C na Jinga: ler, gravar e converter na memória do C, fora do
              * laço (c_op); a sub-operação vem no arg */
             vm->sp = sp; vm->locals_top = locals_top;
+            /* a linha desta operação, pro tratador de queda (ligado no 1º uso) */
+            vm->c_proto_idx = (int)(p - vm->protos); vm->c_ip = ip;
+            if (!vm->c_queda_ligada) c_liga_queda(vm);
             int sp_c = c_op(vm, p->consts, stack, sp, arg);
             if (sp_c < 0) goto erro_runtime;
             sp = sp_c;
@@ -33079,6 +33471,9 @@ static void libera_vm(VM *vm)
     vm->ger_abertos = NULL; vm->n_ger_abertos = vm->cap_ger_abertos = 0;
     free(vm->c_slots_errno);
     vm->c_slots_errno = NULL; vm->c_nslots_errno = vm->c_cap_slots_errno = 0;
+    free(vm->c_atexit); free(vm->c_quick);
+    vm->c_atexit = vm->c_quick = NULL;
+    vm->c_natexit = vm->c_cap_atexit = vm->c_nquick = vm->c_cap_quick = 0;
     if (vm->nomes_globais) {
         for (int i = 0; i < vm->n_nomes_globais; i++) free(vm->nomes_globais[i]);
         free(vm->nomes_globais);
@@ -35825,11 +36220,14 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
     int saida_fecho;
     int fechos_com_erro = fecha_geradores_no_fim(&vm, &saida_fecho);
     fflush(stdout);
+    /* as functs do atexit do C, na ordem inversa do registro, com a VM viva */
+    int atexit_com_erro = c_roda_atexit(&vm);
+    fflush(stdout);
     /* Tarefa `async` que quebrou e ninguém aguardou: o erro sai agora, em vez
      * de morrer dentro do future. O programa NÃO espera tarefa pendente —
      * quem quer o resultado usa `await`. E o programa sai com 1: erro é erro,
      * também no código de saída (`sys.exit(n)` explícito mantém o `n`). */
-    int tarefas_com_erro = avisa_futures_com_erro(&vm) + fechos_com_erro;
+    int tarefas_com_erro = avisa_futures_com_erro(&vm) + fechos_com_erro + atexit_com_erro;
     /* o `sys.exit` chegou ao topo, com os `finally` rodados: sai com o código
      * dele, sem mensagem (a tarefa com erro já foi avisada acima) */
     int saiu = rc != 0 && strcmp(vm.erro_tipo, PS_TIPO_SAIDA) == 0;
