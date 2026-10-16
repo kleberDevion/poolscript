@@ -2951,10 +2951,18 @@ O que o código e o CI já mostram do macOS:
     - O programa declara os próprios tipos do C no topo do arquivo, um campo por linha (`struct ponto { int x; int y }`, `typedef struct { ... } Ponto`, `typedef unsigned long u64`); o struct pode apontar pra si mesmo; declarado de novo, tem que ser igual.
     - `char buf[32]`, `struct tm t` e `Ponto pt` nascem sem `=`, zerados como no C; `int v[6] = {5, 3, 9, 1, 7, 2}`, `int w[] = {7, 8, 9}`, `Ponto a = {1.5, 2.5}`. A variável é a própria memória: `b = a` copia pra dentro dela, e `&v`/`&pt` é o endereço dela.
     - `p->x`, `pt.x`, `ps[1].x = 10` (o elemento lido do array é o lugar dele, como no C), `for each x in v`, `len(v)`, `sizeof`, `offsetof`.
-    - Os exemplos 3, 5 e 7 do plano saem com a saída escrita lá; do 6 falta só o `qsort` (fatia 4).
+    - Os exemplos 3, 5 e 7 do plano saem com a saída escrita lá; do 6 faltava só o `qsort` (veio na fatia 4).
     - Achado de caminho, corrigido: `l[0].x = 7` e `f().x = 9` davam "'=' e atribuicao; pra comparar use '=='": o membro de qualquer expressão passa a receber valor.
     - Medido contra o 17.0.19: nenhum caso do bench mais caro (`gc` com JIT: +1.131 instruções em 823 milhões); `texto_str` -0,75%, `metodo` -1,51%, json -0,87%, partida -0,54%. Mac 10.067/10.067 e VPS 10.095/10.095, com e sem JIT; unidade 308/308; `audita_c` 0 achados; `/tmp` limpo.
-  - Falta no C1: callbacks (`qsort` com funct da Jinga), `atexit`/`exit` e o tratador de queda com a linha (fatia 4); o checador (`--check` do formato, da quantidade e dos tipos do C), o editor, a doc (traduzida da cppreference) e o oráculo do `cc` (fatia 5); a tabela conferida no Windows; a rodada na VPS e o merge como 17.1.0.
+  - fatia 4 (`52e0d14`): callbacks, `atexit`/`exit`/`quick_exit`, o `errno` escrito e a queda com a linha.
+    - A funct da Jinga entra onde o C pede ponteiro de função (`qsort(v, 6, sizeof(int), compara)`, `bsearch`), pela closure da libffi: os argumentos são lidos pelo protótipo e o retorno gravado no tipo do C; a função do C também entra, pelo endereço, com o protótipo conferido. O erro dentro do callback não atravessa o C: as chamadas seguintes devolvem zero e o erro sobe quando a função do C volta, com as duas linhas no traceback. O `int funct` como callback segue a regra da funct tipada (devolve 500 e avisa).
+    - `atexit(f)` e `at_quick_exit(f)` registram functs da Jinga, que rodam no fim do programa com a VM viva, na ordem inversa do registro, também depois de um erro não tratado (antes da mensagem dele, como o fecho dos geradores) e no `sys.exit`; o `exit(n)` do C é o `sys.exit(n)` (os `finally` rodam, o atexit roda, o código sai); `quick_exit(n)` roda só as do `at_quick_exit`. O erro numa delas sai no stderr com a linha e o programa sai com 1; o `exit()` dentro de uma não para as outras nem muda o código.
+    - `errno = 0` escreve na variável do C, e o valor entra na chamada seguinte: o global que é a variável do C vai ligado na carga mesmo quando o programa só escreve nele. Função e constante do C escritas continuam nome seu, como `abs = 5`.
+    - Parâmetro com tipo do C (`int funct soma(int *p, int n)`, `const void *a`): o corpo sabe o tipo, a chamada é conferida pela regra do C antes de rodar (`f(5)` com `int *p` é erro na chamada) e o valor entra convertido no prólogo da funct (NULL, array, ponteiro, `str` em `const char *`). `int *args` deixa de ser a recusa do tipo em estrela; tipo que não é do C antes da estrela (`String *args`, `dict **kw`) continua a recusa.
+    - O tratador de SIGSEGV, SIGBUS, SIGFPE e SIGILL é ligado no 1º uso do C, com pilha própria: escreve o sinal, o endereço e a linha da Jinga (`Segmentation fault: memória inválida (endereço 0x0) na linha 2 de a.pr`, também quando a queda é dentro da função do C) e morre pelo mesmo sinal (139 no shell). O stdout num cano morre com o processo, como no C. Os exemplos 6 e 12 do plano saem como escrito lá.
+    - Achado de perf, consertado: o `sigaltstack` e o `sigemptyset` importados custavam 11.165 instruções na partida de todo programa (+0,70%), porque o binário é ligado com `BIND_NOW` e cada nome importado é resolvido na partida. O `sigemptyset` saiu (o `memset` já zera a máscara) e o `sigaltstack` é achado pelo nome no 1º uso do C (`ps_c_simbolo`), como as funções da tabela.
+    - Medido contra o 17.0.19: nenhum caso do bench mais caro (`gc` com JIT: +2.773 instruções em 823 milhões); partida -0,52%, `metodo` -1,51%, json -0,87%, `texto_str` -0,75%. Imports iguais ao 17.0.19; relocações as mesmas +4 da fatia 2. Mac 10.088/10.088 e VPS 10.116/10.116, com e sem JIT; unidade 308/308; `audita_c` 0 achados; `/tmp` limpo.
+  - Falta no C1: o checador (`--check` do formato, da quantidade e dos tipos do C), o editor, a doc (traduzida da cppreference) e o oráculo do `cc` (fatia 5); a tabela conferida no Windows; a rodada na VPS e o merge como 17.1.0.
 - **Próximos, na ordem sua:**
   1. o Plano 1, a biblioteca do C na Jinga, aprovado em 2026-10-15: C1 é o 17.1.0 e C2 o 17.2.0;
   2. o Plano 12, como 17.3.0;
@@ -3129,13 +3137,13 @@ Você pediu o prazo de entrega de tudo da trilha e da cobertura da linguagem, se
 **A régua (medida no `git log`):**
 - 9 dias com commit em 12 dias de calendário (0,75 dia de sessão por dia de calendário).
 - Lote pequeno do Plano 6 (frases, dicas): cerca de 1 hora cada (seis em 5,5 horas em 2026-10-07). Lote grande (7a Unicode, 7b leitor de número, 8 libs): 1 a 1,5 dia de sessão.
-- Fatia do C: passos 1 e 2, 1,5 hora cada; fatia 1, 2 horas mais 4 de perf; fatia 2, 8,5 horas; fatia 3, 12 horas (três rodadas de suíte). Esse ritmo JÁ inclui o que se acha e corrige dentro de cada lote (regra sua: corrigir tudo que achar) e a caça de perf até nenhum caso ficar mais caro. O que fica de fora do prazo são os LOTES de correção (sondas, Plano 6, a revisão do model): esses não acabam, como você disse.
+- Fatia do C: passos 1 e 2, 1,5 hora cada; fatia 1, 2 horas mais 4 de perf; fatia 2, 8,5 horas; fatia 3, 12 horas (três rodadas de suíte); fatia 4, 1,5 hora (estimada em 1 dia: o mecanismo já estava pronto). Esse ritmo JÁ inclui o que se acha e corrige dentro de cada lote (regra sua: corrigir tudo que achar) e a caça de perf até nenhum caso ficar mais caro. O que fica de fora do prazo são os LOTES de correção (sondas, Plano 6, a revisão do model): esses não acabam, como você disse.
 
 **O que falta, em dias de sessão (um dia de sessão = o que um dia como 2026-10-07 ou 2026-10-15 rendeu):**
 
 | item | dias | base da conta |
 |---|---|---|
-| C1 fatia 4: callbacks (`qsort`), `atexit`/`exit`, tratador de queda com a linha | 1 | a fatia 2 |
+| C1 fatia 4: callbacks (`qsort`), `atexit`/`exit`, tratador de queda com a linha | 1 (FEITA em 1,5 hora: `52e0d14`) | a fatia 2 |
 | C1 fatia 5a: `--check` do C, editor (hover, completion, assinatura), `--metadata`, realce | 1 | o lote 7c (o --check dos nativos) |
 | C1 fatia 5b: a doc — 13 páginas da cppreference, 300 funções com protótipo, parâmetros, retorno, errno e exemplo rodado, mais `c.md`, `15-c.md` e o portão do conferidor | 5 | a doc do regex (30 funções em meio dia) |
 | C1 fatia 5c: o oráculo do `cc` (um par C/Jinga por função) | 1 | o `regex_re.pr` |
