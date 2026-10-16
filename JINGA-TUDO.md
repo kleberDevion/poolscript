@@ -3122,6 +3122,45 @@ Itens da trilha já fechados: 2 (Pyrite) foi superado pelo rename pra Jinga; 4 (
 - **`make vsix` exige Node >= 22**. Este laptop tem Node 18.19.1, e a VPS tem Node 22.
 - **Achado desta varredura** (2026-09-28, uma linha, sem mexer): variável criada dentro de `if` e usada depois do bloco passa no `jinga --check` (`{"ok":true}`) e, rodando, dá `NameError: name 'y' is not defined`.
 
+#### Prazo medido pra trilha inteira (pedido seu de 2026-10-16)
+
+Você pediu o prazo de entrega de tudo da trilha e da cobertura da linguagem, sem contar correção ("correção não voga, você corrige sempre e nunca termina"). O prazo é medido, não chutado: a régua é o ritmo dos commits deste repositório de 2026-10-05 a 2026-10-16.
+
+**A régua (medida no `git log`):**
+- 9 dias com commit em 12 dias de calendário (0,75 dia de sessão por dia de calendário).
+- Lote pequeno do Plano 6 (frases, dicas): cerca de 1 hora cada (seis em 5,5 horas em 2026-10-07). Lote grande (7a Unicode, 7b leitor de número, 8 libs): 1 a 1,5 dia de sessão.
+- Fatia do C: passos 1 e 2, 1,5 hora cada; fatia 1, 2 horas mais 4 de perf; fatia 2, 8,5 horas; fatia 3, 12 horas (três rodadas de suíte). Esse ritmo JÁ inclui o que se acha e corrige dentro de cada lote (regra sua: corrigir tudo que achar) e a caça de perf até nenhum caso ficar mais caro. O que fica de fora do prazo são os LOTES de correção (sondas, Plano 6, a revisão do model): esses não acabam, como você disse.
+
+**O que falta, em dias de sessão (um dia de sessão = o que um dia como 2026-10-07 ou 2026-10-15 rendeu):**
+
+| item | dias | base da conta |
+|---|---|---|
+| C1 fatia 4: callbacks (`qsort`), `atexit`/`exit`, tratador de queda com a linha | 1 | a fatia 2 |
+| C1 fatia 5a: `--check` do C, editor (hover, completion, assinatura), `--metadata`, realce | 1 | o lote 7c (o --check dos nativos) |
+| C1 fatia 5b: a doc — 13 páginas da cppreference, 300 funções com protótipo, parâmetros, retorno, errno e exemplo rodado, mais `c.md`, `15-c.md` e o portão do conferidor | 5 | a doc do regex (30 funções em meio dia) |
+| C1 fatia 5c: o oráculo do `cc` (um par C/Jinga por função) | 1 | o `regex_re.pr` |
+| C1: Windows (tabela com os cabeçalhos do MSYS2), rodada na VPS (check, asan, debug), merge como 17.1.0 | 1 | as rodadas dos lotes |
+| C2: signal, locale, wchar/wctype/uchar, fenv, complex, tgmath, os de fora com erro claro; doc | 4 | o C1 |
+| Plano 12: API do `re` (flags, Match, finditer, subn, prefixmatch, sub com funct) e `\N{nome}`; doc; oráculo Python | 2 | o lote 8 |
+| 2.21: as 12 saídas da doc antiga | 0,5 | |
+| Plano 2: JIT, etapas 1 a 12 | 7 | a Etapa 0 (meio dia) e o tamanho de cada etapa no plano |
+| Plano 11: LLVM, o protótipo medido (seguir ou parar é decisão sua) | 2 | |
+| Plano 4: declaração de tipo sempre (6 etapas, migrador, 4.144 ligações, 1.205 casos, 283 blocos de doc) | 5 | o lote 6b (escopo) e o migrador de literais |
+| Trilha 1: IUP (a tabela da lib, o build nos 3 sistemas, doc) | 3 | a tabela do C (passo 2) |
+| Trilha 3: o resto do caminho quente de chamada (o que sobrar depois do Plano 2) | 1 | |
+| Trilha 5: PoolIp persistente (desenho seu) | 0,5 | |
+| Trilha 8: bcrypt na lib hash (desenho seu) | 0,5 | |
+| Trilha 9: comentário de documentação `<Comment::"...">` no hover | 1 | |
+| Trilha 10: cabeçalhos da resposta no JinkerResponse | 0,5 | |
+| Trilha 11: benchmark contra C, Node, Java, Python, Go, Rust e PHP | 1 | o bench atual |
+| Release `v*` com os 3 pacotes; `make check` verde no CI do Mac e do Windows | 1 | o porte |
+| Cobertura da linguagem: a gramática formal (EBNF conferida contra o parser) e os módulos internos coerentes (exigência sua de 2026-10-05) | 5 | |
+| **Total** | **43** | |
+
+**O prazo:** 43 dias de sessão a 0,75 por dia de calendário são 57 dias de calendário. Contando de 2026-10-17: **13 de dezembro de 2026**. A conta erra pelo menos 30% pra cada lado (a fatia 3 levou 1,4 vez a fatia 2): entre **26 de novembro e 31 de dezembro de 2026**. Se o protótipo do LLVM for aprovado, a implementação inteira soma uns 10 dias de sessão: entra por janeiro.
+
+**Fora do prazo, porque não tem plano nem medida:** o self-hosting (o interpretador em Jinga: meses), a API gráfica (tkinter sobre guzer: semanas) e o transpilador (por último, decisão sua). E as correções, pelo motivo que você deu.
+
 ### 6.6 Feito recente (2026-09-15 a 2026-09-28)
 
 | Data | Versão | Commit | O que |
