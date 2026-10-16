@@ -189,6 +189,58 @@ const Caso CASOS_C[] = {
   "7 5 char *\nTrue True", NULL, 0 },
 { "C: o cast liga como o unário do C",
   "int x = 5\npost((int)(x) + 1, (int) x ** 2, -(int) x)\n", "6 25 -5", NULL, 0 },
+/* ── fatia 3: array, struct, typedef, {...}, ->, offsetof ────────────── */
+{ "C: texto da Jinga e texto do C num char buf[32] (exemplo 3 do plano)",
+  "str nome = \"Jinga\"\nchar buf[32]\nstrcpy(buf, nome)\nstrcat(buf, \" + C\")\n"
+  "printf(\"%s tem %zu bytes\\n\", buf, strlen(buf))\nstr volta = str(buf)\npost(volta.upper())\n",
+  "Jinga + C tem 9 bytes\nJINGA + C", NULL, 0 },
+{ "C: struct do C e -> (exemplo 5 do plano: gmtime, strftime)",
+  "time_t zero = 0\nstruct tm *t = gmtime(&zero)\n"
+  "printf(\"%d-%02d-%02d, dia %d da semana\\n\", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_wday)\n"
+  "char buf[64]\nstrftime(buf, sizeof(buf), \"%A, %d de %B de %Y\", t)\npost(str(buf))\n",
+  "1970-01-01, dia 4 da semana\nThursday, 01 de January de 1970", NULL, 0 },
+{ "C: struct do programa, ps[1].x, p + 2, q->y, sizeof (exemplo 7 do plano)",
+  "struct ponto {\n    int x\n    int y\n}\n\nstruct ponto *ps = calloc(3, sizeof(struct ponto))\nps[1].x = 10\n"
+  "struct ponto *q = ps + 2\nq->y = 20\nprintf(\"%d %d %d %zu\\n\", ps[0].x, ps[1].x, ps[2].y, sizeof(struct ponto))\nfree(ps)\n",
+  "0 10 20 8", NULL, 0 },
+{ "C: array com inicializador, for each, len e sizeof (o array do exemplo 6)",
+  "int v[6] = {5, 3, 9, 1, 7, 2}\nfor each x in v {\n    printf(\"%d \", x)\n}\nprintf(\"\\n\")\n"
+  "post(len(v), sizeof(v), sizeof v / sizeof(int), v[5])\n",
+  "5 3 9 1 7 2 \n6 24 6.0 2", NULL, 0 },
+{ "C: typedef struct sem etiqueta, cópia por atribuição, &a, offsetof, type",
+  "typedef struct {\n    double x\n    double y\n} Ponto\nPonto a = {1.5, 2.5}\nPonto b\nb = a\nb.x = 9.0\n"
+  "post(a.x, b.x, b.y, sizeof(Ponto), offsetof(Ponto, y))\nPonto *pa = &a\npa->y = 7.0\npost(a.y, type(pa), type(a))\n",
+  "1.5 9.0 2.5 16 8\n7.0 Ponto * Ponto", NULL, 0 },
+{ "C: struct que aponta pra si (lista ligada), array de arrays, int w[] pelo inicializador, &w",
+  "struct no {\n    int v\n    struct no *prox\n}\nstruct no raiz = {1, NULL}\nstruct no seg = {2}\nraiz.prox = &seg\n"
+  "post(raiz.prox->v, raiz.prox->prox == NULL)\nint m[2][3] = {{1, 2, 3}, {4, 5, 6}}\npost(m[1][2], sizeof(m))\n"
+  "int w[] = {7, 8, 9}\npost(len(w), w[2])\nint *pw = &w\npost(*pw, pw[1], &w[2] - pw)\n",
+  "2 True\n6 24\n3 9\n7 8 2", NULL, 0 },
+{ "C: typedef de escalar converte como o tipo; struct do padrão sem = nasce zerado; offsetof do padrão",
+  "typedef unsigned long u64\nu64 n = 5\nn = n - 6\npost(n)\nstruct tm t\npost(t.tm_year, offsetof(struct tm, tm_year))\n",
+  "18446744073709551615\n0 20", NULL, 0 },
+{ "C: campo que não existe, e . num ponteiro de struct",
+  "struct ponto {\n    int x\n}\nstruct ponto p\npost(p.z)\n", "",
+  "AttributeError: 'struct ponto' object has no attribute 'z'", 1 },
+{ "C: ponto num ponteiro de struct diz que é ->",
+  "struct ponto {\n    int x\n}\nstruct ponto *p = calloc(1, 4)\npost(p.x)\n", "",
+  "TypeError: struct ponto * é ponteiro: o campo é p->x", 1 },
+{ "C: struct declarado de novo com outros campos",
+  "struct a {\n    int x\n}\nstruct a {\n    int y\n}\n", "", "TypeError: struct a: struct a já foi declarado com outros campos", 2 },
+{ "C: struct só no topo do arquivo",
+  "funct f() {\n    struct q {\n        int x\n    }\n}\n", "",
+  "SyntaxError: struct, union e typedef se declaram no topo do arquivo, fora de bloco e de funct", 2 },
+{ "C: escalar do C sem = exige o =; ponteiro também",
+  "size_t n\n", "", "SyntaxError: declaracao de variavel exige '='", 2 },
+{ "C: inicializador maior que o array",
+  "int v[2] = {1, 2, 3}\n", "", "ValueError: inicializador com 3 valores pra int[2]", 1 },
+{ "C: o struct dentro dele mesmo tem que ser ponteiro",
+  "struct no {\n    struct no dentro\n}\n", "",
+  "TypeError: struct no: o struct dentro dele mesmo tem que ser ponteiro, na posição 16 de \"struct no dentro; \"", 2 },
+{ "C: typedef com nome de tipo da Jinga",
+  "typedef int str\n", "", "SyntaxError: 'str' e palavra reservada da linguagem e nao pode ser usada como nome de typedef", 2 },
+{ "C: offsetof de campo que não existe",
+  "post(offsetof(struct tm, nada))\n", "", "AttributeError: offsetof: struct tm não tem o campo nada", 2 },
 };
 
 const int NC_C = N_CASOS(CASOS_C);

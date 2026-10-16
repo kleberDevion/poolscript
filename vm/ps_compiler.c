@@ -2472,7 +2472,7 @@ static void carrega_nome_cru(C *c, Unidade *u, const char *nome)
 static PSCTipo *c_caixa_de(C *c, Unidade *u, const char *nome);
 static void emite_c_op(C *c, Unidade *u, int sub, int conhecido, const char *tipo);
 enum { C_OP_CONVERTE = 0, C_OP_LE, C_OP_GRAVA, C_OP_LE_IDX, C_OP_GRAVA_IDX, C_OP_CAIXA, C_OP_SOMA, C_OP_DIF,
-       C_OP_CAST };
+       C_OP_CAST, C_OP_COPIA, C_OP_ENDERECO };
 
 /* O valor do nome. A variável com `&x` mora numa caixa na memória do C: o
  * slot guarda o ponteiro, e o valor é o de dentro da caixa (`carrega_nome_cru`
@@ -4739,6 +4739,13 @@ static int ct_eh_ponteiro(PSCTipo *t)
     return t && (t->kind == PSC_PONT || t->kind == PSC_ARRAY);
 }
 
+/* array, struct ou union: o dado que é a própria memória */
+static int ct_eh_agregado(PSCTipo *t)
+{
+    t = ct_nu(t);
+    return t && (t->kind == PSC_STRUCT || t->kind == PSC_UNION || t->kind == PSC_ARRAY);
+}
+
 /* O que o C não deixa numa variável, com a frase; NULL = vale. */
 static const char *c_recusa_variavel(PSCTipo *t, char *buf, size_t cap)
 {
@@ -4747,9 +4754,13 @@ static const char *c_recusa_variavel(PSCTipo *t, char *buf, size_t cap)
         case PSC_VOID:   snprintf(buf, cap, "void não guarda valor"); return buf;
         case PSC_OPACO:  snprintf(buf, cap, "%s só existe atrás de ponteiro: declare %s *", t->nome, t->nome); return buf;
         case PSC_FUNC:   snprintf(buf, cap, "%s é tipo de função: a funct vai direto onde o C pede", t->nome); return buf;
-        case PSC_ARRAY:
         case PSC_STRUCT:
-        case PSC_UNION:  snprintf(buf, cap, "o %s do C ainda não vale como variável: use um ponteiro", t->nome); return buf;
+        case PSC_UNION:
+            if (nu->tam == 0) { snprintf(buf, cap, "%s ainda não tem campos: foi declarado só por ponteiro", t->nome); return buf; }
+            return NULL;
+        case PSC_ARRAY:
+            if (nu->tam == 0) { snprintf(buf, cap, "o array %s precisa do tamanho ([N]) ou do inicializador {...}", t->nome); return buf; }
+            return NULL;
         default:         return NULL;
     }
 }
@@ -4848,6 +4859,15 @@ static PSCTipo *c_caixa_de(C *c, Unidade *u, const char *nome)
     return s ? s->caixa : NULL;
 }
 
+/* A variável declarada com array/struct do C: ela É a memória (a atribuição
+ * copia pra dentro, o `&` é o endereço dela). NULL se não é. */
+static PSCTipo *c_agregado_de(C *c, Unidade *u, const char *nome)
+{
+    if (!c->tem_tipo_c || !nome) return NULL;
+    SimInfo *s = tp_sim_de(c, u, nome);
+    return s && s->estado == 2 && s->ctipo && ct_eh_agregado(s->ctipo) ? s->ctipo : NULL;
+}
+
 /* O tipo do C que a expressão tem, pelo que foi declarado: a variável com
  * tipo do C, `*p`, `p[i]`, `&x`, `p + n`, o retorno de uma função do C e o
  * valor do C (`stdout`). NULL = não se sabe, ou não é do C. */
@@ -4872,10 +4892,22 @@ static PSCTipo *c_tipo_estatico(C *c, Unidade *u, PSNode *n)
             return t && (t->kind == PSC_PONT || t->kind == PSC_ARRAY) ? t->alvo : NULL;
         }
         case N_C_ADDR: {
-            /* a variável com `&x` é caixa: o endereço é ponteiro pro tipo dela */
+            /* a variável com `&x` é caixa: o endereço é ponteiro pro tipo dela;
+             * o array vira o endereço do 1º elemento, e o struct o `struct X *` */
             PSCTipo *cx = n->a && n->a->kind == N_NAME ? c_caixa_de(c, u, n->a->texto) : NULL;
             PSCTipo *t = cx ? cx : c_tipo_estatico(c, u, n->a);
+            PSCTipo *nu = ct_nu(t);
+            if (nu && nu->kind == PSC_ARRAY) return ps_c_ponteiro(nu->alvo);
             return t ? ps_c_ponteiro(t) : NULL;
+        }
+        case N_MEMBER_ACCESS: {
+            /* o campo do struct do C (`pt.x`, `p->x`) */
+            PSCTipo *t = ct_nu(c_tipo_estatico(c, u, n->a));
+            if (!t || (t->kind != PSC_STRUCT && t->kind != PSC_UNION) || !n->texto) return NULL;
+            for (int i = 0; i < t->ncampos; i++)
+                if (t->campos[i].nome[0] == n->texto[0] && strcmp(t->campos[i].nome, n->texto) == 0)
+                    return t->campos[i].tipo;
+            return NULL;
         }
         case N_C_CAST:
             return n->texto ? ps_c_tipo_por_nome(n->texto) : NULL;
@@ -4970,6 +5002,14 @@ static void emite_endereco_c(C *c, Unidade *u, PSNode *n)
     PSNode *a = n->a;
     if (a && a->kind == N_C_DEREF) { expr(c, u, a->a); return; }
     if (a && a->kind == N_NAME && a->texto) {
+        /* o array e o struct do C são a própria memória: o endereço deles (o
+         * array vira o do 1º elemento, como no C) */
+        if (c_agregado_de(c, u, a->texto)) {
+            tp_confere_nome(c, u, a->texto, a);
+            carrega_nome(c, u, a->texto);
+            emite_c_op(c, u, C_OP_ENDERECO, 1, NULL);
+            return;
+        }
         /* a variável com `&x` mora numa caixa: o endereço é o ponteiro dela */
         if (c_caixa_de(c, u, a->texto)) {
             tp_confere_nome(c, u, a->texto, a);
@@ -5948,7 +5988,9 @@ static void guarda_nome_modo_no(C *c, Unidade *u, const char *nome, int certa)
                   "char, long ou um tipo do C)", nome, c->grava.declara);
         else if (c_recusa_variavel(ct, recusa, sizeof(recusa)))
             terro(c, c->grava.no, "TypeError", "&%s: %s", nome, recusa);
-        else {
+        else if (ct_eh_agregado(ct)) {
+            /* o array e o struct são a própria memória: sem caixa */
+        } else {
             emite_c_op(c, u, C_OP_CAIXA, 1, ct->nome);
             c->grava.caixa = ct;
         }
@@ -5956,6 +5998,13 @@ static void guarda_nome_modo_no(C *c, Unidade *u, const char *nome, int certa)
         carrega_nome_cru(c, u, nome);                  /* [v] -> [v, caixa] */
         emite(c, u, OP_SWAP, 0);                       /* -> [caixa, v] */
         emite_c_op(c, u, C_OP_GRAVA, 1, NULL);
+        return;
+    } else if (!c->grava.declara && c_agregado_de(c, u, nome)) {
+        /* `a = b` num array/struct do C copia pra dentro da memória de `a`,
+         * como a atribuição do C (quem tomou `&a` continua apontando nela) */
+        carrega_nome_cru(c, u, nome);                  /* [v] -> [v, dado] */
+        emite(c, u, OP_SWAP, 0);                       /* -> [dado, v] */
+        emite_c_op(c, u, C_OP_COPIA, 1, NULL);
         return;
     }
     if (u->eh_modulo) {
@@ -7074,6 +7123,26 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             return;
         }
 
+        case N_C_OFFSETOF: {
+            /* `offsetof(struct ponto, y)`: a posição do campo, da tabela */
+            PSCTipo *t = n->texto ? ps_c_tipo_por_nome(n->texto) : NULL;
+            PSCTipo *nu = ct_nu(t);
+            PSCCampo *campo = NULL;
+            if (nu && (nu->kind == PSC_STRUCT || nu->kind == PSC_UNION) && n->texto2)
+                for (int i = 0; i < nu->ncampos; i++)
+                    if (strcmp(nu->campos[i].nome, n->texto2) == 0) campo = &nu->campos[i];
+            if (!campo) {
+                if (!nu || (nu->kind != PSC_STRUCT && nu->kind != PSC_UNION))
+                    terro(c, n, "TypeError", "offsetof(%s, ...): não é struct nem union do C", n->texto ? n->texto : "?");
+                else
+                    terro(c, n, "AttributeError", "offsetof: %s não tem o campo %s", n->texto, n->texto2 ? n->texto2 : "?");
+                emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_NULL, 0, 0, NULL, 0));
+                return;
+            }
+            emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, (int64_t)campo->desloc, 0, NULL, 0));
+            return;
+        }
+
         default:
             cerro(c, "expressao ainda nao compila na VM", n);
             return;
@@ -7363,8 +7432,36 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
         }
 
         case N_VAR_DECL: {
-            /* declaração tipada cria local, sempre — não sobe escopo */
-            expr(c, u, n->a);
+            /* `char buf[64]`, `struct tm t`, `Ponto pt`: a declaração sem `=`.
+             * Só o array e o struct do C nascem sem valor (zerados, como a
+             * variável do C). O resto, pela ordem do antigo `tp_nome_solto`:
+             * nome que não existe é o NameError dele (`retrun x`), tipo que
+             * existe exige o `=` (`Conta c`), nome comum são dois comandos
+             * colados. */
+            if (!n->a) {
+                const char *tn = n->texto2 ? n->texto2 : "";
+                PSCTipo *ct0 = tp_tipo_c(c, tn);
+                if (!ct0 || !ct_eh_agregado(ct0)) {
+                    PSNode onde;
+                    memset(&onde, 0, sizeof(onde));
+                    onde.kind = N_NAME; onde.texto = tn;
+                    onde.line = n->i ? (int32_t)(n->i >> 32) : n->line;
+                    onde.col  = n->i ? (int32_t)(uint32_t)(n->i & 0xffffffff) : n->col;
+                    onde.linha_fim = onde.line;
+                    onde.col_fim = onde.col + (int32_t)strlen(tn);   /* a palavra inteira, pro editor */
+                    if (*tn && !c->nomes_incertos && !ct0 && tp_nome_inexistente(c, u, tn))
+                        tp_acusa_nome(c, u, tn, &onde, 1);
+                    else if (ct0 || tp_tipo_existe(c, u, tn))
+                        cerro_sx(c, n, "declaracao de variavel exige '='");
+                    else
+                        cerro_sx(c, n, "dois comandos na mesma linha: separe com ';' ou quebre a linha");
+                    return;
+                }
+                emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_NULL, 0, 0, NULL, 0));
+            } else {
+                /* declaração tipada cria local, sempre — não sobe escopo */
+                expr(c, u, n->a);
+            }
             /* O tipo fica REGISTRADO na variavel (slot da funcao ou nome do
              * modulo); quem emite a conferencia e o `guarda_nome_modo`, em
              * toda escrita — esta e so a primeira. O codigo e o TIPO_* da VM;
@@ -7399,6 +7496,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 memset(&c->grava, 0, sizeof(c->grava));
             } else {
                 grava_valor(c, u, n->a);
+                if (!n->a) c->grava.no = n;            /* a declaração sem `=` */
                 c->grava.declara = n->texto2;
             }
             guarda_nome_modo(c, u, vn, 1);
@@ -9018,6 +9116,13 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             return;
         }
 
+        case N_C_STRUCT_DECL:
+        case N_C_TYPEDEF:
+            /* registrados na 1ª passada (declara_tipo_c); só no topo do arquivo */
+            if (c->stmt_topo != n)
+                cerro_sx(c, n, "struct, union e typedef se declaram no topo do arquivo, fora de bloco e de funct");
+            return;
+
         case N_C_STORE: {
             /* `*p = v`, `*p += v`, `**pp = v`, `*(p + 1) = v`: a escrita na
              * memória do C; com o tipo declarado de ponteiro, o Null é o
@@ -10072,9 +10177,50 @@ static void tp_colhe_gravacoes(C *c, PSNode *n)
     for (int32_t i = 0; i < n->lista2_alias.n; i++) tp_colhe_gravacoes(c, n->lista2_alias.itens[i]);
 }
 
+/* `struct ponto { ... }` e `typedef` do topo do arquivo: registra o tipo no
+ * ps_c (1ª passada), pra toda declaração e todo `sizeof` do arquivo o verem,
+ * em qualquer ordem de compilação das functs. Os erros do leitor do C saem
+ * no comando inteiro. */
+static void declara_tipo_c(C *c, PSNode *s)
+{
+    char erro[300];
+    if (s->kind == N_C_STRUCT_DECL) {
+        PSCTipo *t = ps_c_struct_abre(s->texto, (int)s->i2, erro, sizeof erro);
+        if (!t) { terro(c, s, "TypeError", "%s", erro[0] ? erro : "sem memoria"); return; }
+        if (ps_c_struct_fecha(t, s->texto2 ? s->texto2 : "", erro, sizeof erro) != 0)
+            terro(c, s, "TypeError", "%s: %s", s->texto, erro[0] ? erro : "sem memoria");
+        c->tem_tipo_c = 1;
+        return;
+    }
+    if (s->kind != N_C_TYPEDEF || !s->texto) return;
+    if (ps_tipo_info(s->texto) || tp_tipo_decl_arq(c, s->texto)) {
+        terro(c, s, "TypeError", "typedef %s: o nome já é um tipo da Jinga", s->texto);
+        return;
+    }
+    PSCTipo *alvo;
+    if (s->texto3) {
+        /* o struct declarado no próprio typedef; sem etiqueta ("struct"), ele
+         * ganha o nome do typedef */
+        const char *etiqueta = (s->texto2 && strchr(s->texto2, ' ')) ? s->texto2 : NULL;
+        alvo = ps_c_struct_abre(etiqueta, (int)s->i2, erro, sizeof erro);
+        if (!alvo) { terro(c, s, "TypeError", "%s", erro[0] ? erro : "sem memoria"); return; }
+        if (ps_c_struct_fecha(alvo, s->texto3, erro, sizeof erro) != 0) {
+            terro(c, s, "TypeError", "%s: %s", etiqueta ? etiqueta : s->texto, erro[0] ? erro : "sem memoria");
+            return;
+        }
+    } else {
+        alvo = s->texto2 ? ps_c_tipo_por_nome(s->texto2) : NULL;
+        if (!alvo) { terro(c, s, "TypeError", "typedef %s: %s não é tipo do C", s->texto, s->texto2 ? s->texto2 : "?"); return; }
+    }
+    if (!ps_c_typedef(s->texto, alvo, erro, sizeof erro))
+        terro(c, s, "TypeError", "typedef %s: %s", s->texto, erro[0] ? erro : "sem memoria");
+    c->tem_tipo_c = 1;
+}
+
 static void passada1_stmt(C *c, PSNode *cheia, PSNode *podada)
 {
     if (CFALHOU(c)) return;
+    declara_tipo_c(c, cheia);
     topo_campo_vira_var(cheia);
     topo_campo_vira_var(podada);
     tp_colhe_gravacoes(c, cheia);
@@ -10106,7 +10252,10 @@ static void passada1_fim(C *c, PSNode *programa)
      * compilada antes da declaração já tem que ler de dentro dela. */
     for (int32_t i = 0; i < c->nenderecos_mod; i++) {
         SimInfo *s = tp_sim_topo(c, c->enderecos_mod[i]);
-        if (s && s->estado == 2 && s->tipo) s->caixa = c_tipo_da_caixa(c, s->tipo);
+        if (s && s->estado == 2 && s->tipo) {
+            PSCTipo *cx = c_tipo_da_caixa(c, s->tipo);
+            if (cx && !ct_eh_agregado(cx)) s->caixa = cx;   /* o array/struct é a própria memória */
+        }
     }
 }
 

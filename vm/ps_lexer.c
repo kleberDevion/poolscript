@@ -1432,6 +1432,15 @@ static int le_punct(Lexer *lx)
 
 static int le_operador(Lexer *lx)
 {
+    /* `->`, o campo pelo ponteiro do C (`p->x`). Fora da tabela de cima, que é
+     * de ponteiros: entrada nova nela é uma relocação a mais na partida de
+     * todo programa. Antes do C, `a->b` era erro (`a - >b`). */
+    if (lx->src[lx->pos] == '-' && lx->pos + 1 < lx->len && lx->src[lx->pos + 1] == '>') {
+        PSToken *tk = novo_token(lx, T_OP, lx->linha, lx->col);
+        if (tk) guarda_texto(lx, tk, "->", 2);
+        lx->pos += 2; lx->col += 2;
+        return 1;
+    }
     for (int i = 0; MULTI_OPS[i]; i++) {
         size_t n = strlen(MULTI_OPS[i]);
         if (lx->pos + n <= lx->len && strncmp(lx->src + lx->pos, MULTI_OPS[i], n) == 0) {

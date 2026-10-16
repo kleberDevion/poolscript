@@ -6885,6 +6885,11 @@ const Caso CASOS_LINGUAGEM[] = {
   "int x = 2\nx **= 3\n",
   "", "SyntaxError: '**=' nao existe: escreva x = x ** valor (atribuicao com operador so com +=, -=, *=, /= e %=)", 2 },
 
+/* o membro de QUALQUER expressão recebe valor: o item da lista, o retorno
+ * da funct. Dava "'=' e atribuicao; pra comparar use '=='" (achado no C1). */
+{ "atribuicao de membro em item de lista e em retorno de funct",
+  "class P {\n    int x = 0\n}\nlist l = [P()]\nl[0].x = 7\nfunct f() {\n    return l[0]\n}\nf().x += 2\npost(l[0].x)\n",
+  "9", NULL, 0 },
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

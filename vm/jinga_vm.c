@@ -4179,6 +4179,8 @@ static int txt_put(TxtBuf *t, const char *s, int n)
 #define VPT_C_GRANDE  2
 #define VPT_NAO_TEXTO 3   /* do c_texto_em: o dado do C não é texto */
 static int c_texto_em(TxtBuf *t, const Value *v);
+static int c_len_array(Value v, int64_t *n);
+static int len_raro(VM *vm, const Value *args, Value *out);
 
 static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
 {
@@ -4338,6 +4340,19 @@ static int nativa_len(VM *vm, Value *args, int n, Value *out)
     if (EH_BYTES(v))  { *out = MK_INT(COMO_BYTES(v)->len); return 0; }
     if (EH_SEQ(v))    { *out = MK_INT(COMO_LIST(v)->len);   return 0; }
     if (EH_DICT(v))   { *out = MK_INT(COMO_DICT(v)->count); return 0; }
+    return len_raro(vm, args, out);
+}
+
+/* O resto do len(): o array do C (tem tamanho) e o erro. Fora de linha, e
+ * recebendo o PONTEIRO pros argumentos: a conferência do array no corpo do
+ * nativa_len mudava o prólogo, e passar o Value por valor (16 bytes, dois
+ * registradores) fazia o caminho quente carregar as duas metades dele; nas
+ * duas formas todo `len(texto)` pagava 2 a 4 instruções (medido no bench). */
+static __attribute__((noinline, cold)) int len_raro(VM *vm, const Value *args, Value *out)
+{
+    Value v = args[0];
+    int64_t na;
+    if (c_len_array(v, &na)) { *out = MK_INT(na); return 0; }
     snprintf(vm->erro, sizeof(vm->erro), "object of type '%s' has no len()",
              nome_do_tipo_valor(v));
     snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
@@ -26406,17 +26421,71 @@ static int c_le_mem(VM *vm, PSCTipo *t, const void *mem, Value *out)
             memcpy(&q, mem, sizeof q);
             return c_valor_ponteiro(vm, t, q, out);
         }
+        case PSC_STRUCT:
+        case PSC_UNION:
+        case PSC_ARRAY: {
+            /* o agregado lido da memória é o LUGAR dele (o lvalue do C): o
+             * `ps[1].x = 10` escreve dentro do array, e o `*t` de um `struct
+             * tm *` é o struct que o ponteiro aponta. Quem chama mantém viva a
+             * memória de origem (c_herda_dono). */
+            PSCDado *d = c_novo_dado(vm, t, (void *)mem, 0);
+            if (!d) BERRO(vm, "MemoryError", "sem memoria");
+            *out = MK_OBJ(d);
+            return 0;
+        }
         default:
             BERRO(vm, "TypeError", "o %s da memória do C ainda não vira valor da Jinga", t->nome);
     }
 }
 
+static int c_inicializa(VM *vm, PSCTipo *t, void *mem, Value lista);
+
 static int c_grava_mem(VM *vm, PSCTipo *t, void *mem, Value v)
 {
     PSCTipo *nu = c_tipo_nu(t);
+    if (nu->kind == PSC_STRUCT || nu->kind == PSC_UNION || nu->kind == PSC_ARRAY) {
+        /* o agregado inteiro: a cópia de outro do mesmo tipo (a atribuição
+         * do C), ou o inicializador `{...}` (a lista) */
+        if (!nu->tam) BERRO(vm, "TypeError", "%s não tem tamanho", t->nome);
+        if (EH_CDADO(v) && c_mesmo_tipo(COMO_CDADO(v)->tipo, t)) {
+            memmove(mem, COMO_CDADO(v)->ptr, nu->tam);
+            return 0;
+        }
+        if (EH_SEQ(v)) {
+            memset(mem, 0, nu->tam);
+            return c_inicializa(vm, t, mem, v);
+        }
+        BERRO(vm, "TypeError", "%s recebe outro %s ou um inicializador {...}; veio %s",
+              t->nome, t->nome, nome_do_tipo_valor(v));
+    }
     if (nu->kind != PSC_INT && nu->kind != PSC_BOOL && nu->kind != PSC_FLUT && nu->kind != PSC_PONT)
         BERRO(vm, "TypeError", "o %s do C ainda não recebe valor da Jinga", t->nome);
     return c_arg(vm, NULL, -1, v, t, mem, NULL);
+}
+
+/* O inicializador do C (`{5, 3, 9}`, `{{1, 2}, {3, 4}}`, `{1, 2.5}` num
+ * struct): item por item, na ordem dos elementos ou dos campos; o que não
+ * vem fica zerado, e o que sobra é erro, como o compilador C acusa. */
+static int c_inicializa(VM *vm, PSCTipo *t, void *mem, Value lista)
+{
+    PSCTipo *nu = c_tipo_nu(t);
+    PSList *l = COMO_LIST(lista);
+    if (nu->kind == PSC_ARRAY) {
+        PSCTipo *e = nu->alvo;
+        size_t te = c_tipo_nu(e)->tam;
+        if ((size_t)l->len > nu->n)
+            BERRO(vm, "ValueError", "inicializador com %d valores pra %s", (int)l->len, t->nome);
+        for (int i = 0; i < l->len; i++)
+            if (c_grava_mem(vm, e, (char *)mem + (size_t)i * te, l->itens[i]) != 0) return -1;
+        return 0;
+    }
+    int maximo = nu->kind == PSC_UNION ? 1 : nu->ncampos;
+    if (l->len > maximo)
+        BERRO(vm, "ValueError", "inicializador com %d valores pra %s, que tem %d campo%s",
+              (int)l->len, t->nome, nu->ncampos, nu->ncampos == 1 ? "" : "s");
+    for (int i = 0; i < l->len; i++)
+        if (c_grava_mem(vm, nu->campos[i].tipo, (char *)mem + nu->campos[i].desloc, l->itens[i]) != 0) return -1;
+    return 0;
 }
 
 /* O ponteiro que nasce de outro dado do C (a conversão, a conta) mantém viva
@@ -26432,8 +26501,20 @@ static void c_herda_dono(Value novo, Value de)
 /* `v` no tipo do C `t` (variável declarada com tipo do C) */
 static int c_converte(VM *vm, PSCTipo *t, Value v, Value *out)
 {
-    if (EH_CDADO(v) && COMO_CDADO(v)->tipo == t) { *out = v; return 0; }
     PSCTipo *nu = c_tipo_nu(t);
+    if (nu->kind == PSC_STRUCT || nu->kind == PSC_UNION || nu->kind == PSC_ARRAY) {
+        /* a variável agregada é DONA da memória dela: nasce zerada (o Null da
+         * declaração sem `=`), do inicializador, ou como cópia de outra */
+        if (!nu->tam) BERRO(vm, "TypeError", "%s não tem tamanho: struct sem campos ou array sem [N]", t->nome);
+        void *mem = calloc(1, nu->tam);
+        if (!mem) BERRO(vm, "MemoryError", "sem memoria");
+        if (v.t != V_NULL && c_grava_mem(vm, t, mem, v) != 0) { free(mem); return -1; }
+        PSCDado *d = c_novo_dado(vm, t, mem, nu->tam);
+        if (!d) { free(mem); BERRO(vm, "MemoryError", "sem memoria"); }
+        *out = MK_OBJ(d);
+        return 0;
+    }
+    if (EH_CDADO(v) && COMO_CDADO(v)->tipo == t) { *out = v; return 0; }
     if (nu->kind == PSC_VOID) BERRO(vm, "TypeError", "void não guarda valor");
     if (nu->kind == PSC_OPACO)
         BERRO(vm, "TypeError", "%s só existe atrás de ponteiro: declare %s *", t->nome, t->nome);
@@ -26607,6 +26688,70 @@ static int c_ptr_soma(VM *vm, Value p, int64_t n, int conhecido, Value *out)
     return 0;
 }
 
+/* o array do C tem tamanho (`len`, `for each`); o ponteiro não */
+static int c_len_array(Value v, int64_t *n)
+{
+    if (!EH_CDADO(v)) return 0;
+    PSCTipo *nu = c_tipo_nu(COMO_CDADO(v)->tipo);
+    if (nu->kind != PSC_ARRAY) return 0;
+    *n = (int64_t)nu->n;
+    return 1;
+}
+
+/* o elemento `i` de um array do C (o `for each`) */
+static int c_le_item(VM *vm, Value arr, int64_t i, Value *out)
+{
+    PSCDado *d = COMO_CDADO(arr);
+    PSCTipo *nu = c_tipo_nu(d->tipo), *e = nu->alvo;
+    if (c_le_mem(vm, e, (char *)d->ptr + (size_t)i * c_tipo_nu(e)->tam, out) != 0) return -1;
+    c_herda_dono(*out, arr);
+    return 0;
+}
+
+/* o campo `nome` de um struct/union do C em `alvo`: onde ele mora */
+static int c_campo_de(VM *vm, Value alvo, const char *nome, PSCCampo **campo, void **mem)
+{
+    PSCDado *d = COMO_CDADO(alvo);
+    PSCTipo *nu = c_tipo_nu(d->tipo);
+    if (nu->kind == PSC_PONT) {
+        PSCTipo *al = c_tipo_nu(nu->alvo);
+        if (al && (al->kind == PSC_STRUCT || al->kind == PSC_UNION))
+            BERRO(vm, "TypeError", "%s é ponteiro: o campo é p->%s", d->tipo->nome, nome);
+    }
+    if (nu->kind == PSC_STRUCT || nu->kind == PSC_UNION)
+        for (int i = 0; i < nu->ncampos; i++)
+            if (nu->campos[i].nome[0] == nome[0] && strcmp(nu->campos[i].nome, nome) == 0) {
+                *campo = &nu->campos[i];
+                *mem = (char *)d->ptr + nu->campos[i].desloc;
+                return 0;
+            }
+    BERRO(vm, "AttributeError", "'%s' object has no attribute '%s'", d->tipo->nome, nome);
+}
+
+/* `pt.x` / `p->x` (GET_MEMBER): o campo, lido da memória; o campo agregado
+ * sai apontando pra dentro do struct, como no C */
+static int c_le_campo(VM *vm, Value alvo, const char *nome, Value *out)
+{
+    PSCCampo *campo;
+    void *mem;
+    if (c_campo_de(vm, alvo, nome, &campo, &mem) != 0) return -1;
+    if (c_le_mem(vm, campo->tipo, mem, out) != 0) return -1;
+    c_herda_dono(*out, alvo);
+    return 0;
+}
+
+/* `pt.x = v` / `p->x = v` (SET_MEMBER): grava no campo, com a conversão do C */
+static int c_grava_campo(VM *vm, Value alvo, Value nomev, Value valor)
+{
+    if (!EH_STRING(nomev)) BERRO(vm, "TypeError", "nome de campo invalido");
+    PSCCampo *campo;
+    void *mem;
+    if (c_campo_de(vm, alvo, COMO_STRING(nomev)->chars, &campo, &mem) != 0) return -1;
+    if (campo->tipo->constante)
+        BERRO(vm, "TypeError", "o campo %s é const: não se escreve", campo->nome);
+    return c_grava_mem(vm, campo->tipo, mem, valor);
+}
+
 /* O C_OP do laço (ps_opcodes.def): a pilha está em stack[0..sp). Devolve o
  * novo topo, ou -1 com o erro na VM. Fora do laço e sem embutir, e o `sp`
  * vai por valor: com `&sp` o topo da pilha deixava de morar num registrador
@@ -26631,9 +26776,13 @@ static __attribute__((noinline)) int c_op_corpo(VM *vm, const Value *consts, Val
             if (!t) return -1;
             return c_converte(vm, t, topo[-1], &topo[-1]);
         }
-        case 1:                                     /* LE [p] -> [*p] */
-            if (c_endereco(vm, topo[-1], 0, conhecido, "*", &m, &elem) != 0) return -1;
-            return c_le_mem(vm, elem, m, &topo[-1]);
+        case 1: {                                   /* LE [p] -> [*p] */
+            Value fonte = topo[-1];
+            if (c_endereco(vm, fonte, 0, conhecido, "*", &m, &elem) != 0) return -1;
+            if (c_le_mem(vm, elem, m, &topo[-1]) != 0) return -1;
+            c_herda_dono(topo[-1], fonte);
+            return 0;
+        }
         case 2:                                     /* GRAVA [p, v] -> [] */
             if (c_endereco(vm, topo[-2], 0, conhecido, "*", &m, &elem) != 0) return -1;
             if (elem->constante) BERRO(vm, "TypeError", "o %s que o ponteiro aponta é const: não se escreve", elem->nome);
@@ -26642,9 +26791,11 @@ static __attribute__((noinline)) int c_op_corpo(VM *vm, const Value *consts, Val
             return 0;
         case 3: {                                   /* LE_IDX [p, i] -> [p[i]] */
             int64_t i;
+            Value fonte = topo[-2];
             if (c_indice_de(vm, topo[-1], &i) != 0) return -1;
-            if (c_endereco(vm, topo[-2], i, conhecido, "o índice []", &m, &elem) != 0) return -1;
+            if (c_endereco(vm, fonte, i, conhecido, "o índice []", &m, &elem) != 0) return -1;
             if (c_le_mem(vm, elem, m, &topo[-2]) != 0) return -1;
+            c_herda_dono(topo[-2], fonte);
             *sp -= 1;
             return 0;
         }
@@ -26700,6 +26851,27 @@ static __attribute__((noinline)) int c_op_corpo(VM *vm, const Value *consts, Val
             ptrdiff_t dif = (const char *)COMO_CDADO(a)->ptr - (const char *)COMO_CDADO(b)->ptr;
             topo[-2] = MK_INT((int64_t)(dif / (ptrdiff_t)tam));
             *sp -= 1;
+            return 0;
+        }
+        case 9: {                                   /* COPIA [dado, v] -> []: a atribuição ao array/struct */
+            Value dado = topo[-2];
+            if (!EH_CDADO(dado)) BERRO(vm, "TypeError", "a variável não é dado do C");
+            PSCDado *d = COMO_CDADO(dado);
+            if (c_grava_mem(vm, d->tipo, d->ptr, topo[-1]) != 0) return -1;
+            *sp -= 2;
+            return 0;
+        }
+        case 10: {                                  /* ENDERECO [dado] -> [&dado] */
+            Value v = topo[-1];
+            if (!EH_CDADO(v)) BERRO(vm, "TypeError", "& pede um dado do C; veio %s", nome_do_tipo_valor(v));
+            PSCDado *d = COMO_CDADO(v);
+            PSCTipo *nu = c_tipo_nu(d->tipo), *pt;
+            if (nu->kind == PSC_ARRAY) pt = ps_c_ponteiro(nu->alvo);   /* o array vira o endereço do 1º elemento */
+            else if (nu->kind == PSC_STRUCT || nu->kind == PSC_UNION) pt = ps_c_ponteiro(d->tipo);
+            else BERRO(vm, "TypeError", "& de %s: só array e struct têm o endereço assim", d->tipo->nome);
+            if (!pt) BERRO(vm, "MemoryError", "sem memoria");
+            if (c_valor_ponteiro(vm, pt, d->ptr, &topo[-1]) != 0) return -1;
+            c_herda_dono(topo[-1], v);
             return 0;
         }
         default:
@@ -30898,13 +31070,24 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (EH_SEQ(cont))         n = COMO_LIST(cont)->len;
             else if (EH_STRING(cont)) n = COMO_STRING(cont)->len;
             else if (EH_BYTES(cont))  n = COMO_BYTES(cont)->len;
-            else ERRO_TF(vm, "TypeError", "'%s' object is not iterable",
-                         nome_do_tipo_valor(cont));
+            else {
+                int64_t na;                           /* o array do C */
+                if (!c_len_array(cont, &na))
+                    ERRO_TF(vm, "TypeError", "'%s' object is not iterable", nome_do_tipo_valor(cont));
+                n = na;
+            }
 
             if (i >= n) { sp -= 2; ip = arg; break; }
             stack[sp - 1] = MK_INT(i + 1);
             if (EH_SEQ(cont)) {
                 stack[sp++] = COMO_LIST(cont)->itens[i];
+            } else if (EH_CDADO(cont)) {
+                /* o array do C: o elemento lido da memória (o struct sai
+                 * apontando pra dentro do array, como no C) */
+                vm->sp = sp; vm->locals_top = locals_top;
+                Value item;
+                if (c_le_item(vm, cont, i, &item) != 0) goto erro_runtime;
+                stack[sp++] = item;
             } else if (EH_BYTES(cont)) {
                 /* Cada item é um INTEIRO 0..255, não um pedaço de bytes de
                  * tamanho 1 — é o que deixa escrever
@@ -32092,6 +32275,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             {
                 int tab, mi;
                 if (acha_metodo_valor(alvo, nome, &tab, &mi) != 0) {
+                    /* o struct do C: o campo, lido da memória (ps_c.h) */
+                    if (EH_CDADO(alvo)) {
+                        vm->sp = sp; vm->locals_top = locals_top;
+                        if (c_le_campo(vm, alvo, nome, &stack[sp - 1]) != 0) goto erro_runtime;
+                        break;
+                    }
                     /* dict: um nome que NÃO é método vira acesso a chave —
                      * `d.chave` equivale a `d["chave"]` (o método de dict, como
                      * `.get`/`.keys`, ainda ganha por ser resolvido antes). */
@@ -32147,6 +32336,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 break;
             }
             if (!EH_INST(alvo)) {
+                /* o struct do C: grava no campo, com a conversão do C */
+                if (EH_CDADO(alvo)) {
+                    vm->sp = sp; vm->locals_top = locals_top;
+                    if (c_grava_campo(vm, alvo, nomev, valor) != 0) goto erro_runtime;
+                    break;
+                }
                 char dica[160];
                 const char *nm = EH_STRING(nomev) ? COMO_STRING(nomev)->chars : "?";
                 ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'%s",

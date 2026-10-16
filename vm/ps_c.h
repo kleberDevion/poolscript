@@ -104,6 +104,22 @@ PSCTipo *ps_c_struct(const char *nome, int eh_union, const char **nomes, PSCTipo
                      int n, const size_t *deslocs, size_t tam, size_t alinha);
 PSCTipo *ps_c_opaco(const char *nome, size_t tam, size_t alinha);
 
+/* ── os tipos que o PROGRAMA declara ────────────────────────────────────
+ * `struct ponto { ... }`, `union u { ... }` e `typedef`, registrados pelo
+ * compilador (na 1ª passada) e lidos pelo nome como os do padrão
+ * (`ps_c_tipo_por_nome`, `ps_c_le_decl`), no mesmo processo. O struct nasce
+ * INCOMPLETO em `abre` (um campo `struct no *prox` dentro do próprio `struct
+ * no` acha a etiqueta) e fecha com os campos; declarado de novo, tem que ser
+ * igual. `etiqueta` é "struct ponto"/"union u" (NULL = sem etiqueta, o
+ * `typedef struct { ... } Nome`, que ganha o nome do typedef). Os erros vão
+ * em `erro`. `campos` é o texto das declarações, separadas por `;`. */
+PSCTipo *ps_c_struct_abre(const char *etiqueta, int eh_union, char *erro, size_t ecap);
+int      ps_c_struct_fecha(PSCTipo *t, const char *campos, char *erro, size_t ecap);
+PSCTipo *ps_c_typedef(const char *nome, PSCTipo *alvo, char *erro, size_t ecap);
+/* O tipo que o programa registrou com esse nome (etiqueta ou typedef), ou
+ * NULL: só a lista do programa, sem o leitor nem a tabela do padrão. */
+PSCTipo *ps_c_tipo_declarado(const char *nome);
+
 /* ── a biblioteca padrão do C: a tabela de vm/c_padrao.decl ────────────── */
 /* O que cada nome da tabela é (a ordem é a de ESPECIES em
  * scripts/gera_c_padrao.pr). */

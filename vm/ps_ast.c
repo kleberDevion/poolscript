@@ -180,6 +180,9 @@ const char *ps_node_nome(PSNodeKind k)
         case N_C_SIZEOF:        return "CSizeof";
         case N_C_CAST:          return "CCast";
         case N_C_STORE:         return "CStore";
+        case N_C_OFFSETOF:      return "COffsetof";
+        case N_C_STRUCT_DECL:   return "CStructDecl";
+        case N_C_TYPEDEF:       return "CTypedef";
     }
     return "?";
 }

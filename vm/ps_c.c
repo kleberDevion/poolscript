@@ -521,6 +521,30 @@ PSCTipo *ps_c_opaco(const char *nome, size_t tam, size_t alinha)
 /* ── a ponte pra libffi ───────────────────────────────────────────────── */
 static ffi_type *ffi_de(PSCTipo *t);
 
+/* a regra do C: cada campo no próximo múltiplo do alinhamento dele (no
+ * union, todos no começo), e o tamanho arredondado pro maior alinhamento */
+static void monta_layout(PSCTipo *t)
+{
+    int eh_union = t->kind == PSC_UNION;
+    size_t pos = 0, maior = 1, maior_tam = 0;
+    for (int i = 0; i < t->ncampos; i++) {
+        PSCTipo *ti = t->campos[i].tipo;
+        size_t a = ti->alinha ? ti->alinha : 1;
+        if (a > maior) maior = a;
+        if (eh_union) {
+            t->campos[i].desloc = 0;
+            if (ti->tam > maior_tam) maior_tam = ti->tam;
+        } else {
+            pos = (pos + a - 1) / a * a;
+            t->campos[i].desloc = pos;
+            pos += ti->tam;
+        }
+    }
+    if (eh_union) pos = maior_tam;
+    t->alinha = maior;
+    t->tam = (pos + maior - 1) / maior * maior;
+}
+
 PSCTipo *ps_c_struct(const char *nome, int eh_union, const char **nomes, PSCTipo **tipos,
                      int n, const size_t *deslocs, size_t tam, size_t alinha)
 {
@@ -528,9 +552,10 @@ PSCTipo *ps_c_struct(const char *nome, int eh_union, const char **nomes, PSCTipo
     if (!t) return NULL;
     t->kind = eh_union ? PSC_UNION : PSC_STRUCT;
     t->nome = nome;
-    t->ncampos = n;
+    /* o vetor antes do contador: quem lê `ncampos` conta com `campos` pronto */
     t->campos = calloc((size_t)(n > 0 ? n : 1), sizeof *t->campos);
     if (!t->campos) return NULL;
+    t->ncampos = n;
     for (int i = 0; i < n; i++) {
         t->campos[i].nome = nomes[i];
         t->campos[i].tipo = tipos[i];
@@ -542,24 +567,7 @@ PSCTipo *ps_c_struct(const char *nome, int eh_union, const char **nomes, PSCTipo
         t->alinha = alinha;
         return t;
     }
-    /* a regra do C: cada campo no próximo múltiplo do alinhamento dele (no
-     * union, todos no começo), e o tamanho arredondado pro maior alinhamento */
-    size_t pos = 0, maior = 1, maior_tam = 0;
-    for (int i = 0; i < n; i++) {
-        size_t a = tipos[i]->alinha ? tipos[i]->alinha : 1;
-        if (a > maior) maior = a;
-        if (eh_union) {
-            t->campos[i].desloc = 0;
-            if (tipos[i]->tam > maior_tam) maior_tam = tipos[i]->tam;
-        } else {
-            pos = (pos + a - 1) / a * a;
-            t->campos[i].desloc = pos;
-            pos += tipos[i]->tam;
-        }
-    }
-    if (eh_union) pos = maior_tam;
-    t->alinha = maior;
-    t->tam = (pos + maior - 1) / maior * maior;
+    monta_layout(t);
     return t;
 }
 
@@ -688,11 +696,36 @@ static void lt_erro(Leitor *l, const char *msg)
     }
 }
 
-/* o tipo que um nome da tabela dá (typedef, opaco, struct), ou NULL */
+/* ── os tipos que o programa declara (ps_c.h) ─────────────────────────── */
+typedef struct Declarado { char *nome; PSCTipo *t; struct Declarado *prox; } Declarado;
+static Declarado *g_declarados = NULL;
+
+PSCTipo *ps_c_tipo_declarado(const char *nome)
+{
+    if (!nome || !*nome) return NULL;
+    for (Declarado *d = g_declarados; d; d = d->prox)
+        if (d->nome[0] == nome[0] && strcmp(d->nome, nome) == 0) return d->t;
+    return NULL;
+}
+
+static int registra_declarado(const char *nome, PSCTipo *t)
+{
+    Declarado *d = calloc(1, sizeof *d);
+    if (!d) return -1;
+    d->nome = strdup(nome);
+    if (!d->nome) { free(d); return -1; }
+    d->t = t;
+    d->prox = g_declarados;
+    g_declarados = d;
+    return 0;
+}
+
+/* o tipo que um nome da tabela dá (typedef, opaco, struct), ou NULL; depois
+ * da tabela, o que o programa declarou */
 static PSCTipo *tipo_da_tabela(const char *nome)
 {
     int i = ps_c_busca(nome);
-    if (i < 0) return NULL;
+    if (i < 0) return ps_c_tipo_declarado(nome);
     PSCEspecie e = (PSCEspecie)PS_C_NOMES[i].especie;
     if (e != PSC_NOME_TIPO && e != PSC_NOME_OPACO && e != PSC_NOME_ESTRUTURA) return NULL;
     return ps_c_tipo_de(i);
@@ -945,6 +978,150 @@ PSCTipo *ps_c_tipo_por_nome(const char *nome)
     char declarado[8];
     PSCTipo *t = ps_c_le_decl(nome, declarado, sizeof declarado, NULL, 0);
     return t && declarado[0] == '\0' ? t : NULL;
+}
+
+/* ── struct, union e typedef do programa (ps_c.h) ─────────────────────── */
+static void poe_erro(char *erro, size_t ecap, const char *msg)
+{
+    if (erro && ecap) snprintf(erro, ecap, "%s", msg);
+}
+
+PSCTipo *ps_c_struct_abre(const char *etiqueta, int eh_union, char *erro, size_t ecap)
+{
+    nomeia_escalares();
+    if (erro && ecap) erro[0] = '\0';
+    PSCKind kind = eh_union ? PSC_UNION : PSC_STRUCT;
+    if (etiqueta) {
+        PSCTipo *ja = ps_c_tipo_declarado(etiqueta);
+        if (ja) {
+            if (ja->kind == kind) return ja;
+            char m[200];
+            snprintf(m, sizeof m, "%s já foi declarado como %s", etiqueta, ja->kind == PSC_UNION ? "union" : "struct");
+            poe_erro(erro, ecap, m);
+            return NULL;
+        }
+        if (ps_c_busca(etiqueta) >= 0) {
+            char m[200];
+            snprintf(m, sizeof m, "%s é da biblioteca padrão do C e não se redeclara", etiqueta);
+            poe_erro(erro, ecap, m);
+            return NULL;
+        }
+    }
+    PSCTipo *t = novo_montado();
+    if (!t) { poe_erro(erro, ecap, "sem memoria"); return NULL; }
+    t->kind = kind;
+    t->alinha = 1;
+    if (etiqueta) {
+        t->nome = strdup(etiqueta);
+        if (!t->nome || registra_declarado(etiqueta, t) != 0) { poe_erro(erro, ecap, "sem memoria"); return NULL; }
+    }
+    return t;
+}
+
+int ps_c_struct_fecha(PSCTipo *t, const char *campos, char *erro, size_t ecap)
+{
+    enum { MAX_CAMPOS = 64 };
+    const char *nomes[MAX_CAMPOS];
+    PSCTipo *tipos[MAX_CAMPOS];
+    int n = 0, rc = -1;
+    char nome[64];
+    Leitor l;
+    memset(&l, 0, sizeof l);
+    l.ini = l.p = campos;
+    l.erro = erro;
+    l.ecap = ecap;
+    if (erro && ecap) erro[0] = '\0';
+    lt_avanca(&l);
+    while (l.tipo != LT_FIM) {
+        if (n == MAX_CAMPOS) { lt_erro(&l, "campos demais (o máximo é 64)"); goto fim; }
+        PSCTipo *b = le_especificadores(&l);
+        if (!b) goto fim;
+        PSCTipo *ct = le_declarador(&l, b, nome, sizeof nome, 0);
+        if (!ct || l.falhou) goto fim;
+        if (!nome[0]) { lt_erro(&l, "campo sem nome"); goto fim; }
+        PSCTipo *nu = ct;
+        while (nu->canon || nu->sem_const) nu = nu->canon ? nu->canon : nu->sem_const;
+        if (nu->kind == PSC_VOID || nu->kind == PSC_FUNC || nu->kind == PSC_OPACO) {
+            lt_erro(&l, "campo com tipo que não guarda valor (use um ponteiro)"); goto fim;
+        }
+        if ((nu->kind == PSC_STRUCT || nu->kind == PSC_UNION) && nu->tam == 0) {
+            lt_erro(&l, nu == t ? "o struct dentro dele mesmo tem que ser ponteiro"
+                               : "campo de um struct ainda sem campos");
+            goto fim;
+        }
+        if (nu->kind == PSC_ARRAY && nu->tam == 0) { lt_erro(&l, "o array do campo precisa do tamanho"); goto fim; }
+        for (int i = 0; i < n; i++)
+            if (strcmp(nomes[i], nome) == 0) { lt_erro(&l, "campo repetido"); goto fim; }
+        nomes[n] = strdup(nome);
+        if (!nomes[n]) { lt_erro(&l, "sem memoria"); goto fim; }
+        tipos[n] = ct;
+        n++;
+        if (lt_eh(&l, ";")) lt_avanca(&l);
+        else if (l.tipo != LT_FIM) { lt_erro(&l, "falta o ; entre os campos"); goto fim; }
+    }
+    if (n == 0) { lt_erro(&l, "struct sem campo"); goto fim; }
+    if (t->ncampos > 0) {
+        /* já estava completo: a redeclaração tem que ser igual */
+        int igual = t->ncampos == n;
+        for (int i = 0; igual && i < n; i++)
+            igual = strcmp(t->campos[i].nome, nomes[i]) == 0 && t->campos[i].tipo == tipos[i];
+        if (!igual) {
+            char m[200];
+            snprintf(m, sizeof m, "%s já foi declarado com outros campos", t->nome ? t->nome : "o struct");
+            poe_erro(erro, ecap, m);
+            goto fim;
+        }
+        rc = 0;
+        goto fim;
+    }
+    t->campos = calloc((size_t)n, sizeof *t->campos);
+    if (!t->campos) { poe_erro(erro, ecap, "sem memoria"); goto fim; }
+    for (int i = 0; i < n; i++) {
+        t->campos[i].nome = nomes[i];
+        t->campos[i].tipo = tipos[i];
+        nomes[i] = NULL;                           /* agora são do tipo */
+    }
+    t->ncampos = n;
+    monta_layout(t);
+    rc = 0;
+fim:
+    for (int i = 0; i < n; i++) free((char *)nomes[i]);
+    return rc;
+}
+
+PSCTipo *ps_c_typedef(const char *nome, PSCTipo *alvo, char *erro, size_t ecap)
+{
+    nomeia_escalares();
+    if (erro && ecap) erro[0] = '\0';
+    char m[200];
+    if (ps_c_busca(nome) >= 0) {
+        snprintf(m, sizeof m, "%s é nome da biblioteca padrão do C", nome);
+        poe_erro(erro, ecap, m);
+        return NULL;
+    }
+    PSCTipo *ja = ps_c_tipo_declarado(nome);
+    if (ja) {
+        if (ja == alvo || ja->canon == alvo) return ja;
+        snprintf(m, sizeof m, "%s já foi declarado como %s", nome,
+                 ja->canon && ja->canon->nome ? ja->canon->nome : ja->nome ? ja->nome : "outro tipo");
+        poe_erro(erro, ecap, m);
+        return NULL;
+    }
+    if ((alvo->kind == PSC_STRUCT || alvo->kind == PSC_UNION) && !alvo->nome) {
+        /* o struct sem etiqueta ganha o nome do typedef: é o próprio tipo */
+        alvo->nome = strdup(nome);
+        if (!alvo->nome || registra_declarado(nome, alvo) != 0) { poe_erro(erro, ecap, "sem memoria"); return NULL; }
+        return alvo;
+    }
+    PSCTipo *t = novo_montado();
+    if (!t) { poe_erro(erro, ecap, "sem memoria"); return NULL; }
+    *t = *alvo;
+    t->nome = strdup(nome);
+    t->canon = alvo->canon ? alvo->canon : alvo;
+    t->cif = NULL;
+    t->ffi = NULL;
+    if (!t->nome || registra_declarado(nome, t) != 0) { poe_erro(erro, ecap, "sem memoria"); return NULL; }
+    return t;
 }
 
 /* ── a chamada ────────────────────────────────────────────────────────── */

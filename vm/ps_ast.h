@@ -103,7 +103,18 @@ typedef enum {
     N_C_ADDR,         /* `&x`: a = o operando (nome, `p[i]`, `*p`) */
     N_C_SIZEOF,       /* `sizeof(T)`: texto = o tipo do C; `sizeof x`: a = a expressão */
     N_C_CAST,         /* `(T) x`: texto = o tipo do C, a = o operando */
-    N_C_STORE         /* `*p = v`, `*p += v`: a = o ponteiro, b = o valor, texto = o operador */
+    N_C_STORE,        /* `*p = v`, `*p += v`: a = o ponteiro, b = o valor, texto = o operador */
+    N_C_OFFSETOF,     /* `offsetof(T, campo)`: texto = o tipo do C, texto2 = o campo */
+    /* `struct ponto { ... }` / `union u { ... }`: texto = "struct ponto", i2 = 1
+     * no union, texto2 = os campos como declarações do C num texto só
+     * ("int x; char nome[32]; "), que o leitor do C lê. Sem nó filho, de
+     * propósito: nenhum caminhante do compilador lê um campo como variável. */
+    N_C_STRUCT_DECL,
+    /* `typedef <tipo> Nome`: texto = Nome, texto2 = o tipo do C ("unsigned
+     * long", "struct ponto", "int[3]"). Com o struct declarado no próprio
+     * typedef (`typedef struct [tag] { ... } Nome`): texto2 = "struct" ou
+     * "struct tag", texto3 = os campos, i2 = 1 no union. */
+    N_C_TYPEDEF
 } PSNodeKind;
 
 /* Qual campo do literal vale */
