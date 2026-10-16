@@ -25955,6 +25955,19 @@ static int c_eh_chamavel(Value v)
         || (v.t == V_OBJ && (EH_CLOSURE(v) || EH_NATIVA(v) || EH_METNAT(v) || EH_CFUNC(v)));
 }
 
+/* A funct da Jinga que o C vai chamar com outra quantidade de argumentos do
+ * que ela recebe (o protótipo do callback diz quantos): o erro sai na
+ * chamada da função do C, e não de dentro dela. A frase é a do `--check`
+ * (tp_confere_c). */
+static int c_aridade_do_callback(VM *vm, const char *fn, int pos, PSCTipo *t, PSCTipo *ft, Value v)
+{
+    const Proto *pr = &vm->protos[PROTO_DE(v)];
+    int k = ft->nparams, minimo = pr->nparams - pr->ndefaults;
+    if (k >= minimo && (k <= pr->nparams || pr->slot_vararg >= 0)) return 0;
+    BERRO(vm, "TypeError", "%s(): o argumento %d é %s no C, e %s() recebe %d argumento%s", fn, pos + 1,
+          t->nome, pr->nome ? pr->nome : "a funct", pr->nparams, pr->nparams == 1 ? "" : "s");
+}
+
 static int c_erro_arg(VM *vm, const char *fn, int pos, const char *conv, PSCTipo *t, Value v)
 {
     /* pos < 0: a escrita na memória do C (`int *p = 5`, `*p = "a"`), a frase
@@ -26035,6 +26048,7 @@ static int c_arg(VM *vm, const char *fn, int pos, Value v, PSCTipo *t, void *mem
                 } else if (c_eh_chamavel(v)) {
                     if (!fechos)
                         BERRO(vm, "TypeError", "a funct da Jinga só entra no C como argumento de uma chamada (%s)", t->nome);
+                    if (EH_FUNCT(v) && c_aridade_do_callback(vm, fn, pos, t, alvo_f, v) != 0) return -1;
                     p = c_fecho_novo(vm, v, alvo_f, fechos, nfechos);
                     if (!p) return -1;
                 } else {
@@ -26128,93 +26142,23 @@ static __attribute__((noinline, cold)) int str_falhou(VM *vm, int rc, const char
     BERRO(vm, "MemoryError", "sem memoria em str()");
 }
 
-/* O tipo de um nome do padrão (`intmax_t`, `size_t`), da tabela. */
-static PSCTipo *c_tipo(const char *nome) { return ps_c_tipo_por_nome(nome); }
-
-/* Os tipos dos argumentos a mais de uma variádica, pelo formato (C11 7.21.6.1
- * no printf, 7.21.6.2 no scanf). Cada conversão consome um argumento (o `*`
- * de largura e de precisão do printf consome um int; o `*` do scanf, que
- * suprime a gravação, nenhum), e o tipo é o que a conversão pede com o
- * modificador de tamanho, depois da promoção das variádicas. Formato que
- * pede mais ou menos argumentos do que vieram é erro: no C seria
- * comportamento indefinido. `conv[k]` guarda o texto da conversão (`%ld`). */
+/* Os tipos dos argumentos a mais de uma variádica, pelo formato: a leitura é
+ * a de `ps_c_formato` (vm/ps_c.c), a mesma que o checador usa com o formato
+ * escrito no código; aqui só o erro vira o da VM. */
 static int c_tipos_do_formato(VM *vm, const char *fn, const char *fmt, int eh_scanf,
                               PSCTipo **tipos, char conv[][24], int nvar)
 {
-    int k = 0;
-    for (const char *s = fmt; *s; s++) {
-        if (*s != '%') continue;
-        const char *ini = s++;
-        if (*s == '%') continue;
-        int suprime = 0;
-        if (eh_scanf && *s == '*') { suprime = 1; s++; }
-        /* bandeiras, largura e precisão */
-        while (!eh_scanf && *s && strchr("-+ #0'", *s)) s++;
-        for (int vez = 0; vez < 2; vez++) {
-            if (vez == 1) { if (eh_scanf || *s != '.') break; s++; }
-            if (!eh_scanf && *s == '*') {
-                if (k < nvar) {
-                    tipos[k] = &ps_c_int;
-                    snprintf(conv[k], sizeof conv[k], "o * de %.10s", ini);
-                }
-                k++; s++;
-            } else {
-                while (*s >= '0' && *s <= '9') s++;
-            }
-        }
-        /* o modificador de tamanho */
-        char mod[3] = "";
-        if ((s[0] == 'h' && s[1] == 'h') || (s[0] == 'l' && s[1] == 'l')) { mod[0] = s[0]; mod[1] = s[1]; s += 2; }
-        else if (*s && strchr("hljztL", *s)) { mod[0] = *s; s++; }
-        char c = *s;
-        if (!c) BERRO(vm, "ValueError", "%s: o formato acaba no meio de uma conversão (%s)", fn, ini);
-        int tam_conv = (int)(s - ini) + 1;
-        PSCTipo *t = NULL;
-        const char *grande = NULL;   /* o modificador do wchar_t: lote C2 */
-        if (strchr("di", c) || strchr("ouxX", c) || c == 'n') {
-            int sem = strchr("ouxX", c) != NULL;
-            if (!strcmp(mod, "hh")) t = eh_scanf || c == 'n' ? (sem ? &ps_c_uchar : &ps_c_schar) : &ps_c_int;
-            else if (!strcmp(mod, "h")) t = eh_scanf || c == 'n' ? (sem ? &ps_c_ushort : &ps_c_short) : &ps_c_int;
-            else if (!strcmp(mod, "l")) t = sem ? &ps_c_ulong : &ps_c_long;
-            else if (!strcmp(mod, "ll")) t = sem ? &ps_c_ullong : &ps_c_llong;
-            else if (!strcmp(mod, "j")) t = c_tipo(sem ? "uintmax_t" : "intmax_t");
-            else if (!strcmp(mod, "z")) t = c_tipo(sem ? "size_t" : "ptrdiff_t");
-            else if (!strcmp(mod, "t")) t = c_tipo(sem ? "size_t" : "ptrdiff_t");
-            else if (!mod[0]) t = sem ? &ps_c_uint : &ps_c_int;
-            if (t && (eh_scanf || c == 'n')) t = ps_c_ponteiro(t);
-        } else if (strchr("fFeEgGaA", c)) {
-            if (eh_scanf) t = ps_c_ponteiro(!strcmp(mod, "L") ? &ps_c_ldouble : !strcmp(mod, "l") ? &ps_c_double : &ps_c_float);
-            else t = !strcmp(mod, "L") ? &ps_c_ldouble : &ps_c_double;
-        } else if (c == 'c' || c == 's' || c == '[') {
-            if (!strcmp(mod, "l")) grande = "l";
-            else if (eh_scanf) t = ps_c_ponteiro(&ps_c_char);
-            else t = c == 'c' ? &ps_c_int : ps_c_ponteiro(ps_c_const(&ps_c_char));
-            if (c == '[') {
-                if (!eh_scanf) BERRO(vm, "ValueError", "%s: %%[ é conversão do scanf", fn);
-                s++;
-                if (*s == '^') s++;
-                if (*s == ']') s++;
-                while (*s && *s != ']') s++;
-                if (!*s) BERRO(vm, "ValueError", "%s: falta o ] no formato (%s)", fn, ini);
-                tam_conv = (int)(s - ini) + 1;
-            }
-        } else if (c == 'p') {
-            t = eh_scanf ? ps_c_ponteiro(ps_c_ponteiro(&ps_c_void)) : ps_c_ponteiro(&ps_c_void);
-        }
-        if (grande)
-            BERRO(vm, "NotImplementedError", "%s: %.*s é do texto largo (wchar.h), que entra no lote C2 do C",
-                  fn, tam_conv, ini);
-        if (!t) BERRO(vm, "ValueError", "%s: conversão desconhecida no formato: %.*s", fn, tam_conv, ini);
-        if (suprime) continue;
-        if (k < nvar) {
-            tipos[k] = t;
-            snprintf(conv[k], sizeof conv[k], "%.*s", tam_conv > 23 ? 23 : tam_conv, ini);
-        }
-        k++;
+    const char *te = "ValueError";
+    int k = ps_c_formato(fn, fmt, eh_scanf, tipos, conv, nvar, vm->erro, sizeof(vm->erro), &te);
+    if (k < 0) {
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", te);
+        return -1;
     }
-    if (k != nvar)
-        BERRO(vm, "TypeError", "%s: o formato pede %d argumento%s depois dele, e %s %d", fn, k,
-              k == 1 ? "" : "s", nvar == 1 ? "veio" : "vieram", nvar);
+    if (k != nvar) {
+        ps_c_frase_formato_conta(vm->erro, sizeof(vm->erro), fn, k, nvar);
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+        return -1;
+    }
     return 0;
 }
 
@@ -26461,13 +26405,13 @@ static int c_registra(VM *vm, Value **lista, int *n, int *cap, Value fn)
     return 0;
 }
 
-static int c_chama_vm(VM *vm, const char *nome, Value *args, int n, Value *out)
+static int c_chama_vm(VM *vm, const char *nome, PSCTipo *ft, Value *args, int n, Value *out)
 {
     int quick = strcmp(nome, "at_quick_exit") == 0;
     if (quick || strcmp(nome, "atexit") == 0) {
+        /* o que não é chamável: a frase do argumento do C, a mesma do checador */
         if (n != 1 || !c_eh_chamavel(args[0]))
-            BERRO(vm, "TypeError", "%s() recebe uma funct da Jinga; veio %s", nome,
-                  n == 1 ? nome_do_tipo_valor(args[0]) : "nada");
+            return c_erro_arg(vm, nome, 0, NULL, ft->params[0], n == 1 ? args[0] : MK_NULL());
         if (c_registra(vm, quick ? &vm->c_quick : &vm->c_atexit, quick ? &vm->c_nquick : &vm->c_natexit,
                        quick ? &vm->c_cap_quick : &vm->c_cap_atexit, args[0]) != 0) return -1;
         *out = MK_INT(0);
@@ -26500,7 +26444,7 @@ static int c_chama(VM *vm, Value fn, Value *args, int n, Value *out)
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
         return -1;
     }
-    if (ps_c_marcas(idx) & PSC_MARCA_VM) return c_chama_vm(vm, nome, args, n, out);
+    if (ps_c_marcas(idx) & PSC_MARCA_VM) return c_chama_vm(vm, nome, ft, args, n, out);
     char motivo[320];
     if (ps_c_pronto(motivo, sizeof motivo) != 0)
         BERRO(vm, "OSError", "%.40s() não pode ser chamada: %.180s", nome, motivo);
@@ -35418,6 +35362,99 @@ const char *ps_sugere_pre_ligado(const char *nome)
     return sugere_nome(nome, cands, n);
 }
 
+/* `sugere_nome` com os candidatos de mesma inicial primeiro: o erro de
+ * digitação quase nunca troca a primeira letra, e no empate de distância a
+ * ordem da tabela decidia (`print` saía 'lrint', e não 'printf'). Reordena
+ * `cands` no lugar. */
+static const char *sugere_mesma_inicial(const char *alvo, const char **cands, int n)
+{
+    int k = 0;
+    for (int i = 0; i < n; i++)
+        if (cands[i] && cands[i][0] == alvo[0]) {
+            const char *t = cands[k]; cands[k] = cands[i]; cands[i] = t;
+            k++;
+        }
+    const char *r = k ? sugere_nome(alvo, cands, k) : NULL;
+    return r ? r : sugere_nome(alvo, cands, n);
+}
+
+/* Os nomes do C que um "Did you mean" oferece, em `cands` (até `cap`): as
+ * palavras que o parser lê (`unsigned`, `struct`, `sizeof`; `tipos_so` deixa
+ * o operador de fora), os nomes da tabela (só os tipos com `tipos_so`), sem o
+ * que fica de fora, e os tipos que o programa declarou. Sem nome de duas
+ * palavras: `struct tm` não é nome escrito solto. */
+static int nomes_c_pra_dica(const char **cands, int cap, int tipos_so)
+{
+    int n = 0, nn = ps_c_nnomes();
+    const char *w, *papel = NULL;
+    for (int i = 0; (w = ps_parser_palavra_c(i, &papel)) != NULL && n < cap; i++)
+        if (!tipos_so || strcmp(papel, "operador") != 0) cands[n++] = w;
+    for (int i = 0; i < nn && n < cap; i++) {
+        PSCEspecie e = ps_c_especie(i);
+        const char *nm = ps_c_nome(i);
+        if (e == PSC_NOME_FORA || strchr(nm, ' ')) continue;
+        if (tipos_so && e != PSC_NOME_TIPO && e != PSC_NOME_OPACO && e != PSC_NOME_ESTRUTURA) continue;
+        cands[n++] = nm;
+    }
+    for (int i = 0; (w = ps_c_declarado_nome(i)) != NULL && n < cap; i++)
+        if (!strchr(w, ' ')) cands[n++] = w;
+    return n;
+}
+
+/* Entre a dica da Jinga e a do C, a mais perto do nome escrito; no empate, a
+ * da Jinga (o nome da Jinga vem antes, como na ligação). */
+static const char *mais_perto(const char *nome, const char *jinga, const char *c)
+{
+    if (!c) return jinga;
+    if (!jinga) return c;
+    return dist_edicao(nome, c, 200) < dist_edicao(nome, jinga, 200) ? c : jinga;
+}
+
+/* O "Did you mean" do NameError do checador com os nomes do C, que valem em
+ * todo arquivo: `jinga` é a dica entre os nomes da Jinga (ou NULL), e o do C
+ * só a troca quando está mais perto. NULL quando nenhum chega perto. */
+const char *ps_sugere_nome_c(const char *nome, const char *jinga)
+{
+    if (!nome || !nome[0]) return jinga;
+    int cap = ps_c_nnomes() + 128;
+    const char **cands = malloc(sizeof(char *) * (size_t)cap);
+    if (!cands) return jinga;
+    const char *r = sugere_mesma_inicial(nome, cands, nomes_c_pra_dica(cands, cap, 0));
+    free(cands);
+    return mais_perto(nome, jinga, r);
+}
+
+/* O tipo mais parecido com `nome`, pra dica do "tipo X não existe" do
+ * checador: os tipos da Jinga (declaráveis e apelidos, do parser), os
+ * nativos (os rótulos das tabelas de método e o PoolFile) e os que o
+ * checador passa em `extras` (class, model e enum do arquivo), contra os do
+ * C (as palavras de tipo que o parser lê, os tipos da tabela e os que o
+ * programa declarou): o mais perto, e no empate o da Jinga. NULL quando
+ * nenhum chega perto. */
+const char *ps_sugere_tipo(const char *nome, const char **extras, int nextras)
+{
+    if (!nome) return NULL;
+    const char *const *td = ps_parser_tipos_decl();
+    int ntd = 0;
+    while (td[ntd]) ntd++;
+    int ntab = (int)(sizeof(TAM_TABELA) / sizeof(TAM_TABELA[0]));
+    int nn = ps_c_nnomes();
+    int cap = ntd + ntab + nextras + nn + 64;
+    const char **cands = malloc(sizeof(char *) * (size_t)cap);
+    if (!cands) return NULL;
+    int n = 0;
+    for (int i = 0; i < ntd; i++) cands[n++] = td[i];
+    for (int t = 0; t < ntab; t++) {
+        const char *rot = t == T_MET_PFILE ? "PoolFile" : jm_rotulo_tabela(t);
+        if (rot) cands[n++] = rot;
+    }
+    for (int i = 0; i < nextras; i++) cands[n++] = extras[i];
+    const char *r = sugere_nome(nome, cands, n);
+    const char *rc = nome[0] ? sugere_mesma_inicial(nome, cands, nomes_c_pra_dica(cands, cap, 1)) : NULL;
+    free(cands);
+    return mais_perto(nome, r, rc);
+}
+
 int ps_nome_pre_ligado(const char *nome)
 {
     if (!nome) return 0;
@@ -35480,6 +35517,188 @@ int ps_nativo_tem_membro(const char *dono, const char *membro)
      * dict, e o que volta é o valor guardado */
     if (strcmp(dono, "dict") == 0) return 2;
     return 0;
+}
+
+/* O grupo de um nome do C no `--metadata`: 0 funções (com as macros com cara
+ * de função e o offsetof), 1 tipos, 2 constantes e valores, 3 o que fica de
+ * fora. O switch devolve o texto pelo código, sem tabela de ponteiros. */
+static int jm_c_grupo(PSCEspecie e)
+{
+    switch (e) {
+        case PSC_NOME_FUNCAO: case PSC_NOME_MACRO: case PSC_NOME_LITERAL: case PSC_NOME_SINTAXE: return 0;
+        case PSC_NOME_TIPO: case PSC_NOME_OPACO: case PSC_NOME_ESTRUTURA: return 1;
+        case PSC_NOME_FORA: return 3;
+        default: return 2;
+    }
+}
+
+static const char *jm_c_grupo_nome(int g)
+{
+    switch (g) {
+        case 0: return "funcoes";
+        case 1: return "tipos";
+        case 2: return "constantes";
+        default: return "fora";
+    }
+}
+
+static const char *jm_c_especie(PSCEspecie e)
+{
+    switch (e) {
+        case PSC_NOME_FUNCAO:    return "funcao";
+        case PSC_NOME_MACRO:     return "macro";
+        case PSC_NOME_LITERAL:   return "literal";
+        case PSC_NOME_SINTAXE:   return "sintaxe";
+        case PSC_NOME_TIPO:      return "tipo";
+        case PSC_NOME_OPACO:     return "opaco";
+        case PSC_NOME_ESTRUTURA: return "estrutura";
+        case PSC_NOME_CONST:     return "const";
+        case PSC_NOME_CONSTFLO:  return "constflo";
+        case PSC_NOME_TEXTO:     return "texto";
+        case PSC_NOME_TALVEZ:    return "talvez";
+        case PSC_NOME_VALOR:     return "valor";
+        case PSC_NOME_NULO:      return "nulo";
+        default:                 return "fora";
+    }
+}
+
+/* soma ao texto sem passar do fim (o snprintf devolve o que TERIA escrito) */
+static size_t jm_poe(char *buf, size_t cap, size_t n, const char *fmt, ...)
+{
+    if (n >= cap) return n;
+    va_list ap;
+    va_start(ap, fmt);
+    int k = vsnprintf(buf + n, cap - n, fmt, ap);
+    va_end(ap);
+    return k < 0 ? n : n + (size_t)k;
+}
+
+/* A declaração do C de um nome, pra o editor mostrar: a da tabela (função,
+ * valor) ou montada do tipo, que é o que o compilador C deu neste sistema (o
+ * typedef com o tipo que ele é, o struct do padrão com os campos, a
+ * constante com o tipo dela). */
+static void jm_c_decl(int i, char *buf, size_t cap)
+{
+    const char *nome = ps_c_nome(i);
+    PSCEspecie e = ps_c_especie(i);
+    PSCTipo *t = NULL;
+    uint64_t u;
+    long double ld;
+    buf[0] = '\0';
+    switch (e) {
+        case PSC_NOME_TIPO: {
+            PSCTipo *tt = ps_c_tipo_por_nome(nome);
+            PSCTipo *alvo = tt && tt->canon ? tt->canon : tt;
+            snprintf(buf, cap, "typedef %s %s", alvo ? alvo->nome : "?", nome);
+            return;
+        }
+        case PSC_NOME_ESTRUTURA: {
+            PSCTipo *tt = ps_c_tipo_por_nome(nome);
+            PSCTipo *s = tt && tt->canon ? tt->canon : tt;
+            int com_tag = strncmp(nome, "struct ", 7) == 0;
+            size_t n = jm_poe(buf, cap, 0, com_tag ? "%s {" : "typedef struct {", nome);
+            for (int k = 0; s && k < s->ncampos; k++) {
+                PSCTipo *ct = s->campos[k].tipo;
+                if (ct->kind == PSC_ARRAY)
+                    n = jm_poe(buf, cap, n, " %s %s[%zu];", ct->alvo->nome, s->campos[k].nome, ct->n);
+                else
+                    n = jm_poe(buf, cap, n, " %s%s%s;", ct->nome, ct->kind == PSC_PONT ? "" : " ", s->campos[k].nome);
+            }
+            if (com_tag) jm_poe(buf, cap, n, " }");
+            else jm_poe(buf, cap, n, " } %s", nome);
+            return;
+        }
+        case PSC_NOME_OPACO:
+            snprintf(buf, cap, "%s", nome);
+            return;
+        case PSC_NOME_CONST:
+        case PSC_NOME_TALVEZ:
+            snprintf(buf, cap, "%s %s", ps_c_const_int(i, &t, &u) == 0 ? t->nome : "int", nome);
+            return;
+        case PSC_NOME_CONSTFLO:
+            snprintf(buf, cap, "%s %s", ps_c_const_flo(i, &t, &ld) == 0 ? t->nome : "double", nome);
+            return;
+        case PSC_NOME_TEXTO:
+            snprintf(buf, cap, "const char *%s", nome);
+            return;
+        case PSC_NOME_NULO:
+            snprintf(buf, cap, "void *%s", nome);
+            return;
+        default:
+            snprintf(buf, cap, "%s", ps_c_decl(i));
+            return;
+    }
+}
+
+/* A biblioteca padrão do C (Plano 1), da tabela do vm/ps_c.c, por cabeçalho
+ * em ordem alfabética: as funções com o protótipo do padrão, os tipos, as
+ * constantes (com o valor quando ele é fixo neste sistema: o `EOF`, o
+ * `INT_MAX`, o texto do `PRId64`) e o que fica de fora, com o motivo. É de
+ * onde o editor tira completion, hover, assinatura e realce dos nomes do C. */
+static void jm_c(FILE *f)
+{
+    const char *cabs[64];
+    int ncab = 0, nn = ps_c_nnomes();
+    for (int i = 0; i < nn; i++) {
+        const char *cb = ps_c_cabecalho(i);
+        int ja = 0;
+        for (int k = 0; k < ncab && !ja; k++) ja = strcmp(cabs[k], cb) == 0;
+        if (!ja && ncab < 64) cabs[ncab++] = cb;
+    }
+    for (int a = 1; a < ncab; a++)
+        for (int b = a; b > 0 && strcmp(cabs[b - 1], cabs[b]) > 0; b--) {
+            const char *t = cabs[b]; cabs[b] = cabs[b - 1]; cabs[b - 1] = t;
+        }
+    for (int k = 0; k < ncab; k++) {
+        fprintf(f, "%s\n  ", k ? "," : "");
+        jm_txt(f, cabs[k]);
+        fprintf(f, ": {");
+        for (int g = 0; g < 4; g++) {
+            fprintf(f, "%s\n   \"%s\": [", g ? "," : "", jm_c_grupo_nome(g));
+            int prim = 1;
+            for (int i = 0; i < nn; i++) {
+                PSCEspecie e = ps_c_especie(i);
+                if (jm_c_grupo(e) != g || strcmp(ps_c_cabecalho(i), cabs[k]) != 0) continue;
+                fprintf(f, "%s\n    {\"nome\": ", prim ? "" : ",");
+                prim = 0;
+                jm_txt(f, ps_c_nome(i));
+                fprintf(f, ", \"especie\": \"%s\"", jm_c_especie(e));
+                if (g == 3) {
+                    fprintf(f, ", \"motivo\": ");
+                    jm_txt(f, ps_c_decl(i));
+                } else {
+                    char d[512];
+                    jm_c_decl(i, d, sizeof d);
+                    fprintf(f, ", \"decl\": ");
+                    jm_txt(f, d);
+                }
+                if (g == 2) {
+                    /* o valor fixo neste sistema; null = lido na hora (errno,
+                     * stdin) ou não definido aqui (o `talvez`) */
+                    char v[96] = "";
+                    PSCTipo *t = NULL;
+                    uint64_t u;
+                    long double ld;
+                    const char *tx;
+                    if ((e == PSC_NOME_CONST || e == PSC_NOME_TALVEZ) && ps_c_const_int(i, &t, &u) == 0) {
+                        if (t->sem_sinal) snprintf(v, sizeof v, "%llu", (unsigned long long)u);
+                        else snprintf(v, sizeof v, "%lld", (long long)(int64_t)u);
+                    } else if (e == PSC_NOME_CONSTFLO && ps_c_const_flo(i, &t, &ld) == 0) {
+                        snprintf(v, sizeof v, "%.17Lg", ld);
+                    } else if (e == PSC_NOME_TEXTO && (tx = ps_c_const_texto(i)) != NULL) {
+                        snprintf(v, sizeof v, "\"%.80s\"", tx);
+                    } else if (e == PSC_NOME_NULO) {
+                        snprintf(v, sizeof v, "Null");
+                    }
+                    fprintf(f, ", \"valor\": ");
+                    if (v[0]) jm_txt(f, v); else fprintf(f, "null");
+                }
+                fputc('}', f);
+            }
+            fprintf(f, "\n   ]");
+        }
+        fprintf(f, "\n  }");
+    }
 }
 
 void ps_metadata_json(FILE *saida)
@@ -35690,7 +35909,20 @@ void ps_metadata_json(FILE *saida)
             jm_txt(f, TIPOS[AP[i].cod].nome);
         }
     }
-    fprintf(f, "\n }\n}\n");
+    /* a biblioteca padrão do C, por cabeçalho, e as palavras do C que o
+     * parser lê (o realce pinta as do tipo) */
+    fprintf(f, "\n },\n \"c\": {");
+    jm_c(f);
+    fprintf(f, "\n },\n \"c_palavras\": [");
+    {
+        const char *papel = NULL, *w;
+        for (int i = 0; (w = ps_parser_palavra_c(i, &papel)) != NULL; i++) {
+            fprintf(f, "%s\n  {\"nome\": ", i ? "," : "");
+            jm_txt(f, w);
+            fprintf(f, ", \"papel\": \"%s\"}", papel);
+        }
+    }
+    fprintf(f, "\n ]\n}\n");
 }
 
 /* Despeja os avisos do lexer no STDERR.

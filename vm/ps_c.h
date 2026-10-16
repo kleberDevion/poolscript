@@ -119,6 +119,9 @@ PSCTipo *ps_c_typedef(const char *nome, PSCTipo *alvo, char *erro, size_t ecap);
 /* O tipo que o programa registrou com esse nome (etiqueta ou typedef), ou
  * NULL: só a lista do programa, sem o leitor nem a tabela do padrão. */
 PSCTipo *ps_c_tipo_declarado(const char *nome);
+/* O nome do i-ésimo tipo que o programa declarou ("struct ponto", "Ponto"),
+ * NULL depois do último: os candidatos do "Did you mean" de tipo. */
+const char *ps_c_declarado_nome(int i);
 
 /* ── a biblioteca padrão do C: a tabela de vm/c_padrao.decl ────────────── */
 /* O que cada nome da tabela é (a ordem é a de ESPECIES em
@@ -161,6 +164,17 @@ PSCEspecie  ps_c_especie(int i);
 const char *ps_c_decl(int i);
 const char *ps_c_cabecalho(int i);   /* "stdio.h" */
 int         ps_c_marcas(int i);
+/* Os tipos dos argumentos a mais de uma variádica, pelo formato do printf
+ * (`eh_scanf` = 0) ou do scanf (C11 7.21.6.1 e 7.21.6.2). `tipos[k]` e
+ * `conv[k]` (o texto da conversão, `%ld`, pra frase do erro) são preenchidos
+ * até `max`. Devolve quantos argumentos o formato pede, ou -1 com a frase em
+ * `erro` e o tipo dela (ValueError, NotImplementedError) em `*tipo_erro`. A
+ * VM (na chamada) e o checador (com o formato escrito no código) leem o
+ * formato por aqui: uma regra, as mesmas frases. */
+int         ps_c_formato(const char *fn, const char *fmt, int eh_scanf, PSCTipo **tipos, char (*conv)[24],
+                         int max, char *erro, size_t ecap, const char **tipo_erro);
+/* a frase do formato que pede `k` argumentos quando vieram `n` */
+void        ps_c_frase_formato_conta(char *buf, size_t cap, const char *fn, int k, int n);
 /* Função, macro, literal e valor: o endereço do que se chama. A função vem
  * do sistema, achada pelo nome na primeira vez (o carregador não resolve
  * nada disso na partida); NULL quando o sistema não tem a função e nas que a

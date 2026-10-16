@@ -262,7 +262,7 @@
             {
               "comment": "tipo do parametro — GERADO por scripts/gera_realce.pr (mesma lista da regra de tipos)",
               "name": "storage.type.jinga",
-              "match": "\\b(str|int|flo|bool|list|dict|tup|char|Object|long|byte|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary|json|JSON|object|Long|type|PoolFile)\\b(?!\\s*=[^=])"
+              "match": "\\b(str|int|flo|bool|list|dict|tup|char|Object|long|byte|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary|json|JSON|object|Long|type|PoolFile|void|short|float|double|signed|unsigned|_Bool|const|volatile|restrict|struct|union|typedef|imaxdiv_t|double_t|float_t|max_align_t|ptrdiff_t|size_t|wchar_t|int16_t|int32_t|int64_t|int8_t|int_fast16_t|int_fast32_t|int_fast64_t|int_fast8_t|int_least16_t|int_least32_t|int_least64_t|int_least8_t|intmax_t|intptr_t|uint16_t|uint32_t|uint64_t|uint8_t|uint_fast16_t|uint_fast32_t|uint_fast64_t|uint_fast8_t|uint_least16_t|uint_least32_t|uint_least64_t|uint_least8_t|uintmax_t|uintptr_t|FILE|fpos_t|div_t|ldiv_t|lldiv_t|clock_t|time_t)\\b(?!\\s*=[^=])"
             },
             {
               "match": "\\b[A-Za-z_]\\w*\\b",
@@ -305,7 +305,7 @@
         {
           "comment": "idem: `int = 1` ou `type=...` como nome de argumento nao e tipo",
           "name": "storage.type.jinga",
-          "match": "\\b(str|int|flo|bool|list|dict|tup|char|Object|long|byte|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary|json|JSON|object|Long|type|PoolFile)\\b(?!\\s*=[^=])"
+          "match": "\\b(str|int|flo|bool|list|dict|tup|char|Object|long|byte|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary|json|JSON|object|Long|type|PoolFile|void|short|float|double|signed|unsigned|_Bool|const|volatile|restrict|struct|union|typedef|imaxdiv_t|double_t|float_t|max_align_t|ptrdiff_t|size_t|wchar_t|int16_t|int32_t|int64_t|int8_t|int_fast16_t|int_fast32_t|int_fast64_t|int_fast8_t|int_least16_t|int_least32_t|int_least64_t|int_least8_t|intmax_t|intptr_t|uint16_t|uint32_t|uint64_t|uint8_t|uint_fast16_t|uint_fast32_t|uint_fast64_t|uint_fast8_t|uint_least16_t|uint_least32_t|uint_least64_t|uint_least8_t|uintmax_t|uintptr_t|FILE|fpos_t|div_t|ldiv_t|lldiv_t|clock_t|time_t)\\b(?!\\s*=[^=])"
         },
         {
           "comment": "static/nonnull sao modificadores COLADOS na declaracao — de funct E de campo (`static object mapp = ...`), em qualquer ordem com o tipo e a visibilidade. Pintam quando vem uma palavra atras (modificador, tipo, nome ou funct); `static` sozinho numa expressao continua nome comum. A lista antiga de tipos no lookahead nao tinha long/object/list e nao cobria campo.",
@@ -326,9 +326,9 @@
           "match": "\\b(assert|post|len|str|int|long|flo|bool|type|abs|pow|round|hex|bin|oct|ord|chr|range|list|tup|dict|sum|min|max|sorted|reversed|enumerate|zip|addEnd|addStart|removeEnd|removeStart|map|filter|open|sleep|gather|input|id|load)\\s*(?=\\()"
         },
         {
-          "comment": "operadores de simbolo e pontuacao: sem escopo, o tema nao tinha como pinta-los, e ficavam na cor do texto comum",
+          "comment": "operadores de simbolo e pontuacao: sem escopo, o tema nao tinha como pinta-los, e ficavam na cor do texto comum. O `->` e o do C (o campo pelo ponteiro, `p->x`), antes do `-=` e do `-` sozinho",
           "name": "keyword.operator.jinga",
-          "match": "\\*\\*|//|==|!=|<=|>=|&&|\\|\\||<<|>>|\\+=|-=|\\*=|/=|%=|\\+\\+|--|[-+*/%=<>!&|^~]"
+          "match": "->|\\*\\*|//|==|!=|<=|>=|&&|\\|\\||<<|>>|\\+=|-=|\\*=|/=|%=|\\+\\+|--|[-+*/%=<>!&|^~]"
         },
         {
           "name": "punctuation.jinga",

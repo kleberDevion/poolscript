@@ -1914,20 +1914,40 @@ static PSNode *posfixo(P *p)
  * `long` e `bool` também são tipos da Jinga: na declaração, eles só contam
  * como C quando o resto da forma é do C (ponteiro, mais de uma palavra); no
  * `sizeof` e no cast, são sempre os do C. */
+/* um bloco de texto só, e não vetor de ponteiros: cada ponteiro de tabela
+ * estática é uma relocação que o carregador aplica na partida de todo
+ * programa (a tabela do C, vm/ps_c.c, segue a mesma regra) */
+static const char C_BASICOS[] = "void\0char\0short\0int\0long\0float\0double\0signed\0unsigned\0_Bool\0bool\0";
+static const char C_QUALIF[] = "const\0volatile\0restrict\0";
+
 static int eh_palavra_do_c(const char *s, int *qualificador)
 {
-    /* um bloco de texto só, e não vetor de ponteiros: cada ponteiro de tabela
-     * estática é uma relocação que o carregador aplica na partida de todo
-     * programa (a tabela do C, vm/ps_c.c, segue a mesma regra) */
-    static const char BASICOS[] = "void\0char\0short\0int\0long\0float\0double\0signed\0unsigned\0_Bool\0bool\0";
-    static const char QUALIF[] = "const\0volatile\0restrict\0";
     *qualificador = 0;
     if (!s) return 0;
-    for (const char *w = BASICOS; *w; w += strlen(w) + 1)
+    for (const char *w = C_BASICOS; *w; w += strlen(w) + 1)
         if (s[0] == w[0] && strcmp(s, w) == 0) return 1;
-    for (const char *w = QUALIF; *w; w += strlen(w) + 1)
+    for (const char *w = C_QUALIF; *w; w += strlen(w) + 1)
         if (s[0] == w[0] && strcmp(s, w) == 0) { *qualificador = 1; return 1; }
     return 0;
+}
+
+/* A i-ésima palavra do C que o parser lê (NULL depois da última), com o papel
+ * dela em `*papel`: "tipo" e "qualificador" (as de eh_palavra_do_c),
+ * "declaracao" (`struct`, `union`, `typedef`) e "operador" (`sizeof`). É o
+ * que o `--metadata` publica pro editor. O vetor dos blocos é local: montado
+ * na chamada, sem relocação. */
+const char *ps_parser_palavra_c(int i, const char **papel)
+{
+    static const char DECL[] = "struct\0union\0typedef\0";
+    static const char OPER[] = "sizeof\0";
+    const char *blocos[4] = { C_BASICOS, C_QUALIF, DECL, OPER };
+    for (int b = 0; b < 4; b++)
+        for (const char *w = blocos[b]; *w; w += strlen(w) + 1)
+            if (i-- == 0) {
+                if (papel) *papel = b == 0 ? "tipo" : b == 1 ? "qualificador" : b == 2 ? "declaracao" : "operador";
+                return w;
+            }
+    return NULL;
 }
 
 /* Nome de tipo da tabela do C (`size_t`, `FILE`, `div_t`): o typedef. */

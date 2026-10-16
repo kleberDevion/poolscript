@@ -116,6 +116,7 @@ function motor(args, entrada) {
 let META = { modulos: {}, tipos: {}, acesso: {}, excecoes: [] };
 function carregaMeta() {
   ULTIMO_ERRO_MOTOR = '';
+  C_NOMES = null;
   const bruto = motor(['--metadata']);
   if (bruto.trim().startsWith('{')) {
     try { META = JSON.parse(bruto); return; } catch (_) { /* fica o vazio */ }
@@ -1515,7 +1516,17 @@ function paramsDoChamado(doc, ch, linha) {
   const e = achaEntidade(doc, ch.chamado);
   if (e) return e.membros.filter((m) => m.nome === '__init__')
                          .map((m) => m.params || []).flat();
-  return paramsDoImportado(doc, alvoDoImport(doc, ch.chamado, linha));
+  const alvoImp = alvoDoImport(doc, ch.chamado, linha);
+  if (alvoImp) return paramsDoImportado(doc, alvoImp);
+  /* a função do C pelo nome, se nada do arquivo nem da Jinga a esconde: a
+   * assinatura é o protótipo do padrão (`rotulo`), e cada parâmetro é o
+   * texto dele lá dentro */
+  if (A.visiveisEm(idx, linha).some((b) => b.nome === ch.chamado)) return [];
+  const c = nomeDoC(ch.chamado);
+  if (!c || c.grupo !== 'funcoes') return [];
+  const ps = paramsDoC(c.decl);
+  ps.rotulo = c.decl;
+  return ps;
 }
 
 /* ── protocolo ──────────────────────────────────────────────────────────── */
@@ -2030,9 +2041,10 @@ function completa(doc, p) {
   if (ch && !cad.partes.length) {
     const ps = paramsDoChamado(doc, ch, p.position.line);
     /* `*args`/`**kwarg` não existem como nomeado (`args=` cai no dict, e
-     * `*args=` é SyntaxError): não se oferecem */
+     * `*args=` é SyntaxError): não se oferecem; nem o parâmetro da função do
+     * C, que não recebe argumento com nome */
     const faltam = ps.filter((x, i) => i >= ch.posicionais && !ch.nomeados.has(x.nome)
-                                       && !String(x.nome).startsWith('*'));
+                                       && !String(x.nome).startsWith('*') && !x.soPosicao);
     for (const x of faltam) {
       poe(`${x.nome}=`, CompletionItemKind.Variable,
           x.default === null || x.default === undefined ? 'parametro' : `parametro (padrao ${x.default})`, '00');
@@ -2130,6 +2142,16 @@ function completa(doc, p) {
    * posição, só colados na cabeça da funct), então não vêm em META.keywords —
    * e sem isto o editor jamais os ofereceria. */
   for (const m of MODIFICADORES) poe(m, CompletionItemKind.Keyword, 'modificador de funct', '4');
+  /* A biblioteca padrão do C, depois de tudo da Jinga (o `poe` não repete: o
+   * nome que existe nos dois fica o da Jinga), sem o que fica de fora; e as
+   * palavras do C que o parser lê (`unsigned`, `struct`, `sizeof`). */
+  for (const c of nomesDoC().values()) {
+    if (c.grupo === 'fora' || !nomeDoC(c.nome)) continue;
+    const kind = c.grupo === 'funcoes' ? CompletionItemKind.Function
+               : c.grupo === 'tipos' ? CompletionItemKind.Struct : CompletionItemKind.Constant;
+    poe(c.nome, kind, c.decl + ' · ' + c.cab, '5');
+  }
+  for (const w of META.c_palavras || []) poe(w.nome, CompletionItemKind.Keyword, 'palavra do C', '5');
   return itens;
 }
 
@@ -2153,9 +2175,11 @@ function assinaturaEm(doc, p) {
   const iVar = ps.findIndex((x) => String(x.nome).startsWith('*') && !String(x.nome).startsWith('**'));
   const ativo = iVar >= 0 && ch.posicionais >= iVar
     ? iVar : Math.min(ch.posicionais, Math.max(0, ps.length - 1));
+  /* a função do C traz o protótipo inteiro como rótulo, e cada parâmetro é
+   * um pedaço dele (o editor acende o parâmetro pelo texto) */
   return {
     signatures: [{
-      label: `${ch.chamado}(${rotulos.join(', ')})`,
+      label: ps.rotulo || `${ch.chamado}(${rotulos.join(', ')})`,
       parameters: rotulos.map((r) => ({ label: r })),
     }],
     activeSignature: 0,
@@ -2649,6 +2673,112 @@ conexao.onHover((p) => {
   return md('```ps\n' + nome + '\n```\n\nnome não definido neste arquivo nem por import (rodando dá `NameError`)');
 });
 
+/* ── a biblioteca padrão do C (Plano 1) ─────────────────────────────────
+ *
+ * Os nomes do C valem em todo arquivo, sem import, DEPOIS dos da Jinga: o
+ * nome que existe nos dois é o da Jinga (`round`, `abs`, `pow`), e o nome que
+ * o arquivo liga esconde o do C, como esconde um builtin. Tudo sai da chave
+ * `c` do `--metadata` (a tabela do motor, por cabeçalho): o protótipo do
+ * padrão, o tipo, o valor da constante neste sistema e o motivo do que fica
+ * de fora. */
+let C_NOMES = null;
+function nomesDoC() {
+  if (C_NOMES) return C_NOMES;
+  C_NOMES = new Map();
+  for (const cab of Object.keys(META.c || {})) {
+    for (const grupo of ['funcoes', 'tipos', 'constantes', 'fora']) {
+      for (const x of META.c[cab][grupo] || []) C_NOMES.set(x.nome, Object.assign({ cab, grupo }, x));
+    }
+  }
+  return C_NOMES;
+}
+
+/* O nome do C, quando nenhum nome da Jinga o esconde (builtin, palavra, tipo,
+ * apelido, módulo, exceção). O que o arquivo liga, quem chama já descartou. */
+function nomeDoC(nome) {
+  const c = nomesDoC().get(nome);
+  if (!c) return null;
+  if ((META.builtins || []).some((b) => b.nome === nome) || (META.keywords || []).includes(nome)
+      || (META.tipos_nomes || []).includes(nome) || (META.tipos_apelidos || {})[nome]
+      || META.modulos[nome] || (META.excecoes || []).some((x) => x.nome === nome)) return null;
+  return c;
+}
+
+/* Os parâmetros de um protótipo do C, cada um com o texto do padrão (`const
+ * char * restrict format`, `...`): a vírgula dentro de parênteses (o ponteiro
+ * de função do `qsort`) não separa. São só posicionais: a função do C não
+ * recebe argumento com nome. */
+function paramsDoC(decl) {
+  const a = decl.indexOf('(');
+  if (a < 0) return [];
+  const partes = [];
+  let prof = 0;
+  let ini = a + 1;
+  for (let i = a; i < decl.length; i++) {
+    const ch = decl[i];
+    if (ch === '(') { prof++; continue; }
+    if (ch === ')') {
+      prof--;
+      if (prof === 0) { partes.push(decl.slice(ini, i)); break; }
+      continue;
+    }
+    if (ch === ',' && prof === 1) { partes.push(decl.slice(ini, i)); ini = i + 1; }
+  }
+  return partes.map((t) => t.trim()).filter((t) => t && t !== 'void')
+               .map((t) => ({ nome: t, soPosicao: true }));
+}
+
+/* A prosa de um nome do C: a seção da página do cabeçalho (`docs/c/stdio.md`)
+ * cujo título traz o nome em crase, sem o título (a declaração já está no
+ * topo do hover), e o link da página. */
+function secaoDoC(nome, cab) {
+  const raiz = raizDoc();
+  if (!raiz) return '';
+  const arq = path.join(raiz, 'c', String(cab).replace('.h', '') + '.md');
+  const s = secoesDe(arq).find((x) => x.spans.includes(nome));
+  if (!s) return '';
+  const t = trechoDaSecao(s);
+  return (t.startsWith(s.titulo) ? t.slice(s.titulo.length).trim() : t) + '\n\n' + linkDoc(arq);
+}
+
+/* O hover de um nome do C: a declaração como o C escreve, o cabeçalho, o que
+ * a Jinga faz com ele (o valor da constante neste sistema, o tipo opaco que
+ * só vive atrás de ponteiro) e a prosa da doc, quando há. */
+function hoverDoC(c) {
+  if (c.grupo === 'fora') {
+    return md('```c\n' + c.nome + '\n```\n\n`' + c.nome + '` fica de fora: ' + c.motivo
+              + ' (rodando dá `NameError`) · `' + c.cab + '`');
+  }
+  const papel = c.grupo === 'funcoes' ? 'função' : c.grupo === 'tipos' ? 'tipo' : 'constante';
+  let linha = papel + ' do C · `' + c.cab + '`';
+  if (c.especie === 'opaco') linha += ' · só existe atrás de ponteiro (`' + c.nome + ' *`)';
+  if (c.grupo === 'constantes') {
+    if (c.especie === 'nulo') linha += ' · na Jinga é o `Null`';
+    else if (c.valor !== null && c.valor !== undefined) linha += ' · vale `' + c.valor + '` neste sistema';
+    else if (c.especie === 'talvez') linha += ' · não definida neste sistema';
+    else linha += ' · lida na hora';
+  }
+  const prosa = secaoDoC(c.nome, c.cab);
+  return md('```c\n' + c.decl + '\n```\n\n' + linha + (prosa ? '\n\n' + prosa : ''));
+}
+
+/* O hover de uma palavra do C que o parser lê (`unsigned`, `const`,
+ * `struct`, `typedef`, `sizeof`): o papel dela na Jinga, e a seção da página
+ * `docs/c/c.md` que a traz em crase, quando há. */
+function hoverDaPalavraDoC(w) {
+  const papel = {
+    tipo: 'palavra de tipo do C: vale na declaração com tipo do C (`unsigned long n = 5`), no cast e no `sizeof`',
+    qualificador: 'qualificador do C: vale na declaração com tipo do C (`const char *s`) e no cast',
+    declaracao: w.nome === 'typedef'
+      ? 'dá nome a um tipo do C, no topo do arquivo (`typedef unsigned long u64`, `typedef struct { ... } Ponto`)'
+      : 'declara um ' + w.nome + ' do C no topo do arquivo, um campo por linha, ou nomeia um (`' + w.nome + ' tm *t`)',
+    operador: 'o tamanho em bytes, como no C: `sizeof(int)`, `sizeof x`, `sizeof(struct tm)`',
+  }[w.papel] || 'palavra do C';
+  const raiz = raizDoc();
+  const s = raiz ? secoesDe(path.join(raiz, 'c', 'c.md')).find((x) => x.spans.includes(w.nome)) : null;
+  return md('```c\n' + w.nome + '\n```\n\n' + papel + (s ? '\n\n' + trechoDaSecao(s) : ''));
+}
+
 /* O nome que a LINGUAGEM liga sozinha, depois do escopo e dos imports (que o
  * sombreiam, como no motor): builtin (`len`, `range`), tipo (`PoolFile`,
  * `byte`, `Object`, `json`) e o nome de tipo do motor (`Response`), que vale
@@ -2679,6 +2809,12 @@ function hoverDaLinguagem(doc, nome, receptorDeModulo) {
     return md('```ps\n' + nome + '\n```' + soTipo
               + apresentaTipo(doc, tipoDoMotor ? { tipo: 'tipo_motor', nome: real } : { tipo: 'escalar', nome: real }));
   }
+  /* a biblioteca padrão do C, depois de tudo da Jinga; o `tm` de `struct tm`
+   * é o struct do padrão */
+  const c = nomeDoC(nome) || nomeDoC('struct ' + nome);
+  if (c) return hoverDoC(c);
+  const w = (META.c_palavras || []).find((x) => x.nome === nome);
+  if (w) return hoverDaPalavraDoC(w);
   return null;
 }
 

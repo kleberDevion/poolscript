@@ -20,6 +20,7 @@
 #include "ps_retornos.h"
 #include "ps_caminho.h"      /* nome do módulo a partir do caminho: `/` e, no Windows, `\` */
 #include "ps_c.h"            /* a biblioteca padrão do C: os nomes que valem em todo arquivo */
+#include <limits.h>          /* o INT_MAX da aridade sem teto (variádica do C) */
 
 #include <stdarg.h>
 
@@ -3013,7 +3014,7 @@ static PSCTipo *ct_nu(PSCTipo *t);
 static int tp_aceita_c(PSCTipo *ct, const char *v)
 {
     PSCTipo *nu = ct_nu(ct);
-    if (strcmp(v, "Object") == 0) return T_TALVEZ;
+    if (strcmp(v, "Object") == 0 || strchr(v, '|')) return T_TALVEZ;
     switch (nu->kind) {
         case PSC_INT:
         case PSC_BOOL:
@@ -3131,6 +3132,23 @@ static PSCTipo *tp_tipo_c(C *c, const char *t)
     if (tp_tipo_decl_arq(c, t)) return NULL;
     if (ps_retorno_tipo_existe(t) || ps_nativo_tem_membro(t, "type") != -1) return NULL;
     return ps_c_tipo_por_nome(t);
+}
+
+/* ". Did you mean: 'X'?" pro tipo que não existe, ou "": os tipos da Jinga,
+ * os nativos e os do arquivo (class, model, enum) antes, os do C depois
+ * (ps_sugere_tipo). É o sufixo das frases "tipo X não existe (...)". */
+static const char *tp_dica_tipo(C *c, const char *nome, char *buf, size_t cap)
+{
+    buf[0] = '\0';
+    if (!nome) return buf;
+    const char **ex = c->ntipos_arq > 0 ? malloc(sizeof(char *) * (size_t)c->ntipos_arq) : NULL;
+    int n = 0;
+    for (int32_t i = 0; ex && i < c->ntipos_arq; i++)
+        if (c->tipos_arq[i]->texto) ex[n++] = c->tipos_arq[i]->texto;
+    const char *d = ps_sugere_tipo(nome, ex, n);
+    free(ex);
+    if (d) snprintf(buf, cap, ". Did you mean: '%s'?", d);
+    return buf;
 }
 
 static int tp_tipo_existe(C *c, Unidade *u, const char *t)
@@ -3515,6 +3533,9 @@ static void tp_acusa_nome(C *c, Unidade *u, const char *nome, PSNode *onde, int 
          * (listas de nomes / tabelas fixas); o vetor em si morre aqui */
         free(cands);
     }
+    /* os nomes da biblioteca padrão do C, que valem em todo arquivo: o do C
+     * troca a dica só quando está mais perto; no empate fica o da Jinga */
+    dica = ps_sugere_nome_c(nome, dica);
     if (dica)
         terro(c, onde, "NameError", "name '%s' is not defined. Did you mean: '%s'?", nome, dica);
     else
@@ -4660,6 +4681,48 @@ static void tp_emite_confere(C *c, Unidade *u, const char *rotulo, const char *t
 
 /* Escrita do valor de `c->grava` no nome cujo SimInfo é `s`: confere o que dá
  * pra saber e atualiza o que se sabe do nome. Devolve T_SIM/T_NAO/T_TALVEZ. */
+/* O valor da Jinga de tipo conhecido `vt` onde o C pede `t`, conferido antes
+ * de rodar com as frases da VM (`c_erro_arg` e a regra do str em `c_arg`):
+ * `pos` < 0 é a escrita numa variável com tipo do C (`int *p = 5`), `conv` é
+ * a conversão do formato (`%d`) e, sem os dois, é o argumento `pos` da função
+ * `fn`. O tipo que o checador não sabe (NULL, `Object`, união) fica pra
+ * chamada. Devolve 1 quando acusou. */
+static int tp_confere_valor_c(C *c, PSNode *no, const char *fn, int pos, const char *conv, PSCTipo *t,
+                              const char *vt)
+{
+    if (!vt || !t || strchr(vt, '|') || !strcmp(vt, "Object")) return 0;
+    const char *b = tp_basico(vt) ? tp_basico(vt) : vt;   /* o nome rodando: long é int, char é str */
+    PSCTipo *nu = ct_nu(t);
+    if (nu->kind == PSC_PONT && (!strcmp(b, "str") || !strcmp(b, "byte"))) {
+        /* o texto da Jinga só entra onde o C não escreve (const char *) */
+        PSCTipo *al = ct_nu(nu->alvo);
+        int texto = al->kind == PSC_VOID || (al->kind == PSC_INT && al->eh_char);
+        if (texto && !nu->alvo->constante) {
+            if (pos < 0)
+                terro(c, no, "TypeError", "o %s da Jinga só entra no C como const char * (%s escreve no "
+                      "texto): copie pra um buffer", b, t->nome);
+            else
+                terro(c, no, "TypeError", "%s() altera o texto (%s), e o %s da Jinga só entra como "
+                      "const char *: copie pra um buffer", fn, t->nome, b);
+            return 1;
+        }
+    }
+    if (tp_aceita_c(t, vt) != T_NAO) return 0;
+    if (pos < 0) {
+        if (nu->kind == PSC_PONT && (!strcmp(b, "int") || !strcmp(b, "bool")))
+            terro(c, no, "TypeError", "%s não vira %s sem cast", b, t->nome);
+        else if ((nu->kind == PSC_INT || nu->kind == PSC_BOOL) && !strcmp(b, "flo"))
+            terro(c, no, "TypeError", "flo não vira %s calado: converta com int(x)", t->nome);
+        else
+            terro(c, no, "TypeError", "%s não vira %s", b, t->nome);
+    } else if (conv) {
+        terro(c, no, "TypeError", "%s: %s espera %s, recebeu %s", fn, conv, t->nome, b);
+    } else {
+        terro(c, no, "TypeError", "%s(): o argumento %d é %s no C, e veio %s", fn, pos + 1, t->nome, b);
+    }
+    return 1;
+}
+
 static int tp_escreve(C *c, SimInfo *s, const char *nome)
 {
     if (!s) return T_TALVEZ;
@@ -4715,9 +4778,13 @@ static int tp_escreve(C *c, SimInfo *s, const char *nome)
         /* `const int x = 1` e depois `x = 2`: o C não deixa */
         terro(c, onde, "TypeError", "variável %s é %s: não muda depois da declaração", nome, s->tipo);
     }
-    /* tipo do C: quem confere e converte é a escrita (C_OP CONVERTE), pelas
-     * regras do C, e não o checador da Jinga */
-    if (s->ctipo) return T_TALVEZ;
+    /* tipo do C: quem converte é a escrita (C_OP CONVERTE), pelas regras do
+     * C; o valor de tipo conhecido é acusado aqui, antes de rodar, com a
+     * frase que a VM daria */
+    if (s->ctipo) {
+        if (c->grava.tem_valor) tp_confere_valor_c(c, onde, NULL, -1, NULL, s->ctipo, c->grava.tipo);
+        return T_TALVEZ;
+    }
     if (c->grava.decl) { s->decl = c->grava.decl; s->decorado = c->grava.decorado; }
     if (c->grava.mod_nativo) { s->mod_nativo = c->grava.mod_nativo; s->membro_nativo = c->grava.membro_nativo; }
     if (c->grava.mod_pr) { s->mod_pr = c->grava.mod_pr; s->mod_pr_nome = c->grava.mod_pr_nome; }
@@ -5766,6 +5833,77 @@ static void tp_confere_nativo(C *c, PSNode *n, const char *dono, const char *mem
     }
 }
 
+/* A chamada de uma função do C, conferida antes de rodar com as frases da VM
+ * (`c_chama`, `c_arg`, `c_tipos_do_formato`): nomeado, quantidade, o tipo de
+ * cada argumento fixo e, quando o formato do printf/scanf está escrito no
+ * código, o de cada argumento a mais. O que o checador não sabe (tipo
+ * desconhecido, formato numa variável, argumento em estrela) fica pra
+ * chamada, que confere tudo de novo. */
+static void tp_confere_c(C *c, Unidade *u, PSNode *n, int ci)
+{
+    const char *nome = ps_c_nome(ci);
+    PSCTipo *ft = ps_c_tipo_de(ci);
+    if (!ft || ft->kind != PSC_FUNC) return;
+    int npos = 0;
+    for (int32_t i = 0; i < n->lista.n; i++) {
+        PSNode *arg = n->lista.itens[i];
+        if (arg->i2) return;
+        if (arg->texto) { terro(c, n, "TypeError", "%s() takes no keyword arguments", nome); return; }
+        npos++;
+    }
+    int nfixos = ft->nparams;
+    if (npos < nfixos || (!ft->variadica && npos > nfixos)) {
+        char frase[160];
+        ps_frase_aridade(frase, sizeof(frase), nome, nfixos, ft->variadica ? INT_MAX : nfixos, npos);
+        terro(c, n, "TypeError", "%s", frase);
+        return;
+    }
+    for (int i = 0; i < nfixos; i++) {
+        PSNode *a = n->lista.itens[i]->a;
+        if (a && tp_confere_valor_c(c, a, nome, i, NULL, ft->params[i], tp_de(c, u, a))) return;
+        /* a funct do arquivo onde o C pede ponteiro de função: o protótipo
+         * diz com quantos argumentos o C a chama (a frase da VM,
+         * c_aridade_do_callback) */
+        PSCTipo *pn = ct_nu(ft->params[i]);
+        PSCTipo *alvo = pn && pn->kind == PSC_PONT ? ct_nu(pn->alvo) : NULL;
+        if (!alvo || alvo->kind != PSC_FUNC || !a || a->kind != N_NAME || !a->texto) continue;
+        SimInfo *s = tp_sim_de(c, u, a->texto);
+        if (!s || !s->decl || s->decorado || s->decl->kind != N_FUNCT_DECL) continue;
+        int fixos = 0, padroes = 0, estrela = 0;
+        for (int32_t k = 0; k < s->decl->lista.n; k++) {
+            PSNode *par = s->decl->lista.itens[k];
+            if (par->i2) { estrela = 1; continue; }
+            fixos++;
+            if (par->a) padroes++;
+        }
+        if (alvo->nparams >= fixos - padroes && (alvo->nparams <= fixos || estrela)) continue;
+        terro(c, a, "TypeError", "%s(): o argumento %d é %s no C, e %s() recebe %d argumento%s", nome, i + 1,
+              ft->params[i]->nome, s->decl->texto ? s->decl->texto : "a funct", fixos, fixos == 1 ? "" : "s");
+        return;
+    }
+    if (!ft->variadica) return;
+    int marcas = ps_c_marcas(ci);
+    if (nfixos < 1 || !(marcas & (PSC_MARCA_PRINTF | PSC_MARCA_SCANF))) return;
+    PSNode *fa = n->lista.itens[nfixos - 1]->a;
+    if (!fa || fa->kind != N_LITERAL || fa->lit != L_STR || !fa->texto) return;
+    PSCTipo *tipos[64];
+    char conv[64][24];
+    char erro[256];   /* o tamanho do erro da VM: a frase sai igual rodando e no editor */
+    const char *te = "ValueError";
+    int k = ps_c_formato(nome, fa->texto, (marcas & PSC_MARCA_SCANF) != 0, tipos, conv, 64, erro, sizeof erro, &te);
+    if (k < 0) { terro(c, fa, te, "%s", erro); return; }
+    int nvar = npos - nfixos;
+    if (k != nvar) {
+        ps_c_frase_formato_conta(erro, sizeof erro, nome, k, nvar);
+        terro(c, n, "TypeError", "%s", erro);
+        return;
+    }
+    for (int j = 0; j < nvar && j < 64; j++) {
+        PSNode *a = n->lista.itens[nfixos + j]->a;
+        if (a && tp_confere_valor_c(c, a, nome, nfixos + j, conv[j], tipos[j], tp_de(c, u, a))) return;
+    }
+}
+
 static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
 {
     PSNode *f = n->a;
@@ -5782,6 +5920,12 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
                 tp_confere_nativo(c, n, "builtins", f->texto, NULL, t_unico);
             else if (s && s->mod_nativo && s->membro_nativo)
                 tp_confere_nativo(c, n, s->mod_nativo, s->membro_nativo, NULL, t_unico);
+            else if (!tp_nome_ligado(c, u, f->texto)) {
+                /* a função do C pelo nome (o nome da Jinga, embutido ou do
+                 * programa, ganhou acima): a conferência da chamada */
+                int ci = ps_c_valor_indice(f->texto);
+                if (ci >= 0 && ps_c_especie(ci) == PSC_NOME_FUNCAO) tp_confere_c(c, u, n, ci);
+            }
             return;
         }
         if (s->decl->kind == N_FUNCT_DECL) {
@@ -7530,8 +7674,9 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             } else if (!ctipo && !tp_tipo_existe(c, u, n->texto2)) {
                 /* o erro é o nome do tipo; conferir o valor contra um tipo
                  * que não existe só repetiria o mesmo erro com outra frase */
-                terro(c, n, "AttributedValueError", "tipo %s não existe (variável %s)",
-                      n->texto2 ? n->texto2 : "?", vn);
+                char dica[160];
+                terro(c, n, "AttributedValueError", "tipo %s não existe (variável %s)%s",
+                      n->texto2 ? n->texto2 : "?", vn, tp_dica_tipo(c, n->texto2, dica, sizeof dica));
                 memset(&c->grava, 0, sizeof(c->grava));
             } else {
                 grava_valor(c, u, n->a);
@@ -7575,8 +7720,10 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             int32_t mi = idx_const(c, u, K_STR, 0, 0, nome, (int32_t)strlen(nome));
             if (n->texto2) {
                 const char *cls = c->entity_no && c->entity_no->texto ? c->entity_no->texto : "?";
+                char dica[160];
                 if (!tp_tipo_existe(c, u, n->texto2))
-                    terro(c, n, "AttributedValueError", "tipo %s não existe (campo %s de %s)", n->texto2, nome, cls);
+                    terro(c, n, "AttributedValueError", "tipo %s não existe (campo %s de %s)%s", n->texto2, nome, cls,
+                          tp_dica_tipo(c, n->texto2, dica, sizeof dica));
                 else {
                     /* declaração: o OP_COERCE_DECL logo abaixo faz o `char` */
                     const char *T = tp_canon(n->texto2);
@@ -8329,8 +8476,9 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 PSNode *f = n->lista2_alias.itens[i];
                 if (f->kind != N_ENTITY_FIELD || !f->texto || !f->texto2) continue;
                 if (!tp_tipo_existe(c, u, f->texto2)) {
-                    terro(c, f, "AttributedValueError", "tipo %s não existe (campo %s de %s)",
-                          f->texto2, f->texto, n->texto ? n->texto : "?");
+                    char dica[160];
+                    terro(c, f, "AttributedValueError", "tipo %s não existe (campo %s de %s)%s",
+                          f->texto2, f->texto, n->texto ? n->texto : "?", tp_dica_tipo(c, f->texto2, dica, sizeof dica));
                     continue;
                 }
                 if (f->a) {
@@ -9517,8 +9665,10 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
     }
     if (n->kind == N_FUNCT_DECL && n->texto2) {
         u.tipo_ret_nome = tp_canon(n->texto2);
+        char dica[160];
         if (!tp_tipo_existe(c, &u, n->texto2))
-            terro(c, n, "AttributedValueError", "tipo %s não existe (retorno de %s())", n->texto2, nome_f);
+            terro(c, n, "AttributedValueError", "tipo %s não existe (retorno de %s())%s", n->texto2, nome_f,
+                  tp_dica_tipo(c, n->texto2, dica, sizeof dica));
         /* gerador devolve o gerador: o tipo escrito não é o do `return` */
         if (tp_tem_yield(n->b)) u.tipo_ret_nome = NULL;
     }
@@ -9561,9 +9711,11 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
              * regra do C (tp_aceita_c) */
             u.sim[pi].ctipo = tp_tipo_c(c, par->texto2);
             if (u.sim[pi].ctipo) c->tem_tipo_c = 1;
-            else if (!tp_tipo_existe(c, &u, par->texto2))
-                terro(c, par, "AttributedValueError", "tipo %s não existe (parâmetro %s de %s())",
-                      par->texto2, par->texto ? par->texto : "?", nome_f);
+            else if (!tp_tipo_existe(c, &u, par->texto2)) {
+                char dica[160];
+                terro(c, par, "AttributedValueError", "tipo %s não existe (parâmetro %s de %s())%s",
+                      par->texto2, par->texto ? par->texto : "?", nome_f, tp_dica_tipo(c, par->texto2, dica, sizeof dica));
+            }
         }
         nfix++;
         if (par->a) ndef++;

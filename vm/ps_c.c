@@ -300,6 +300,98 @@ const char *ps_c_cabecalho(int i)
     return fora_da_tabela(i) ? NULL : PS_C_TEXTO + PS_C_CAB[PS_C_NOMES[i].cab];
 }
 
+/* ── o formato do printf e do scanf ───────────────────────────────────── */
+/* Cada conversão consome um argumento (o `*` de largura e de precisão do
+ * printf consome um int; o `*` do scanf, que suprime a gravação, nenhum), e o
+ * tipo é o que a conversão pede com o modificador de tamanho, depois da
+ * promoção das variádicas. Formato que pede mais ou menos argumentos do que
+ * vieram é erro de quem chama (no C seria comportamento indefinido): a
+ * contagem volta, e a frase é a de ps_c_frase_formato_conta. */
+int ps_c_formato(const char *fn, const char *fmt, int eh_scanf, PSCTipo **tipos, char (*conv)[24],
+                 int max, char *erro, size_t ecap, const char **tipo_erro)
+{
+#define FERRO(tipo, ...) do { snprintf(erro, ecap, __VA_ARGS__); *tipo_erro = (tipo); return -1; } while (0)
+    int k = 0;
+    for (const char *s = fmt; *s; s++) {
+        if (*s != '%') continue;
+        const char *ini = s++;
+        if (*s == '%') continue;
+        int suprime = 0;
+        if (eh_scanf && *s == '*') { suprime = 1; s++; }
+        /* bandeiras, largura e precisão */
+        while (!eh_scanf && *s && strchr("-+ #0'", *s)) s++;
+        for (int vez = 0; vez < 2; vez++) {
+            if (vez == 1) { if (eh_scanf || *s != '.') break; s++; }
+            if (!eh_scanf && *s == '*') {
+                if (k < max) {
+                    tipos[k] = &ps_c_int;
+                    snprintf(conv[k], sizeof conv[k], "o * de %.10s", ini);
+                }
+                k++; s++;
+            } else {
+                while (*s >= '0' && *s <= '9') s++;
+            }
+        }
+        /* o modificador de tamanho */
+        char mod[3] = "";
+        if ((s[0] == 'h' && s[1] == 'h') || (s[0] == 'l' && s[1] == 'l')) { mod[0] = s[0]; mod[1] = s[1]; s += 2; }
+        else if (*s && strchr("hljztL", *s)) { mod[0] = *s; s++; }
+        char c = *s;
+        if (!c) FERRO("ValueError", "%s: o formato acaba no meio de uma conversão (%s)", fn, ini);
+        int tam_conv = (int)(s - ini) + 1;
+        PSCTipo *t = NULL;
+        const char *grande = NULL;   /* o modificador do wchar_t: lote C2 */
+        if (strchr("di", c) || strchr("ouxX", c) || c == 'n') {
+            int sem = strchr("ouxX", c) != NULL;
+            if (!strcmp(mod, "hh")) t = eh_scanf || c == 'n' ? (sem ? &ps_c_uchar : &ps_c_schar) : &ps_c_int;
+            else if (!strcmp(mod, "h")) t = eh_scanf || c == 'n' ? (sem ? &ps_c_ushort : &ps_c_short) : &ps_c_int;
+            else if (!strcmp(mod, "l")) t = sem ? &ps_c_ulong : &ps_c_long;
+            else if (!strcmp(mod, "ll")) t = sem ? &ps_c_ullong : &ps_c_llong;
+            else if (!strcmp(mod, "j")) t = ps_c_tipo_por_nome(sem ? "uintmax_t" : "intmax_t");
+            else if (!strcmp(mod, "z")) t = ps_c_tipo_por_nome(sem ? "size_t" : "ptrdiff_t");
+            else if (!strcmp(mod, "t")) t = ps_c_tipo_por_nome(sem ? "size_t" : "ptrdiff_t");
+            else if (!mod[0]) t = sem ? &ps_c_uint : &ps_c_int;
+            if (t && (eh_scanf || c == 'n')) t = ps_c_ponteiro(t);
+        } else if (strchr("fFeEgGaA", c)) {
+            if (eh_scanf) t = ps_c_ponteiro(!strcmp(mod, "L") ? &ps_c_ldouble : !strcmp(mod, "l") ? &ps_c_double : &ps_c_float);
+            else t = !strcmp(mod, "L") ? &ps_c_ldouble : &ps_c_double;
+        } else if (c == 'c' || c == 's' || c == '[') {
+            if (!strcmp(mod, "l")) grande = "l";
+            else if (eh_scanf) t = ps_c_ponteiro(&ps_c_char);
+            else t = c == 'c' ? &ps_c_int : ps_c_ponteiro(ps_c_const(&ps_c_char));
+            if (c == '[') {
+                if (!eh_scanf) FERRO("ValueError", "%s: %%[ é conversão do scanf", fn);
+                s++;
+                if (*s == '^') s++;
+                if (*s == ']') s++;
+                while (*s && *s != ']') s++;
+                if (!*s) FERRO("ValueError", "%s: falta o ] no formato (%s)", fn, ini);
+                tam_conv = (int)(s - ini) + 1;
+            }
+        } else if (c == 'p') {
+            t = eh_scanf ? ps_c_ponteiro(ps_c_ponteiro(&ps_c_void)) : ps_c_ponteiro(&ps_c_void);
+        }
+        if (grande)
+            FERRO("NotImplementedError", "%s: %.*s é do texto largo (wchar.h), que entra no lote C2 do C",
+                  fn, tam_conv, ini);
+        if (!t) FERRO("ValueError", "%s: conversão desconhecida no formato: %.*s", fn, tam_conv, ini);
+        if (suprime) continue;
+        if (k < max) {
+            tipos[k] = t;
+            snprintf(conv[k], sizeof conv[k], "%.*s", tam_conv > 23 ? 23 : tam_conv, ini);
+        }
+        k++;
+    }
+    return k;
+#undef FERRO
+}
+
+void ps_c_frase_formato_conta(char *buf, size_t cap, const char *fn, int k, int n)
+{
+    snprintf(buf, cap, "%s: o formato pede %d argumento%s depois dele, e %s %d", fn, k,
+             k == 1 ? "" : "s", n == 1 ? "veio" : "vieram", n);
+}
+
 /* ── o endereço ───────────────────────────────────────────────────────── */
 /* Guardado na primeira vez: vetores em .bss, que nascem zerados sem custar
  * nada na partida. */
@@ -720,6 +812,13 @@ PSCTipo *ps_c_tipo_declarado(const char *nome)
     if (!nome || !*nome) return NULL;
     for (Declarado *d = g_declarados; d; d = d->prox)
         if (d->nome[0] == nome[0] && strcmp(d->nome, nome) == 0) return d->t;
+    return NULL;
+}
+
+const char *ps_c_declarado_nome(int i)
+{
+    for (Declarado *d = g_declarados; d; d = d->prox)
+        if (i-- == 0) return d->nome;
     return NULL;
 }
 

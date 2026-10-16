@@ -1830,6 +1830,67 @@ async function main() {
     conf('fora de model, parênteses de chamada não oferecem os parâmetros do campo', !L5.includes('regex='), L5.slice(0, 6));
   }
 
+  /* ── o C na Jinga (Plano 1): os nomes do C em todo arquivo, sem import,
+   * DEPOIS dos da Jinga — hover, assinatura e completion, da chave `c` do
+   * `--metadata` (a tabela do motor) ── */
+  {
+    const src = 'size_t n = strlen("abc")\n'      // 0
+              + 'printf("%d\\n", n)\n'            // 1
+              + 'post(round(2.5))\n'              // 2
+              + 'vprintf("x", NULL)\n'            // 3
+              + 'FILE *f = NULL\n'                // 4
+              + 'int e = EOF\n'                   // 5
+              + 'struct tm *t = NULL\n'           // 6
+              + 'unsigned u = 1\n'                // 7
+              + 'qsort(';                         // 8
+    const hov = (id, l, c) => ({ jsonrpc: '2.0', id, method: 'textDocument/hover',
+      params: { textDocument: { uri: URI }, position: { line: l, character: c } } });
+    const m = await conversa(src, [
+      hov(20, 0, 1), hov(21, 0, 12), hov(22, 2, 6), hov(23, 3, 2), hov(24, 4, 1), hov(25, 5, 9),
+      hov(26, 6, 7), hov(27, 7, 2),
+      { jsonrpc: '2.0', id: 28, method: 'textDocument/signatureHelp',
+        params: { textDocument: { uri: URI }, position: { line: 8, character: 6 } } },
+    ]);
+    const tx = (id) => { const r = resp(m, id); return r && r.result && r.result.contents ? r.result.contents.value : ''; };
+    conf('hover do tipo do C mostra o typedef e o cabeçalho', tx(20).includes('typedef') && tx(20).includes('size_t')
+         && tx(20).includes('stddef.h'), tx(20));
+    conf('hover da função do C mostra o protótipo do padrão e o cabeçalho',
+         tx(21).includes('size_t strlen(const char *s)') && tx(21).includes('string.h'), tx(21));
+    conf('hover de nome que existe nos dois (round) é o da Jinga', tx(22).includes('builtin') && !tx(22).includes('math.h'), tx(22));
+    conf('hover do que fica de fora diz o motivo', tx(23).includes('fica de fora') && tx(23).includes('va_list'), tx(23));
+    conf('hover do tipo opaco diz que só existe atrás de ponteiro', tx(24).includes('FILE *') && tx(24).includes('stdio.h'), tx(24));
+    conf('hover da constante do C mostra o tipo e o valor neste sistema', tx(25).includes('int EOF') && tx(25).includes('`-1`'), tx(25));
+    conf('hover do tag de struct mostra o struct do padrão com os campos',
+         tx(26).includes('struct tm {') && tx(26).includes('tm_year'), tx(26));
+    conf('hover da palavra do C diz o papel dela', tx(27).includes('palavra de tipo do C'), tx(27));
+    const sh = resp(m, 28);
+    const sig = sh && sh.result && sh.result.signatures[0] ? sh.result.signatures[0] : null;
+    conf('signatureHelp da função do C é o protótipo, com o ponteiro de função como UM parâmetro',
+         !!sig && sig.label.startsWith('void qsort(') && sig.parameters.length === 4
+         && sig.parameters[3].label.startsWith('int (*compar)(') && sig.label.includes(sig.parameters[3].label), sig);
+  }
+  {
+    const src = 'strle';
+    const m = await conversa(src + '\n', [compl(30, 0, src.length)]);
+    const r = resp(m, 30);
+    const its = r && r.result ? (Array.isArray(r.result) ? r.result : r.result.items || []) : [];
+    const it = its.find((i) => i.label === 'strlen');
+    conf('completion oferece a função do C com o protótipo e o cabeçalho, depois dos nomes da Jinga',
+         !!it && it.detail.includes('size_t strlen(') && it.detail.includes('string.h') && it.sortText.startsWith('5'), it);
+    const rotulosC = its.map((i) => i.label);
+    conf('completion não oferece o que fica de fora (vprintf) e mantém o round da Jinga',
+         !rotulosC.includes('vprintf') && (its.find((i) => i.label === 'round') || {}).detail.startsWith('builtin'),
+         its.filter((i) => i.label === 'round' || i.label === 'vprintf'));
+  }
+  {
+    /* dentro da chamada da função do C, nada de `nome=`: ela não recebe
+     * argumento com nome */
+    const src = 'strlen(';
+    const m = await conversa(src + '\n', [compl(31, 0, src.length)]);
+    const L = rotulos(resp(m, 31));
+    conf('dentro da chamada da função do C não se oferece parâmetro com nome', !L.some((x) => x.endsWith('=')), L.slice(0, 6));
+  }
+
   apagaPastaDeTeste();
   console.log('');
   const naoRodaram = pulos ? `; ${pulos} PULARAM (ver os PULOU acima)` : '';

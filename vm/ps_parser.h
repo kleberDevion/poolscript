@@ -82,6 +82,10 @@ void           ps_parse_inc_fecha(PSParserInc *pi, PSTokenList **lexer);
 /* Os tipos que abrem declaração (`list l = []`), terminados em NULL. Fonte
  * única: a tabela que o próprio parser consulta; o `--metadata` a publica. */
 const char *const *ps_parser_tipos_decl(void);
+/* A i-ésima palavra do C que o parser lê (`unsigned`, `const`, `struct`,
+ * `sizeof`...), com o papel dela ("tipo", "qualificador", "declaracao",
+ * "operador"); NULL depois da última. */
+const char *ps_parser_palavra_c(int i, const char **papel);
 
 /* `static`, `nonnull`, `NonNull`: modificadores da cabeça de funct que não
  * são palavra reservada (valem por posição). Terminada em NULL. */

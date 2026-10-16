@@ -50,6 +50,19 @@ funct nomes_de(meta) {
     for each t in meta["tipos_nomes"] {
         if not tipos.contains(t) { addEnd(tipos, t) }
     }
+    # Os nomes de tipo do C (Plano 1): as palavras que o parser lê no tipo do C
+    # (`unsigned`, `const`, `struct`...; o `sizeof` é operador e fica de fora)
+    # e os tipos da biblioteca padrão escritos numa palavra só (`size_t`,
+    # `FILE`; o `struct tm` pinta pelo `struct`). Tudo do `--metadata`.
+    for each pc in meta["c_palavras"] {
+        if pc["papel"] != "operador" and not tipos.contains(pc["nome"]) { addEnd(tipos, pc["nome"]) }
+    }
+    for each cab in meta["c"].keys() {
+        for each ct in meta["c"][cab]["tipos"] {
+            str nome_c = ct["nome"]
+            if nome_c.find(" ") < 0 and not tipos.contains(nome_c) { addEnd(tipos, nome_c) }
+        }
+    }
     builtins = []
     for each b in meta["builtins"] {
         addEnd(builtins, b["nome"])

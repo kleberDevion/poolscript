@@ -67,7 +67,15 @@ syn match   psModelParam "\<\%(length\|regex\|in\|not_in\|min\|max\|optional\|of
 " ── tipos ───────────────────────────────────────────────────────────────────
 " GERADO: tipos
 syn keyword psType     str int flo bool list dict tup char Object long byte
-      \ type PoolFile
+      \ type PoolFile void short float double signed unsigned _Bool const
+      \ volatile restrict struct union typedef imaxdiv_t double_t float_t
+      \ max_align_t ptrdiff_t size_t wchar_t int16_t int32_t int64_t int8_t
+      \ int_fast16_t int_fast32_t int_fast64_t int_fast8_t int_least16_t
+      \ int_least32_t int_least64_t int_least8_t intmax_t intptr_t uint16_t
+      \ uint32_t uint64_t uint8_t uint_fast16_t uint_fast32_t uint_fast64_t
+      \ uint_fast8_t uint_least16_t uint_least32_t uint_least64_t
+      \ uint_least8_t uintmax_t uintptr_t FILE fpos_t div_t ldiv_t lldiv_t
+      \ clock_t time_t
 " Apelidos de tipo (`string s = "a"`): valem por POSIÇÃO, só onde um tipo vale.
 " Fora dali são nome comum — `string = "a"` é variável, e não pode pintar.
 " GERADO: apelidos
@@ -119,6 +127,11 @@ syn match   psNumber  "\<\%(0[xX]\x\+\|0[oO]\o\+\|0[bB][01]\+\|\d\+\.\=\d*\%([eE
 " ── chamadas ────────────────────────────────────────────────────────────────
 syn match psCall "\<[A-Za-z_]\w*\ze\s*("
 
+" ── o C na Jinga ────────────────────────────────────────────────────────────
+" O `->` do C (o campo pelo ponteiro, `p->x`). Os tipos do C (`size_t`,
+" `unsigned`, `struct`) entram na lista gerada de psType.
+syn match psArrow "->"
+
 " ── ligação com o tema ──────────────────────────────────────────────────────
 " Uma por grupo: `hi def link` é o PRIMEIRO que vale, então repetir o mesmo
 " grupo com outro alvo seria linha morta.
@@ -150,6 +163,7 @@ hi def link psNull         Constant
 hi def link psDunder       Constant
 hi def link psNumber       Number
 hi def link psCall         @function.call
+hi def link psArrow        Operator
 
 " o bloco """ é multi-linha: sem isto o Vim sincroniza algumas linhas atrás
 " e perde o meio do comentário
