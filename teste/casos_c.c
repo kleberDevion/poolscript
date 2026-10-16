@@ -7,6 +7,10 @@
  * (que é o Null da Jinga), o ponteiro opaco que uma função devolve (FILE *,
  * char *), o errno, e os erros: argumento do tipo errado, quantidade, o
  * formato do printf, o nome que fica de fora, o tipo usado como valor.
+ * Fatia 2: ponteiro e memória: a declaração com tipo do C, `*p`, `p[i]`,
+ * `&x` (a variável que mora numa caixa na memória do C), `sizeof`, a conta e
+ * a comparação de ponteiro, a conversão em toda escrita, e o `*` de lista,
+ * que continua espalhando.
  */
 #include "ps_teste.h"
 
@@ -112,6 +116,79 @@ const Caso CASOS_C[] = {
   "NameError: size_t é tipo do C (stddef.h): vale em declaração, cast e sizeof, e não como valor", 2 },
 { "C: nome que não é da Jinga nem do C continua NameError",
   "post(printff(1))\n", "", "NameError: name 'printff' is not defined", 2 },
+/* ── fatia 2: ponteiro e memória ──────────────────────────────────────── */
+{ "C: malloc, ponteiro e conta com ponteiro (exemplo 2 do plano)",
+  "int n = 5\nint *v = malloc(n * sizeof(int))\nint i = 0\nwhile (i < n) {\n    v[i] = i * i\n    i++\n}\n"
+  "int *p = v + 2\nprintf(\"%d %d %d\\n\", *p, p[1], *(v + 4))\nprintf(\"%td %zu\\n\", p - v, sizeof(int))\nfree(v)\n",
+  "4 9 16\n2 4", NULL, 0 },
+{ "C: &x de variável da Jinga mora no int do C (exemplo 4 do plano, com sscanf)",
+  "int idade = 0\nif sscanf(\"41\", \"%d\", &idade) == 1 {\n    printf(\"ano que vem: %d\\n\", idade + 1)\n}\n",
+  "ano que vem: 42", NULL, 0 },
+{ "C: a conta é da Jinga, a memória do C dá a volta (a regra do plano)",
+  "int x = 2147483647\nx = x + 1\nint *p = malloc(sizeof(int))\n*p = x\nchar c = \"a\"\n"
+  "post(x, *p, c, sizeof(int))\nfree(p)\n",
+  "2147483648 -2147483648 a 4", NULL, 0 },
+{ "C: variável com tipo do C converte em toda escrita (size_t, unsigned char, float)",
+  "size_t n = 5\nn = n - 6\nunsigned char b = 255\nb++\ndouble d = 1.5\nfloat f = 0.1\nconst int k = 7\n"
+  "post(n, b, d, f, k)\n",
+  "18446744073709551615 0 1.5 0.10000000149011612 7", NULL, 0 },
+{ "C: const char * aponta no texto da Jinga, e str() traz de volta",
+  "const char *s = \"abc\"\npost(str(s), type(s), strlen(s))\n",
+  "abc const char * 3", NULL, 0 },
+{ "C: comparação e conta de ponteiro, escrita aumentada",
+  "int *a = calloc(2, sizeof(int))\nint *b = a + 1\npost(b > a, b - a, a == b, a + 1 == b, b != NULL)\n"
+  "*a += 5\na[1] = 7\na[1] += 1\nb -= 1\npost(*a, a[1], b == a)\nb++\npost(*b)\nfree(a)\n",
+  "True 1 False True True\n5 8 True\n8", NULL, 0 },
+{ "C: sizeof de tipo e de expressão",
+  "int *p = NULL\npost(sizeof(char), sizeof(double), sizeof(long long), sizeof(int *), sizeof p, sizeof(*p))\n",
+  "1 8 8 8 8 4", NULL, 0 },
+{ "C: void * vira qualquer ponteiro, e int * só vira char * com cast",
+  "void *v = malloc(4)\nint *ip = v\n*ip = 42\npost(*ip)\nchar *q = ip\n",
+  "42", "TypeError: int * não vira char *", 1 },
+{ "C: inteiro não vira ponteiro sem cast",
+  "int *p = 5\n", "", "TypeError: int não vira int * sem cast", 1 },
+{ "C: o str da Jinga não entra onde o C escreve (char *)",
+  "char *s = \"abc\"\n", "",
+  "TypeError: o str da Jinga só entra no C como const char * (char * escreve no texto): copie pra um buffer", 1 },
+{ "C: const do C não muda depois da declaração",
+  "const int x = 1\nx = 2\n", "", "TypeError: variável x é const int: não muda depois da declaração", 2 },
+{ "C: void e FILE não valem como variável",
+  "FILE f = Null\n", "", "TypeError: FILE só existe atrás de ponteiro: declare FILE * (variável f)", 2 },
+{ "C: operador que não vale com ponteiro",
+  "int *p = malloc(4)\npost(p * 2)\n", "", "TypeError: o operador * não vale com ponteiro do C (int * e int)", 2 },
+{ "C: * em valor que não é ponteiro do C",
+  "list l = [1]\nint y = *l\n", "", "TypeError: * só vale em ponteiro do C; veio list", 1 },
+{ "C: &x em funct, com a volta do int de 4 bytes e x++",
+  "int funct le() {\n    int n = 0\n    sscanf(\"123\", \"%d\", &n)\n    return n\n}\n"
+  "int x = 0\nint *p = &x\n*p = 5\npost(le(), x)\nx = 3000000000\npost(x, *p)\nx++\npost(x)\n",
+  "123 5\n-1294967296 -1294967296\n-1294967295", NULL, 0 },
+{ "C: &x de variável capturada pela funct de dentro, e flo com %lf",
+  "int funct f() {\n    int a = 1\n    int funct g() {\n        int *pa = &a\n        *pa = 40\n        return *pa\n    }\n"
+  "    int r = g()\n    return r + a\n}\nflo d = 0.0\nsscanf(\"2.5\", \"%lf\", &d)\npost(f(), d * 2)\n",
+  "80 5.0", NULL, 0 },
+{ "C: funct escrita antes lê o global que mora na memória do C",
+  "Null funct mostra() {\n    post(g)\n}\nint g = 7\nint *pg = &g\n*pg = 9\nmostra()\ng = 11\npost(*pg)\n",
+  "9\n11", NULL, 0 },
+{ "C: &x de str é erro, com os tipos que valem",
+  "str s = \"a\"\npost(&s)\n", "",
+  "TypeError: &s: o str não tem tipo na memória do C (int, flo, bool, char, long ou um tipo do C)", 2 },
+{ "C: lista continua espalhando e desempacotando (o * do C é só pra ponteiro)",
+  "list l = [1, 2]\nlist a = [3]\npost(*l)\npost(*l + a)\npost(*(l + a))\n*l = [9, 8]\npost(l)\n",
+  "1 2\n1 2 3\n1 2 3\n[9, 8]", NULL, 0 },
+{ "C: sizeof que o programa declarou é dele",
+  "Null funct sizeof(int v) {\n    post(\"meu\", v)\n}\nsizeof(3)\n", "meu 3", NULL, 0 },
+{ "C: o cast é do C: int e char do C, a volta no tamanho, o flo cortado",
+  "int x = 5\npost((int) x, (int)(3.7), (char)(65), (long)(5), (bool)(2))\n"
+  "post((int)(2 ** 40), (unsigned char) 300, (double) 3, (float) 0.1, (int) -2.9)\n",
+  "5 3 65 5 True\n0 44 3.0 0.10000000149011612 -2", NULL, 0 },
+{ "C: tipo só da Jinga entre parênteses continua a chamada ((flo)(2), (str)(5))",
+  "post((flo)(2), (str)(5))\n", "2.0 5", NULL, 0 },
+{ "C: cast de ponteiro (void * pra int *, a forma do comparador do qsort)",
+  "void *v = malloc(8)\nint *ip = (int *) v\n*ip = 7\npost(*(int *) v, *(const int *) v - 2, type((char *) ip))\n"
+  "size_t a = (size_t) ip\npost(a > 0, (int *) a == ip)\nfree(v)\n",
+  "7 5 char *\nTrue True", NULL, 0 },
+{ "C: o cast liga como o unário do C",
+  "int x = 5\npost((int)(x) + 1, (int) x ** 2, -(int) x)\n", "6 25 -5", NULL, 0 },
 };
 
 const int NC_C = N_CASOS(CASOS_C);

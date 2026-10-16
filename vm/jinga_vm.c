@@ -877,12 +877,15 @@ typedef struct {
 /* Dado do C. `ptr` é o endereço onde as operações agem: o valor de um
  * ponteiro (`int *`, `FILE *`) ou a memória de um array, struct ou caixa.
  * `tam_dono` > 0 = a memória é deste objeto e sai com ele (como a variável
- * do C, que acaba com o escopo dela); 0 = é de outro (o ponteiro). */
+ * do C, que acaba com o escopo dela); 0 = é de outro (o ponteiro). `dono`:
+ * o valor da Jinga em cuja memória o ponteiro aponta (o texto de um `const
+ * char *s = "..."`), que o coletor mantém vivo junto (GC_ONE). */
 typedef struct {
     Obj      obj;
     PSCTipo *tipo;
     void    *ptr;
     size_t   tam_dono;
+    Value    dono;
 } PSCDado;
 
 /* Dict COMPACTO: um array denso em ordem de inserção
@@ -2416,7 +2419,7 @@ static const GcInfo GC_INFO[OBJ__COUNT] = {
     [OBJ_MANPU_FILE] = { GC_LEAF, 0, NULL, 0, fin_manpu_file },
     [OBJ_BIGINT]     = { GC_LEAF, 0, NULL, sizeof(PSBigInt), fin_bigint },
     [OBJ_CFUNC]      = { GC_LEAF, 0, NULL, sizeof(PSCFuncObj), NULL },
-    [OBJ_CDADO]      = { GC_LEAF, 0, NULL, sizeof(PSCDado), fin_cdado },
+    [OBJ_CDADO]      = { GC_ONE,  offsetof(PSCDado, dono), NULL, sizeof(PSCDado), fin_cdado },
 };
 
 /* Boot: recusa qualquer ObjType que não declarou seu tracer (GC_UNSET).
@@ -2810,8 +2813,10 @@ static int32_t acha_metodo(PSClass *cl, const char *nome, Value *valor)
     for (int32_t i = 0; i < cl->nmetodos; i++)
         /* `met_nomes[i]` NULL não pode derrubar a busca: quem monta a classe já
          * mantém o contador coerente, mas esta função é chamada de todo lugar
-         * e é barato não confiar. */
-        if (cl->met_nomes[i] && strcmp(cl->met_nomes[i], nome) == 0) {
+         * e é barato não confiar. A 1ª letra antes do strcmp, como no
+         * acha_metodo_valor: o custo do strcmp da glibc depende do endereço
+         * dos dois textos. */
+        if (cl->met_nomes[i] && cl->met_nomes[i][0] == nome[0] && strcmp(cl->met_nomes[i], nome) == 0) {
             if (valor) *valor = cl->met_valores ? cl->met_valores[i] : MK_FUNC(cl->met_protos[i]);
             return cl->met_protos[i];
         }
@@ -11464,7 +11469,7 @@ static const char *classe_tipo_campo(const PSClass *c, const char *nome)
 {
     if (!c) return NULL;
     for (int32_t i = 0; i < c->ntip; i++)
-        if (strcmp(c->tip_nomes[i], nome) == 0) return c->tip_tipos[i];
+        if (c->tip_nomes[i][0] == nome[0] && strcmp(c->tip_nomes[i], nome) == 0) return c->tip_tipos[i];
     for (int32_t i = 0; i < c->npais; i++) {
         const char *t = classe_tipo_campo(c->pais[i], nome);
         if (t) return t;
@@ -25797,6 +25802,7 @@ static PSCDado *c_novo_dado(VM *vm, PSCTipo *tipo, void *ptr, size_t tam_dono)
     d->obj.type = OBJ_CDADO; d->obj.marked = 0;
     d->obj.next = vm->objetos; vm->objetos = (Obj *)d;
     d->tipo = tipo; d->ptr = ptr; d->tam_dono = tam_dono;
+    d->dono = MK_NULL();
     vm->alocado += sizeof *d + tam_dono;
     return d;
 }
@@ -25906,6 +25912,18 @@ static int c_ponteiro_aceita(PSCTipo *t, PSCDado *d)
 
 static int c_erro_arg(VM *vm, const char *fn, int pos, const char *conv, PSCTipo *t, Value v)
 {
+    /* pos < 0: a escrita na memória do C (`int *p = 5`, `*p = "a"`), a frase
+     * do plano: o inteiro não vira ponteiro sem cast, e o flo não vira
+     * inteiro calado */
+    if (pos < 0) {
+        PSCTipo *nu = c_tipo_nu(t);
+        const char *vt = nome_do_tipo_valor(v);
+        if (nu->kind == PSC_PONT && (v.t == V_INT || v.t == V_BOOL || EH_BIGINT(v)))
+            BERRO(vm, "TypeError", "%s não vira %s sem cast", vt, t->nome);
+        if ((nu->kind == PSC_INT || nu->kind == PSC_BOOL) && v.t == V_FLOAT)
+            BERRO(vm, "TypeError", "flo não vira %s calado: converta com int(x)", t->nome);
+        BERRO(vm, "TypeError", "%s não vira %s", vt, t->nome);
+    }
     if (conv)
         BERRO(vm, "TypeError", "%s: %s espera %s, recebeu %s", fn, conv, t->nome, nome_do_tipo_valor(v));
     BERRO(vm, "TypeError", "%s(): o argumento %d é %s no C, e veio %s", fn, pos + 1, t->nome,
@@ -25966,6 +25984,9 @@ static int c_arg(VM *vm, const char *fn, int pos, Value v, PSCTipo *t, void *mem
                 PSCTipo *alvo = nu->alvo;
                 PSCTipo *alvo_nu = c_tipo_nu(alvo);
                 int de_ler = alvo->constante && (c_eh_char(alvo_nu) || alvo_nu->kind == PSC_VOID);
+                if (!de_ler && (c_eh_char(alvo_nu) || alvo_nu->kind == PSC_VOID) && pos < 0)
+                    BERRO(vm, "TypeError", "o %s da Jinga só entra no C como const char * (%s escreve "
+                          "no texto): copie pra um buffer", nome_do_tipo_valor(v), t->nome);
                 if (!de_ler && (c_eh_char(alvo_nu) || alvo_nu->kind == PSC_VOID))
                     BERRO(vm, "TypeError", "%s() altera o texto (%s), e o %s da Jinga só entra como "
                           "const char *: copie pra um buffer", fn, t->nome, nome_do_tipo_valor(v));
@@ -26332,6 +26353,358 @@ static int c_liga_global(VM *vm, int32_t slot, int32_t idx)
     }
     vm->globals[slot] = v;
     return 0;
+}
+
+/* ── a memória do C (fatia 2): ler, gravar, converter ─────────────────────
+ * Ler é no tamanho exato do tipo: o `c_retorno` lê o registrador largo da
+ * libffi, e na memória o vizinho do `int` é outro dado. Gravar é a regra da
+ * chamada (`c_arg`, com a frase da escrita: pos -1). Converter, pra variável
+ * com tipo do C (`size_t n`, `int *p`), é gravar num rascunho e ler de volta:
+ * o inteiro dá a volta no tamanho dele, e o ponteiro passa a ter o tipo
+ * declarado (`int *p = malloc(4)` guarda um `int *`). */
+static int c_le_mem(VM *vm, PSCTipo *t, const void *mem, Value *out)
+{
+    PSCTipo *nu = c_tipo_nu(t);
+    switch (nu->kind) {
+        case PSC_BOOL: {
+            unsigned char b;
+            memcpy(&b, mem, 1);
+            *out = MK_BOOL(b != 0);
+            return 0;
+        }
+        case PSC_INT:
+            if (nu->sem_sinal) {
+                uint64_t u = 0;
+                switch (nu->tam) {
+                    case 1: { uint8_t x;  memcpy(&x, mem, 1); u = x; break; }
+                    case 2: { uint16_t x; memcpy(&x, mem, 2); u = x; break; }
+                    case 4: { uint32_t x; memcpy(&x, mem, 4); u = x; break; }
+                    default: memcpy(&u, mem, 8); break;
+                }
+                *out = c_valor_u64(vm, u);
+            } else {
+                int64_t s = 0;
+                switch (nu->tam) {
+                    case 1: { int8_t x;  memcpy(&x, mem, 1); s = x; break; }
+                    case 2: { int16_t x; memcpy(&x, mem, 2); s = x; break; }
+                    case 4: { int32_t x; memcpy(&x, mem, 4); s = x; break; }
+                    default: memcpy(&s, mem, 8); break;
+                }
+                *out = MK_INT(s);
+            }
+            return 0;
+        case PSC_FLUT: {
+            double d;
+            if (nu == &ps_c_float) { float f; memcpy(&f, mem, sizeof f); d = f; }
+            else if (nu == &ps_c_ldouble) { long double ld; memcpy(&ld, mem, sizeof ld); d = (double)ld; }
+            else memcpy(&d, mem, sizeof d);
+            *out = MK_FLOAT(d);
+            return 0;
+        }
+        case PSC_PONT: {
+            void *q;
+            memcpy(&q, mem, sizeof q);
+            return c_valor_ponteiro(vm, t, q, out);
+        }
+        default:
+            BERRO(vm, "TypeError", "o %s da memória do C ainda não vira valor da Jinga", t->nome);
+    }
+}
+
+static int c_grava_mem(VM *vm, PSCTipo *t, void *mem, Value v)
+{
+    PSCTipo *nu = c_tipo_nu(t);
+    if (nu->kind != PSC_INT && nu->kind != PSC_BOOL && nu->kind != PSC_FLUT && nu->kind != PSC_PONT)
+        BERRO(vm, "TypeError", "o %s do C ainda não recebe valor da Jinga", t->nome);
+    return c_arg(vm, NULL, -1, v, t, mem, NULL);
+}
+
+/* O ponteiro que nasce de outro dado do C (a conversão, a conta) mantém viva
+ * a memória que ele aponta: a do dado dono dela, ou o texto da Jinga que o
+ * outro já guardava. */
+static void c_herda_dono(Value novo, Value de)
+{
+    if (!EH_CDADO(novo) || !EH_CDADO(de)) return;
+    PSCDado *o = COMO_CDADO(de);
+    COMO_CDADO(novo)->dono = o->tam_dono ? de : o->dono;
+}
+
+/* `v` no tipo do C `t` (variável declarada com tipo do C) */
+static int c_converte(VM *vm, PSCTipo *t, Value v, Value *out)
+{
+    if (EH_CDADO(v) && COMO_CDADO(v)->tipo == t) { *out = v; return 0; }
+    PSCTipo *nu = c_tipo_nu(t);
+    if (nu->kind == PSC_VOID) BERRO(vm, "TypeError", "void não guarda valor");
+    if (nu->kind == PSC_OPACO)
+        BERRO(vm, "TypeError", "%s só existe atrás de ponteiro: declare %s *", t->nome, t->nome);
+    union { long double ld; void *p; unsigned char b[16]; } mem;
+    memset(&mem, 0, sizeof mem);
+    if (c_grava_mem(vm, t, &mem, v) != 0) return -1;
+    if (nu->kind == PSC_PONT && (EH_STRING(v) || EH_BYTES(v))) {
+        /* `const char *s = "..."`: aponta no texto da Jinga, que fica vivo
+         * enquanto o ponteiro existir */
+        PSCDado *d = c_novo_dado(vm, t, mem.p, 0);
+        if (!d) BERRO(vm, "MemoryError", "sem memoria");
+        d->dono = v;
+        *out = MK_OBJ(d);
+        return 0;
+    }
+    if (c_le_mem(vm, t, &mem, out) != 0) return -1;
+    c_herda_dono(*out, v);
+    return 0;
+}
+
+/* `(T) v`, o cast do C (C11 6.5.4 e 6.3): o que a escrita não converte
+ * calada, o cast converte porque foi pedido. Inteiro e ponteiro viram um o
+ * outro (o endereço), o flo vira inteiro cortado na direção do zero, todo
+ * ponteiro vira qualquer ponteiro, `(void) v` descarta, e o resto é a
+ * conversão da escrita (o inteiro dá a volta no tamanho do tipo). struct e
+ * array não são destino de cast no C. */
+static int c_cast(VM *vm, PSCTipo *t, Value v, Value *out)
+{
+    PSCTipo *nu = c_tipo_nu(t);
+    switch (nu->kind) {
+        case PSC_VOID:
+            *out = MK_NULL();
+            return 0;
+        case PSC_BOOL:
+            if (v.t == V_FLOAT) { *out = MK_BOOL(v.as.d != 0.0); return 0; }
+            if (v.t == V_NULL)  { *out = MK_BOOL(0); return 0; }
+            if (EH_CDADO(v))    { *out = MK_BOOL(COMO_CDADO(v)->ptr != NULL); return 0; }
+            return c_converte(vm, t, v, out);
+        case PSC_INT: {
+            Value w = v;
+            if (v.t == V_FLOAT) {
+                double d = v.as.d;
+                if (d != d) BERRO(vm, "ValueError", "o flo nan não vira %s", t->nome);
+                if (nu->sem_sinal && d >= 0.0 && d < 18446744073709551616.0)
+                    w = c_valor_u64(vm, (uint64_t)d);
+                else if (d > -9223372036854775809.0 && d < 9223372036854775808.0)
+                    w = MK_INT((int64_t)d);
+                else
+                    BERRO(vm, "OverflowError", "o flo %g não cabe em %s", d, t->nome);
+            } else if (v.t == V_NULL) {
+                w = MK_INT(0);
+            } else if (EH_CDADO(v)) {
+                w = c_valor_u64(vm, (uint64_t)(uintptr_t)COMO_CDADO(v)->ptr);
+            }
+            return c_converte(vm, t, w, out);
+        }
+        case PSC_FLUT:
+            if (EH_CDADO(v) || v.t == V_NULL)
+                BERRO(vm, "TypeError", "ponteiro não vira %s nem com cast", t->nome);
+            return c_converte(vm, t, v, out);
+        case PSC_PONT:
+            if (v.t == V_NULL) { *out = MK_NULL(); return 0; }
+            if (EH_CDADO(v)) {
+                if (c_valor_ponteiro(vm, t, COMO_CDADO(v)->ptr, out) != 0) return -1;
+                c_herda_dono(*out, v);
+                return 0;
+            }
+            if (v.t == V_INT || v.t == V_BOOL || EH_BIGINT(v)) {
+                uint64_t u = v.t == V_INT ? (uint64_t)v.as.i
+                           : v.t == V_BOOL ? (uint64_t)v.as.b : c_mpz_mod64(COMO_BIGINT(v)->v);
+                return c_valor_ponteiro(vm, t, (void *)(uintptr_t)u, out);
+            }
+            if (EH_STRING(v) || EH_BYTES(v)) {
+                /* o texto da Jinga, pelo endereço dele, vivo enquanto o ponteiro existir */
+                PSCDado *d = c_novo_dado(vm, t, (void *)COMO_STRING(v)->chars, 0);
+                if (!d) BERRO(vm, "MemoryError", "sem memoria");
+                d->dono = v;
+                *out = MK_OBJ(d);
+                return 0;
+            }
+            BERRO(vm, "TypeError", "%s não vira %s nem com cast", nome_do_tipo_valor(v), t->nome);
+        default:
+            BERRO(vm, "TypeError", "o C não tem cast pra %s", t->nome);
+    }
+}
+
+/* O tipo do C escrito numa constante do programa ("int *", "size_t"), lido
+ * uma vez: o leitor de declarações do C não roda a cada escrita. A chave é a
+ * própria constante, com o tamanho e o hash, pra outra string que ocupe o
+ * mesmo endereço depois não pegar o tipo desta. */
+static PSCTipo *c_tipo_const(VM *vm, Value k)
+{
+    static struct { const PSString *s; int32_t len; uint32_t hash; PSCTipo *t; } cache[64];
+    if (!EH_STRING(k)) {
+        snprintf(vm->erro, sizeof(vm->erro), "C_OP: o tipo do C não está numa constante de texto");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+        return NULL;
+    }
+    PSString *s = COMO_STRING(k);
+    uint32_t h = str_hash(s);
+    unsigned i = (unsigned)(((uintptr_t)s >> 4) ^ h) & 63u;
+    if (cache[i].s == s && cache[i].len == s->len && cache[i].hash == h) return cache[i].t;
+    PSCTipo *t = ps_c_tipo_por_nome(s->chars);
+    if (!t) {
+        snprintf(vm->erro, sizeof(vm->erro), "%.200s não é tipo do C", s->chars);
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+        return NULL;
+    }
+    cache[i].s = s; cache[i].len = s->len; cache[i].hash = h; cache[i].t = t;
+    return t;
+}
+
+/* O endereço de `p[i]` e o tipo do elemento. `conhecido`: o compilador sabe
+ * pelo tipo declarado que `p` é ponteiro do C, e aí o Null é o ponteiro nulo
+ * do C: o endereço 0, que derruba na leitura, como no C. Sem isso, o Null é
+ * o valor da Jinga e `*x` dele é TypeError. */
+static int c_endereco(VM *vm, Value p, int64_t i, int conhecido, const char *op, void **m, PSCTipo **elem)
+{
+    char *base;
+    PSCTipo *t;
+    if (p.t == V_NULL && conhecido) {
+        base = NULL;
+        t = NULL;
+    } else if (EH_CDADO(p)) {
+        PSCDado *d = COMO_CDADO(p);
+        PSCTipo *nu = c_tipo_nu(d->tipo);
+        if (nu->kind != PSC_PONT && nu->kind != PSC_ARRAY)
+            BERRO(vm, "TypeError", "%s só vale em ponteiro do C; veio %s", op, d->tipo->nome);
+        base = d->ptr;
+        t = nu->alvo;
+    } else {
+        BERRO(vm, "TypeError", "%s só vale em ponteiro do C; veio %s", op, nome_do_tipo_valor(p));
+    }
+    if (t) {
+        PSCTipo *tn = c_tipo_nu(t);
+        if (tn->kind == PSC_VOID)
+            BERRO(vm, "TypeError", "void * não se lê nem se escreve: converta pro tipo do dado ((int *) p)");
+        if (tn->kind == PSC_OPACO)
+            BERRO(vm, "TypeError", "%s não se lê nem se escreve: só se usa pelo ponteiro", t->nome);
+        if (tn->kind == PSC_FUNC)
+            BERRO(vm, "TypeError", "ponteiro de função não se lê nem se escreve");
+        base += i * (int64_t)tn->tam;
+    } else {
+        /* o ponteiro nulo de tipo conhecido: o endereço 0 (mais o índice)
+         * e o tipo int, que basta pra ler e derrubar como no C */
+        t = &ps_c_int;
+        base += i * (int64_t)sizeof(int);
+    }
+    *m = base;
+    *elem = t;
+    return 0;
+}
+
+static int c_indice_de(VM *vm, Value v, int64_t *i)
+{
+    if (v.t == V_INT) { *i = v.as.i; return 0; }
+    if (v.t == V_BOOL) { *i = v.as.b ? 1 : 0; return 0; }
+    BERRO(vm, "TypeError", "o índice do ponteiro do C é inteiro, e veio %s", nome_do_tipo_valor(v));
+}
+
+/* `p + n` (o passo é o tamanho do apontado) */
+static int c_ptr_soma(VM *vm, Value p, int64_t n, int conhecido, Value *out)
+{
+    void *m;
+    PSCTipo *elem;
+    if (c_endereco(vm, p, n, conhecido, "a conta de ponteiro", &m, &elem) != 0) return -1;
+    PSCTipo *pt = EH_CDADO(p) ? COMO_CDADO(p)->tipo : ps_c_ponteiro(elem);
+    if (c_tipo_nu(pt)->kind == PSC_ARRAY) pt = ps_c_ponteiro(c_tipo_nu(pt)->alvo);   /* o array vira ponteiro */
+    if (c_valor_ponteiro(vm, pt, m, out) != 0) return -1;
+    c_herda_dono(*out, p);
+    return 0;
+}
+
+/* O C_OP do laço (ps_opcodes.def): a pilha está em stack[0..sp). Devolve o
+ * novo topo, ou -1 com o erro na VM. Fora do laço e sem embutir, e o `sp`
+ * vai por valor: com `&sp` o topo da pilha deixava de morar num registrador
+ * no laço inteiro (medido: com JIT, até +0,77% no bench). */
+static __attribute__((noinline)) int c_op_corpo(VM *vm, const Value *consts, Value *stack, int *sp, int32_t arg);
+
+static __attribute__((noinline)) int c_op(VM *vm, const Value *consts, Value *stack, int sp, int32_t arg)
+{
+    return c_op_corpo(vm, consts, stack, &sp, arg) != 0 ? -1 : sp;
+}
+
+static __attribute__((noinline)) int c_op_corpo(VM *vm, const Value *consts, Value *stack, int *sp, int32_t arg)
+{
+    int sub = arg & 15, conhecido = (arg >> 4) & 1;
+    int32_t k = arg >> 5;
+    Value *topo = stack + *sp;
+    void *m;
+    PSCTipo *elem;
+    switch (sub) {
+        case 0: {                                   /* CONVERTE [v] -> [v'] */
+            PSCTipo *t = c_tipo_const(vm, consts[k]);
+            if (!t) return -1;
+            return c_converte(vm, t, topo[-1], &topo[-1]);
+        }
+        case 1:                                     /* LE [p] -> [*p] */
+            if (c_endereco(vm, topo[-1], 0, conhecido, "*", &m, &elem) != 0) return -1;
+            return c_le_mem(vm, elem, m, &topo[-1]);
+        case 2:                                     /* GRAVA [p, v] -> [] */
+            if (c_endereco(vm, topo[-2], 0, conhecido, "*", &m, &elem) != 0) return -1;
+            if (elem->constante) BERRO(vm, "TypeError", "o %s que o ponteiro aponta é const: não se escreve", elem->nome);
+            if (c_grava_mem(vm, elem, m, topo[-1]) != 0) return -1;
+            *sp -= 2;
+            return 0;
+        case 3: {                                   /* LE_IDX [p, i] -> [p[i]] */
+            int64_t i;
+            if (c_indice_de(vm, topo[-1], &i) != 0) return -1;
+            if (c_endereco(vm, topo[-2], i, conhecido, "o índice []", &m, &elem) != 0) return -1;
+            if (c_le_mem(vm, elem, m, &topo[-2]) != 0) return -1;
+            *sp -= 1;
+            return 0;
+        }
+        case 4: {                                   /* GRAVA_IDX [p, i, v] -> [] */
+            int64_t i;
+            if (c_indice_de(vm, topo[-2], &i) != 0) return -1;
+            if (c_endereco(vm, topo[-3], i, conhecido, "o índice []", &m, &elem) != 0) return -1;
+            if (elem->constante) BERRO(vm, "TypeError", "o %s que o ponteiro aponta é const: não se escreve", elem->nome);
+            if (c_grava_mem(vm, elem, m, topo[-1]) != 0) return -1;
+            *sp -= 3;
+            return 0;
+        }
+        case 5: {                                   /* CAIXA [v] -> [ponteiro dono] */
+            PSCTipo *t = c_tipo_const(vm, consts[k]);
+            if (!t) return -1;
+            PSCTipo *nu = c_tipo_nu(t);
+            if (nu->kind == PSC_VOID || nu->kind == PSC_OPACO || nu->kind == PSC_FUNC || !nu->tam)
+                BERRO(vm, "TypeError", "%s não tem endereço na memória do C", t->nome);
+            void *mem = calloc(1, nu->tam);
+            if (!mem) BERRO(vm, "MemoryError", "sem memoria");
+            if (c_grava_mem(vm, t, mem, topo[-1]) != 0) { free(mem); return -1; }
+            PSCTipo *pt = ps_c_ponteiro(t);
+            PSCDado *d = pt ? c_novo_dado(vm, pt, mem, nu->tam) : NULL;
+            if (!d) { free(mem); BERRO(vm, "MemoryError", "sem memoria"); }
+            topo[-1] = MK_OBJ(d);
+            return 0;
+        }
+        case 6: {                                   /* SOMA [p, n] -> [p + n] */
+            int64_t n;
+            if (c_indice_de(vm, topo[-1], &n) != 0) return -1;
+            if (c_ptr_soma(vm, topo[-2], n, conhecido, &topo[-2]) != 0) return -1;
+            *sp -= 1;
+            return 0;
+        }
+        case 8: {                                   /* CAST [v] -> [(T) v] */
+            PSCTipo *t = c_tipo_const(vm, consts[k]);
+            if (!t) return -1;
+            return c_cast(vm, t, topo[-1], &topo[-1]);
+        }
+        case 7: {                                   /* DIF [p, q] -> [p - q] */
+            Value a = topo[-2], b = topo[-1];
+            if (!EH_CDADO(a) || !EH_CDADO(b))
+                BERRO(vm, "TypeError", "p - q pede dois ponteiros do C; veio %s e %s",
+                      nome_do_tipo_valor(a), nome_do_tipo_valor(b));
+            PSCTipo *ta = c_tipo_nu(COMO_CDADO(a)->tipo), *tb = c_tipo_nu(COMO_CDADO(b)->tipo);
+            PSCTipo *ea = (ta->kind == PSC_PONT || ta->kind == PSC_ARRAY) ? ta->alvo : NULL;
+            PSCTipo *eb = (tb->kind == PSC_PONT || tb->kind == PSC_ARRAY) ? tb->alvo : NULL;
+            if (!ea || !eb || !c_mesmo_tipo(ea, eb))
+                BERRO(vm, "TypeError", "p - q pede ponteiros do mesmo tipo: %s e %s",
+                      COMO_CDADO(a)->tipo->nome, COMO_CDADO(b)->tipo->nome);
+            size_t tam = c_tipo_nu(ea)->tam;
+            if (!tam) BERRO(vm, "TypeError", "conta com %s não tem tamanho", COMO_CDADO(a)->tipo->nome);
+            ptrdiff_t dif = (const char *)COMO_CDADO(a)->ptr - (const char *)COMO_CDADO(b)->ptr;
+            topo[-2] = MK_INT((int64_t)(dif / (ptrdiff_t)tam));
+            *sp -= 1;
+            return 0;
+        }
+        default:
+            BERRO(vm, "RuntimeError", "C_OP: operação %d não existe", sub);
+    }
 }
 
 /* despacho de chamada em objetos jinker (usado por OP_CALL/OP_CALL_KW) */
@@ -30836,6 +31209,16 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 int rc_f; REANCORA(rc_f = ger_fecha(vm, COMO_GER(v)));
                 if (rc_f != 0) goto erro_runtime;
             }
+            break;
+        }
+
+        PS_CASE(C_OP) {
+            /* o C na Jinga: ler, gravar e converter na memória do C, fora do
+             * laço (c_op); a sub-operação vem no arg */
+            vm->sp = sp; vm->locals_top = locals_top;
+            int sp_c = c_op(vm, p->consts, stack, sp, arg);
+            if (sp_c < 0) goto erro_runtime;
+            sp = sp_c;
             break;
         }
 

@@ -550,7 +550,7 @@ static void teste_ast(void)
      * quando alguém está depurando outra coisa. */
     grupo("ast/nomes");
     int sem_nome = 0;
-    for (int k = 0; k <= N_UNPACK_TARGET; k++) {
+    for (int k = 0; k <= N_C_STORE; k++) {   /* N_C_STORE: o último do enum */
         const char *nm = ps_node_nome((PSNodeKind)k);
         if (!nm || !strcmp(nm, "?")) { sem_nome++; printf("  kind %d sem nome\n", k); }
     }

@@ -275,6 +275,16 @@ typedef struct {
      * que ela é e a linha; NULL = o nome não nasceu de declaração */
     const char *decl_rotulo;
     int32_t decl_linha;
+    /* Declarado com tipo do C (`int *p`, `size_t n`): o tipo, e `tipo` é o
+     * texto dele. O checador da Jinga não confere esse nome (tp_de dá NULL);
+     * toda escrita passa pela conversão do C (C_OP CONVERTE), e é o tipo que
+     * decide `*p`, `p[i]` e `p + n`. */
+    PSCTipo *ctipo;
+    /* A variável tem o endereço tomado (`&x`) e mora numa caixa na memória do
+     * C, deste tipo (o `int` de 4 bytes de `int idade` com `&idade`): o slot
+     * guarda o ponteiro pra caixa, a leitura é `*caixa` e a escrita grava
+     * nela (C_OP LE e GRAVA). */
+    PSCTipo *caixa;
 } SimInfo;
 
 struct Unidade {
@@ -326,6 +336,11 @@ struct Unidade {
      * TIPO_* da VM + 1. Toda escrita no slot passa pelo OP_COERCE_DECL, nao so
      * a declaracao. */
     unsigned char *tipo_decl;
+    /* Os nomes com o endereço tomado (`&x`) no corpo desta funct: a variável
+     * deles mora numa caixa na memória do C (ver SimInfo.caixa). No módulo, a
+     * lista é a do compilador (`enderecos_mod`), colhida na 1ª passada. */
+    char   **enderecos;
+    int32_t  nenderecos, cap_enderecos;
     /* `int funct` / `bool funct`: 1 = int, 2 = bool, 0 = sem tipo. Faz o
      * RETURN converter Null e faz o corpo inteiro virar um `try` implícito —
      * é o contrato dessas duas declarações: nunca propagam erro. */
@@ -587,6 +602,20 @@ typedef struct {
      * (estático). Vazio = o programa não usa o C, e a tabela nunca é
      * consultada. */
     IdxNomes ix_nomes_c;
+    /* Os nomes de MÓDULO com o endereço tomado (`&x`) em algum comando de
+     * topo, colhidos na 1ª passada: a variável mora numa caixa na memória do
+     * C, e a funct compilada antes da declaração já precisa saber disso. */
+    char   **enderecos_mod;
+    int32_t  nenderecos_mod, cap_enderecos_mod;
+    /* algum `&x` no programa: só então a carga e a escrita de nome perguntam
+     * se ele é caixa (programa sem `&x` não paga nada) */
+    int      ha_enderecos;
+    /* alguma variável declarada com tipo do C (`int *p`): com o
+     * `ix_nomes_c` e o `ha_enderecos`, é a porta do `c_tipo_estatico` */
+    int      tem_tipo_c;
+    /* o comando de topo da 1ª passada tem `&x` (o parser contou): só então
+     * ele é varrido atrás das variáveis com endereço tomado */
+    int      varre_enderecos;
     /* o arquivo importa o jinker: `request` e `channel` são injetados quando
      * o app sobe */
     int      usa_jinker;
@@ -624,7 +653,9 @@ typedef struct {
              unsigned char redefine;
              /* a gravação é a de uma declaração (class/model/enum/funct, o nó
               * em `no`) ligando o nome dela */
-             unsigned char declaracao; } grava;
+             unsigned char declaracao;
+             /* a declaração criou a caixa na memória do C (`&x`): o tipo dela */
+             PSCTipo *caixa; } grava;
     /* Na chamada de SAÍDA de uma funct tipada (`post` dentro de `int funct`):
      * o tipo que cada argumento posicional tem que ter, e o rótulo do erro.
      * `emite_args_e_chama` consome e limpa. */
@@ -2300,8 +2331,13 @@ static void carrega_estatico(C *c, Unidade *u, const char *nome)
  * `k`, como o último nomeado sempre ganha), e o `OP_CALL_EX` espalha os dois
  * no alvo. A única ordem recusada é a que já era: posicional (ou `*x`)
  * depois de nomeado (ou `**d`). */
+static void c_estrela_resolve(C *c, Unidade *u, PSNode *arg);
+
 static void emite_args_e_chama(C *c, Unidade *u, PSNode *no, PSNodeVec *args)
 {
+    /* o `*`/`**` no começo do argumento é o do C quando o operando é ponteiro
+     * do C (`printf("%d", *p)`), e o espalhamento quando é lista */
+    for (int32_t i = 0; i < args->n; i++) c_estrela_resolve(c, u, args->itens[i]);
     /* Chamada de SAÍDA numa funct tipada, com argumento que só se sabe
      * rodando (ver `tp_confere_saida`): a conferência vai logo depois de cada
      * um. Consumido aqui — os argumentos têm as chamadas deles. */
@@ -2421,7 +2457,7 @@ static void emite_decora(C *c, Unidade *u, PSNode *dec, int32_t modo)
 
 static void carrega_nome_sem_estatico(C *c, Unidade *u, const char *nome);
 
-static void carrega_nome(C *c, Unidade *u, const char *nome)
+static void carrega_nome_cru(C *c, Unidade *u, const char *nome)
 {
     /* Campo `static` da Entity em compilação ganha do global e do "resolve em
      * runtime" — mas NÃO de um local: parâmetro com o mesmo nome continua
@@ -2431,6 +2467,20 @@ static void carrega_nome(C *c, Unidade *u, const char *nome)
         return;
     }
     carrega_nome_sem_estatico(c, u, nome);
+}
+
+static PSCTipo *c_caixa_de(C *c, Unidade *u, const char *nome);
+static void emite_c_op(C *c, Unidade *u, int sub, int conhecido, const char *tipo);
+enum { C_OP_CONVERTE = 0, C_OP_LE, C_OP_GRAVA, C_OP_LE_IDX, C_OP_GRAVA_IDX, C_OP_CAIXA, C_OP_SOMA, C_OP_DIF,
+       C_OP_CAST };
+
+/* O valor do nome. A variável com `&x` mora numa caixa na memória do C: o
+ * slot guarda o ponteiro, e o valor é o de dentro da caixa (`carrega_nome_cru`
+ * é o ponteiro, que é o que o `&x` quer). */
+static void carrega_nome(C *c, Unidade *u, const char *nome)
+{
+    carrega_nome_cru(c, u, nome);
+    if (c_caixa_de(c, u, nome)) emite_c_op(c, u, C_OP_LE, 1, NULL);
 }
 
 /* O nome como variável: global, local, célula, captura ou "resolve rodando".
@@ -3032,6 +3082,18 @@ static int tp_aceita(C *c, const char *d, const char *v, PSNode *no, int declara
  * arquivo, tipo que um nativo devolve ou tem tabela, ou nome que um import
  * liga sem que se saiba o que é (a classe pode vir do módulo). */
 static SimInfo *tp_sim_de(C *c, Unidade *u, const char *nome);
+
+/* O tipo escrito é do C (`int *`, `const char *`, `size_t`, `unsigned
+ * long`, `double`)? Tipo da Jinga (`int`, `str`, `String`), classe do arquivo
+ * e objeto nativo (`PoolFile`, `DbCursor`) não: o nome da Jinga ganha. */
+static PSCTipo *tp_tipo_c(C *c, const char *t)
+{
+    if (!t || !*t || ps_tipo_info(t) || strchr(t, '|')) return NULL;
+    if (tp_tipo_decl_arq(c, t)) return NULL;
+    if (ps_retorno_tipo_existe(t) || ps_nativo_tem_membro(t, "type") != -1) return NULL;
+    return ps_c_tipo_por_nome(t);
+}
+
 static int tp_tipo_existe(C *c, Unidade *u, const char *t)
 {
     if (!t) return 1;
@@ -4118,7 +4180,8 @@ static const char *tp_de(C *c, Unidade *u, PSNode *n)
         case N_NAME: {
             if (tp_nome_ligado(c, u, n->texto)) {
                 SimInfo *s = tp_sim_de(c, u, n->texto);
-                return s->estado ? s->tipo : NULL;
+                /* o tipo do C não é tipo da Jinga: o checador não o confere */
+                return s->estado && !s->ctipo ? s->tipo : NULL;
             }
             if (n->texto && strcmp(n->texto, "__name__") == 0) return "str";
             return NULL;
@@ -4606,7 +4669,16 @@ static int tp_escreve(C *c, SimInfo *s, const char *nome)
         s->decl = NULL; s->decorado = 0;
         s->mod_nativo = s->membro_nativo = NULL;
         s->mod_pr = NULL; s->mod_pr_nome = NULL;
+        s->ctipo = tp_tipo_c(c, T);
+        if (s->ctipo) c->tem_tipo_c = 1;
+        s->caixa = c->grava.caixa;
+    } else if (s->ctipo && s->ctipo->constante && c->grava.tem_valor) {
+        /* `const int x = 1` e depois `x = 2`: o C não deixa */
+        terro(c, onde, "TypeError", "variável %s é %s: não muda depois da declaração", nome, s->tipo);
     }
+    /* tipo do C: quem confere e converte é a escrita (C_OP CONVERTE), pelas
+     * regras do C, e não o checador da Jinga */
+    if (s->ctipo) return T_TALVEZ;
     if (c->grava.decl) { s->decl = c->grava.decl; s->decorado = c->grava.decorado; }
     if (c->grava.mod_nativo) { s->mod_nativo = c->grava.mod_nativo; s->membro_nativo = c->grava.membro_nativo; }
     if (c->grava.mod_pr) { s->mod_pr = c->grava.mod_pr; s->mod_pr_nome = c->grava.mod_pr_nome; }
@@ -4645,8 +4717,352 @@ static int tp_escreve(C *c, SimInfo *s, const char *nome)
 /* Depois de `tp_escreve`: o que emitir pra conferir rodando. `cod1` é o tipo
  * da tabela (TIPO_* + 1) que o OP_COERCE_DECL já sabe conferir — e converter,
  * no caso do `char`. */
+/* `conhecido`: o compilador sabe pelo tipo declarado que o operando é ponteiro
+ * do C, e aí o Null é o ponteiro nulo (derruba como no C). `tipo`: o texto do
+ * tipo do C, numa constante (CONVERTE, CAIXA). */
+static void emite_c_op(C *c, Unidade *u, int sub, int conhecido, const char *tipo)
+{
+    int32_t k = tipo ? idx_const(c, u, K_STR, 0, 0, tipo, (int32_t)strlen(tipo)) : 0;
+    emite(c, u, OP_C_OP, (k << 5) | (conhecido ? 16 : 0) | sub);
+}
+
+/* o tipo sem typedef e sem const: o que o C compara */
+static PSCTipo *ct_nu(PSCTipo *t)
+{
+    while (t && (t->canon || t->sem_const)) t = t->canon ? t->canon : t->sem_const;
+    return t;
+}
+
+static int ct_eh_ponteiro(PSCTipo *t)
+{
+    t = ct_nu(t);
+    return t && (t->kind == PSC_PONT || t->kind == PSC_ARRAY);
+}
+
+/* O que o C não deixa numa variável, com a frase; NULL = vale. */
+static const char *c_recusa_variavel(PSCTipo *t, char *buf, size_t cap)
+{
+    PSCTipo *nu = ct_nu(t);
+    switch (nu->kind) {
+        case PSC_VOID:   snprintf(buf, cap, "void não guarda valor"); return buf;
+        case PSC_OPACO:  snprintf(buf, cap, "%s só existe atrás de ponteiro: declare %s *", t->nome, t->nome); return buf;
+        case PSC_FUNC:   snprintf(buf, cap, "%s é tipo de função: a funct vai direto onde o C pede", t->nome); return buf;
+        case PSC_ARRAY:
+        case PSC_STRUCT:
+        case PSC_UNION:  snprintf(buf, cap, "o %s do C ainda não vale como variável: use um ponteiro", t->nome); return buf;
+        default:         return NULL;
+    }
+}
+
+/* O tipo do C da variável da Jinga, pra quem precisa dele na memória do C
+ * (`sizeof x`, `&x`): `int` é o `int` do C, `flo` o double, `bool` o _Bool. */
+static PSCTipo *c_tipo_da_jinga(const char *t)
+{
+    if (!t) return NULL;
+    if (!strcmp(t, "int") || !strcmp(t, "char") || !strcmp(t, "long")) return ps_c_tipo_por_nome(t);
+    if (!strcmp(t, "bool")) return ps_c_tipo_por_nome("_Bool");
+    if (!strcmp(t, "flo")) return ps_c_tipo_por_nome("double");
+    return NULL;
+}
+
+static int fundo_demais(C *c, PSNode *n, int bloco);
+
+/* `nome` é declarado no corpo (N_VAR_DECL em qualquer bloco), sem contar as
+ * funct aninhadas dele */
+static int declara_no_corpo(PSNode *n, const char *nome)
+{
+    while (n) {
+        if (n->kind == N_FUNCT_DECL || n->kind == N_LAMBDA_EXPR || n->kind == N_ENTITY_DECL) return 0;
+        if (n->kind == N_VAR_DECL && n->texto && !strcmp(n->texto, nome)) return 1;
+        if (declara_no_corpo(n->b, nome) || declara_no_corpo(n->c, nome) || declara_no_corpo(n->e, nome)) return 1;
+        for (int32_t i = 0; i < n->lista.n; i++) if (declara_no_corpo(n->lista.itens[i], nome)) return 1;
+        n = n->a;
+    }
+    return 0;
+}
+
+static void junta_enderecos(C *c, PSNode *n, char ***v, int32_t *nv, int32_t *cv);
+
+/* A funct aninhada: o `&x` de lá conta pra quem a envolve quando o `x` não é
+ * dela (nem parâmetro, nem declarado lá dentro) — a closure que toma o
+ * endereço de uma variável capturada. */
+static void junta_enderecos_aninhada(C *c, PSNode *f, char ***v, int32_t *nv, int32_t *cv)
+{
+    char **dentro = NULL;
+    int32_t nd = 0, cd = 0;
+    junta_enderecos(c, f->b, &dentro, &nd, &cd);
+    for (int32_t i = 0; i < nd; i++) {
+        int dela = declara_no_corpo(f->b, dentro[i]);
+        for (int32_t k = 0; !dela && k < f->lista.n; k++)
+            dela = f->lista.itens[k]->texto && !strcmp(f->lista.itens[k]->texto, dentro[i]);
+        if (!dela) junta_nomes(c, v, nv, cv, dentro[i]);
+        free(dentro[i]);
+    }
+    free(dentro);
+}
+
+/* Os nomes com o endereço tomado (`&x`) num corpo. Nas funct aninhadas, só o
+ * que não é delas (`junta_enderecos_aninhada`); na classe, nada (o método é
+ * compilado e colhe os dele). A cadeia de binários desce em laço, como no
+ * `expr_no`. */
+static void junta_enderecos(C *c, PSNode *n, char ***v, int32_t *nv, int32_t *cv)
+{
+    while (n && !CFALHOU(c)) {
+        if (fundo_demais(c, n, 0)) return;
+        if (n->kind == N_FUNCT_DECL || n->kind == N_LAMBDA_EXPR) { junta_enderecos_aninhada(c, n, v, nv, cv); return; }
+        if (n->kind == N_ENTITY_DECL) return;
+        if (n->kind == N_C_ADDR && n->a && n->a->kind == N_NAME && n->a->texto) {
+            junta_nomes(c, v, nv, cv, n->a->texto);
+            c->ha_enderecos = 1;
+        }
+        junta_enderecos(c, n->b, v, nv, cv);
+        junta_enderecos(c, n->c, v, nv, cv);
+        junta_enderecos(c, n->e, v, nv, cv);
+        for (int32_t i = 0; i < n->lista.n; i++) junta_enderecos(c, n->lista.itens[i], v, nv, cv);
+        for (int32_t i = 0; i < n->lista2.n; i++) junta_enderecos(c, n->lista2.itens[i], v, nv, cv);
+        n = n->a;
+    }
+}
+
+static int nome_com_endereco(C *c, Unidade *u, const char *nome)
+{
+    if (!nome || !c->ha_enderecos) return 0;
+    return u->eh_modulo ? tp_na_lista(c->enderecos_mod, c->nenderecos_mod, nome)
+                        : tp_na_lista(u->enderecos, u->nenderecos, nome);
+}
+
+/* O tipo da caixa de uma variável com `&x`: o tipo do C declarado (`size_t
+ * n`), ou o do C que o tipo da Jinga tem (`int` é o int de 4 bytes). */
+static PSCTipo *c_tipo_da_caixa(C *c, const char *declara)
+{
+    PSCTipo *t = tp_tipo_c(c, declara);
+    return t ? t : c_tipo_da_jinga(declara);
+}
+
+/* A variável é caixa na memória do C (SimInfo.caixa)? Só pergunta quando o
+ * programa tem algum `&x`: sem isso, a carga de nome não paga nada. */
+static PSCTipo *c_caixa_de(C *c, Unidade *u, const char *nome)
+{
+    if (!c->ha_enderecos || !nome) return NULL;
+    SimInfo *s = tp_sim_de(c, u, nome);
+    return s ? s->caixa : NULL;
+}
+
+/* O tipo do C que a expressão tem, pelo que foi declarado: a variável com
+ * tipo do C, `*p`, `p[i]`, `&x`, `p + n`, o retorno de uma função do C e o
+ * valor do C (`stdout`). NULL = não se sabe, ou não é do C. */
+static PSCTipo *c_tipo_estatico(C *c, Unidade *u, PSNode *n)
+{
+    /* programa que não usa o C (nenhum nome do C, nenhum tipo do C, nenhum
+     * `&x`) não paga as perguntas daqui em toda conta e todo índice */
+    if (!n || !(c->ix_nomes_c.cap || c->tem_tipo_c || c->ha_enderecos)) return NULL;
+    switch (n->kind) {
+        case N_NAME: {
+            if (!n->texto) return NULL;
+            if (tp_nome_ligado(c, u, n->texto)) {
+                SimInfo *s = tp_sim_de(c, u, n->texto);
+                return s && s->estado == 2 ? s->ctipo : NULL;
+            }
+            int i = ps_c_valor_indice(n->texto);
+            return i >= 0 && ps_c_especie(i) == PSC_NOME_VALOR ? ps_c_tipo_de(i) : NULL;
+        }
+        case N_C_DEREF:
+        case N_INDEX_ACCESS: {
+            PSCTipo *t = ct_nu(c_tipo_estatico(c, u, n->a));
+            return t && (t->kind == PSC_PONT || t->kind == PSC_ARRAY) ? t->alvo : NULL;
+        }
+        case N_C_ADDR: {
+            /* a variável com `&x` é caixa: o endereço é ponteiro pro tipo dela */
+            PSCTipo *cx = n->a && n->a->kind == N_NAME ? c_caixa_de(c, u, n->a->texto) : NULL;
+            PSCTipo *t = cx ? cx : c_tipo_estatico(c, u, n->a);
+            return t ? ps_c_ponteiro(t) : NULL;
+        }
+        case N_C_CAST:
+            return n->texto ? ps_c_tipo_por_nome(n->texto) : NULL;
+        case N_BINARY_OP: {
+            if (!n->texto || (strcmp(n->texto, "+") && strcmp(n->texto, "-"))) return NULL;
+            PSCTipo *a = c_tipo_estatico(c, u, n->a), *b = c_tipo_estatico(c, u, n->b);
+            if (ct_eh_ponteiro(a) && !ct_eh_ponteiro(b)) {
+                PSCTipo *an = ct_nu(a);
+                return an->kind == PSC_ARRAY ? ps_c_ponteiro(an->alvo) : a;
+            }
+            if (n->texto[0] == '+' && ct_eh_ponteiro(b) && !ct_eh_ponteiro(a)) {
+                PSCTipo *bn = ct_nu(b);
+                return bn->kind == PSC_ARRAY ? ps_c_ponteiro(bn->alvo) : b;
+            }
+            return NULL;
+        }
+        case N_CALL: {
+            /* a função do C pelo nome que nada do programa liga */
+            if (!n->a || n->a->kind != N_NAME || !n->a->texto || tp_nome_ligado(c, u, n->a->texto)) return NULL;
+            int i = ps_c_valor_indice(n->a->texto);
+            if (i < 0 || ps_c_especie(i) != PSC_NOME_FUNCAO) return NULL;
+            PSCTipo *ft = ps_c_tipo_de(i);
+            return ft && ft->kind == PSC_FUNC ? ft->ret : NULL;
+        }
+        default:
+            return NULL;
+    }
+}
+
+/* o ponteiro que a conta devolve: o array vira ponteiro pro elemento */
+static PSCTipo *ct_ponteiro_da_conta(PSCTipo *t)
+{
+    PSCTipo *nu = ct_nu(t);
+    return nu && nu->kind == PSC_ARRAY ? ps_c_ponteiro(nu->alvo) : t;
+}
+
+/* A conta com ponteiro do C, com os dois operandos já na pilha: `p + n`,
+ * `n + p`, `p - n`, `p - q` e a ordem `p < q` (a diferença contra 0, que é o
+ * que o C compara). A igualdade (`p == q`, `p == NULL`) é a da Jinga, que já
+ * compara o endereço. 1 = emitiu, e `*tr` é o tipo do resultado (NULL = não é
+ * ponteiro); 0 = não é conta do C (o erro, se houver, já saiu). */
+static int emite_conta_c(C *c, Unidade *u, PSNode *no, const char *op, PSCTipo *te, PSCTipo *td, PSCTipo **tr)
+{
+    if (!op) op = "";
+    int pe = ct_eh_ponteiro(te), pd = ct_eh_ponteiro(td);
+    *tr = NULL;
+    if (!pe && !pd) return 0;
+    if (!strcmp(op, "==") || !strcmp(op, "!=")) return 0;
+    if (!strcmp(op, "+") && pe != pd) {
+        if (pd) emite(c, u, OP_SWAP, 0);              /* `n + p` é `p + n` */
+        emite_c_op(c, u, C_OP_SOMA, 1, NULL);
+        *tr = ct_ponteiro_da_conta(pe ? te : td);
+        return 1;
+    }
+    if (!strcmp(op, "-") && pe && !pd) {
+        emite(c, u, OP_NEG, 0);
+        emite_c_op(c, u, C_OP_SOMA, 1, NULL);
+        *tr = ct_ponteiro_da_conta(te);
+        return 1;
+    }
+    if (pe && pd && (!strcmp(op, "-") || !strcmp(op, "<") || !strcmp(op, "<=")
+                     || !strcmp(op, ">") || !strcmp(op, ">="))) {
+        emite_c_op(c, u, C_OP_DIF, 1, NULL);
+        if (op[0] != '-') {
+            emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 0, 0, NULL, 0));
+            emite(c, u, op_binario(op), 0);
+        }
+        return 1;
+    }
+    terro(c, no, "TypeError", "o operador %s não vale com ponteiro do C (%s e %s)", op,
+          te ? te->nome : "int", td ? td->nome : "int");
+    return 0;
+}
+
+/* O operador de uma escrita aumentada (`+=`, `-=`...), com os dois operandos
+ * na pilha: com ponteiro do C de um lado, a conta do C; senão o da Jinga.
+ * 0 = erro (já saiu). */
+static int emite_op_aumentado_c(C *c, Unidade *u, PSNode *onde, const char *op_atrib, PSCTipo *te, PSCTipo *td)
+{
+    char bin[2] = { op_atrib ? op_atrib[0] : 0, 0 };
+    PSCTipo *tr;
+    if (emite_conta_c(c, u, onde, bin, te, td, &tr)) return 1;
+    int32_t op = op_binario(bin);
+    if (op < 0) { cerro_sx(c, onde, "operador de atribuicao invalido"); return 0; }
+    emite(c, u, op, 0);
+    return 1;
+}
+
+/* `&x`: o endereço. `&*p` é o próprio `p`, e `&p[i]` é `p + i`. */
+static void emite_endereco_c(C *c, Unidade *u, PSNode *n)
+{
+    PSNode *a = n->a;
+    if (a && a->kind == N_C_DEREF) { expr(c, u, a->a); return; }
+    if (a && a->kind == N_NAME && a->texto) {
+        /* a variável com `&x` mora numa caixa: o endereço é o ponteiro dela */
+        if (c_caixa_de(c, u, a->texto)) {
+            tp_confere_nome(c, u, a->texto, a);
+            carrega_nome_cru(c, u, a->texto);
+            return;
+        }
+        if (tp_nome_ligado(c, u, a->texto)) {
+            terro(c, n, "TypeError", "&%s: a variável não mora na memória do C aqui (ela é de fora "
+                  "desta funct, ou não tem declaração com tipo); tome o endereço onde ela é declarada",
+                  a->texto);
+            emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_NULL, 0, 0, NULL, 0));
+            return;
+        }
+    }
+    if (a && a->kind == N_INDEX_ACCESS && ct_eh_ponteiro(c_tipo_estatico(c, u, a->a))) {
+        expr(c, u, a->a);
+        expr(c, u, a->b);
+        emite_c_op(c, u, C_OP_SOMA, 1, NULL);
+        return;
+    }
+    terro(c, n, "TypeError", "& vale em variável, em p[i] e em *p");
+    emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_NULL, 0, 0, NULL, 0));
+}
+
+/* `sizeof(T)` e `sizeof x`: o tamanho em bytes, que o compilador já sabe (a
+ * tabela do C mede com o compilador C). `sizeof` que o programa declarou é
+ * dele, como todo nome: a chamada. */
+static void emite_sizeof_c(C *c, Unidade *u, PSNode *n)
+{
+    if (tp_nome_ligado(c, u, "sizeof")) {
+        if (n->texto || !n->a) {
+            terro(c, n, "TypeError", "sizeof é nome do programa aqui: chame com um valor");
+            emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_NULL, 0, 0, NULL, 0));
+            return;
+        }
+        carrega_nome(c, u, "sizeof");
+        expr(c, u, n->a);
+        emite(c, u, OP_CALL, 1);
+        return;
+    }
+    PSCTipo *t = NULL;
+    if (n->texto) {
+        t = ps_c_tipo_por_nome(n->texto);
+    } else {
+        t = c_tipo_estatico(c, u, n->a);
+        if (!t && n->a && n->a->kind == N_NAME && n->a->texto && tp_nome_ligado(c, u, n->a->texto)) {
+            SimInfo *s = tp_sim_de(c, u, n->a->texto);
+            if (s && s->estado == 2) t = c_tipo_da_jinga(s->tipo);
+        }
+    }
+    PSCTipo *nu = ct_nu(t);
+    if (!nu || nu->kind == PSC_VOID || nu->kind == PSC_FUNC || !nu->tam) {
+        if (n->texto) terro(c, n, "TypeError", "sizeof(%s): não é tipo do C com tamanho", n->texto);
+        else terro(c, n, "TypeError", "sizeof precisa do tipo do C da expressão: declare a variável com o tipo");
+        emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_NULL, 0, 0, NULL, 0));
+        return;
+    }
+    emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, (int64_t)nu->tam, 0, NULL, 0));
+}
+
+/* O `*`/`**` no começo de um argumento de chamada. O parser o lê como o `*`
+ * do C (o N_C_DEREF no operando mais à esquerda, com a forma escrita: `*(v +
+ * 4)` não é `*v + 4`) e marca o argumento (`i2`). Aqui o tipo decide: com o
+ * operando ponteiro do C (no `**`, ponteiro pra ponteiro) é o `*` do C, e o
+ * argumento é comum; senão é o espalhamento de sempre (`f(*l)`, `f(*a + b)`,
+ * `f(**d)`), e o `*` sai da árvore, que volta a ser a expressão espalhada. */
+static void c_estrela_resolve(C *c, Unidade *u, PSNode *arg)
+{
+    if (arg->i2 != 1 && arg->i2 != 2) return;
+    PSNode **onde = &arg->a;
+    while (*onde && ((*onde)->kind == N_BINARY_OP || (*onde)->kind == N_CONDITIONAL) && (*onde)->a)
+        onde = &(*onde)->a;
+    PSNode *d = *onde;
+    if (!d || d->kind != N_C_DEREF) return;
+    PSNode *operando = d->a;
+    if (arg->i2 == 2 && operando && operando->kind == N_C_DEREF) operando = operando->a;
+    PSCTipo *t = ct_nu(c_tipo_estatico(c, u, operando));
+    int do_c = t && t->kind == PSC_PONT;
+    if (do_c && arg->i2 == 2) {
+        PSCTipo *alvo = ct_nu(t->alvo);
+        do_c = alvo && alvo->kind == PSC_PONT;
+    }
+    if (do_c) { arg->i2 = 0; return; }
+    *onde = operando;
+}
+
 static void tp_emite_escrita(C *c, Unidade *u, const char *nome, SimInfo *s, int veredito, int cod1)
 {
+    /* a caixa da variável com `&x`: o slot guarda o ponteiro pra caixa (a
+     * conversão do valor foi na gravação dentro dela) */
+    if (s && s->caixa) return;
+    /* variável com tipo do C: toda escrita converte pelo tipo dela */
+    if (s && s->ctipo && s->tipo) { emite_c_op(c, u, C_OP_CONVERTE, 0, s->tipo); return; }
     if (veredito == T_SIM || veredito == T_NAO) return;
     if (cod1 > 0) { emite_coerce_se_tipado(c, u, nome, cod1); return; }
     if (!s || !s->tipo || s->estado == 0) return;
@@ -5517,8 +5933,31 @@ static SimInfo *tp_sim_upval(Unidade *u, const char *nome)
     return NULL;
 }
 
+static void carrega_nome_cru(C *c, Unidade *u, const char *nome);
+
 static void guarda_nome_modo_no(C *c, Unidade *u, const char *nome, int certa)
 {
+    /* A variável com `&x` mora numa caixa na memória do C: a declaração cria
+     * a caixa (o valor vai pra dentro dela, e o slot guarda o ponteiro), e a
+     * escrita depois grava na caixa, com a conversão do C. */
+    if (c->grava.declara && nome_com_endereco(c, u, nome)) {
+        PSCTipo *ct = c_tipo_da_caixa(c, c->grava.declara);
+        char recusa[200];
+        if (!ct)
+            terro(c, c->grava.no, "TypeError", "&%s: o %s não tem tipo na memória do C (int, flo, bool, "
+                  "char, long ou um tipo do C)", nome, c->grava.declara);
+        else if (c_recusa_variavel(ct, recusa, sizeof(recusa)))
+            terro(c, c->grava.no, "TypeError", "&%s: %s", nome, recusa);
+        else {
+            emite_c_op(c, u, C_OP_CAIXA, 1, ct->nome);
+            c->grava.caixa = ct;
+        }
+    } else if (!c->grava.declara && c_caixa_de(c, u, nome)) {
+        carrega_nome_cru(c, u, nome);                  /* [v] -> [v, caixa] */
+        emite(c, u, OP_SWAP, 0);                       /* -> [caixa, v] */
+        emite_c_op(c, u, C_OP_GRAVA, 1, NULL);
+        return;
+    }
     if (u->eh_modulo) {
         mod_criados_add(c, u, nome);  /* p/ escopo de bloco */
         int32_t km = ix_busca(&u->ix_mod, nome);
@@ -6206,7 +6645,27 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                 /* a conta que a VM recusaria com os tipos escritos (`"a" + 1`)
                  * é acusada aqui, com a frase dela (tp_op) */
                 const char *t_esq = tp_de(c, u, q);
+                /* e o tipo do C do acumulado: com ponteiro do C de um lado, o
+                 * passo é a conta do C (`p + 1`, `p - q`, `p < q`) */
+                PSCTipo *c_esq = c_tipo_estatico(c, u, q);
                 for (k = 0; k < fundo && !CFALHOU(c); k++) {
+                    PSCTipo *c_dir = c_tipo_estatico(c, u, cadeia[k]->b);
+                    if (ct_eh_ponteiro(c_esq) || ct_eh_ponteiro(c_dir)) {
+                        expr_direito(c, u, cadeia[k]);
+                        PSCTipo *c_res = NULL;
+                        if (emite_conta_c(c, u, cadeia[k], cadeia[k]->texto, c_esq, c_dir, &c_res)) {
+                            c_esq = c_res;
+                            t_esq = NULL;
+                            continue;
+                        }
+                        if (cadeia[k]->line) c->linha_atual = cadeia[k]->line;
+                        if (cadeia[k]->col)  c->coluna_atual = cadeia[k]->col;
+                        emite(c, u, op_binario(cadeia[k]->texto), 0);
+                        c_esq = NULL;
+                        t_esq = NULL;
+                        continue;
+                    }
+                    c_esq = NULL;
                     expr_direito(c, u, cadeia[k]);
                     char recusa[200];
                     t_esq = tp_op(c, cadeia[k]->texto, t_esq, tp_de(c, u, cadeia[k]->b),
@@ -6397,7 +6856,9 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
         case N_INDEX_ACCESS:
             expr(c, u, n->a);
             expr(c, u, n->b);
-            emite(c, u, OP_INDEX_GET, 0);
+            /* `p[i]` com `p` ponteiro do C pelo tipo declarado: a memória do C */
+            if (ct_eh_ponteiro(c_tipo_estatico(c, u, n->a))) emite_c_op(c, u, C_OP_LE_IDX, 1, NULL);
+            else emite(c, u, OP_INDEX_GET, 0);
             return;
 
         case N_TUPLE_LITERAL:
@@ -6563,8 +7024,15 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             tp_confere_nome(c, u, nome, n->a);
             carrega_nome(c, u, nome);
             emite(c, u, OP_DUP, 0);
-            emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 1, 0, NULL, 0));
-            emite(c, u, (n->texto && n->texto[0] == '+') ? OP_ADD : OP_SUB, 0);
+            int mais = n->texto && n->texto[0] == '+';
+            if (ct_eh_ponteiro(c_tipo_estatico(c, u, n->a))) {
+                /* `p++` no ponteiro do C anda um elemento */
+                emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, mais ? 1 : -1, 0, NULL, 0));
+                emite_c_op(c, u, C_OP_SOMA, 1, NULL);
+            } else {
+                emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 1, 0, NULL, 0));
+                emite(c, u, mais ? OP_ADD : OP_SUB, 0);
+            }
             {
                 SimInfo *sx = tp_sim_de(c, u, nome);
                 memset(&c->grava, 0, sizeof(c->grava));
@@ -6573,6 +7041,36 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                 c->grava.no = n;
             }
             guarda_nome(c, u, nome);
+            return;
+        }
+
+        /* ── o C na Jinga: ponteiro e memória ── */
+        case N_C_DEREF:
+            /* `*p`: o apontado; com o tipo declarado de ponteiro, o Null é o
+             * ponteiro nulo do C (derruba, como no C) */
+            expr(c, u, n->a);
+            emite_c_op(c, u, C_OP_LE, ct_eh_ponteiro(c_tipo_estatico(c, u, n->a)), NULL);
+            return;
+
+        case N_C_ADDR:
+            emite_endereco_c(c, u, n);
+            return;
+
+        case N_C_SIZEOF:
+            emite_sizeof_c(c, u, n);
+            return;
+
+        case N_C_CAST: {
+            /* `(T) x`: o cast do C (vm/jinga_vm.c, c_cast) */
+            PSCTipo *t = n->texto ? ps_c_tipo_por_nome(n->texto) : NULL;
+            PSCTipo *nu = ct_nu(t);
+            expr(c, u, n->a);
+            if (!nu || nu->kind == PSC_STRUCT || nu->kind == PSC_UNION || nu->kind == PSC_ARRAY
+                    || nu->kind == PSC_FUNC || nu->kind == PSC_OPACO) {
+                terro(c, n, "TypeError", "o C não tem cast pra %s", n->texto ? n->texto : "?");
+                return;
+            }
+            emite_c_op(c, u, C_OP_CAST, 0, n->texto);
             return;
         }
 
@@ -6873,7 +7371,8 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * `char` e 8, `Object` e 10, por isso e tabela e nao indice. */
             const char *vn = n->texto ? n->texto : "";
             int cod = cod_tipo_decl(n->texto2);
-            if (cod >= 0) {
+            /* com `&x` o slot guarda o ponteiro pra caixa, e não o valor */
+            if (cod >= 0 && !nome_com_endereco(c, u, vn)) {
                 if (u->eh_modulo || eh_global_declarada(u, vn)) tipo_topo_poe(c, vn, cod);
                 else {
                     int32_t sl = idx_local(c, u, vn);
@@ -6887,7 +7386,12 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 if (n->a->line) c->linha_atual  = n->a->line;
                 if (n->a->col)  c->coluna_atual = n->a->col;
             }
-            if (!tp_tipo_existe(c, u, n->texto2)) {
+            PSCTipo *ctipo = tp_tipo_c(c, n->texto2);
+            char recusa_c[200];
+            if (ctipo && c_recusa_variavel(ctipo, recusa_c, sizeof(recusa_c))) {
+                terro(c, n, "TypeError", "%s (variável %s)", recusa_c, vn);
+                memset(&c->grava, 0, sizeof(c->grava));
+            } else if (!ctipo && !tp_tipo_existe(c, u, n->texto2)) {
                 /* o erro é o nome do tipo; conferir o valor contra um tipo
                  * que não existe só repetiria o mesmo erro com outra frase */
                 terro(c, n, "AttributedValueError", "tipo %s não existe (variável %s)",
@@ -6975,12 +7479,19 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 tp_confere_nome(c, u, n->texto, n);
                 carrega_nome(c, u, n->texto ? n->texto : "");
                 expr(c, u, n->a);
-                emite(c, u, opc, 0);
                 SimInfo *sx = tp_sim_de(c, u, n->texto);
-                char recusa[200];
-                const char *tv = tp_op(c, base, (sx && sx->estado) ? sx->tipo : NULL, tp_de(c, u, n->a),
-                                       recusa, sizeof(recusa));
-                if (recusa[0]) terro(c, n, "TypeError", "%s", recusa);
+                const char *tv = NULL;
+                if (sx && sx->ctipo) {
+                    /* variável com tipo do C: `p += 2` anda no ponteiro; no
+                     * número, a conta da Jinga (a escrita converte) */
+                    if (!emite_op_aumentado_c(c, u, n, op, sx->ctipo, c_tipo_estatico(c, u, n->a))) return;
+                } else {
+                    emite(c, u, opc, 0);
+                    char recusa[200];
+                    tv = tp_op(c, base, (sx && sx->estado) ? sx->tipo : NULL, tp_de(c, u, n->a),
+                               recusa, sizeof(recusa));
+                    if (recusa[0]) terro(c, n, "TypeError", "%s", recusa);
+                }
                 memset(&c->grava, 0, sizeof(c->grava));
                 c->grava.tem_valor = 1;
                 c->grava.tipo = tv;
@@ -7237,6 +7748,16 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             /* alvo aninhado `a, (b, c) = ...` desempacota de novo por alvo */
             PSNode *alvo = n->a;
             if (!alvo || alvo->kind != N_UNPACK_TARGET) { cerro_sx(c, n, "alvo de desempacotamento invalido"); return; }
+            /* `*p = v` com `p` ponteiro do C pelo tipo declarado: a escrita na
+             * memória do C. Com `p` lista (ou sem tipo do C), o desempacotamento
+             * de sempre (`*a = [1, 2]` dá a lista ao `a`). */
+            if (alvo->lista.n == 1 && alvo->i2 == 0 && !alvo->is_async
+                    && ct_eh_ponteiro(c_tipo_estatico(c, u, alvo->lista.itens[0]))) {
+                expr(c, u, alvo->lista.itens[0]);
+                expr(c, u, n->b);
+                emite_c_op(c, u, C_OP_GRAVA, 1, NULL);
+                return;
+            }
             expr(c, u, n->b);
             compila_unpack_alvo(c, u, alvo);
             if (n->is_private && !CFALHOU(c)) priv_alvos_unpack(c, u, n, alvo);
@@ -7948,6 +8469,23 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 if (tc && (!strcmp(tc, "str") || !strcmp(tc, "tup") || !strcmp(tc, "byte")))
                     terro(c, n, "TypeError", "'%s' object does not support item assignment", tc);
             }
+            /* `p[i] = v` com `p` ponteiro do C pelo tipo declarado */
+            PSCTipo *c_cont = c_tipo_estatico(c, u, n->a);
+            if (ct_eh_ponteiro(c_cont)) {
+                expr(c, u, n->a);
+                expr(c, u, n->b);
+                if (n->texto && strcmp(n->texto, "=") != 0) {
+                    emite(c, u, OP_DUP2, 0);
+                    emite_c_op(c, u, C_OP_LE_IDX, 1, NULL);
+                    expr(c, u, n->c);
+                    if (!emite_op_aumentado_c(c, u, n, n->texto, ct_nu(c_cont)->alvo, c_tipo_estatico(c, u, n->c)))
+                        return;
+                } else {
+                    expr(c, u, n->c);
+                }
+                emite_c_op(c, u, C_OP_GRAVA_IDX, 1, NULL);
+                return;
+            }
             expr(c, u, n->a);                 /* container */
             expr(c, u, n->b);                 /* índice    */
             if (n->texto && strcmp(n->texto, "=") != 0) {
@@ -8480,6 +9018,27 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             return;
         }
 
+        case N_C_STORE: {
+            /* `*p = v`, `*p += v`, `**pp = v`, `*(p + 1) = v`: a escrita na
+             * memória do C; com o tipo declarado de ponteiro, o Null é o
+             * ponteiro nulo (derruba, como no C) */
+            PSCTipo *tp = c_tipo_estatico(c, u, n->a);
+            int conhecido = ct_eh_ponteiro(tp);
+            expr(c, u, n->a);
+            if (n->texto && strcmp(n->texto, "=") != 0) {
+                emite(c, u, OP_DUP, 0);
+                emite_c_op(c, u, C_OP_LE, conhecido, NULL);
+                expr(c, u, n->b);
+                if (!emite_op_aumentado_c(c, u, n, n->texto, conhecido ? ct_nu(tp)->alvo : NULL,
+                                          c_tipo_estatico(c, u, n->b)))
+                    return;
+            } else {
+                expr(c, u, n->b);
+            }
+            emite_c_op(c, u, C_OP_GRAVA, conhecido, NULL);
+            return;
+        }
+
         default:
             cerro(c, "statement ainda nao compila na VM", n);
             return;
@@ -8643,6 +9202,8 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
     free(u.locais);
     free(u.celula); free(u.celula_virgem); free(u.certo); free(u.tipo_decl);
+    for (int32_t i = 0; i < u.nenderecos; i++) free(u.enderecos[i]);
+    free(u.enderecos);
     free(u.sim); free(u.mod_sim);
     for (int32_t i = 0; i < u.nligados; i++) free(u.ligados[i]);
     free(u.ligados);
@@ -8682,6 +9243,8 @@ static void fecha_unidade_funct(C *c, Unidade *u, int32_t idx, PSNode *n)
     for (int32_t i = 0; i < u->nlocais; i++) free(u->locais[i]);
     free(u->locais);
     free(u->celula); free(u->celula_virgem); free(u->certo); free(u->tipo_decl);
+    for (int32_t i = 0; i < u->nenderecos; i++) free(u->enderecos[i]);
+    free(u->enderecos);
     free(u->sim); free(u->mod_sim);
     for (int32_t i = 0; i < u->nligados; i++) free(u->ligados[i]);
     free(u->ligados);
@@ -8998,6 +9561,9 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
     /* Células das variáveis que as functs aninhadas capturam. Vem depois do
      * prólogo (que testa o slot cru com JUMP_IF_SET) e antes do corpo. */
     marca_celulas(c, &u, n, n->b);
+    /* as variáveis com `&x` no corpo, antes de compilar qualquer leitura delas
+     * (só se o arquivo tem algum `&x`, que a 1ª passada já achou) */
+    if (c->ha_enderecos) junta_enderecos(c, n->b, &u.enderecos, &u.nenderecos, &u.cap_enderecos);
 
     /* `int funct` e `bool funct` não deixam erro escapar: devolvem 500 e
      * False. Sai mais barato emitir o `try` implícito aqui do que ensinar o
@@ -9520,6 +10086,8 @@ static void passada1_stmt(C *c, PSNode *cheia, PSNode *podada)
                      &c->ligados_mod_raso, &c->nligados_mod_raso, &c->cap_ligados_mod_raso);
     tp_junta_globais(c, cheia);
     if (!c->range_ligado && liga_o_nome(c, cheia, "range")) c->range_ligado = 1;
+    if (c->varre_enderecos)
+        junta_enderecos(c, cheia, &c->enderecos_mod, &c->nenderecos_mod, &c->cap_enderecos_mod);
 }
 
 /* Fim da primeira passada: o que precisa de TODAS as declarações colhidas. */
@@ -9534,6 +10102,12 @@ static void passada1_fim(C *c, PSNode *programa)
     mod.eh_modulo = 1;
     for (int32_t i = 0; i < programa->lista.n && !CFALHOU(c); i++)
         tp_pre_stmt(c, &mod, programa->lista.itens[i], 0);
+    /* A variável de topo com `&x` em algum comando mora numa caixa: a funct
+     * compilada antes da declaração já tem que ler de dentro dela. */
+    for (int32_t i = 0; i < c->nenderecos_mod; i++) {
+        SimInfo *s = tp_sim_topo(c, c->enderecos_mod[i]);
+        if (s && s->estado == 2 && s->tipo) s->caixa = c_tipo_da_caixa(c, s->tipo);
+    }
 }
 
 /* Segunda passada, uma declaração de topo: o código dela. O `self`
@@ -9578,6 +10152,7 @@ PSPrograma *ps_compila_com(PSNode *programa, const PSResolvedor *resolve)
     if (idx < 0) return out;
 
     /* tipos declarados no topo do arquivo, antes de compilar qualquer funct*/
+    c.varre_enderecos = 1;          /* a árvore inteira não traz a conta do parser */
     if (programa)
         for (int32_t i = 0; i < programa->lista.n && out->ok; i++)
             passada1_stmt(&c, programa->lista.itens[i], programa->lista.itens[i]);
@@ -9628,11 +10203,15 @@ PSPrograma *ps_compila_fonte(const char *fonte, size_t len, int recupera,
     /* PRIMEIRA PASSADA: lê, colhe, poda, solta. Com erro de sintaxe o
      * compilador para de colher (o arquivo não compila), mas o parser segue
      * até o fim no modo de recuperação, pra lista de erros ficar inteira. */
+    int32_t enderecos_lidos = 0;
     for (;;) {
         PSNode *s = ps_parse_inc_proxima(pi);
         if (!s) break;
         PSParseResult *rp = ps_parse_inc_resultado(pi);
         if (!out->ok || !rp->ok || rp->nerros > 0 || !ps_parse_inc_lexer(pi)->ok) continue;
+        /* o comando tem `&x` se a conta do parser cresceu nele */
+        c.varre_enderecos = rp->n_enderecos_c > enderecos_lidos;
+        enderecos_lidos = rp->n_enderecos_c;
         PSNode *k = poda(&c, s);
         if (!k || ps_vec_push(c.keep, &programa->lista, k) != 0) { cerro(&c, "sem memoria", NULL); continue; }
         passada1_stmt(&c, s, k);
@@ -9863,6 +10442,8 @@ static void compila_termina(C *c, Unidade *u)
     free(c->ligados_mod_raso);
     ix_solta(&c->ix_ligados_mod_raso);
     ix_solta(&c->ix_nomes_c);        /* as chaves são os nomes da tabela do C (estáticos) */
+    for (int32_t i = 0; i < c->nenderecos_mod; i++) free(c->enderecos_mod[i]);
+    free(c->enderecos_mod);
     ix_solta(&c->ix_globais);        /* as chaves são do programa de saída: só o índice sai */
     free(c->tipos_arq);
     free(c->gemeos);
@@ -9892,6 +10473,8 @@ static void compila_termina(C *c, Unidade *u)
     for (int32_t i = 0; i < u->nlocais; i++) free(u->locais[i]);
     free(u->locais);
     free(u->celula); free(u->celula_virgem); free(u->certo); free(u->tipo_decl);
+    for (int32_t i = 0; i < u->nenderecos; i++) free(u->enderecos[i]);
+    free(u->enderecos);
     free(u->sim); free(u->mod_sim);
     for (int32_t i = 0; i < u->nligados; i++) free(u->ligados[i]);
     free(u->ligados);

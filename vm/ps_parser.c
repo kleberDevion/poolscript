@@ -1671,7 +1671,12 @@ static PSNode *posfixo(P *p)
                     PSToken *at = atual(p);
                     int32_t ini_arg = p->pos;
                     const char *nome_arg = NULL;
-                    int estrela = estrela_de_argumento(p);   /* `*lista` / `**dict` */
+                    /* `*lista` / `**dict`. O `*` não é consumido aqui: a
+                     * expressão o lê como o `*` do C (`prefixo_c`), que guarda
+                     * a forma escrita (`*(v + 4)` não é `*v + 4`), e o
+                     * compilador decide pelo tipo se é o do C ou o espalhamento
+                     * (`c_estrela_resolve`). */
+                    int estrela = checa_op(p, "**") ? 2 : checa_op(p, "*") ? 1 : 0;
                     /* argumento nomeado: NOME '=' valor. O nome é só um
                      * rótulo, então keyword é aceita aqui (regex.sub(count=2)). */
                     if (!estrela
@@ -1877,15 +1882,17 @@ static PSNode *posfixo(P *p)
  * `sizeof` e no cast, são sempre os do C. */
 static int eh_palavra_do_c(const char *s, int *qualificador)
 {
-    static const char *const BASICOS[] = { "void", "char", "short", "int", "long", "float", "double",
-                                           "signed", "unsigned", "_Bool", "bool", NULL };
-    static const char *const QUALIF[] = { "const", "volatile", "restrict", NULL };
+    /* um bloco de texto só, e não vetor de ponteiros: cada ponteiro de tabela
+     * estática é uma relocação que o carregador aplica na partida de todo
+     * programa (a tabela do C, vm/ps_c.c, segue a mesma regra) */
+    static const char BASICOS[] = "void\0char\0short\0int\0long\0float\0double\0signed\0unsigned\0_Bool\0bool\0";
+    static const char QUALIF[] = "const\0volatile\0restrict\0";
     *qualificador = 0;
     if (!s) return 0;
-    for (int i = 0; BASICOS[i]; i++)
-        if (s[0] == BASICOS[i][0] && strcmp(s, BASICOS[i]) == 0) return 1;
-    for (int i = 0; QUALIF[i]; i++)
-        if (s[0] == QUALIF[i][0] && strcmp(s, QUALIF[i]) == 0) { *qualificador = 1; return 1; }
+    for (const char *w = BASICOS; *w; w += strlen(w) + 1)
+        if (s[0] == w[0] && strcmp(s, w) == 0) return 1;
+    for (const char *w = QUALIF; *w; w += strlen(w) + 1)
+        if (s[0] == w[0] && strcmp(s, w) == 0) { *qualificador = 1; return 1; }
     return 0;
 }
 
@@ -1969,6 +1976,26 @@ static int tipo_do_c_adiante(P *p, int k0, char *buf, size_t cap, int *palavras,
     return k - k0;
 }
 
+/* O token pode começar o operando de um cast: nome, literal, `(`, `[`, um
+ * unário (`-`, `+`, `~`, `*`, `&`) ou a palavra que abre expressão. */
+static int abre_operando_do_cast(PSToken *t)
+{
+    switch (t->type) {
+        case T_IDENT: case T_IDENT_UPPER: case T_INT: case T_FLO: case T_STR: case T_FSTRING:
+        case T_BYTES: case T_BOOL: case T_NULL: case T_LPAREN: case T_LBRACK:
+            return 1;
+        case T_KW:
+            return kw_abre_expr(t->texto);
+        case T_OP:
+            return t->texto && (!strcmp(t->texto, "-") || !strcmp(t->texto, "+") || !strcmp(t->texto, "~")
+                                || !strcmp(t->texto, "*") || !strcmp(t->texto, "**") || !strcmp(t->texto, "&"));
+        default:
+            return 0;
+    }
+}
+
+static PSNode *unario(P *p);
+
 /* `*p`, `**pp`, `&x` e `sizeof`, os operadores do C sobre ponteiro e memória.
  * Ficam ENTRE a potência e o posfixo: `*p ** 2` é `(*p) ** 2`, `-*p` é
  * `-(*p)`, e o posfixo liga mais forte, como no C (`*p[1]` é `*(p[1])`,
@@ -1989,6 +2016,7 @@ static PSNode *prefixo_c(P *p)
         PSNode *n = ps_node_novo(p->arena, t->texto[0] == '&' ? N_C_ADDR : N_C_DEREF, t->line, t->col);
         if (!n) return NULL;
         n->a = operando;
+        if (t->texto[0] == '&') p->out->n_enderecos_c++;
         if (t->texto[1] == '*') {                  /* `**pp`: duas derreferências */
             PSNode *de_fora = ps_node_novo(p->arena, N_C_DEREF, t->line, t->col);
             if (!de_fora) return NULL;
@@ -1996,6 +2024,39 @@ static PSNode *prefixo_c(P *p)
             n = de_fora;
         }
         return n;
+    }
+    /* O cast do C: `(T) x`, com T tipo do C (C11 6.5.4). Como no C, o que
+     * decide é o parêntese ter um tipo e logo depois vir um operando:
+     * `(int) x`, `(int *) p`, `(char)(n + 1)`. No cast, `int`, `char`, `long`
+     * e `bool` são os do C (o plano: o cast é memória do C); `(flo) x` e os
+     * tipos só da Jinga não são cast e seguem como eram. A tabela do C só é
+     * consultada quando o parêntese tem a forma de um tipo: palavra seguida
+     * de `)`, `*` ou outra palavra (`(i < n)` não paga nada). */
+    if (t->type == T_LPAREN) {
+        PSToken *t1 = espia(p, 1), *t2 = espia(p, 2);
+        if ((t1->type == T_KW || t1->type == T_IDENT || t1->type == T_IDENT_UPPER)
+                && (t2->type == T_RPAREN || t2->type == T_KW || t2->type == T_IDENT
+                    || (t2->type == T_OP && t2->texto && (!strcmp(t2->texto, "*") || !strcmp(t2->texto, "**"))))) {
+            char tipo[160];
+            int palavras, estrelas;
+            int k = tipo_do_c_adiante(p, 1, tipo, sizeof(tipo), &palavras, &estrelas);
+            PSToken *dep = espia(p, 2 + k);
+            if (k > 0 && espia(p, 1 + k)->type == T_RPAREN && abre_operando_do_cast(dep)) {
+                if (ps_pilha_apertada()) { perro(p, "expressao aninhada demais", t); return NULL; }
+                p->pos += 2 + k;
+                /* o operando é a expressão unária que vem: `(int) -x` é o cast
+                 * de `-x`, e `(int) x ** 2` é `((int) x) ** 2`, como `*p ** 2` */
+                int sinal = dep->type == T_OP && dep->texto
+                            && (!strcmp(dep->texto, "-") || !strcmp(dep->texto, "+") || !strcmp(dep->texto, "~"));
+                PSNode *operando = sinal ? unario(p) : prefixo_c(p);
+                if (FALHOU(p)) return NULL;
+                PSNode *n = ps_node_novo(p->arena, N_C_CAST, t->line, t->col);
+                if (!n) return NULL;
+                n->texto = dup_str(p, tipo);
+                n->a = operando;
+                return n;
+            }
+        }
     }
     /* `sizeof(T)` com o tipo do C, e `sizeof x`/`sizeof(expr)` com o tipo da
      * expressão. `sizeof` sozinho (`post(sizeof)`) continua nome. */

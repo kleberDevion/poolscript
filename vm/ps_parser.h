@@ -25,6 +25,10 @@ typedef struct {
     PSAviso *erros;
     int32_t  nerros;
     int32_t  cap_erros;
+    /* Quantos `&x` (o endereço do C) o parser leu até agora: o compilador só
+     * procura as variáveis com endereço tomado no comando em que esta conta
+     * cresceu, e o programa sem `&x` não paga a varredura. */
+    int32_t  n_enderecos_c;
 } PSParseResult;
 
 /* Consome os tokens do lexer. O resultado sempre precisa ser liberado com
