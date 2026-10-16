@@ -1807,6 +1807,17 @@ static int junta_caminho(char *out, size_t cap, const char *a, const char *b);
 static int str_ncp(PSString *s);
 static int str_byte_de(PSString *s, int64_t cp);
 
+/* O dado do C que se compara pelo endereço: o ponteiro, e o array, que vira
+ * o endereço do 1º elemento na comparação, como no C (`v == p` com `int *p
+ * = v`; dois arrays lidos do mesmo lugar são o mesmo). O typedef e o const
+ * contam pelo tipo que são. */
+static int c_eh_endereco(const PSCDado *d)
+{
+    const PSCTipo *t = d->tipo;
+    while (t && (t->canon || t->sem_const)) t = t->canon ? t->canon : t->sem_const;
+    return t && (t->kind == PSC_PONT || t->kind == PSC_ARRAY);
+}
+
 static uint32_t hash_valor(const Value *v)
 {
     switch (v->t) {
@@ -1848,8 +1859,9 @@ static uint32_t hash_valor(const Value *v)
                 free(s);
                 return h;
             }
-            /* o ponteiro do C e a função do C: pelo que a igualdade compara */
-            if (v->as.obj->type == OBJ_CDADO && ((PSCDado *)v->as.obj)->tipo->kind == PSC_PONT)
+            /* o ponteiro e o array do C e a função do C: pelo que a igualdade
+             * compara */
+            if (v->as.obj->type == OBJ_CDADO && c_eh_endereco((PSCDado *)v->as.obj))
                 return (uint32_t)((uint64_t)(uintptr_t)((PSCDado *)v->as.obj)->ptr * 2654435761u);
             if (v->as.obj->type == OBJ_CFUNC)
                 return 0xc0f0u ^ (uint32_t)((PSCFuncObj *)v->as.obj)->idx;
@@ -3497,12 +3509,12 @@ static int val_iguais(const Value *a, const Value *b)
      * continua batendo com a igualdade.) */
     if (a->t == V_FUNC   && b->t == V_FUNC)   return a->as.proto  == b->as.proto;
     if (a->t == V_NATIVE && b->t == V_NATIVE) return a->as.nativa == b->as.nativa;
-    /* O C: dois ponteiros são iguais quando apontam pro mesmo endereço, como
-     * no C (o array, a struct e a caixa só são iguais a si mesmos); duas
-     * funções do C, quando são a mesma da tabela. O ponteiro nulo é o `Null`
-     * da Jinga, que só é igual a Null. (`hash_valor` lê o mesmo.) */
-    if (EH_CDADO(*a) && EH_CDADO(*b) && COMO_CDADO(*a)->tipo->kind == PSC_PONT
-            && COMO_CDADO(*b)->tipo->kind == PSC_PONT)
+    /* O C: ponteiro e array são iguais quando o endereço é o mesmo, como no
+     * C (o array vira o endereço do 1º elemento na comparação); a struct e a
+     * caixa só são iguais a si mesmas; duas funções do C, quando são a mesma
+     * da tabela. O ponteiro nulo é o `Null` da Jinga, que só é igual a Null.
+     * (`hash_valor` lê o mesmo.) */
+    if (EH_CDADO(*a) && EH_CDADO(*b) && c_eh_endereco(COMO_CDADO(*a)) && c_eh_endereco(COMO_CDADO(*b)))
         return COMO_CDADO(*a)->ptr == COMO_CDADO(*b)->ptr;
     if (EH_CFUNC(*a) && EH_CFUNC(*b)) return COMO_CFUNC(*a)->idx == COMO_CFUNC(*b)->idx;
     if (a->t == V_OBJ && b->t == V_OBJ) return a->as.obj == b->as.obj;
@@ -35380,12 +35392,13 @@ static const char *sugere_mesma_inicial(const char *alvo, const char **cands, in
 
 /* Os nomes do C que um "Did you mean" oferece, em `cands` (até `cap`): as
  * palavras que o parser lê (`unsigned`, `struct`, `sizeof`; `tipos_so` deixa
- * o operador de fora), os nomes da tabela (só os tipos com `tipos_so`), sem o
- * que fica de fora, e os tipos que o programa declarou. Sem nome de duas
- * palavras: `struct tm` não é nome escrito solto. */
-static int nomes_c_pra_dica(const char **cands, int cap, int tipos_so)
+ * o operador de fora), os nomes da tabela dos cabeçalhos que o arquivo
+ * importou (`cabs`; só os tipos com `tipos_so`), sem o que fica de fora, e
+ * os tipos que o programa declarou. Sem nome de duas palavras: `struct tm`
+ * não é nome escrito solto. */
+static int nomes_c_pra_dica(const char **cands, int cap, int tipos_so, const char *const *cabs, int ncabs)
 {
-    int n = 0, nn = ps_c_nnomes();
+    int n = 0, nn = ncabs > 0 ? ps_c_nnomes() : 0;
     const char *w, *papel = NULL;
     for (int i = 0; (w = ps_parser_palavra_c(i, &papel)) != NULL && n < cap; i++)
         if (!tipos_so || strcmp(papel, "operador") != 0) cands[n++] = w;
@@ -35394,7 +35407,9 @@ static int nomes_c_pra_dica(const char **cands, int cap, int tipos_so)
         const char *nm = ps_c_nome(i);
         if (e == PSC_NOME_FORA || strchr(nm, ' ')) continue;
         if (tipos_so && e != PSC_NOME_TIPO && e != PSC_NOME_OPACO && e != PSC_NOME_ESTRUTURA) continue;
-        cands[n++] = nm;
+        int vale = 0;
+        for (int k = 0; k < ncabs && !vale; k++) vale = ps_c_vale_com(i, cabs[k]);
+        if (vale) cands[n++] = nm;
     }
     for (int i = 0; (w = ps_c_declarado_nome(i)) != NULL && n < cap; i++)
         if (!strchr(w, ' ')) cands[n++] = w;
@@ -35410,16 +35425,17 @@ static const char *mais_perto(const char *nome, const char *jinga, const char *c
     return dist_edicao(nome, c, 200) < dist_edicao(nome, jinga, 200) ? c : jinga;
 }
 
-/* O "Did you mean" do NameError do checador com os nomes do C, que valem em
- * todo arquivo: `jinga` é a dica entre os nomes da Jinga (ou NULL), e o do C
- * só a troca quando está mais perto. NULL quando nenhum chega perto. */
-const char *ps_sugere_nome_c(const char *nome, const char *jinga)
+/* O "Did you mean" do NameError do checador com os nomes do C dos cabeçalhos
+ * que o arquivo importou (`cabs`): `jinga` é a dica entre os nomes da Jinga
+ * (ou NULL), e o do C só a troca quando está mais perto. NULL quando nenhum
+ * chega perto. */
+const char *ps_sugere_nome_c(const char *nome, const char *jinga, const char *const *cabs, int ncabs)
 {
     if (!nome || !nome[0]) return jinga;
     int cap = ps_c_nnomes() + 128;
     const char **cands = malloc(sizeof(char *) * (size_t)cap);
     if (!cands) return jinga;
-    const char *r = sugere_mesma_inicial(nome, cands, nomes_c_pra_dica(cands, cap, 0));
+    const char *r = sugere_mesma_inicial(nome, cands, nomes_c_pra_dica(cands, cap, 0, cabs, ncabs));
     free(cands);
     return mais_perto(nome, jinga, r);
 }
@@ -35431,7 +35447,8 @@ const char *ps_sugere_nome_c(const char *nome, const char *jinga)
  * C (as palavras de tipo que o parser lê, os tipos da tabela e os que o
  * programa declarou): o mais perto, e no empate o da Jinga. NULL quando
  * nenhum chega perto. */
-const char *ps_sugere_tipo(const char *nome, const char **extras, int nextras)
+const char *ps_sugere_tipo(const char *nome, const char **extras, int nextras,
+                           const char *const *cabs, int ncabs)
 {
     if (!nome) return NULL;
     const char *const *td = ps_parser_tipos_decl();
@@ -35450,7 +35467,7 @@ const char *ps_sugere_tipo(const char *nome, const char **extras, int nextras)
     }
     for (int i = 0; i < nextras; i++) cands[n++] = extras[i];
     const char *r = sugere_nome(nome, cands, n);
-    const char *rc = nome[0] ? sugere_mesma_inicial(nome, cands, nomes_c_pra_dica(cands, cap, 1)) : NULL;
+    const char *rc = nome[0] ? sugere_mesma_inicial(nome, cands, nomes_c_pra_dica(cands, cap, 1, cabs, ncabs)) : NULL;
     free(cands);
     return mais_perto(nome, r, rc);
 }
@@ -35663,6 +35680,13 @@ static void jm_c(FILE *f)
                 prim = 0;
                 jm_txt(f, ps_c_nome(i));
                 fprintf(f, ", \"especie\": \"%s\"", jm_c_especie(e));
+                /* os outros cabeçalhos com que o nome vale (o `NULL` do
+                 * `<stdio.h>`), separados por espaço */
+                const char *tb = ps_c_tambem(ps_c_nome(i));
+                if (tb) {
+                    fprintf(f, ", \"tambem\": ");
+                    jm_txt(f, tb);
+                }
                 if (g == 3) {
                     fprintf(f, ", \"motivo\": ");
                     jm_txt(f, ps_c_decl(i));
@@ -35913,6 +35937,37 @@ void ps_metadata_json(FILE *saida)
      * parser lê (o realce pinta as do tipo) */
     fprintf(f, "\n },\n \"c\": {");
     jm_c(f);
+    /* o import (`import <stdio.h>`): os cabeçalhos que a Jinga tem, o que um
+     * traz do outro (`<inttypes.h>` traz o `<stdint.h>`) e os do C11 que
+     * ficam de fora, com o motivo */
+    fprintf(f, "\n },\n \"c_cabecalhos\": {\n  \"tem\": [");
+    {
+        const char *cb;
+        for (int k = 0; (cb = ps_c_cab(k)) != NULL; k++) {
+            fprintf(f, "%s", k ? ", " : "");
+            jm_txt(f, cb);
+        }
+        fprintf(f, "],\n  \"inclui\": {");
+        int prim = 1;
+        for (int k = 0; (cb = ps_c_cab(k)) != NULL; k++) {
+            const char *traz = ps_c_inclui(cb);
+            if (!traz) continue;
+            fprintf(f, "%s", prim ? "" : ", ");
+            prim = 0;
+            jm_txt(f, cb);
+            fprintf(f, ": ");
+            jm_txt(f, traz);
+        }
+        fprintf(f, "},\n  \"fora\": {");
+        const char *motivo = NULL;
+        for (int k = 0; (cb = ps_c_cab_fora(k, &motivo)) != NULL; k++) {
+            fprintf(f, "%s\n   ", k ? "," : "");
+            jm_txt(f, cb);
+            fprintf(f, ": ");
+            jm_txt(f, motivo);
+        }
+        fprintf(f, "\n  }");
+    }
     fprintf(f, "\n },\n \"c_palavras\": [");
     {
         const char *papel = NULL, *w;

@@ -1078,6 +1078,14 @@ if __name__ == "main" {
 
 Libs `.pr` instaladas nesta máquina em `~/.jinga/libs` (são do dono e vão junto para o Mac): `Controllers.pr`, `math.pr`, `pagination.pr`, `pondy.pr`, `prserver.pr`, `random.pr`, `roken.pr`, `sunotify.pr`, `swagger.pr` (documentada em `docs/swagger/swagger.md`).
 
+**A biblioteca padrão do C (Plano 1, lote C1).** As funções, os tipos e as constantes de 13 cabeçalhos do C11 (`<stdio.h>`, `<stdlib.h>`, `<string.h>`, `<math.h>`, `<ctype.h>`, `<time.h>`, `<errno.h>`, `<limits.h>`, `<float.h>`, `<stddef.h>`, `<stdint.h>`, `<inttypes.h>`, `<stdbool.h>`), chamados direto pela libffi, com ponteiro de verdade e a sintaxe do C.
+- O cabeçalho se importa como o `#include` (decisão sua de 2026-10-16): `import <stdio.h>`, um por cabeçalho, no topo do arquivo, e os nomes ficam soltos (`printf`). Sem o import, o nome do C é `NameError: ... Did you forget to import <stdio.h>?`. O `NULL` e o `size_t` valem por qualquer cabeçalho que o C diz que os define; o `<inttypes.h>` traz o `<stdint.h>`. As palavras do C (`int *p`, `unsigned`, `struct`, `sizeof`, o cast) não pedem import. O `import <math.h>` do C e o `import math` de uma lib `.pr` são coisas diferentes, pela forma.
+- O nome que existe nos dois é o da Jinga (`round`, `abs`, `pow`; o do C pelo `lround`, `labs`, `powf`), e numa variável da Jinga `int`, `char`, `long` e `bool` são os da Jinga; na memória do C, os do C.
+- Ponteiro (`*p`, `p[i]`, `&x`, `p->campo`, conta e comparação), array, `struct`, `union`, `typedef`, o inicializador `{...}`, o cast do C, `sizeof` e `offsetof`; a conta é da Jinga e a escrita na memória do C converte pelo tipo de lá (a regra da FFI do LuaJIT).
+- A chamada é conferida antes de rodar com as frases da VM (quantidade, tipo de cada argumento, o formato do `printf`/`scanf` escrito no código); o `errno` é guardado depois de cada chamada; a funct da Jinga vai onde o C pede ponteiro de função (`qsort`); o `exit` do C roda os `finally` e o `atexit` com a VM viva; o ponteiro errado derruba com o sinal, o endereço e a linha (139 no shell).
+- Fica de fora com o motivo: `setjmp`, `stdarg`/`v...`, `threads`/`stdatomic`, o Anexo K, `gets`, `iso646`, o `true`/`false`, o `assert.h`; os cabeçalhos da segunda parte (`signal`, `locale`, `wchar`, `wctype`, `uchar`, `fenv`, `complex`, `tgmath`) são o lote C2.
+- A referência: o capítulo `docs/linguagem/15-c.md` (a linguagem) e `docs/c/` (uma página por cabeçalho, traduzida da cppreference, com o protótipo de cada função conferido contra a tabela pelo `audita_doc.pr` e a saída de cada exemplo conferida rodando pelo `confere_saida_doc.pr`, os dois no `make check`). A tabela do C mora em `vm/c_padrao.decl` (o import nas linhas `tambem`, `inclui` e `cabecalho_fora`), gerada por `scripts/gera_c_padrao.pr`.
+
 ### 2.19 Erros comuns que a própria linguagem aponta
 
 | Escrito | Mensagem do motor | Certo |

@@ -114,7 +114,10 @@ typedef enum {
      * long", "struct ponto", "int[3]"). Com o struct declarado no próprio
      * typedef (`typedef struct [tag] { ... } Nome`): texto2 = "struct" ou
      * "struct tag", texto3 = os campos, i2 = 1 no union. */
-    N_C_TYPEDEF
+    N_C_TYPEDEF,
+    /* `import <stdio.h>`: o cabeçalho da biblioteca padrão do C, igual ao
+     * #include (texto = "stdio.h"); o nó começa no `<` */
+    N_C_IMPORT
 } PSNodeKind;
 
 /* Qual campo do literal vale */

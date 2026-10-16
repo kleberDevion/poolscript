@@ -183,6 +183,7 @@ const char *ps_node_nome(PSNodeKind k)
         case N_C_OFFSETOF:      return "COffsetof";
         case N_C_STRUCT_DECL:   return "CStructDecl";
         case N_C_TYPEDEF:       return "CTypedef";
+        case N_C_IMPORT:        return "CImport";
     }
     return "?";
 }

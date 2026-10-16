@@ -62,6 +62,11 @@
 #                       função (o `tmpnam`: outro processo pode criar o arquivo
 #                       entre o nome e o `fopen`). O teste de unidade não liga
 #                       o endereço dela pra comparar; confere só que ela existe
+#   @sem-windows        a biblioteca do C do Windows (a UCRT) não tem a função
+#                       (o `aligned_alloc`: medido em 2026-10-16, ligando a
+#                       tabela contra a UCRT do MSYS2). Lá ela fica fora da
+#                       tabela de endereços, e a chamada é o "não existe neste
+#                       sistema" de sempre
 
 cabecalho ctype.h
 funcao int isalnum(int c);
@@ -416,7 +421,7 @@ funcao unsigned long int strtoul(const char * restrict nptr, char ** restrict en
 funcao unsigned long long int strtoull(const char * restrict nptr, char ** restrict endptr, int base);
 funcao int rand(void);
 funcao void srand(unsigned int seed);
-funcao void *aligned_alloc(size_t alignment, size_t size);
+funcao void *aligned_alloc(size_t alignment, size_t size); @sem-windows
 funcao void *calloc(size_t nmemb, size_t size);
 funcao void free(void *ptr);
 funcao void *malloc(size_t size);
@@ -485,3 +490,31 @@ funcao struct tm *gmtime(const time_t *timer);
 funcao struct tm *localtime(const time_t *timer);
 funcao size_t strftime(char * restrict s, size_t maxsize, const char * restrict format, const struct tm * restrict timeptr);
 fora asctime_s ctime_s gmtime_s localtime_s : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS
+
+# ── o import (decisão dele de 2026-10-16: `import <stdio.h>`, igual ao
+# #include) ──────────────────────────────────────────────────────────────────
+# Um nome vale com o cabeçalho da linha `cabecalho` dele importado, e também:
+#   tambem <nome> : <cabeçalho>...      com qualquer um destes importado: os
+#                                       nomes que o C11 declara em mais de um
+#                                       cabeçalho (Anexo B do N1570). Os que a
+#                                       Jinga ainda não tem (locale.h, wchar.h,
+#                                       uchar.h) já ficam escritos aqui
+#   inclui <cabeçalho> <outro>          o primeiro traz os nomes do segundo
+#                                       (C11 7.8p1: o inttypes.h inclui o
+#                                       stdint.h)
+#   cabecalho_fora <cabeçalho>... : <motivo>
+#                                       cabeçalho do C11 que a Jinga não tem:
+#                                       o import dele é erro, com o motivo
+tambem NULL : locale.h stdio.h stdlib.h string.h time.h wchar.h
+tambem size_t : stdio.h stdlib.h string.h time.h uchar.h wchar.h
+tambem wchar_t : stdlib.h wchar.h
+tambem FILE : wchar.h
+tambem struct tm : wchar.h
+inclui inttypes.h stdint.h
+cabecalho_fora setjmp.h : pular por cima da VM corrompe a VM; a Jinga tem try/catch
+cabecalho_fora stdarg.h : o va_list só existe dentro de uma função variádica do C
+cabecalho_fora threads.h stdatomic.h : a VM roda numa thread só, e funct da Jinga em outra thread corrompe a VM
+cabecalho_fora assert.h : o assert da Jinga faz esse papel (levanta AssertionError com a linha)
+cabecalho_fora iso646.h : são outros nomes pros operadores (bitand, xor, not_eq...), gramática e não biblioteca; o and, o or e o not a Jinga já tem
+cabecalho_fora stdalign.h stdnoreturn.h : são palavras da gramática do C (alignas, noreturn), não biblioteca
+cabecalho_fora signal.h locale.h wchar.h wctype.h uchar.h fenv.h complex.h tgmath.h : ainda não está na Jinga (é a segunda parte da biblioteca do C)

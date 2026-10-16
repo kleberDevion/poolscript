@@ -12,7 +12,9 @@
 { "acoshf", (void (*)(void))acoshf },
 { "acoshl", (void (*)(void))acoshl },
 { "acosl", (void (*)(void))acosl },
+#ifndef _WIN32
 { "aligned_alloc", (void (*)(void))aligned_alloc },
+#endif
 { "asctime", (void (*)(void))asctime },
 { "asin", (void (*)(void))asin },
 { "asinf", (void (*)(void))asinf },

@@ -1154,6 +1154,27 @@ Referência completa de cada lib
 Não existem módulos "stub" (de fachada): módulo que não faz nada não é
 módulo. Importar um nome que não existe é `ImportError`.
 
+### A biblioteca padrão do C: `import <stdio.h>`
+
+O cabeçalho do C se importa como o `#include` do C, e os nomes dele ficam
+soltos (`printf`, não `stdio.printf`), com ponteiro de verdade e a sintaxe do
+C. Sem o import, o nome do C é `NameError` com a dica do import que falta. O
+nome que existe nos dois (`round`, `abs`, `pow`) continua o da Jinga.
+
+```ps
+import <stdio.h>
+import <stdlib.h>
+
+int *v = malloc(3 * sizeof(int))
+v[0] = 7
+printf("%d\n", v[0])
+free(v)
+```
+
+A linguagem do C na Jinga (tipos, ponteiro, struct, cast, callback, o que
+derruba) está em [`docs/linguagem/15-c.md`](linguagem/15-c.md); a referência
+de cada cabeçalho, em [`docs/c/c.md`](c/c.md).
+
 ---
 
 ## Builtins globais

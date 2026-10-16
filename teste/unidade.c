@@ -550,7 +550,7 @@ static void teste_ast(void)
      * quando alguém está depurando outra coisa. */
     grupo("ast/nomes");
     int sem_nome = 0;
-    for (int k = 0; k <= N_C_TYPEDEF; k++) {   /* N_C_TYPEDEF: o último do enum */
+    for (int k = 0; k <= N_C_IMPORT; k++) {    /* N_C_IMPORT: o último do enum */
         const char *nm = ps_node_nome((PSNodeKind)k);
         if (!nm || !strcmp(nm, "?")) { sem_nome++; printf("  kind %d sem nome\n", k); }
     }
@@ -1081,6 +1081,24 @@ static void teste_c_tabela(void)
 #else
     CONF(ps_c_const_int(ps_c_busca("FP_FAST_FMA"), &kt, &kv) == -1, "FP_FAST_FMA nao definida neste sistema");
 #endif
+    /* o import (`import <stdio.h>`): o cabeçalho de cada nome, os nomes que o
+     * C declara em mais de um cabeçalho (o NULL), o que inclui outro (o
+     * inttypes.h traz o stdint.h) e os cabeçalhos do C11 que ficam de fora */
+    const char *motivo_cab = NULL;
+    CONF(ps_c_cab_existe("stdio.h", NULL) == 1 && ps_c_cab_existe("foo.h", &motivo_cab) == 0 && !motivo_cab,
+         "stdio.h existe, foo.h nao");
+    CONF(ps_c_cab_existe("setjmp.h", &motivo_cab) == 0 && motivo_cab && strstr(motivo_cab, "try/catch"),
+         "setjmp.h fica de fora com o motivo");
+    CONF(ps_c_vale_com(ps_c_busca("printf"), "stdio.h") && !ps_c_vale_com(ps_c_busca("printf"), "stdlib.h"),
+         "printf so com o stdio.h");
+    CONF(ps_c_vale_com(ps_c_busca("NULL"), "stdio.h") && ps_c_vale_com(ps_c_busca("NULL"), "time.h")
+         && !ps_c_vale_com(ps_c_busca("NULL"), "math.h"), "NULL pelos cabecalhos que o C diz");
+    CONF(ps_c_vale_com(ps_c_busca("INT32_MAX"), "inttypes.h") && !ps_c_vale_com(ps_c_busca("INT32_MAX"), "stdio.h"),
+         "inttypes.h traz o stdint.h");
+    int ncab = 0;
+    while (ps_c_cab(ncab)) ncab++;
+    CONF(ncab == 13, "13 cabecalhos na tabela (%d)", ncab);
+
     t = ps_c_tipo_de(ps_c_busca("struct tm"));
     int tm_ok = t && t->kind == PSC_STRUCT && t->ncampos == 9 && t->tam == sizeof(struct tm);
     for (int k = 0; tm_ok && k < t->ncampos; k++)

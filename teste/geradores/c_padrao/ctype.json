@@ -1,0 +1,18 @@
+[
+ {"nome": "isalnum, isalpha, isdigit e ispunct em letras, dígito e pontuação",
+  "cab": ["ctype.h", "stdio.h"],
+  "c": "    const char *s = \"a1B?\";\n    for (int i = 0; s[i]; i++) printf(\"%c %d %d %d %d\\n\", s[i], isalnum(s[i]) != 0, isalpha(s[i]) != 0, isdigit(s[i]) != 0, ispunct(s[i]) != 0);",
+  "jinga": "for each ch in \"a1B?\" {\n    printf(\"%s %d %d %d %d\\n\", ch, isalnum(ord(ch)) != 0, isalpha(ord(ch)) != 0, isdigit(ord(ch)) != 0, ispunct(ord(ch)) != 0)\n}"},
+ {"nome": "isblank, iscntrl, isspace no espaço, na tabulação e na quebra de linha",
+  "cab": ["ctype.h", "stdio.h"],
+  "c": "    int cs[] = {' ', '\\t', '\\n', 127, 'x'};\n    for (int i = 0; i < 5; i++) printf(\"%d %d %d\\n\", isblank(cs[i]) != 0, iscntrl(cs[i]) != 0, isspace(cs[i]) != 0);",
+  "jinga": "list cs = [32, 9, 10, 127, ord(\"x\")]\nfor each c in cs {\n    printf(\"%d %d %d\\n\", isblank(c) != 0, iscntrl(c) != 0, isspace(c) != 0)\n}"},
+ {"nome": "isgraph, isprint, islower, isupper e isxdigit",
+  "cab": ["ctype.h", "stdio.h"],
+  "c": "    const char *s = \"a Z9g~\";\n    for (int i = 0; s[i]; i++) printf(\"%d%d%d%d%d\\n\", isgraph(s[i]) != 0, isprint(s[i]) != 0, islower(s[i]) != 0, isupper(s[i]) != 0, isxdigit(s[i]) != 0);",
+  "jinga": "for each ch in \"a Z9g~\" {\n    printf(\"%d%d%d%d%d\\n\", isgraph(ord(ch)) != 0, isprint(ord(ch)) != 0, islower(ord(ch)) != 0, isupper(ord(ch)) != 0, isxdigit(ord(ch)) != 0)\n}"},
+ {"nome": "tolower e toupper, e o EOF que volta igual",
+  "cab": ["ctype.h", "stdio.h"],
+  "c": "    printf(\"%c%c%c %d %d\\n\", toupper('a'), tolower('B'), toupper('1'), tolower(EOF), toupper(EOF));",
+  "jinga": "printf(\"%c%c%c %d %d\\n\", toupper(ord(\"a\")), tolower(ord(\"B\")), toupper(ord(\"1\")), tolower(EOF), toupper(EOF))"}
+]

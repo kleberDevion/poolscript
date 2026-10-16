@@ -1127,6 +1127,40 @@ static const char PS_C_TEXTO[] =
 /* os cabeçalhos, na ordem do .decl: o `cab` de cada nome */
 static const uint16_t PS_C_CAB[PS_C_NCAB] = { 1, 9, 17, 25, 36, 45, 52, 62, 71, 80, 88, 97, 106 };
 
+/* ── o import (`import <stdio.h>`) ─────────────────────────────────────────
+ * PS_C_TAMBEM: o nome e os outros cabeçalhos com que ele vale, separados por
+ * espaço (os nomes que o C11 declara em mais de um cabeçalho). PS_C_INCLUI:
+ * o cabeçalho e o que ele traz. PS_C_CAB_FORA: o cabeçalho do C11 que a
+ * Jinga não tem e o motivo. */
+static const char PS_C_TAMBEM[] =
+    "NULL\0locale.h stdio.h stdlib.h string.h time.h wchar.h\0"
+    "size_t\0stdio.h stdlib.h string.h time.h uchar.h wchar.h\0"
+    "wchar_t\0stdlib.h wchar.h\0"
+    "FILE\0wchar.h\0"
+    "struct tm\0wchar.h\0"
+    "";
+static const char PS_C_INCLUI[] =
+    "inttypes.h\0stdint.h\0"
+    "";
+static const char PS_C_CAB_FORA[] =
+    "setjmp.h\0pular por cima da VM corrompe a VM; a Jinga tem try/catch\0"
+    "stdarg.h\0o va_list só existe dentro de uma função variádica do C\0"
+    "threads.h\0a VM roda numa thread só, e funct da Jinga em outra thread corrompe a VM\0"
+    "stdatomic.h\0a VM roda numa thread só, e funct da Jinga em outra thread corrompe a VM\0"
+    "assert.h\0o assert da Jinga faz esse papel (levanta AssertionError com a linha)\0"
+    "iso646.h\0são outros nomes pros operadores (bitand, xor, not_eq...), gramática e não biblioteca; o and, o or e o not a Jinga já tem\0"
+    "stdalign.h\0são palavras da gramática do C (alignas, noreturn), não biblioteca\0"
+    "stdnoreturn.h\0são palavras da gramática do C (alignas, noreturn), não biblioteca\0"
+    "signal.h\0ainda não está na Jinga (é a segunda parte da biblioteca do C)\0"
+    "locale.h\0ainda não está na Jinga (é a segunda parte da biblioteca do C)\0"
+    "wchar.h\0ainda não está na Jinga (é a segunda parte da biblioteca do C)\0"
+    "wctype.h\0ainda não está na Jinga (é a segunda parte da biblioteca do C)\0"
+    "uchar.h\0ainda não está na Jinga (é a segunda parte da biblioteca do C)\0"
+    "fenv.h\0ainda não está na Jinga (é a segunda parte da biblioteca do C)\0"
+    "complex.h\0ainda não está na Jinga (é a segunda parte da biblioteca do C)\0"
+    "tgmath.h\0ainda não está na Jinga (é a segunda parte da biblioteca do C)\0"
+    "";
+
 /* Os nomes em ordem de strcmp: a busca é binária. Os números são posições
  * em PS_C_TEXTO; `idx` é a linha na tabela da espécie. */
 static const PSCNome PS_C_NOMES[PS_C_NNOMES] = {
@@ -1878,6 +1912,9 @@ static const PSCNome PS_C_NOMES[PS_C_NNOMES] = {
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-parameter"
+/* no Windows o cabeçalho declara as do ctype.h com `dllimport`, e a
+ * declaração de novo, só pra conferir o tipo, avisa que o perdeu */
+#pragma GCC diagnostic ignored "-Wattributes"
 #endif
 _Noreturn void (_Exit)(int status);
 _Noreturn void (abort)(void);
@@ -2889,7 +2926,6 @@ static void (*ps_c_endereco_win(int i))(void)
         case 326: return (void (*)(void))acoshf;
         case 327: return (void (*)(void))acoshl;
         case 328: return (void (*)(void))acosl;
-        case 329: return (void (*)(void))aligned_alloc;
         case 330: return (void (*)(void))asctime;
         case 332: return (void (*)(void))asin;
         case 333: return (void (*)(void))asinf;

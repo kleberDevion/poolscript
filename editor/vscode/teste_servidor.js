@@ -1830,30 +1830,37 @@ async function main() {
     conf('fora de model, parênteses de chamada não oferecem os parâmetros do campo', !L5.includes('regex='), L5.slice(0, 6));
   }
 
-  /* ── o C na Jinga (Plano 1): os nomes do C em todo arquivo, sem import,
+  /* ── o C na Jinga (Plano 1): os nomes dos cabeçalhos importados,
    * DEPOIS dos da Jinga — hover, assinatura e completion, da chave `c` do
    * `--metadata` (a tabela do motor) ── */
   {
-    const src = 'size_t n = strlen("abc")\n'      // 0
-              + 'printf("%d\\n", n)\n'            // 1
-              + 'post(round(2.5))\n'              // 2
-              + 'vprintf("x", NULL)\n'            // 3
-              + 'FILE *f = NULL\n'                // 4
-              + 'int e = EOF\n'                   // 5
-              + 'struct tm *t = NULL\n'           // 6
-              + 'unsigned u = 1\n'                // 7
-              + 'qsort(';                         // 8
+    /* os cabeçalhos se importam, como o #include (decisão dele de
+     * 2026-10-16); o `printf` da linha 10 é de um cabeçalho que o arquivo
+     * importou, o `malloc` da linha 11 não */
+    const src = 'import <stdio.h>\n'              // 0
+              + 'import <string.h>\n'             // 1
+              + 'import <time.h>\n'               // 2
+              + 'size_t n = strlen("abc")\n'      // 3
+              + 'printf("%d\\n", n)\n'            // 4
+              + 'post(round(2.5))\n'              // 5
+              + 'vprintf("x", NULL)\n'            // 6
+              + 'FILE *f = NULL\n'                // 7
+              + 'int e = EOF\n'                   // 8
+              + 'struct tm *t = NULL\n'           // 9
+              + 'unsigned u = 1\n'                // 10
+              + 'int *p = malloc(4)\n'            // 11
+              + 'strtok(';                        // 12
     const hov = (id, l, c) => ({ jsonrpc: '2.0', id, method: 'textDocument/hover',
       params: { textDocument: { uri: URI }, position: { line: l, character: c } } });
     const m = await conversa(src, [
-      hov(20, 0, 1), hov(21, 0, 12), hov(22, 2, 6), hov(23, 3, 2), hov(24, 4, 1), hov(25, 5, 9),
-      hov(26, 6, 7), hov(27, 7, 2),
+      hov(20, 3, 1), hov(21, 3, 12), hov(22, 5, 6), hov(23, 6, 2), hov(24, 7, 1), hov(25, 8, 9),
+      hov(26, 9, 7), hov(27, 10, 2), hov(29, 11, 10), hov(32, 0, 10),
       { jsonrpc: '2.0', id: 28, method: 'textDocument/signatureHelp',
-        params: { textDocument: { uri: URI }, position: { line: 8, character: 6 } } },
+        params: { textDocument: { uri: URI }, position: { line: 12, character: 7 } } },
     ]);
     const tx = (id) => { const r = resp(m, id); return r && r.result && r.result.contents ? r.result.contents.value : ''; };
     conf('hover do tipo do C mostra o typedef e o cabeçalho', tx(20).includes('typedef') && tx(20).includes('size_t')
-         && tx(20).includes('stddef.h'), tx(20));
+         && tx(20).includes('stddef.h') && !tx(20).includes('falta'), tx(20));
     conf('hover da função do C mostra o protótipo do padrão e o cabeçalho',
          tx(21).includes('size_t strlen(const char *s)') && tx(21).includes('string.h'), tx(21));
     conf('hover de nome que existe nos dois (round) é o da Jinga', tx(22).includes('builtin') && !tx(22).includes('math.h'), tx(22));
@@ -1863,30 +1870,66 @@ async function main() {
     conf('hover do tag de struct mostra o struct do padrão com os campos',
          tx(26).includes('struct tm {') && tx(26).includes('tm_year'), tx(26));
     conf('hover da palavra do C diz o papel dela', tx(27).includes('palavra de tipo do C'), tx(27));
+    conf('hover do nome do C sem o cabeçalho importado diz o import que falta',
+         tx(29).includes('void *malloc(size_t size)') && tx(29).includes('falta `import <stdlib.h>`'), tx(29));
+    conf('hover do cabeçalho no import diz o que ele traz', tx(32).includes('#include <stdio.h>')
+         && tx(32).includes('cabeçalho da biblioteca padrão do C'), tx(32));
     const sh = resp(m, 28);
     const sig = sh && sh.result && sh.result.signatures[0] ? sh.result.signatures[0] : null;
-    conf('signatureHelp da função do C é o protótipo, com o ponteiro de função como UM parâmetro',
+    conf('signatureHelp da função do C é o protótipo, um parâmetro por pedaço dele',
+         !!sig && sig.label.startsWith('char *strtok(') && sig.parameters.length === 2
+         && sig.label.includes(sig.parameters[1].label), sig);
+  }
+  {
+    /* o `qsort` (do `<stdlib.h>`): o ponteiro de função é UM parâmetro */
+    const src = 'import <stdlib.h>\nqsort(';
+    const m = await conversa(src + '\n', [
+      { jsonrpc: '2.0', id: 33, method: 'textDocument/signatureHelp',
+        params: { textDocument: { uri: URI }, position: { line: 1, character: 6 } } },
+    ]);
+    const sh = resp(m, 33);
+    const sig = sh && sh.result && sh.result.signatures[0] ? sh.result.signatures[0] : null;
+    conf('signatureHelp do qsort tem o ponteiro de função como UM parâmetro',
          !!sig && sig.label.startsWith('void qsort(') && sig.parameters.length === 4
          && sig.parameters[3].label.startsWith('int (*compar)(') && sig.label.includes(sig.parameters[3].label), sig);
   }
   {
-    const src = 'strle';
-    const m = await conversa(src + '\n', [compl(30, 0, src.length)]);
+    const src = 'import <string.h>\nstrle';
+    const m = await conversa(src + '\n', [compl(30, 1, 5)]);
     const r = resp(m, 30);
     const its = r && r.result ? (Array.isArray(r.result) ? r.result : r.result.items || []) : [];
     const it = its.find((i) => i.label === 'strlen');
-    conf('completion oferece a função do C com o protótipo e o cabeçalho, depois dos nomes da Jinga',
+    conf('completion oferece a função do C importada com o protótipo e o cabeçalho, depois dos nomes da Jinga',
          !!it && it.detail.includes('size_t strlen(') && it.detail.includes('string.h') && it.sortText.startsWith('5'), it);
     const rotulosC = its.map((i) => i.label);
-    conf('completion não oferece o que fica de fora (vprintf) e mantém o round da Jinga',
-         !rotulosC.includes('vprintf') && (its.find((i) => i.label === 'round') || {}).detail.startsWith('builtin'),
-         its.filter((i) => i.label === 'round' || i.label === 'vprintf'));
+    conf('completion não oferece o que fica de fora (vprintf) nem cabeçalho não importado (printf), e mantém o round da Jinga',
+         !rotulosC.includes('vprintf') && !rotulosC.includes('printf')
+         && (its.find((i) => i.label === 'round') || {}).detail.startsWith('builtin'),
+         its.filter((i) => i.label === 'round' || i.label === 'vprintf' || i.label === 'printf'));
+  }
+  {
+    /* sem import, nenhum nome do C; com o `<inttypes.h>`, os do `<stdint.h>`
+     * também (ele inclui o outro, como no C) */
+    const m = await conversa('strle\n', [compl(34, 0, 5)]);
+    const L = rotulos(resp(m, 34));
+    conf('sem o import do cabeçalho, o completion não oferece o nome do C', !L.includes('strlen'), L.slice(0, 6));
+    const m2 = await conversa('import <inttypes.h>\nINT32_M\n', [compl(35, 1, 7)]);
+    const L2 = rotulos(resp(m2, 35));
+    conf('o cabeçalho que inclui outro traz os nomes dele (INT32_MAX pelo <inttypes.h>)', L2.includes('INT32_MAX'), L2.slice(0, 6));
+  }
+  {
+    /* `import <` oferece os cabeçalhos, com o `>` */
+    const m = await conversa('import <st\n', [compl(36, 0, 10)]);
+    const r = resp(m, 36);
+    const its = r && r.result ? (Array.isArray(r.result) ? r.result : r.result.items || []) : [];
+    const st = its.find((i) => i.label === 'stdio.h');
+    conf('import < oferece os cabeçalhos do C com o > no fim', !!st && st.insertText === 'stdio.h>', its.slice(0, 4));
   }
   {
     /* dentro da chamada da função do C, nada de `nome=`: ela não recebe
      * argumento com nome */
-    const src = 'strlen(';
-    const m = await conversa(src + '\n', [compl(31, 0, src.length)]);
+    const src = 'import <string.h>\nstrlen(';
+    const m = await conversa(src + '\n', [compl(31, 1, 7)]);
     const L = rotulos(resp(m, 31));
     conf('dentro da chamada da função do C não se oferece parâmetro com nome', !L.some((x) => x.endsWith('=')), L.slice(0, 6));
   }

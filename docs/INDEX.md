@@ -32,6 +32,18 @@ Neovim…) com completion type-aware e diagnóstico do parser real, veja
 
 ---
 
+## A biblioteca padrão do C (com `import <cabeçalho.h>`)
+
+- **[o C na Jinga](c/c.md)** — os 13 cabeçalhos do C11 que a Jinga tem, cada
+  um com a sua página traduzida da cppreference: `<stdio.h>`, `<stdlib.h>`,
+  `<string.h>`, `<math.h>`, `<ctype.h>`, `<time.h>`, `<errno.h>`,
+  `<limits.h>`, `<float.h>`, `<stddef.h>`, `<stdint.h>`, `<inttypes.h>` e
+  `<stdbool.h>`. O cabeçalho se importa como o `#include` do C; a parte da
+  linguagem (ponteiro, struct, cast, callback) está no capítulo
+  [15. O C na Jinga](linguagem/15-c.md).
+
+---
+
 ## Bibliotecas (com `import`)
 
 ### Web e rede

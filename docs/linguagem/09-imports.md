@@ -473,3 +473,7 @@ post(mymod.saudar("ana"))
   quem importa → arquivo do projeto**; senão `ImportError`.
 - **Importar não dispara** o guard `if __name__ == "main"` do módulo; no
   arquivo executado, `__name__` vale `"main"`.
+- **`import <stdio.h>`** — o cabeçalho da biblioteca padrão do C, igual ao
+  `#include`: os nomes dele ficam soltos (`printf`), e sem o import o nome do
+  C é `NameError` com a dica do import que falta. Ver
+  [15.1](15-c.md#151-import-stdioh--o-cabeçalho-igual-ao-include).

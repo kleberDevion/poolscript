@@ -48,13 +48,14 @@ const char *ps_nativo_sugestao(const char *mod, const char *membro);
  * membros de uma classe do arquivo. */
 const char *ps_sugere_nome(const char *alvo, const char **nomes, int n);
 const char *ps_sugere_pre_ligado(const char *nome);
-/* O "Did you mean" com os nomes da biblioteca padrão do C: `jinga` é a dica
- * entre os nomes da Jinga (ou NULL), e o do C só a troca quando está mais
- * perto. E o tipo mais parecido pra "tipo X não existe" (os da Jinga, os
- * nativos e `extras` contra os do C, o mais perto; no empate, o da Jinga).
- * NULL sem dica. */
-const char *ps_sugere_nome_c(const char *nome, const char *jinga);
-const char *ps_sugere_tipo(const char *nome, const char **extras, int nextras);
+/* O "Did you mean" com os nomes da biblioteca padrão do C dos cabeçalhos que
+ * o arquivo importou (`cabs`): `jinga` é a dica entre os nomes da Jinga (ou
+ * NULL), e o do C só a troca quando está mais perto. E o tipo mais parecido
+ * pra "tipo X não existe" (os da Jinga, os nativos e `extras` contra os do C
+ * importados, o mais perto; no empate, o da Jinga). NULL sem dica. */
+const char *ps_sugere_nome_c(const char *nome, const char *jinga, const char *const *cabs, int ncabs);
+const char *ps_sugere_tipo(const char *nome, const char **extras, int nextras,
+                           const char *const *cabs, int ncabs);
 
 /* `catch (pedido e)` pega o erro `levantado`? A tabela de exceções da VM (o
  * pai pega o filho). O checador pergunta se o `try` em volta de um import

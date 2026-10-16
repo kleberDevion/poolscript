@@ -458,7 +458,8 @@ TESTE_FONTES := teste/ps_teste.c teste/casos_crash.c teste/casos_inteiros.c \
                 teste/casos_pendentes.c teste/casos_cobertura.c \
                 teste/casos_diferencial.c teste/casos_equivalencia.c \
                 teste/casos_oraculo.c teste/casos_robustez.c \
-                teste/casos_libs.c teste/casos_regex_re.c teste/casos_c.c
+                teste/casos_libs.c teste/casos_regex_re.c teste/casos_c.c \
+                teste/casos_c_padrao.c
 
 # o binário se chama `testar` porque `teste` é a PASTA dos casos
 testar$(EXE): $(TESTE_FONTES) teste/ps_teste.h $(VM)/ps_ext.h $(RECURSOS)
@@ -714,6 +715,12 @@ check: pool testar
 	@./pool scripts/audita_c.pr
 	@echo
 	@./pool scripts/audita_exemplos_doc.pr
+	@echo
+	# SAIDA dos exemplos: o `audita_exemplos_doc` passa o --check, e este roda
+	# cada bloco ```ps seguido de ```saida e compara o que o motor imprime com
+	# o que a pagina promete. Por enquanto a doc do C (docs/c/ e o capitulo
+	# 15); o resto da doc entra quando as saidas antigas forem corrigidas.
+	@./pool scripts/confere_saida_doc.pr docs/c docs/linguagem/15-c.md
 	@echo
 	@./pool teste/fuzz_replay.pr
 	@echo

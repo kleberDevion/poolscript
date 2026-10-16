@@ -300,6 +300,81 @@ const char *ps_c_cabecalho(int i)
     return fora_da_tabela(i) ? NULL : PS_C_TEXTO + PS_C_CAB[PS_C_NOMES[i].cab];
 }
 
+/* ── o import (`import <stdio.h>`, decisão dele de 2026-10-16) ────────── */
+const char *ps_c_cab(int i)
+{
+    return i >= 0 && i < PS_C_NCAB ? PS_C_TEXTO + PS_C_CAB[i] : NULL;
+}
+
+int ps_c_cab_existe(const char *cab, const char **motivo)
+{
+    if (motivo) *motivo = NULL;
+    if (!cab) return 0;
+    for (int k = 0; k < PS_C_NCAB; k++)
+        if (strcmp(PS_C_TEXTO + PS_C_CAB[k], cab) == 0) return 1;
+    for (const char *w = PS_C_CAB_FORA; *w; ) {
+        const char *m = w + strlen(w) + 1;
+        if (strcmp(w, cab) == 0) {
+            if (motivo) *motivo = m;
+            return 0;
+        }
+        w = m + strlen(m) + 1;
+    }
+    return 0;
+}
+
+/* o par (chave, valor) de um bloco de texto do import, pela chave */
+static const char *par_do_bloco(const char *bloco, const char *chave)
+{
+    for (const char *w = bloco; *w; ) {
+        const char *v = w + strlen(w) + 1;
+        if (strcmp(w, chave) == 0) return v;
+        w = v + strlen(v) + 1;
+    }
+    return NULL;
+}
+
+const char *ps_c_cab_fora(int i, const char **motivo)
+{
+    for (const char *w = PS_C_CAB_FORA; *w; ) {
+        const char *m = w + strlen(w) + 1;
+        if (i-- == 0) {
+            if (motivo) *motivo = m;
+            return w;
+        }
+        w = m + strlen(m) + 1;
+    }
+    return NULL;
+}
+
+const char *ps_c_inclui(const char *cab) { return cab ? par_do_bloco(PS_C_INCLUI, cab) : NULL; }
+const char *ps_c_tambem(const char *nome) { return nome ? par_do_bloco(PS_C_TAMBEM, nome) : NULL; }
+
+/* `cab` é uma das palavras da lista separada por espaço? */
+static int na_lista(const char *lista, const char *cab)
+{
+    size_t n = strlen(cab);
+    for (const char *p = lista; *p; ) {
+        const char *fim = strchr(p, ' ');
+        size_t k = fim ? (size_t)(fim - p) : strlen(p);
+        if (k == n && memcmp(p, cab, n) == 0) return 1;
+        if (!fim) break;
+        p = fim + 1;
+    }
+    return 0;
+}
+
+int ps_c_vale_com(int i, const char *cab)
+{
+    if (fora_da_tabela(i) || !cab) return 0;
+    const char *dono = ps_c_cabecalho(i);
+    if (strcmp(dono, cab) == 0) return 1;
+    const char *traz = ps_c_inclui(cab);
+    if (traz && strcmp(traz, dono) == 0) return 1;
+    const char *tb = ps_c_tambem(ps_c_nome(i));
+    return tb && na_lista(tb, cab);
+}
+
 /* ── o formato do printf e do scanf ───────────────────────────────────── */
 /* Cada conversão consome um argumento (o `*` de largura e de precisão do
  * printf consome um int; o `*` do scanf, que suprime a gravação, nenhum), e o

@@ -163,6 +163,21 @@ PSCEspecie  ps_c_especie(int i);
 /* O protótipo, a declaração ou o motivo de ficar de fora; "" se não tem. */
 const char *ps_c_decl(int i);
 const char *ps_c_cabecalho(int i);   /* "stdio.h" */
+/* O import (`import <stdio.h>`, decisão dele de 2026-10-16): o i-ésimo
+ * cabeçalho da tabela (NULL depois do último); se o cabeçalho é da tabela (1)
+ * ou não (0, com `*motivo` = o motivo de um cabeçalho do C11 que a Jinga não
+ * tem, ou NULL quando o nome não é cabeçalho do C11); o que um cabeçalho traz
+ * além dele (`inttypes.h` traz `stdint.h`) e os outros cabeçalhos com que um
+ * nome vale (`NULL`: "locale.h stdio.h ..."), ou NULL; e se o nome `i` vale
+ * com o cabeçalho `cab` importado (o dele, o `tambem`, o que `cab` inclui). */
+const char *ps_c_cab(int i);
+int         ps_c_cab_existe(const char *cab, const char **motivo);
+/* o i-ésimo cabeçalho do C11 que a Jinga não tem, com o motivo; NULL depois
+ * do último */
+const char *ps_c_cab_fora(int i, const char **motivo);
+const char *ps_c_inclui(const char *cab);
+const char *ps_c_tambem(const char *nome);
+int         ps_c_vale_com(int i, const char *cab);
 int         ps_c_marcas(int i);
 /* Os tipos dos argumentos a mais de uma variádica, pelo formato do printf
  * (`eh_scanf` = 0) ou do scanf (C11 7.21.6.1 e 7.21.6.2). `tipos[k]` e

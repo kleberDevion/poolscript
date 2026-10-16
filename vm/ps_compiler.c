@@ -19,8 +19,9 @@
 #include "ps_regex.h"        /* `regex=` do campo de model: compilado aqui só pra validar */
 #include "ps_retornos.h"
 #include "ps_caminho.h"      /* nome do módulo a partir do caminho: `/` e, no Windows, `\` */
-#include "ps_c.h"            /* a biblioteca padrão do C: os nomes que valem em todo arquivo */
+#include "ps_c.h"            /* a biblioteca padrão do C: os nomes dos cabeçalhos importados (`import <stdio.h>`) */
 #include <limits.h>          /* o INT_MAX da aridade sem teto (variádica do C) */
+#include <ctype.h>           /* as palavras do tipo do C (c_confere_import_tipo) */
 
 #include <stdarg.h>
 
@@ -603,6 +604,12 @@ typedef struct {
      * (estático). Vazio = o programa não usa o C, e a tabela nunca é
      * consultada. */
     IdxNomes ix_nomes_c;
+    /* Os cabeçalhos do C que o arquivo importa (`import <stdio.h>`, igual ao
+     * #include: decisão dele de 2026-10-16), colhidos na 1ª passada: só os
+     * nomes deles valem. Os textos são os da tabela do C (estáticos): o nó
+     * da 1ª passada morre com o comando. */
+    const char **cabs_c;
+    int32_t      ncabs_c, cap_cabs_c;
     /* Os nomes de MÓDULO com o endereço tomado (`&x`) em algum comando de
      * topo, colhidos na 1ª passada: a variável mora numa caixa na memória do
      * C, e a funct compilada antes da declaração já precisa saber disso. */
@@ -3145,7 +3152,7 @@ static const char *tp_dica_tipo(C *c, const char *nome, char *buf, size_t cap)
     int n = 0;
     for (int32_t i = 0; ex && i < c->ntipos_arq; i++)
         if (c->tipos_arq[i]->texto) ex[n++] = c->tipos_arq[i]->texto;
-    const char *d = ps_sugere_tipo(nome, ex, n);
+    const char *d = ps_sugere_tipo(nome, ex, n, c->cabs_c, c->ncabs_c);
     free(ex);
     if (d) snprintf(buf, cap, ". Did you mean: '%s'?", d);
     return buf;
@@ -3415,6 +3422,55 @@ static int tp_ligado_no_escopo(C *c, Unidade *u, const char *nome)
  * sozinha e o que o jinker injeta. Nome que nada disso liga é `NameError`
  * certo rodando — e sai antes: uma `int funct` engolia esse erro e o programa
  * terminava calado, com `rc=0`, sem nunca ter feito o que devia. */
+/* O nome do C (índice da tabela) vale neste arquivo? Só com o cabeçalho
+ * dele importado (`import <stdio.h>`, igual ao #include: decisão dele de
+ * 2026-10-16), ou um que o C diz que também o declara (o `NULL` do
+ * `<stdio.h>`), ou um que inclui o dele (o `<inttypes.h>` traz o
+ * `<stdint.h>`). */
+static int c_nome_visivel(C *c, int32_t ci)
+{
+    for (int32_t i = 0; i < c->ncabs_c; i++)
+        if (ps_c_vale_com(ci, c->cabs_c[i])) return 1;
+    return 0;
+}
+
+/* O tipo do C escrito no programa (`size_t`, `FILE *`, `struct tm *`) usa um
+ * nome de cabeçalho que o arquivo não importou? Acusa o primeiro, com a dica
+ * do import (a frase do nome usado como valor). As palavras do C
+ * (`unsigned`, `const`, `int`) e os tipos que o programa declarou não pedem
+ * import. Devolve 1 quando acusou. */
+static int c_confere_import_tipo(C *c, PSNode *no, const char *texto)
+{
+    if (!texto) return 0;
+    char ant[64] = "";
+    for (const char *p = texto; *p; ) {
+        if (!(isalpha((unsigned char)*p) || *p == '_')) { p++; continue; }
+        const char *ini = p;
+        while (isalnum((unsigned char)*p) || *p == '_') p++;
+        size_t k = (size_t)(p - ini);
+        if (k >= sizeof ant) { ant[0] = '\0'; continue; }
+        char w[64];
+        memcpy(w, ini, k);
+        w[k] = '\0';
+        char nome[140];
+        if (!strcmp(ant, "struct") || !strcmp(ant, "union")) snprintf(nome, sizeof nome, "%s %s", ant, w);
+        else snprintf(nome, sizeof nome, "%s", w);
+        memcpy(ant, w, k + 1);
+        /* o tipo do programa, e o nome que é também tipo da Jinga (o `bool`:
+         * no C ele é do `<stdbool.h>`, e na Jinga vale sempre) */
+        if (ps_c_tipo_declarado(nome) || ps_tipo_info(nome)) continue;
+        int ci = ps_c_busca(nome);
+        if (ci < 0) continue;
+        PSCEspecie e = ps_c_especie(ci);
+        if (e != PSC_NOME_TIPO && e != PSC_NOME_OPACO && e != PSC_NOME_ESTRUTURA) continue;
+        if (c_nome_visivel(c, ci)) continue;
+        terro(c, no, "NameError", "name '%s' is not defined. Did you forget to import <%s>?", nome,
+              ps_c_cabecalho(ci));
+        return 1;
+    }
+    return 0;
+}
+
 /* O nome não é ligado por nada: nem o escopo, nem a VM, nem o jinker. */
 static int tp_nome_inexistente(C *c, Unidade *u, const char *nome)
 {
@@ -3426,12 +3482,14 @@ static int tp_nome_inexistente(C *c, Unidade *u, const char *nome)
      * porque a pergunta era "está na tabela de tipos?"). */
     if (ps_nome_pre_ligado(nome)) return 0;
     if (c->usa_jinker && (!strcmp(nome, "request") || !strcmp(nome, "channel"))) return 0;
-    /* A biblioteca padrão do C vale em todo arquivo, abaixo de tudo isso: o
-     * nome do programa e o builtin ganham do C. Só chega aqui o nome que nada
-     * mais liga, então programa sem C nunca consulta a tabela. */
+    /* A biblioteca padrão do C, abaixo de tudo isso: o nome do programa e o
+     * builtin ganham do C, e o nome só vale com o cabeçalho dele importado.
+     * Só chega aqui o nome que nada mais liga, então programa sem C nunca
+     * consulta a tabela. */
     {
         int32_t ci = ps_c_valor_indice(nome);
         if (ci >= 0) {
+            if (!c_nome_visivel(c, ci)) return 1;
             if (ix_busca(&c->ix_nomes_c, nome) < 0 && ix_poe(&c->ix_nomes_c, ps_c_nome(ci), ci) != 0)
                 cerro(c, "sem memoria", NULL);
             return 0;
@@ -3503,6 +3561,16 @@ static void tp_acusa_nome(C *c, Unidade *u, const char *nome, PSNode *onde, int 
             return;
         }
     }
+    /* nome do C cujo cabeçalho o arquivo não importou: a causa é o import
+     * que falta (`import <stdio.h>`, igual ao #include) */
+    {
+        int32_t ci = ps_c_valor_indice(nome);
+        if (ci >= 0 && !c_nome_visivel(c, ci)) {
+            terro(c, onde, "NameError", "name '%s' is not defined. Did you forget to import <%s>?", nome,
+                  ps_c_cabecalho(ci));
+            return;
+        }
+    }
     /* Membro de instância lido pelo nome solto, dentro do método: só se
      * alcança por `self`, e a dica é essa. Saía o nome parecido de outro
      * lugar (`saldo` -> 'False', `m` -> 'A'), que não conserta nada. */
@@ -3533,9 +3601,10 @@ static void tp_acusa_nome(C *c, Unidade *u, const char *nome, PSNode *onde, int 
          * (listas de nomes / tabelas fixas); o vetor em si morre aqui */
         free(cands);
     }
-    /* os nomes da biblioteca padrão do C, que valem em todo arquivo: o do C
-     * troca a dica só quando está mais perto; no empate fica o da Jinga */
-    dica = ps_sugere_nome_c(nome, dica);
+    /* os nomes da biblioteca padrão do C dos cabeçalhos que o arquivo
+     * importou: o do C troca a dica só quando está mais perto; no empate
+     * fica o da Jinga */
+    dica = ps_sugere_nome_c(nome, dica, c->cabs_c, c->ncabs_c);
     if (dica)
         terro(c, onde, "NameError", "name '%s' is not defined. Did you mean: '%s'?", nome, dica);
     else
@@ -5158,6 +5227,7 @@ static void emite_sizeof_c(C *c, Unidade *u, PSNode *n)
     }
     PSCTipo *t = NULL;
     if (n->texto) {
+        c_confere_import_tipo(c, n, n->texto);   /* `sizeof(size_t)` pede o cabeçalho do size_t */
         t = ps_c_tipo_por_nome(n->texto);
     } else {
         t = c_tipo_estatico(c, u, n->a);
@@ -5924,7 +5994,7 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
                 /* a função do C pelo nome (o nome da Jinga, embutido ou do
                  * programa, ganhou acima): a conferência da chamada */
                 int ci = ps_c_valor_indice(f->texto);
-                if (ci >= 0 && ps_c_especie(ci) == PSC_NOME_FUNCAO) tp_confere_c(c, u, n, ci);
+                if (ci >= 0 && ps_c_especie(ci) == PSC_NOME_FUNCAO && c_nome_visivel(c, ci)) tp_confere_c(c, u, n, ci);
             }
             return;
         }
@@ -7297,6 +7367,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             PSCTipo *t = n->texto ? ps_c_tipo_por_nome(n->texto) : NULL;
             PSCTipo *nu = ct_nu(t);
             expr(c, u, n->a);
+            if (c_confere_import_tipo(c, n, n->texto)) return;   /* o tipo de um cabeçalho não importado */
             if (!nu || nu->kind == PSC_STRUCT || nu->kind == PSC_UNION || nu->kind == PSC_ARRAY
                     || nu->kind == PSC_FUNC || nu->kind == PSC_OPACO) {
                 terro(c, n, "TypeError", "o C não tem cast pra %s", n->texto ? n->texto : "?");
@@ -7307,7 +7378,22 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
         }
 
         case N_C_OFFSETOF: {
-            /* `offsetof(struct ponto, y)`: a posição do campo, da tabela */
+            /* `offsetof(struct ponto, y)`: a posição do campo, da tabela. O
+             * offsetof é do `<stddef.h>`, e o tipo pode ser de outro
+             * cabeçalho: os dois pedem o import */
+            {
+                int32_t io = ps_c_busca("offsetof");
+                if (io >= 0 && !c_nome_visivel(c, io)) {
+                    terro(c, n, "NameError", "name 'offsetof' is not defined. Did you forget to import <%s>?",
+                          ps_c_cabecalho(io));
+                    emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_NULL, 0, 0, NULL, 0));
+                    return;
+                }
+                if (c_confere_import_tipo(c, n, n->texto)) {
+                    emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_NULL, 0, 0, NULL, 0));
+                    return;
+                }
+            }
             PSCTipo *t = n->texto ? ps_c_tipo_por_nome(n->texto) : NULL;
             PSCTipo *nu = ct_nu(t);
             PSCCampo *campo = NULL;
@@ -7668,7 +7754,10 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             }
             PSCTipo *ctipo = tp_tipo_c(c, n->texto2);
             char recusa_c[200];
-            if (ctipo && c_recusa_variavel(ctipo, recusa_c, sizeof(recusa_c))) {
+            if (ctipo && c_confere_import_tipo(c, n, n->texto2)) {
+                /* o tipo do C de um cabeçalho que o arquivo não importou */
+                memset(&c->grava, 0, sizeof(c->grava));
+            } else if (ctipo && c_recusa_variavel(ctipo, recusa_c, sizeof(recusa_c))) {
                 terro(c, n, "TypeError", "%s (variável %s)", recusa_c, vn);
                 memset(&c->grava, 0, sizeof(c->grava));
             } else if (!ctipo && !tp_tipo_existe(c, u, n->texto2)) {
@@ -9310,6 +9399,13 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 cerro_sx(c, n, "struct, union e typedef se declaram no topo do arquivo, fora de bloco e de funct");
             return;
 
+        case N_C_IMPORT:
+            /* o cabeçalho entrou na 1ª passada (declara_import_c) e vale pro
+             * arquivo inteiro; como o #include, só no topo */
+            if (c->stmt_topo != n)
+                cerro_sx(c, n, "import <...> vale no topo do arquivo, fora de bloco e de funct, como o #include");
+            return;
+
         case N_C_STORE: {
             /* `*p = v`, `*p += v`, `**pp = v`, `*(p + 1) = v`: a escrita na
              * memória do C; com o tipo declarado de ponteiro, o Null é o
@@ -9710,8 +9806,10 @@ static int32_t compila_funct_em(C *c, PSNode *n, Unidade *pai)
              * `a` é (`*(const int *) a`) e pra chamada ser conferida pela
              * regra do C (tp_aceita_c) */
             u.sim[pi].ctipo = tp_tipo_c(c, par->texto2);
-            if (u.sim[pi].ctipo) c->tem_tipo_c = 1;
-            else if (!tp_tipo_existe(c, &u, par->texto2)) {
+            if (u.sim[pi].ctipo) {
+                c->tem_tipo_c = 1;
+                c_confere_import_tipo(c, par, par->texto2);
+            } else if (!tp_tipo_existe(c, &u, par->texto2)) {
                 char dica[160];
                 terro(c, par, "AttributedValueError", "tipo %s não existe (parâmetro %s de %s())%s",
                       par->texto2, par->texto ? par->texto : "?", nome_f, tp_dica_tipo(c, par->texto2, dica, sizeof dica));
@@ -10393,6 +10491,11 @@ static void tp_colhe_gravacoes(C *c, PSNode *n)
 static void declara_tipo_c(C *c, PSNode *s)
 {
     char erro[300];
+    /* o campo e o alvo do typedef com tipo de um cabeçalho que o arquivo não
+     * importou (`time_t t`, `typedef size_t tam`): a dica do import */
+    if (s->kind == N_C_STRUCT_DECL && c_confere_import_tipo(c, s, s->texto2)) return;
+    if (s->kind == N_C_TYPEDEF && (c_confere_import_tipo(c, s, s->texto2) || c_confere_import_tipo(c, s, s->texto3)))
+        return;
     if (s->kind == N_C_STRUCT_DECL) {
         PSCTipo *t = ps_c_struct_abre(s->texto, (int)s->i2, erro, sizeof erro);
         if (!t) { terro(c, s, "TypeError", "%s", erro[0] ? erro : "sem memoria"); return; }
@@ -10426,9 +10529,49 @@ static void declara_tipo_c(C *c, PSNode *s)
     c->tem_tipo_c = 1;
 }
 
+/* `import <stdio.h>` no topo do arquivo: o cabeçalho tem que ser da tabela do
+ * C (o que fica de fora diz o motivo) e entra na lista do arquivo, com o
+ * texto da própria tabela. Dentro de bloco ou funct, o stmt_no recusa. */
+static void declara_import_c(C *c, PSNode *s)
+{
+    if (s->kind != N_C_IMPORT || !s->texto) return;
+    const char *motivo = NULL;
+    if (!ps_c_cab_existe(s->texto, &motivo)) {
+        if (motivo)
+            terro(c, s, "ImportError", "<%s> fica de fora: %s", s->texto, motivo);
+        else {
+            char lista[400] = "";
+            size_t n = 0;
+            const char *cb;
+            for (int k = 0; (cb = ps_c_cab(k)) != NULL && n < sizeof lista; k++) {
+                int w = snprintf(lista + n, sizeof lista - n, "%s<%s>", k ? ", " : "", cb);
+                if (w < 0) break;
+                n += (size_t)w;
+            }
+            terro(c, s, "ImportError", "<%s> não é cabeçalho da biblioteca padrão do C (os da Jinga: %s)",
+                  s->texto, lista);
+        }
+        return;
+    }
+    const char *estatico = NULL, *cb;
+    for (int k = 0; (cb = ps_c_cab(k)) != NULL; k++)
+        if (strcmp(cb, s->texto) == 0) estatico = cb;
+    for (int32_t i = 0; i < c->ncabs_c; i++)
+        if (c->cabs_c[i] == estatico) return;           /* importado de novo: vale uma vez, como no C */
+    if (c->ncabs_c == c->cap_cabs_c) {
+        int32_t novo = c->cap_cabs_c ? c->cap_cabs_c * 2 : 8;
+        const char **nv = realloc(c->cabs_c, sizeof(char *) * (size_t)novo);
+        if (!nv) { cerro(c, "sem memoria", s); return; }
+        c->cabs_c = nv;
+        c->cap_cabs_c = novo;
+    }
+    c->cabs_c[c->ncabs_c++] = estatico;
+}
+
 static void passada1_stmt(C *c, PSNode *cheia, PSNode *podada)
 {
     if (CFALHOU(c)) return;
+    declara_import_c(c, cheia);
     declara_tipo_c(c, cheia);
     topo_campo_vira_var(cheia);
     topo_campo_vira_var(podada);
@@ -10742,22 +10885,25 @@ static void compila_termina(C *c, Unidade *u)
     /* os globais que são nomes do C, pra a VM ligar na carga. Com `import *`
      * incerto o checador não conferiu os nomes (ver `nomes_incertos`), então
      * o nome que o arquivo não liga é procurado aqui mesmo. */
-    if (out->ok && out->nglobais > 0 && (c->ix_nomes_c.cap || c->nomes_incertos)) {
+    if (out->ok && out->nglobais > 0 && (c->ix_nomes_c.cap || c->nomes_incertos || c->ncabs_c)) {
         out->globais_c = malloc(sizeof(int32_t) * (size_t)out->nglobais);
         if (!out->globais_c) cerro(c, "sem memoria", NULL);
         int tem = 0;
         for (int32_t i = 0; out->globais_c && i < out->nglobais; i++) {
             const char *nm = out->globais[i];
             int32_t k = ix_busca(&c->ix_nomes_c, nm);
-            if (k < 0 && c->nomes_incertos && ix_busca(&c->ix_ligados_mod, nm) < 0)
+            if (k < 0 && c->nomes_incertos && ix_busca(&c->ix_ligados_mod, nm) < 0) {
                 k = ps_c_valor_indice(nm);
+                if (k >= 0 && !c_nome_visivel(c, k)) k = -1;     /* só com o cabeçalho importado */
+            }
             /* a VARIÁVEL do C escrita pelo programa (`errno = 0`): o global é
              * ela mesma, ligado na carga pra escrita entrar na chamada
              * seguinte. Função e constante do C não são variáveis: o nome
              * escrito é um nome seu, como `abs = 5` com o builtin. */
-            if (k < 0 && c->ix_nomes_c.cap) {
+            if (k < 0 && c->ncabs_c) {
                 int32_t kv = ps_c_valor_indice(nm);
-                if (kv >= 0 && ps_c_especie(kv) == PSC_NOME_VALOR && (ps_c_marcas(kv) & PSC_MARCA_VM)) k = kv;
+                if (kv >= 0 && ps_c_especie(kv) == PSC_NOME_VALOR && (ps_c_marcas(kv) & PSC_MARCA_VM)
+                        && c_nome_visivel(c, kv)) k = kv;
             }
             out->globais_c[i] = k;
             if (k >= 0) tem = 1;
@@ -10808,6 +10954,7 @@ static void compila_termina(C *c, Unidade *u)
     free(c->ligados_mod_raso);
     ix_solta(&c->ix_ligados_mod_raso);
     ix_solta(&c->ix_nomes_c);        /* as chaves são os nomes da tabela do C (estáticos) */
+    free(c->cabs_c);                 /* os textos são os da tabela do C */
     for (int32_t i = 0; i < c->nenderecos_mod; i++) free(c->enderecos_mod[i]);
     free(c->enderecos_mod);
     ix_solta(&c->ix_globais);        /* as chaves são do programa de saída: só o índice sai */

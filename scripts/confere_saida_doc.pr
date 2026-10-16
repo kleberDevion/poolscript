@@ -1,0 +1,240 @@
+# Confere a SAÍDA dos exemplos da documentação: roda cada bloco ```ps que vem
+# seguido de um bloco ```saida e compara o que o motor imprime com o que a
+# página promete, letra por letra.
+#
+# O `scripts/audita_exemplos_doc.pr` passa o `--check` em todo bloco, mas não
+# roda nem olha a saída: um exemplo que compila e imprime outra coisa passava.
+# É o que o doctest do Python, o `cargo test --doc` do Rust e o Example do Go
+# fazem: o exemplo da doc é teste.
+#
+#     ./pool scripts/confere_saida_doc.pr docs/c        # as páginas de docs/c
+#     ./pool scripts/confere_saida_doc.pr a.md b.md     # páginas avulsas
+#
+# A forma, na página:
+#
+#     ```ps                  o programa
+#     ```entrada             (opcional) o que vai no stdin dele
+#     ```saida               o stdout, inteiro
+#     ```erro                (opcional) um trecho do stderr; sem ele, o
+#                            programa tem que sair com 0
+#
+# Os blocos depois do ```ps são dele até o próximo ```ps. Um bloco ```ps
+# contexto vai na frente de todo bloco seguinte da página (a regra do
+# `audita_exemplos_doc.pr`). Bloco ```ps sem ```saida não é conferido aqui (o
+# `--check` dele é o do outro script).
+#
+# Cada exemplo roda numa pasta própria, vazia, que é a pasta corrente dele: o
+# exemplo que cria arquivo (`fopen("notas.txt", "w")`) não suja o
+# repositório nem o exemplo seguinte. A pasta sai no fim.
+import os
+import sys
+
+TMP = "ps_confere_saida_tmp"
+
+
+list funct lista_md(str dir) {
+    list saida = []
+    if dir.endswith(".md") {
+        addEnd(saida, dir)
+        return saida
+    }
+    for each item in os.ls(dir) {
+        str caminho = dir + "/" + item["name"]
+        if item["type"] == "dir" {
+            for each f in lista_md(caminho) {
+                addEnd(saida, f)
+            }
+        }
+        elif item["name"].endswith(".md") {
+            addEnd(saida, caminho)
+        }
+    }
+    return saida
+}
+
+
+# A cerca pode estar indentada (bloco dentro de item de lista): a margem é do
+# markdown, não do código.
+int funct recuo(str linha) {
+    int n = 0
+    while n < linha.len() and linha[n] == " " {
+        n = n + 1
+    }
+    return n
+}
+
+
+# Os blocos cercados da página, na ordem: o rótulo da cerca (`ps`, `ps
+# contexto`, `saida`, `entrada`, `erro`, `c`...), a linha e o texto.
+list funct blocos_de(str txt) {
+    list blocos = []
+    bool dentro = False
+    list atual = []
+    str rotulo = ""
+    int ini = 0
+    int margem = 0
+    int n = 0
+    for each linha in txt.splitlines() {
+        n = n + 1
+        str limpa = linha.strip()
+        if dentro {
+            if limpa == "```" {
+                addEnd(blocos, {"rotulo": rotulo, "linha": ini, "texto": "\n".join(atual)})
+                dentro = False
+                atual = []
+            }
+            elif recuo(linha) >= margem {
+                addEnd(atual, linha[margem:linha.len()])
+            }
+            else {
+                addEnd(atual, limpa)
+            }
+        }
+        elif limpa.startswith("```") {
+            dentro = True
+            rotulo = limpa[3:limpa.len()].strip()
+            ini = n
+            margem = recuo(linha)
+            atual = []
+        }
+    }
+    return blocos
+}
+
+
+# Roda `codigo` na pasta de trabalho, com `entrada` no stdin, e põe em `r` o
+# stdout, o stderr e o código de saída. Os canais pelo `Process`
+# (capture="live"): o `capture=True` junta o stderr quando o stdout vem vazio.
+Null funct roda(str codigo, str entrada, dict r) {
+    if os.isdir(TMP) {
+        os.rmdir(TMP, force=True)
+    }
+    os.mkdir(TMP)
+    os.writeFile(TMP + "/exemplo.pr", codigo + "\n")
+    str volta = os.cwd()
+    os.chdir(TMP)
+    str saida = ""
+    str erro = ""
+    int rc = 0
+    using os.run([sys.executable, "exemplo.pr"], capture="live") as p {
+        if entrada != "" {
+            p.write(entrada + "\n")
+        }
+        p.close()
+        str parte = p.read()
+        while parte != "" {
+            saida = saida + parte
+            parte = p.read()
+        }
+        parte = p.read_err()
+        while parte != "" {
+            erro = erro + parte
+            parte = p.read_err()
+        }
+        rc = p.wait()
+    }
+    os.chdir(volta)
+    r["saida"] = saida
+    r["erro"] = erro
+    r["rc"] = rc
+}
+
+
+# O texto sem a quebra de linha do fim (a cerca não guarda a última)
+str funct sem_fim(str t) {
+    while t.endswith("\n") {
+        t = t[0:t.len() - 1]
+    }
+    return t
+}
+
+
+list alvos = []
+for each a in sys.argv[1:sys.argv.len()] {
+    addEnd(alvos, a)
+}
+if alvos.len() == 0 {
+    addEnd(alvos, "docs/c")
+}
+
+int total = 0
+list achados = []
+for each alvo in alvos {
+    for each md in lista_md(alvo) {
+        list bs = blocos_de(os.readFile(md))
+        str contexto = ""
+        int i = 0
+        while i < bs.len() {
+            dict b = bs[i]
+            i = i + 1
+            if b["rotulo"] == "ps contexto" {
+                contexto = contexto + b["texto"] + "\n"
+                continue
+            }
+            if b["rotulo"] != "ps" and b["rotulo"] != "jinga" {
+                continue
+            }
+            # os blocos que são dele: entrada, saida e erro, até o próximo ps
+            str entrada = ""
+            str saida = ""
+            str erro = ""
+            bool tem_saida = False
+            while i < bs.len() and (bs[i]["rotulo"] == "entrada" or bs[i]["rotulo"] == "saida"
+                                    or bs[i]["rotulo"] == "erro") {
+                if bs[i]["rotulo"] == "entrada" {
+                    entrada = bs[i]["texto"]
+                }
+                elif bs[i]["rotulo"] == "saida" {
+                    saida = bs[i]["texto"]
+                    tem_saida = True
+                }
+                else {
+                    erro = bs[i]["texto"]
+                }
+                i = i + 1
+            }
+            if not tem_saida {
+                continue
+            }
+            total = total + 1
+            dict r = {}
+            roda(contexto + b["texto"], entrada, r)
+            str onde = md + ":" + str(b["linha"])
+            if sem_fim(r["saida"]) != sem_fim(saida) {
+                addEnd(achados, {"onde": onde, "o_que": "a saída",
+                                 "esperada": sem_fim(saida), "obtida": sem_fim(r["saida"])})
+            }
+            elif erro != "" and not (sem_fim(erro) in r["erro"]) {
+                addEnd(achados, {"onde": onde, "o_que": "o stderr",
+                                 "esperada": sem_fim(erro), "obtida": sem_fim(r["erro"])})
+            }
+            elif erro == "" and r["rc"] != 0 {
+                addEnd(achados, {"onde": onde, "o_que": "o código de saída (" + str(r["rc"]) + ")",
+                                 "esperada": "0", "obtida": sem_fim(r["erro"])})
+            }
+        }
+    }
+}
+if os.isdir(TMP) {
+    os.rmdir(TMP, force=True)
+}
+
+post("exemplos com saída conferidos:", total)
+if achados.len() == 0 {
+    post("  todos imprimem o que a página promete")
+    sys.exit(0)
+}
+post("")
+post("EXEMPLOS QUE NÃO BATEM:", achados.len())
+for each a in achados {
+    post("  " + a["onde"] + ": " + a["o_que"])
+    post("    a página diz:")
+    for each l in a["esperada"].splitlines() {
+        post("      | " + l)
+    }
+    post("    o motor dá:")
+    for each l in a["obtida"].splitlines() {
+        post("      | " + l)
+    }
+}
+sys.exit(1)

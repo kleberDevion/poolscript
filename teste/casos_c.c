@@ -1,7 +1,9 @@
 /*
- * O C na Jinga (Plano 1): a biblioteca padrão do C em todo arquivo, sem
- * import. Cada caso tem a saída exata; o que muda de sistema (o texto do
- * PRId64, o endereço de um ponteiro) não entra na saída.
+ * O C na Jinga (Plano 1): a biblioteca padrão do C, com o cabeçalho importado
+ * como no #include (`import <stdio.h>`, decisão dele de 2026-10-16). Cada caso
+ * tem a saída exata; o que muda de sistema (o texto do PRId64, o endereço de
+ * um ponteiro) não entra na saída. As palavras do C (`int *p`, `unsigned`,
+ * `sizeof`, o cast) não pedem import, como no C.
  *
  * Lote C1, fatia 1: chamar a função do C pelo nome, as constantes, o NULL
  * (que é o Null da Jinga), o ponteiro opaco que uma função devolve (FILE *,
@@ -15,64 +17,105 @@
 #include "ps_teste.h"
 
 const Caso CASOS_C[] = {
-/* ── chamar pelo nome ─────────────────────────────────────────────────── */
-{ "C: printf e puts pelo nome, sem import (exemplo 1 do plano)",
+/* ── o import (`import <stdio.h>`, igual ao #include) ───────────────────── */
+{ "C: printf e puts com o import <stdio.h> (exemplo 1 do plano)",
+  "import <stdio.h>\n"
   "printf(\"olá, %s! %d + %d = %d\\n\", \"mundo\", 2, 3, 2 + 3)\n"
   "puts(\"o puts põe a quebra de linha sozinho\")\n",
   "olá, mundo! 2 + 3 = 5\no puts põe a quebra de linha sozinho", NULL, 0 },
+{ "C: sem o import do cabeçalho, o nome do C é NameError com o import que falta",
+  "printf(\"x\\n\")\n", "", "NameError: name 'printf' is not defined. Did you forget to import <stdio.h>?", 2 },
+{ "C: o tipo do C de cabeçalho não importado diz o import que falta",
+  "FILE *f = NULL\n", "", "NameError: name 'FILE' is not defined. Did you forget to import <stdio.h>?", 2 },
+{ "C: o campo de struct com tipo de cabeçalho não importado diz o import que falta",
+  "struct s {\n    time_t t\n}\n", "", "NameError: name 'time_t' is not defined. Did you forget to import <time.h>?", 2 },
+{ "C: NULL e size_t valem por qualquer cabeçalho que o C diz que os define",
+  "import <string.h>\nsize_t n = strlen(\"abc\")\nint *p = NULL\npost(n, p == NULL)\n", "3 True", NULL, 0 },
+{ "C: o <inttypes.h> traz o <stdint.h>, como no C",
+  "import <inttypes.h>\nint32_t x = INT32_MAX\npost(x)\n", "2147483647", NULL, 0 },
+{ "C: o offsetof pede o <stddef.h>, mesmo com o tipo importado",
+  "import <time.h>\npost(offsetof(struct tm, tm_year))\n", "",
+  "NameError: name 'offsetof' is not defined. Did you forget to import <stddef.h>?", 2 },
+{ "C: cabeçalho do C11 que fica de fora diz o motivo",
+  "import <setjmp.h>\n", "", "ImportError: <setjmp.h> fica de fora: pular por cima da VM corrompe a VM; a Jinga tem try/catch", 2 },
+{ "C: cabeçalho do C11 que a Jinga ainda não tem",
+  "import <signal.h>\n", "",
+  "ImportError: <signal.h> fica de fora: ainda não está na Jinga (é a segunda parte da biblioteca do C)", 2 },
+{ "C: o que não é cabeçalho da biblioteca do C",
+  "import <foo.h>\n", "", "ImportError: <foo.h> não é cabeçalho da biblioteca padrão do C (os da Jinga: <ctype.h>, <errno.h>", 2 },
+{ "C: import <...> só no topo do arquivo, como o #include",
+  "funct f() {\n    import <stdio.h>\n}\n", "",
+  "SyntaxError: import <...> vale no topo do arquivo, fora de bloco e de funct, como o #include", 2 },
+{ "C: o import <...> pede o > no fim",
+  "import <stdio.h\n", "", "SyntaxError: falta o '>' do import <...>: import <stdio.h>", 2 },
+{ "C: importar o mesmo cabeçalho duas vezes vale uma",
+  "import <stdio.h>\nimport <stdio.h>\nputs(\"dois\")\n", "dois", NULL, 0 },
+{ "C: o import não muda o nome que existe nos dois (o round da Jinga com o <math.h>)",
+  "import <math.h>\npost(round(2.5), lround(2.5))\n", "2 3", NULL, 0 },
+/* ── chamar pelo nome ─────────────────────────────────────────────────── */
 { "C: nome nos dois vale o da Jinga; o do C pelo outro nome (exemplo 9 do plano)",
+  "import <stdio.h>\nimport <math.h>\nimport <stdlib.h>\n"
   "printf(\"%.4f %d %ld\\n\", sqrt(2.0), round(2.5), lround(2.5))\n"
   "post(abs(-3), pow(2, 10), labs(-3), llabs(-4))\n",
   "1.4142 2 3\n3 1024 3 4", NULL, 0 },
 { "C: post e printf saem na ordem em que foram chamados",
-  "post(1)\nprintf(\"2\\n\")\npost(3)\n",
+  "import <stdio.h>\npost(1)\nprintf(\"2\\n\")\npost(3)\n",
   "1\n2\n3", NULL, 0 },
 { "C: conversões do printf (largura, precisão, hexa, char, %%, *)",
+  "import <stdio.h>\n"
   "printf(\"%5.2f|%-4d|%x|%X|%o|%c%c|%%|%*d|%e\\n\", 3.14159, 7, 255, 255, 8, 74, 105, 4, 42, 1234.5)\n",
   " 3.14|7   |ff|FF|10|Ji|%|  42|1.234500e+03", NULL, 0 },
 { "C: inteiro dá a volta no tipo do C; o grande entra no unsigned long long",
-  "printf(\"%u %hhd %llu %d\\n\", -1, 300, 18446744073709551615, True)\n",
+  "import <stdio.h>\nprintf(\"%u %hhd %llu %d\\n\", -1, 300, 18446744073709551615, True)\n",
   "4294967295 44 18446744073709551615 1", NULL, 0 },
 { "C: o retorno vira valor da Jinga (int, flo, unsigned grande, ponteiro)",
+  "import <string.h>\nimport <math.h>\nimport <stdlib.h>\nimport <ctype.h>\n"
   "post(strlen(\"jinga\"), sqrt(16.0), atoi(\"42\") + 1, strtol(\"ff\", Null, 16), toupper(97))\n"
   "post(strtoull(\"18446744073709551615\", NULL, 10), isdigit(65))\n",
   "5 4.0 43 255 65\n18446744073709551615 0", NULL, 0 },
 { "C: função do C como valor (variável, map) e impressa com o protótipo",
+  "import <math.h>\nimport <string.h>\n"
   "f = sqrt\npost(f(81.0), map([1.0, 4.0], sqrt))\npost(strlen, type(strlen))\n",
   "9.0 [1.0, 2.0]\n<funct do C size_t strlen(const char *s)> funct", NULL, 0 },
 { "C: espalhar uma lista na função do C",
-  "list a = [\"%d-%d\\n\", 1, 2]\nprintf(*a)\n",
+  "import <stdio.h>\nlist a = [\"%d-%d\\n\", 1, 2]\nprintf(*a)\n",
   "1-2", NULL, 0 },
 { "C: chamada dentro de funct e em laço com o código de máquina",
+  "import <math.h>\n"
   "funct raiz(int n) {\n    return sqrt(n * 1.0)\n}\n"
   "flo s = 0.0\nint i = 0\nwhile i < 3000 {\n    s = s + fabs(-1.5)\n    i++\n}\n"
   "post(raiz(81), s)\n",
   "9.0 4500.0", NULL, 0 },
 /* ── constantes, NULL, valores ───────────────────────────────────────── */
 { "C: constantes com o valor do sistema; NULL é o Null",
+  "import <stdio.h>\nimport <limits.h>\nimport <stdint.h>\nimport <stdlib.h>\nimport <float.h>\n"
   "post(EOF, INT_MAX, CHAR_BIT, ULLONG_MAX, INT8_MIN, NULL)\n"
   "post(EXIT_SUCCESS, EXIT_FAILURE, SEEK_SET, DBL_MANT_DIG)\n",
   "-1 2147483647 8 18446744073709551615 -128 Null\n0 1 0 53", NULL, 0 },
 { "C: constante de texto (PRId64) monta o formato",
+  "import <stdio.h>\nimport <inttypes.h>\n"
   "printf(\"%\" + PRId64 + \"|%\" + PRIx32 + \"\\n\", 5, 255)\n",
   "5|ff", NULL, 0 },
 { "C: stdout é FILE *, e o fprintf escreve nele",
-  "post(type(stdout))\nfprintf(stdout, \"[%s]\\n\", \"ok\")\n",
+  "import <stdio.h>\npost(type(stdout))\nfprintf(stdout, \"[%s]\\n\", \"ok\")\n",
   "FILE *\n[ok]", NULL, 0 },
 /* ── ponteiro opaco, texto do C, errno ───────────────────────────────── */
 { "C: errno e strerror (exemplo 10 do plano); o ponteiro nulo é Null",
+  "import <stdio.h>\nimport <errno.h>\nimport <string.h>\n"
   "f = fopen(\"ps_c_nao_existe.txt\", \"r\")\n"
   "if f == NULL {\n    printf(\"errno %d: %s\\n\", errno, strerror(errno))\n}\n"
   "post(f == Null, f)\n",
   "errno 2: No such file or directory\nTrue Null", NULL, 0 },
 { "C: str() traz o texto do C de volta",
-  "char_p = strerror(2)\npost(type(char_p), str(char_p).upper())\n",
+  "import <string.h>\nchar_p = strerror(2)\npost(type(char_p), str(char_p).upper())\n",
   "char * NO SUCH FILE OR DIRECTORY", NULL, 0 },
 { "C: str() de dado do C que não é texto sai descrito, como na f-string; dentro de lista também",
+  "import <stdio.h>\nimport <string.h>\n"
   "str d = str(stdout)\n"
   "post(d.startswith(\"(FILE *) 0x\"), d == f\"{stdout}\", str([strerror(2)]).startswith(\"[(char *) 0x\"))\n",
   "True True True", NULL, 0 },
 { "C: arquivo pelo FILE * (fopen, fprintf, fclose, remove)",
+  "import <stdio.h>\n"
   "f = fopen(\"ps_c_notas.txt\", \"w\")\n"
   "fprintf(f, \"%s=%.1f\\n\", \"media\", 8.25)\n"
   "post(fclose(f))\n"
@@ -81,71 +124,80 @@ const Caso CASOS_C[] = {
   "0\nmedia=8.2\n\n0 False", NULL, 0 },
 /* ── nome do programa ganha do C ─────────────────────────────────────── */
 { "C: variável do programa esconde o nome do C",
-  "int time = 5\npost(time)\n", "5", NULL, 0 },
+  "import <time.h>\nint time = 5\npost(time)\n", "5", NULL, 0 },
 { "C: funct do programa esconde a função do C",
-  "funct free() {\n    return \"minha\"\n}\npost(free())\n", "minha", NULL, 0 },
+  "import <stdlib.h>\nfunct free() {\n    return \"minha\"\n}\npost(free())\n", "minha", NULL, 0 },
 /* ── erros ──────────────────────────────────────────────────────────── */
 { "C: %d do printf com texto é TypeError com a conversão",
-  "printf(\"%d\\n\", \"dez\")\n", "", "TypeError: printf: %d espera int, recebeu str", 2 },
+  "import <stdio.h>\nprintf(\"%d\\n\", \"dez\")\n", "", "TypeError: printf: %d espera int, recebeu str", 2 },
 { "C: %s do printf com número",
-  "printf(\"%s\\n\", 5)\n", "", "TypeError: printf: %s espera const char *, recebeu int", 2 },
+  "import <stdio.h>\nprintf(\"%s\\n\", 5)\n", "", "TypeError: printf: %s espera const char *, recebeu int", 2 },
 { "C: formato pede mais argumentos do que vieram",
-  "printf(\"%d %d\\n\", 1)\n", "", "TypeError: printf: o formato pede 2 argumentos depois dele, e veio 1", 2 },
+  "import <stdio.h>\nprintf(\"%d %d\\n\", 1)\n", "",
+  "TypeError: printf: o formato pede 2 argumentos depois dele, e veio 1", 2 },
 { "C: formato pede menos argumentos do que vieram",
-  "printf(\"%d\\n\", 1, 2)\n", "", "TypeError: printf: o formato pede 1 argumento depois dele, e vieram 2", 2 },
+  "import <stdio.h>\nprintf(\"%d\\n\", 1, 2)\n", "",
+  "TypeError: printf: o formato pede 1 argumento depois dele, e vieram 2", 2 },
 { "C: conversão desconhecida no formato",
-  "printf(\"%k\\n\", 1)\n", "", "ValueError: printf: conversão desconhecida no formato: %k", 2 },
+  "import <stdio.h>\nprintf(\"%k\\n\", 1)\n", "", "ValueError: printf: conversão desconhecida no formato: %k", 2 },
 { "C: formato numa variável: a mesma conferência, na chamada",
-  "str fmt = \"%d\\n\"\nprintf(fmt, \"dez\")\n", "", "TypeError: printf: %d espera int, recebeu str", 1 },
+  "import <stdio.h>\nstr fmt = \"%d\\n\"\nprintf(fmt, \"dez\")\n", "", "TypeError: printf: %d espera int, recebeu str", 1 },
 { "C: quantidade de argumentos com a frase dos nativos",
-  "strlen(1, 2)\n", "", "TypeError: strlen() takes exactly one argument (2 given)", 2 },
+  "import <string.h>\nstrlen(1, 2)\n", "", "TypeError: strlen() takes exactly one argument (2 given)", 2 },
 { "C: argumento do tipo errado diz o tipo do C",
-  "strlen(5)\n", "", "TypeError: strlen(): o argumento 1 é const char * no C, e veio int", 2 },
+  "import <string.h>\nstrlen(5)\n", "", "TypeError: strlen(): o argumento 1 é const char * no C, e veio int", 2 },
 { "C: flo onde o C pede inteiro não converte calado",
-  "abs_c = labs\nabs_c(2.5)\n", "", "TypeError: labs(): o argumento 1 é long no C, e veio flo", 1 },
+  "import <stdlib.h>\nabs_c = labs\nabs_c(2.5)\n", "", "TypeError: labs(): o argumento 1 é long no C, e veio flo", 1 },
 { "C: str da Jinga não entra onde o C escreve (strtok)",
-  "str s = \"a b\"\nstrtok(s, \" \")\n", "",
+  "import <string.h>\nstr s = \"a b\"\nstrtok(s, \" \")\n", "",
   "TypeError: strtok() altera o texto (char *), e o str da Jinga só entra como const char *: copie pra um buffer", 2 },
 { "C: argumento nomeado na função do C",
-  "printf(format=\"x\\n\")\n", "", "TypeError: printf() takes no keyword arguments", 2 },
-{ "C: o que fica de fora é NameError com o motivo",
+  "import <stdio.h>\nprintf(format=\"x\\n\")\n", "", "TypeError: printf() takes no keyword arguments", 2 },
+{ "C: o que fica de fora é NameError com o motivo, com ou sem o import",
   "vprintf(\"x\", 1)\n", "",
   "NameError: vprintf fica de fora: o va_list só existe dentro de uma função variádica do C (doc: o C na Jinga)", 2 },
 { "C: gets saiu do C11",
-  "gets(1)\n", "", "NameError: gets fica de fora: saiu do C11, porque lia sem limite e passava do fim do buffer; use fgets", 2 },
+  "import <stdio.h>\ngets(1)\n", "",
+  "NameError: gets fica de fora: saiu do C11, porque lia sem limite e passava do fim do buffer; use fgets", 2 },
 { "C: tipo do C escrito onde vai valor",
   "post(size_t)\n", "",
   "NameError: size_t é tipo do C (stddef.h): vale em declaração, cast e sizeof, e não como valor", 2 },
-{ "C: nome que não é da Jinga nem do C continua NameError",
-  "post(printff(1))\n", "", "NameError: name 'printff' is not defined", 2 },
+{ "C: nome que não é da Jinga nem do C continua NameError, sem dica sem import",
+  "post(printff(1))\n", "", "NameError: name 'printff' is not defined\n  em ps_teste_caso.pr, linha 1", 2 },
 /* ── fatia 2: ponteiro e memória ──────────────────────────────────────── */
 { "C: malloc, ponteiro e conta com ponteiro (exemplo 2 do plano)",
+  "import <stdio.h>\nimport <stdlib.h>\n"
   "int n = 5\nint *v = malloc(n * sizeof(int))\nint i = 0\nwhile (i < n) {\n    v[i] = i * i\n    i++\n}\n"
   "int *p = v + 2\nprintf(\"%d %d %d\\n\", *p, p[1], *(v + 4))\nprintf(\"%td %zu\\n\", p - v, sizeof(int))\nfree(v)\n",
   "4 9 16\n2 4", NULL, 0 },
 { "C: &x de variável da Jinga mora no int do C (exemplo 4 do plano, com sscanf)",
+  "import <stdio.h>\n"
   "int idade = 0\nif sscanf(\"41\", \"%d\", &idade) == 1 {\n    printf(\"ano que vem: %d\\n\", idade + 1)\n}\n",
   "ano que vem: 42", NULL, 0 },
 { "C: a conta é da Jinga, a memória do C dá a volta (a regra do plano)",
+  "import <stdlib.h>\n"
   "int x = 2147483647\nx = x + 1\nint *p = malloc(sizeof(int))\n*p = x\nchar c = \"a\"\n"
   "post(x, *p, c, sizeof(int))\nfree(p)\n",
   "2147483648 -2147483648 a 4", NULL, 0 },
 { "C: variável com tipo do C converte em toda escrita (size_t, unsigned char, float)",
+  "import <stddef.h>\n"
   "size_t n = 5\nn = n - 6\nunsigned char b = 255\nb++\ndouble d = 1.5\nfloat f = 0.1\nconst int k = 7\n"
   "post(n, b, d, f, k)\n",
   "18446744073709551615 0 1.5 0.10000000149011612 7", NULL, 0 },
 { "C: const char * aponta no texto da Jinga, e str() traz de volta",
-  "const char *s = \"abc\"\npost(str(s), type(s), strlen(s))\n",
+  "import <string.h>\nconst char *s = \"abc\"\npost(str(s), type(s), strlen(s))\n",
   "abc const char * 3", NULL, 0 },
 { "C: comparação e conta de ponteiro, escrita aumentada",
+  "import <stdlib.h>\n"
   "int *a = calloc(2, sizeof(int))\nint *b = a + 1\npost(b > a, b - a, a == b, a + 1 == b, b != NULL)\n"
   "*a += 5\na[1] = 7\na[1] += 1\nb -= 1\npost(*a, a[1], b == a)\nb++\npost(*b)\nfree(a)\n",
   "True 1 False True True\n5 8 True\n8", NULL, 0 },
 { "C: sizeof de tipo e de expressão",
+  "import <stddef.h>\n"
   "int *p = NULL\npost(sizeof(char), sizeof(double), sizeof(long long), sizeof(int *), sizeof p, sizeof(*p))\n",
   "1 8 8 8 8 4", NULL, 0 },
 { "C: void * vira qualquer ponteiro, e int * só vira char * com cast",
-  "void *v = malloc(4)\nint *ip = v\n*ip = 42\npost(*ip)\nchar *q = ip\n",
+  "import <stdlib.h>\nvoid *v = malloc(4)\nint *ip = v\n*ip = 42\npost(*ip)\nchar *q = ip\n",
   "42", "TypeError: int * não vira char *", 1 },
 { "C: inteiro não vira ponteiro sem cast",
   "int *p = 5\n", "", "TypeError: int não vira int * sem cast", 2 },
@@ -155,16 +207,19 @@ const Caso CASOS_C[] = {
 { "C: const do C não muda depois da declaração",
   "const int x = 1\nx = 2\n", "", "TypeError: variável x é const int: não muda depois da declaração", 2 },
 { "C: void e FILE não valem como variável",
-  "FILE f = Null\n", "", "TypeError: FILE só existe atrás de ponteiro: declare FILE * (variável f)", 2 },
+  "import <stdio.h>\nFILE f = Null\n", "", "TypeError: FILE só existe atrás de ponteiro: declare FILE * (variável f)", 2 },
 { "C: operador que não vale com ponteiro",
-  "int *p = malloc(4)\npost(p * 2)\n", "", "TypeError: o operador * não vale com ponteiro do C (int * e int)", 2 },
+  "import <stdlib.h>\nint *p = malloc(4)\npost(p * 2)\n", "",
+  "TypeError: o operador * não vale com ponteiro do C (int * e int)", 2 },
 { "C: * em valor que não é ponteiro do C",
   "list l = [1]\nint y = *l\n", "", "TypeError: * só vale em ponteiro do C; veio list", 1 },
 { "C: &x em funct, com a volta do int de 4 bytes e x++",
+  "import <stdio.h>\n"
   "int funct le() {\n    int n = 0\n    sscanf(\"123\", \"%d\", &n)\n    return n\n}\n"
   "int x = 0\nint *p = &x\n*p = 5\npost(le(), x)\nx = 3000000000\npost(x, *p)\nx++\npost(x)\n",
   "123 5\n-1294967296 -1294967296\n-1294967295", NULL, 0 },
 { "C: &x de variável capturada pela funct de dentro, e flo com %lf",
+  "import <stdio.h>\n"
   "int funct f() {\n    int a = 1\n    int funct g() {\n        int *pa = &a\n        *pa = 40\n        return *pa\n    }\n"
   "    int r = g()\n    return r + a\n}\nflo d = 0.0\nsscanf(\"2.5\", \"%lf\", &d)\npost(f(), d * 2)\n",
   "80 5.0", NULL, 0 },
@@ -186,6 +241,7 @@ const Caso CASOS_C[] = {
 { "C: tipo só da Jinga entre parênteses continua a chamada ((flo)(2), (str)(5))",
   "post((flo)(2), (str)(5))\n", "2.0 5", NULL, 0 },
 { "C: cast de ponteiro (void * pra int *, a forma do comparador do qsort)",
+  "import <stdlib.h>\n"
   "void *v = malloc(8)\nint *ip = (int *) v\n*ip = 7\npost(*(int *) v, *(const int *) v - 2, type((char *) ip))\n"
   "size_t a = (size_t) ip\npost(a > 0, (int *) a == ip)\nfree(v)\n",
   "7 5 char *\nTrue True", NULL, 0 },
@@ -193,39 +249,51 @@ const Caso CASOS_C[] = {
   "int x = 5\npost((int)(x) + 1, (int) x ** 2, -(int) x)\n", "6 25 -5", NULL, 0 },
 /* ── fatia 3: array, struct, typedef, {...}, ->, offsetof ────────────── */
 { "C: texto da Jinga e texto do C num char buf[32] (exemplo 3 do plano)",
+  "import <stdio.h>\nimport <string.h>\n"
   "str nome = \"Jinga\"\nchar buf[32]\nstrcpy(buf, nome)\nstrcat(buf, \" + C\")\n"
   "printf(\"%s tem %zu bytes\\n\", buf, strlen(buf))\nstr volta = str(buf)\npost(volta.upper())\n",
   "Jinga + C tem 9 bytes\nJINGA + C", NULL, 0 },
 { "C: struct do C e -> (exemplo 5 do plano: gmtime, strftime)",
+  "import <stdio.h>\nimport <time.h>\n"
   "time_t zero = 0\nstruct tm *t = gmtime(&zero)\n"
   "printf(\"%d-%02d-%02d, dia %d da semana\\n\", t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_wday)\n"
   "char buf[64]\nstrftime(buf, sizeof(buf), \"%A, %d de %B de %Y\", t)\npost(str(buf))\n",
   "1970-01-01, dia 4 da semana\nThursday, 01 de January de 1970", NULL, 0 },
 { "C: struct do programa, ps[1].x, p + 2, q->y, sizeof (exemplo 7 do plano)",
+  "import <stdio.h>\nimport <stdlib.h>\n"
   "struct ponto {\n    int x\n    int y\n}\n\nstruct ponto *ps = calloc(3, sizeof(struct ponto))\nps[1].x = 10\n"
   "struct ponto *q = ps + 2\nq->y = 20\nprintf(\"%d %d %d %zu\\n\", ps[0].x, ps[1].x, ps[2].y, sizeof(struct ponto))\nfree(ps)\n",
   "0 10 20 8", NULL, 0 },
 { "C: array com inicializador, for each, len e sizeof (o array do exemplo 6)",
+  "import <stdio.h>\n"
   "int v[6] = {5, 3, 9, 1, 7, 2}\nfor each x in v {\n    printf(\"%d \", x)\n}\nprintf(\"\\n\")\n"
   "post(len(v), sizeof(v), sizeof v / sizeof(int), v[5])\n",
   "5 3 9 1 7 2 \n6 24 6.0 2", NULL, 0 },
 { "C: typedef struct sem etiqueta, cópia por atribuição, &a, offsetof, type",
+  "import <stddef.h>\n"
   "typedef struct {\n    double x\n    double y\n} Ponto\nPonto a = {1.5, 2.5}\nPonto b\nb = a\nb.x = 9.0\n"
   "post(a.x, b.x, b.y, sizeof(Ponto), offsetof(Ponto, y))\nPonto *pa = &a\npa->y = 7.0\npost(a.y, type(pa), type(a))\n",
   "1.5 9.0 2.5 16 8\n7.0 Ponto * Ponto", NULL, 0 },
 { "C: struct que aponta pra si (lista ligada), array de arrays, int w[] pelo inicializador, &w",
+  "import <stddef.h>\n"
   "struct no {\n    int v\n    struct no *prox\n}\nstruct no raiz = {1, NULL}\nstruct no seg = {2}\nraiz.prox = &seg\n"
   "post(raiz.prox->v, raiz.prox->prox == NULL)\nint m[2][3] = {{1, 2, 3}, {4, 5, 6}}\npost(m[1][2], sizeof(m))\n"
   "int w[] = {7, 8, 9}\npost(len(w), w[2])\nint *pw = &w\npost(*pw, pw[1], &w[2] - pw)\n",
   "2 True\n6 24\n3 9\n7 8 2", NULL, 0 },
 { "C: typedef de escalar converte como o tipo; struct do padrão sem = nasce zerado; offsetof do padrão",
+  "import <stddef.h>\nimport <time.h>\n"
   "typedef unsigned long u64\nu64 n = 5\nn = n - 6\npost(n)\nstruct tm t\npost(t.tm_year, offsetof(struct tm, tm_year))\n",
   "18446744073709551615\n0 20", NULL, 0 },
+{ "C: array e ponteiro se comparam pelo endereço, como no C (e o hash segue a igualdade)",
+  "import <stdlib.h>\nstruct caixa {\n    int v[3]\n}\nint v[3] = {1, 2, 3}\nint *pv = v\n"
+  "post(v == pv, pv == v, v != pv)\nint w[3] = {1, 2, 3}\npost(v == w)\nstruct caixa s = {{4, 5, 6}}\n"
+  "post(s.v == s.v)\ndict d = {}\nd[pv] = \"achou\"\npost(d[v])\n",
+  "True True False\nFalse\nTrue\nachou", NULL, 0 },
 { "C: campo que não existe, e . num ponteiro de struct",
   "struct ponto {\n    int x\n}\nstruct ponto p\npost(p.z)\n", "",
   "AttributeError: 'struct ponto' object has no attribute 'z'", 1 },
 { "C: ponto num ponteiro de struct diz que é ->",
-  "struct ponto {\n    int x\n}\nstruct ponto *p = calloc(1, 4)\npost(p.x)\n", "",
+  "import <stdlib.h>\nstruct ponto {\n    int x\n}\nstruct ponto *p = calloc(1, 4)\npost(p.x)\n", "",
   "TypeError: struct ponto * é ponteiro: o campo é p->x", 1 },
 { "C: struct declarado de novo com outros campos",
   "struct a {\n    int x\n}\nstruct a {\n    int y\n}\n", "", "TypeError: struct a: struct a já foi declarado com outros campos", 2 },
@@ -233,7 +301,7 @@ const Caso CASOS_C[] = {
   "funct f() {\n    struct q {\n        int x\n    }\n}\n", "",
   "SyntaxError: struct, union e typedef se declaram no topo do arquivo, fora de bloco e de funct", 2 },
 { "C: escalar do C sem = exige o =; ponteiro também",
-  "size_t n\n", "", "SyntaxError: declaracao de variavel exige '='", 2 },
+  "import <stddef.h>\nsize_t n\n", "", "SyntaxError: declaracao de variavel exige '='", 2 },
 { "C: inicializador maior que o array",
   "int v[2] = {1, 2, 3}\n", "", "ValueError: inicializador com 3 valores pra int[2]", 1 },
 { "C: o struct dentro dele mesmo tem que ser ponteiro",
@@ -242,111 +310,129 @@ const Caso CASOS_C[] = {
 { "C: typedef com nome de tipo da Jinga",
   "typedef int str\n", "", "SyntaxError: 'str' e palavra reservada da linguagem e nao pode ser usada como nome de typedef", 2 },
 { "C: offsetof de campo que não existe",
-  "post(offsetof(struct tm, nada))\n", "", "AttributeError: offsetof: struct tm não tem o campo nada", 2 },
+  "import <stddef.h>\nimport <time.h>\npost(offsetof(struct tm, nada))\n", "",
+  "AttributeError: offsetof: struct tm não tem o campo nada", 2 },
 /* ── fatia 4: callbacks, atexit/exit/quick_exit, errno escrito, a queda com a linha ── */
 { "C: qsort com uma funct da Jinga como comparador (exemplo 6 do plano)",
+  "import <stdio.h>\nimport <stdlib.h>\n"
   "int v[6] = {5, 3, 9, 1, 7, 2}\n\nint funct compara(const void *a, const void *b) {\n"
   "    return *(const int *) a - *(const int *) b\n}\n\nqsort(v, 6, sizeof(int), compara)\n"
   "for each x in v {\n    printf(\"%d \", x)\n}\nprintf(\"\\n\")\n",
   "1 2 3 5 7 9 ", NULL, 0 },
 { "C: bsearch com o mesmo comparador, &chave e o NULL de quando não acha",
+  "import <stdlib.h>\n"
   "int v[6] = {1, 2, 3, 5, 7, 9}\nint chave = 7\nint funct compara(const void *a, const void *b) {\n"
   "    return *(const int *) a - *(const int *) b\n}\nint *achou = bsearch(&chave, v, 6, sizeof(int), compara)\n"
   "post(achou - v, *achou)\nint outra = 4\npost(bsearch(&outra, v, 6, sizeof(int), compara) == NULL)\n",
   "4 7\nTrue", NULL, 0 },
 { "C: erro dentro do callback não atravessa o C: sobe quando a função volta, com as duas linhas",
+  "import <stdlib.h>\n"
   "int v[4] = {4, 3, 2, 1}\nfunct compara(const void *a, const void *b) {\n    raise ValueError(\"dentro do callback\")\n}\n"
   "qsort(v, 4, sizeof(int), compara)\npost(\"nunca\")\n",
-  "", "ValueError: dentro do callback\n\nTraceback (arquivo mais recente por último):\n  em ps_teste_caso.pr, linha 5", 1 },
+  "", "ValueError: dentro do callback\n\nTraceback (arquivo mais recente por último):\n  em ps_teste_caso.pr, linha 6", 1 },
 { "C: int funct como callback com erro segue a regra da funct tipada: devolve 500 e avisa",
+  "import <stdlib.h>\n"
   "int v[2] = {2, 1}\nint funct compara(const void *a, const void *b) {\n    raise ValueError(\"dentro\")\n}\n"
   "qsort(v, 2, sizeof(int), compara)\npost(\"segue\")\n",
   "segue", "int funct compara() devolveu 500 no lugar do erro", 0 },
 { "C: o valor que não é funct onde o C pede ponteiro de função",
-  "int v[2] = {2, 1}\nqsort(v, 2, sizeof(int), 5)\n", "",
+  "import <stdlib.h>\nint v[2] = {2, 1}\nqsort(v, 2, sizeof(int), 5)\n", "",
   "TypeError: qsort(): o argumento 4 é int (*)(const void *, const void *) no C, e veio int", 2 },
 { "C: atexit roda no fim do programa, na ordem inversa do registro, com a VM viva",
+  "import <stdlib.h>\n"
   "Null funct um() { post(\"um\") }\nNull funct dois() { post(\"dois\") }\natexit(um)\natexit(dois)\npost(\"fim do programa\")\n",
   "fim do programa\ndois\num", NULL, 0 },
 { "C: exit() do C desenrola os finally, roda o atexit e sai com o código",
+  "import <stdlib.h>\n"
   "Null funct um() { post(\"um\") }\natexit(um)\ntry {\n    post(\"dentro\")\n    exit(3)\n} finally {\n    post(\"finally\")\n}\npost(\"nunca\")\n",
   "dentro\nfinally\num", NULL, 3 },
 { "C: sys.exit também roda o atexit do C",
-  "import sys\nNull funct um() { post(\"um\") }\natexit(um)\nsys.exit(7)\n", "um", NULL, 7 },
+  "import sys\nimport <stdlib.h>\nNull funct um() { post(\"um\") }\natexit(um)\nsys.exit(7)\n", "um", NULL, 7 },
 { "C: exit() dentro de uma funct do atexit não para as outras nem muda o código",
+  "import <stdlib.h>\n"
   "Null funct um() { post(\"um\"); exit(9) }\nNull funct dois() { post(\"dois\") }\natexit(um)\natexit(dois)\nexit(3)\n",
   "dois\num", NULL, 3 },
 { "C: o atexit roda também depois do erro não tratado, antes da mensagem dele",
-  "Null funct um() { post(\"um\") }\natexit(um)\nraise ValueError(\"boom\")\n", "um", "ValueError: boom", 1 },
+  "import <stdlib.h>\nNull funct um() { post(\"um\") }\natexit(um)\nraise ValueError(\"boom\")\n", "um", "ValueError: boom", 1 },
 { "C: erro numa funct do atexit sai no stderr, as outras rodam e o programa sai com 1",
+  "import <stdlib.h>\n"
   "Null funct quebra() {\n    raise ValueError(\"no atexit\")\n}\nNull funct ok() { post(\"ok\") }\natexit(quebra)\natexit(ok)\npost(\"fim\")\n",
-  "fim\nok", "ValueError: no atexit\n  em ps_teste_caso.pr, linha 2\n  |     raise ValueError(\"no atexit\")\n  |     ^^^\n  na funct registrada no atexit do C", 1 },
+  "fim\nok", "ValueError: no atexit\n  em ps_teste_caso.pr, linha 3\n  |     raise ValueError(\"no atexit\")\n  |     ^^^\n  na funct registrada no atexit do C", 1 },
 { "C: quick_exit roda só o at_quick_exit e sai com o código",
+  "import <stdlib.h>\n"
   "Null funct um() { post(\"um\") }\nNull funct rapido() { post(\"rapido\") }\natexit(um)\nat_quick_exit(rapido)\nquick_exit(4)\npost(\"nunca\")\n",
   "rapido", NULL, 4 },
 { "C: atexit() sem funct",
-  "atexit(5)\n", "", "TypeError: atexit(): o argumento 1 é void (*)(void) no C, e veio int", 2 },
+  "import <stdlib.h>\natexit(5)\n", "", "TypeError: atexit(): o argumento 1 é void (*)(void) no C, e veio int", 2 },
 { "C: atexit() com valor que só se conhece rodando: a mesma frase, na chamada",
-  "list l = [5]\natexit(l[0])\n", "", "TypeError: atexit(): o argumento 1 é void (*)(void) no C, e veio int", 1 },
+  "import <stdlib.h>\nlist l = [5]\natexit(l[0])\n", "", "TypeError: atexit(): o argumento 1 é void (*)(void) no C, e veio int", 1 },
 { "C: callback com outra quantidade de parâmetros: erro antes de rodar",
-  "int v[2] = {2, 1}\nint funct um(const void *a) {\n    return 0\n}\nqsort(v, 2, sizeof(int), um)\n", "",
+  "import <stdlib.h>\nint v[2] = {2, 1}\nint funct um(const void *a) {\n    return 0\n}\nqsort(v, 2, sizeof(int), um)\n", "",
   "TypeError: qsort(): o argumento 4 é int (*)(const void *, const void *) no C, e um() recebe 1 argumento", 2 },
 { "C: callback que só se conhece rodando: a mesma frase, na chamada, antes do C chamar",
-  "int v[2] = {2, 1}\nint funct um(const void *a) {\n    return 0\n}\nlist l = [um]\nqsort(v, 2, sizeof(int), l[0])\n", "",
+  "import <stdlib.h>\nint v[2] = {2, 1}\nint funct um(const void *a) {\n    return 0\n}\nlist l = [um]\nqsort(v, 2, sizeof(int), l[0])\n", "",
   "TypeError: qsort(): o argumento 4 é int (*)(const void *, const void *) no C, e um() recebe 1 argumento", 1 },
 { "C: callback com um parâmetro a mais que tem valor padrão vale",
+  "import <stdlib.h>\n"
   "int v[2] = {2, 1}\nint funct tres(const void *a, const void *b, int c = 0) {\n"
   "    return *(const int *) a - *(const int *) b\n}\nqsort(v, 2, sizeof(int), tres)\npost(v[0], v[1])\n",
   "1 2", NULL, 0 },
 { "C: flo na variável do C é erro antes de rodar, com a frase da escrita",
-  "size_t n = 2.5\n", "", "TypeError: flo não vira size_t calado: converta com int(x)", 2 },
+  "import <stddef.h>\nsize_t n = 2.5\n", "", "TypeError: flo não vira size_t calado: converta com int(x)", 2 },
 { "C: o mesmo flo vindo de onde só rodando se sabe: a mesma frase, na escrita",
-  "list l = [2.5]\nsize_t n = l[0]\n", "", "TypeError: flo não vira size_t calado: converta com int(x)", 1 },
+  "import <stddef.h>\nlist l = [2.5]\nsize_t n = l[0]\n", "", "TypeError: flo não vira size_t calado: converta com int(x)", 1 },
 { "C: texto na variável flutuante do C",
   "float f = \"x\"\n", "", "TypeError: str não vira float", 2 },
-/* o "Did you mean" com os nomes do C: o mais perto do nome escrito, e no
- * empate o da Jinga; entre os do C, os de mesma inicial primeiro */
+/* o "Did you mean" com os nomes do C dos cabeçalhos importados: o mais perto
+ * do nome escrito, e no empate o da Jinga; entre os do C, os de mesma
+ * inicial primeiro */
 { "C: Did you mean com a função do C (letras trocadas)",
-  "prinft(\"x\")\n", "", "NameError: name 'prinft' is not defined. Did you mean: 'printf'?", 2 },
+  "import <stdio.h>\nprinft(\"x\")\n", "", "NameError: name 'prinft' is not defined. Did you mean: 'printf'?", 2 },
 { "C: Did you mean do print é o printf, e não outro nome do C à mesma distância",
-  "print(\"x\")\n", "", "NameError: name 'print' is not defined. Did you mean: 'printf'?", 2 },
+  "import <stdio.h>\nimport <math.h>\nprint(\"x\")\n", "", "NameError: name 'print' is not defined. Did you mean: 'printf'?", 2 },
 { "C: Did you mean no empate fica com o nome da Jinga (range, e não rand)",
-  "post(rang(3))\n", "", "NameError: name 'rang' is not defined. Did you mean: 'range'?", 2 },
+  "import <stdlib.h>\npost(rang(3))\n", "", "NameError: name 'rang' is not defined. Did you mean: 'range'?", 2 },
 { "C: Did you mean com o nome do C mais perto que o da Jinga (rand, e não range)",
-  "post(randd())\n", "", "NameError: name 'randd' is not defined. Did you mean: 'rand'?", 2 },
-{ "C: Did you mean com a constante e com a palavra do C",
-  "post(EOFF)\n", "", "NameError: name 'EOFF' is not defined. Did you mean: 'EOF'?", 2 },
-{ "C: Did you mean com a palavra de tipo do C",
+  "import <stdlib.h>\npost(randd())\n", "", "NameError: name 'randd' is not defined. Did you mean: 'rand'?", 2 },
+{ "C: Did you mean com a constante do C",
+  "import <stdio.h>\npost(EOFF)\n", "", "NameError: name 'EOFF' is not defined. Did you mean: 'EOF'?", 2 },
+{ "C: Did you mean com a palavra de tipo do C, que não pede import",
   "unsignd long n = 1\n", "", "NameError: name 'unsignd' is not defined. Did you mean: 'unsigned'?", 2 },
 { "C: Did you mean com o tipo que o programa declarou",
   "typedef struct {\n    int x\n} Ponto\nPnto p\n", "",
   "NameError: name 'Pnto' is not defined. Did you mean: 'Ponto'?", 2 },
 { "C: tipo do C escrito errado na declaração",
-  "size_tt n = 1\n", "", "AttributedValueError: tipo size_tt não existe (variável n). Did you mean: 'size_t'?", 2 },
+  "import <stddef.h>\nsize_tt n = 1\n", "",
+  "AttributedValueError: tipo size_tt não existe (variável n). Did you mean: 'size_t'?", 2 },
+{ "C: o Did you mean não oferece nome de cabeçalho que o arquivo não importou",
+  "prinft(\"x\")\n", "", "NameError: name 'prinft' is not defined\n  em ps_teste_caso.pr, linha 1", 2 },
 { "C: errno escrito pelo programa entra na chamada seguinte (exemplo 10 do plano, e o errno = 0 do C)",
+  "import <stdio.h>\nimport <errno.h>\nimport <stdlib.h>\n"
   "FILE *f = fopen(\"nao_existe.txt\", \"r\")\npost(errno)\nerrno = 0\npost(errno)\npost(strtol(\"12\", NULL, 10))\npost(errno)\n",
   "2\n0\n12\n0", NULL, 0 },
 { "C: errno escrito antes de qualquer leitura, e escrito de dentro de uma funct",
+  "import <stdio.h>\nimport <errno.h>\n"
   "errno = 0\npost(errno)\nFILE *f = fopen(\"nao_existe.txt\", \"r\")\npost(errno)\nNull funct zera() {\n    errno = 0\n}\nzera()\npost(errno)\n",
   "0\n2\n0", NULL, 0 },
 { "C: parâmetro com tipo do C: array, ponteiro e NULL entram pela regra do C",
+  "import <stdlib.h>\n"
   "int funct soma(int *p, int n) {\n    int t = 0\n    int i = 0\n    while (i < n) {\n        t = t + p[i]\n        i++\n    }\n    return t\n}\n"
   "int v[3] = {1, 2, 3}\npost(soma(v, 3))\nint *q = malloc(2 * sizeof(int))\nq[0] = 10\nq[1] = 20\npost(soma(q, 2))\npost(soma(NULL, 0))\nfree(q)\n",
   "6\n30\n0", NULL, 0 },
 { "C: str entra em const char * de parâmetro",
-  "Null funct f(const char *s) {\n    post(strlen(s))\n}\nf(\"abc\")\n", "3", NULL, 0 },
+  "import <string.h>\nNull funct f(const char *s) {\n    post(strlen(s))\n}\nf(\"abc\")\n", "3", NULL, 0 },
 { "C: parâmetro com tipo do C recusa o int antes de rodar",
   "Null funct f(int *p) {\n    post(*p)\n}\nf(5)\n", "",
   "AttributedValueError: parâmetro p de f() esperava int *, recebeu int", 2 },
 { "C: ponteiro errado derruba, com o endereço e a linha (exemplo 12 do plano)",
-  "int *p = NULL\nprintf(\"%d\\n\", *p)\n", "",
-  "Segmentation fault: memória inválida (endereço 0x0) na linha 2 de ps_teste_caso.pr", 139, NULL, 0, "unix" },
+  "import <stdio.h>\nint *p = NULL\nprintf(\"%d\\n\", *p)\n", "",
+  "Segmentation fault: memória inválida (endereço 0x0) na linha 3 de ps_teste_caso.pr", 139, NULL, 0, "unix" },
 { "C: a queda dentro da própria função do C diz a linha da chamada (o stdout no cano morre com o processo, como no C)",
-  "post(\"antes\")\npost(strlen(NULL))\n", "",
-  "Segmentation fault: memória inválida (endereço 0x0) na linha 2 de ps_teste_caso.pr", 139, NULL, 0, "unix" },
+  "import <string.h>\npost(\"antes\")\npost(strlen(NULL))\n", "",
+  "Segmentation fault: memória inválida (endereço 0x0) na linha 3 de ps_teste_caso.pr", 139, NULL, 0, "unix" },
 { "C: a queda pelo NULL que chegou num parâmetro com tipo do C",
-  "Null funct f(int *p) {\n    post(*p)\n}\nf(NULL)\n", "",
-  "Segmentation fault: memória inválida (endereço 0x0) na linha 2 de ps_teste_caso.pr", 139, NULL, 0, "unix" },
+  "import <stddef.h>\nNull funct f(int *p) {\n    post(*p)\n}\nf(NULL)\n", "",
+  "Segmentation fault: memória inválida (endereço 0x0) na linha 3 de ps_teste_caso.pr", 139, NULL, 0, "unix" },
 };
 
 const int NC_C = N_CASOS(CASOS_C);

@@ -4595,6 +4595,44 @@ static PSNode *statement_no(P *p)
         if (!n) return NULL;
 
         if (aceita_kw(p, "import")) {
+            /* `import <stdio.h>`: o cabeçalho da biblioteca padrão do C, igual
+             * ao #include (decisão dele de 2026-10-16). O nome chega nos
+             * tokens de sempre (`stdio`, `.`, `h`) e é remontado; se o
+             * cabeçalho existe, quem diz é o compilador */
+            if (checa_op(p, "<")) {
+                PSToken *abre = atual(p);
+                p->pos++;
+                char cab[96];
+                size_t nc = 0;
+                for (;;) {
+                    PSToken *pt = atual(p);
+                    if ((pt->type != T_IDENT && pt->type != T_IDENT_UPPER && pt->type != T_KW) || !pt->texto) {
+                        perro(p, "import <...> espera o nome do cabeçalho do C, como <stdio.h>", pt);
+                        return NULL;
+                    }
+                    size_t lt = strlen(pt->texto);
+                    if (nc + lt + 2 >= sizeof cab) {
+                        perro(p, "nome de cabeçalho do C comprido demais", pt);
+                        return NULL;
+                    }
+                    memcpy(cab + nc, pt->texto, lt);
+                    nc += lt;
+                    p->pos++;
+                    if (!checa(p, T_DOT)) break;
+                    cab[nc++] = '.';
+                    p->pos++;
+                }
+                cab[nc] = '\0';
+                if (!checa_op(p, ">")) {
+                    perro(p, "falta o '>' do import <...>: import <stdio.h>", atual(p));
+                    return NULL;
+                }
+                p->pos++;
+                PSNode *ci = ps_node_novo(p->arena, N_C_IMPORT, abre->line, abre->col);
+                if (!ci) return NULL;
+                ci->texto = dup_str(p, cab);
+                return ci;
+            }
             n->texto = dup_str(p, "import");
             int aspas = modulo_entre_aspas(p, n);
             if (aspas < 0) return NULL;

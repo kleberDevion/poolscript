@@ -121,22 +121,26 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   mostra a assinatura e a página `docs/builtins/`; o nome de tipo mostra o
   tipo; `json.` sem `import json` diz que falta o import. Nenhum nome que a
   linguagem liga sozinha cai no "rodando dá NameError";
-- **a biblioteca padrão do C** — os nomes do C valem em todo arquivo, sem
-  import, e o editor os trata assim, **depois** dos da Jinga (o nome que
-  existe nos dois, como `round`, é o da Jinga; o que o arquivo liga esconde o
-  do C). O completion oferece as funções, os tipos e as constantes do C no
-  fim da lista, com a declaração e o cabeçalho (`size_t strlen(const char *s)
-  · string.h`), sem o que fica de fora. O hover mostra a declaração como o C
-  escreve: o protótipo do padrão, o `typedef` (`typedef unsigned long
-  size_t`), o struct do padrão com os campos (`struct tm { int tm_sec; … }`,
-  também no `tm` de `struct tm`), a constante com o tipo e o valor neste
-  sistema (`int EOF`, vale `-1`), o tipo opaco que só existe atrás de
-  ponteiro (`FILE *`), o motivo do que fica de fora (`vprintf`) e o papel
-  das palavras do C (`unsigned`, `const`, `struct`, `sizeof`); a prosa é a
-  seção da página do cabeçalho em `docs/c/`. A assinatura de `qsort(` é o
-  protótipo inteiro, com o ponteiro de função como um parâmetro só, e dentro
-  da chamada não se oferece `nome=` (a função do C não recebe argumento com
-  nome). Tudo sai da chave `c` do `--metadata`, a tabela do motor;
+- **a biblioteca padrão do C** — o cabeçalho se importa como o `#include`
+  (`import <stdio.h>`), e o editor oferece os nomes dos cabeçalhos que o
+  arquivo importou, **depois** dos da Jinga (o nome que existe nos dois, como
+  `round`, é o da Jinga; o que o arquivo liga esconde o do C). `import <`
+  oferece os cabeçalhos. O completion traz as funções, os tipos e as
+  constantes do C no fim da lista, com a declaração e o cabeçalho (`size_t
+  strlen(const char *s) · string.h`), sem o que fica de fora. O hover mostra
+  a declaração como o C escreve: o protótipo do padrão, o `typedef`
+  (`typedef unsigned long size_t`), o struct do padrão com os campos
+  (`struct tm { int tm_sec; … }`, também no `tm` de `struct tm`), a
+  constante com o tipo e o valor neste sistema (`int EOF`, vale `-1`), o tipo
+  opaco que só existe atrás de ponteiro (`FILE *`), o motivo do que fica de
+  fora (`vprintf`) e o papel das palavras do C (`unsigned`, `const`,
+  `struct`, `sizeof`); a prosa é a seção da página do cabeçalho em `docs/c/`.
+  No nome do C cujo cabeçalho o arquivo não importou, o hover diz o import
+  que falta; no cabeçalho do `import <stdio.h>`, o que ele traz. A assinatura
+  de `qsort(` é o protótipo inteiro, com o ponteiro de função como um
+  parâmetro só, e dentro da chamada não se oferece `nome=` (a função do C não
+  recebe argumento com nome). Tudo sai das chaves `c` e `c_cabecalhos` do
+  `--metadata`, a tabela do motor;
 - **hover** — a assinatura real do método e o tipo que ele devolve, com a
   prosa da página `docs/…` achada pelo **caminho** (`jinker/request/get`;
   método de tipo em `docs/<tipo>/`, como `docs/str/upper/`, `docs/byte/decode/`).

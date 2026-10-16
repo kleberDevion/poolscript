@@ -293,6 +293,125 @@ funct confere_motor_na_doc() {
 }
 
 
+# ── a biblioteca padrão do C (Plano 1): docs/c/<cabeçalho>.md ─────────────
+# Cada função do C tem a seção dela na página do cabeçalho (`### \`printf\``,
+# ou a família inteira num título: `### \`acos\`, \`acosf\`, \`acosl\``), e o
+# primeiro bloco ```c da seção traz o protótipo de cada nome do título igual
+# ao da tabela do motor (a chave `c` do `--metadata`), com o `;` do C; linha
+# do bloco que não é o protótipo de um nome do título também é achado. Função
+# sem seção é doc faltando; protótipo diferente é doc errada.
+list funct confere_c(dict meta) {
+    list achados = []
+    for each cab in sorted(meta["c"].keys()) {
+        dict h = meta["c"][cab]
+        str pagina = DOCS + "/c/" + cab.replace(".h", "") + ".md"
+        if not os.exists(pagina) {
+            addEnd(achados, pagina + ": a página do " + cab + " não existe")
+            continue
+        }
+        dict decl = {}
+        for each f in h["funcoes"] {
+            decl[f["nome"]] = f["decl"] + ";"
+        }
+        dict vistos = {}
+        list spans = []
+        list bloco = []
+        bool no_bloco = False
+        bool pulando = False
+        bool achou_bloco = False
+        int n = 0
+        int linha_secao = 0
+        list linhas = os.readFile(pagina).splitlines()
+        addEnd(linhas, "# fim")
+        for each linha in linhas {
+            n = n + 1
+            str limpa = linha.strip()
+            # dentro de um bloco cercado: o ```c da seção guarda as linhas; o
+            # resto (ps, saida, o `#` de comentário da Jinga) só se pula
+            if no_bloco or pulando {
+                if limpa.startswith("```") {
+                    no_bloco = False
+                    pulando = False
+                }
+                elif no_bloco and limpa != "" {
+                    addEnd(bloco, limpa)
+                }
+                continue
+            }
+            if limpa.startswith("```") {
+                if limpa == "```c" and not achou_bloco {
+                    no_bloco = True
+                    achou_bloco = True
+                    bloco = []
+                }
+                else {
+                    pulando = True
+                }
+                continue
+            }
+            if not limpa.startswith("#") {
+                continue
+            }
+            # fecha a seção anterior: os nomes do título que são funções deste
+            # cabeçalho, contra o bloco ```c dela
+            bool tem_funcao = False
+            for each s in spans {
+                if s in decl {
+                    tem_funcao = True
+                    vistos[s] = True
+                    if not (decl[s] in bloco) {
+                        addEnd(achados, pagina + ":" + str(linha_secao) + ": o protótipo de " + s
+                               + " não está no bloco ```c da seção (a tabela diz: " + decl[s] + ")")
+                    }
+                }
+            }
+            if tem_funcao {
+                for each b in bloco {
+                    bool dela = False
+                    for each s in spans {
+                        if s in decl and decl[s] == b {
+                            dela = True
+                        }
+                    }
+                    if not dela {
+                        addEnd(achados, pagina + ":" + str(linha_secao) + ": a linha `" + b
+                               + "` do bloco ```c não é o protótipo de um nome do título")
+                    }
+                }
+            }
+            # a seção nova: os nomes entre crases do título
+            spans = []
+            list pedacos = limpa.split("`")
+            int k = 1
+            while k < len(pedacos) {
+                addEnd(spans, pedacos[k].strip())
+                k = k + 2
+            }
+            bloco = []
+            achou_bloco = False
+            linha_secao = n
+        }
+        for each f in h["funcoes"] {
+            if not (f["nome"] in vistos) {
+                addEnd(achados, pagina + ": " + f["nome"] + " não tem seção (### `" + f["nome"] + "`)")
+            }
+        }
+        # os tipos, as constantes e o que fica de fora: cada um citado entre
+        # crases na página (numa tabela ou num título), sem catraca — a doc
+        # do C nasce inteira
+        str texto = os.readFile(pagina)
+        for each grupo in ["tipos", "constantes", "fora"] {
+            for each x in h[grupo] {
+                if not (("`" + x["nome"] + "`") in texto) {
+                    addEnd(achados, pagina + ": " + x["nome"] + " (" + grupo + ") não aparece na página")
+                }
+            }
+        }
+    }
+    return achados
+}
+
+
 if __name__ == "main" {
     tudo = False
     for each a in sys.argv {
@@ -367,6 +486,17 @@ if __name__ == "main" {
         sys.exit(1)
     }
     post("tipos de erro do motor: todos aparecem em " + CATALOGO)
+
+    list achados_c = confere_c(meta)
+    if len(achados_c) > 0 {
+        post("")
+        post("DOC DO C (docs/c/) fora da tabela do motor:", str(len(achados_c)))
+        for each a in achados_c {
+            post("   " + a)
+        }
+        sys.exit(1)
+    }
+    post("biblioteca do C: toda função tem seção em docs/c/, com o protótipo da tabela")
 
     paginas = 0
     sem_titulo = []

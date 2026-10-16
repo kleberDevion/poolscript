@@ -1,0 +1,218 @@
+# Gera `teste/casos_c_padrao.c`: cada caso é um programa em Jinga que usa a
+# biblioteca padrão do C, com a saída que o MESMO programa escrito em C dá.
+#
+# O compilador C é o ORÁCULO (Plano 1). Cada par de `teste/geradores/c_padrao/`
+# (um arquivo por cabeçalho) tem o programa nos dois lados:
+#
+#   {"nome": "fprintf no stdout",          o que o caso mostra
+#    "cab": ["stdio.h"],                   os cabeçalhos: `import <x.h>` na
+#                                          Jinga, `#include <x.h>` no C
+#    "c_topo": "...",                      (opcional) o C fora do main: a
+#                                          função do comparador do qsort
+#    "c": "fprintf(stdout, \"%d\\n\", 5);", o corpo do main do C
+#    "jinga": "fprintf(stdout, \"%d\\n\", 5)", o programa da Jinga
+#    "diverge": "o motivo"}                (opcional) a diferença conhecida
+#
+# Sem stdin: o caso da suíte não tem entrada, então a leitura formatada se
+# confere pelo `sscanf`, e não pelo `scanf`.
+#
+# O gerador compila o C com `cc -std=c11`, roda os dois e compara o stdout e o
+# código de saída. Igual: o caso trava a saída do C. Diferente: com
+# `diverge`, o caso trava a saída da Jinga e o comentário diz o que o C dá e
+# por quê (como no `regex_re.pr`); sem `diverge`, o gerador para e mostra os
+# dois — é defeito do motor ou do par, e se corrige antes de gravar.
+#
+# A saída tem que ser a mesma no Linux e no macOS: nada de endereço, hora,
+# valor de `rand()` ou texto que o sistema escreve diferente.
+#
+#     ./pool teste/geradores/c_padrao.pr            # confere e grava o .c
+#     ./pool teste/geradores/c_padrao.pr stdio      # só os pares de um arquivo,
+#                                                   # sem gravar (pra escrever)
+import os
+import sys
+import json
+
+str PASTA = "teste/geradores/c_padrao"
+str SAIDA = "teste/casos_c_padrao.c"
+str TMP = "ps_c_padrao_tmp"
+
+
+# Roda `args` com `entrada` no stdin e põe em `r` o stdout, o stderr e o código
+# de saída (os canais pelo Process: o capture=True junta o stderr quando o
+# stdout vem vazio).
+Null funct roda(list args, str entrada, dict r) {
+    str saida = ""
+    str erro = ""
+    int rc = 0
+    using os.run(args, capture="live") as p {
+        if entrada != "" {
+            p.write(entrada + "\n")
+        }
+        p.close()
+        str parte = p.read()
+        while parte != "" {
+            saida = saida + parte
+            parte = p.read()
+        }
+        parte = p.read_err()
+        while parte != "" {
+            erro = erro + parte
+            parte = p.read_err()
+        }
+        rc = p.wait()
+    }
+    r["saida"] = saida
+    r["erro"] = erro
+    r["rc"] = rc
+}
+
+
+# Texto de C: barra, aspa, quebra, tabulação e o `?` (trígrafo).
+str funct cstr(str s) {
+    str e = s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+    e = e.replace("\t", "\\t").replace("?", "\\?")
+    return "\"" + e + "\""
+}
+
+
+str funct sem_fim(str t) {
+    while t.endswith("\n") {
+        t = t[0:t.len() - 1]
+    }
+    return t
+}
+
+
+str funct programa_jinga(dict par) {
+    str s = ""
+    for each cab in par["cab"] {
+        s = s + "import <" + cab + ">\n"
+    }
+    return s + par["jinga"] + "\n"
+}
+
+
+str funct programa_c(dict par) {
+    str s = ""
+    for each cab in par["cab"] {
+        s = s + "#include <" + cab + ">\n"
+    }
+    s = s + "#include <stdio.h>\n"
+    if "c_topo" in par {
+        s = s + par["c_topo"] + "\n"
+    }
+    return s + "int main(void)\n{\n" + par["c"] + "\n    return 0;\n}\n"
+}
+
+
+list arquivos = []
+bool so_um = False
+if sys.argv.len() > 1 {
+    addEnd(arquivos, PASTA + "/" + sys.argv[1] + ".json")
+    so_um = True
+}
+else {
+    list nomes = []
+    for each item in os.ls(PASTA) {
+        if item["name"].endswith(".json") {
+            addEnd(nomes, item["name"])
+        }
+    }
+    for each nm in sorted(nomes) {
+        addEnd(arquivos, PASTA + "/" + nm)
+    }
+}
+
+if os.isdir(TMP) {
+    os.rmdir(TMP, force=True)
+}
+os.mkdir(TMP)
+str raiz = os.cwd()
+str pool = raiz + "/pool"
+
+list casos = []
+list falhas = []
+int n = 0
+int divergem = 0
+for each arq in arquivos {
+    str grupo = arq[arq.rfind("/") + 1:arq.len()].replace(".json", "")
+    for each par in json.parse(os.readFile(arq)) {
+        n = n + 1
+        str id = grupo + " #" + str(n)
+        str entrada = ""
+        # o C: compila e roda na pasta de trabalho
+        os.writeFile(TMP + "/c.c", programa_c(par))
+        if os.exists(TMP + "/c.bin") {
+            os.rmdir(TMP + "/c.bin", force=True)
+        }
+        dict rcc = {}
+        roda(["cc", "-std=c11", "-w", "-O0", "-o", TMP + "/c.bin", TMP + "/c.c", "-lm"], "", rcc)
+        if not os.exists(TMP + "/c.bin") {
+            addEnd(falhas, id + " (" + par["nome"] + "): o C não compila:\n" + rcc["erro"])
+            continue
+        }
+        os.writeFile(TMP + "/j.pr", programa_jinga(par))
+        os.chdir(TMP)
+        dict rc_c = {}
+        roda(["./c.bin"], entrada, rc_c)
+        dict rc_j = {}
+        roda([pool, "j.pr"], entrada, rc_j)
+        os.chdir(raiz)
+        str sc = sem_fim(rc_c["saida"])
+        str sj = sem_fim(rc_j["saida"])
+        bool igual = sc == sj and rc_c["rc"] == rc_j["rc"]
+        if igual {
+            addEnd(casos, {"id": id, "par": par, "saida": sc, "rc": rc_c["rc"], "c_da": ""})
+        }
+        elif "diverge" in par {
+            divergem = divergem + 1
+            addEnd(casos, {"id": id, "par": par, "saida": sj, "rc": rc_j["rc"],
+                           "c_da": sc + " (rc " + str(rc_c["rc"]) + "): " + par["diverge"]})
+        }
+        else {
+            addEnd(falhas, id + " (" + par["nome"] + "):\n    o C dá (rc " + str(rc_c["rc"]) + "): " + sc
+                   + "\n    a Jinga dá (rc " + str(rc_j["rc"]) + "): " + sj + "\n    " + sem_fim(rc_j["erro"]))
+        }
+    }
+}
+os.rmdir(TMP, force=True)
+
+post("pares:", n, "| batem com o C:", n - falhas.len() - divergem, "| divergências explicadas:", divergem,
+     "| não batem:", falhas.len())
+if falhas.len() > 0 {
+    post("")
+    post("NÃO BATEM (corrija o motor ou o par; diferença de propósito leva \"diverge\"):", falhas.len())
+    for each f in falhas {
+        post("  " + f)
+    }
+    sys.exit(1)
+}
+if so_um {
+    post("  (só " + arquivos[0] + ": o " + SAIDA + " não foi gravado)")
+    sys.exit(0)
+}
+
+list out = ["/*", " * GERADO por teste/geradores/c_padrao.pr — nao edite na mao.",
+            " *",
+            " * Cada caso e um programa em Jinga que usa a biblioteca padrao do C, com a",
+            " * saida que o MESMO programa em C (o par em teste/geradores/c_padrao/) da,",
+            " * compilado com `cc -std=c11`. Caso marcado DIVERGE trava a saida da Jinga,",
+            " * e o comentario diz o que o C da e por que.",
+            " *",
+            " * pares: " + str(n),
+            " */",
+            "#include \"ps_teste.h\"", "", "const Caso CASOS_C_PADRAO[] = {"]
+for each c in casos {
+    str nome = "c_padrao " + c["id"] + ": " + c["par"]["nome"]
+    if c["c_da"] != "" {
+        out.append("/* o C da: " + c["c_da"].replace("*/", "* /") + " */")
+        nome = nome + " (DIVERGE)"
+    }
+    out.append("{ " + cstr(nome) + ",")
+    out.append("  " + cstr(programa_jinga(c["par"])) + ",")
+    out.append("  " + cstr(c["saida"]) + ", NULL, " + str(c["rc"]) + " },")
+}
+out.append("};")
+out.append("const int NC_C_PADRAO = N_CASOS(CASOS_C_PADRAO);")
+os.writeFile(SAIDA, "\n".join(out) + "\n")
+post(SAIDA + ":", casos.len(), "casos")

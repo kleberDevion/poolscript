@@ -114,8 +114,8 @@ Null funct novo(int linha, str nome, str especie, str decl) {
     }
     vistos[nome] = linha
     entradas.append({"nome": nome, "especie": especie, "decl": decl, "cab": len(cabecalhos) - 1,
-                     "vm": False, "glibc": "", "ligador_avisa": False, "expansao": False, "corpo": "",
-                     "formato": "", "campos": [], "linha": linha})
+                     "vm": False, "glibc": "", "ligador_avisa": False, "sem_windows": False, "expansao": False,
+                     "corpo": "", "formato": "", "campos": [], "linha": linha})
 }
 
 # `funcao int scanf(...); @glibc __isoc99_scanf` -> o protótipo e as marcas;
@@ -152,6 +152,8 @@ Null funct le_prototipo(int linha, str especie, str resto) {
             e["vm"] = True
         } elif marcas[k] == "@ligador-avisa" {
             e["ligador_avisa"] = True
+        } elif marcas[k] == "@sem-windows" and especie == "funcao" {
+            e["sem_windows"] = True
         } elif marcas[k] == "@expansao" and especie == "valor" {
             e["expansao"] = True
         } elif (marcas[k] == "@printf" or marcas[k] == "@scanf") and especie == "funcao" {
@@ -168,6 +170,12 @@ Null funct le_prototipo(int linha, str especie, str resto) {
         k = k + 1
     }
 }
+
+# o import: os nomes de mais de um cabeçalho, o cabeçalho que inclui outro e
+# os cabeçalhos que a Jinga não tem (ver o fim do .decl)
+list tambem_l = []
+list inclui_l = []
+list cab_fora_l = []
 
 int nlinha = 0
 for each bruta in os.readFile(FONTE).splitlines() {
@@ -213,8 +221,48 @@ for each bruta in os.readFile(FONTE).splitlines() {
         for each n in fp[0].split() {
             novo(nlinha, n, especie, motivo)
         }
+    } elif especie == "tambem" {
+        tuple tb = resto.partition(":")
+        str tnome = tb[0].strip()
+        list tcabs = tb[2].split()
+        if tnome == "" or len(tcabs) == 0 {
+            falha(nlinha, "`tambem` é `tambem <nome> : <cabeçalho>...`")
+        }
+        tambem_l.append({"nome": tnome, "cabs": tcabs, "linha": nlinha})
+    } elif especie == "inclui" {
+        list ic = resto.split()
+        if len(ic) != 2 {
+            falha(nlinha, "`inclui` é `inclui <cabeçalho> <outro>`")
+        }
+        inclui_l.append({"de": ic[0], "traz": ic[1], "linha": nlinha})
+    } elif especie == "cabecalho_fora" {
+        tuple cf = resto.partition(":")
+        str cmotivo = cf[2].strip()
+        if cmotivo == "" {
+            falha(nlinha, "`cabecalho_fora` sem o motivo depois do `:`")
+        }
+        for each cn in cf[0].split() {
+            cab_fora_l.append({"cab": cn, "motivo": cmotivo, "linha": nlinha})
+        }
     } else {
         falha(nlinha, "linha de espécie desconhecida: " + especie)
+    }
+}
+# o que o import cita tem que existir na tabela: o nome do `tambem`, os dois
+# lados do `inclui`; e o cabeçalho de fora não pode ser um que a Jinga tem
+for each tb2 in tambem_l {
+    if not (tb2["nome"] in vistos) {
+        falha(tb2["linha"], "`tambem` de um nome que a tabela não tem: " + tb2["nome"])
+    }
+}
+for each ic2 in inclui_l {
+    if not (ic2["de"] in cabecalhos) or not (ic2["traz"] in cabecalhos) {
+        falha(ic2["linha"], "`inclui` de cabeçalho que a tabela não tem: " + ic2["de"] + " " + ic2["traz"])
+    }
+}
+for each cf2 in cab_fora_l {
+    if cf2["cab"] in cabecalhos {
+        falha(cf2["linha"], "`cabecalho_fora` de um cabeçalho que a tabela tem: " + cf2["cab"])
     }
 }
 
@@ -345,6 +393,29 @@ for each p in cab_pos {
 s.append("/* os cabeçalhos, na ordem do .decl: o `cab` de cada nome */")
 s.append("static const uint16_t PS_C_CAB[PS_C_NCAB] = { " + ", ".join(cps) + " };")
 s.append("")
+# o import: blocos de texto (nada de ponteiro), cada item seguido de \0 e o
+# bloco terminado por um texto vazio
+s.append("/* ── o import (`import <stdio.h>`) ─────────────────────────────────────────")
+s.append(" * PS_C_TAMBEM: o nome e os outros cabeçalhos com que ele vale, separados por")
+s.append(" * espaço (os nomes que o C11 declara em mais de um cabeçalho). PS_C_INCLUI:")
+s.append(" * o cabeçalho e o que ele traz. PS_C_CAB_FORA: o cabeçalho do C11 que a")
+s.append(" * Jinga não tem e o motivo. */")
+s.append("static const char PS_C_TAMBEM[] =")
+for each tb3 in tambem_l {
+    s.append("    \"" + escapa_c(tb3["nome"]) + "\\0" + escapa_c(" ".join(tb3["cabs"])) + "\\0\"")
+}
+s.append("    \"\";")
+s.append("static const char PS_C_INCLUI[] =")
+for each ic3 in inclui_l {
+    s.append("    \"" + escapa_c(ic3["de"]) + "\\0" + escapa_c(ic3["traz"]) + "\\0\"")
+}
+s.append("    \"\";")
+s.append("static const char PS_C_CAB_FORA[] =")
+for each cf3 in cab_fora_l {
+    s.append("    \"" + escapa_c(cf3["cab"]) + "\\0" + escapa_c(cf3["motivo"]) + "\\0\"")
+}
+s.append("    \"\";")
+s.append("")
 s.extend(t)
 s.append("")
 
@@ -359,6 +430,9 @@ s.append(" * padrão (parâmetro array é ponteiro); o gcc avisa só pela forma.
 s.append("#if defined(__GNUC__) && !defined(__clang__)")
 s.append("#pragma GCC diagnostic push")
 s.append("#pragma GCC diagnostic ignored \"-Warray-parameter\"")
+s.append("/* no Windows o cabeçalho declara as do ctype.h com `dllimport`, e a")
+s.append(" * declaração de novo, só pra conferir o tipo, avisa que o perdeu */")
+s.append("#pragma GCC diagnostic ignored \"-Wattributes\"")
 s.append("#endif")
 for each n in ordem {
     dict e = por_nome[n]
@@ -554,7 +628,7 @@ s.append("{")
 s.append("    switch (i) {")
 for each n in ordem {
     dict e = por_nome[n]
-    if e["especie"] == "funcao" and not e["vm"] {
+    if e["especie"] == "funcao" and not e["vm"] and not e["sem_windows"] {
         s.append("        case " + str(ordem.index(n)) + ": return (void (*)(void))" + n + ";")
     }
 }
@@ -574,7 +648,14 @@ te.append(" * (@ligador-avisa, o tmpnam). */")
 for each n in ordem {
     dict e = por_nome[n]
     if e["especie"] == "funcao" and not e["vm"] and not e["ligador_avisa"] {
+        # a que o Windows não tem fica fora do teste lá, como da tabela
+        if e["sem_windows"] {
+            te.append("#ifndef _WIN32")
+        }
         te.append("{ \"" + n + "\", (void (*)(void))" + n + " },")
+        if e["sem_windows"] {
+            te.append("#endif")
+        }
     }
 }
 str inc_teste = "\n".join(te) + "\n"

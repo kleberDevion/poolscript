@@ -1523,7 +1523,7 @@ function paramsDoChamado(doc, ch, linha) {
    * texto dele lá dentro */
   if (A.visiveisEm(idx, linha).some((b) => b.nome === ch.chamado)) return [];
   const c = nomeDoC(ch.chamado);
-  if (!c || c.grupo !== 'funcoes') return [];
+  if (!c || c.grupo !== 'funcoes' || !valeComCabs(c, cabecalhosDoDoc(doc))) return [];
   const ps = paramsDoC(c.decl);
   ps.rotulo = c.decl;
   return ps;
@@ -1762,6 +1762,19 @@ function completaCaminhoImport(doc, parcial) {
  *    dentro da pasta já digitada). Arquivo e pasta não apareciam. */
 function completaImport(doc, p) {
   const linha = linhaAte(doc, p.position);
+  /* `import <<cursor>`: os cabeçalhos da biblioteca padrão do C, com o `>`
+   * quando ele ainda não está escrito */
+  {
+    const tl = tokensDe(doc).filter((t) => t.l0 === p.position.line && t.c0 < p.position.character);
+    if (tl.length >= 2 && tl[0].t === 'KW' && tl[0].v === 'import' && tl[1].t === 'OP' && tl[1].v === '<') {
+      const resto = doc.getText({ start: p.position, end: { line: p.position.line + 1, character: 0 } });
+      const fechado = resto.trimStart().startsWith('>');
+      return ((META.c_cabecalhos || {}).tem || []).map((h) => ({
+        label: h, kind: CompletionItemKind.Module, detail: 'cabeçalho do C',
+        insertText: fechado ? h : h + '>',
+      }));
+    }
+  }
   /* `import '<cursor>` / `from '<cursor>`: dentro das aspas — o caminho
    * parcial é o texto entre a aspa e o cursor */
   const aspa = aspaAbertaDoImport(linha);
@@ -2142,11 +2155,13 @@ function completa(doc, p) {
    * posição, só colados na cabeça da funct), então não vêm em META.keywords —
    * e sem isto o editor jamais os ofereceria. */
   for (const m of MODIFICADORES) poe(m, CompletionItemKind.Keyword, 'modificador de funct', '4');
-  /* A biblioteca padrão do C, depois de tudo da Jinga (o `poe` não repete: o
-   * nome que existe nos dois fica o da Jinga), sem o que fica de fora; e as
-   * palavras do C que o parser lê (`unsigned`, `struct`, `sizeof`). */
+  /* A biblioteca padrão do C dos cabeçalhos que o documento importou, depois
+   * de tudo da Jinga (o `poe` não repete: o nome que existe nos dois fica o
+   * da Jinga), sem o que fica de fora; e as palavras do C que o parser lê
+   * (`unsigned`, `struct`, `sizeof`), que não pedem import. */
+  const cabs = cabecalhosDoDoc(doc);
   for (const c of nomesDoC().values()) {
-    if (c.grupo === 'fora' || !nomeDoC(c.nome)) continue;
+    if (c.grupo === 'fora' || !nomeDoC(c.nome) || !valeComCabs(c, cabs)) continue;
     const kind = c.grupo === 'funcoes' ? CompletionItemKind.Function
                : c.grupo === 'tipos' ? CompletionItemKind.Struct : CompletionItemKind.Constant;
     poe(c.nome, kind, c.decl + ' · ' + c.cab, '5');
@@ -2441,6 +2456,11 @@ conexao.onHover((p) => {
               + apresentaTipo(doc, { tipo: 'tipo_motor', nome: tipoLit }));
   }
 
+  /* o cabeçalho de um `import <stdio.h>`: o que ele traz, ou por que fica de
+   * fora */
+  const cabSob = cabecalhoSob(doc, p.position);
+  if (cabSob) return hoverDoCabecalho(cabSob);
+
   /* palavra-chave — o lexer é quem diz; `json`/`str` são também módulo/tipo
    * do motor, e aí a resposta é a do motor. Depois de um `.` o token com
    * nome de keyword é MEMBRO (`app.post`, `d.post`): o lexer marca `post`
@@ -2675,7 +2695,8 @@ conexao.onHover((p) => {
 
 /* ── a biblioteca padrão do C (Plano 1) ─────────────────────────────────
  *
- * Os nomes do C valem em todo arquivo, sem import, DEPOIS dos da Jinga: o
+ * Os nomes do C valem com o cabeçalho importado (`import <stdio.h>`, igual
+ * ao #include: decisão dele de 2026-10-16), DEPOIS dos da Jinga: o
  * nome que existe nos dois é o da Jinga (`round`, `abs`, `pow`), e o nome que
  * o arquivo liga esconde o do C, como esconde um builtin. Tudo sai da chave
  * `c` do `--metadata` (a tabela do motor, por cabeçalho): o protótipo do
@@ -2691,6 +2712,68 @@ function nomesDoC() {
     }
   }
   return C_NOMES;
+}
+
+/* Os cabeçalhos do C que o documento importa (`import <stdio.h>`, igual ao
+ * #include: decisão dele de 2026-10-16), pelos tokens: `import`, `<`, o nome
+ * (`stdio`, `.`, `h`) e `>`, na mesma linha. */
+function cabecalhosDoDoc(doc) {
+  const cabs = new Set();
+  const toks = tokensDe(doc);
+  for (let i = 0; i + 1 < toks.length; i++) {
+    if (toks[i].t !== 'KW' || toks[i].v !== 'import' || toks[i + 1].t !== 'OP' || toks[i + 1].v !== '<') continue;
+    let nome = '';
+    let j = i + 2;
+    while (j < toks.length && toks[j].l0 === toks[i].l0
+           && (toks[j].t === 'DOT' || toks[j].t.startsWith('IDENT') || toks[j].t === 'KW')) {
+      nome += toks[j].v;
+      j++;
+    }
+    if (j < toks.length && toks[j].v === '>') cabs.add(nome);
+  }
+  return cabs;
+}
+
+/* O nome do C vale com os cabeçalhos `cabs` importados? O dele, os outros que
+ * o C diz que também o declaram (`tambem`: o `NULL` do `<stdio.h>`) e o
+ * cabeçalho que inclui o dele (`<inttypes.h>` traz o `<stdint.h>`) — a regra
+ * do motor (ps_c_vale_com), com os dados do `--metadata`. */
+function valeComCabs(c, cabs) {
+  if (cabs.has(c.cab)) return true;
+  if (c.tambem && c.tambem.split(' ').some((h) => cabs.has(h))) return true;
+  const inclui = ((META.c_cabecalhos || {}).inclui) || {};
+  for (const h of cabs) if (inclui[h] === c.cab) return true;
+  return false;
+}
+
+/* O cabeçalho sob o cursor numa linha `import <stdio.h>`, ou ''. */
+function cabecalhoSob(doc, pos) {
+  const toks = tokensDe(doc).filter((t) => t.l0 === pos.line);
+  if (toks.length < 3 || toks[0].t !== 'KW' || toks[0].v !== 'import' || toks[1].v !== '<') return '';
+  const fecha = toks.findIndex((t, i) => i > 1 && t.v === '>');
+  if (fecha < 0 || pos.character < toks[1].c0 || pos.character > toks[fecha].c0 + 1) return '';
+  return toks.slice(2, fecha).map((t) => t.v).join('');
+}
+
+/* O hover do cabeçalho de um `import <...>`: o que ele traz, ou por que fica
+ * de fora, e a página dele em `docs/c/`. */
+function hoverDoCabecalho(h) {
+  const cc = META.c_cabecalhos || {};
+  if ((cc.tem || []).includes(h)) {
+    const g = (META.c || {})[h] || {};
+    const conta = (k) => (g[k] || []).length;
+    const traz = (cc.inclui || {})[h];
+    const raiz = raizDoc();
+    const arq = raiz ? path.join(raiz, 'c', h.replace('.h', '') + '.md') : '';
+    let pagina = '';
+    try { if (arq && fs.statSync(arq).isFile()) pagina = '\n\n' + linkDoc(arq); } catch (_) { /* sem página */ }
+    return md('```c\n#include <' + h + '>\n```\n\ncabeçalho da biblioteca padrão do C · ' + conta('funcoes')
+              + ' funções, ' + conta('tipos') + ' tipos, ' + conta('constantes') + ' constantes'
+              + (traz ? ' · traz também o `<' + traz + '>`' : '') + pagina);
+  }
+  const fora = (cc.fora || {})[h];
+  if (fora) return md('```c\n#include <' + h + '>\n```\n\n`<' + h + '>` fica de fora: ' + fora);
+  return md('```c\n#include <' + h + '>\n```\n\n`<' + h + '>` não é cabeçalho da biblioteca padrão do C (rodando dá `ImportError`)');
 }
 
 /* O nome do C, quando nenhum nome da Jinga o esconde (builtin, palavra, tipo,
@@ -2743,14 +2826,16 @@ function secaoDoC(nome, cab) {
 
 /* O hover de um nome do C: a declaração como o C escreve, o cabeçalho, o que
  * a Jinga faz com ele (o valor da constante neste sistema, o tipo opaco que
- * só vive atrás de ponteiro) e a prosa da doc, quando há. */
-function hoverDoC(c) {
+ * só vive atrás de ponteiro) e a prosa da doc, quando há. `falta`: o
+ * documento não importou o cabeçalho, e o hover diz o import. */
+function hoverDoC(c, falta) {
   if (c.grupo === 'fora') {
     return md('```c\n' + c.nome + '\n```\n\n`' + c.nome + '` fica de fora: ' + c.motivo
               + ' (rodando dá `NameError`) · `' + c.cab + '`');
   }
   const papel = c.grupo === 'funcoes' ? 'função' : c.grupo === 'tipos' ? 'tipo' : 'constante';
-  let linha = papel + ' do C · `' + c.cab + '`';
+  let linha = papel + ' do C · `<' + c.cab + '>`';
+  if (falta) linha += ' · falta `import <' + c.cab + '>` neste arquivo (rodando dá `NameError`)';
   if (c.especie === 'opaco') linha += ' · só existe atrás de ponteiro (`' + c.nome + ' *`)';
   if (c.grupo === 'constantes') {
     if (c.especie === 'nulo') linha += ' · na Jinga é o `Null`';
@@ -2810,9 +2895,9 @@ function hoverDaLinguagem(doc, nome, receptorDeModulo) {
               + apresentaTipo(doc, tipoDoMotor ? { tipo: 'tipo_motor', nome: real } : { tipo: 'escalar', nome: real }));
   }
   /* a biblioteca padrão do C, depois de tudo da Jinga; o `tm` de `struct tm`
-   * é o struct do padrão */
+   * é o struct do padrão. Sem o cabeçalho importado, o hover diz o import. */
   const c = nomeDoC(nome) || nomeDoC('struct ' + nome);
-  if (c) return hoverDoC(c);
+  if (c) return hoverDoC(c, c.grupo !== 'fora' && !valeComCabs(c, cabecalhosDoDoc(doc)));
   const w = (META.c_palavras || []).find((x) => x.nome === nome);
   if (w) return hoverDaPalavraDoC(w);
   return null;
