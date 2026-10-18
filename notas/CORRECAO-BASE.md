@@ -134,6 +134,18 @@ Achados em 2026-10-17, no conserto acima e no relato dele (abertos):
   (`TypeError: string indices must be integers, not 'str'`), longe da causa.
   O `os.readFile` e o `open` da Jinga levantam `FileNotFoundError` no mesmo
   caso, como o `open` do Python. `motor`.
+- **motor-6** (achado pelo portão `roda`, 2026-10-18) O `request` da jinker
+  fora de uma rota. A doc diz que ele "está disponível automaticamente dentro
+  de qualquer rota" (`docs/jinker/request/request.md`), e a VM só cria o nome
+  quando o servidor sobe (`jk_slot_global(vm, "request")`). Mas o checador
+  aceita `request` e `channel` em qualquer lugar de um arquivo que usa a
+  jinker (`tp_nome_inexistente`, `vm/ps_compiler.c:3302`). Programa:
+  `from jinker import Jinker` e, no topo, `id = request.path_param("id")`: o
+  `--check` dá `{"ok":true}` e rodando sai `NameError: name 'request' is not
+  defined`, rc 1, com JIT e sem. Com `from jinker import request` o nome
+  existe, e fora da rota `request.text()`, `request.method` e
+  `request.get("x")` devolvem `Null` calados; o Flask, no mesmo caso, levanta
+  `RuntimeError: Working outside of request context`. `motor`.
 
 ## os
 
@@ -310,3 +322,13 @@ e sem, e dá o mesmo erro.
   não tem como passar parâmetro pelo `query`, e o aviso contra concatenar fica
   sem saída. `os dois` (o motor, se o `query` tiver de aceitar parâmetros como
   a página diz; senão, a doc).
+- **doc-20** (achado pelo portão `roda`) Cinco exemplos usam o `request` da
+  jinker no topo do programa, fora de uma rota, onde a doc dele não promete
+  nada (e o motor-6 faz o `--check` aprovar): `docs/jinker/request/path_param/path_param.md:43`,
+  `docs/jinker/request/file/file.md:74`,
+  `docs/jinker/request/get_json/get_json.md:54`, `docs/json.md:43` e
+  `docs/json/json.md:43`. Rodando: `NameError: name 'request' is not
+  defined`, ou, com o `from jinker import request` do contexto do `json.md`,
+  o `Null` do `request.text()` vira `TypeError: parse() argument 1 must be
+  str, not Null`. A forma que as outras páginas usam é o trecho dentro da
+  rota. `doc`.
