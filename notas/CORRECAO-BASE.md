@@ -330,5 +330,17 @@ e sem, e dá o mesmo erro.
   `docs/json/json.md:43`. Rodando: `NameError: name 'request' is not
   defined`, ou, com o `from jinker import request` do contexto do `json.md`,
   o `Null` do `request.text()` vira `TypeError: parse() argument 1 must be
-  str, not Null`. A forma que as outras páginas usam é o trecho dentro da
-  rota. `doc`.
+  str, not Null`. O mesmo em `docs/mail/MailMessage/attach/attach.md:39`
+  ("dentro de uma rota que recebe upload", escrito no topo: o `request.file`
+  dá `Null` e o `attach(Null)` quebra). A forma que as outras páginas usam é
+  o trecho dentro da rota. `doc`.
+- **doc-21** (achado pelo portão `roda`) `docs/qrcode/QRImage/to_file/to_file.md:21`
+  ensina anexar o QR num e-mail sem gravar no disco:
+  `m.attach(img.to_file())`. O `--check` aprova e rodando sai
+  `TypeError: attach() argument 1 must be str, not QRPoolFile`, com JIT e
+  sem. A página do `attach` (`docs/mail/MailMessage/attach/attach.md`) lista
+  o que ele aceita: caminho, `PoolFile` e `PoolFileUpload` (medido: caminho e
+  o `PoolFile` de um arquivo binário passam). Duas falhas: as duas páginas se
+  contradizem sobre o `QRPoolFile`, e o checador aprova o que o motor recusa.
+  `os dois` (o `attach` aceitar o `QRPoolFile`, ou a página do `to_file`
+  deixar de prometer; e o checador conferir o tipo do argumento).
