@@ -5,15 +5,22 @@ busca é **case-insensitive** — headers HTTP não distinguem maiúsculas de
 minúsculas, então `"Content-Type"`, `"content-type"` e `"CONTENT-TYPE"` acham a
 mesma coisa.
 
-```
+```assinatura
 request.header(key: str) -> str | Null
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker, JinkerResponse, jsonify
+Jinker app = Jinker(__name__)
 ```
 
 ---
 
 ## Uso
 
-```
+```ps
 @app.route("/api", methods=["GET"]) {
     funct api() {
         token = request.header("Authorization")   # "Bearer abc..." ou Null
@@ -31,7 +38,7 @@ request.header(key: str) -> str | Null
 - `.headers` — o **dict inteiro** dos cabeçalhos, com as chaves como o cliente
   mandou (aí a caixa importa, e `.get()` também é case-sensitive).
 
-```
+```ps
 # um header, jeito recomendado
 ua = request.header("User-Agent")
 
@@ -43,10 +50,12 @@ todos = request.headers            # {"Host": "...", "User-Agent": "...", ...}
 
 ## Ausente devolve `Null`
 
-```
-x = request.header("X-Nao-Existe")   # Null
-if (x is Null) {
-    return jsonify({"erro": "header obrigatório faltando"}), 400
+```ps
+funct confere() {
+    x = request.header("X-Nao-Existe")   # Null
+    if (x is Null) {
+        return jsonify({"erro": "header obrigatório faltando"}), 400
+    }
 }
 ```
 
@@ -57,11 +66,13 @@ if (x is Null) {
 `request.header()` **lê** o que o cliente mandou. Pra **escrever** um header na
 resposta (inclusive o `Content-Type`/mime), use o `JinkerResponse`:
 
-```
-r = JinkerResponse()
-r.send("<nota>oi</nota>")
-r.header("Content-Type", "application/xml")   # seta na saída
-return r
+```ps
+funct nota() {
+    r = JinkerResponse()
+    r.send("<nota>oi</nota>")
+    r.header("Content-Type", "application/xml")   # seta na saída
+    return r
+}
 ```
 
 ---

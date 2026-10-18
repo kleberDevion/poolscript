@@ -26,7 +26,7 @@ ou pega os bytes.
 
 ## Uso
 
-```
+```ps
 import qrcode
 
 img = qrcode.make("https://meusite.com")

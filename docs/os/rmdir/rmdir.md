@@ -2,7 +2,7 @@
 
 Remove uma pasta.
 
-```
+```assinatura
 os.rmdir(path: str, force: bool = False) -> Null
 ```
 
@@ -11,11 +11,17 @@ os.rmdir(path: str, force: bool = False) -> Null
 | `path` | — | pasta a remover |
 | `force` | `False` | `True` = remove **mesmo com conteúdo** dentro |
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import os
+```
+
 ---
 
 ## Uso
 
-```
+```ps
 import os
 
 os.rmdir("temp")                   # só remove se estiver VAZIA
@@ -38,7 +44,7 @@ outro lado — como o `rm -rf`. Se o próprio `path` é um link, sai só o link.
 
 Confirme o caminho antes de usar `force=True`:
 
-```
+```ps
 if (os.isdir("temp") and os.exists("temp")) {
     os.rmdir("temp", force=True)
 }

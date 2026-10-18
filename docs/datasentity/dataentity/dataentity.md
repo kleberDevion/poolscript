@@ -3,7 +3,7 @@
 Decorador aplicado a uma `Entity` que **gera o `__init__` automaticamente** a
 partir dos campos tipados declarados no corpo.
 
-```
+```assinatura
 from datasentity import dataentity
 
 @dataentity
@@ -17,7 +17,7 @@ Entity Nome {
 
 ## Uso
 
-```
+```ps
 from datasentity import dataentity
 
 @dataentity
@@ -47,7 +47,7 @@ post(p.nome, p.idade)               # Ana 30
 
 Com o `@dataentity`, a instância vira facilmente dict/tupla/lista/JSON:
 
-```
+```ps
 from datasentity import dataentity, asdict, asjson
 
 @dataentity

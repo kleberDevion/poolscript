@@ -2,7 +2,7 @@
 
 Redimensiona a imagem do QR Code pra um tamanho específico, em pixels.
 
-```
+```assinatura
 img.resize(width: int, height: int) -> Null
 ```
 
@@ -10,7 +10,7 @@ img.resize(width: int, height: int) -> Null
 
 ## Uso
 
-```
+```ps
 import qrcode
 
 img = qrcode.make("https://meusite.com")

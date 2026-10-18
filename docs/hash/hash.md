@@ -4,7 +4,7 @@ Lib pra guardar senhas do jeito certo: você **nunca** salva a senha em texto.
 Em vez disso, salva um **hash** (uma versão embaralhada e irreversível) e, no
 login, compara.
 
-```
+```ps
 import hash
 ```
 
@@ -28,7 +28,7 @@ senha:
 
 ## O fluxo completo
 
-```
+```ps
 import hash
 
 # CADASTRO — guarde o hash, nunca a senha

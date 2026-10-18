@@ -3,7 +3,7 @@
 Gera um **hash seguro** de uma senha, com salt aleatório. É o que você **guarda**
 no banco no momento do cadastro — nunca a senha original.
 
-```
+```assinatura
 hash.crypt(senha: str) -> str
 ```
 
@@ -11,7 +11,7 @@ hash.crypt(senha: str) -> str
 
 ## Uso
 
-```
+```ps
 import hash
 
 senha_hash = hash.crypt("minhaSenha123")
@@ -26,7 +26,7 @@ post(senha_hash)     # algo tipo "$2b$12$Xk...longo..." — irreversível
 
 Cada chamada usa um salt novo, então a **mesma senha gera hashes diferentes**:
 
-```
+```ps
 hash.crypt("abc")    # "$2b$12$aaa..."
 hash.crypt("abc")    # "$2b$12$bbb..."  (diferente!)
 ```

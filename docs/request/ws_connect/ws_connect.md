@@ -4,7 +4,7 @@ Conecta como **cliente** num servidor WebSocket. Devolve uma
 [`WsConnection`](../WsConnection/WsConnection.md) — a conexão aberta, por onde
 você envia e recebe mensagens em tempo real.
 
-```
+```assinatura
 request.ws_connect(url: str) -> WsConnection
 ```
 
@@ -13,11 +13,17 @@ request.ws_connect(url: str) -> WsConnection
 |---|---|
 | `url` | endereço `ws://...` do servidor (ex: `"ws://localhost:8081/chat/geral"`) |
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import request
+```
+
 ---
 
 ## Uso completo
 
-```
+```ps
 import request
 
 conn = request.ws_connect("ws://localhost:8081/chat/geral")
@@ -41,7 +47,7 @@ descartadas em silêncio** — nenhum erro, nada aparece. É o motivo mais comum
 de "conectei mas não recebo nada". **Sempre** registre um callback antes de
 esperar receber:
 
-```
+```ps
 conn = request.ws_connect("ws://localhost:8081/chat/sala")
 conn.on_message(funct(msg) { post(f"chegou: {msg}") })   # sem isto, você não vê nada
 ```

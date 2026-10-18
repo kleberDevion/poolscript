@@ -4,7 +4,7 @@ Lê o conteúdo atual do arquivo aberto. Mesmo formato de retorno da
 [`manpu.read()`](../../read/read.md): CSV/XLSX viram lista de dicts, texto vira
 string.
 
-```
+```assinatura
 arq.read() -> list | str
 ```
 
@@ -12,7 +12,7 @@ arq.read() -> list | str
 
 ## Uso
 
-```
+```ps
 import manpu as mp
 
 using mp.open(target="clientes.csv") as arq {

@@ -3,7 +3,13 @@
 Remove conteúdo de um arquivo — por posição (coluna/célula) em CSV, ou por
 texto encontrado em HTML/txt.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import manpu as mp
 ```
+
+```assinatura
 manpu.remove(value="", content="", column=0, celula=0, amount="full", target="") -> ManpuResult
 ```
 
@@ -19,7 +25,7 @@ manpu.remove(value="", content="", column=0, celula=0, amount="full", target="")
 
 ## Remover por posição (CSV)
 
-```
+```ps
 import manpu as mp
 
 x = mp.remove(
@@ -32,7 +38,7 @@ x = mp.remove(
 
 ## Remover por texto (HTML / txt)
 
-```
+```ps
 x = mp.remove(
     value="Texto alvo",
     amount=full,

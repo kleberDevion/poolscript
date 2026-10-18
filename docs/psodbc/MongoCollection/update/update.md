@@ -2,7 +2,7 @@
 
 Atualiza os documentos que batem com o filtro, aplicando os novos valores.
 
-```
+```assinatura
 col.update(query: dict, new_values: dict) -> Null
 ```
 
@@ -11,11 +11,19 @@ col.update(query: dict, new_values: dict) -> Null
 | `query` | filtro — quais documentos atualizar |
 | `new_values` | os campos a mudar (e seus novos valores) |
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import psodbc
+MongoConnection conn = psodbc.connect(driver="mongo", host="localhost", database="loja")
+MongoCollection col = conn.collection("produtos")
+```
+
 ---
 
 ## Uso
 
-```
+```ps sem-rodar: precisa do servidor MongoDB
 # muda o preço de todos os cafés
 col.update({"nome": "café"}, {"preco": 18})
 

@@ -4,7 +4,7 @@ Cria uma pasta (diretório), e as pastas do caminho que faltarem, como o
 `os.makedirs` do Python. A barra no fim não muda nada: `"dados/2026/"` cria
 `dados/2026`.
 
-```
+```assinatura
 os.mkdir(path: str, exist_ok: bool = False) -> Null
 ```
 
@@ -13,11 +13,17 @@ os.mkdir(path: str, exist_ok: bool = False) -> Null
 | `path` | — | caminho da pasta a criar |
 | `exist_ok` | `False` | `True` = não dá erro se a pasta já existir |
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import os
+```
+
 ---
 
 ## Uso
 
-```
+```ps
 import os
 
 os.mkdir("uploads")                      # cria "uploads"
@@ -27,7 +33,7 @@ os.mkdir("dados/2026", exist_ok=True)    # cria; se já existir, tudo bem
 Com `exist_ok=False` (padrão), criar uma pasta que já existe **levanta erro**.
 Use `exist_ok=True` quando "garantir que a pasta exista" for a intenção:
 
-```
+```ps
 os.mkdir("cache", exist_ok=True)   # roda quantas vezes quiser, sem erro
 ```
 
@@ -52,7 +58,13 @@ try {
 
 ## Padrão comum: criar só se não existe
 
+O exemplo pressupõe:
+
+```ps contexto
+import os
 ```
+
+```ps
 if (not os.exists("uploads")) {
     os.mkdir("uploads")
 }

@@ -2,7 +2,7 @@
 
 Resolve e devolve o **caminho absoluto** de um arquivo.
 
-```
+```assinatura
 manpu.src(filepath: str) -> str
 ```
 
@@ -10,7 +10,7 @@ manpu.src(filepath: str) -> str
 
 ## Uso
 
-```
+```ps
 import manpu as mp
 
 caminho = mp.src("planilha.xlsx")

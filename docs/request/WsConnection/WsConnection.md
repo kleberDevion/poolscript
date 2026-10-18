@@ -18,7 +18,7 @@ mensagens, **recebe** (via callback) e **fecha** quando termina.
 
 ## Ciclo de vida
 
-```
+```ps
 import request
 
 conn = request.ws_connect("ws://localhost:8081/chat/geral")  # 1. conecta

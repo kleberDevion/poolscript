@@ -4,7 +4,14 @@ Abre um arquivo pra **várias operações** (ler + escrever) e o mantém aberto.
 Devolve um [`ManpuFile`](../ManpuFile/ManpuFile.md). Feito pra usar com `using`,
 que **salva e fecha automaticamente** ao sair do bloco.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import manpu as mp
+byte lista = mp.load("compras.txt")
 ```
+
+```assinatura
 manpu.open(target: str, encoding: str = "utf-8") -> ManpuFile
 ```
 
@@ -20,7 +27,7 @@ manpu.open(target: str, encoding: str = "utf-8") -> ManpuFile
 `using` fecha e salva o arquivo sozinho ao terminar o bloco — mesmo se der erro
 no meio:
 
-```
+```ps
 import manpu as mp
 
 lista = mp.load("compras.txt")
@@ -33,7 +40,7 @@ using mp.open(target="compras.xlsx") as arq {
 
 O `using` usa bloco de chaves `{ }` (acima), como todo bloco da linguagem:
 
-```
+```ps
 using mp.open(target="compras.xlsx") as arq {
     arq.write(column=0, cell=full, content=lista)
 }
@@ -45,7 +52,7 @@ using mp.open(target="compras.xlsx") as arq {
 
 O padrão `utf-8` cobre a maioria. Pra CSVs/textos antigos noutro charset:
 
-```
+```ps
 using mp.open(target="legado.csv", encoding="latin-1") as arq {
     dados = arq.read()
     post(dados)

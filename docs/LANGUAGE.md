@@ -109,7 +109,7 @@ na VM)` e aponta as duas formas acima.
 
 ## Comentários
 
-```
+```ps
 # comentário de linha 
 
 """
@@ -122,6 +122,12 @@ pode ter várias linhas
 
 ## Blocos: `{ }`
 
+Os exemplos desta seção pressupõem:
+
+```ps contexto
+int nota = 8
+```
+
 ```pyrite
 if (nota >= 9) {
     post("Excelente!")
@@ -132,7 +138,7 @@ if (nota >= 9) {
 }
 ```
 
-```
+```ps
 if (nota >= 9)
 {
     post("Excelente!")
@@ -143,7 +149,7 @@ else
 }
 ```
 
-```
+```ps
 d = { "a": 1, "b": 2 }     # dicionário
 s = "abcdef"[1:3]          # fatia
 Entity P { nome: str }   # campo tipado
@@ -151,7 +157,7 @@ Entity P { nome: str }   # campo tipado
 
 ## Tipos e variáveis
 
-```
+```ps
 x = 10                 # sem tipo escrito — o tipo fica fixado na 1ª atribuição
 str nome = "Pool"       # tipada — só aceita valor desse tipo
 int idade = 20
@@ -200,7 +206,7 @@ Uma palavra reservada é recusada onde um nome seria **ligado** —
 variável, parâmetro, `funct`, `Entity`, `model`, campo, variável de loop, de
 `catch`, de `global` e alvo de desempacotamento:
 
-```
+```ps
 if = 5                       # erro: 'if' é palavra reservada
 funct f(while) { ... }       # erro: 'while' é palavra reservada
 for each return in xs { }    # erro: 'return' é palavra reservada
@@ -225,7 +231,7 @@ quebrava `base(...)` — antes
 
 Quatro grafias equivalentes, todas o mesmo valor:
 
-```
+```texto
 Null   Null   Null   Null
 ```
 
@@ -242,7 +248,7 @@ maiúscula — igual a `True` e `False`.
 
 ## Strings
 
-```
+```ps
 "aspas duplas"
 'aspas simples'
 ```
@@ -253,15 +259,22 @@ erro. Isso é comum em outras linguagens C-like, mas costuma pegar quem embute
 caminhos do Windows direto numa string (`"C:\Users\..."` vira `"C:Users..."`,
 com `\t` virando um TAB literal). Para caminhos/regex, use **string raw**:
 
+```texto
+
 ```
 
+Os exemplos abaixo pressupõem:
+
+```ps contexto
+str nome = "Pool"
+int grau = 25
 ```
 
 **String multi-linha** — aspas simples **triplas** (`'''...'''`), combina com
 `f`/`r`. Aspas duplas triplas (`"""`) já são comentário de bloco (ver
 [Comentários](#comentários)), por isso multi-linha usa `'''` e não `"""`:
 
-```
+```ps
 str sql = '''SELECT *
 FROM users
 WHERE ativo = 1'''
@@ -276,7 +289,7 @@ sem processar escape'''
 **f-string** (interpolação com chaves — aspas simples e duplas valem igual,
 como em qualquer string):
 
-```
+```ps
 grau = 25
 post(f"Clima: {grau} graus")
 post(f'Clima: {grau} graus')     # mesma coisa
@@ -288,14 +301,14 @@ por espaço, sem vírgula; o `(` e o `[` é que vão colados no valor, porque
 separados por espaço ali eles não dizem se são chamada, índice ou o próximo
 argumento, e isso é erro — ver linguagem 3.11):
 
-```
+```ps
 post("Clima: " {grau} " graus")
 ```
 
 **String colorida** (ANSI 24-bit), hex de **exatamente 3 ou 6 dígitos** ou
 nome conhecido:
 
-```
+```ps
 post(<red>"alerta")
 post(<2196f3>"azul")
 post(<fff>"branco")
@@ -309,7 +322,7 @@ nome desconhecido, **não** é tratado como cor — o `<` volta a ser o operador
 
 ## Listas, tuplas e dicionários
 
-```
+```ps
 lista = [1, 2, 3]
 tupla = (1, 2, 3)            # imutável
 dicionario = {"a": 1, "b": 2}
@@ -329,7 +342,7 @@ Builtins de lista: `addEnd(l, v)`, `removeEnd(l)`, `addStart(l, v)`,
 
 Atribuição múltipla a partir de uma lista/tupla/string do lado direito:
 
-```
+```ps
 a, b = 1, 2                  # múltiplo direto
 a, b = b, a                  # swap — o lado direito é avaliado por INTEIRO
                               # antes de qualquer variável ser escrita
@@ -341,7 +354,7 @@ a, b = "hi"                   # string também é iterável: a="h", b="i"
 
 **Star / rest**:
 
-```
+```ps
 a, *resto = [1, 2, 3, 4]      # a=1, resto=[2, 3, 4]  (resto é sempre list)
 *inicio, z = [1, 2, 3, 4]     # inicio=[1, 2, 3], z=4
 a, *meio, z = [1, 2, 3, 4, 5] # a=1, meio=[2, 3, 4], z=5
@@ -372,7 +385,7 @@ vale: `for each k, v in d.items() { ... }`.
 
 ## Operadores
 
-```
+```texto
 +  -  *  /  %          # aritméticos
 += -= *= /= %=          # atribuição composta
 ++  --                  # incremento/decremento (só em variáveis)
@@ -396,7 +409,7 @@ Os bitwise, do mais fraco pro mais forte:
 
 ## Controle de fluxo
 
-```
+```ps
 if (cond) { ... } elif (cond2) { ... } else { ... }
 
 while (cond) {
@@ -423,7 +436,7 @@ corpo do loop.
 A função se declara com `funct` — é a única palavra. `action` e `reaction`
 saíram da linguagem e são erro de sintaxe (referência §6.1):
 
-```
+```ps
 funct soma(a, b) {
     return a + b
 }
@@ -439,7 +452,7 @@ conferido antes de rodar. `int`/`bool` têm, além disso, o sentinela de erro:
 em vez de propagar a exceção, devolvem um valor (útil para handlers de rota) —
 e o erro sai junto no stderr, com o traceback, em vez de sumir:
 
-```
+```ps
 int funct f() { return 1 / 0 }
 post(f())     # 500 (e o ZeroDivisionError sai no stderr)
 
@@ -458,7 +471,7 @@ os nomeados sem parâmetro num dict; vêm depois dos parâmetros comuns, sem tip
 e sem padrão. Na chamada, `f(*lista)` e `f(**dict)` espalham (referência
 §6.2.4):
 
-```
+```ps
 funct f(a, *args, **kwarg) {
     post(a, args, kwarg)
 }
@@ -471,11 +484,11 @@ em qualquer ordem com o tipo, o `async` e a visibilidade. `static` faz o método
 pertencer ao tipo (`Tipo.metodo(...)`, sem instanciar); `nonnull` recusa
 argumento `Null`:
 
-```
+```ps
 nonnull funct precisa(v) {
     return v
 }
-precisa(Null)   # nonnull: parametro 'v' em 'precisa' nao pode ser Null
+precisa(Null)   # RuntimeError: nonnull: parametro 'v' em 'precisa' nao pode ser Null
 ```
 
 As grafias antigas `@static` e `@NonNull`, em linha própria, continuam
@@ -485,7 +498,7 @@ funcionando.
 refere à variável do escopo global — leituras e escritas passam a atingir
 direto o global, em vez de criar/usar uma variável local:
 
-```
+```ps
 contador = 0
 
 funct incrementar() {
@@ -500,7 +513,7 @@ post(contador)   # 2
 
 Também funciona para criar uma variável global que ainda não existe:
 
-```
+```ps
 funct registrar() {
     global total_visitas
     total_visitas = 1
@@ -573,7 +586,7 @@ posições e os exemplos de biblioteca:
 `future`). O corpo **começa na chamada** e corre até o primeiro ponto em que
 cede (`sleep`, I/O, `await`); aí a chamada volta com o future:
 
-```
+```ps
 async funct lenta(n) {
     sleep(0.3)
     return n
@@ -625,7 +638,7 @@ Qualquer `funct` que contenha `yield` em qualquer lugar do corpo (inclusive
 dentro de `if`/`while` aninhados) vira um gerador automaticamente — chamá-la
 não executa o corpo na hora, devolve um objeto iterável:
 
-```
+```ps
 funct contar(n) {
     i = 0
     while (i < n) {
@@ -654,7 +667,7 @@ Um `try` leva um ou mais `catch`, um `finally`, ou os dois — `try { ... }
 finally { ... }` sem `catch` vale: o `finally` roda e o erro, se houver,
 propaga depois dele. Só `try` sozinho é erro de sintaxe.
 
-```
+```ps
 try {
     x = 1 / 0
 } catch (ZeroDivisionError e) {
@@ -684,7 +697,13 @@ try {
 
 ## `match` / `case`
 
+O exemplo pressupõe:
+
+```ps contexto
+Object valor = 200
 ```
+
+```ps
 match valor {
     case 200 {
         post("ok")
@@ -713,7 +732,7 @@ match valor {
 
 Valida a estrutura de um dict (tipicamente um JSON recebido):
 
-```
+```ps
 model Usuario() {
     nome: str(length=60)
     idade: int(length=3)
@@ -746,7 +765,7 @@ Daqui pra frente o texto usa `class`, mas tudo vale igual para os três.
 
 ### Declaração e instância
 
-```
+```ps
 class Animal {
     funct __init__(self, nome) {
         self.nome = nome
@@ -785,7 +804,7 @@ chamar de fora levanta erro, por qualquer caminho (a instância, o nome da
 classe num `private static`, o nome solto na filha, `base()`), e o `--check`
 acusa antes de rodar quando o resultado é certo:
 
-```
+```ps
 Entity Conta {
     private saldo: int = 0          # só a própria classe mexe
     public dono: str = "kleber"     # público (igual a não pôr nada)
@@ -800,9 +819,9 @@ Entity Conta {
 c = Conta()
 post(c.deposita(100))   # 100  — via método público
 post(c.dono)            # kleber — público
-post(c.saldo)           # ERRO: 'saldo' é private de Conta
-c._log()                # ERRO: 'private'
-c.saldo = 9             # ERRO: escrita em private de fora
+post(c.saldo)           # RuntimeError: 'saldo' é private de Conta
+c._log()                # RuntimeError: 'private'
+c.saldo = 9             # RuntimeError: escrita em private de fora
 ```
 
 - **Default é público** — código sem modificador funciona como sempre.
@@ -827,7 +846,20 @@ c.saldo = 9             # ERRO: escrita em private de fora
 pai de qualquer método (mesmo sobrescrito) e `base().campo` lê um campo
 (static do pai, ou da instância). Vale em qualquer método com `self`.
 
+Os exemplos abaixo pressupõem a `class Animal` de cima:
+
+```ps contexto
+class Animal {
+    funct __init__(self, str nome) {
+        self.nome = nome
+    }
+    funct falar(self) {
+        return f"{self.nome} faz um som"
+    }
+}
 ```
+
+```ps
 class Cachorro(Animal) {
     funct __init__(self, nome, raca) {
         base().__init__(nome)          # executa Animal.__init__(self, nome)
@@ -846,7 +878,7 @@ post(c.nome)        # Rex   — atributo herdado, criado pelo base().__init__()
 Método **não sobrescrito** é herdado direto — `Gato` abaixo não define
 `falar`, então usa o do `Animal`:
 
-```
+```ps
 class Gato(Animal) {
     funct __init__(self, nome) {
         base().__init__(nome)
@@ -859,7 +891,7 @@ post(Gato("Felix").falar())   # Felix faz um som   (veio de Animal)
 Cadeia de qualquer profundidade funciona; cada nível chama o `base()` do seu
 pai imediato:
 
-```
+```ps
 class Base {
     funct __init__(self, x) {
         self.x = x
@@ -888,7 +920,7 @@ Com mais de um pai, `base()` sem nome é erro (`base() com mais de um pai:
 diga qual, base(Motor) ou base(Roda)`): o nome do pai vai dentro dos
 parênteses. `base(Pai)` também serve pra mirar um avô numa cadeia.
 
-```
+```ps
 class Motor {
     funct __init__(self, cavalos) {
         self.cavalos = cavalos
@@ -929,7 +961,7 @@ toda a cadeia de `A`), depois em `B`. O primeiro encontrado vence.
 Método com o modificador `static` colado na cabeça é chamado direto na classe,
 sem criar objeto e sem `self`:
 
-```
+```ps
 class Util {
     static funct dobro(n) {
         return n * 2
@@ -959,7 +991,7 @@ instância.
 Com `nonnull` na cabeça, a chamada falha se qualquer argumento recebido for
 `Null`.
 
-```
+```ps
 class Calc {
     funct __init__(self) {
         self.total = 0
@@ -972,30 +1004,30 @@ class Calc {
 
 c = Calc()
 c.somar(5)        # ok
-c.somar(Null)     # ERRO: nonnull: parametro 'valor' em 'somar' nao pode ser Null
+c.somar(Null)     # RuntimeError: nonnull: parametro 'valor' em 'somar' nao pode ser Null
 ```
 
 **Escopo:** `nonnull` vale em todo lugar — chamada de método
 (`obj.metodo(...)`), método `static`, função solta e também o `__init__`
 durante a instanciação:
 
-```
+```ps
 class I {
     nonnull funct __init__(self, dono) {
         self.dono = dono
     }
 }
-I(Null)     # nonnull: parametro 'dono' em '__init__' nao pode ser Null
+I(Null)     # RuntimeError: nonnull: parametro 'dono' em '__init__' nao pode ser Null
 ```
 
 E rejeita um **default** que seja `Null`, porque a checagem roda depois do
 prólogo, com os defaults já aplicados:
 
-```
+```ps
 nonnull funct d(v=Null) {
     return v
 }
-d()         # nonnull: parametro 'v' em 'd' nao pode ser Null
+d()         # RuntimeError: nonnull: parametro 'v' em 'd' nao pode ser Null
 ```
 
 ### `@dataentity` — `__init__` automático + conversões
@@ -1004,7 +1036,7 @@ Gera o `__init__` sozinho a partir de campos tipados declarados no corpo (no
 formato `nome: tipo`, opcionalmente `nome: tipo = default`). Precisa importar
 de `datasentity`:
 
-```
+```ps
 from datasentity import dataentity, asdict, astuple, aslist, asjson
 
 @dataentity
@@ -1036,10 +1068,16 @@ Detalhes de `@dataentity`:
 
 ## `count` / `count each`
 
+Os exemplos desta seção pressupõem:
+
+```ps contexto
+list nums = [1, 7, 2, 7, 3, 7]
+```
+
 Operador multifuncional para contar/checar ocorrências em coleções, strings e
 números. Três formas equivalentes:
 
-```
+```ps
 count int(7) in nums          # prefixo
 int(7) count in nums          # infixo
 count int in nums             # sem valor — conta todos do tipo
@@ -1050,7 +1088,7 @@ count int in nums             # sem valor — conta todos do tipo
 **Bloco contador** — itera as ocorrências, definindo `_match`, `_index`,
 `_count` a cada uma:
 
-```
+```ps
 count each int(7) in nums {
     post(_index)
 }
@@ -1068,7 +1106,7 @@ arquivo) o `return` é erro de sintaxe antes de rodar: `'return' fora de funct`.
 Gerenciador de contexto — fecha o recurso automaticamente ao sair do bloco
 (mesmo em caso de erro):
 
-```
+```ps
 using open("arquivo.txt", "w") as f {
     f.write("linha 1\n")
 }
@@ -1079,7 +1117,7 @@ using open("arquivo.txt", "w") as f {
 
 ## Imports e bibliotecas padrão
 
-```
+```ps
 import os
 from os import getenv
 PUSH os GET getenv        # forma alternativa
@@ -1089,7 +1127,7 @@ import os as sistema      # alias
 Arquivo `.pr` pelo caminho, entre aspas — relativo à pasta do arquivo que
 importa (ver [`docs/linguagem/09-imports.md`](linguagem/09-imports.md) §9.4):
 
-```
+```ps
 import '../pacote/modulo.pr'          # liga `modulo`
 from './irmao.pr' import w
 import 'sub/meu-mod.pr' as mm         # nome que não serve de variável: use `as`
@@ -1113,7 +1151,7 @@ default): funct, class, model, enum e variável (`private x = 1`, `private int
 n = 1`, `private a, b = 1, 2`). Dentro do arquivo o nome funciona como
 qualquer outro; de fora, `m.x`, `from m import x` e o `*` não o alcançam:
 
-```
+```ps
 # lib.pr
 private x = 5
 private funct f() { return x }
@@ -1158,7 +1196,7 @@ módulo. Importar um nome que não existe é `ImportError`.
 
 ## Builtins globais
 
-```
+```ps
 post(...)            # imprime (join dos argumentos com espaço) e guarda no output
 input(prompt)        # devolve str, ou Null no fim do stdin; o prompt é só posicional
 

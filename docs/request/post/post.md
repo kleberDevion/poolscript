@@ -3,7 +3,7 @@
 Faz uma requisição HTTP **POST** — usada pra **enviar dados** (criar recursos,
 fazer login, subir arquivo). Devolve um [`Response`](../Response/Response.md).
 
-```
+```assinatura
 request.post(url, headers=Null, body=Null, timeout=30, stream=False, max_size=Null,
              fields=Null, file=Null, save=Null) -> Response
 ```
@@ -20,6 +20,12 @@ request.post(url, headers=Null, body=Null, timeout=30, stream=False, max_size=Nu
 | `file` | `Null` | **multipart**: `{campo: {"name": caminho}}` — a lib lê o arquivo do disco e envia como parte binária |
 | `save` | `Null` | caminho de arquivo: o corpo da resposta vai direto pra ele, e o arquivo é **seu**. Sem `save=` vai pra um arquivo do motor, que some com o `Response` — ver [baixar arquivo](../download/download.md) |
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import request
+```
+
 ---
 
 ## Multipart — enviar arquivo (`fields=` + `file=`)
@@ -28,7 +34,7 @@ Pra APIs que recebem **arquivo** (upload, transcrição de áudio...), use
 `fields=`/`file=` em vez de `body=` — a lib monta o `multipart/form-data`
 inteiro sozinha (boundary, cabeçalhos de cada parte, o arquivo em binário):
 
-```
+```ps sem-rodar: envia um arquivo da máquina pra um servidor de fora
 import request
 
 resp = request.post("https://api.exemplo.com/audio/transcriptions",
@@ -66,7 +72,7 @@ post(resp.get_json())
 Passe um dict em `body` — ele é convertido pra JSON e o `Content-Type:
 application/json` é definido sozinho:
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 import request
 
 resp = request.post(
@@ -83,7 +89,7 @@ post(resp.get_json())        # resposta do servidor
 
 Se `body` for uma **string**, é enviada como está (sem virar JSON):
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 resp = request.post("https://api.x.com/webhook", body="texto cru")
 ```
 
@@ -91,7 +97,7 @@ resp = request.post("https://api.x.com/webhook", body="texto cru")
 
 ## Com autenticação
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 resp = request.post(
     "https://api.x.com/protegido",
     headers={"Authorization": "Bearer token"},

@@ -4,7 +4,7 @@ A lib `request` é o **lado cliente**: você usa pra *chamar* outras APIs
 (fazer `GET`/`POST` pra um servidor) e pra *conectar* como cliente num
 WebSocket. **Zero dependências externas** nos dois casos.
 
-```
+```ps
 import request
 ```
 
@@ -54,7 +54,7 @@ Ver a página de [download](download/download.md) e [`Response`](Response/Respon
 
 ## Exemplo rápido — HTTP
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 import request
 
 resp = request.get("https://api.exemplo.com/users")
@@ -72,7 +72,7 @@ post(resp2.status)               # 201, por exemplo
 
 ## Exemplo rápido — WebSocket
 
-```
+```ps
 import request
 
 conn = request.ws_connect("ws://localhost:8081/chat/geral")

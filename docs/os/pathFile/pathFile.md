@@ -3,15 +3,21 @@
 Devolve o **caminho absoluto** de um arquivo, buscando-o pelo nome a partir da
 pasta do `.pr` em execução e depois do diretório atual. Erro se não encontrar.
 
-```
+```assinatura
 os.pathFile(name: str) -> str
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import os
 ```
 
 ---
 
 ## Uso
 
-```
+```ps
 import os
 
 caminho = os.pathFile("dados.json")
@@ -31,7 +37,7 @@ desce nas subpastas, mas **não entra em link simbólico pra pasta** (como o
 também pra `os.pathFolder`, `os.loadFile` e `sys.RelativePath`. Se quiser
 checar antes:
 
-```
+```ps
 if (os.exists("dados.json")) {
     caminho = os.pathFile("dados.json")
 }

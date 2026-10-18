@@ -5,7 +5,7 @@ Percorre o texto procurando o primeiro lugar onde a expressão regular
 casa com o padrão; repare que isso é diferente de achar um casamento de
 largura zero em algum ponto do texto.
 
-```
+```assinatura
 regex.search(pattern: str, string: str) -> bool
 ```
 

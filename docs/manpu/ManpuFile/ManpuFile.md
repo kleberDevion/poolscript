@@ -4,7 +4,13 @@
 está aberto (dentro do `using`), você lê e escreve nele; ao sair do bloco, é
 **salvo e fechado automaticamente**.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import manpu as mp
 ```
+
+```ps
 using mp.open(target="dados.csv") as arq {
     # arq é um ManpuFile
 }
@@ -27,7 +33,7 @@ using mp.open(target="dados.csv") as arq {
 
 ## Exemplo — ler, transformar, escrever
 
-```
+```ps
 import manpu as mp
 
 using mp.open(target="dados.csv") as arq {

@@ -3,7 +3,7 @@
 Devolve os bytes como uma string **base64** (padrão, com padding `=`). Base64 é
 o jeito comum de embutir binário em texto — JSON, e-mail, data URLs, etc.
 
-```
+```assinatura
 bytes.base64(b: bytes) -> str
 ```
 
@@ -11,7 +11,7 @@ bytes.base64(b: bytes) -> str
 
 ## Uso
 
-```
+```ps
 import bytes
 
 bytes.base64(bytes.new("Hello"))   # "SGVsbG8="

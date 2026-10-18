@@ -17,7 +17,7 @@ Uma **rota** é a ligação entre:
 
 O ciclo de uma requisição é sempre este:
 
-```
+```ps
 navegador pede  GET /api/hello
         │
         ▼
@@ -35,7 +35,7 @@ deste doc é só detalhar cada parte desse ciclo.
 
 Crie um arquivo `app.pr` com isto — é um servidor inteiro, funcional:
 
-```
+```ps sem-rodar: sobe o servidor na porta 8080 e fica escutando
 from jinker import Jinker, cors, jsonify
 import os
 
@@ -85,7 +85,7 @@ o JSON. Entendendo cada bloco:
 
 Quando você for pro sério, adiciona a configuração de acesso global:
 
-```
+```ps
 from jinker import Jinker, cors, jsonify
 
 app = Jinker(__name__)
@@ -94,6 +94,16 @@ cors(app, options=["GET", "POST"], origins=["https://meusite.com"])
 
 `cors(...)` é opcional (sem ele, tudo é liberado). A próxima seção explica.
 
+Os exemplos das seções seguintes pressupõem o começo abaixo (`api` e `admin`
+são mais dois servidores, usados no `cors()`):
+
+```ps contexto
+from jinker import Jinker, JinkerResponse, cors, jsonify, render
+Jinker app = Jinker(__name__)
+Jinker api = Jinker(__name__)
+Jinker admin = Jinker(__name__)
+```
+
 ---
 
 ## cors()
@@ -101,7 +111,7 @@ cors(app, options=["GET", "POST"], origins=["https://meusite.com"])
 Define as configurações de acesso de um servidor. O **primeiro argumento é
 o servidor** (pode ser mais de um), e depois os parâmetros:
 
-```
+```ps
 cors(app, options=["POST", "GET", "DELETE"], origins=["https://meusite.com"])
 cors(api, admin, origins=["https://meusite.com"])     # a mesma config pros dois
 cors(app, origins=["https://meusite.com"], local=False)   # modo estrito: só a lista
@@ -153,7 +163,7 @@ WebSocket). `Origin: null` (arquivo aberto do disco, sandbox) só passa se
 
 ## Rotas
 
-```
+```ps
 @app.route("/api/hello", auth=cors.origins(), methods=cors.options(["GET"]))
 funct handler() {
     return jsonify({"msg": "olá!"}), 200
@@ -167,7 +177,7 @@ Não precisa envolver a `funct` em chaves extras — o `@app.route(...)` já cap
 Passe `route_prefix` no construtor pra montar **todas** as rotas (e sockets) sob
 um prefixo comum, sem repetir em cada `@app.route`:
 
-```
+```ps
 app = Jinker(route_prefix="api")     # "api" | "/api/" -> "/api"
 
 @app.route("/hello", methods=["GET"])   # servida em  /api/hello
@@ -186,7 +196,7 @@ mesmo resultado. Sem `route_prefix`, nada muda (comportamento de antes).
 
 Disponível automaticamente dentro de qualquer rota:
 
-```
+```ps
 @app.route("/api/dados", auth=cors.origins(), methods=cors.options(["POST"]))
 funct receber() {
     data = request.get_json()       # body como dict
@@ -222,7 +232,7 @@ de sempre.
 
 **2. Pedindo pelo nome** — `request.path_param()`, que continua valendo igual:
 
-```
+```ps
 @app.route("/user:id", auth=cors.origins(), methods=cors.options(["GET"]))
 funct perfil() {
     id = request.path_param("id")
@@ -234,21 +244,23 @@ funct perfil() {
 
 ## Retornos da rota
 
-```
-# dict ou lista → JSON automático
-return {"msg": "ok"}
-return [1, 2, 3]
+```ps
+funct rota() {
+    # dict ou lista → JSON automático
+    return {"msg": "ok"}
+    return [1, 2, 3]
 
-# jsonify com status code
-return jsonify({"msg": "criado"}), 201
-return jsonify({"msg": "não encontrado"}), 404
-return jsonify({"msg": "erro interno"}), 500
+    # jsonify com status code
+    return jsonify({"msg": "criado"}), 201
+    return jsonify({"msg": "não encontrado"}), 404
+    return jsonify({"msg": "erro interno"}), 500
 
-# texto puro
-return "olá mundo"
+    # texto puro
+    return "olá mundo"
 
-# sem body
-return Null    # responde 204
+    # sem body
+    return Null    # responde 204
+}
 ```
 
 ### `jsonify` e `JinkerResponse` são a MESMA coisa
@@ -257,10 +269,12 @@ return Null    # responde 204
 linha que constrói um `JinkerResponse` e chama `.json(dados)` nele. Ou seja,
 estas três formas produzem exatamente a mesma resposta:
 
-```
-return jsonify({"msg": "ok"})                      # atalho
-return JinkerResponse().json({"msg": "ok"})        # idêntico ao de cima
-return {"msg": "ok"}                                # dict puro: a rota converte sozinha
+```ps
+funct rota() {
+    return jsonify({"msg": "ok"})                      # atalho
+    return JinkerResponse().json({"msg": "ok"})        # idêntico ao de cima
+    return {"msg": "ok"}                                # dict puro: a rota converte sozinha
+}
 ```
 
 Use `jsonify` por ser mais curto; use `JinkerResponse` direto quando quiser
@@ -276,10 +290,12 @@ encadeiam):
 | `.status(codigo)` | troca só o status, sem mexer no corpo |
 | `.header(chave, valor)` | adiciona um cabeçalho |
 
-```
-return jsonify({"msg": "ok"}).header("X-Request-Id", "abc123"), 200
-return jsonify({"msg": "criado"}).status(201)   # status() dispensa a tupla
-return JinkerResponse().send("texto puro", 200)  # resposta não-JSON
+```ps
+funct rota() {
+    return jsonify({"msg": "ok"}).header("X-Request-Id", "abc123"), 200
+    return jsonify({"msg": "criado"}).status(201)   # status() dispensa a tupla
+    return JinkerResponse().send("texto puro", 200)  # resposta não-JSON
+}
 ```
 
 `request` (o parâmetro implícito de toda rota) é uma instância de
@@ -294,7 +310,7 @@ em vez de usar `jsonify`/`render`.
 
 Define verificação que roda antes de rotas protegidas:
 
-```
+```ps
 @app.middleware()
 funct verificar() {
     token = request.get("token")
@@ -310,7 +326,7 @@ funct verificar() {
 
 Aplica em rotas específicas com `middleware=app.middleware`:
 
-```
+```ps
 # rota livre — sem middleware
 @app.route("/api/login", auth=cors.origins(), methods=cors.options(["POST"]))
 funct login() {
@@ -335,7 +351,15 @@ texto; binários (imagem/pdf/…) vão como bytes automaticamente.
 
 ### Assinatura e as duas formas de passar o caminho
 
+Nos trechos abaixo, `caminho`, `pasta` e `arquivo` são textos:
+
+```ps contexto
+str caminho = "paginas/index.html"
+str pasta = "paginas"
+str arquivo = "index.html"
 ```
+
+```ps
 render(caminho)                 # um argumento só
 render(pasta, arquivo)          # dois argumentos — junta os dois com "/"
 ```
@@ -343,16 +367,18 @@ render(pasta, arquivo)          # dois argumentos — junta os dois com "/"
 As duas formas abaixo são **exatamente equivalentes** — escolha a que ficar
 mais legível:
 
-```
-return render("paginas/index.html")     # caminho completo num argumento só
-return render("paginas", "index.html")  # pasta + arquivo separados
+```ps
+funct index() {
+    return render("paginas/index.html")     # caminho completo num argumento só
+    return render("paginas", "index.html")  # pasta + arquivo separados
+}
 ```
 
 Internamente `render("paginas", "index.html")` só faz `"paginas" / "index.html"`
 = `"paginas/index.html"`, então dá no mesmo. A forma de dois argumentos é útil
 quando a pasta é fixa e o arquivo é variável:
 
-```
+```ps
 funct pagina() {
     nome = request.path_param("nome")
     return render("paginas", f"{nome}.html")   # paginas/<nome>.html
@@ -376,7 +402,7 @@ e `render("qualquer/pasta/que/voce/quiser/pag.html")` funcionam igual — a
 Se o arquivo **não existir**, `render()` devolve uma resposta **404** com uma
 página de erro (não estoura exceção) — então dá pra usar direto no `return`.
 
-```
+```ps
 from jinker import Jinker, cors, render
 
 @app.route("/", auth=cors.origins(), methods=cors.options(["GET"]))
@@ -398,7 +424,7 @@ Qualquer URL que comece com `/static/` é servida a partir da pasta `static/`
 **ao lado do `.pr`** (não da pasta de onde o servidor foi chamado). Não precisa
 configurar nada, mas **o nome `static` é fixo** — não dá pra renomear.
 
-```
+```texto
 /static/style.css   →  serve  ./static/style.css
 /static/script.js   →  serve  ./static/script.js
 /static/logo.png    →  serve  ./static/logo.png
@@ -417,7 +443,7 @@ Vue, etc.). Aí **qualquer** URL que não bata numa rota tenta servir o arquivo
 físico correspondente dentro dessa pasta; se não achar, cai no `index.html`
 dela (o roteamento client-side de SPA assume dali).
 
-```
+```ps
 app = Jinker(__name__, static_folder="frontend/dist")
 ```
 
@@ -448,7 +474,7 @@ o `static_folder` num prefixo (`/app`), use `static_url`: ver
 
 ## Estrutura de pastas
 
-```
+```texto
 meu_projeto/
   app.pr
   .env
@@ -468,7 +494,7 @@ meu_projeto/
 
 O WebSocket sobe automaticamente na porta `HTTP + 1`. Se o servidor HTTP for na porta `7700`, o WebSocket fica na `7701`.
 
-```
+```ps
 @app.socket("/chat", channel=True)
 funct bora_msg() {
     msg = request.get_json()
@@ -506,7 +532,7 @@ Quando o path do socket tem parâmetro dinâmico, cada conexão entra
 automaticamente numa "sala" = valor do parâmetro. Um `emit(room_id=...)`
 alcança só quem está conectado naquela sala — as outras salas não recebem:
 
-```
+```ps
 @app.socket("/sala:id", channel=True)
 funct mensagem() {
     msg = request.get_json()
@@ -518,9 +544,18 @@ funct mensagem() {
 }
 ```
 
+Os trechos a seguir usam, fora do handler, o `msg`, o `id` e o emissor `send`
+do exemplo acima; pressupõem:
+
+```ps contexto
+dict msg = {"user_name": "joao", "body_msg": "Olá pessoal!"}
+str id = "geral"
+SocketEmitter send = app.socket()
+```
+
 `app.socket.emit(...)` faz a mesma coisa sem precisar instanciar:
 
-```
+```ps
 app.socket.emit(payload=msg, room_id=id)
 ```
 
@@ -532,7 +567,7 @@ em runtime, devolve um emissor.
 padrão** — evita a mensagem aparecer duplicada em UIs de chat. Pra ecoar
 de volta também pro remetente, passe `exclude_self=False`:
 
-```
+```ps
 send.emit(payload=msg, room_id=id, exclude_self=False)
 ```
 
@@ -554,7 +589,7 @@ sujeito ao `exclude_self`).
 
 ## Iniciando o servidor
 
-```
+```ps sem-rodar: sobe o servidor na porta 2000 e fica escutando
 if __name__ == "main" {
     app(debug=True, host="0.0.0.0", port=2000)
 }
@@ -584,7 +619,7 @@ servidor** e outras requisições são atendidas enquanto essa dorme; quando o t
 passa, ela continua de onde parou. Ou seja, um handler que espera **não trava**
 os outros no mesmo worker.
 
-```
+```ps
 @app.route("/lento")
 funct lento() {
     sleep(1)                 # 100 clientes aqui NÃO viram 100s de fila:
@@ -616,7 +651,15 @@ dela. Um helper `async` aguardado de dentro do handler (`v = await carrega()`)
 roda noutra fibra, que nasce com a **mesma** requisição: o `request` lá dentro é
 o do handler.
 
+O `carrega_do_banco` do exemplo é um helper `async` seu, como este:
+
+```ps contexto
+async dict funct carrega_do_banco(str id) {
+    return {"id": id}
+}
 ```
+
+```ps
 @app.get("/perfil")
 async funct perfil() {
     dados = await carrega_do_banco(request.get("id"))
@@ -655,7 +698,7 @@ ficam na casa de **~40 MB**.
 Uma fibra é concorrência **dentro de um núcleo** (uma coisa roda por vez, elas se
 revezam na espera). Pra usar os vários núcleos da máquina, suba mais processos:
 
-```
+```ps sem-rodar: sobe o servidor com 4 processos na porta 2000 e fica escutando
 app(host="0.0.0.0", port=2000, workers=4)   # 4 processos dividem a porta
 ```
 
@@ -673,7 +716,7 @@ abrir um banco) roda uma vez em cada worker, e não uma só como no Linux.
 
 ## Exemplo completo com WebSocket e rotas
 
-```
+```ps
 import psodbc
 import hash
 import jwt

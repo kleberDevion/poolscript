@@ -11,7 +11,7 @@ from jinker import Jinker
 
 Ligar HTTPS é uma linha:
 
-```ps
+```ps sem-rodar: sobe o servidor HTTPS e fica escutando
 app = Jinker(__name__, oauth={"tls": True})
 if __name__ == "main" { app(debug=False, host="0.0.0.0", port=2000) }
 ```
@@ -104,7 +104,7 @@ sudo certbot certonly --standalone -d api.seusite.com
 #   → /etc/letsencrypt/live/api.seusite.com/privkey.pem
 ```
 
-```ps
+```ps sem-rodar: sobe o servidor HTTPS e fica escutando
 app = Jinker(__name__, oauth={
     "tls":  True,
     "cert": "/etc/letsencrypt/live/api.seusite.com/fullchain.pem",

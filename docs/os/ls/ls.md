@@ -3,7 +3,7 @@
 Lista o conteúdo de uma pasta. Devolve uma **lista de dicts**, um por item, com
 nome, tipo e tamanho.
 
-```
+```assinatura
 os.ls(path: str = ".") -> list
 ```
 
@@ -11,13 +11,19 @@ os.ls(path: str = ".") -> list
 |---|---|---|
 | `path` | `"."` (pasta atual) | a pasta a listar |
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import os
+```
+
 ---
 
 ## Formato do retorno
 
 Cada item é um dict:
 
-```
+```texto
 {"name": "foto.png", "type": "file", "size": 20481}
 {"name": "uploads",  "type": "dir",  "size": 0}
 ```
@@ -32,7 +38,7 @@ Cada item é um dict:
 
 ## Uso
 
-```
+```ps
 import os
 
 for each item in os.ls("uploads") {
@@ -46,7 +52,7 @@ for each item in os.ls("uploads") {
 
 Listar a pasta atual (sem argumento):
 
-```
+```ps
 for each item in os.ls() {
     post(item["name"])
 }
@@ -58,7 +64,7 @@ for each item in os.ls() {
 
 Filtre pelo `type`:
 
-```
+```ps
 arquivos = filter(os.ls("dados"), funct(i) { return i["type"] == "file" })
 pastas   = filter(os.ls("dados"), funct(i) { return i["type"] == "dir" })
 ```

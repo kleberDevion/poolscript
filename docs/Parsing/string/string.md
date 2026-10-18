@@ -4,7 +4,7 @@ Devolve o texto do valor, com os brancos normalizados: cada corrida de
 espaço, tab e quebra de linha vira um espaço só, e os das pontas saem (o
 `" ".join(s.split())` do Python).
 
-```
+```assinatura
 Parsing.string(value, to_type="str")
 ```
 

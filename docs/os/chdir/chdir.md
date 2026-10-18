@@ -3,7 +3,7 @@
 Muda o **diretório de trabalho atual** — daí em diante, caminhos relativos
 partem da nova pasta.
 
-```
+```assinatura
 os.chdir(path: str) -> Null
 ```
 
@@ -11,7 +11,7 @@ os.chdir(path: str) -> Null
 
 ## Uso
 
-```
+```ps
 import os
 
 post(os.cwd())          # "C:\projeto"

@@ -3,7 +3,13 @@
 Igual ao [`sys.stdout`](../stdout/stdout.md), mas escreve na **saída de erro**
 (stderr) — o canal separado que o sistema usa pra mensagens de erro/aviso.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+str texto = "oi"
 ```
+
+```ps
 import sys
 sys.stderr.write(texto, end=False)
 sys.stderr.writeln(texto)
@@ -30,7 +36,7 @@ Os mesmos do `stdout`:
 **erros e avisos**. Manter separados permite, por exemplo, redirecionar só o
 resultado pra um arquivo enquanto os erros continuam aparecendo na tela:
 
-```
+```ps
 import sys
 
 sys.stdout.writeln("resultado: 42")      # saída normal

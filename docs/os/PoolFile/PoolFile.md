@@ -8,11 +8,17 @@ Você normalmente **não cria** um `PoolFile` na mão — recebe um de `loadFile
 Mas o nome é exportado como builtin global pra você poder checar o tipo
 (`x is PoolFile`).
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import os
+```
+
 ---
 
 ## Como obter um
 
-```
+```ps
 import os
 
 img = os.loadFile("logo.png")     # PoolFile (extensão binária)
@@ -35,7 +41,7 @@ pdf = os.loadFile("nota.pdf")     # PoolFile
 | `.copy(destino)` | copia pro destino — devolve um novo `PoolFile` |
 | `.delete()` | apaga o arquivo do disco. Arquivo que já não existe não é erro; o que existe e não sai (pasta sem permissão de escrita; no Windows, o arquivo aberto em outro programa) levanta `PermissionError` |
 
-```
+```ps
 img = os.loadFile("temp/foto.png")
 
 post(img.name, img.ext, img.size)   # foto.png .png 4821
@@ -65,7 +71,7 @@ tipo, com os métodos de leitura e escrita por cima dos de acima. A página do
 veio de uma lib (download, geração de áudio/imagem...) e ainda não existe no
 disco, ou pra materializar uma cópia onde você quiser:
 
-```
+```ps
 arq = os.loadFile("nota.pdf")
 arq.save()                    # grava na pasta do .pr, como "nota.pdf"
 arq.save("saida/nota.pdf")    # ou onde você mandar (cria "saida/" se faltar)
@@ -77,7 +83,7 @@ arq.save("saida/nota.pdf")    # ou onde você mandar (cria "saida/" se faltar)
 
 `PoolFile` é builtin global (não precisa importar) — dá pra usar com `is`:
 
-```
+```ps
 conteudo = os.loadFile("arquivo_qualquer.dat")
 if (conteudo is PoolFile) {
     post("é binário, tamanho:", len(conteudo.bytes()))

@@ -4,7 +4,7 @@
 pode ser **lido e escrito**. É o mesmo número que
 [`.status(code)`](../status/status.md) grava.
 
-```
+```assinatura
 resp.status_code        -> int
 resp.status_code = 201  -> grava (não devolve nada)
 ```
@@ -18,8 +18,8 @@ Os exemplos pressupõem:
 
 ```ps contexto
 from jinker import JinkerResponse, jsonify
-lista = []
-funct registra_falha(codigo) { post(codigo) }
+list lista = []
+Null funct registra_falha(int codigo) { post(codigo) }
 ```
 
 ```ps

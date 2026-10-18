@@ -3,7 +3,7 @@
 Faz uma requisição HTTP **GET** para uma URL. Devolve um
 [`Response`](../Response/Response.md).
 
-```
+```assinatura
 request.get(url, headers=Null, body=Null, timeout=30, stream=False, max_size=Null,
             fields=Null, file=Null, save=Null) -> Response
 ```
@@ -19,11 +19,17 @@ request.get(url, headers=Null, body=Null, timeout=30, stream=False, max_size=Nul
 | `fields` / `file` | `Null` | corpo **multipart/form-data** (formulário + arquivo) — ver a seção Multipart em [`request.post`](../post/post.md) |
 | `save` | `Null` | caminho de arquivo: o corpo vai direto pra ele, e o arquivo é **seu** (o motor não o apaga). Sem `save=` o corpo vai pra um arquivo do motor, que some junto com o `Response`. `.content` lê do arquivo salvo — ver [baixar arquivo](../download/download.md) |
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import request
+```
+
 ---
 
 ## Uso básico
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 import request
 
 resp = request.get("https://api.exemplo.com/users")
@@ -37,7 +43,7 @@ dados = resp.get_json()    # corpo parseado (dict ou lista)
 
 Coloque os parâmetros na própria URL:
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 resp = request.get("https://api.x.com/buscar?termo=jinga&limite=10")
 ```
 
@@ -45,7 +51,7 @@ resp = request.get("https://api.x.com/buscar?termo=jinga&limite=10")
 
 ## Com headers (ex: token de autenticação)
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 resp = request.get(
     "https://api.x.com/privado",
     headers={"Authorization": "Bearer meu_token"}
@@ -62,7 +68,7 @@ requisições sem identificação) — você pode sobrescrever passando o seu.
 `request.get` sempre devolve um `Response`, mesmo em erro HTTP (404, 500) —
 cheque `.ok` ou `.status`:
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 resp = request.get("https://api.x.com/item/999")
 if (resp.ok) {                       # True se status 2xx
     post(resp.get_json())
@@ -74,7 +80,7 @@ if (resp.ok) {                       # True se status 2xx
 **Falha de conexão** (host inexistente, sem rede) levanta erro em vez de
 devolver `Response` — envolva em `try/catch` se precisar:
 
-```
+```ps
 try {
     resp = request.get("https://host.que.nao.existe")
 } catch (e) {

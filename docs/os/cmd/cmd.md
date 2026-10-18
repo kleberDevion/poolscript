@@ -5,7 +5,7 @@ Executa um **comando no terminal** do sistema. Por padrão só roda; com
 comando terminar, e a espera cede: numa rota do jinker ou numa `async funct`,
 o resto continua sendo atendido enquanto o comando roda.
 
-```
+```assinatura
 os.cmd(command: str, capture: bool = False) -> str | Null
 ```
 
@@ -19,18 +19,24 @@ no Windows. A linha tem que ser na sintaxe daquele shell (no Windows, `dir` e
 `%VAR%`, não `ls` e `$VAR`). Um comando inexistente sai com 127 no `sh` e 9009
 no `cmd.exe`.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import os
+```
+
 ---
 
 ## Rodar sem capturar
 
-```
+```ps
 os.cmd("mkdir uploads")           # executa; devolve Null
 os.cmd("git status")              # a saída vai direto pro terminal
 ```
 
 ## Capturar a saída
 
-```
+```ps
 versao = os.cmd("jinga --version", capture=True)
 post(versao)                      # "Jinga 17.0.20 [PSVM] (2026-09-24) Runtime standalone"
 ```
@@ -43,7 +49,7 @@ mensagem de erro em vez de string vazia.
 
 ## Exemplo prático
 
-```
+```ps
 import os
 
 # checa se uma ferramenta existe — pelo código de saída, não pelo texto

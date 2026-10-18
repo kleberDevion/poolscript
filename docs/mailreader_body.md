@@ -6,11 +6,18 @@ e o que foi feito pra resolver. Se você só quer o código, pula pra "API".
 Se quer entender *por que* o código é assim e não de outro jeito,
 leia tudo.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import mail
+MailReader reader = mail.MailReader()
+```
+
 ## 1. O bug conceitual: `.search()` nunca baixava o corpo
 
 O `.search()` pedia ao servidor só isto:
 
-```
+```texto
 FETCH <id> (RFC822.HEADER)
 ```
 
@@ -41,7 +48,7 @@ a mensagem INTEIRA — extraindo o corpo dela.
 
 Uso:
 
-```
+```ps sem-rodar: precisa do servidor de e-mail conectado (o .conn() é de outro bloco)
 emails = reader.select("INBOX").search("SUBJECT", "fatura")
 for each e in emails {
     if "urgente" in e["subject"] {
@@ -66,7 +73,7 @@ cada item do resultado ganha a chave `"body"`.
 
 Uso:
 
-```
+```ps sem-rodar: precisa do servidor de e-mail conectado (o .conn() é de outro bloco)
 emails = reader.select("INBOX").search("UNSEEN", include_body=True)
 for each e in emails {
     post(e["subject"] ": " e["body"])
@@ -134,7 +141,7 @@ relacionada mas não era: o charset da busca.
 
 Antes o comando ia sem `CHARSET`:
 
-```
+```texto
 SEARCH SUBJECT "Relatório"
 ```
 
@@ -151,7 +158,7 @@ nada", quebra o comando inteiro.
 
 **Correção** — o comando passou a ser:
 
-```
+```texto
 SEARCH CHARSET UTF-8 SUBJECT "Relat\u00f3rio"
 ```
 
@@ -169,7 +176,7 @@ sempre funcionou, o que não funcionava era acento — e agora funciona.**
 
 ## 5. API — referência rápida
 
-```
+```ps sem-rodar: precisa do servidor de e-mail
 reader = mail.MailReader()
 reader.conn("imap.meuservidor.com")  # porta 993
 reader.login("user@gmail.com", "senha-de-app")

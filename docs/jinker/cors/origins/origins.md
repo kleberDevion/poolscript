@@ -4,15 +4,22 @@ Devolve a lista de origens (domínios) configuradas na última chamada de
 `cors(app, origins=[...])`. Usado no `auth=` de uma rota pra aplicar a
 checagem de origem.
 
-```
+```assinatura
 cors.origins() -> list
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker, cors, jsonify
+Jinker app = Jinker(__name__)
 ```
 
 ---
 
 ## Uso
 
-```
+```ps
 cors(app, origins=["https://meusite.com"])
 
 @app.route("/api/dados", auth=cors.origins(), methods=cors.options(["GET"]))

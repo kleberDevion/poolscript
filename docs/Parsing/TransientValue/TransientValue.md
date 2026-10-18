@@ -4,7 +4,7 @@ Converte um valor **preservando o original sem distorção** — trunca float pr
 int sem arredondar, acha o número dentro do texto, entende o formato
 brasileiro.
 
-```
+```assinatura
 Parsing.TransientValue(value, to_type="str")
 ```
 

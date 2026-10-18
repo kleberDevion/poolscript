@@ -3,9 +3,16 @@
 Resolve a lista de métodos HTTP de uma rota. Usado no `methods=` do
 `@app.route(...)`.
 
-```
+```assinatura
 cors.options() -> list           # todos os métodos configurados globalmente
 cors.options(["POST"]) -> list   # filtra/sobrescreve pra esta rota
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker, cors, jsonify
+Jinker app = Jinker(__name__)
 ```
 
 ---
@@ -15,7 +22,7 @@ cors.options(["POST"]) -> list   # filtra/sobrescreve pra esta rota
 **Sem argumento** — devolve todos os métodos definidos na última chamada de
 `cors(app, options=[...])`:
 
-```
+```ps
 cors(app, options=["GET", "POST", "DELETE"])
 # ...
 methods=cors.options()    # GET, POST, DELETE
@@ -23,7 +30,7 @@ methods=cors.options()    # GET, POST, DELETE
 
 **Com uma lista** — define exatamente os métodos daquela rota (ignora o global):
 
-```
+```ps
 @app.route("/api/item", methods=cors.options(["POST"]))   # só POST
 funct criar() { ... }
 
@@ -44,7 +51,7 @@ Pra rota de **um** método só, o verbo pode ir no nome e a lista some:
 `@app.post("/api/login")` — ver [post/post.md](../../post/post.md). O
 `cors.options([...])` continua sendo o jeito de uma rota aceitar **vários**.
 
-```
+```ps
 @app.route("/api/login", methods=cors.options(["POST"]))
 funct login() {
     # só responde POST /api/login

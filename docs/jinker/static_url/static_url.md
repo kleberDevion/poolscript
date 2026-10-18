@@ -4,12 +4,19 @@ Parâmetro do construtor [`Jinker(...)`](../Jinker/Jinker.md) que define o
 **prefixo de URL** sob o qual os arquivos do [`static_folder`](../static_folder/static_folder.md)
 são servidos. O padrão é `"/"` (raiz).
 
-```
+```assinatura
 Jinker(name, oauth=, static_folder=, static_url="/")
 ```
 
 Ele **não é obrigatório** e **não é um decorator** — não existe
 `@app.static_url(...)`. É só um argumento na hora de criar o app.
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker
+Jinker app = Jinker(__name__, static_folder="dist", static_url="/app")
+```
 
 ---
 
@@ -20,7 +27,7 @@ divide a raiz: se a API tem `/users` e o `static_folder` também teria algo em
 `/users`, dá ambiguidade. Com um prefixo, os assets ficam só embaixo dele e a
 API fica dona do resto.
 
-```
+```ps
 app = Jinker(__name__, static_folder="dist", static_url="/app")
 
 # dist/app.js      →  GET /app/app.js      serve o arquivo
@@ -36,7 +43,7 @@ app = Jinker(__name__, static_folder="dist", static_url="/app")
 Se você **não** passar `static_url`, nada muda: o `static_folder` continua sendo
 servido na raiz, como sempre foi.
 
-```
+```ps
 app = Jinker(__name__, static_folder="dist")   # static_url = "/"
 
 # dist/app.js  →  GET /app.js   (raiz)
@@ -76,7 +83,7 @@ use `static_url="/static"` — escolha `/app`, `/assets`, `/public` etc.
 `app.static_url` devolve o valor configurado (default `"/"`), e
 `app.static_folder` a pasta (ou `Null` se não setada):
 
-```
+```ps
 post(app.static_url)      # "/app"
 post(app.static_folder)   # "dist"
 ```

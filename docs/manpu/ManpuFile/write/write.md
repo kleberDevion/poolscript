@@ -4,7 +4,7 @@ Escreve num arquivo aberto (dentro do `using`). Mesma ideia da
 [`manpu.write()`](../../write/write.md) solta, mas sem reabrir o arquivo a cada
 chamada — você pode chamar várias vezes no mesmo bloco.
 
-```
+```assinatura
 arq.write(content="", column=0, cell=Null, celula=Null, init=0, sep="\n", size=0) -> ManpuResult
 ```
 
@@ -21,7 +21,7 @@ arq.write(content="", column=0, cell=Null, celula=Null, init=0, sep="\n", size=0
 
 ## Uso
 
-```
+```ps
 import manpu as mp
 
 lista = mp.load("compras.txt")

@@ -1,0 +1,52 @@
+# Falhas conhecidas dos portões (notas/PORTOES.md, scripts/portoes_catraca.pr).
+# Uma por linha, com os campos separados por TAB:
+#
+#     portão  página  impressão  item  sistema  onde
+#
+# portão: check (o --check de cada bloco) ou roda (o bloco rodando, com JIT e
+# sem); impressão: os 12 primeiros dígitos do SHA-256 do texto do bloco; item:
+# o item aberto de notas/CORRECAO-BASE.md; sistema: todos, linux, darwin ou
+# windows; onde: só pra quem lê. Falha que não está aqui reprova o portão, e
+# linha daqui que não falha mais também reprova (consertado: tire a linha e
+# risque o item).
+check	docs/LANGUAGE.md	ad54a78e33a9	doc-7	todos	linha 455: int funct f() { return 1 / 0 }
+check	docs/Jinga.md	4de580d08911	doc-7	todos	linha 303: int x = 10
+check	docs/Jinga.md	d123e62078f9	doc-7	todos	linha 462: try {
+check	docs/Jinga.md	5e99954a629a	doc-8	todos	linha 858: import psodbc
+check	docs/hash_jwt.md	1c09cb817f98	doc-8	todos	linha 152: import jwt
+check	docs/psodbc.md	4e9762978205	doc-9	todos	linha 95: import psodbc
+check	docs/Jinga.md	4b33d1141574	doc-10	todos	linha 619: public enum Mix { A, B = 10, C, D = "x", E }
+check	docs/manpu.md	818e7c039f4d	doc-11	todos	linha 90: # Remove em CSV por coluna e célula
+check	docs/manpu.md	b9614fb79319	doc-11	todos	linha 124: import manpu as mp
+check	docs/manpu.md	3dd68867c1da	doc-11	todos	linha 138: using mp.open(target="compras.xlsx") as arq {
+check	docs/manpu.md	57dbed953aa7	doc-11	todos	linha 161: arq.write(
+check	docs/manpu.md	95d3b1329818	doc-11	todos	linha 183: # compras.txt:
+check	docs/manpu.md	2e5ec43a517f	doc-11, doc-13, doc-14	todos	linha 226: import manpu as mp
+check	docs/manpu/open/open.md	6f3363c29e64	doc-11	todos	linha 30: import manpu as mp
+check	docs/manpu/open/open.md	b984ff680c4d	doc-11	todos	linha 43: using mp.open(target="compras.xlsx") as arq {
+check	docs/manpu/remove/remove.md	d53057521bf4	doc-11	todos	linha 28: import manpu as mp
+check	docs/manpu/remove/remove.md	b300b3409e73	doc-11	todos	linha 41: x = mp.remove(
+check	docs/manpu/ManpuFile/ManpuFile.md	eb1f16a0ca6f	doc-11	todos	linha 36: import manpu as mp
+check	docs/manpu/manpu.md	bdd4ef2d79f3	doc-11	todos	linha 44: using mp.open(target="saida.csv") as arq {
+check	docs/manpu/manpu.md	c85371ad4af5	doc-11	todos	linha 55: import manpu as mp
+check	docs/manpu/ManpuFile/write/write.md	48adae174cdb	doc-11	todos	linha 24: import manpu as mp
+check	docs/mail/MailServer/MailServer.md	828a8efb5610	doc-12	todos	linha 5: from mail import MailServer
+check	docs/mail/MailReader/MailReader.md	c42dfaaa51b1	doc-12	todos	linha 5: from mail import MailReader
+check	docs/mail/MailMessage/MailMessage.md	ce779b72de96	doc-12	todos	linha 6: from mail import MailMessage
+check	docs/libs_utilitarias.md	adc8f33e0b02	doc-13	todos	linha 54: s = mail.MailServer()
+check	docs/libs_utilitarias.md	74b0c186e5d9	doc-13	todos	linha 85: r = mail.MailReader()
+check	docs/libs_utilitarias.md	8e7ef678e653	doc-13	todos	linha 141: import mail
+check	docs/libs_utilitarias.md	767b52a129c9	doc-13	todos	linha 167: import mail
+check	docs/manpu.md	89eab54665ff	doc-14	todos	linha 42: import manpu as mp
+check	docs/manpu/load/load.md	6a68dfb94792	doc-14	todos	linha 15: import manpu as mp
+check	docs/jinker/Jinker/Jinker.md	81e6501260ac	doc-15	todos	linha 59: app = Jinker(__name__, oauth={poolip: True, rate: 60, bloq: 1})
+check	docs/jinker/Jinker/Jinker.md	a2fb8c48fb05	doc-15	todos	linha 75: # no máximo 60 req/min por IP; quem passar fica banido 1 dia
+check	docs/jinker/Jinker/Jinker.md	841c4b21cb64	doc-15	todos	linha 98: # juntos (cert e chave no mesmo arquivo)
+check	docs/jinker/Jinker/Jinker.md	07c22fd4fbc4	doc-15	todos	linha 118: from jinker import Jinker, cors, jsonify
+check	docs/request/get_json/get_json.md	e3e521e53e4e	doc-16	todos	linha 5: import request
+check	docs/request/text/text.md	057c53fb1083	doc-16	todos	linha 5: import request
+check	docs/qrcode.md	3f8ea5bebb96	doc-17	todos	linha 68: qr = qrcode.QRCode(...)
+check	docs/regex.md	12e0c09b89e5	motor-2	todos	linha 17: match("\d+", "abc123")   # False — tem letras
+check	docs/jinker/channel/channel.md	bf409c08a970	jinker-7	todos	linha 18: app.channel(forAll=msg)
+check	docs/jinker.md	247ebb623b66	jinker-7	todos	linha 497: @app.socket("/chat", channel=True)
+check	docs/jinker.md	dc4d4c856043	jinker-7	todos	linha 719: import psodbc

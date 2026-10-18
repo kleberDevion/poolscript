@@ -2,7 +2,7 @@
 
 Conecta num servidor de e-mail, faz login e envia mensagens.
 
-```
+```ps
 from mail import MailServer
 s = mail.MailServer()
 ```
@@ -22,7 +22,7 @@ s = mail.MailServer()
 
 ## Fluxo completo
 
-```
+```ps sem-rodar: lê a conta de e-mail do ambiente (MAIL_USER...) e precisa do servidor
 import mail
 import os
 from dotenv import load

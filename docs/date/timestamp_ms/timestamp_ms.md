@@ -4,7 +4,7 @@ Devolve o **timestamp Unix em milissegundos** — o mesmo relógio do
 [`date.timestamp()`](../timestamp/timestamp.md), com mil vezes mais resolução.
 É um **inteiro**.
 
-```
+```assinatura
 date.timestamp_ms() -> int
 ```
 
@@ -12,7 +12,7 @@ date.timestamp_ms() -> int
 
 ## Uso
 
-```
+```ps
 import date
 
 agora = date.timestamp_ms()   # ex: 1785000000123

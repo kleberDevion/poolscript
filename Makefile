@@ -705,6 +705,12 @@ check: pool testar
 	@echo
 	@./pool scripts/audita_exemplos_doc.pr
 	@echo
+	# P1 dos portoes (notas/PORTOES.md): todo exemplo da doc seguido de ```saida
+	# ou ```erro roda e tem que dar exatamente aquilo, como o doctest do Python
+	# e o `cargo test --doc` do Rust. Divergencia que ja e item aberto da lista
+	# fica em teste/portoes_conhecidas.txt.
+	@./pool scripts/confere_saida_doc.pr docs
+	@echo
 	@./pool teste/fuzz_replay.pr
 	@echo
 	# DEPURADOR: fala DAP com o motor igual o editor faz — breakpoint na linha

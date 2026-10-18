@@ -3,11 +3,18 @@
 Referência de API — o que é acessível via `import psodbc` num script `.pr` e
 o que é interno do módulo (não aparece do lado de fora).
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import psodbc
+from psodbc import connect
+```
+
 ---
 
 ## Acessível — `import psodbc`
 
-```
+```ps
 import psodbc
 # ou: import psodbc   (alias)
 ```
@@ -30,7 +37,7 @@ uma string de conexão (`sqlserver://user:senha@host:porta/banco`, etc.).
 
 Assinatura completa:
 
-```
+```assinatura
 connect(driver="sqlite", host="localhost", port=0, user="", password="",
         database="", base="", url="", odbc_driver="", trust_server_cert=True)
 ```
@@ -85,7 +92,7 @@ bateria de testes pra conferir a ligação com tipo, como nos outros três).
 
 **Exemplos completos:**
 
-```
+```ps
 import psodbc
 
 # 1. Autenticação SQL, servidor remoto, porta explícita
@@ -121,7 +128,7 @@ conn.close()
 **SQLite — modo convencional** (igual aos outros drivers: `connect()` +
 `cursor()` + `execute()` + `fetchall()`):
 
-```
+```ps
 import psodbc
 
 conn = psodbc.connect(driver="sqlite", base="meu_banco.db")
@@ -135,14 +142,14 @@ conn.close()
 **SQLite — modo curto** (`query()` já devolve os dados prontos, sem passar por
 `cursor()`):
 
-```
+```ps
 resultado = psodbc.query(base="meu_banco.db", cmd="SELECT * FROM @t", table="users")
 post(resultado)   # list[dict], ou Null se não for SELECT
 ```
 
 **Por parâmetros — Postgres/MySQL/SQL Server**:
 
-```
+```ps sem-rodar: precisa do servidor PostgreSQL
 conn = psodbc.connect(
     driver="postgres",
     host="localhost",
@@ -160,7 +167,7 @@ conn.close()
 **Por URL de conexão** — funciona com qualquer driver suportado, escolhido
 pelo prefixo:
 
-```
+```ps sem-rodar: precisa do servidor PostgreSQL
 conn = psodbc.connect(url="postgres://admin:senha@localhost:5432/meu_banco")
 conn = psodbc.connect(url="mysql://admin:senha@localhost:3306/meu_banco")
 conn = psodbc.connect(url="sqlserver://user:senha@localhost:1433/meu_banco")
@@ -172,13 +179,13 @@ conn = psodbc.connect(url="sqlite:///C:/dados/meu_banco.db")     # absoluto no W
 
 **SQL Server local com autenticação do Windows** (sem `user`/`password`):
 
-```
+```ps sem-rodar: precisa do SQL Server e do driver ODBC 18
 conn = psodbc.connect(driver="sqlserver", host="localhost\\SQLEXPRESS", database="meu_banco")
 ```
 
 **MongoDB** — API diferente (`.collection()` em vez de `cursor()`/`execute()`):
 
-```
+```ps sem-rodar: precisa do servidor MongoDB
 conn = psodbc.connect(driver="mongo", host="localhost", port=27017, database="meu_banco")
 col = conn.collection("users")
 
@@ -279,7 +286,7 @@ cliente de banco instalado.
 Faltando a biblioteca, o `connect` daquele driver levanta um erro que diz
 qual é — e o programa segue (dá pra pegar com `try`):
 
-```
+```erro
 o driver postgres precisa da biblioteca libpq.so.5, que nao foi encontrada (libpq.so.5: cannot open shared object file: No such file or directory)
 ```
 

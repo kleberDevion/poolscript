@@ -3,7 +3,7 @@
 Converte um valor pra **inteiro**, de forma tolerante: acha o número dentro do
 texto e trunca a fração (não arredonda).
 
-```
+```assinatura
 Parsing.integer(value, to_type="int") -> int
 ```
 

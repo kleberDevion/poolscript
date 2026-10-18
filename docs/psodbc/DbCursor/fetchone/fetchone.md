@@ -3,15 +3,23 @@
 Devolve **uma** linha do resultado (a próxima), como um dict — ou `Null` se
 não houver mais linhas.
 
-```
+```assinatura
 cursor.fetchone() -> dict | Null
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import psodbc
+DbConnection conn = psodbc.connect(driver="sqlite", base="loja.db")
+DbCursor cursor = conn.cursor()
 ```
 
 ---
 
 ## Uso
 
-```
+```ps
 cursor.execute("SELECT * FROM users WHERE id = ?", (1,))
 user = cursor.fetchone()
 

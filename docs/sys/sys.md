@@ -4,7 +4,7 @@ Lib com utilitários do runtime: encerrar o programa, saber o sistema
 operacional, escrever no terminal com controle fino, e ler os argumentos da
 linha de comando.
 
-```
+```ps
 import sys
 ```
 
@@ -23,7 +23,13 @@ import sys
 
 ## Exemplo rápido
 
+O exemplo pressupõe:
+
+```ps contexto
+bool algo_deu_errado = False
 ```
+
+```ps
 import sys
 
 if (sys.platform() == "windows") {

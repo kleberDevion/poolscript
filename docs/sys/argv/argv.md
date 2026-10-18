@@ -3,7 +3,13 @@
 Os **argumentos da linha de comando** passados quando você rodou o programa —
 uma lista de strings.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import sys
 ```
+
+```ps
 sys.argv   # lista
 ```
 
@@ -15,7 +21,7 @@ sys.argv   # lista
 — a mesma convenção de C, Python e JS. Rodando
 `jinga app.pr entrada.txt saida.txt`:
 
-```
+```ps
 import sys
 
 post(sys.argv)        # ['app.pr', 'entrada.txt', 'saida.txt']  — aspas simples

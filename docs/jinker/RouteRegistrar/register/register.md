@@ -5,7 +5,7 @@ numa rota de verdade. É o **único** membro do
 [`RouteRegistrar`](../RouteRegistrar.md), e quem o chama, no uso normal, é o
 próprio decorador.
 
-```
+```assinatura
 register(handler: funct) -> Null
 ```
 

@@ -4,7 +4,16 @@ Envia um e-mail. O primeiro parâmetro (`to_or_msg`) aceita duas coisas: um
 [`MailMessage`](../../MailMessage/MailMessage.md) pronto, ou o e-mail de
 destino (aí os demais campos vêm direto).
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import mail
+import os
+MailServer s = mail.MailServer()
+MailMessage msg = mail.MailMessage()
 ```
+
+```assinatura
 s.send(msg)                                            # to_or_msg = MailMessage
 s.send(to, subject=Null, body=Null, html=False)        # to_or_msg = destinatário
 ```
@@ -15,7 +24,7 @@ s.send(to, subject=Null, body=Null, html=False)        # to_or_msg = destinatár
 
 Monta a mensagem separada (permite anexos, HTML, etc.) e envia:
 
-```
+```ps sem-rodar: lê a conta de e-mail do ambiente (MAIL_USER...) e precisa do servidor
 m = mail.MailMessage()
 m.fromAddress(os.getenv("MAIL_USER"))
 m.toAddress("destino@email.com")
@@ -30,13 +39,13 @@ s.send(m)
 
 Pra um e-mail simples de texto:
 
-```
+```ps sem-rodar: precisa do servidor de e-mail conectado (o .conn() é de outro bloco)
 s.send("destino@email.com", "Assunto", "Corpo do e-mail")
 ```
 
 Pra corpo em HTML, passe `html=True`:
 
-```
+```ps sem-rodar: precisa do servidor de e-mail conectado (o .conn() é de outro bloco)
 s.send("destino@email.com", "Oi", "<h1>Olá</h1>", html=True)
 ```
 

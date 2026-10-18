@@ -4,7 +4,7 @@
 válido, devolve o `payload` (os dados guardados). Se for inválido, adulterado
 ou **expirado**, devolve `Null`.
 
-```
+```assinatura
 jwt.check(token: str, secret: str) -> dict | Null
 ```
 
@@ -13,11 +13,21 @@ jwt.check(token: str, secret: str) -> dict | Null
 | `token` | o token que o cliente mandou |
 | `secret` | o **mesmo segredo** usado no [`jwt.gen`](../gen/gen.md) |
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import jwt
+import os
+from jinker import Jinker, jsonify
+Jinker app = Jinker(__name__)
+str token = jwt.gen({"user_id": 42}, "meu_segredo")
+```
+
 ---
 
 ## Uso
 
-```
+```ps
 import jwt
 
 dados = jwt.check(token, "meu_segredo")
@@ -45,7 +55,7 @@ no check.
 
 ## Exemplo: middleware protegendo rotas (jinker)
 
-```
+```ps
 @app.middleware()
 funct auth() {
     token = request.get("token")

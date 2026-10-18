@@ -3,7 +3,7 @@
 Recorta uma **fatia** dos bytes, de `ini` (inclusive) até `fim` (exclusive).
 Índices negativos contam a partir do fim.
 
-```
+```assinatura
 bytes.slice(b: bytes, ini: int = 0, fim: int = Null) -> bytes
 ```
 
@@ -11,7 +11,7 @@ bytes.slice(b: bytes, ini: int = 0, fim: int = Null) -> bytes
 
 ## Uso
 
-```
+```ps
 import bytes
 
 b = bytes.new("Hello")

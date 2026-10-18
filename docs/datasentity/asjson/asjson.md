@@ -2,7 +2,7 @@
 
 Converte uma instância de `@dataentity` direto numa **string JSON**.
 
-```
+```assinatura
 asjson(instance) -> str
 ```
 
@@ -10,7 +10,7 @@ asjson(instance) -> str
 
 ## Uso
 
-```
+```ps
 from datasentity import dataentity, asjson
 
 @dataentity

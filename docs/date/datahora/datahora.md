@@ -3,7 +3,7 @@
 Devolve **data e hora** atuais juntas, formato brasileiro
 `DD/MM/YYYY HH:MM:SS`.
 
-```
+```assinatura
 date.datahora() -> str
 ```
 
@@ -11,7 +11,7 @@ date.datahora() -> str
 
 ## Uso
 
-```
+```ps
 import date
 
 post(date.datahora())      # "25/07/2026 14:30:05"

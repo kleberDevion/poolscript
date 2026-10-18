@@ -229,7 +229,7 @@ Devolvem sempre `bool`.
 condição do `if`/`while`, dentro de parênteses, de um item, de um `return`), o
 `=` depois de um valor é erro, no próprio `=`, dizendo o que usar:
 
-```
+```ps
 if x = 5 {        # SyntaxError: '=' e atribuicao; pra comparar use '=='
 if x += 5 {       # SyntaxError: '+=' e atribuicao; pra comparar use '=='
 ```
@@ -242,7 +242,7 @@ diz qual vale: `'=>' nao existe: use '>='` (o mesmo pra `<=` e `!=`).
 Foram removidos em 29/08. Escrever qualquer um dos dois é erro de sintaxe, com
 a mensagem dizendo o que usar no lugar:
 
-```
+```texto
 SyntaxError: `===` nao existe nesta linguagem; use `==`
 ```
 
@@ -626,9 +626,9 @@ outro sem vírgula (`post("a" b)` são dois argumentos), então `post("total:"
 (x + 1))` e `["a" ["b"]]` não dizem se o `(`/`[` é chamada, índice ou o
 próximo item. É erro, no `(`/`[`, que pede juntar ou separar com vírgula:
 
-```
-'(' separado por espaco dentro dos argumentos: junte ao valor de antes (chamada) ou separe com ',' (outro argumento)
-'[' separado por espaco dentro dos itens: junte ao valor de antes (indice) ou separe com ',' (outro item)
+```ps
+post("total:" (x + 1))   # SyntaxError: '(' separado por espaco dentro dos argumentos: junte ao valor de antes (chamada) ou separe com ',' (outro argumento)
+["a" ["b"]]              # SyntaxError: '[' separado por espaco dentro dos itens: junte ao valor de antes (indice) ou separe com ',' (outro item)
 ```
 
 Fora disso (num comando, dentro de `( )` de agrupamento, no índice, no corpo
@@ -669,4 +669,3 @@ mesmas regras de `x + 1`.
 - **`is`** é verificação de **tipo**; **`in`** é pertinência (substring em
   `str`, chave em `dict`).
 - **Bitwise** só entre `int` (bool não conta).
-```

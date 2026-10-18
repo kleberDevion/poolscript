@@ -98,7 +98,7 @@ funct soma(a, b)
 Um `:` no fim da linha **não** abre bloco. A tentativa é recusada com uma
 mensagem que diz o que usar:
 
-```
+```texto
 SyntaxError: bloco com ':' nao existe mais — use '{ }'
 ```
 
@@ -160,7 +160,7 @@ Quando a próxima linha (ignorando espaços) começa com `.` seguido de letra ou
 NEWLINE nem mexe na indentação. Isto habilita *method chaining* em várias
 linhas:
 
-```ps
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 import request
 u = "https://exemplo.com/api"
 resposta = request.get(url=u)
@@ -198,11 +198,11 @@ Usuario   = ...       # IDENT_UPPER (uma Entity/classe)
 **Sem acento no nome.** Letra acentuada e qualquer letra fora do ASCII (`ação`,
 `preço`, `π`) **não** entram em identificador — e o erro diz a regra:
 
-```
-ação = 1
+```ps
+ação = 1   # SyntaxError: nome so aceita letra sem acento, digito e _: 'ç'
 ```
 
-```
+```erro
 SyntaxError: nome so aceita letra sem acento, digito e _: 'ç'
 ```
 
@@ -349,7 +349,7 @@ post(f"[{preco:.2f}] [{n:05d}] [{n:x}] [{preco:{8}.1f}]")
 
 Um escape **desconhecido mantém a barra E o caractere**, e sai um aviso:
 
-```
+```texto
 arquivo.pr:1: SyntaxWarning: sequencia de escape invalida '\p' — a barra fica
 no texto; use '\\p' se ela e mesmo pra estar ali
 ```

@@ -4,6 +4,14 @@ O objeto que [`connect()`](../connect/connect.md) devolve para bancos SQL
 (SQLite, Postgres, MySQL, SQL Server). Por ele você abre cursores, confirma
 transações e fecha a conexão.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import psodbc
+DbConnection conn = psodbc.connect(driver="sqlite", base="loja.db")
+DbCursor cursor = conn.cursor()
+```
+
 ---
 
 ## Métodos
@@ -18,7 +26,7 @@ transações e fecha a conexão.
 
 ## Fluxo padrão
 
-```
+```ps
 import psodbc
 
 conn = psodbc.connect(driver="sqlite", base="loja.db")
@@ -31,7 +39,7 @@ conn.close()                               # fecha
 Pra inserir/atualizar/apagar, chame `.commit()` depois do `execute` (senão as
 mudanças não são salvas):
 
-```
+```ps
 cursor.execute("INSERT INTO produtos (nome) VALUES (?)", ("café",))
 conn.commit()                              # salva a inserção
 ```

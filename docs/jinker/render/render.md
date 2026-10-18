@@ -6,20 +6,31 @@ correto detectado pela extensão** (`.html` → `text/html`, `.png` →
 `image/png`, `.pdf` → `application/pdf`, etc.). Serve pra entregar páginas
 HTML, imagens, PDFs — qualquer arquivo.
 
-```
+```ps
 from jinker import render
+```
 
+```assinatura
 render(folder_or_file: str) -> JinkerResponse            # caminho completo
 render(folder_or_file: str, file: str) -> JinkerResponse # pasta + arquivo
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker, cors, render
+Jinker app = Jinker(__name__)
 ```
 
 ---
 
 ## As duas formas de passar o caminho (equivalentes)
 
-```
-return render("paginas/index.html")     # caminho completo, um argumento
-return render("paginas", "index.html")  # pasta + arquivo separados
+```ps
+funct index() {
+    return render("paginas/index.html")     # caminho completo, um argumento
+    return render("paginas", "index.html")  # pasta + arquivo separados
+}
 ```
 
 As duas juntam a pasta e o arquivo com `/` (`"paginas/index.html"`). A
@@ -31,7 +42,7 @@ começando com o mesmo nome.
 Por isso a forma de dois argumentos é a certa quando a pasta é fixa e o arquivo
 vem de fora:
 
-```
+```ps
 funct pagina() {
     nome = request.path_param("nome")
     return render("paginas", f"{nome}.html")   # paginas/<nome>.html
@@ -66,10 +77,12 @@ regra fixa de `/static/`, que exige a pasta chamar-se `static`.)
 
 Você não precisa fazer nada — só apontar o arquivo.
 
-```
-return render("web/index.html")    # text/html
-return render("web/logo.png")      # image/png, bytes
-return render("docs/manual.pdf")   # application/pdf, bytes
+```ps
+funct arquivo() {
+    return render("web/index.html")    # text/html
+    return render("web/logo.png")      # image/png, bytes
+    return render("docs/manual.pdf")   # application/pdf, bytes
+}
 ```
 
 ---
@@ -80,7 +93,7 @@ Se o arquivo não existir, `render()` devolve uma resposta **404** com uma
 página de erro em vez de lançar exceção — então é seguro usar direto no
 `return`:
 
-```
+```ps
 @app.route("/", methods=cors.options(["GET"]))
 funct index() {
     return render("web/index.html")   # se não existir, vira 404 automático

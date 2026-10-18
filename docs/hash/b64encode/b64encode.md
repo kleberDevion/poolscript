@@ -4,7 +4,7 @@ Codifica o dado em **base64** (RFC 4648, alfabeto padrão, com padding). É o
 jeito de enfiar conteúdo num lugar que só aceita texto: cabeçalho HTTP, JSON,
 QR Code, corpo de e-mail.
 
-```
+```assinatura
 hash.b64encode(dado) -> str
 ```
 
@@ -35,7 +35,7 @@ O comprimento é `4 × arredonda_pra_cima(n / 3)`, onde `n` é o número de
 **bytes UTF-8** da entrada. Entrada vazia devolve `""` (string vazia, não
 `Null`).
 
-```
+```ps
 import hash
 
 hash.b64encode("abc")           # "YWJj"              (3 bytes -> 4 chars)
@@ -77,7 +77,7 @@ Nenhum valor de entrada é recusado — tudo tem um `str()`.
 
 ## Uso: mandar um valor num cabeçalho
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 import hash
 import request
 

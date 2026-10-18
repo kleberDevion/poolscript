@@ -9,7 +9,7 @@ com entrada suja como um `int()` cru quebraria.
 `NameError: name 'Parsing' is not defined. Did you forget to import 'Parsing'?`.
 Até a versão 16.2.14 ele nascia ligado, sem import.
 
-```
+```ps
 import Parsing
 
 post(Parsing.integer("R$ 1.234"))     # 1234
@@ -86,7 +86,7 @@ incerta** (texto de usuário, planilha) e você quer o melhor esforço.
 
 ## Exemplo
 
-```
+```ps
 import Parsing
 
 # entrada suja de um formulário

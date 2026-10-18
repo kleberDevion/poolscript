@@ -4,7 +4,7 @@ Busca um arquivo pelo nome, **recursivamente**, a partir do diretório de
 trabalho atual, e devolve o caminho encontrado — ou `Null`, se nenhum arquivo
 com esse nome existe ali.
 
-```
+```assinatura
 sys.RelativePath(name: str) -> str | Null
 ```
 
@@ -12,7 +12,7 @@ sys.RelativePath(name: str) -> str | Null
 
 ## Uso
 
-```
+```ps
 import sys
 
 caminho = sys.RelativePath("config.json")

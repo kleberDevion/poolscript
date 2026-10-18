@@ -2,7 +2,7 @@
 
 Devolve **data e hora** atuais no formato **ISO 8601** (`YYYY-MM-DD HH:MM:SS`).
 
-```
+```assinatura
 date.now() -> str
 ```
 
@@ -10,7 +10,7 @@ date.now() -> str
 
 ## Uso
 
-```
+```ps
 import date
 
 post(date.now())           # "2026-07-25 14:30:05"

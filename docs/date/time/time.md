@@ -2,7 +2,7 @@
 
 Devolve a **hora atual** como string no formato `HH:MM:SS` (24 horas).
 
-```
+```assinatura
 date.time() -> str
 ```
 
@@ -10,7 +10,7 @@ date.time() -> str
 
 ## Uso
 
-```
+```ps
 import date
 
 post(date.time())          # "14:30:05"

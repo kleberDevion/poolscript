@@ -4,7 +4,7 @@ Desempacota bytes num inteiro (>= 0). É o caminho de volta do
 [`bytes.fromint()`](../fromint/fromint.md). O valor é exato com qualquer
 quantidade de bytes: acima de 64 bits sai o inteiro grande.
 
-```
+```assinatura
 bytes.toint(b: bytes, byteorder: str = "big") -> int
 ```
 
@@ -14,7 +14,7 @@ bytes.toint(b: bytes, byteorder: str = "big") -> int
 
 ## Uso
 
-```
+```ps
 import bytes
 
 bytes.toint(bytes.fromint(258, 4))          # 258

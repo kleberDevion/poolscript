@@ -3,15 +3,23 @@
 Devolve **todas** as linhas do resultado do último `SELECT`, como uma
 **lista de dicts** (cada linha = um dict com as colunas).
 
-```
+```assinatura
 cursor.fetchall() -> list
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import psodbc
+DbConnection conn = psodbc.connect(driver="sqlite", base="loja.db")
+DbCursor cursor = conn.cursor()
 ```
 
 ---
 
 ## Uso
 
-```
+```ps
 cursor.execute("SELECT id, nome FROM produtos")
 todos = cursor.fetchall()
 # [{"id": 1, "nome": "café"}, {"id": 2, "nome": "chá"}]

@@ -4,7 +4,16 @@ O `request` também **baixa** arquivos — não só texto/JSON. Pra binário (`.
 imagem, zip, pdf) você usa os **bytes crus**, não o `.text` (que decodificaria e
 corromperia).
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import request
+str url = "https://exemplo.com/Jinga-Setup.exe"
+str destino = "downloads/"
+str enc = "latin-1"
 ```
+
+```assinatura
 resp = request.get(url)
 resp.save(destino)  -> PoolFile # move o arquivo do corpo pro destino
 resp.content        -> bytes    # o corpo, lido do arquivo quando você pede
@@ -37,7 +46,7 @@ Medido no mesmo download de 237 MB:
 Por isso dá pra baixar arquivo maior que a memória da máquina, desde que você
 não peça `.content` dele.
 
-```ps
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 import request
 import os
 
@@ -61,7 +70,7 @@ está, não se você pode lê-lo.
 `.size`, `.path()`, `.move()`, `.copy()`, `.delete()`, e `.bytes()` lê do disco
 só se for chamado. Pra ler em pedaços, `open(f.path(), "rb")`.
 
-```
+```ps
 import request
 
 funct baixar() {
@@ -96,7 +105,7 @@ mesmo vale quando o corpo veio de `save=` — mover apagaria o que você pediu.
 `max_size` corta o download quando o corpo passa do teto, levantando erro em vez
 de continuar baixando. Ele **só vale com `stream=True`**:
 
-```ps
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 import request
 url = "https://exemplo.com/arquivo.zip"
 
@@ -116,7 +125,7 @@ Declara o MIME que você **espera**. Se o servidor devolver outro, dá **raise**
 (cai no `catch`) — pega download errado cedo (ex: recebeu uma página de erro HTML
 no lugar do arquivo).
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 request.get(url).content_type("application/octet-stream")   # ok se bater
 request.get(url).content_type("image/png")                  # raise se vier outra coisa
 ```
@@ -129,13 +138,15 @@ Se preferir controlar a escrita, `.content` são bytes e o `open(..., "wb")` gra
 binário direto. Repare que aqui **você** trouxe o corpo pra memória com
 `.content`; o `.save()` acima não traz.
 
-```
-resp = request.get(url)
-if (resp.size <= 100) {
-    return 400                     # pequeno demais, provável erro
-}
-using open("downloads/jinga.exe", "wb") as f {
-    f.write(resp.content)
+```ps
+funct baixar() {
+    resp = request.get(url)
+    if (resp.size <= 100) {
+        return 400                     # pequeno demais, provável erro
+    }
+    using open("downloads/jinga.exe", "wb") as f {
+        f.write(resp.content)
+    }
 }
 ```
 
@@ -145,7 +156,7 @@ using open("downloads/jinga.exe", "wb") as f {
 
 Pra corpo de texto num encoding que não seja UTF-8:
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 resp = request.get("https://site-legado.com")
 html = resp.decode("latin-1")
 ```

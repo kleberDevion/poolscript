@@ -33,7 +33,7 @@ post(Mat.soma(2, 3))     # 5
 Sem `static`, um método precisa de `self`; com ele, é uma função ligada ao
 tipo. Chamar um `static` pela instância é erro:
 
-```
+```ps
 funct 'soma' e static: chame pela Entity (Tipo.soma(...)), nao pela instancia
 ```
 
@@ -383,7 +383,7 @@ class App {
 Sem o `static`, o campo é de instância e o decorador não tem o que ler. Isso é
 recusado na compilação, com a palavra que falta:
 
-```
+```ps
 SyntaxError: 'mapp' e campo de instancia — o decorador no corpo da classe
 roda antes de existir instancia; declare-o `static`: static mapp = ...
 ```

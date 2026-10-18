@@ -4,7 +4,7 @@ Lib que fornece o decorador **`@dataentity`** (gera um `__init__` automático a
 partir de campos tipados) e funções pra converter uma instância em dict, tupla,
 lista ou JSON.
 
-```
+```ps
 from datasentity import dataentity, asdict, astuple, aslist, asjson
 # (dataentity é o nome canônico; datasentity é o alias do módulo)
 ```
@@ -21,7 +21,7 @@ from datasentity import dataentity, asdict, astuple, aslist, asjson
 
 ## Exemplo completo
 
-```
+```ps
 from datasentity import dataentity, asdict, astuple, aslist, asjson
 
 @dataentity
@@ -46,7 +46,7 @@ post(q.idade)       # 18
 
 Sem ele, você escreveria o `__init__` na mão:
 
-```
+```ps
 Entity Pessoa {
     funct __init__(self, nome, idade) {
         self.nome = nome

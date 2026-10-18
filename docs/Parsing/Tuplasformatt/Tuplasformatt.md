@@ -2,7 +2,7 @@
 
 Converte um valor pra **tupla** (lista imutável).
 
-```
+```assinatura
 Parsing.Tuplasformatt(value, to_type="tup") -> tup
 ```
 
@@ -13,7 +13,7 @@ Parsing.Tuplasformatt(value, to_type="tup") -> tup
 
 ## Uso
 
-```
+```ps
 import Parsing
 
 Parsing.Tuplasformatt([1, 2, 3])     # (1, 2, 3)   (lista → tupla)

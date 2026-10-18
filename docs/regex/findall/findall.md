@@ -5,7 +5,7 @@ numa lista de textos ou de tuplas. O texto é percorrido da esquerda pra
 direita, e os casamentos voltam na ordem em que foram achados. Casamentos
 vazios entram no resultado.
 
-```
+```assinatura
 regex.findall(pattern: str, string: str) -> list
 ```
 

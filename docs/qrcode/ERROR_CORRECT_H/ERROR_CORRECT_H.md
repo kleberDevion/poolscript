@@ -4,7 +4,13 @@ Constante do nível **H** de correção de erro do QR Code. É o teto: quase um
 terço do símbolo pode sumir e o leitor ainda decodifica. Em troca, cabe menos
 da metade do que cabe em L.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import qrcode
 ```
+
+```ps
 qrcode.ERROR_CORRECT_H      # constante, lida sem ()
 ```
 
@@ -24,7 +30,7 @@ Nenhum — `ERROR_CORRECT_H` é **constante**, não função. Lê-se sem `()`;
 Não é `int` nem um objeto de nível. O acesso já entrega o valor final, então
 estas duas linhas geram exatamente o mesmo QR:
 
-```
+```ps
 import qrcode
 
 qrcode.make("oi", qrcode.ERROR_CORRECT_H)
@@ -64,7 +70,7 @@ não controla a qualidade da impressão.
 
 Nos três pontos que aceitam `error_correction`:
 
-```
+```ps
 import qrcode
 
 qrcode.make("https://exemplo.com", error_correction=qrcode.ERROR_CORRECT_H)

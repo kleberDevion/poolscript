@@ -3,7 +3,7 @@
 Converte uma instância de `@dataentity` numa **lista**, com os valores na ordem
 de declaração dos campos.
 
-```
+```assinatura
 aslist(instance) -> list
 ```
 
@@ -11,7 +11,7 @@ aslist(instance) -> list
 
 ## Uso
 
-```
+```ps
 from datasentity import dataentity, aslist
 
 @dataentity

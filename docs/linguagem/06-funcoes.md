@@ -176,7 +176,7 @@ A forma `funct f(x: int)` **não** existe — no parâmetro só há a ordem
 `tipo nome`. (Em campo de Entity as duas ordens valem; no parâmetro, não.) O
 erro diz a ordem certa:
 
-```
+```ps
 funct f(x: int) { post(x) }
 SyntaxError: no parametro o tipo vem ANTES do nome: escreva `funct f(int x)`, nao `funct f(x: int)`
 ```
@@ -202,7 +202,7 @@ A ordem é fixa: parâmetros comuns (com ou sem padrão), depois `*args`, depois
 estrela já decide: tup e dict) nem valor padrão (sem argumento, vêm vazios).
 O erro diz o conserto:
 
-```
+```ps
 funct f(*args, x) { }
 SyntaxError: parametro `x` depois de `*args` nao e permitido: mova `x` pra antes do `*args`
 
@@ -247,9 +247,16 @@ nome repetido é erro (6.2.2): com `**d`, o nome que já veio
 (`f(**{"a": 1}, a=2)`) dá `got multiple values`, rodando. `*x` exige `list` ou
 `tup` e `**d` exige `dict` — não há conversão:
 
+O exemplo pressupõe a `f` de 6.2.4:
+
+```ps contexto
+Null funct f(Object a, *args, **kwarg) {
+    post(a, args, kwarg)
+}
 ```
-f(*5)
-TypeError: argument after * must be a list or tup, not int
+
+```ps
+f(*5)   # TypeError: argument after * must be a list or tup, not int
 ```
 
 `funct meio(*args, **kwarg)` chamando `alvo(*args, **kwarg)` é o **repasse**:
@@ -265,7 +272,7 @@ Uma funct tem no máximo **256 parâmetros fixos** (o `self` conta; `*args` e
 `**kwarg` não). Passar disso é erro **na declaração**, antes de rodar — vale
 pra funct, método e lambda:
 
-```
+```texto
 SyntaxError: f() tem parametros demais (maximo 256)
 ```
 
@@ -382,7 +389,7 @@ stderr, no formato do traceback — tipo, mensagem, onde aconteceu — com uma
 linha dizendo o que a funct devolveu no lugar. O programa segue com o
 sentinela (o código de saída não muda por isso).
 
-```
+```texto
 Boom: x
   em app.pr, linha 6
   |     raise Boom("x")
@@ -492,7 +499,7 @@ post(Mat.soma(1, 2))        # 3
 nonnull funct exige(valor) {
     return valor
 }
-exige(Null)                 # nonnull: parametro 'valor' em 'exige' nao pode ser Null
+exige(Null)                 # RuntimeError: nonnull: parametro 'valor' em 'exige' nao pode ser Null
 ```
 
 O `nonnull` é contrato da **chamada**: num gerador (funct com `yield`), o
@@ -631,12 +638,11 @@ Recursão sem fim é `RecursionError: maximum recursion depth exceeded`
 função da linguagem que chama a sua de volta — `map`, `filter`, um decorador,
 um gerador que consome outro gerador dele mesmo:
 
-```
+```ps
 funct f(x) {
     return map([x], f)
 }
-f(1)
-RecursionError: maximum recursion depth exceeded
+f(1)   # RecursionError: maximum recursion depth exceeded
 ```
 
 Dentro de uma `async funct` a pilha de cada task é menor, e esse limite chega
@@ -852,12 +858,11 @@ função que chama de volta (`map([1, 2], dobro)` devolve a lista de futures —
 `await` dela dá `[2, 4]`). Não há limite de argumentos. Os erros de chamada
 (aridade, nome, tipo) saem **na chamada**, não no `await`:
 
-```
+```ps
 async funct f(a) {
     return a
 }
-f(b=1)
-TypeError: f() got an unexpected keyword argument 'b'
+f(b=1)   # TypeError: f() got an unexpected keyword argument 'b'
 ```
 
 Um `__init__` não pode ser `async` nem gerador — a instanciação vale o objeto,

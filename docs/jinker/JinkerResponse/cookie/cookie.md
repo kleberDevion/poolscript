@@ -3,7 +3,7 @@
 Acrescenta um `Set-Cookie` à resposta. Devolve o próprio `JinkerResponse`
 (encadeável).
 
-```
+```assinatura
 cookie(nome: str, valor: str, path: str = "/", max_age: int = Null,
        httponly: bool = True, secure: bool = False,
        samesite: str = "Lax", domain: str = Null) -> JinkerResponse
@@ -51,7 +51,7 @@ Os exemplos pressupõem:
 
 ```ps contexto
 from jinker import JinkerResponse
-token = "t-1"
+str token = "t-1"
 ```
 
 ```ps
@@ -65,7 +65,7 @@ funct entra() {
 
 Sai na resposta, um cabeçalho por cookie:
 
-```
+```texto
 Set-Cookie: sid=<token>; Path=/; Max-Age=3600; SameSite=Lax; HttpOnly
 Set-Cookie: tema=escuro; Path=/; SameSite=Lax
 ```
@@ -79,7 +79,7 @@ Set-Cookie: tema=escuro; Path=/; SameSite=Lax
 Os atributos saem sempre nesta ordem, independente da ordem em que você os
 passou, e o que estiver no default **não é escrito**:
 
-```
+```texto
 <nome>=<valor>[; Path=…][; Max-Age=…][; Domain=…][; SameSite=…][; HttpOnly][; Secure]
 ```
 

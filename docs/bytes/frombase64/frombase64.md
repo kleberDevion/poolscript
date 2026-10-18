@@ -3,7 +3,7 @@
 Cria bytes a partir de uma string **base64**. É o caminho de volta do
 [`bytes.base64()`](../base64/base64.md).
 
-```
+```assinatura
 bytes.frombase64(s: str) -> bytes
 ```
 
@@ -11,7 +11,7 @@ bytes.frombase64(s: str) -> bytes
 
 ## Uso
 
-```
+```ps
 import bytes
 
 bytes.frombase64("SGVsbG8=")   # b'Hello'

@@ -1,0 +1,505 @@
+# Marca as cercas SEM rótulo da documentação (P1 dos portões, plano aprovado
+# em 2026-10-17): todo bloco ``` passa a dizer o que é, e o
+# `audita_exemplos_doc.pr` passa a reprovar cerca sem marca. É a regra do
+# rustdoc do Rust: bloco de código é testado até dizer que não é.
+#
+# POR QUE EXISTE. A doc tinha 1.773 blocos em 467 páginas, e 836 sem marca
+# nenhuma. O auditor só passava o `--check` nos ```ps, então os 836 não eram
+# conferidos por nada. O `app.channel(forAll=msg)` da `channel.md`, que o
+# `--check` recusa, estava num deles, e quem achou foi o usuário.
+#
+# A proposta de cada bloco sai do lexer do motor (`jinga --tokens`) e do
+# vizinho de cima:
+#   ps     programa (chamada, palavra da linguagem, declaração com tipo);
+#   saida  o que o programa logo acima imprime (até 3 linhas de texto entre
+#          os dois blocos);
+#   bash   linha de comando (começa com um comando conhecido ou com "$ ");
+#   json   texto que o json.parse lê;
+#   assinatura  a assinatura de uma função (`m.toAddress(address: str) ->
+#          Null`): não roda, e o `audita_doc.pr` a confere contra o motor;
+#   texto  o resto (árvore de pastas, pedido HTTP cru, tabela).
+# Bloco em que os sinais brigam sai como DUVIDA, pra decidir à mão (o
+# `--marca` abaixo fixa a decisão). O script troca SÓ a linha da cerca
+# (``` -> ```ps), nunca o conteúdo.
+#
+#     ./pool scripts/marca_cercas.pr docs                  # mostra a proposta
+#     ./pool scripts/marca_cercas.pr docs --grava          # troca as cercas
+#     ./pool scripts/marca_cercas.pr docs --marca a.md:12=texto --marca ...
+#
+# `--remarca a.md:12="ps sem-rodar: motivo"` troca a marca de uma cerca ```ps
+# que já tem marca (o bloco que precisa de serviço de fora, que o
+# `confere_saida_doc.pr` não roda). Só a linha da cerca, só se ela for ```ps
+# (ou ```jinga); pedido que não casa com uma cerca ```ps sai como erro e nada
+# daquela página muda.
+import os
+import sys
+import json
+
+TMP = "ps_marca_cercas_tmp"
+
+COMANDOS = ["jinga", "jpkg", "pool", "psl", "make", "git", "curl", "cd", "ls", "cp", "mv",
+            "rm", "mkdir", "export", "sudo", "apt", "apt-get", "brew", "node", "npm", "npx",
+            "python3", "python", "./pool", "./testar", "./unidade", "scp", "ssh", "wget",
+            "chmod", "nvim", "vim", "code", "cat", "echo", "tar", "docker", "systemctl",
+            "jinga-lsp", "openssl", "mkcert", "certbot", "pip", "set", "source", "cmd",
+            "powershell", "winget", "choco", "pacman", "dnf", "yum", "env", "time", "nohup",
+            "printf"]
+
+# palavras que só um programa Jinga tem (o lexer marca KW; `POST`, `PUT`,
+# `DELETE` e `JSON` são KW também, mas aparecem em pedido HTTP cru)
+PALAVRAS = ["funct", "if", "elif", "else", "for", "each", "while", "return", "import", "from",
+            "class", "try", "catch", "finally", "raise", "post", "using", "match", "case",
+            "async", "await", "yield", "model", "enum", "count", "in", "and", "or", "not",
+            "True", "False", "Null", "int", "flo", "str", "bool", "list", "dict", "tup",
+            "byte", "long", "char", "Object", "break", "continue", "static", "private",
+            "public", "global", "lambda", "is", "to", "with"]
+HTTP = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+
+
+list funct lista_md(str dir) {
+    list saida = []
+    if dir.endswith(".md") {
+        addEnd(saida, dir)
+        return saida
+    }
+    for each item in os.ls(dir) {
+        str caminho = dir + "/" + item["name"]
+        if item["type"] == "dir" {
+            for each f in lista_md(caminho) {
+                addEnd(saida, f)
+            }
+        }
+        elif item["name"].endswith(".md") {
+            addEnd(saida, caminho)
+        }
+    }
+    return saida
+}
+
+
+int funct recuo(str linha) {
+    int n = 0
+    while n < linha.len() and linha[n] == " " {
+        n = n + 1
+    }
+    return n
+}
+
+
+# Os blocos da página: rótulo, linha da cerca de abrir, linha da de fechar e
+# o texto (sem a margem do markdown).
+list funct blocos_de(str txt) {
+    list blocos = []
+    bool dentro = False
+    list atual = []
+    str rotulo = ""
+    int ini = 0
+    int margem = 0
+    int n = 0
+    for each linha in txt.splitlines() {
+        n = n + 1
+        str limpa = linha.strip()
+        if dentro {
+            if limpa == "```" {
+                addEnd(blocos, {"rotulo": rotulo, "linha": ini, "fim": n, "texto": "\n".join(atual)})
+                dentro = False
+                atual = []
+            }
+            elif recuo(linha) >= margem {
+                addEnd(atual, linha[margem:linha.len()])
+            }
+            else {
+                addEnd(atual, limpa)
+            }
+        }
+        elif limpa.startswith("```") {
+            dentro = True
+            rotulo = limpa[3:limpa.len()].strip()
+            ini = n
+            margem = recuo(linha)
+            atual = []
+        }
+    }
+    return blocos
+}
+
+
+# Os tokens do texto pelo lexer do motor, em r["toks"] (lista vazia se ele
+# não leu). `Null funct` com o dict de volta, como o `roda` do
+# `confere_saida_doc.pr`: numa funct tipada o valor de chamada solta
+# (`os.writeFile` devolve str) conta como saída dela.
+Null funct tokens_de(str texto, dict r) {
+    r["toks"] = []
+    if os.isdir(TMP) {
+        os.rmdir(TMP, force=True)
+    }
+    os.mkdir(TMP)
+    os.writeFile(TMP + "/b.pr", texto + "\n")
+    str saida = ""
+    using os.run([sys.executable, "--tokens", TMP + "/b.pr"], capture="live") as p {
+        p.close()
+        str parte = p.read()
+        while parte != "" {
+            saida = saida + parte
+            parte = p.read()
+        }
+        p.wait()
+    }
+    try {
+        dict d = json.parse(saida)
+        if "tokens" in d {
+            r["toks"] = d["tokens"]
+        }
+    } catch (Exception e) {
+        r["toks"] = []
+    }
+}
+
+
+# A palavra é um nome só (letra, dígito, _), sem espaço nem parêntese
+bool funct palavra_so(str s) {
+    if s == "" {
+        return False
+    }
+    for each c in s {
+        if not (c.isalnum() or c == "_") {
+            return False
+        }
+    }
+    return True
+}
+
+
+# Linha que é mensagem de erro do motor ou do traceback, não código. A linha
+# tem que COMEÇAR pelo nome do erro: `x()   # TypeError: ...` é código com o
+# erro anunciado no comentário, e é programa.
+bool funct linha_de_erro(str l) {
+    str s = l.strip()
+    if s.startswith("em ") and ", linha " in s {
+        return True
+    }
+    if s.startswith("| ") or s == "|" {
+        return True
+    }
+    int dp = s.find(": ")
+    if dp > 0 {
+        str cabeca = s[0:dp]
+        if palavra_so(cabeca) and (cabeca.endswith("Error") or cabeca.endswith("Exception")
+                                   or cabeca.endswith("Warning") or cabeca == "Traceback") {
+            return True
+        }
+    }
+    return False
+}
+
+
+# Linha que não é código nem saída de programa: cabeçalho HTTP
+# (`Set-Cookie: ...`), linha de `.env` (`DB_PATH=...`), árvore de pastas.
+bool funct linha_de_texto(str l) {
+    str s = l.strip()
+    if s.endswith("/") or "├" in s or "└" in s or "│" in s {
+        return True
+    }
+    int ig = s.find("=")
+    if ig > 0 and palavra_so(s[0:ig]) and s[0:ig].upper() == s[0:ig] and not (" " in s[0:ig]) {
+        return True
+    }
+    int dp = s.find(": ")
+    if dp > 0 {
+        str cab = s[0:dp]
+        bool cabecalho = cab.len() > 1 and cab[0].isupper()
+        for each c in cab {
+            if not (c.isalnum() or c == "-") {
+                cabecalho = False
+            }
+        }
+        if cabecalho and "-" in cab {
+            return True
+        }
+    }
+    return False
+}
+
+
+# A proposta: {"marca": ..., "duvida": bool, "porque": ...}
+dict funct propoe(str texto, str rot_ant, int distancia) {
+    list linhas = []
+    for each l in texto.splitlines() {
+        if l.strip() != "" {
+            addEnd(linhas, l)
+        }
+    }
+    if linhas.len() == 0 {
+        return {"marca": "texto", "duvida": False, "porque": "bloco vazio"}
+    }
+    # linha de comando
+    str primeira = linhas[0].strip()
+    if primeira.startswith("$ ") {
+        return {"marca": "bash", "duvida": False, "porque": "começa com $"}
+    }
+    str p1 = primeira.split(" ")[0]
+    list pal = primeira.split(" ")
+    bool atribui = pal.len() > 1 and pal[1] == "="
+    if p1 in COMANDOS and not atribui {
+        return {"marca": "bash", "duvida": False, "porque": "comando " + p1}
+    }
+    # pedido HTTP cru: "POST /api HTTP/1.1"
+    if p1 in HTTP and primeira.split(" ").len() > 1 and primeira.split(" ")[1].startswith("/") {
+        return {"marca": "texto", "duvida": False, "porque": "pedido HTTP cru"}
+    }
+    # assinatura: toda linha é "nome(params) -> Tipo" ou "obj.campo -> Tipo"
+    int assin = 0
+    for each l in linhas {
+        str s = l.strip()
+        int seta = s.find(") -> ")
+        if seta > 0 and s.find("(") > 0 and s.find("(") < seta and not s.startswith("#") {
+            assin = assin + 1
+        }
+        elif s.find(" -> ") > 0 and palavra_so(s[0:s.find(" -> ")].replace(".", "_")) {
+            assin = assin + 1
+        }
+    }
+    if assin == linhas.len() {
+        return {"marca": "assinatura", "duvida": False, "porque": "nome(params) -> Tipo"}
+    }
+    # só comentário da linguagem
+    int coment = 0
+    for each l in linhas {
+        if l.strip().startswith("#") {
+            coment = coment + 1
+        }
+    }
+    if coment == linhas.len() {
+        return {"marca": "ps", "duvida": False, "porque": "só comentário"}
+    }
+    # sinais de programa e de erro
+    int erros = 0
+    for each l in linhas {
+        if linha_de_erro(l) {
+            erros = erros + 1
+        }
+    }
+    dict tr = {}
+    tokens_de(texto, tr)
+    list toks = tr["toks"]
+    int sinais = 0
+    int i = 0
+    while i < toks.len() {
+        dict t = toks[i]
+        if t["t"] == "KW" and t["v"] in PALAVRAS {
+            sinais = sinais + 1
+        }
+        if (t["t"] == "IDENT" or t["t"] == "IDENT_UPPER" or t["t"] == "KW") and i + 1 < toks.len() {
+            if toks[i + 1]["t"] == "LPAREN" {
+                sinais = sinais + 1
+            }
+        }
+        # atribuição no começo da linha: `x = ...`, `a, b = ...`, `d["k"] = ...`;
+        # e membro no começo da linha: `sys.argv`, `qrcode.ERROR_CORRECT_Q`
+        bool comeco = (i == 0 or toks[i - 1]["t"] == "NEWLINE" or toks[i - 1]["t"] == "INDENT"
+                       or toks[i - 1]["t"] == "DEDENT")
+        if (comeco and t["t"] == "IDENT" and i + 2 < toks.len() and toks[i + 1]["t"] == "DOT"
+            and (toks[i + 2]["t"] == "IDENT" or toks[i + 2]["t"] == "IDENT_UPPER")) {
+            sinais = sinais + 1
+        }
+        if comeco and t["t"] == "IDENT" {
+            int j = i + 1
+            while j < toks.len() and toks[j]["t"] != "NEWLINE" and not (toks[j]["t"] == "OP" and toks[j]["v"] == "=") {
+                j = j + 1
+            }
+            if j < toks.len() and toks[j]["t"] == "OP" and toks[j]["v"] == "=" {
+                sinais = sinais + 1
+            }
+        }
+        i = i + 1
+    }
+    bool depois_de_programa = (rot_ant == "ps" or rot_ant == "jinga") and distancia <= 4
+    # import sozinho é programa
+    if p1 == "import" or p1 == "from" {
+        return {"marca": "ps", "duvida": False, "porque": "import"}
+    }
+    # código e a mensagem de erro dele no mesmo bloco: é programa (o portão
+    # acusa, e o bloco vira item da lista pra separar em ```ps + ```erro)
+    if erros > 0 and erros < linhas.len() and sinais >= 1 {
+        return {"marca": "ps", "duvida": False, "porque": "programa e o erro dele no mesmo bloco"}
+    }
+    if erros > 0 and erros * 2 >= linhas.len() {
+        if depois_de_programa {
+            return {"marca": "erro", "duvida": False, "porque": "erro do motor logo depois de um programa"}
+        }
+        return {"marca": "texto", "duvida": sinais > 2, "porque": "mensagem de erro"}
+    }
+    int textos = 0
+    for each l in linhas {
+        if linha_de_texto(l) {
+            textos = textos + 1
+        }
+    }
+    if textos * 2 >= linhas.len() and sinais < 2 {
+        return {"marca": "texto", "duvida": False, "porque": "cabeçalho HTTP, .env ou árvore de pastas"}
+    }
+    if sinais >= 2 {
+        return {"marca": "ps", "duvida": False, "porque": str(sinais) + " sinais de programa"}
+    }
+    if depois_de_programa {
+        if sinais == 0 {
+            return {"marca": "saida", "duvida": False, "porque": "logo depois de um programa, sem sinal de programa"}
+        }
+        return {"marca": "ps", "duvida": True, "porque": "um sinal de programa, logo depois de um programa"}
+    }
+    str t2 = texto.strip()
+    if t2.startswith("{") or t2.startswith("[") {
+        try {
+            Object j = json.parse(t2)
+            return {"marca": "json", "duvida": False, "porque": "o json.parse lê"}
+        } catch (Exception e) {
+            # segue
+        }
+    }
+    if sinais == 1 {
+        return {"marca": "ps", "duvida": True, "porque": "um sinal de programa só"}
+    }
+    return {"marca": "texto", "duvida": False, "porque": "sem sinal de programa"}
+}
+
+
+list alvos = []
+bool grava = False
+dict fixas = {}
+dict remarcas = {}
+int k = 1
+while k < sys.argv.len() {
+    str a = sys.argv[k]
+    if a == "--grava" {
+        grava = True
+    }
+    elif a == "--marca" and k + 1 < sys.argv.len() {
+        k = k + 1
+        str par = sys.argv[k]
+        int ig = par.rfind("=")
+        fixas[par[0:ig]] = par[ig + 1:par.len()]
+    }
+    elif a == "--remarca" and k + 1 < sys.argv.len() {
+        # o motivo pode ter "=" e ":": a página e a linha vão até o PRIMEIRO "="
+        k = k + 1
+        str par = sys.argv[k]
+        int ig = par.find("=")
+        remarcas[par[0:ig]] = par[ig + 1:par.len()]
+    }
+    else {
+        addEnd(alvos, a)
+    }
+    k = k + 1
+}
+dict remarcadas = {}
+list remarca_errada = []
+if alvos.len() == 0 {
+    addEnd(alvos, "docs")
+}
+
+dict contagem = {}
+int duvidas = 0
+int trocadas = 0
+for each alvo in alvos {
+    for each md in lista_md(alvo) {
+        str txt = os.readFile(md)
+        list bs = blocos_de(txt)
+        dict mudar = {}
+        dict remudar = {}
+        bool pagina_errada = False
+        str rot_ant = ""
+        int fim_ant = -100
+        for each b in bs {
+            str aqui = md + ":" + str(b["linha"])
+            if b["rotulo"] != "" and aqui in remarcas {
+                if b["rotulo"] == "ps" or b["rotulo"] == "jinga" {
+                    remudar[b["linha"]] = remarcas[aqui]
+                    remarcadas[aqui] = True
+                }
+                else {
+                    addEnd(remarca_errada, aqui + ": a cerca é ```" + b["rotulo"] + ", não ```ps")
+                    remarcadas[aqui] = True
+                    pagina_errada = True
+                }
+            }
+            if b["rotulo"] == "" {
+                str onde = aqui
+                dict pr = propoe(b["texto"], rot_ant, b["linha"] - fim_ant)
+                str marca = pr["marca"]
+                if onde in fixas {
+                    marca = fixas[onde]
+                    pr["duvida"] = False
+                    pr["porque"] = "decidido à mão"
+                }
+                if marca in contagem {
+                    contagem[marca] = contagem[marca] + 1
+                } else {
+                    contagem[marca] = 1
+                }
+                str prim = ""
+                for each l in b["texto"].splitlines() {
+                    if prim == "" and l.strip() != "" {
+                        prim = l.strip()
+                    }
+                }
+                if prim.len() > 70 {
+                    prim = prim[0:70] + "..."
+                }
+                str aviso = ""
+                if pr["duvida"] {
+                    aviso = "  DUVIDA"
+                    duvidas = duvidas + 1
+                }
+                post(onde + "  ```" + marca + aviso + "  (" + pr["porque"] + ")  " + prim)
+                mudar[b["linha"]] = marca
+                rot_ant = marca
+            } else {
+                rot_ant = b["rotulo"]
+            }
+            fim_ant = b["fim"]
+        }
+        if (grava and mudar.len() > 0) or (remudar.len() > 0 and not pagina_errada) {
+            list ls = txt.split("\n")
+            if grava {
+                for each n in mudar.keys() {
+                    str linha = ls[n - 1]
+                    int r = recuo(linha)
+                    ls[n - 1] = linha[0:r] + "```" + mudar[n]
+                    trocadas = trocadas + 1
+                }
+            }
+            if not pagina_errada {
+                for each n in remudar.keys() {
+                    str linha = ls[n - 1]
+                    int r = recuo(linha)
+                    ls[n - 1] = linha[0:r] + "```" + remudar[n]
+                    trocadas = trocadas + 1
+                }
+            }
+            os.writeFile(md, "\n".join(ls))
+        }
+    }
+}
+for each pedido in remarcas.keys() {
+    if not (pedido in remarcadas) {
+        addEnd(remarca_errada, pedido + ": não há cerca nessa linha")
+    }
+}
+if remarca_errada.len() > 0 {
+    post("REMARCAS QUE NÃO CASARAM (a página delas não mudou):", remarca_errada.len())
+    for each e in remarca_errada {
+        post("  " + e)
+    }
+}
+if os.isdir(TMP) {
+    os.rmdir(TMP, force=True)
+}
+post("")
+post("cercas sem marca:", contagem)
+post("em dúvida (decidir com --marca):", duvidas)
+if grava or remarcas.len() > 0 {
+    post("trocadas:", trocadas)
+}
+if remarca_errada.len() > 0 {
+    sys.exit(1)
+}

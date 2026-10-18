@@ -4,7 +4,14 @@ Gera um QR Code com controle de tamanho, cores e correção de erro. Devolve um
 [`QRPoolFile`](../../objetos-internos/QRPoolFile.md) (com `.save()` e
 `.bytes()`); se você passar `save=`, o arquivo já é gravado.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import qrcode
+str data = "https://meusite.com"
 ```
+
+```ps
 qrcode.gen(data, save=Null, size=10, border=4, color="black",
            bg="white", name=Null, error_correction="L", qr32=Null)
 ```
@@ -27,7 +34,7 @@ qrcode.gen(data, save=Null, size=10, border=4, color="black",
 
 **Gerar e salvar direto:**
 
-```
+```ps
 import qrcode
 
 qrcode.gen("https://meusite.com", save="site.png")
@@ -35,7 +42,7 @@ qrcode.gen("https://meusite.com", save="site.png")
 
 **Com cores e tamanho customizados:**
 
-```
+```ps
 qrcode.gen(
     "https://meusite.com",
     save="site.png",
@@ -48,7 +55,7 @@ qrcode.gen(
 
 **Sem salvar (fica em memória, você grava depois):**
 
-```
+```ps
 img = qrcode.gen("texto")
 img.save("qr.png")              # grava quando quiser
 dados = img.bytes()            # ou pega os bytes (ex: enviar por email)
@@ -60,7 +67,7 @@ dados = img.bytes()            # ou pega os bytes (ex: enviar por email)
 
 Se `data` for um dict ou lista, vira JSON automaticamente dentro do QR:
 
-```
+```ps
 qrcode.gen({"tipo": "pix", "chave": "ana@x.com"}, save="pix.png")
 ```
 

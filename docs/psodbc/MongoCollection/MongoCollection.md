@@ -3,6 +3,14 @@
 O objeto que [`MongoConnection.collection(nome)`](../MongoConnection/collection/collection.md)
 devolve. Aqui você busca, insere, atualiza e remove **documentos** (dicts).
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import psodbc
+MongoConnection conn = psodbc.connect(driver="mongo", host="localhost", database="loja")
+MongoCollection col = conn.collection("produtos")
+```
+
 ---
 
 ## Métodos
@@ -23,7 +31,7 @@ devolve. Aqui você busca, insere, atualiza e remove **documentos** (dicts).
 
 Em quase todos os métodos, você descreve o que procurar com um dict:
 
-```
+```ps sem-rodar: precisa do servidor MongoDB
 col.find({"ativo": True})               # todos com ativo = True
 col.find({"idade": 30})                 # todos com idade = 30
 col.find({})                            # todos (filtro vazio)
@@ -33,7 +41,7 @@ col.find({})                            # todos (filtro vazio)
 
 ## Exemplo completo
 
-```
+```ps sem-rodar: precisa do servidor MongoDB
 import psodbc
 
 conn = psodbc.connect(driver="mongo", host="localhost", database="loja")

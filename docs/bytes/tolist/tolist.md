@@ -3,7 +3,7 @@
 Devolve uma **lista** com o valor inteiro (0-255) de cada byte. É o caminho de
 volta do `bytes.new([...])`.
 
-```
+```assinatura
 bytes.tolist(b: bytes) -> list
 ```
 
@@ -11,7 +11,7 @@ bytes.tolist(b: bytes) -> list
 
 ## Uso
 
-```
+```ps
 import bytes
 
 bytes.tolist(bytes.new("ABC"))            # [65, 66, 67]

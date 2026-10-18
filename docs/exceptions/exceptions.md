@@ -8,7 +8,7 @@ opcional) ou **capturar** com `try/catch`.
 
 ## `raise` — levantar um erro
 
-```
+```ps
 raise "algo deu errado"           # tipo RuntimeError, com essa mensagem
 raise NetworkError("a conexão caiu")   # tipo LIVRE: qualquer NomeAssim vira o tipo
 raise MinhaFalha                  # só o tipo, sem mensagem
@@ -21,7 +21,7 @@ variável) manda só a mensagem, e o tipo é `RuntimeError`.
 **Sem `catch`**, o erro propaga e para o programa com a mensagem — nunca é um
 crash:
 
-```
+```ps
 raise NetworkError("caiu")
 # NetworkError: caiu
 #   em app.pr, linha 1
@@ -33,7 +33,7 @@ raise NetworkError("caiu")
 
 O **tipo** e a **variável do erro** são os dois opcionais:
 
-```
+```ps
 try { ... } catch (NetworkError e) { post("caiu:", e) }   # tipo + variável
 try { ... } catch (NetworkError)   { post("caiu") }        # só o tipo, sem var
 try { ... } catch (e)              { post("qualquer:", e) } # captura tudo, com var
@@ -42,7 +42,7 @@ try { ... } catch ()               { post("qualquer") }     # captura tudo, sem 
 
 Vários `catch` em cadeia + `finally` opcional:
 
-```
+```ps
 try {
     conn = psodbc.connect(driver="postgres", ...)
 } catch (DatabaseError e) {
@@ -160,7 +160,7 @@ próprio, de 107 bytes no Linux, e acima dele é o mesmo erro.
 `catch (Tipo e)` pega o tipo pedido **e todos os descendentes dele**. `Exception`
 é a raiz: `catch (Exception e)` pega qualquer erro.
 
-```
+```texto
 Exception
 ├── OSError              FileExistsError · FileNotFoundError · IsADirectoryError
 │                        NotADirectoryError · PermissionError · NetworkError
@@ -301,7 +301,7 @@ Regras que valem junto:
 
 ## Exemplo completo
 
-```
+```ps
 import request
 
 funct buscar(url=str) {

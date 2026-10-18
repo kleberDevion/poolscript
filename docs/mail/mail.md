@@ -4,7 +4,7 @@ Lib pra **enviar** e-mails (via SMTP) e **ler** a caixa de entrada (via IMAP).
 Você passa o host do servidor; sem porta, a lib usa 587 no envio e 993 na
 leitura.
 
-```
+```ps
 import mail
 ```
 
@@ -22,7 +22,7 @@ import mail
 
 ## Enviar um e-mail (fluxo completo)
 
-```
+```ps sem-rodar: lê a conta de e-mail do ambiente (MAIL_USER...) e precisa do servidor
 import mail
 import os
 from dotenv import load
@@ -53,7 +53,14 @@ s.quit()
 
 ## Ler a caixa de entrada
 
+O exemplo desta seção pressupõe:
+
+```ps contexto
+import mail
+import os
 ```
+
+```ps sem-rodar: lê a conta de e-mail do ambiente (MAIL_USER...) e precisa do servidor
 r = mail.MailReader()
 r.conn(os.getenv("MAIL_IMAP"))                   # porta 993
 r.login(os.getenv("MAIL_USER"), os.getenv("MAIL_PASS"))

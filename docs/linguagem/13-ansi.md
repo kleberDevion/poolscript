@@ -34,7 +34,7 @@ O literal vira uma sequência ANSI **de cor real (24-bit / truecolor)**: emite o
 código da cor, o texto, e um **reset** logo depois. Ou seja, `<red>"X"` produz
 exatamente:
 
-```
+```texto
 \e[38;2;255;59;48m  X  \e[0m
 ```
 

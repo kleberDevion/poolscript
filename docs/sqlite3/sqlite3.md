@@ -4,8 +4,13 @@ Banco SQL **local, num arquivo** (ou em memória), sem servidor: o `sqlite3` já
 vem embutido, sem instalar nada. O caminho é `connect` → `cursor` → `execute`
 → `fetch`.
 
-```
+Os exemplos desta página pressupõem (`PoolConnection` e `PoolCursor` são os
+nomes, no motor, da Connection e do Cursor descritos abaixo):
+
+```ps contexto
 import sqlite3
+PoolConnection conn = sqlite3.connect(":memory:")
+PoolCursor cur = conn.cursor()
 ```
 
 > Para Postgres/MySQL/SQL Server/Mongo (banco em rede), use [`psodbc`](../psodbc/psodbc.md).
@@ -17,7 +22,7 @@ import sqlite3
 
 Abre (e **cria, se não existir**) o banco. Devolve uma [`Connection`](#connection).
 
-```
+```ps
 conn = sqlite3.connect("app.db")     # arquivo em disco
 conn = sqlite3.connect(":memory:")   # banco só na memória (some ao fechar)
 ```
@@ -43,7 +48,7 @@ O que `connect()` devolve.
 
 Dentro de um `using`, ao sair do bloco a conexão faz **commit + close** sozinha:
 
-```
+```ps
 using sqlite3.connect("app.db") as conn {
     conn.execute("INSERT INTO users (nome) VALUES (?)", ("Ana",))
 }
@@ -74,7 +79,7 @@ Vem de `conn.cursor()` (ou é o retorno de `conn.execute(...)`).
 
 Nunca cole valores na string SQL (injeção). Use `?` e passe uma **tupla**:
 
-```
+```ps
 cur.execute("SELECT * FROM users WHERE idade > ?", (18,))
 ```
 

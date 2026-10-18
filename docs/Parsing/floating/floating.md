@@ -3,7 +3,7 @@
 Converte um valor pra **número decimal** (`flo`), entendendo o formato
 brasileiro (vírgula decimal, ponto de milhar).
 
-```
+```assinatura
 Parsing.floating(value, to_type="flo") -> flo
 ```
 

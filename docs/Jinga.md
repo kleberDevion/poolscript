@@ -166,7 +166,7 @@ Para rodar código sem criar arquivo, use `jinga -e "<codigo>"`.
 
 ## Comentários
 
-```
+```ps
 # comentário de linha
 
 """
@@ -179,7 +179,7 @@ de bloco
 
 ## Tipos de variável
 
-```
+```ps
 str nome = "joao"
 int idade = 17
 flo altura = 1.75
@@ -188,7 +188,7 @@ bool ativo = True
 
 Variável sem tipo declarado:
 
-```
+```ps
 int x = 10
 dados = {"nome": "ana"}
 lista = [1, 2, 3]
@@ -196,7 +196,7 @@ lista = [1, 2, 3]
 
 Variáveis em maiúsculo são permitidas:
 
-```
+```ps
 str VERSAO = "1.0.8"
 int LIMITE = 100
 ```
@@ -205,7 +205,7 @@ int LIMITE = 100
 
 ## Strings
 
-```
+```ps
 str nome = "kleber"
 str msg = f"Olá {nome}!"
 post(msg)  # Olá kleber!
@@ -213,15 +213,21 @@ post(msg)  # Olá kleber!
 
 Aspas simples também funcionam:
 
-```
+```ps
 str x = 'texto'
+```
+
+O exemplo abaixo pressupõe o `nome` de cima:
+
+```ps contexto
+str nome = "kleber"
 ```
 
 Aspas simples **triplas** — `'''...'''` — abrem string multi-linha (útil pra
 SQL, textos longos etc.). Funciona com `f'''...'''` (interpolação) e
 `r'''...'''` (raw, sem escape):
 
-```
+```ps
 str sql = '''SELECT *
 FROM users
 WHERE ativo = 1'''
@@ -237,7 +243,7 @@ Aspas **duplas** triplas (`"""`) são reservadas pra comentário de bloco (ver
 
 ## Listas
 
-```
+```ps
 list nomes = ["ana", "leo", "bia"]
 post(nomes[0])      # ana
 post(nomes[-1])     # bia
@@ -251,7 +257,7 @@ post(nomes)         # ['joao', 'leo', 'bia']
 
 ## Dicionário
 
-```
+```ps
 data = {"nome": "ana", "idade": 20, "ativo": True}
 post(data["nome"])    # ana
 post(data["idade"])   # 20
@@ -262,7 +268,7 @@ post(len(data))       # 3
 
 ## Tupla
 
-```
+```ps
 cmd = ("SELECT * FROM users WHERE nome = ?", ("joao",))
 post(cmd[0])  # SELECT * FROM users WHERE nome = ?
 post(cmd[1])  # ('joao',)
@@ -274,7 +280,7 @@ post(cmd[1])  # ('joao',)
 
 Acessa partes de strings e listas com `[inicio:fim:passo]`:
 
-```
+```ps
 str nome = "jinga"
 
 post(nome[0:4])    # jing
@@ -294,7 +300,7 @@ post(nums[1:])     # [2, 3, 4, 5]
 
 ## Operadores
 
-```
+```ps
 int x = 10
 x += 5    # 15
 x -= 2    # 13
@@ -304,9 +310,15 @@ x++       # incrementa
 x--       # decrementa
 ```
 
+Os exemplos abaixo pressupõem:
+
+```ps contexto
+int x = 10
+```
+
 Comparação:
 
-```
+```ps
 x == 10
 x != 5
 x > 3
@@ -317,7 +329,7 @@ x <= 10
 
 Lógicos:
 
-```
+```ps
 if (x == 1 and y == 2) { ... }
 if (x == 1 or y == 2) { ... }
 if (not x) { ... }
@@ -326,7 +338,7 @@ if (not x) { ... }
 Bitwise (só entre `int`; `bool` entra como 0/1 — `flo` e `str`
 são recusados com `TypeError: unsupported operand type(s) for &: 'flo' and 'int'`):
 
-```
+```ps
 post(5 ^ 3)     # 6   — xor
 post(5 | 2)     # 7   — or
 post(6 & 3)     # 2   — and
@@ -343,7 +355,7 @@ fraco que `+`/`-`, então `2 + 3 << 1` é `(2 + 3) << 1` = `10`.
 
 ## if / elif / else
 
-```
+```ps
 int nota = 8
 
 if (nota >= 9) {
@@ -357,10 +369,16 @@ if (nota >= 9) {
 }
 ```
 
+Os exemplos abaixo pressupõem a `nota` de cima:
+
+```ps contexto
+int nota = 8
+```
+
 Bloco é sempre `{ }` — `:` não abre bloco na linguagem. A chave pode ficar na
 linha seguinte (estilo Allman), e dá no mesmo:
 
-```
+```ps
 if (nota >= 7)
 {
     post("Aprovado")
@@ -377,7 +395,7 @@ Como **expressão**, `if`/`else` viram o condicional inline:
 `A if cond else B`. Devolve `A` quando a condição é verdadeira, senão `B`, e só
 avalia o ramo escolhido:
 
-```
+```ps
 str situacao = "aprovado" if nota >= 7 else "reprovado"
 post(situacao)
 
@@ -392,7 +410,7 @@ isso um `if cond { ... }` dentro de um bloco continua sendo statement normal.
 
 ## while
 
-```
+```ps
 int i = 0
 while (i < 5) {
     post(i)
@@ -405,7 +423,7 @@ while (i < 5) {
 
 ## for each
 
-```
+```ps
 list frutas = ["maçã", "banana", "uva"]
 
 for each fruta in frutas {
@@ -420,7 +438,7 @@ for each fruta in frutas {
 
 ## break e continue
 
-```
+```ps
 int i = 0
 while (i < 10) {
     i += 1
@@ -441,7 +459,7 @@ while (i < 10) {
 
 Catch simples:
 
-```
+```ps
 try {
     int x = 1 / 0
 } catch (e) {
@@ -452,7 +470,7 @@ try {
 
 Múltiplos catches com tipo:
 
-```
+```ps
 try {
     data = {"nome": "ana"}
     post(data["idade"])
@@ -504,7 +522,7 @@ Tipos disponíveis:
 
 ## funct
 
-```
+```ps
 public static funct somar(a, b) {
     return a + b
 }
@@ -514,7 +532,7 @@ post(somar(3, 4))   # 7
 
 Funct chamando outra:
 
-```
+```ps
 public static funct dobro(n) {
     return n * 2
 }
@@ -532,7 +550,7 @@ post(quadruplo(3))  # 12
 
 Valida estrutura de dados JSON:
 
-```
+```ps
 public model Usuario() {
     nome: str(length=60)
     email: str(length=100)
@@ -573,7 +591,7 @@ motivo — `campo 'idade': no minimo 18, veio 12`. Detalhe em
 
 Namespace de constantes nomeadas. `Cor.RED` devolve o valor do membro:
 
-```
+```ps
 public enum Cor { RED, GREEN, BLUE }
 
 post(Cor.RED)     # 0
@@ -584,7 +602,7 @@ post(Cor.BLUE)    # 2
 A auto-numeração começa em `0`. Cada membro pode receber um valor explícito —
 inclusive string:
 
-```
+```ps
 public enum Hex {
     RED   = "#f00",
     GREEN = "#0f0",
@@ -598,7 +616,7 @@ Auto e explícito se misturam. Um valor **int** explícito reancora a sequência
 (os próximos autos continuam a partir dele); um valor não-int não mexe no
 contador:
 
-```
+```ps
 public enum Mix { A, B = 10, C, D = "x", E }
 # A=0  B=10  C=11  D="x"  E=12
 ```
@@ -611,7 +629,7 @@ existe é erro: `AttributeError: type object 'Cor' has no attribute 'ROXO'`.
 
 ## count
 
-```
+```ps
 list nums = [1, 7, 2, 7, 3, 7]
 post(count int(7) in nums)  # 3
 
@@ -622,7 +640,13 @@ if (count int(7) in nums == 3) {
 
 ### count each com bloco
 
+O exemplo pressupõe a `nums` de cima:
+
+```ps contexto
+list nums = [1, 7, 2, 7, 3, 7]
 ```
+
+```ps
 count each int(7) in nums {
     post(f"Encontrado no índice {_index}")
 }
@@ -638,7 +662,7 @@ chaves `{ }` — o único estilo de bloco da linguagem.
 Funciona com qualquer objeto que tenha `__enter__`/`__exit__` — o builtin
 global `open()` (sem import, sempre disponível) é o caso mais comum:
 
-```
+```ps
 using open("log.txt", "a", encoding="utf-8") as f {
     f.write("nova linha\n")
 }
@@ -652,7 +676,7 @@ binário (`"b"` no mode).
 E `manpu.open()` (lib separada, pensada pra CSV/XLSX estruturado — ver
 [manpu.md](manpu.md)):
 
-```
+```ps
 import manpu as mp
 
 lista = mp.load("compras.txt")
@@ -666,7 +690,15 @@ using mp.open(target="planilha.xlsx") as arq {
 O nome do parâmetro é `celula`, não `cell`, e o módulo importado `as mp` se
 chama `mp` — usar `manpu.` depois do apelido é `NameError`.
 
+O exemplo abaixo pressupõe o `mp` e a `lista` de cima (`manpu.load` devolve
+os bytes do arquivo):
+
+```ps contexto
+import manpu as mp
+byte lista = mp.load("compras.txt")
 ```
+
+```ps
 using mp.open(target="planilha.xlsx", encoding="latin-1") as arq {
     arq.write(column=0, celula="A1", content=lista)
 }
@@ -680,7 +712,7 @@ veja [manpu.md](manpu.md).
 
 ## Ponto de entrada
 
-```
+```ps
 public static funct iniciar() {
     post("Servidor iniciando...")
 }
@@ -694,7 +726,7 @@ if __name__ == "main" {
 
 ## Imports
 
-```
+```ps
 import os
 import psodbc
 import hash
@@ -708,7 +740,7 @@ from jinker import Jinker, cors, jsonify, render
 
 Importar de outro arquivo `.pr`:
 
-```
+```ps
 # utils.pr
 public static funct somar(a, b) {
     return a + b
@@ -723,7 +755,7 @@ post(VERSAO)       # 1.0
 
 Pelo caminho, entre aspas — relativo à pasta do arquivo que importa:
 
-```
+```ps
 from './utils.pr' import somar
 import '../lib/texto.pr'         # liga `texto`
 import 'ferramentas/kit.pr' as k
@@ -823,7 +855,7 @@ regra: `x is Object`, `x is String` (o apelido de `str`), e o nome de um enum
 
 ## Exemplo completo — Backend com auth
 
-```
+```ps
 import psodbc
 import hash
 import jwt

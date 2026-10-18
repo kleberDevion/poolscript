@@ -3,7 +3,7 @@
 Pega **vários arquivos** enviados no mesmo campo (upload múltiplo). Devolve uma
 **lista** de `PoolFileUpload` — lista vazia se não houver arquivo.
 
-```
+```assinatura
 request.files(field: str, allowed: list = Null) -> list[PoolFileUpload]
 ```
 
@@ -12,11 +12,18 @@ request.files(field: str, allowed: list = Null) -> list[PoolFileUpload]
 | `field` | nome do campo do formulário |
 | `allowed` | extensões permitidas (ex: `[".jpg", ".png"]`); `Null` = qualquer extensão *segura* |
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker, cors, jsonify
+Jinker app = Jinker(__name__)
+```
+
 ---
 
 ## Uso
 
-```
+```ps
 @app.route("/galeria", methods=cors.options(["POST"]))
 funct galeria() {
     fotos = request.files("fotos", allowed=[".jpg", ".png"])

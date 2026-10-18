@@ -3,7 +3,7 @@
 Imprime uma mensagem **colorida** no terminal. Útil pra destacar avisos, erros
 ou informações nos logs do seu programa.
 
-```
+```assinatura
 os.warn(text: str = "", color: str = "yellow") -> Null
 ```
 
@@ -16,7 +16,7 @@ os.warn(text: str = "", color: str = "yellow") -> Null
 
 ## Uso
 
-```
+```ps
 import os
 
 os.warn("cuidado: arquivo será sobrescrito")          # amarelo (padrão)

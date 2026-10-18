@@ -3,18 +3,25 @@
 Conecta ao servidor **IMAP** (leitura) no `host` dado, com TLS. Sem `port`, usa
 a 993.
 
-```
+```assinatura
 r.conn(host: str, port: int = Null) -> bool
 ```
 
 Devolve `True` quando conectou; falha de rede, de TLS ou de host inexistente é
 erro (não devolve `False`).
 
+O exemplo desta página pressupõe:
+
+```ps contexto
+import mail
+MailReader r = mail.MailReader()
+```
+
 ---
 
 ## Exemplo
 
-```
+```ps sem-rodar: precisa do servidor de e-mail
 r.conn("imap.meuservidor.com")          # porta 993
 r.conn("127.0.0.1", 1143)               # servidor local em outra porta
 ```

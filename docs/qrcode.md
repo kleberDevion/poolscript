@@ -2,7 +2,9 @@
 
 **Zero dependências externas** — a geração e o PNG são do próprio motor.
 
-```
+Os exemplos desta página pressupõem:
+
+```ps contexto
 import qrcode
 # ou: import qrcode   (alias)
 ```
@@ -11,7 +13,7 @@ import qrcode
 
 ## qrcode.gen() — função de alto nível
 
-```
+```ps
 # gera em memória
 file = qrcode.gen("https://meusite.com")
 file.save("qr.png")
@@ -51,7 +53,7 @@ qrcode.gen({"user_id": 42, "acao": "checkin"}, save="checkin.png")
 
 Retorna a imagem direto, sem passar por arquivo:
 
-```
+```ps
 img = qrcode.make("https://meusite.com")
 img.save("qr.png")
 img.resize(300, 300)
@@ -63,7 +65,7 @@ img.resize(300, 300)
 
 A classe `QRCode`, com todos os parâmetros:
 
-```
+```ps
 qr = qrcode.QRCode(version=Null, error_correction="L", box_size=10, border=4)
 qrcode.add_data("dados")
 qrcode.make(fit=True)
@@ -79,7 +81,7 @@ qrcode.clear()   # limpa pra reusar o mesmo objeto
 
 ## Constantes de correção de erro
 
-```
+```ps
 qrcode.ERROR_CORRECT_L   # "L" — 7% de tolerância
 qrcode.ERROR_CORRECT_M   # "M" — 15%
 qrcode.ERROR_CORRECT_Q   # "Q" — 25%

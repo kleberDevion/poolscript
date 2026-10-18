@@ -3,8 +3,15 @@
 Devolve o **corpo cru** da requisição como texto (string), sem tentar parsear
 como JSON.
 
-```
+```assinatura
 request.text() -> str
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker, cors, jsonify
+Jinker app = Jinker(__name__)
 ```
 
 ---
@@ -14,7 +21,7 @@ request.text() -> str
 Quando o corpo **não é JSON**: um XML, um texto puro, um webhook que manda
 formato próprio, ou quando você quer o conteúdo exato pra processar na mão.
 
-```
+```ps
 @app.route("/webhook", methods=cors.options(["POST"]))
 funct webhook() {
     corpo = request.text()           # string com o corpo exato

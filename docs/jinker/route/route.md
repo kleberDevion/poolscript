@@ -4,7 +4,7 @@ Registra uma **rota**: liga um caminho de URL à `funct` declarada logo abaixo
 do decorador. Quando alguém acessa esse caminho, o jinker chama a funct e usa
 o que ela retorna como resposta.
 
-```
+```ps
 @app.route(path, methods=..., auth=..., middleware=...)
 funct nome_da_rota() {
     # request disponível aqui; return vira a resposta
@@ -18,6 +18,13 @@ funct nome_da_rota() {
 | `auth` | lista | origens do `cors` | checagem de origem — use [`cors.origins()`](../cors/origins/origins.md) |
 | `middleware` | função | nenhum | roda antes da funct (ver [middleware](../middleware/middleware.md)) |
 | `model` | `model` | nenhum | valida o corpo JSON **antes** da funct; torto vira `422` |
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker, cors, jsonify, render
+Jinker app = Jinker(__name__)
+```
 
 ---
 
@@ -57,7 +64,7 @@ Se o **path** está registrado mas o **método** não, a resposta é
 `405 Method Not Allowed`, com `Allow:` listando o que a rota (ou as rotas)
 daquele path aceita:
 
-```
+```texto
 GET /login          (rota declarada só com POST)
 → 405   Allow: POST
   {"error": True, "code": 405, "message": "método inválido: GET /login — a rota aceita POST"}
@@ -150,7 +157,7 @@ Rota sem `model=` não muda em nada.
 Você **não** envolve a funct em chaves extras nem a chama. O `@app.route(...)`
 pega a próxima `funct` como o handler da rota:
 
-```
+```ps
 @app.route("/", methods=cors.options(["GET"]))
 funct inicio() {
     return jsonify({"msg": "olá"})
@@ -167,21 +174,24 @@ acessada.
 
 **Fixo** — casa exatamente:
 
-```
+```ps
 @app.route("/api/status", methods=cors.options(["GET"]))
+funct status() { }
 ```
 
 **Com parâmetro** — parte do caminho vira variável. Duas sintaxes:
 
-```
+```ps
 @app.route("/user:id", methods=cors.options(["GET"]))       # /user/42
+funct perfil() { }
 @app.route("/user/<id>", methods=cors.options(["GET"]))     # /user/42
+funct perfil() { }
 ```
 
 Pegue o valor dentro da funct com
 [`request.path_param("id")`](../request/path_param/path_param.md):
 
-```
+```ps
 @app.route("/user/<id>", methods=cors.options(["GET"]))
 funct perfil() {
     id = request.path_param("id")
@@ -197,9 +207,11 @@ funct perfil() {
 **Literal depois do parâmetro, no mesmo segmento** — o valor vai até o
 literal que o padrão traz logo depois dele (a primeira ocorrência):
 
-```
+```ps
 @app.route("/rel/<id>.json")      # /rel/5.json  → id = "5";  /rel/5 → 404
+funct rel() { }
 @app.route("/faixa/<de>-<ate>")   # /faixa/1-9   → de = "1", ate = "9"
+funct faixa() { }
 ```
 
 O valor de um parâmetro **não tem limite de tamanho** — um JWT de 800
@@ -211,7 +223,7 @@ responde por ele.
 
 ## Restringindo método e origem
 
-```
+```ps
 @app.route(
     "/api/login",
     methods=cors.options(["POST"]),   # só POST
@@ -235,7 +247,7 @@ Uma rota que aceita **GET** responde **HEAD** automaticamente: mesmo status e
 mesmos cabeçalhos (`Content-Length` inclusive), **sem o corpo** — é o que a
 RFC 9110 manda e serve pra quem só quer checar existência/tamanho:
 
-```
+```ps
 @app.route("/relatorio.pdf", methods=cors.options(["GET"]))
 funct relatorio() {
     return render("arquivos/relatorio.pdf")
@@ -260,12 +272,14 @@ requisição HEAD, use [`request.head()`](../../request/head/head.md).
 Ver [`JinkerResponse`](../JinkerResponse/JinkerResponse.md) para a tabela
 completa. Resumo:
 
-```
-return {"a": 1}                      # dict/lista → JSON 200
-return "texto"                       # string → texto puro 200
-return jsonify({"x": 1}), 201        # JSON com status
-return render("web/index.html")      # arquivo
-return Null                          # 204 sem corpo
+```ps
+funct rota() {
+    return {"a": 1}                      # dict/lista → JSON 200
+    return "texto"                       # string → texto puro 200
+    return jsonify({"x": 1}), 201        # JSON com status
+    return render("web/index.html")      # arquivo
+    return Null                          # 204 sem corpo
+}
 ```
 
 ---

@@ -16,9 +16,14 @@ dele, neste arquivo.
 4. Antes de dizer "pronto": roda o programa do item, com e sem JIT (`./testar`
    e `JINGA_JIT=0 ./testar`), e mostra a saída. Diz o que rodou e o que não
    rodou. Sem isso, não está pronto.
-5. Quando a lista zerar, roda a sonda de novo pelo método em
-   `notas/SONDA-METODO.md`. Duas sondas seguidas sem defeito novo = base
-   finalizada. Só então ele decide o que entra.
+5. **Os portões rodam a cada commit** (decisão dele de 2026-10-17, depois do
+   `forAll`): a doc inteira é teste (P1), o checador e o motor concordam (P2),
+   o editor e o motor concordam (P3), e a gramática gera programas (P4).
+   Estão em `notas/PORTOES.md`, no `make check`. O que eles acham entra na
+   lista, e falha conhecida aponta o item aberto.
+6. Quando a lista zerar e os portões estiverem verdes, roda a sonda com
+   agentes pelo método em `notas/SONDA-METODO.md`. Duas sondas seguidas sem
+   defeito novo = base finalizada. Só então ele decide o que entra.
 
 ## O critério
 
@@ -37,8 +42,9 @@ qual dos dois está errado e ele decide.
 
 ## Onde está cada coisa
 
-- `notas/CORRECAO-BASE.md`: a lista (a sonda escreve, o conserto risca).
-- `notas/SONDA-METODO.md`: como a sonda roda (quem olha o quê, como confirma).
+- `notas/CORRECAO-BASE.md`: a lista (os portões e a sonda escrevem, o conserto risca).
+- `notas/PORTOES.md`: os portões mecânicos, o que cada um confere e o que achou na entrada.
+- `notas/SONDA-METODO.md`: como a sonda com agentes roda (quem olha o quê, como confirma).
 - `JINGA-TUDO.md` 6.2: o estado medido e o histórico de versões.
 - As regras de trabalho dele (português, sem emoji, Jinga tipada, só Edit/Write,
   commit só com os arquivos do lote, bump a cada alteração, doc no mesmo

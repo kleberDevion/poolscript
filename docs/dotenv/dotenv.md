@@ -3,7 +3,7 @@
 Lib pra carregar um arquivo `.env` (segredos e configuração) pras variáveis de
 ambiente, que você lê depois com [`os.getenv`](../os/getenv/getenv.md).
 
-```
+```ps
 from dotenv import load
 ```
 
@@ -21,7 +21,7 @@ disso, põe num `.env` (que fica fora do git) e carrega com `dotenv`.
 
 `.env`:
 
-```
+```texto
 DB_PATH="loja.db"
 SECRET_KEY="abc123"
 MAIL_PASS="senha-de-app"
@@ -29,7 +29,7 @@ MAIL_PASS="senha-de-app"
 
 Código:
 
-```
+```ps
 import os
 from dotenv import load
 

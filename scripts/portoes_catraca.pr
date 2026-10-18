@@ -1,0 +1,160 @@
+# A catraca dos portões (notas/PORTOES.md), usada pelos scripts de portão
+# (`scripts/audita_exemplos_doc.pr`, `scripts/confere_saida_doc.pr`).
+#
+# Uma falha que já é item aberto de `notas/CORRECAO-BASE.md` fica em
+# `teste/portoes_conhecidas.txt`, uma por linha, com os campos separados por
+# TAB:
+#
+#     portão  página  impressão  item  sistema  onde
+#
+# - portão: `check` (o `--check` de cada bloco) ou `roda` (o bloco rodando,
+#   com JIT e sem);
+# - impressão: os 12 primeiros dígitos do SHA-256 do texto do bloco. A chave
+#   não é o número da linha, que anda quando alguém escreve acima, nem a
+#   primeira linha, que se repete (`import sockets` abre todos os exemplos da
+#   página). Mudou o bloco, mudou a impressão, e a falha volta a ser olhada;
+# - item: o item aberto da lista;
+# - sistema: `todos`, ou o `sys.platform()` em que a falha acontece (`linux`,
+#   `darwin`, `windows`): o exemplo que fixa o número de erro do Linux falha
+#   só fora dele;
+# - onde: a linha e o começo do bloco, pra quem lê. O script não usa.
+#
+# A regra: falha conhecida não reprova; falha nova reprova; e falha conhecida
+# que não acontece mais também reprova (consertada, ou o bloco mudou), pra
+# lista andar junto. Linha mal escrita no arquivo reprova: uma entrada que o
+# script não entende não pode desligar nada calada.
+import os
+import sys
+import hash
+
+str CATRACA = "teste/portoes_conhecidas.txt"
+
+
+str funct impressao(str codigo) {
+    return hash.sha256(codigo)[0:12]
+}
+
+
+# A primeira linha não vazia do bloco, pro campo "onde"
+str funct primeira_linha(str codigo) {
+    for each l in codigo.splitlines() {
+        if l.strip() != "" {
+            return l.strip()
+        }
+    }
+    return ""
+}
+
+
+# A linha pronta pra pôr no arquivo, com o item a preencher
+str funct linha_nova(str portao, str pagina, str codigo, int linha) {
+    return (portao + "\t" + pagina + "\t" + impressao(codigo) + "\t<item>\ttodos\tlinha "
+            + str(linha) + ": " + primeira_linha(codigo)[0:60])
+}
+
+
+# As falhas conhecidas do `portao` neste sistema, em `r`: a chave
+# "página TAB impressão" vale o item. As linhas mal escritas vão pra `ruins`.
+Null funct conhecidas_de(str portao, dict r, list ruins) {
+    if not os.exists(CATRACA) {
+        return
+    }
+    str sis = sys.platform()
+    int n = 0
+    for each l in os.readFile(CATRACA).splitlines() {
+        n = n + 1
+        if l.strip() == "" or l.startswith("#") {
+            continue
+        }
+        list p = l.split("\t")
+        if p.len() < 5 or not p[1].startswith("docs/") or p[2].len() != 12 or p[3].strip() == "" {
+            addEnd(ruins, CATRACA + ":" + str(n) + ": " + l)
+            continue
+        }
+        if not (p[0] in ["check", "roda"]) or not (p[4] in ["todos", "linux", "darwin", "windows"]) {
+            addEnd(ruins, CATRACA + ":" + str(n) + ": " + l)
+            continue
+        }
+        if p[0] == portao and (p[4] == "todos" or p[4] == sis) {
+            r[p[1] + "\t" + p[2]] = p[3]
+        }
+    }
+}
+
+
+# Aplica a catraca aos `achados` do portão (cada um um dict com "pagina",
+# "codigo" e "onde"), com as `paginas` visitadas. Põe em `r`:
+# - "novos": os achados que não estão no arquivo (reprovam);
+# - "conhecidos": o texto de cada achado que é item aberto;
+# - "consertadas": o texto de cada entrada de página visitada que não falhou;
+# - "ruins": as linhas mal escritas do arquivo.
+Null funct aplica(str portao, list achados, list paginas, dict r) {
+    dict conhecidas = {}
+    list ruins = []
+    conhecidas_de(portao, conhecidas, ruins)
+    # O bloco que não compila também não roda: no portão `roda`, a falha dele
+    # é a mesma que já está no arquivo como do portão `check`.
+    dict nao_compila = {}
+    if portao == "roda" {
+        list ignora = []
+        conhecidas_de("check", nao_compila, ignora)
+    }
+    dict vistas = {}
+    list novos = []
+    list conhecidos = []
+    for each a in achados {
+        str chave = a["pagina"] + "\t" + impressao(a["codigo"])
+        if chave in conhecidas {
+            vistas[chave] = True
+            addEnd(conhecidos, a["onde"] + "  (" + conhecidas[chave] + ")")
+        }
+        elif chave in nao_compila {
+            addEnd(conhecidos, a["onde"] + "  (" + nao_compila[chave] + ", não compila: portão check)")
+        }
+        else {
+            addEnd(novos, a)
+        }
+    }
+    list consertadas = []
+    for each ch in conhecidas.keys() {
+        if ch.split("\t")[0] in paginas and not (ch in vistas) {
+            addEnd(consertadas, ch.replace("\t", "  ") + "  (" + conhecidas[ch] + ")")
+        }
+    }
+    r["novos"] = novos
+    r["conhecidos"] = conhecidos
+    r["consertadas"] = consertadas
+    r["ruins"] = ruins
+}
+
+
+# O relatório da catraca: as conhecidas, as consertadas e as linhas ruins.
+# Põe `r["reprova"]` em True quando a catraca sozinha já reprova (consertada
+# ou linha ruim). É `Null funct` porque imprime: numa funct tipada, o `post`
+# conta como saída dela.
+Null funct relata(dict r) {
+    post("falhas conhecidas (itens abertos da lista):", r["conhecidos"].len())
+    for each c in r["conhecidos"] {
+        post("  " + c)
+    }
+    bool reprova = False
+    if r["consertadas"].len() > 0 {
+        post("")
+        post("CONHECIDAS QUE NAO FALHAM MAIS (consertadas, ou o bloco mudou): tire a linha de",
+             CATRACA, "e risque o item, ou ponha a impressao nova:", r["consertadas"].len())
+        for each c in r["consertadas"] {
+            post("  " + c)
+        }
+        reprova = True
+    }
+    if r["ruins"].len() > 0 {
+        post("")
+        post("LINHAS MAL ESCRITAS em " + CATRACA + " (portao, pagina, impressao de 12, item,",
+             "sistema e onde, separados por TAB):", r["ruins"].len())
+        for each c in r["ruins"] {
+            post("  " + c)
+        }
+        reprova = True
+    }
+    r["reprova"] = reprova
+}

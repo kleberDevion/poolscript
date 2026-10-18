@@ -3,7 +3,7 @@
 Converte um valor pra **dict/lista** (JSON). String vira JSON parseado; dict/
 lista voltam como estão.
 
-```
+```assinatura
 Parsing.JSONformatt(value, to_type="json") -> dict | list
 ```
 

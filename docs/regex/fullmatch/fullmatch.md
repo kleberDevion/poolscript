@@ -4,7 +4,7 @@ Se o texto **inteiro** casa com a expressão regular *pattern*, devolve
 `True`; se não casa, `False`. Repare que isso é diferente de um casamento de
 largura zero.
 
-```
+```assinatura
 regex.fullmatch(pattern: str, string: str) -> bool
 ```
 

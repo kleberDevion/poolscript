@@ -5,7 +5,14 @@ socket) — você não declara nem importa. É uma instância de `JinkerRequest`
 representa **tudo que o cliente mandou**: corpo, campos, parâmetros da URL,
 método, headers, arquivos.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker, cors, jsonify
+Jinker app = Jinker(__name__)
 ```
+
+```ps
 @app.route("/api/dados", methods=cors.options(["POST"]))
 funct receber() {
     data = request.get_json()     # corpo JSON inteiro (dict)
@@ -44,7 +51,7 @@ funct receber() {
 
 Exportado pela lib caso você queira checar o tipo:
 
-```
+```ps
 from jinker import JinkerRequest
 # request is JinkerRequest  → True dentro de uma rota
 ```

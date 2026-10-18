@@ -2,7 +2,7 @@
 
 Conecta na caixa de e-mail e **lê** mensagens: lista, filtra e pega o corpo.
 
-```
+```ps
 from mail import MailReader
 r = mail.MailReader()
 ```
@@ -24,7 +24,7 @@ r = mail.MailReader()
 
 ## Fluxo completo
 
-```
+```ps sem-rodar: lê a conta de e-mail do ambiente (MAIL_USER...) e precisa do servidor
 import mail
 import os
 from dotenv import load

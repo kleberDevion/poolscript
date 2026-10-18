@@ -3,7 +3,7 @@
 Descobre o **IP da máquina** na rede local, imprime no terminal e devolve como
 string.
 
-```
+```assinatura
 os.ipmach() -> str
 ```
 
@@ -11,7 +11,7 @@ os.ipmach() -> str
 
 ## Uso
 
-```
+```ps
 import os
 
 ip = os.ipmach()
@@ -29,7 +29,7 @@ conseguir (sem rede), devolve `"127.0.0.1"`.
 
 Útil pra mostrar em qual IP seu servidor jinker está acessível na rede local:
 
-```
+```ps
 import os
 ip = os.ipmach()
 post(f"servidor acessível em http://{ip}:8080")

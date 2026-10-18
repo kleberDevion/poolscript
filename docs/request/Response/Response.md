@@ -4,6 +4,14 @@
 status, o corpo, os headers e a URL final, com métodos pra ler o corpo como
 JSON.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import request
+str url = "https://exemplo.com/relatorio.pdf"
+Response resp = request.get("https://api.x.com/user/1")
+```
+
 ---
 
 ## Propriedades
@@ -40,7 +48,7 @@ JSON.
 | `.content_type(esperado)` | valida o `Content-Type`: **erra** (cai no `try/catch`) se não bater. Encadeável — devolve o próprio `Response`. |
 | `.save(caminho)` | **move** o arquivo do corpo pro caminho (`rename`, sem passar pela memória) e devolve um [`PoolFile`](../../os/PoolFile/PoolFile.md) fechado — `.name`, `.size`, `.path()`, `.move()`, `.copy()`, `.delete()`; `.bytes()` lê do disco só se chamado. Se o corpo veio de `save=`, ou já foi salvo antes, **copia** e os dois ficam. Se `caminho` for uma pasta (`"."`, termina em `/`, ou já existe como dir), o nome vem do `.filename`; senão usa o caminho dado. |
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 # baixar um arquivo — nome vem do servidor
 resp = request.get("https://exemplo.com/relatorio.pdf")
 arq = resp.save(".")                 # PoolFile
@@ -62,7 +70,7 @@ bruto = request.get(url).content    # bytes
 
 ## Uso típico
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 import request
 
 resp = request.get("https://api.x.com/user/1")
@@ -77,14 +85,14 @@ if (resp.ok) {                        # status 2xx?
 
 ### `.get_json()` — inteiro ou uma chave
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 resp.get_json()             # {"nome": "ana", "idade": 30}
 resp.get_json("nome")       # "ana"  (atalho pra uma chave)
 ```
 
 ### `.get()` — serve pra header e pra chave JSON
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 tipo = resp.get("Content-Type")   # procura primeiro nos headers
 nome = resp.get("nome")           # se não for header, procura no JSON
 ```
@@ -93,7 +101,7 @@ nome = resp.get("nome")           # se não for header, procura no JSON
 
 Quando a resposta não é JSON (HTML, texto, XML):
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 resp = request.get("https://exemplo.com/pagina.html")
 post(resp.text)             # o HTML como string
 ```

@@ -36,16 +36,25 @@
 import os
 import sys
 import json
+import date
+from './portoes_catraca.pr' import aplica, relata, linha_nova
 
 RAIZ = "docs"
 # Pasta de trabalho RELATIVA à corrente, criada antes da conferência e apagada
 # no fim dela. Era "/tmp/ps_audita_doc": no Windows o motor é nativo, "/tmp/x"
 # vira "<unidade>:\tmp\x" (não é o /tmp do MSYS2), e nada apagava a pasta.
-TMP = "ps_audita_exemplos_tmp"
+# O nome leva o relógio em milissegundos: duas conferências ao mesmo tempo
+# (uma por página, em paralelo) usavam a MESMA pasta e uma apagava o programa
+# da outra no meio.
+TMP = "ps_audita_exemplos_tmp_" + str(date.timestamp_ms())
 
 
 funct lista_md(dir) {
     saida = []
+    if dir.endswith(".md") {
+        addEnd(saida, dir)
+        return saida
+    }
     for each item in os.ls(dir) {
         caminho = dir + "/" + item["name"]
         if item["type"] == "dir" {
@@ -100,7 +109,11 @@ funct blocos_ps(txt) {
                 }
             }
         }
-        elif limpa == "```ps" or limpa == "```jinga" or limpa == "```ps contexto" {
+        # o ```ps sem-rodar (bloco que precisa de serviço de fora: servidor,
+        # banco, e-mail) não roda no `scripts/confere_saida_doc.pr`, mas o
+        # --check confere igual
+        elif (limpa == "```ps" or limpa == "```jinga" or limpa == "```ps contexto"
+              or limpa.startswith("```ps sem-rodar")) {
             b_dentro = True
             b_ini = b_n
             b_margem = recuo(linha)
@@ -109,6 +122,35 @@ funct blocos_ps(txt) {
         }
     }
     return b_blocos
+}
+
+
+# As cercas de abrir SEM marca (a linha de cada uma). Desde o P1 dos portões
+# (2026-10-17) toda cerca diz o que é (```ps, ```ps contexto, ```saida,
+# ```erro, ```assinatura, ```texto, ```bash, ```json...), como no rustdoc do
+# Rust: bloco sem marca não é conferido por nada, e foi num bloco assim que
+# o `app.channel(forAll=msg)` recusado pelo --check passou. Cerca sem marca
+# reprova; o `scripts/marca_cercas.pr` propõe a marca.
+funct cercas_sem_marca(txt) {
+    c_linhas = []
+    c_dentro = False
+    c_n = 0
+    for each linha in txt.splitlines() {
+        c_n = c_n + 1
+        limpa = linha.strip()
+        if limpa.startswith("```") {
+            if c_dentro {
+                c_dentro = False
+            }
+            else {
+                c_dentro = True
+                if limpa == "```" {
+                    addEnd(c_linhas, c_n)
+                }
+            }
+        }
+    }
+    return c_linhas
 }
 
 
@@ -212,6 +254,23 @@ funct tipo_do_erro(resposta) {
 
 os.mkdir(TMP, exist_ok=True)
 lista = "--lista" in sys.argv
+# Páginas ou pastas a conferir (o padrão é a doc inteira): uma página só leva
+# um segundo, a doc inteira quase um minuto.
+alvos = []
+for each a in sys.argv[1:len(sys.argv)] {
+    if not a.startswith("--") {
+        addEnd(alvos, a)
+    }
+}
+if len(alvos) == 0 {
+    addEnd(alvos, RAIZ)
+}
+paginas = []
+for each a in alvos {
+    for each f in lista_md(a) {
+        addEnd(paginas, f)
+    }
+}
 
 # os nomes de erro da linguagem — do motor, não de lista digitada. O stderr do
 # `--metadata` vai pro stderr daqui, como ia quando ele herdava o terminal: se
@@ -230,7 +289,11 @@ pulados = []
 achados = []
 exemplos_de_modulo = []
 
-for each md in lista_md(RAIZ) {
+sem_marca = []
+for each md in paginas {
+    for each n in cercas_sem_marca(os.readFile(md)) {
+        addEnd(sem_marca, md + ":" + str(n))
+    }
     contexto = ""
     for each b in blocos_ps(os.readFile(md)) {
         if "..." in b["codigo"] {
@@ -281,6 +344,17 @@ for each md in lista_md(RAIZ) {
 # passa por limpeza nenhuma.
 os.rmdir(TMP, force=True)
 
+# CATRACA (notas/PORTOES.md, scripts/portoes_catraca.pr): as recusas que já
+# são itens abertos da lista ficam em teste/portoes_conhecidas.txt, no portão
+# `check`, pela impressão do bloco.
+for each a in achados {
+    a["pagina"] = a["arq"]
+    a["onde"] = a["arq"] + ":" + str(a["linha"])
+}
+dict catraca = {}
+aplica("check", achados, paginas, catraca)
+achados = catraca["novos"]
+
 post("blocos ```ps conferidos:", total)
 post("  dos quais mostram um erro de proposito, e o motor da ESSE erro:", anunciados)
 # Nada de corte silencioso: o que ficou de fora sai NOMEADO, pra revisão humana.
@@ -294,9 +368,18 @@ for each e in exemplos_de_modulo {
     post("  " + e)
 }
 
-if achados.len() == 0 {
-    post("  todos passam no --check (ou anunciam o erro que o motor da)")
+post("cercas sem marca:", sem_marca.len())
+for each s in sem_marca {
+    post("  " + s + "   (diga o que o bloco é: ps, saida, erro, assinatura, texto, bash, json...)")
+}
+relata(catraca)
+
+if achados.len() == 0 and sem_marca.len() == 0 and not catraca["reprova"] {
+    post("  todos passam no --check (ou anunciam o erro que o motor da, ou sao itens abertos)")
     sys.exit(0)
+}
+if achados.len() == 0 {
+    sys.exit(1)
 }
 
 post("")
@@ -304,6 +387,8 @@ post("BLOCOS QUE O MOTOR RECUSA:", achados.len())
 for each a in achados {
     post("  " + a["arq"] + ":" + str(a["linha"]))
     post("    " + a["msg"])
+    # a linha da catraca, pra quando a recusa vira item aberto da lista
+    post("    catraca: " + linha_nova("check", a["arq"], a["codigo"], a["linha"]))
     if lista {
         post("    ----")
         for each l in a["codigo"].splitlines() {

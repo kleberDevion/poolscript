@@ -2,7 +2,7 @@
 
 Encerra a conexão IMAP. Chame ao terminar de ler.
 
-```
+```assinatura
 r.close() -> Null
 ```
 
@@ -10,7 +10,7 @@ r.close() -> Null
 
 ## Uso
 
-```
+```ps
 r = mail.MailReader()
 r.conn("imap.meuservidor.com")
 r.login(user, senha)

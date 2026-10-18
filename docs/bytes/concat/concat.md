@@ -3,15 +3,21 @@
 Junta uma **lista de bytes** num só, na ordem. Útil pra montar um buffer a
 partir de pedaços (cabeçalho + corpo, por exemplo).
 
-```
+```assinatura
 bytes.concat(lista: list) -> bytes
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import bytes
 ```
 
 ---
 
 ## Uso
 
-```
+```ps
 import bytes
 
 bytes.concat([bytes.new("Hi"), bytes.new("!!")])   # b'Hi!!'
@@ -27,7 +33,7 @@ bytes.concat([cab, corpo])          # b'\x00\x02oi'
 
 - **TypeError** — o argumento não é lista, ou algum item não é bytes.
 
-```
+```ps
 bytes.concat([bytes.new("a"), 5])   # TypeError: sequence item 1: expected a bytes-like object, int found
 bytes.concat("abc")                 # TypeError: concat() argument 1 must be list or tup, not str
 ```

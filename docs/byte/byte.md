@@ -94,7 +94,7 @@ se erra por analogia (caixa só ASCII, `find`/`count`/`index` aceitam inteiro,
 
 `b.len()` conta byte, e a diferença importa:
 
-```
+```ps
 b = "ção".encode()
 post(b.len())        # 5  — em UTF-8, "ç" e "ã" ocupam 2 bytes cada
 post("ção".len())    # 3  — caracteres

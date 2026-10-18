@@ -3,7 +3,7 @@
 Devolve o **caminho absoluto** de uma pasta, buscando-a pelo nome a partir da
 pasta do `.pr` e do diretório atual. Erro se não encontrar.
 
-```
+```assinatura
 os.pathFolder(name: str) -> str
 ```
 
@@ -11,7 +11,7 @@ os.pathFolder(name: str) -> str
 
 ## Uso
 
-```
+```ps
 import os
 
 pasta = os.pathFolder("uploads")

@@ -3,7 +3,14 @@
 O nome de arquivo que a imagem carrega consigo. É **campo**, não método: lê-se
 `img.name`, **nunca** `img.name()`.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import qrcode
+QRImage img = qrcode.make("oi")
 ```
+
+```ps
 img.name        # str   -> "qrcode.png"
 img.name()      # TypeError: 'str' object is not callable
 ```
@@ -24,7 +31,7 @@ daí o `TypeError`.
 **`str`** — o nome do arquivo com extensão, sem pasta. Nunca `Null`: quando
 ninguém informou um nome, o valor é `"qrcode.png"`.
 
-```
+```ps
 import qrcode
 
 qrcode.make("oi").name                      # "qrcode.png"   (default)
@@ -47,7 +54,7 @@ termina em `/`, é `.`, é `..`, ou é um diretório que já existe — o arquiv
 gravado em `<pasta>/<name>`. Se for um **caminho de arquivo**, o `.name` é
 ignorado e vale o caminho.
 
-```
+```ps
 import qrcode
 
 img = qrcode.make("https://exemplo.com", name="site.png")
@@ -60,7 +67,7 @@ O `name` também **viaja** pro arquivo em memória: o
 [`QRPoolFile`](../to_file/to_file.md) que sai de `.to_file()` nasce com o mesmo
 nome, e é dele que saem o `.name` e o `.ext` de lá.
 
-```
+```ps
 f = img.to_file()
 post(f.name)   # "site.png"
 post(f.ext)    # ".png"

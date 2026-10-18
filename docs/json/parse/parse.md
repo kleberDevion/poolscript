@@ -2,15 +2,21 @@
 
 Converte uma **string JSON** em dados da Jinga (dict ou lista).
 
-```
+```assinatura
 json.parse(text: str) -> dict | list
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import json
 ```
 
 ---
 
 ## Uso
 
-```
+```ps
 import json
 
 dados = json.parse('{"nome": "ana", "tags": [1, 2, 3]}')
@@ -20,7 +26,7 @@ post(dados["tags"][0])       # 1
 
 Objeto JSON vira **dict**; array JSON vira **lista**:
 
-```
+```ps
 json.parse('{"a": 1}')       # dict → {"a": 1}
 json.parse('[1, 2, 3]')      # lista → [1, 2, 3]
 ```
@@ -29,7 +35,7 @@ json.parse('[1, 2, 3]')      # lista → [1, 2, 3]
 
 ## É o oposto de `stringify`
 
-```
+```ps
 texto = json.stringify({"a": 1})    # '{"a": 1}'
 dados = json.parse(texto)           # {"a": 1}  (de volta)
 ```

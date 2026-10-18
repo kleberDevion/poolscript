@@ -106,7 +106,8 @@ funct blocos_ps(txt) {
                 addEnd(b_atual, linha)
             }
         }
-        elif limpa == "```ps" or limpa == "```jinga" or limpa == "```ps contexto" {
+        elif (limpa == "```ps" or limpa == "```jinga" or limpa == "```ps contexto"
+              or limpa.startswith("```ps sem-rodar")) {
             b_dentro = True
             b_ini = b_n
             b_atual = []

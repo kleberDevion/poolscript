@@ -2,7 +2,7 @@
 
 ## Exemplo
 
-```
+```ps
 import request
 r = request.get_json()
 post(r)

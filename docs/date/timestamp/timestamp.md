@@ -3,7 +3,7 @@
 Devolve o **timestamp Unix** atual — o número de segundos desde 1º de janeiro
 de 1970. É um **inteiro**, ideal pra cálculos com tempo.
 
-```
+```assinatura
 date.timestamp() -> int
 ```
 
@@ -11,7 +11,7 @@ date.timestamp() -> int
 
 ## Uso
 
-```
+```ps
 import date
 
 agora = date.timestamp()   # ex: 1785000000
@@ -24,7 +24,7 @@ agora = date.timestamp()   # ex: 1785000000
 Timestamp + [`date.hora(...)`](../hora/hora.md) dá "o instante daqui a X tempo",
 que é o que um token JWT usa no campo `exp`:
 
-```
+```ps
 import date
 import jwt
 
@@ -41,7 +41,7 @@ token = jwt.gen(payload, "minha_chave")
 
 Como é número, dá pra subtrair pra saber quanto tempo passou:
 
-```
+```ps
 inicio = date.timestamp()
 # ... trabalho demorado ...
 fim = date.timestamp()

@@ -3,15 +3,22 @@
 Devolve o modo de origem da última chamada de `cors(app, ...)`: `True` (o
 padrão) ou `False` quando foi configurado `local=False`, o modo estrito.
 
-```
+```assinatura
 cors.local() -> bool
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker, cors
+Jinker app = Jinker(__name__)
 ```
 
 ---
 
 ## O que o modo muda
 
-```
+```ps
 cors(app, origins=["https://meusite.com"])                # cors.local() == True
 cors(app, origins=["https://meusite.com"], local=False)   # cors.local() == false
 ```
@@ -33,7 +40,7 @@ modo não tem efeito: lista vazia libera tudo.
 
 ## Uso
 
-```
+```ps
 from jinker import Jinker, cors
 
 app = Jinker(__name__)

@@ -3,7 +3,7 @@
 Devolve o **diretório de trabalho atual** (current working directory) — a pasta
 de onde o programa está rodando.
 
-```
+```assinatura
 os.cwd() -> str
 ```
 
@@ -11,7 +11,7 @@ os.cwd() -> str
 
 ## Uso
 
-```
+```ps
 import os
 
 post(os.cwd())     # ex: "C:\Users\ana\projeto"

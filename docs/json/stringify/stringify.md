@@ -2,15 +2,21 @@
 
 Converte dados da Jinga (dict, lista, etc.) em uma **string JSON**.
 
-```
+```assinatura
 json.stringify(value) -> str
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import json
 ```
 
 ---
 
 ## Uso
 
-```
+```ps
 import json
 
 texto = json.stringify({"nome": "ana", "idade": 30})
@@ -20,7 +26,7 @@ post(texto)          # '{"nome": "ana", "idade": 30}'
 Serve pra **guardar** ou **enviar** dados como texto — num arquivo, numa
 variável de ambiente, num corpo de requisição montado na mão.
 
-```
+```ps
 import json
 import os
 
@@ -35,7 +41,7 @@ using open("config.json", "w") as f {
 
 ## É o oposto de `parse`
 
-```
+```ps
 dados = {"a": 1}
 texto = json.stringify(dados)       # '{"a": 1}'
 json.parse(texto)                   # {"a": 1}  (de volta)
@@ -54,7 +60,7 @@ json.parse(texto)                   # {"a": 1}  (de volta)
   `Null` vira `"null"` e `True`/`False` viram `"true"`/`"false"` (a mesma
   grafia de quando são valor), e número vira o texto dele:
 
-```
+```ps
 json.stringify({Null: 1, True: 2, 3: "x"})    # '{"null": 1, "true": 2, "3": "x"}'
 ```
 

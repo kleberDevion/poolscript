@@ -15,7 +15,7 @@ cursor (`.cursor()`), e nela ficam `.commit()`, `.rollback()` e `.close()`.
 
 ## Exemplo
 
-```
+```ps
 import sqlite3
 con = sqlite3.connect("dados.db")
 cur = con.cursor()

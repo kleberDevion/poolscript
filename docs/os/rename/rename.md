@@ -2,7 +2,7 @@
 
 Renomeia um arquivo ou pasta.
 
-```
+```assinatura
 os.rename(src: str, dst: str) -> Null
 ```
 
@@ -15,7 +15,7 @@ os.rename(src: str, dst: str) -> Null
 
 ## Uso
 
-```
+```ps
 import os
 
 os.rename("rascunho.txt", "final.txt")       # troca o nome

@@ -5,7 +5,7 @@ mais resolução de nomes, conversões de endereço/byte-order e as constantes.
 É a camada por baixo de qualquer protocolo: com ela você implementa o SEU
 protocolo, do zero, sem framework no meio.
 
-```
+```ps
 import sockets
 ```
 
@@ -295,7 +295,7 @@ True
 
 Cliente HTTP na unha:
 
-```ps
+```ps sem-rodar: conecta em example.com, fora da máquina
 import sockets
 
 s = sockets.create_connection(("example.com", 80), 10)

@@ -4,7 +4,13 @@ Constante do nível **Q** (*quartile*) de correção de erro do QR Code. Um quar
 do símbolo pode ser perdido e o leitor ainda decodifica — o preço é quase
 metade da capacidade de L.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import qrcode
 ```
+
+```ps
 qrcode.ERROR_CORRECT_Q      # constante, lida sem ()
 ```
 
@@ -24,7 +30,7 @@ Nenhum — `ERROR_CORRECT_Q` é **constante**, não função. Lê-se sem `()`;
 Não é `int` nem um objeto de nível. O acesso já entrega o valor final, então
 estas duas linhas geram exatamente o mesmo QR:
 
-```
+```ps
 import qrcode
 
 qrcode.make("oi", qrcode.ERROR_CORRECT_Q)
@@ -64,7 +70,7 @@ pequeno no meio do código.
 
 Nos três pontos que aceitam `error_correction`:
 
-```
+```ps
 import qrcode
 
 qrcode.make("https://exemplo.com", error_correction=qrcode.ERROR_CORRECT_Q)

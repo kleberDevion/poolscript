@@ -403,7 +403,7 @@ sobrescreve um método com retorno declarado tem que declarar um retorno que
 caiba nele (`Cao funct bicho` sobre `Animal funct bicho` vale). Trocar o tipo,
 ou não declarar, é erro antes de rodar, no nome do método do filho:
 
-```
+```texto
 TypeError: m() de Filha devolve str e sobrescreve m() de Pai, que devolve int
 TypeError: m() de Filha nao declara o retorno e sobrescreve m() de Pai, que devolve str: declare str funct m
 ```
@@ -521,7 +521,7 @@ post(c.cavalos, c.qtd)   # 300 4
 parâmetro (o `self` é o objeto que o pai recebe). Sem `self`, fora de Entity,
 ou numa Entity sem herança, é erro na declaração:
 
-```
+```texto
 SyntaxError: base() precisa do self: declare `funct __init__(self, ...)` (o self e o objeto que o pai inicializa)
 SyntaxError: base() fora de Entity com heranca
 SyntaxError: base() numa Entity sem heranca: nao ha pai pra inicializar

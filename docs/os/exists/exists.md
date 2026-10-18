@@ -2,7 +2,7 @@
 
 Diz se um caminho **existe** — seja arquivo ou pasta. Devolve `True`/`False`.
 
-```
+```assinatura
 os.exists(path: str) -> bool
 ```
 
@@ -10,7 +10,7 @@ os.exists(path: str) -> bool
 
 ## Uso
 
-```
+```ps
 import os
 
 if (os.exists("config.json")) {

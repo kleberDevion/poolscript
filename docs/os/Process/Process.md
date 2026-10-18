@@ -4,7 +4,7 @@ O que `os.run(args, capture="live")` devolve: o processo em si, ainda rodando.
 Serve pra escrever na entrada dele, ler a saída **enquanto** ele trabalha,
 esperar o código de saída e matar.
 
-```
+```ps
 import os
 
 p = os.run(["jinga", "prog.pr"], capture="live")
@@ -12,6 +12,12 @@ p = os.run(["jinga", "prog.pr"], capture="live")
 
 Os outros dois modos do [`os.run`](../run/run.md) não fazem isso: `capture=False`
 dispara e esquece, `capture=True` só devolve o texto no fim.
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import os
+```
 
 ---
 
@@ -37,7 +43,7 @@ dispara e esquece, `capture=True` só devolve o texto no fim.
 `read` e `readline` esperam só até **chegar** alguma coisa — não até o processo
 acabar. É o que permite mostrar a saída de um build linha a linha:
 
-```
+```ps
 p = os.run(["make"], capture="live")
 linha = p.readline()
 while linha != "" {
@@ -55,7 +61,7 @@ leituras **não sai pela metade**: o `read` guarda o pedaço e espera o resto.
 
 ## Escrever na entrada
 
-```
+```ps
 using os.run(["sort"], capture="live") as p {
     p.write("banana\nabacaxi\n")
     p.close()                    # sem isto o `sort` espera mais entrada
@@ -69,7 +75,7 @@ teclado de lá) e o canal continua aberto pra leitura.
 
 ## Esperar, matar e o código
 
-```
+```ps
 p = os.run(["sleep", "30"], capture="live")
 post(p.returncode)     # Null — ainda roda
 p.kill()               # SIGTERM
@@ -89,7 +95,7 @@ continuam sendo atendidas.
 
 ## Terminal (`pty=True`)
 
-```
+```ps
 p = os.run(["htop"], capture="live", pty=True)
 p.resize(120, 40)
 ```

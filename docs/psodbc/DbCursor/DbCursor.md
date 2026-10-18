@@ -3,6 +3,13 @@
 O objeto que [`DbConnection.cursor()`](../DbConnection/cursor/cursor.md)
 devolve. Por ele você **executa** comandos SQL e **lê** o que voltou.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import psodbc
+DbConnection conn = psodbc.connect(driver="sqlite", base="loja.db")
+```
+
 ---
 
 ## Métodos
@@ -20,7 +27,7 @@ devolve. Por ele você **executa** comandos SQL e **lê** o que voltou.
 
 ## Fluxo
 
-```
+```ps
 cursor = conn.cursor()
 cursor.execute("SELECT * FROM produtos WHERE preco > ?", (100,))
 caros = cursor.fetchall()      # lista de dicts

@@ -4,7 +4,7 @@ Um **middleware** é uma verificação que roda **antes** da funct de uma rota �
 tipicamente pra checar autenticação. Se passar, a rota executa; se barrar, a
 requisição para no middleware com a resposta que ele devolver.
 
-```
+```ps
 @app.middleware()
 funct nome() {
     # request disponível aqui
@@ -12,11 +12,18 @@ funct nome() {
 }
 ```
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker, cors, jsonify
+Jinker app = Jinker(__name__)
+```
+
 ---
 
 ## Declarando
 
-```
+```ps
 @app.middleware()
 funct verificar() {
     token = request.get("token")
@@ -38,7 +45,7 @@ funct verificar() {
 O middleware **não** roda automaticamente em tudo — você escolhe as rotas
 protegidas passando `middleware=app.middleware`:
 
-```
+```ps
 # rota livre — sem middleware
 @app.route("/api/login", methods=cors.options(["POST"]))
 funct login() {
@@ -77,7 +84,7 @@ Nos dois casos a funct é chamada **sem argumentos** — a requisição vem do
 `app.middleware()` é o registrador do decorador, não o middleware, e a rota é
 recusada no registro:
 
-```
+```texto
 TypeError: get(middleware=) recebeu o registrador de app.middleware(): escreva middleware=app.middleware, sem parenteses
 ```
 
@@ -89,7 +96,7 @@ com um decorador `(*args, **kwargs)` embrulhando o método.
 
 ## Padrão típico: autenticação por token
 
-```
+```ps
 @app.middleware()
 funct auth() {
     token = request.get("token")

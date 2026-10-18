@@ -17,7 +17,7 @@ MongoDB não usa SQL nem cursor — você trabalha com **coleções** e
 
 ## Fluxo
 
-```
+```ps sem-rodar: precisa do servidor MongoDB
 import psodbc
 
 conn = psodbc.connect(driver="mongo", host="localhost", port=27017, database="loja")

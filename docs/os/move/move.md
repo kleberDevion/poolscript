@@ -3,7 +3,7 @@
 Move um arquivo ou pasta pra outro lugar. Diferente de `copy`, o original
 **deixa de existir** no lugar antigo.
 
-```
+```assinatura
 os.move(src: str, dst: str) -> Null
 ```
 
@@ -16,7 +16,7 @@ os.move(src: str, dst: str) -> Null
 
 ## Uso
 
-```
+```ps
 import os
 
 os.move("temp/foto.png", "final/foto.png")   # move o arquivo

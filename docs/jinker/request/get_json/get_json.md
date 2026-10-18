@@ -3,8 +3,15 @@
 Devolve o **corpo inteiro** da requisição parseado de JSON — normalmente um
 dict (objeto) ou uma lista.
 
-```
+```assinatura
 request.get_json() -> dict | list | Null
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker, cors, jsonify
+Jinker app = Jinker(__name__)
 ```
 
 ---
@@ -13,7 +20,7 @@ request.get_json() -> dict | list | Null
 
 `POST` com corpo `{"nome": "ana", "idade": 30}`:
 
-```
+```ps
 @app.route("/usuario", methods=cors.options(["POST"]))
 funct criar() {
     data = request.get_json()        # {"nome": "ana", "idade": 30}
@@ -28,10 +35,12 @@ funct criar() {
 Se o corpo não for JSON válido (ou estiver vazio), devolve `Null`. Cheque antes
 de indexar:
 
-```
-data = request.get_json()
-if (data is Null) {
-    return jsonify({"erro": "corpo JSON inválido"}), 400
+```ps
+funct criar() {
+    data = request.get_json()
+    if (data is Null) {
+        return jsonify({"erro": "corpo JSON inválido"}), 400
+    }
 }
 ```
 
@@ -42,7 +51,7 @@ if (data is Null) {
 - `.get_json()` — o objeto **inteiro** (bom quando você precisa de vários campos).
 - [`.get("nome")`](../get/get.md) — só **um** campo (query string ou JSON).
 
-```
+```ps
 # preciso de vários → get_json
 data = request.get_json()
 nome = data["nome"]

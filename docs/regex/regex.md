@@ -536,7 +536,7 @@ A maior parte dos escapes que os literais de texto da Jinga aceitam
 ([1.6.3](../linguagem/01-estrutura-lexica.md#163-strings)) também vale no
 padrão:
 
-```
+```texto
 \a      \b      \f      \n
 \r      \t      \u      \U
 \v      \x      \\

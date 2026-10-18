@@ -3,7 +3,7 @@
 Aplica **XOR byte a byte** de `dados` com `chave`. Se a chave for menor que os
 dados, ela **repete** (cifra XOR de chave repetida).
 
-```
+```assinatura
 bytes.xor(dados: bytes, chave: bytes) -> bytes
 ```
 
@@ -13,7 +13,7 @@ Como o XOR é reversível, aplicar a **mesma chave** duas vezes volta ao origina
 
 ## Uso
 
-```
+```ps
 import bytes
 
 # chave repetida

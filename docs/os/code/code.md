@@ -2,7 +2,7 @@
 
 Abre o **editor de código** do sistema (ex: VS Code) no caminho indicado.
 
-```
+```assinatura
 os.code(path: str = ".") -> str
 ```
 
@@ -14,7 +14,7 @@ os.code(path: str = ".") -> str
 
 ## Uso
 
-```
+```ps
 import os
 
 os.code()                  # abre o editor na pasta atual

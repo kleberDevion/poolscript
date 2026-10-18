@@ -4,7 +4,7 @@ Lê um arquivo e devolve o conteúdo já no formato certo: texto vira `str`, JSO
 vira dict/lista, CSV vira lista de dicts, e arquivo binário vira um
 [`PoolFile`](../PoolFile/PoolFile.md).
 
-```
+```assinatura
 os.loadFile(path: str, mode: str = Null) -> str | dict | list | PoolFile
 ```
 
@@ -12,6 +12,12 @@ os.loadFile(path: str, mode: str = Null) -> str | dict | list | PoolFile
 |---|---|
 | `path` | nome/caminho do arquivo (buscado a partir da pasta do `.pr` e do cwd) |
 | `mode` | `"r"` ou `"rb"`. Omitido = decidido pelo conteúdo do arquivo |
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import os
+```
 
 ---
 
@@ -80,16 +86,22 @@ arquivo chamado `.png` que contém `"nao sou png"` volta como `str`, porque não
 **Não é charset.** Passar um nome de codificação no `mode` é erro, e a mensagem
 diz onde ele vale:
 
-```
+```ps
 os.loadFile("legado.csv", mode="latin-1")
+```
+
+```erro
 ValueError: loadFile: 'latin-1' e um charset, o 2 argumento e o mode ('r' ou 'rb').
             Pra ler com charset: os.readFile(path, encoding="latin-1")
 ```
 
 Valor que não é modo nem charset:
 
-```
+```ps
 os.loadFile("x.txt", mode="xyz")
+```
+
+```erro
 ValueError: loadFile: 'xyz' nao e um mode valido — use 'r' ou 'rb'
 ```
 
@@ -100,7 +112,7 @@ Arquivo inexistente é `FileNotFoundError`, que a árvore de exceções põe sob
 
 ## Exemplo: config + envio de arquivo
 
-```
+```ps
 import os
 import mail
 

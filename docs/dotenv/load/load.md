@@ -3,7 +3,7 @@
 Carrega um arquivo `.env` (linhas `CHAVE=VALOR`) para as variáveis de ambiente.
 Depois disso, [`os.getenv`](../../os/getenv/getenv.md) lê os valores.
 
-```
+```assinatura
 load(path: str = Null) -> dict
 ```
 
@@ -15,7 +15,7 @@ load(path: str = Null) -> dict
 
 ## Uso
 
-```
+```ps
 import os
 from dotenv import load
 
@@ -33,7 +33,7 @@ Chame `load()` **uma vez**, no início do programa, antes de qualquer `getenv`.
 
 Se o `.env` não está na pasta padrão, aponte:
 
-```
+```ps
 load("config/producao.env")
 ```
 
@@ -44,7 +44,7 @@ Sem argumento, `load()` sobe nos diretórios a partir do atual até achar um
 
 ## Formato do `.env`
 
-```
+```texto
 # comentários com # são ignorados
 DB_PATH="loja.db"
 PORT=8080

@@ -3,7 +3,7 @@
 Lib pra gerar imagens de **QR Code** a partir de um texto/URL.
 **Zero dependências externas.**
 
-```
+```ps
 import qrcode
 # ou: import qrcode   (apelido)
 ```
@@ -32,7 +32,7 @@ troca, quanto dado ainda cabe:
 `L` é o default. Nível não reconhecido — `"Z"`, um `int`, `Null` — cai em `L`
 **sem erro nenhum**; é pra isso que as constantes existem.
 
-```
+```ps
 import qrcode
 
 qrcode.make("https://meusite.com", error_correction=qrcode.ERROR_CORRECT_H)
@@ -42,7 +42,7 @@ qrcode.make("https://meusite.com", error_correction=qrcode.ERROR_CORRECT_H)
 
 ## Exemplo rápido
 
-```
+```ps
 import qrcode
 
 # gera e salva num arquivo

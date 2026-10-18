@@ -162,7 +162,7 @@ post([n * 2 for each n in nums])        # [2, 4, 6, 8]
 
 A forma, escrita com o `for each` da linguagem:
 
-```
+```texto
 [ <expressão> for each <nome> in <iterável> ]
 [ <expressão> for each <nome> in <iterável> if <condição> ]
 ```

@@ -3,9 +3,15 @@
 Lib pra conectar e consultar bancos de dados. Um único `connect()` cobre
 **SQLite, PostgreSQL, MySQL, SQL Server e MongoDB** — muda só o `driver`.
 
-```
+```ps
 import psodbc
 # ou: import psodbc   (apelido)
+```
+
+Os exemplos desta página pressupõem esse import:
+
+```ps contexto
+import psodbc
 ```
 
 ---
@@ -33,7 +39,7 @@ import psodbc
 Sempre o mesmo, independente do driver: **conecta → cursor → executa → lê →
 fecha**.
 
-```
+```ps
 import psodbc
 
 conn = psodbc.connect(driver="sqlite", base="loja.db")
@@ -53,7 +59,7 @@ O placeholder de parâmetros é `?` — **sempre use ele** pra valores dinâmico
 
 MongoDB não usa cursor/SQL — usa coleções e documentos:
 
-```
+```ps sem-rodar: precisa do servidor MongoDB
 conn = psodbc.connect(driver="mongo", host="localhost", port=27017, database="loja")
 col = conn.collection("produtos")
 col.insert({"nome": "café", "preco": 15})

@@ -1,7 +1,11 @@
 # json — Parse e Serialização
 
-```
+Os exemplos desta página pressupõem (o `request` é o da jinker, usado no
+último exemplo):
+
+```ps contexto
 from json import parse, stringify
+from jinker import request
 ```
 
 ---
@@ -12,7 +16,7 @@ Converte texto JSON em `dict`/`list`. Se `text` já for `dict` ou `list`,
 devolve como está (idempotente — seguro chamar em cima de algo que já foi
 parseado).
 
-```
+```ps
 data = parse('{"nome": "ana", "idade": 30}')
 post(data["nome"])   # "ana"
 
@@ -27,7 +31,7 @@ post(data2)   # {"ja": "e dict"} — passou direto
 Converte `dict`/`list`/valor pra string JSON. Não escapa caracteres
 unicode (`ensure_ascii=False`) — acentos saem como estão.
 
-```
+```ps
 texto = stringify({"nome": "joão", "idade": 30})
 post(texto)   # {"nome": "joão", "idade": 30}
 ```
@@ -36,7 +40,7 @@ post(texto)   # {"nome": "joão", "idade": 30}
 
 ## Exemplo — request e response de API
 
-```
+```ps
 import json
 
 body = json.parse(request.text())

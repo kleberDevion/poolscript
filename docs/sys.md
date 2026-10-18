@@ -1,7 +1,14 @@
 # sys — Sistema
 
-```
+```ps
 import sys
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import sys
+bool autenticado = False
 ```
 
 ---
@@ -11,7 +18,7 @@ import sys
 `argv[0]` é o **nome do script**; os seus argumentos vêm a partir de `argv[1]`
 — a convenção de C, Python e JS:
 
-```
+```ps
 # $ jinga app.pr criar joao
 script  = sys.argv[0]   # "app.pr"
 comando = sys.argv[1]   # "criar"
@@ -29,11 +36,15 @@ de um argumento exige `len(sys.argv) >= 2`. Ver [`sys/argv`](sys/argv/argv.md).
 
 Encerra o programa imediatamente com o código de saída informado.
 
-```
+```ps
 if (not autenticado) {
     post("acesso negado")
     sys.exit(1)
 }
+```
+
+```saida rc=1
+acesso negado
 ```
 
 ---
@@ -43,7 +54,7 @@ if (not autenticado) {
 Retorna o sistema operacional atual: `"windows"`, `"linux"` ou `"darwin"`
 (macOS).
 
-```
+```ps
 if (sys.platform() == "windows") {
     post("rodando no Windows")
 }
@@ -55,7 +66,7 @@ if (sys.platform() == "windows") {
 
 Saída padrão e de erro, com flush automático.
 
-```
+```ps
 sys.stdout.write("sem quebra de linha")
 sys.stdout.write("com quebra", end=True)
 sys.stdout.writeln("sempre quebra linha")   # atalho de write(..., end=True)
@@ -70,7 +81,7 @@ sys.stderr.writeln("mensagem de erro")
 Busca recursivamente, a partir do diretório de trabalho atual, um arquivo
 ou pasta com esse nome. Retorna o caminho absoluto se achar, `Null` se não:
 
-```
+```ps
 caminho = sys.RelativePath("config.json")
 if (caminho) {
     post("achou em: " {caminho})

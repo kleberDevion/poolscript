@@ -2,15 +2,23 @@
 
 Remove os documentos que batem com o filtro.
 
-```
+```assinatura
 col.remove(query: dict) -> Null
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import psodbc
+MongoConnection conn = psodbc.connect(driver="mongo", host="localhost", database="loja")
+MongoCollection col = conn.collection("produtos")
 ```
 
 ---
 
 ## Uso
 
-```
+```ps sem-rodar: precisa do servidor MongoDB
 col.remove({"ativo": False})      # remove todos os inativos
 col.remove({"nome": "café"})      # remove os cafés
 ```

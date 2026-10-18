@@ -4,8 +4,16 @@ Decodifica uma string **base64** e devolve o conteúdo. É o caminho de volta do
 [`hash.b64encode()`](../b64encode/b64encode.md), e também o que abre as partes
 de um token que chegou por HTTP.
 
-```
+```assinatura
 hash.b64decode(texto: str) -> str
+```
+
+Os exemplos desta página pressupõem (o `token` é um JWT como o que chega por
+HTTP, aberto no último exemplo):
+
+```ps contexto
+import jwt
+str token = jwt.gen({"sub": "ana"}, "segredo")
 ```
 
 ---
@@ -45,7 +53,7 @@ O `len()` conta bytes, e não caracteres visíveis: `len(hash.b64decode("--__"))
 mesmo** — a `str` carrega os bytes crus e é `post()` que mostra lixo na tela.
 Nada é recusado nem substituído na saída.
 
-```
+```ps
 import hash
 
 hash.b64decode("YWJj")               # "abc"
@@ -97,7 +105,7 @@ Nenhum desses devolve resultado parcial: ou sai o conteúdo inteiro, ou levanta.
 
 ## Uso: abrir a carga útil de um token
 
-```
+```ps
 import hash
 import json
 

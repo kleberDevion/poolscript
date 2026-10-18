@@ -4,7 +4,14 @@ O atalho pra gerar um QR Code: `qrcode.make(data)` devolve um
 [`QRImage`](../QRImage/QRImage.md), que você salva com `.save()`. Mais simples
 que [`gen`](../gen/gen.md), pros casos comuns.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import qrcode
+str data = "https://meusite.com"
 ```
+
+```ps
 qrcode.make(data, error_correction="L", box_size=10, border=4,
             fill_color="black", back_color="white", name="qrcode.png")
 ```
@@ -13,7 +20,7 @@ qrcode.make(data, error_correction="L", box_size=10, border=4,
 
 ## Uso
 
-```
+```ps
 import qrcode
 
 img = qrcode.make("https://meusite.com")

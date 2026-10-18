@@ -4,7 +4,7 @@
 
 ## date — Data e Hora
 
-```
+```ps
 import date
 ```
 
@@ -19,7 +19,7 @@ import date
 
 ### Exemplos
 
-```
+```ps
 import date
 
 post(date.today())       # 03/05/2026
@@ -36,13 +36,22 @@ exp_7dias = date.timestamp() + date.hora(days=7)
 
 ## mail — Envio de Email
 
-```
+```ps
 import mail
+```
+
+Os exemplos desta seção pressupõem a lib importada e um objeto de cada classe:
+
+```ps contexto
+import mail
+MailServer s = mail.MailServer()
+MailMessage m = mail.MailMessage()
+MailReader r = mail.MailReader()
 ```
 
 ### Configuração
 
-```
+```ps
 s = mail.MailServer()
 s.conn("smtp.meuservidor.com")          # porta 587; outra: s.conn(host, 2525)
 s.login(user="seu@gmail.com", password="sua_senha_app")
@@ -54,7 +63,7 @@ Muitos servidores exigem uma **senha de app** — não a senha normal da conta.
 
 ### Montando e enviando
 
-```
+```ps sem-rodar: precisa do servidor de e-mail conectado (o .conn() é de outro bloco)
 m = mail.MailMessage()
 m.fromAddress("seu@gmail.com")
 m.toAddress("destino@email.com")
@@ -67,13 +76,13 @@ s.quit()
 
 Body em HTML:
 
-```
+```ps
 m.body("<h1>Olá!</h1><p>Bem vindo.</p>", True)
 ```
 
 ### Lendo e-mails (`MailReader`)
 
-```
+```ps
 r = mail.MailReader()
 r.conn("imap.meuservidor.com")          # porta 993
 r.login(user="seu@gmail.com", password="sua_senha_app")
@@ -84,7 +93,7 @@ passa outra: `r.conn("127.0.0.1", 1143)` pra um servidor local.
 
 `.select()` escolhe a pasta e retorna o próprio objeto, então dá pra encadear direto com `.search()`:
 
-```
+```ps sem-rodar: precisa do servidor de e-mail conectado (o .conn() é de outro bloco)
 emails = r.select("INBOX", True).search("UNSEEN")   # True = readonly, não marca como lida
 ```
 
@@ -102,7 +111,7 @@ emails = r.select("INBOX", True).search("UNSEEN")   # True = readonly, não marc
 
 Cada mensagem volta como `{"id": ..., "from": ..., "subject": ..., "date": ...}` — assunto e remetente já vêm decodificados (sem `=?UTF-8?B?...?=` cru), mesmo que o servidor tenha mandado em base64/quoted-printable. `SUBJECT`/`FROM` são case-insensitive (o protocolo IMAP já garante isso) e o termo pode ter vírgula, espaço, acento — tudo bem.
 
-```
+```ps sem-rodar: precisa do servidor de e-mail conectado (o .conn() é de outro bloco)
 emails = r.select("INBOX").search("SUBJECT", "fatura", limit=5)
 for each e in emails {
     post(e["from"] " - " e["subject"] " (" e["date"] ")")
@@ -115,7 +124,7 @@ r.close()
 
 `.search()` por padrão só traz os headers (`id`/`from`/`subject`/`date`) — não baixa o corpo, que é o dado mais pesado. Duas formas de pegar:
 
-```
+```ps sem-rodar: precisa do servidor de e-mail conectado (o .conn() é de outro bloco)
 # (a) sob demanda, só do e-mail que interessa
 emails = r.select("INBOX").search("SUBJECT", "fatura")
 corpo = r.body(emails[0]["id"])
@@ -129,7 +138,7 @@ Use `(a)` quando a busca pode trazer muitos resultados e você só vai abrir alg
 
 ### Exemplo completo — leitura
 
-```
+```ps
 import mail
 from dotenv import load
 import os
@@ -155,7 +164,7 @@ verificar_caixa()
 
 ### Exemplo completo — envio
 
-```
+```ps
 import mail
 import date
 import os
@@ -193,7 +202,7 @@ funct enviar_email(nome, email_destino) {
 
 ## os — Sistema Operacional
 
-```
+```ps
 import os
 ```
 
@@ -205,7 +214,7 @@ import os
 | `os.getenv("CHAVE", "default")` | Lê com valor padrão | `os.getenv("PORT", "8000")` |
 | `os.environ(key=Null)` | Lê 1 variável (sem `dotenv.load()` automático), ou o dict inteiro se `key` for omitido | `os.environ("PATH")`, `os.environ()` |
 
-```
+```ps
 import os
 from dotenv import load
 
@@ -266,7 +275,7 @@ salva na pasta do script em execução com o próprio nome.
 | `os.warn(texto="", color="yellow")` | Mensagem colorida no terminal (`red/green/yellow/blue/magenta/cyan/white`) | `os.warn("Pasta criada", color="blue")` |
 | `os.ipmach()` | Descobre e imprime o IP da máquina, devolve como `str` | `ip = os.ipmach()` |
 
-```
+```ps
 import os
 
 os.mkdir("uploads", exist_ok=True)
@@ -288,7 +297,7 @@ post(versao)
 
 ## dotenv — Variáveis de Ambiente
 
-```
+```ps
 from dotenv import load
 
 load()
@@ -296,7 +305,7 @@ load()
 
 Estrutura do `.env`:
 
-```
+```texto
 DB_PATH=database.db
 SECRET_KEY=minha_chave_super_secreta_aqui
 MAIL_SMTP=smtp.meuservidor.com
@@ -308,7 +317,7 @@ PORT=7700
 
 Depois de `load()`, acesse com `os.getenv()`:
 
-```
+```ps
 from dotenv import load
 import os
 
@@ -323,7 +332,7 @@ str email = os.getenv("MAIL_SYSTEM")
 
 ## request — Requisições HTTP
 
-```
+```ps
 import request
 ```
 
@@ -347,7 +356,7 @@ import request
 
 ### Requisições HTTP
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 import request
 
 resp = request.get("https://api.exemplo.com/users")
@@ -363,7 +372,7 @@ post(resp2.get_json())
 
 ### WebSocket — cliente
 
-```
+```ps
 import request
 
 conn = request.ws_connect("ws://localhost:7701/chat")
@@ -375,7 +384,7 @@ conn.send({"user_name": "joao", "body_msg": "Oi!"})
 
 **Exemplo — chat no terminal:**
 
-```
+```ps
 import request
 
 str nome = input("Seu nome: ")
@@ -402,7 +411,7 @@ Sem o `conn.on_message(...)`, dois terminais conectados no mesmo chat **não vã
 
 ### Lambda — função anônima
 
-```
+```ps
 dobro = funct(n) { return n * 2 }
 post(dobro(5))   # 10
 
@@ -410,9 +419,16 @@ quadrado = funct(n) { return n * n }
 post(quadrado(4))  # 16
 ```
 
+Os exemplos abaixo pressupõem o `dobro` e o `quadrado` de cima:
+
+```ps contexto
+Object dobro = int funct(int n) { return n * 2 }
+Object quadrado = int funct(int n) { return n * n }
+```
+
 Passando lambda como argumento:
 
-```
+```ps
 funct aplicar(func, valor) {
     return func(valor)
 }
@@ -425,7 +441,7 @@ post(aplicar(quadrado, 3))  # 9
 
 Aplica uma função em cada item da lista:
 
-```
+```ps
 list nums = [1, 2, 3, 4, 5]
 
 dobrados = map(nums, funct(n) { return n * 2 })
@@ -443,7 +459,7 @@ post(iniciais)  # ["a", "l", "b"]
 
 Filtra itens da lista que passam na condição:
 
-```
+```ps
 list nums = [1, 2, 3, 4, 5, 6]
 
 pares = filter(nums, funct(n) { return n % 2 == 0 })
@@ -455,7 +471,7 @@ post(maiores)  # [4, 5, 6]
 
 Combinando map e filter:
 
-```
+```ps
 list nums = [1, 2, 3, 4, 5, 6]
 
 # Pega os pares e dobra

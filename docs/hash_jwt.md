@@ -1,10 +1,21 @@
 # hash e jwt — Autenticação
 
+Os exemplos desta página pressupõem (o `senha_hash` e o `token` são os que o
+`hash.crypt()` e o `jwt.gen()` geram abaixo):
+
+```ps contexto
+import hash
+import jwt
+import date
+str senha_hash = hash.crypt("minha_senha_123")
+str token = jwt.gen({"user_id": 1, "email": "ana@email.com"}, "minha_chave_secreta")
+```
+
 ---
 
 ## hash — Hash de senhas
 
-```
+```ps
 import hash
 ```
 
@@ -12,7 +23,7 @@ import hash
 
 Gera hash seguro de uma senha com salt aleatório:
 
-```
+```ps
 str senha = "minha_senha_123"
 str senha_hash = hash.crypt(senha)
 post(senha_hash)
@@ -25,7 +36,7 @@ Nunca guarde a senha original no banco — sempre o hash.
 
 Verifica se a senha digitada bate com o hash salvo:
 
-```
+```ps
 ok = hash.check(senha_hash, "minha_senha_123")
 post(ok)   # True
 
@@ -35,7 +46,7 @@ post(errado)  # False
 
 ### Exemplo — cadastro e login
 
-```
+```ps
 import psodbc
 import hash
 
@@ -69,7 +80,7 @@ funct logar(email, senha) {
 
 ## jwt — Tokens de autenticação
 
-```
+```ps
 import jwt
 import date
 ```
@@ -78,7 +89,7 @@ import date
 
 Gera um token JWT:
 
-```
+```ps
 payload = {
     "user_id": 1,
     "email": "ana@email.com",
@@ -104,7 +115,7 @@ O campo `exp` define quando o token expira. Use `date.timestamp() + date.hora(ho
 
 Verifica o token e retorna o payload:
 
-```
+```ps
 payload = jwt.check(token, "minha_chave_secreta")
 
 if (payload) {
@@ -121,7 +132,7 @@ Retorna `Null` se o token for inválido ou expirado.
 
 ## date.hora() — para o JWT
 
-```
+```ps
 import date
 
 # 24 horas em segundos
@@ -138,7 +149,7 @@ exp = date.timestamp() + date.hora(days=7)
 
 ## Exemplo completo com middleware JWT
 
-```
+```ps
 import jwt
 import hash
 import psodbc

@@ -3,7 +3,7 @@
 Escreve um valor numa posição (coluna/célula) de um arquivo CSV/XLSX/texto, em
 **uma operação única** (abre, escreve, salva).
 
-```
+```assinatura
 manpu.write(content=..., column=0, celula=..., target="arquivo.csv") -> ManpuResult
 ```
 
@@ -20,7 +20,7 @@ Devolve um `ManpuResult` — dá pra checar se deu certo com `==`.
 
 ## Uso
 
-```
+```ps
 import manpu as mp
 
 nm = mp.write(
@@ -47,7 +47,7 @@ arquivo.
 Com `celula=full` (ou `cell=full`), o conteúdo é dividido por quebra de linha e
 cada parte vai numa célula, descendo na coluna:
 
-```
+```ps
 # content com "Arroz\nFeijão\nMacarrão" e cell=full:
 # coluna 0, linha 0 → Arroz
 # coluna 0, linha 1 → Feijão

@@ -4,7 +4,7 @@ Carrega o arquivo em **bytes** — o conteúdo cru, sem parsear. Útil quando vo
 vai **repassar** o arquivo (anexar num email, enviar por rede) em vez de ler o
 conteúdo.
 
-```
+```assinatura
 manpu.load(filepath: str) -> bytes
 ```
 
@@ -12,7 +12,7 @@ manpu.load(filepath: str) -> bytes
 
 ## Uso típico: anexar num email
 
-```
+```ps
 import manpu as mp
 import mail
 

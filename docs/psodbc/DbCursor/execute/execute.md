@@ -3,15 +3,26 @@
 Executa um comando SQL. Para valores dinâmicos, use `?` e passe uma tupla em
 `params` — **nunca** concatene valores na string (risco de SQL injection).
 
-```
+```assinatura
 cursor.execute(sql: str, params: tuple = ()) -> DbCursor
+```
+
+Os exemplos desta página pressupõem (o `request` é o da
+[jinker](../../../jinker/request/request.md), de onde vem o valor digitado por
+quem usa):
+
+```ps contexto
+import psodbc
+from jinker import request
+DbConnection conn = psodbc.connect(driver="sqlite", base="loja.db")
+DbCursor cursor = conn.cursor()
 ```
 
 ---
 
 ## Uso
 
-```
+```ps
 cursor = conn.cursor()
 
 # SELECT
@@ -31,7 +42,7 @@ conn.commit()
 
 ## Sempre use `?` para valores
 
-```
+```ps
 nome = request.get("nome")
 
 # CERTO — parâmetro:
@@ -50,7 +61,7 @@ serve.
 `int`, `flo`, `bool`, texto e `Null` chegam ao banco como número, número, booleano,
 texto e NULL — em sqlite, postgres e mysql:
 
-```
+```ps
 cursor.execute("SELECT * FROM logs ORDER BY id LIMIT ? OFFSET ?", (20, 40))
 cursor.execute("SELECT * FROM clientes WHERE ativo = ?", (True,))
 ```

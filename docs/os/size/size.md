@@ -2,15 +2,21 @@
 
 Devolve o **tamanho de um arquivo em bytes**.
 
-```
+```assinatura
 os.size(path: str) -> int
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import os
 ```
 
 ---
 
 ## Uso
 
-```
+```ps
 import os
 
 bytes = os.size("video.mp4")
@@ -22,7 +28,7 @@ post(bytes / 1024 / 1024, "MB")     # converte pra megabytes
 
 ## Exemplo: recusar upload grande demais
 
-```
+```ps
 if (os.size("enviado.pdf") > 5 * 1024 * 1024) {   # maior que 5 MB
     post("arquivo grande demais")
 }

@@ -3,15 +3,22 @@
 Busca e decodifica o **corpo** de um e-mail específico, pelo `id` que veio no
 [`.search()`](../search/search.md).
 
-```
+```assinatura
 r.body(id: str) -> str
+```
+
+O exemplo desta página pressupõe:
+
+```ps contexto
+import mail
+MailReader r = mail.MailReader()
 ```
 
 ---
 
 ## Uso
 
-```
+```ps sem-rodar: precisa do servidor de e-mail conectado (o .conn() é de outro bloco)
 emails = r.search("ALL", limit=20)     # sem corpo (leve)
 
 for each e in emails {

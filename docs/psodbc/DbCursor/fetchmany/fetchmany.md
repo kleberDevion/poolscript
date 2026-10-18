@@ -3,15 +3,23 @@
 Devolve até **N** linhas do resultado (uma lista de dicts). Útil pra processar
 resultados grandes em blocos, sem carregar tudo na memória.
 
-```
+```assinatura
 cursor.fetchmany(size: int = 1) -> list
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import psodbc
+DbConnection conn = psodbc.connect(driver="sqlite", base="loja.db")
+DbCursor cursor = conn.cursor()
 ```
 
 ---
 
 ## Uso
 
-```
+```ps
 cursor.execute("SELECT * FROM muitos_registros")
 
 # processa de 100 em 100

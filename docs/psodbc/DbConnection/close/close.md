@@ -2,15 +2,21 @@
 
 Fecha a conexão com o banco. Chame ao terminar — libera o arquivo/rede.
 
-```
+```assinatura
 conn.close() -> Null
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import psodbc
 ```
 
 ---
 
 ## Uso
 
-```
+```ps
 conn = psodbc.connect(driver="sqlite", base="loja.db")
 cursor = conn.cursor()
 cursor.execute("SELECT * FROM produtos")

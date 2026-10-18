@@ -3,7 +3,7 @@
 Pega **um arquivo enviado** por upload (formulário `multipart/form-data`).
 Devolve um `PoolFileUpload` ou `Null` se o campo não tiver arquivo.
 
-```
+```assinatura
 request.file(field: str, allowed: list = Null) -> PoolFileUpload | Null
 ```
 
@@ -12,11 +12,18 @@ request.file(field: str, allowed: list = Null) -> PoolFileUpload | Null
 | `field` | nome do campo do formulário que contém o arquivo |
 | `allowed` | lista de extensões permitidas (ex: `[".jpg", ".png"]`); `Null` = qualquer extensão *segura* |
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker, cors, jsonify
+Jinker app = Jinker(__name__)
+```
+
 ---
 
 ## Uso
 
-```
+```ps
 @app.route("/upload", methods=cors.options(["POST"]))
 funct upload() {
     foto = request.file("foto", allowed=[".jpg", ".png"])
@@ -64,7 +71,7 @@ Duas camadas automáticas:
 2. **Sua lista `allowed`** — se passada, só as extensões dela são aceitas;
    qualquer outra levanta erro com a lista permitida na mensagem.
 
-```
+```ps
 # só imagens; um .pdf aqui levanta erro
 foto = request.file("foto", allowed=[".jpg", ".jpeg", ".png"])
 
@@ -75,11 +82,13 @@ doc = request.file("documento")
 Envolva em `try/catch` se quiser responder o erro de extensão em vez de deixar
 virar 500:
 
-```
-try {
-    foto = request.file("foto", allowed=[".png"])
-} catch (e) {
-    return jsonify({"erro": f"{e}"}), 400
+```ps
+funct upload() {
+    try {
+        foto = request.file("foto", allowed=[".png"])
+    } catch (e) {
+        return jsonify({"erro": f"{e}"}), 400
+    }
 }
 ```
 

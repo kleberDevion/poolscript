@@ -2,7 +2,7 @@
 
 Devolve a **data atual** como string no formato brasileiro `DD/MM/YYYY`.
 
-```
+```assinatura
 date.today() -> str
 ```
 
@@ -10,7 +10,7 @@ date.today() -> str
 
 ## Uso
 
-```
+```ps
 import date
 
 post(date.today())         # "25/07/2026"

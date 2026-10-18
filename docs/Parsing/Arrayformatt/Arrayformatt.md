@@ -2,7 +2,7 @@
 
 Converte um valor pra **lista**.
 
-```
+```assinatura
 Parsing.Arrayformatt(value, to_type="list") -> list
 ```
 
@@ -13,7 +13,7 @@ Parsing.Arrayformatt(value, to_type="list") -> list
 
 ## Uso
 
-```
+```ps
 import Parsing
 
 Parsing.Arrayformatt((1, 2, 3))      # [1, 2, 3]   (tupla → lista)

@@ -4,7 +4,7 @@ A lib `os` reúne o que você precisa pra mexer com **arquivos e pastas**, ler
 **variáveis de ambiente**, e rodar **comandos do terminal**. É o canivete do
 sistema operacional dentro da Jinga.
 
-```
+```ps
 import os
 # ou: import os as sistema
 ```
@@ -74,7 +74,7 @@ outras — `exists`, `isfile`, `isdir`, `size`, `readFile`, `writeFile`, `ls`,
 
 ## Exemplo rápido
 
-```
+```ps
 import os
 from dotenv import load
 

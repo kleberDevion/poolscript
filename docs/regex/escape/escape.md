@@ -3,7 +3,7 @@
 Escapa os caracteres especiais do texto. Serve pra casar um texto qualquer,
 que pode ter metacaracteres de expressão regular, como texto literal.
 
-```
+```assinatura
 regex.escape(pattern: str) -> str
 ```
 

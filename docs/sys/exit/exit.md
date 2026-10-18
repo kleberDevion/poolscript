@@ -4,7 +4,7 @@ Encerra o programa com um código de saída. Antes de sair, os `finally` (e os
 `using`) em volta rodam, de dentro pra fora; nenhum `catch` o pega, nem o sem
 tipo (seção 10.2). Na rota do `jinker`, encerra o servidor na hora.
 
-```
+```assinatura
 sys.exit(code: int = 0) -> Null
 ```
 
@@ -20,7 +20,7 @@ tipo é `TypeError: 'str' object cannot be interpreted as an integer`.
 
 ## Uso
 
-```
+```ps
 import sys
 import os
 
@@ -49,6 +49,11 @@ try {
     post("finally roda antes de sair")
 }
 post("nao roda")
+```
+
+```saida rc=3
+trabalhando
+finally roda antes de sair
 ```
 
 Imprime `trabalhando` e `finally roda antes de sair`, e o programa sai com 3.

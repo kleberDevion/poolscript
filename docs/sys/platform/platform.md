@@ -2,7 +2,7 @@
 
 Devolve qual **sistema operacional** está rodando, como string.
 
-```
+```assinatura
 sys.platform() -> str
 ```
 
@@ -16,7 +16,7 @@ sys.platform() -> str
 
 ## Uso
 
-```
+```ps
 import sys
 
 so = sys.platform()

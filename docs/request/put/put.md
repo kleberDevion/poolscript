@@ -4,7 +4,7 @@ Faz uma requisição HTTP **PUT** — usada pra **substituir um recurso inteiro*
 Mesma assinatura e comportamento de [`request.post`](../post/post.md); muda só
 o método HTTP. Devolve um [`Response`](../Response/Response.md).
 
-```
+```assinatura
 request.put(url, headers=Null, body=Null, timeout=30, stream=False, max_size=Null,
             fields=Null, file=Null, save=Null) -> Response
 ```
@@ -13,7 +13,7 @@ request.put(url, headers=Null, body=Null, timeout=30, stream=False, max_size=Nul
 
 ## Uso
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 import request
 
 # substitui TODOS os dados do usuário 10

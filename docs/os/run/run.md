@@ -5,7 +5,7 @@ lista, então caracteres de shell (`;`, `|`, `$`, `&`, `>`) viram **texto
 literal** e não conseguem injetar comando. É a forma **segura** de rodar
 programa com valor vindo do usuário.
 
-```
+```assinatura
 os.run(args: list | str, capture: bool | str = False, pty: bool = False) -> int | str | Process
 ```
 
@@ -15,6 +15,14 @@ os.run(args: list | str, capture: bool | str = False, pty: bool = False) -> int 
 | `capture` | `False` | `False` = dispara em segundo plano e devolve o **PID**; `True` = **espera** e devolve a saída; `"live"` = devolve o [`Process`](../Process/Process.md), pra conversar com ele enquanto roda |
 | `pty` | `False` | `True` = o filho roda num **terminal de verdade**; precisa de `capture="live"` ou `capture=True` |
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import os
+str entrada = "video.mp4"
+str saida = "video.webm"
+```
+
 ---
 
 ## Rodar em segundo plano — o padrão
@@ -22,14 +30,14 @@ os.run(args: list | str, capture: bool | str = False, pty: bool = False) -> int 
 Sem `capture`, o `run` **dispara e volta na hora**. É o que separa `run` de
 [`cmd`](../cmd/cmd.md): o `cmd` espera, o `run` não.
 
-```
+```ps
 pid = os.run(["sleep", "3"])
 post("já estou aqui:", pid)     # imprime na hora, não depois de 3s
 ```
 
 O que volta é o **PID** (`int`) do processo, pra acompanhar ou matar:
 
-```
+```ps
 pid = os.run(["ffmpeg", "-i", entrada, saida])
 os.run(["kill", str(pid)])      # se precisar interromper
 ```
@@ -46,7 +54,7 @@ aí é shell, e vale a advertência de injeção lá embaixo.
 
 ## Capturar a saída — aí espera
 
-```
+```ps
 versao = os.run(["jinga", "--version"], capture=True)
 post(versao)                        # "Jinga 17.0.20 [PSVM] (2026-09-24) Runtime standalone"
 ```
@@ -66,7 +74,7 @@ fim". O que eles não fazem é **conversar** com o processo: escrever na entrada
 dele, ler o que ele já imprimiu, saber o código de saída, matar. Isso é
 [`Process`](../Process/Process.md):
 
-```
+```ps
 p = os.run(["jinga", "prog.pr"], capture="live")
 p.write("sim\n")                 # vai pro stdin do filho
 p.close()                        # fecha a entrada (fim de arquivo pra ele)
@@ -76,7 +84,7 @@ post(p.wait())                   # o código de saída
 
 Com `using`, os canais fecham no fim do bloco:
 
-```
+```ps
 using os.run(["wc", "-l"], capture="live") as p {
     p.write("a\nb\nc\n")
     p.close()
@@ -90,7 +98,7 @@ Programa interativo se comporta diferente quando não está num terminal: some a
 cor, o `input()` não aparece, a barra de progresso vira lixo. Com `pty=True` o
 filho ganha um terminal de verdade:
 
-```
+```ps
 p = os.run(["sh", "-c", "test -t 0 && echo tem-terminal"], capture="live", pty=True)
 s = ""
 parte = p.read()
@@ -143,7 +151,7 @@ entre aspas: dado de fora não vai pro `cmd.exe` com `%`.
 `os.run` NÃO passa pelo shell, então metacaracteres não são interpretados —
 são só texto. Compare:
 
-```
+```ps
 nome = "x; rm -rf ~"                # valor malicioso vindo de fora
 
 os.cmd("mkdir " + nome)             # PERIGO: o shell executa o `rm -rf ~`
@@ -193,7 +201,7 @@ A forma com lista é a recomendada: não depende de regra de divisão nenhuma.
 Se o programa não existe, `os.run` **levanta `IOError`** (não devolve `Null`) —
 o processo nem chega a rodar. Trate com `try`/`catch`:
 
-```
+```ps
 import os
 
 funct versao_de(programa) {

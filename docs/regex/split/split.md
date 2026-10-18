@@ -5,7 +5,7 @@ texto de todos os grupos do padrão também entra na lista resultante. Se
 *maxsplit* não é zero, acontecem no máximo *maxsplit* divisões, e o resto do
 texto vem como o último item da lista.
 
-```
+```assinatura
 regex.split(pattern: str, string: str, maxsplit=0) -> list
 ```
 

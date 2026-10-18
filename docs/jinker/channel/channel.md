@@ -3,23 +3,31 @@
 `app.channel` gerencia as conexões WebSocket abertas e envia mensagens pra
 elas, com suporte a **salas**. É o "megafone" do servidor pros clientes.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker, request
+Jinker app = Jinker(__name__)
+str msg = "oi"
+```
+
 ---
 
 ## Broadcast pra todos
 
-```
+```ps
 app.channel(forAll=msg)      # manda `msg` pra TODAS as conexões abertas
 ```
 
 ## Enviar pra uma sala específica
 
-```
+```ps
 app.channel.emit(msg, room_id="geral")   # só quem está na sala "geral"
 ```
 
 ## Status do último envio
 
-```
+```ps
 if (app.channel.status == "Success") {
     post("mensagem enviada")
 } else {
@@ -56,7 +64,7 @@ disparou (ou quando emite de fora de um handler).
 
 ## Exemplo dentro de um socket
 
-```
+```ps
 @app.socket("/chat/<sala>", channel=True)
 funct mensagem() {
     sala = request.path_param("sala")

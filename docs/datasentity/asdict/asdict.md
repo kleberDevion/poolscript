@@ -2,7 +2,7 @@
 
 Converte uma instância de `@dataentity` num **dict**, com os campos como chaves.
 
-```
+```assinatura
 asdict(instance) -> dict
 ```
 
@@ -10,7 +10,7 @@ asdict(instance) -> dict
 
 ## Uso
 
-```
+```ps
 from datasentity import dataentity, asdict
 
 @dataentity

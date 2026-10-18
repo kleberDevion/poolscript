@@ -3,7 +3,7 @@
 Diz se o caminho existe **e é um arquivo** (não uma pasta). Devolve
 `True`/`False`.
 
-```
+```assinatura
 os.isfile(path: str) -> bool
 ```
 
@@ -11,7 +11,7 @@ os.isfile(path: str) -> bool
 
 ## Uso
 
-```
+```ps
 import os
 
 if (os.isfile("dados.csv")) {

@@ -4,7 +4,7 @@ Converte uma **duração** (horas, minutos, dias) no total de **segundos**.
 Não é "que horas são" — é "quantos segundos tem em tanto tempo". Serve pra
 somar com [`date.timestamp()`](../timestamp/timestamp.md).
 
-```
+```assinatura
 date.hora(hours=0, minutes=0, days=0) -> int
 ```
 
@@ -18,7 +18,7 @@ date.hora(hours=0, minutes=0, days=0) -> int
 
 ## Uso
 
-```
+```ps
 import date
 
 date.hora(hours=1)         # 3600    (1 hora em segundos)
@@ -33,7 +33,7 @@ date.hora(hours=2, minutes=30)   # 9000  (2h30 = 2*3600 + 30*60)
 
 Somado ao timestamp atual, dá "daqui a X tempo" — o padrão pro `exp` de um JWT:
 
-```
+```ps
 import date
 import jwt
 

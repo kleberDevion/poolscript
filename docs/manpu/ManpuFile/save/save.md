@@ -2,7 +2,7 @@
 
 Salva as mudanças do arquivo aberto no disco.
 
-```
+```assinatura
 arq.save() -> ManpuResult
 ```
 
@@ -14,7 +14,7 @@ Dentro de um `using`, o `.save()` roda **automaticamente** ao sair do bloco.
 Você só chama explicitamente quando quer **gravar no meio** do fluxo (antes de
 continuar mexendo):
 
-```
+```ps
 import manpu as mp
 
 using mp.open(target="dados.csv") as arq {

@@ -2,7 +2,7 @@
 
 Envia uma mensagem pro servidor WebSocket.
 
-```
+```assinatura
 conn.send(data) -> Null
 ```
 
@@ -14,7 +14,7 @@ conn.send(data) -> Null
 
 ## Uso
 
-```
+```ps
 import request
 
 conn = request.ws_connect("ws://localhost:8081/chat/geral")

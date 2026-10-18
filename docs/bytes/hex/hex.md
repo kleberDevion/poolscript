@@ -2,7 +2,7 @@
 
 Devolve os bytes como uma string **hexadecimal** minúscula, sem separador.
 
-```
+```assinatura
 bytes.hex(b: bytes) -> str
 ```
 
@@ -10,7 +10,7 @@ bytes.hex(b: bytes) -> str
 
 ## Uso
 
-```
+```ps
 import bytes
 
 bytes.hex(bytes.new("Hello"))   # "48656c6c6f"

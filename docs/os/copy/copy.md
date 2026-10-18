@@ -2,7 +2,7 @@
 
 Copia um arquivo de um caminho pra outro. O original permanece.
 
-```
+```assinatura
 os.copy(src: str, dst: str) -> Null
 ```
 
@@ -15,7 +15,7 @@ os.copy(src: str, dst: str) -> Null
 
 ## Uso
 
-```
+```ps
 import os
 
 os.copy("dados.db", "backup/dados.db")     # duplica o arquivo

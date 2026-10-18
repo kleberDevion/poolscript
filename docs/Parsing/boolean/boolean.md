@@ -3,7 +3,7 @@
 Converte um valor pra **booleano** (`True`/`False`), entendendo os textos
 comuns de sim e não.
 
-```
+```assinatura
 Parsing.boolean(value, to_type="bool") -> bool
 ```
 

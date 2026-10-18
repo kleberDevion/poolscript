@@ -1,0 +1,589 @@
+# Roda os exemplos da documentação e confere o que eles fazem: o portão
+# `roda` do P1 (notas/PORTOES.md).
+#
+# O `scripts/audita_exemplos_doc.pr` passa o `--check` em todo bloco, mas não
+# roda nada: um exemplo que compila e quebra rodando, ou imprime outra coisa,
+# passava. É o que o doctest do Python, o `cargo test --doc` do Rust e o
+# Example do Go fazem: o exemplo da doc é teste, e roda.
+#
+#     ./pool scripts/confere_saida_doc.pr                  # a doc inteira
+#     ./pool scripts/confere_saida_doc.pr docs/sockets     # uma pasta
+#     ./pool scripts/confere_saida_doc.pr a.md b.md        # páginas avulsas
+#     ./pool scripts/confere_saida_doc.pr --prazo 3 docs   # prazo de cada rodada, em segundos
+#
+# A forma, na página:
+#
+#     ```ps                  o programa
+#     ```entrada             (opcional) o que vai no stdin dele
+#     ```saida               (opcional) o stdout, inteiro
+#     ```erro                (opcional) um trecho do stderr; sem ele, o
+#                            programa tem que sair com 0
+#
+# Os blocos depois do ```ps são dele até o próximo ```ps. O bloco ```ps
+# contexto (o que os exemplos seguintes da página pressupõem) vai na frente do
+# bloco que usa um nome dele. O bloco que passa no `--check` sozinho roda
+# sozinho, como quem lê vai rodar: com o contexto na frente, o número das
+# linhas que as mensagens de erro citam andaria.
+#
+# Cada bloco ```ps roda DUAS vezes, com o JIT e sem (`JINGA_JIT=0`), e as
+# duas têm que cumprir o que a página promete:
+#
+#   - com ```saida, o stdout é exatamente aquele;
+#   - com ```erro, o stderr contém aquele trecho;
+#   - sem ```erro, o programa sai com 0. O que ele anuncia de propósito
+#     (`codigo   # ZeroDivisionError: ...`, a convenção do outro auditor) vale
+#     como erro esperado;
+#   - sem ```saida, as duas rodadas imprimem a mesma coisa. Se não imprimem, o
+#     bloco roda de novo com o JIT: saída que muda sozinha (hora, número
+#     aleatório, endereço) não é defeito; a que só muda sem o JIT é.
+#
+# Não roda: o fragmento com `...` (não é programa) e o ```ps sem-rodar:
+# motivo, o bloco que precisa de serviço de fora (servidor que fica
+# escutando, banco, e-mail, rede). Os dois saem listados, com o motivo.
+#
+# Cada rodada é isolada, porque o exemplo da doc faz o que a doc ensina:
+# apaga arquivo, abre porta, manda sinal, dispara processo.
+#   - pasta própria, vazia, que é a pasta corrente e o HOME dele;
+#   - no macOS, o `sandbox-exec`: escrita só na pasta, rede só no loopback
+#     (fora as portas de serviço da máquina, como a 8080), sinal só pros
+#     próprios filhos;
+#   - no Linux, o `bwrap` (bubblewrap), quando existe: o disco só de leitura
+#     fora da pasta, rede e processos num espaço próprio. Sem ele, roda sem
+#     isolamento e o relatório diz isso;
+#   - prazo por rodada (10 s, ou o `--prazo`): o que passa disso é morto e
+#     sai como falha.
+import os
+import sys
+import date
+import json
+from './portoes_catraca.pr' import aplica, relata, linha_nova
+
+str TMP = "ps_confere_saida_tmp_" + str(date.timestamp_ms())
+
+
+list funct lista_md(str dir) {
+    list saida = []
+    if dir.endswith(".md") {
+        addEnd(saida, dir)
+        return saida
+    }
+    for each item in os.ls(dir) {
+        str caminho = dir + "/" + item["name"]
+        if item["type"] == "dir" {
+            for each f in lista_md(caminho) {
+                addEnd(saida, f)
+            }
+        }
+        elif item["name"].endswith(".md") {
+            addEnd(saida, caminho)
+        }
+    }
+    return saida
+}
+
+
+# A cerca pode estar indentada (bloco dentro de item de lista): a margem é do
+# markdown, não do código.
+int funct recuo(str linha) {
+    int n = 0
+    while n < linha.len() and linha[n] == " " {
+        n = n + 1
+    }
+    return n
+}
+
+
+# Os blocos cercados da página, na ordem: o rótulo da cerca (`ps`, `ps
+# contexto`, `saida`, `entrada`, `erro`, `c`...), a linha e o texto.
+list funct blocos_de(str txt) {
+    list blocos = []
+    bool dentro = False
+    list atual = []
+    str rotulo = ""
+    int ini = 0
+    int margem = 0
+    int n = 0
+    for each linha in txt.splitlines() {
+        n = n + 1
+        str limpa = linha.strip()
+        if dentro {
+            if limpa == "```" {
+                addEnd(blocos, {"rotulo": rotulo, "linha": ini, "texto": "\n".join(atual)})
+                dentro = False
+                atual = []
+            }
+            elif recuo(linha) >= margem {
+                addEnd(atual, linha[margem:linha.len()])
+            }
+            else {
+                addEnd(atual, limpa)
+            }
+        }
+        elif limpa.startswith("```") {
+            dentro = True
+            rotulo = limpa[3:limpa.len()].strip()
+            ini = n
+            margem = recuo(linha)
+            atual = []
+        }
+    }
+    return blocos
+}
+
+
+# O comando que procura um programa no PATH (`command -v`), sem shell do
+# usuário no meio: "" quando não existe.
+str funct acha_programa(str nome) {
+    if sys.platform() == "windows" {
+        return ""
+    }
+    str r = os.run(["sh", "-c", "command -v \"$1\" || true", "sh", nome], capture=True)
+    return r.strip()
+}
+
+
+# O perfil do sandbox do macOS. A última regra que casa é a que vale: tudo é
+# permitido, menos o que vem negado depois, e a pasta do exemplo é liberada
+# por último. As portas de serviço do loopback ficam fechadas: a 8080 é a do
+# Kleber, e as de banco e e-mail não podem receber o INSERT de um exemplo.
+str PERFIL_MAC = '''(version 1)
+(allow default)
+(deny network-outbound (remote ip "*:*"))
+(allow network-outbound (remote ip "localhost:*"))
+(deny network-outbound (remote ip "localhost:8080") (remote ip "localhost:5432")
+      (remote ip "localhost:3306") (remote ip "localhost:27017") (remote ip "localhost:6379")
+      (remote ip "localhost:1433") (remote ip "localhost:25") (remote ip "localhost:465")
+      (remote ip "localhost:587") (remote ip "localhost:11211"))
+(deny network-bind (local ip "*:8080"))
+(deny file-write* (subpath "/"))
+(allow file-write* (subpath (param "PASTA")) (subpath "/dev/fd") (literal "/dev/null")
+       (literal "/dev/tty") (literal "/dev/stdout") (literal "/dev/stderr")
+       (literal "/dev/dtracehelper") (literal "/dev/ptmx") (regex #"^/dev/ttys[0-9]+$"))
+(deny signal)
+(allow signal (target self))
+(allow signal (target children))
+'''
+
+
+# O que vai na frente do comando pra isolar a rodada, pela máquina: em `r`,
+# "prefixo" (a lista) e "nome" (o que o relatório diz).
+Null funct isolador(str trab, dict r) {
+    str sis = sys.platform()
+    if sis == "darwin" and acha_programa("sandbox-exec") != "" {
+        os.writeFile(trab + "/isola.sb", PERFIL_MAC)
+        r["nome"] = "sandbox-exec (macOS)"
+        r["prefixo"] = ["sandbox-exec", "-D", "PASTA=" + trab + "/ex", "-f", trab + "/isola.sb"]
+        return
+    }
+    if sis == "linux" and acha_programa("bwrap") != "" {
+        str pasta = trab + "/ex"
+        r["nome"] = "bwrap (Linux)"
+        r["prefixo"] = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
+                        "--bind", pasta, pasta, "--chdir", pasta, "--unshare-all",
+                        "--die-with-parent"]
+        return
+    }
+    r["nome"] = "NENHUM (sem sandbox-exec nem bwrap nesta máquina)"
+    r["prefixo"] = []
+}
+
+
+# Roda o programa `arquivo` (já na pasta do exemplo, que é a pasta corrente),
+# com o `entrada.txt` no stdin e o JIT ligado ou não, e põe em `r` o stdout,
+# o stderr, o código de saída e se estourou o prazo. Os arquivos de saída
+# levam o `nome` na frente. A saída vai pra arquivo, não pra cano: o processo
+# que o exemplo dispara e deixa vivo não prende a leitura. O `sh` de fora
+# espera o exemplo e grava o código; o prazo é contado aqui, olhando esse
+# arquivo (o `returncode` do `Process` não serve: fica `Null` até o `wait()`,
+# o item os-1 da lista).
+#
+# O ambiente é limpo (`env -i`), com o PATH de quem roda e o HOME e o TMPDIR
+# na pasta: o exemplo do `os.environ` não mostra o ambiente de quem confere, e
+# o resultado é o mesmo em qualquer máquina. O modo vai no `JINGA_JIT` (1 ou
+# 0) nas duas rodadas: o `--sem-jit` é o mesmo que `JINGA_JIT=0` (o motor faz
+# o `setenv`, `docs/Jinga.md`), e só numa das rodadas o programa veria a
+# variável a mais no `os.environ`.
+Null funct executa(str pasta, list prefixo, str nome, str arquivo, bool jit, flo prazo, dict r) {
+    str modo = "JINGA_JIT=1"
+    if not jit {
+        modo = "JINGA_JIT=0"
+    }
+    # O código vai pra um arquivo com outro nome e só então ganha o nome
+    # certo: quem olha nunca lê o arquivo pela metade.
+    list cmd = prefixo + ["sh", "-c",
+                          "n=\"$1\"; shift; \"$@\" > \"$n.saida\" 2> \"$n.erro\" < entrada.txt; "
+                          + "echo $? > \"$n.rc_\"; mv \"$n.rc_\" \"$n.rc\"",
+                          "sh", nome,
+                          "env", "-i", "PATH=" + os.getenv("PATH", "/usr/bin:/bin"),
+                          "HOME=" + pasta, "TMPDIR=" + pasta, modo, sys.executable, arquivo]
+    # Disparado sem `capture`, o processo sai num grupo novo (`setsid`), à
+    # frente do qual fica o `sh`: o número que volta é o do grupo. O exemplo
+    # que abre servidor deixa os filhos dele (os processos da jinker) no mesmo
+    # grupo, e o `kill` no grupo leva todos. Matar só o `sh` deixava os filhos
+    # órfãos escutando na porta (medido em 2026-10-18: quatro, na porta 2000,
+    # 20 minutos depois da rodada).
+    int grupo = os.run(cmd)
+    flo ini = date.monotonic()
+    bool estourou = False
+    while not os.exists(nome + ".rc") {
+        if date.monotonic() - ini > prazo {
+            estourou = True
+            break
+        }
+        sleep(0.002)
+    }
+    # no prazo e no fim normal: o que o exemplo deixou vivo no grupo morre
+    if grupo > 1 {
+        os.run(["kill", "-9", "-" + str(grupo)], capture=True)
+    }
+    int rc = -1
+    if os.exists(nome + ".rc") {
+        rc = int(os.readFile(nome + ".rc").strip())
+    }
+    str saida = ""
+    str erro = ""
+    if os.exists(nome + ".saida") {
+        saida = os.readFile(nome + ".saida")
+    }
+    if os.exists(nome + ".erro") {
+        erro = os.readFile(nome + ".erro")
+    }
+    r["saida"] = saida
+    r["erro"] = erro
+    r["rc"] = rc
+    r["estourou"] = estourou
+}
+
+
+# Roda `codigo` numa pasta nova e vazia, com `entrada` no stdin e o JIT
+# ligado ou não (o resultado em `r`, como no `executa`). Com `preparo` (o
+# contexto da página, quando o bloco roda sem ele), o preparo roda antes, na
+# mesma pasta: é o que cria o que a página pressupõe (um arquivo, uma tabela).
+Null funct roda(str trab, list prefixo, str preparo, str codigo, str entrada, bool jit, flo prazo,
+                dict r) {
+    str pasta = trab + "/ex"
+    if os.isdir(pasta) {
+        os.rmdir(pasta, force=True)
+    }
+    os.mkdir(pasta)
+    os.writeFile(pasta + "/exemplo.pr", codigo + "\n")
+    str stdin = ""
+    if entrada != "" {
+        stdin = entrada + "\n"
+    }
+    os.writeFile(pasta + "/entrada.txt", stdin)
+    str volta = os.cwd()
+    os.chdir(pasta)
+    if preparo != "" {
+        os.writeFile("preparo.pr", preparo + "\n")
+        dict p = {}
+        executa(pasta, prefixo, "preparo", "preparo.pr", jit, prazo, p)
+    }
+    executa(pasta, prefixo, "exemplo", "exemplo.pr", jit, prazo, r)
+    os.chdir(volta)
+}
+
+
+# O bloco passa no --check sozinho, sem o contexto da página? (em `r["ok"]`)
+Null funct checa_sozinho(str trab, str codigo, dict r) {
+    os.writeFile(trab + "/sozinho.pr", codigo + "\n")
+    str s = os.run([sys.executable, "--check", trab + "/sozinho.pr"], capture=True)
+    r["ok"] = s.strip().startswith("{\"ok\":true")
+}
+
+
+# O texto sem a quebra de linha do fim (a cerca não guarda a última)
+str funct sem_fim(str t) {
+    while t.endswith("\n") {
+        t = t[0:t.len() - 1]
+    }
+    return t
+}
+
+
+# O erro que o bloco anuncia de propósito e o motor deu: o tipo do erro com
+# que o programa parou (a linha `Tipo: mensagem` do stderr, um nome da
+# linguagem ou o do próprio exemplo, como o `raise ValorInvalido(...)`)
+# aparece no código.
+bool funct erro_anunciado(str codigo, str erro, list nomes) {
+    for each nome in nomes {
+        if nome in codigo and nome in erro {
+            return True
+        }
+    }
+    for each l in erro.splitlines() {
+        int p = l.find(": ")
+        if p > 0 {
+            str tipo = l[0:p]
+            if tipo[0] >= "A" and tipo[0] <= "Z" and tipo.replace("_", "").isalnum() and tipo in codigo {
+                return True
+            }
+        }
+    }
+    return False
+}
+
+
+# O código de saída que o rótulo do bloco de saída promete: ```saida rc=3 (o
+# exemplo do `sys.exit(3)`). SEM_RC quando o rótulo não diz.
+int SEM_RC = -999
+
+int funct rc_do_rotulo(str rotulo) {
+    for each parte in rotulo.split(" ") {
+        if parte.startswith("rc=") and parte[3:parte.len()].isdigit() {
+            return int(parte[3:parte.len()])
+        }
+    }
+    return SEM_RC
+}
+
+
+# O que uma rodada deixou de cumprir ("" quando cumpriu tudo)
+str funct falha_da_rodada(dict r, bool tem_saida, str saida, str erro, int rc_esperado, str codigo,
+                          list nomes, flo prazo) {
+    if r["estourou"] {
+        return "não terminou em " + str(prazo) + " s"
+    }
+    if tem_saida and sem_fim(r["saida"]) != sem_fim(saida) {
+        return "a saída"
+    }
+    if erro != "" and not (sem_fim(erro) in r["erro"]) {
+        return "o stderr"
+    }
+    if rc_esperado != SEM_RC {
+        if r["rc"] != rc_esperado {
+            return "o código de saída (" + str(r["rc"]) + "; a página diz " + str(rc_esperado) + ")"
+        }
+        return ""
+    }
+    if erro != "" {
+        return ""
+    }
+    if r["rc"] != 0 and not erro_anunciado(codigo, r["erro"], nomes) {
+        return "o código de saída (" + str(r["rc"]) + ")"
+    }
+    return ""
+}
+
+
+# O bloco parou só porque importa um módulo que não existe aqui (`import
+# mymod`, `from '../pacote/modulo.pr' import x`): o assunto dele é a forma do
+# import. Vai pra uma lista, como no `audita_exemplos_doc.pr`.
+bool funct so_modulo_de_exemplo(dict r) {
+    if r["rc"] == 0 or r["estourou"] {
+        return False
+    }
+    for each l in r["erro"].splitlines() {
+        if l.startswith("ImportError: No module named") {
+            return True
+        }
+    }
+    return False
+}
+
+
+# Os argumentos: páginas ou pastas, e o --prazo
+list alvos = []
+flo prazo = 10.0
+int k = 1
+while k < sys.argv.len() {
+    str a = sys.argv[k]
+    if a == "--prazo" and k + 1 < sys.argv.len() {
+        prazo = flo(sys.argv[k + 1])
+        k = k + 2
+        continue
+    }
+    addEnd(alvos, a)
+    k = k + 1
+}
+if alvos.len() == 0 {
+    addEnd(alvos, "docs")
+}
+list paginas = []
+for each alvo in alvos {
+    for each md in lista_md(alvo) {
+        addEnd(paginas, md)
+    }
+}
+
+# os nomes de erro da linguagem, do motor
+list nomes_de_erro = ["SyntaxError"]
+for each e in json.parse(os.run([sys.executable, "--metadata"], capture=True))["excecoes"] {
+    addEnd(nomes_de_erro, e["nome"])
+}
+
+str trab = os.cwd() + "/" + TMP
+os.mkdir(trab)
+dict iso = {}
+isolador(trab, iso)
+
+int rodados = 0
+int com_saida = 0
+int mudam_sozinhos = 0
+list sem_rodar = []
+list fragmentos = []
+list exemplos_de_modulo = []
+list achados = []
+for each md in paginas {
+    list bs = blocos_de(os.readFile(md))
+    str contexto = ""
+    int i = 0
+    while i < bs.len() {
+        dict b = bs[i]
+        i = i + 1
+        if b["rotulo"] == "ps contexto" {
+            contexto = contexto + b["texto"] + "\n"
+            continue
+        }
+        str rot = b["rotulo"]
+        bool marca_sem_rodar = rot.startswith("ps sem-rodar")
+        if rot != "ps" and rot != "jinga" and not marca_sem_rodar {
+            continue
+        }
+        # os blocos que são dele: entrada, saida e erro, até o próximo ps
+        str entrada = ""
+        str saida = ""
+        str erro = ""
+        bool tem_saida = False
+        int rc_esperado = SEM_RC
+        while i < bs.len() and (bs[i]["rotulo"] == "entrada" or bs[i]["rotulo"].startswith("saida")
+                                or bs[i]["rotulo"].startswith("erro")) {
+            str r_rot = bs[i]["rotulo"]
+            if r_rot == "entrada" {
+                entrada = bs[i]["texto"]
+            }
+            elif r_rot.startswith("saida") {
+                saida = bs[i]["texto"]
+                tem_saida = True
+            }
+            else {
+                erro = bs[i]["texto"]
+            }
+            if rc_do_rotulo(r_rot) != SEM_RC {
+                rc_esperado = rc_do_rotulo(r_rot)
+            }
+            i = i + 1
+        }
+        str onde = md + ":" + str(b["linha"])
+        if marca_sem_rodar {
+            addEnd(sem_rodar, onde + "  " + rot[3:rot.len()])
+            continue
+        }
+        if "..." in b["texto"] {
+            addEnd(fragmentos, onde)
+            continue
+        }
+        rodados = rodados + 1
+        if tem_saida {
+            com_saida = com_saida + 1
+        }
+        str programa = b["texto"]
+        str preparo = ""
+        if contexto != "" {
+            dict sozinho = {}
+            checa_sozinho(trab, b["texto"], sozinho)
+            if sozinho["ok"] {
+                preparo = contexto
+            }
+            else {
+                programa = contexto + b["texto"]
+            }
+        }
+        dict com_jit = {}
+        dict sem_jit = {}
+        roda(trab, iso["prefixo"], preparo, programa, entrada, True, prazo, com_jit)
+        roda(trab, iso["prefixo"], preparo, programa, entrada, False, prazo, sem_jit)
+        str f1 = falha_da_rodada(com_jit, tem_saida, saida, erro, rc_esperado, b["texto"],
+                                 nomes_de_erro, prazo)
+        str f2 = falha_da_rodada(sem_jit, tem_saida, saida, erro, rc_esperado, b["texto"],
+                                 nomes_de_erro, prazo)
+        dict achado = {"pagina": md, "codigo": b["texto"], "onde": onde, "linha": b["linha"]}
+        if f1 != "" and f2 != "" and so_modulo_de_exemplo(com_jit) and so_modulo_de_exemplo(sem_jit) {
+            addEnd(exemplos_de_modulo, onde)
+            continue
+        }
+        if f1 != "" or f2 != "" {
+            str o_que = f1
+            dict r_ruim = com_jit
+            str qual = "com JIT"
+            if f1 == "" {
+                o_que = f2
+                r_ruim = sem_jit
+                qual = "sem JIT"
+            }
+            elif f2 != "" {
+                qual = "com e sem JIT"
+            }
+            achado["o_que"] = o_que + " (" + qual + ")"
+            achado["esperada"] = sem_fim(saida)
+            if erro != "" {
+                achado["esperada"] = sem_fim(erro)
+            }
+            elif not tem_saida {
+                achado["esperada"] = "(sair com 0)"
+            }
+            achado["obtida"] = sem_fim(r_ruim["saida"] + r_ruim["erro"])
+            addEnd(achados, achado)
+            continue
+        }
+        if not tem_saida and com_jit["saida"] != sem_jit["saida"] {
+            dict de_novo = {}
+            roda(trab, iso["prefixo"], preparo, programa, entrada, True, prazo, de_novo)
+            if de_novo["saida"] != com_jit["saida"] {
+                mudam_sozinhos = mudam_sozinhos + 1
+                continue
+            }
+            achado["o_que"] = "a saída muda sem o JIT"
+            achado["esperada"] = sem_fim(com_jit["saida"])
+            achado["obtida"] = sem_fim(sem_jit["saida"])
+            addEnd(achados, achado)
+        }
+    }
+}
+os.rmdir(trab, force=True)
+
+dict catraca = {}
+aplica("roda", achados, paginas, catraca)
+achados = catraca["novos"]
+
+post("isolamento das rodadas:", iso["nome"])
+post("blocos ```ps rodados (com JIT e sem):", rodados)
+post("  dos quais com a saída conferida letra por letra:", com_saida)
+post("  dos quais imprimem coisa que muda sozinha (hora, sorteio): a saída não se compara:",
+     mudam_sozinhos)
+post("blocos que não rodam: fragmento com '...' (confira à mão):", fragmentos.len())
+for each f in fragmentos {
+    post("  " + f)
+}
+post("blocos que param só por importar módulo de exemplo (o import não resolve aqui):",
+     exemplos_de_modulo.len())
+for each e in exemplos_de_modulo {
+    post("  " + e)
+}
+post("blocos que não rodam: ```ps sem-rodar, com o motivo:", sem_rodar.len())
+for each s in sem_rodar {
+    post("  " + s)
+}
+relata(catraca)
+if achados.len() == 0 and not catraca["reprova"] {
+    post("  todos fazem o que a página promete (ou são itens abertos)")
+    sys.exit(0)
+}
+if achados.len() == 0 {
+    sys.exit(1)
+}
+post("")
+post("EXEMPLOS QUE NÃO FAZEM O QUE A PÁGINA PROMETE:", achados.len())
+for each a in achados {
+    post("  " + a["onde"] + ": " + a["o_que"])
+    post("    a página diz:")
+    for each l in a["esperada"].splitlines() {
+        post("      | " + l)
+    }
+    post("    o motor dá:")
+    for each l in a["obtida"].splitlines() {
+        post("      | " + l)
+    }
+    post("    catraca: " + linha_nova("roda", a["pagina"], a["codigo"], a["linha"]))
+}
+sys.exit(1)

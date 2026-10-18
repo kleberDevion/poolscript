@@ -6,8 +6,15 @@ você marcou como variável na rota (`/user/<id>` ou `/user:id`; as duas casam
 `/a/<id>/b` casa `/a/1/b`, e `/users/<id>` **não** casa `/users/7/photos` —
 essa URL é da rota `/users/<id>/photos`, se existir.
 
-```
+```assinatura
 request.path_param(key: str) -> valor | Null
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker, cors, jsonify
+Jinker app = Jinker(__name__)
 ```
 
 ---
@@ -16,7 +23,7 @@ request.path_param(key: str) -> valor | Null
 
 Rota com parâmetro `id`:
 
-```
+```ps
 @app.route("/user/<id>", methods=cors.options(["GET"]))
 funct perfil() {
     id = request.path_param("id")    # acessando /user/42 → "42"
@@ -33,7 +40,7 @@ funct perfil() {
 
 São fontes diferentes:
 
-```
+```ps
 # GET /user/42?fmt=json
 id  = request.path_param("id")   # "42"  (do caminho)
 fmt = request.get("fmt")         # "json" (da query string)
@@ -43,7 +50,7 @@ fmt = request.get("fmt")         # "json" (da query string)
 
 ## Vários parâmetros
 
-```
+```ps
 @app.route("/loja/<loja>/item/<item>", methods=cors.options(["GET"]))
 funct item() {
     loja = request.path_param("loja")

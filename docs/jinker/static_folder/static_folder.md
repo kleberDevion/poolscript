@@ -6,7 +6,13 @@ qualquer URL que **não** bata numa rota tenta servir o arquivo correspondente
 dessa pasta — e, se não achar, cai no `index.html` dela (o roteamento do SPA
 assume dali).
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker
 ```
+
+```ps
 app = Jinker(__name__, static_folder="frontend/dist")
 ```
 
@@ -154,7 +160,7 @@ uso legítimo e o servidor não tem como saber qual `.pr` é o seu.
 
 ## Exemplo: API + front no mesmo servidor
 
-```
+```ps
 from jinker import Jinker, cors, jsonify
 
 app = Jinker(__name__, static_folder="frontend/dist")
@@ -175,7 +181,7 @@ if __name__ == "main" {
 
 Estrutura:
 
-```
+```texto
 meu_projeto/
   app.pr
   frontend/
@@ -193,7 +199,7 @@ Por padrão (`static_url="/"`) o `static_folder` é servido a partir da **raiz**
 é o caso acima e você não precisa mexer em nada. Se quiser **montar os arquivos
 sob um prefixo** (pra não colidir com as rotas de API), passe `static_url`:
 
-```
+```ps
 app = Jinker(__name__, static_folder="dist", static_url="/app")
 
 # dist/app.js  →  GET /app/app.js

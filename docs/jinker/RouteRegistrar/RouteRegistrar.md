@@ -18,7 +18,7 @@ Os exemplos desta página pressupõem:
 ```ps contexto
 import jinker
 from jinker import jsonify
-app = jinker.Jinker(__name__)
+Jinker app = jinker.Jinker(__name__)
 ```
 
 ```ps
@@ -37,7 +37,7 @@ como `RouteRegistrar`, sem o underline.
 
 `@app.get("/x")` em cima de uma `funct` é, em três passos:
 
-```
+```texto
 1. avalia  app.get("/x")     ->  o registrador
 2. define  funct de baixo
 3. chama   registrador.register(a_funct)

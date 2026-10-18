@@ -3,7 +3,7 @@
 Gravar (`JinkerResponse.cookie`) e ler (`request.cookie`) ficam nesta página
 porque são as duas metades da mesma operação.
 
-```
+```assinatura
 JinkerResponse.cookie(nome, valor, path="/", max_age=Null,
                       httponly=True, secure=False,
                       samesite="Lax", domain=Null) -> JinkerResponse
@@ -22,11 +22,11 @@ dono de uma sessão):
 import jinker
 from jinker import request
 
-app = jinker.Jinker("auth")
-token = "t-1"
-funct gera_token(usuario) { return "t-" + str(usuario) }
-funct quem_e(sid) { return "ana" }
-funct valida_senha(usuario, senha) { return 1 }
+Jinker app = jinker.Jinker("auth")
+str token = "t-1"
+str funct gera_token(str usuario) { return "t-" + str(usuario) }
+str funct quem_e(str sid) { return "ana" }
+funct valida_senha(str usuario, str senha) { return 1 }
 ```
 
 ```ps
@@ -47,7 +47,7 @@ funct entrar()
 
 Sai na resposta:
 
-```
+```texto
 Set-Cookie: sid=<token>; Path=/; Max-Age=3600; SameSite=Lax; HttpOnly
 ```
 
@@ -227,7 +227,7 @@ O que sai em cada passo:
 
 O token tem três partes em base64 URL-safe sem `=`, separadas por ponto:
 
-```
+```texto
 header . payload . assinatura
 {"alg":"HS256","typ":"JWT"} . {"uid":7,"exp":1788720489} . HMAC-SHA256(segredo, "header.payload")
 ```

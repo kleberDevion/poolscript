@@ -3,7 +3,7 @@
 Lib pra converter entre uma **string JSON** e os **dados** da Jinga (dicts,
 listas). Você usa quando recebe/manda JSON como texto e precisa ir e voltar.
 
-```
+```ps
 import json
 # (JSON — maiúsculo — é o mesmo módulo, apelido)
 ```
@@ -17,7 +17,7 @@ import json
 
 ## As duas direções
 
-```
+```ps
 import json
 
 # texto → dados
@@ -40,7 +40,7 @@ Muitas libs já entregam/aceitam dicts direto (o jinker converte sozinho, o
 texto puro** — lendo de um arquivo `.txt`, de uma variável de ambiente, ou
 montando manualmente pra salvar.
 
-```
+```ps
 import json
 import os
 

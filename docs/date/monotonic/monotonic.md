@@ -4,18 +4,26 @@ Devolve o relógio **monotônico** em segundos, com fração — um **flo**. Ser
 pra **medir duração**: ele nunca anda pra trás, mesmo que o relógio do sistema
 seja acertado no meio da medição.
 
-```
+```assinatura
 date.monotonic() -> flo
 ```
 
 O valor em si não significa nada (não é data, não é hora): o que vale é a
 **diferença** entre duas leituras.
 
+Os exemplos desta página pressupõem (o `inicio` é a primeira leitura, como no
+exemplo de uso):
+
+```ps contexto
+import date
+flo inicio = date.monotonic()
+```
+
 ---
 
 ## Uso
 
-```
+```ps
 import date
 
 inicio = date.monotonic()
@@ -27,7 +35,7 @@ post("levou", round(levou, 3), "s")     # levou 0.35 s
 
 Em milissegundos, pra mostrar como um build mostra:
 
-```
+```ps
 ms = int((date.monotonic() - inicio) * 1000)
 post("terminou em " + str(ms) + "ms")
 ```

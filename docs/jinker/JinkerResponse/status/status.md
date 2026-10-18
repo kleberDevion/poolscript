@@ -3,7 +3,7 @@
 Troca **só o código HTTP** da resposta, sem mexer no corpo nem no
 `Content-Type`. Devolve o próprio `JinkerResponse` (encadeável).
 
-```
+```assinatura
 status(code: int) -> JinkerResponse
 ```
 
@@ -15,6 +15,12 @@ Erros: `code` que não é inteiro é `TypeError: 'str' object cannot be
 interpreted as an integer`; fora de 100 a 999 é `ValueError: status(): codigo
 HTTP fora da faixa 100..999: 42` (o código do HTTP tem três dígitos).
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import jsonify
+```
+
 ---
 
 ## Pra que serve
@@ -22,12 +28,14 @@ HTTP fora da faixa 100..999: 42` (o código do HTTP tem três dígitos).
 Às vezes você monta o corpo com `jsonify(...)` (que assume `200`) mas quer um
 código diferente. `.status(...)` ajusta sem precisar da tupla `(resp, codigo)`:
 
-```
-# com tupla:
-return jsonify({"criado": True}), 201
+```ps
+funct cria() {
+    # com tupla:
+    return jsonify({"criado": True}), 201
 
-# com .status() — dispensa a tupla:
-return jsonify({"criado": True}).status(201)
+    # com .status() — dispensa a tupla:
+    return jsonify({"criado": True}).status(201)
+}
 ```
 
 As duas produzem `201 Created`. Escolha a que ficar mais legível — quando já
@@ -62,10 +70,12 @@ Código sem frase própria recebe a da classe na linha de status
 
 ## Encadeando
 
-```
-return jsonify({"erro": "sem permissão"})
-    .status(403)
-    .header("X-Reason", "token-expirado")
+```ps
+funct proibido() {
+    return jsonify({"erro": "sem permissão"})
+        .status(403)
+        .header("X-Reason", "token-expirado")
+}
 ```
 
 ---

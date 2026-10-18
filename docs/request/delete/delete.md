@@ -4,7 +4,7 @@ Faz uma requisição HTTP **DELETE** — usada pra **remover** um recurso. Mesma
 assinatura de [`request.post`](../post/post.md). Devolve um
 [`Response`](../Response/Response.md).
 
-```
+```assinatura
 request.delete(url, headers=Null, body=Null, timeout=30, stream=False, max_size=Null,
                fields=Null, file=Null, save=Null) -> Response
 ```
@@ -13,7 +13,7 @@ request.delete(url, headers=Null, body=Null, timeout=30, stream=False, max_size=
 
 ## Uso
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 import request
 
 resp = request.delete("https://api.x.com/users/10")

@@ -3,7 +3,7 @@
 Busca e-mails na pasta selecionada. Devolve uma **lista de dicts**, um por
 e-mail encontrado.
 
-```
+```assinatura
 r.search(criterion_type="ALL", term=Null, limit=Null, include_body=False) -> list
 ```
 
@@ -18,6 +18,13 @@ r.search(criterion_type="ALL", term=Null, limit=Null, include_body=False) -> lis
 > mensagens, `search("ALL")` sem limite faz milhares de idas e vindas e
 > demora minutos. `search("ALL", limit=20)` traz os 20 mais recentes e pronto.
 | `include_body` | `False` | `True` = já traz o corpo de cada e-mail |
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import mail
+MailReader r = mail.MailReader()
+```
 
 ---
 
@@ -37,7 +44,7 @@ r.search(criterion_type="ALL", term=Null, limit=Null, include_body=False) -> lis
 
 Cada item é um dict:
 
-```
+```json
 {"id": "42", "from": "ana@x.com", "subject": "Olá", "date": "Mon, 25 Jul..."}
 ```
 
@@ -47,7 +54,7 @@ Com `include_body=True`, ganha também a chave `"body"` com o texto do e-mail.
 
 ## Exemplos
 
-```
+```ps sem-rodar: precisa do servidor de e-mail conectado (o .conn() é de outro bloco)
 # os 10 mais recentes
 emails = r.search("ALL", limit=10)
 
@@ -72,7 +79,7 @@ for each e in de_ana {
 Se você não passou `include_body`, pegue o corpo só dos e-mails que interessam
 com [`.body(id)`](../body/body.md) — evita baixar o conteúdo de todos:
 
-```
+```ps sem-rodar: precisa do servidor de e-mail conectado (o .conn() é de outro bloco)
 for each e in r.search("ALL", limit=20) {
     if (e["subject"] == "importante") {
         texto = r.body(e["id"])

@@ -4,7 +4,7 @@ Lib pra criar e verificar **tokens JWT** — o crachá que o usuário carrega de
 de fazer login. Em vez de checar usuário/senha a cada requisição, você emite um
 token no login e o cliente o apresenta nas próximas chamadas.
 
-```
+```ps
 import jwt
 ```
 
@@ -31,7 +31,7 @@ O segredo (`secret`) é o que impede forjar um token. Guarde-o num
 
 ## Fluxo completo
 
-```
+```ps
 import jwt
 import date
 

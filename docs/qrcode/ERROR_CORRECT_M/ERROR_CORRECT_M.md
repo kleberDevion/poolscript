@@ -3,7 +3,13 @@
 Constante do nível **M** de correção de erro do QR Code. Um degrau acima do
 padrão: dobra a tolerância a dano e custa ~21% da capacidade de dados.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import qrcode
 ```
+
+```ps
 qrcode.ERROR_CORRECT_M      # constante, lida sem ()
 ```
 
@@ -23,7 +29,7 @@ Nenhum — `ERROR_CORRECT_M` é **constante**, não função. Lê-se sem `()`;
 Não é `int` nem um objeto de nível. O acesso já entrega o valor final, então
 estas duas linhas geram exatamente o mesmo QR:
 
-```
+```ps
 import qrcode
 
 qrcode.make("oi", qrcode.ERROR_CORRECT_M)
@@ -62,7 +68,7 @@ meio-termo: aguenta sujeira leve sem sacrificar muito payload.
 
 Nos três pontos que aceitam `error_correction`:
 
-```
+```ps
 import qrcode
 
 qrcode.make("https://exemplo.com", error_correction=qrcode.ERROR_CORRECT_M)

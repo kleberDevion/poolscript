@@ -2,7 +2,9 @@
 
 Motor de expressões regulares do próprio `jinga` (`vm/ps_regex.c`).
 
-```
+Os exemplos desta página pressupõem:
+
+```ps contexto
 from regex import match, search, findall, sub, split, escape
 ```
 
@@ -12,7 +14,7 @@ from regex import match, search, findall, sub, split, escape
 
 Casa a string **inteira** com o padrão. Retorna `bool`.
 
-```
+```ps
 match("\d+", "abc123")   # False — tem letras
 match("\d+", "123")      # True
 ```
@@ -23,7 +25,7 @@ match("\d+", "123")      # True
 
 Verifica se o padrão existe em qualquer posição da string. Retorna `bool`.
 
-```
+```ps
 search("\d+", "abc123")  # True
 ```
 
@@ -33,7 +35,7 @@ search("\d+", "abc123")  # True
 
 Retorna lista com todas as ocorrências do padrão.
 
-```
+```ps
 findall("\d+", "a1b2c3")   # ["1", "2", "3"]
 ```
 
@@ -44,7 +46,7 @@ findall("\d+", "a1b2c3")   # ["1", "2", "3"]
 Substitui ocorrências do padrão. Retorna string (encadeável, tem os
 métodos estendidos de string da Jinga).
 
-```
+```ps
 sub("\s+", "_", "hello world")   # "hello_world"
 ```
 
@@ -54,7 +56,7 @@ sub("\s+", "_", "hello world")   # "hello_world"
 
 Divide a string pelo padrão.
 
-```
+```ps
 split("\s+", "a b  c")   # ["a", "b", "c"]
 ```
 
@@ -64,7 +66,7 @@ split("\s+", "a b  c")   # ["a", "b", "c"]
 
 Escapa caracteres especiais de regex.
 
-```
+```ps
 escape("a.b*c")   # "a\.b\*c"
 ```
 
@@ -72,7 +74,7 @@ escape("a.b*c")   # "a\.b\*c"
 
 ## Exemplo — validação simples
 
-```
+```ps
 from regex import match
 
 funct email_valido(email) {

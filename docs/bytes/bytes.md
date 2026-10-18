@@ -5,7 +5,7 @@ hex/base64, empacotar/desempacotar inteiros, fatiar, concatenar e fazer XOR —
 sem depender de nenhuma lib externa. É o que dá autonomia pra construir suas
 próprias ferramentas binárias.
 
-```
+```ps
 import bytes
 ```
 
@@ -73,7 +73,7 @@ propósito: `bytes.hex(b)` é função da lib e `b.hex()` é método do valor.
 
 `byte` responde aos mesmos operadores de sequência que `str` e `list`:
 
-```
+```ps
 import bytes
 
 b = "Hello".encode()
@@ -102,7 +102,7 @@ Duas coisas que valem lembrar:
 
 ## Exemplos rápidos
 
-```
+```ps
 import bytes
 
 # criar
@@ -128,7 +128,7 @@ post(bytes.concat([bytes.new("a"), bytes.new("b")]))  # b'ab'
 
 Útil pra ler/escrever formatos binários (protocolos, cabeçalhos de arquivo):
 
-```
+```ps
 import bytes
 
 # inteiro → 4 bytes, big-endian (o padrão)
@@ -148,7 +148,7 @@ post(bytes.toint(le, "little"))        # 258
 é reversível, aplicar a mesma chave duas vezes volta ao original — dá pra fazer
 uma cifra simples:
 
-```
+```ps
 import bytes
 
 segredo = bytes.new("mensagem secreta")

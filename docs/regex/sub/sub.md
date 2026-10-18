@@ -4,7 +4,7 @@ Devolve o texto que se obtém trocando as ocorrências mais à esquerda, sem
 sobreposição, de *pattern* em *string* pelo texto de troca *repl*. Se o padrão
 não é achado, *string* volta sem mudança.
 
-```
+```assinatura
 regex.sub(pattern: str, repl: str, string: str, count=0) -> str
 ```
 

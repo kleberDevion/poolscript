@@ -4,15 +4,21 @@ Cria uma sequência de bytes a partir de uma **lista de inteiros** (0-255), de u
 **texto** (codificado em utf-8), de um **tamanho** (N bytes zerados) ou de uma
 **cópia** de outros bytes.
 
-```
+```assinatura
 bytes.new(x: list | str | int | bytes = 0) -> bytes
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import bytes
 ```
 
 ---
 
 ## Uso
 
-```
+```ps
 import bytes
 
 bytes.new([72, 105])        # b'Hi'   — cada inteiro vira um byte
@@ -29,7 +35,7 @@ bytes.new(bytes.new("ok"))  # b'ok'   — cópia
 - **TypeError** — tipo que não dá pra virar bytes (ex: `flo`), ou `bool` como tamanho.
 - **ValueError** — lista com item fora de 0-255, ou tamanho negativo.
 
-```
+```ps
 bytes.new([300])   # ValueError: bytes must be in range(0, 256)
 bytes.new(3.5)     # TypeError: cannot convert 'flo' object to bytes
 ```

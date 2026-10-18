@@ -3,7 +3,7 @@
 Lê um arquivo e devolve o conteúdo já no formato certo, **detectado pela
 extensão**.
 
-```
+```assinatura
 manpu.read(filepath: str) -> list | dict | str
 ```
 
@@ -24,7 +24,7 @@ manpu.read(filepath: str) -> list | dict | str
 
 ## Uso
 
-```
+```ps
 import manpu as mp
 
 # CSV/XLSX → lista de dicts, uma linha por dict

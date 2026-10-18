@@ -3,7 +3,7 @@
 Diz se o caminho existe **e é uma pasta** (não um arquivo). Devolve
 `True`/`False`.
 
-```
+```assinatura
 os.isdir(path: str) -> bool
 ```
 
@@ -11,7 +11,7 @@ os.isdir(path: str) -> bool
 
 ## Uso
 
-```
+```ps
 import os
 
 if (os.isdir("uploads")) {

@@ -2,15 +2,21 @@
 
 Fecha a conexão WebSocket. Depois disso não dá pra enviar nem receber.
 
-```
+```assinatura
 conn.close() -> Null
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import request
 ```
 
 ---
 
 ## Uso
 
-```
+```ps
 import request
 
 conn = request.ws_connect("ws://localhost:8081/chat/geral")
@@ -25,7 +31,7 @@ conn.close()          # encerra quando terminar
 
 ## Exemplo: loop de chat até "sair"
 
-```
+```ps sem-rodar: conecta num servidor WebSocket de fora
 conn = request.ws_connect("ws://localhost:8081/chat/geral")
 conn.on_message(funct(msg) { post(f"\n{msg}") })
 

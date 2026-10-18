@@ -3,15 +3,23 @@
 Confirma (salva no disco) as alterações feitas na conexão — INSERT, UPDATE,
 DELETE. **Sem `commit`, as mudanças se perdem** ao fechar.
 
-```
+```assinatura
 conn.commit() -> Null
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import psodbc
+DbConnection conn = psodbc.connect(driver="sqlite", base="loja.db")
+DbCursor cursor = conn.cursor()
 ```
 
 ---
 
 ## Uso
 
-```
+```ps
 cursor.execute("INSERT INTO produtos (nome, preco) VALUES (?, ?)", ("café", 15))
 conn.commit()          # agora sim a inserção está salva
 ```

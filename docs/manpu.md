@@ -1,7 +1,11 @@
 # manpu — Manipulação de Arquivos
 
-```
+Os exemplos desta página pressupõem:
+
+```ps contexto
 import manpu as mp
+byte lista = mp.load("compras.txt")
+ManpuFile arq = mp.open(target="compras.xlsx")
 ```
 
 Suporta: CSV, XLSX, XML, HTML, JSON, texto puro e arquivos de código.
@@ -12,7 +16,7 @@ Suporta: CSV, XLSX, XML, HTML, JSON, texto puro e arquivos de código.
 
 Lê um arquivo e retorna o conteúdo:
 
-```
+```ps
 ler = mp.read("dados.csv")
 post(ler)
 # [{"nome": "ana", "email": "ana@email.com"}, {"nome": "leo", ...}]
@@ -35,7 +39,7 @@ post(ler)
 
 Carrega o arquivo em bytes — útil para enviar por email:
 
-```
+```ps
 import manpu as mp
 import mail
 
@@ -51,7 +55,7 @@ m.body(ld)
 
 Escreve conteúdo em um arquivo:
 
-```
+```ps
 nm = mp.write(
     content="Kleber",
     column=0,
@@ -83,7 +87,7 @@ Para `.txt` e outros sem estrutura, adiciona ao final do arquivo.
 
 Remove conteúdo de um arquivo:
 
-```
+```ps
 # Remove em CSV por coluna e célula
 x = mp.remove(
     column=2,
@@ -117,7 +121,7 @@ x = mp.remove(
 
 Abre um arquivo e mantém aberto durante as operações. Salva automaticamente ao sair do bloco:
 
-```
+```ps
 import manpu as mp
 
 lista = mp.load("compras.txt")
@@ -131,7 +135,7 @@ using mp.open(target="compras.xlsx") as arq {
 `using` aceita bloco com chaves `{ }`, como todo bloco da linguagem — não é
 diferente de `if`/`while`/`funct` nesse sentido:
 
-```
+```ps
 using mp.open(target="compras.xlsx") as arq {
     arq.write(column=0, cell=full, content=lista)
 }
@@ -145,7 +149,7 @@ using mp.open(target="compras.xlsx") as arq {
 | `target` | Caminho do arquivo |
 | `encoding` | Charset pra ler/escrever CSV e texto puro (default `"utf-8"`; ignorado em xlsx/xls). Use `"latin-1"`, `"cp1252"` etc. pra arquivos legados que não são utf-8 |
 
-```
+```ps
 using mp.open(target="legado.csv", encoding="latin-1") as arq {
     dados = arq.read()
     post(dados)
@@ -154,7 +158,7 @@ using mp.open(target="legado.csv", encoding="latin-1") as arq {
 
 ### arq.write()
 
-```
+```ps
 arq.write(
     content=lista,
     column=0,
@@ -176,7 +180,7 @@ arq.write(
 
 Quando `cell=full`, o conteúdo é dividido por quebra de linha e cada parte vai numa célula descendo na coluna:
 
-```
+```ps
 # compras.txt:
 # Arroz
 # Feijão
@@ -196,7 +200,7 @@ using mp.open(target="compras.csv") as arq {
 
 ### arq.read()
 
-```
+```ps
 using mp.open(target="dados.csv") as arq {
     dados = arq.read()
     post(dados)
@@ -209,7 +213,7 @@ using mp.open(target="dados.csv") as arq {
 
 Resolve o caminho absoluto de um arquivo:
 
-```
+```ps
 caminho = mp.src("meu_arquivo.xlsx")
 post(caminho)
 # /caminho/completo/para/meu_arquivo.xlsx
@@ -219,7 +223,7 @@ post(caminho)
 
 ## Exemplo completo
 
-```
+```ps
 import manpu as mp
 import mail
 import os

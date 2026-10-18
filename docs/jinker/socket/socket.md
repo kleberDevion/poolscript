@@ -4,7 +4,18 @@ Registra um handler de **WebSocket** — conexão persistente de mão-dupla, boa
 pra chat, notificações, dados ao vivo. A `funct` logo abaixo roda
 **a cada mensagem recebida** naquela conexão.
 
+Os exemplos desta página pressupõem (`path` é o caminho do socket; `msg` e
+`sala` são o que chega num handler, usados fora dele nos trechos curtos):
+
+```ps contexto
+from jinker import Jinker
+Jinker app = Jinker(__name__)
+str path = "/chat/<sala>"
+str sala = "geral"
+dict msg = {"author": "ana", "body": "oi"}
 ```
+
+```ps
 @app.socket(path, channel=True)
 funct nome() {
     # request disponível; roda a cada mensagem que chega
@@ -26,7 +37,7 @@ atendida, a seguinte espera a vez — a ordem de quem mandou é preservada.
 Se o caminho tem parâmetro (`/chat/<sala>`), cada conexão entra automaticamente
 na **sala** = valor do parâmetro. `/chat/geral` → sala `"geral"`.
 
-```
+```ps
 @app.socket("/chat/<sala>", channel=True)
 funct mensagem() {
     sala = request.path_param("sala")     # "geral"
@@ -58,7 +69,7 @@ backend) passam; com `cors(app, ..., local=False)` só a lista vale, e sem
 
 Dentro do handler, `app.socket()` (sem argumentos) devolve um **emissor**:
 
-```
+```ps
 send = app.socket()
 send.emit(payload=msg, room_id=sala)                    # manda pra sala
 send.emit(payload=msg, room_id=sala, exclude_self=False) # inclui o remetente
@@ -78,7 +89,7 @@ Também dá pra chamar direto: `app.socket.emit(payload=msg, room_id=sala)`.
 O que o handler **devolve** volta pro remetente daquela mensagem — e só pra ele.
 String sai crua; dict/lista viram JSON.
 
-```
+```ps
 @app.socket("/eco")
 funct eco() {
     return "recebi: " + request.text()      # volta só pra quem mandou
@@ -108,7 +119,7 @@ reage a ela.
 Do outro lado, conecta com `request.ws_connect` (lib `request`) e registra
 `on_message` pra ver o que chega:
 
-```
+```ps
 import request
 
 conn = request.ws_connect("ws://localhost:8081/chat/geral")

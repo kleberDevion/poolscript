@@ -8,7 +8,7 @@ app jinker:
 - **`index.html`** — Swagger UI pra abrir no **browser** e explorar a API;
 - **`client.ts`** — um cliente da API (uma função por rota), se você chamar `bundle()`.
 
-```
+```ps
 import swagger
 ```
 

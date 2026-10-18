@@ -2,15 +2,23 @@
 
 Insere **um** documento (dict) na coleção.
 
-```
+```assinatura
 col.insert(document: dict) -> Null
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import psodbc
+MongoConnection conn = psodbc.connect(driver="mongo", host="localhost", database="loja")
+MongoCollection col = conn.collection("produtos")
 ```
 
 ---
 
 ## Uso
 
-```
+```ps sem-rodar: precisa do servidor MongoDB
 col.insert({"nome": "café", "preco": 15, "ativo": True})
 ```
 

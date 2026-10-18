@@ -6,7 +6,7 @@ algo existe, o tamanho (`Content-Length`) ou o tipo (`Content-Type`) **sem
 baixar o conteúdo**. Devolve um [`Response`](../Response/Response.md) com
 `.content` vazio.
 
-```
+```assinatura
 request.head(url, headers=Null, timeout=30) -> Response
 ```
 
@@ -22,7 +22,7 @@ HEAD não tem corpo de requisição — por isso não existe `body=` aqui.
 
 ## Uso
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 import request
 
 r = request.head("https://exemplo.com/arquivo.zip")

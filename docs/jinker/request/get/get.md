@@ -4,8 +4,15 @@ Pega **um campo** da requisição, procurando primeiro na **query string** e
 depois no **corpo JSON**. Atalho pra quando você quer só um valor sem parsear o
 corpo inteiro.
 
-```
+```assinatura
 request.get(key: str) -> valor | Null
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker, cors, jsonify
+Jinker app = Jinker(__name__)
 ```
 
 ---
@@ -14,7 +21,7 @@ request.get(key: str) -> valor | Null
 
 **Da query string** (`/buscar?termo=jinga`):
 
-```
+```ps
 @app.route("/buscar", methods=cors.options(["GET"]))
 funct buscar() {
     termo = request.get("termo")     # "jinga"
@@ -24,7 +31,7 @@ funct buscar() {
 
 **Do corpo JSON** (`POST` com `{"nome": "ana"}`):
 
-```
+```ps
 @app.route("/salvar", methods=cors.options(["POST"]))
 funct salvar() {
     nome = request.get("nome")       # "ana"
@@ -42,10 +49,12 @@ funct salvar() {
 Se a chave não existir em nenhum dos dois, devolve `Null`. Trate isso quando o
 campo é obrigatório:
 
-```
-nome = request.get("nome")
-if (nome is Null) {
-    return jsonify({"erro": "campo 'nome' obrigatório"}), 400
+```ps
+funct salvar() {
+    nome = request.get("nome")
+    if (nome is Null) {
+        return jsonify({"erro": "campo 'nome' obrigatório"}), 400
+    }
 }
 ```
 

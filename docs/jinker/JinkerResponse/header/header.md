@@ -4,7 +4,7 @@ Adiciona **um cabeçalho HTTP** (header) à resposta. Devolve o próprio
 `JinkerResponse`, então você pode encadear (`.header(...).header(...)`) e
 juntar com `.json()`/`.send()`/`.status()`.
 
-```
+```assinatura
 header(key: str, value: str) -> JinkerResponse
 ```
 
@@ -12,6 +12,15 @@ header(key: str, value: str) -> JinkerResponse
 |---|---|---|
 | `key` | `str` | nome do header (ex: `"X-Request-Id"`, `"Cache-Control"`) |
 | `value` | `str` | valor do header (ex: `"abc123"`, `"no-cache"`) |
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import date
+from jinker import Jinker, cors, jsonify, render
+Jinker app = Jinker(__name__)
+list lista = ["a", "b", "c"]
+```
 
 ---
 
@@ -35,7 +44,7 @@ Exemplos de coisas que vivem em headers, não no corpo:
 
 ## Exemplo mínimo
 
-```
+```ps
 @app.route("/api/dado", methods=cors.options(["GET"]))
 funct dado() {
     return jsonify({"ok": True}).header("X-Request-Id", "req-42")
@@ -51,11 +60,13 @@ A resposta sai com o corpo `{"ok": true}` **e** um cabeçalho
 
 Como cada `.header(...)` devolve a própria resposta, é só continuar chamando:
 
-```
-return jsonify({"itens": lista})
-    .header("X-Total-Count", "3")
-    .header("Cache-Control", "no-cache")
-    .header("X-Api-Version", "2")
+```ps
+funct itens() {
+    return jsonify({"itens": lista})
+        .header("X-Total-Count", "3")
+        .header("Cache-Control", "no-cache")
+        .header("X-Api-Version", "2")
+}
 ```
 
 A ordem não importa — todos entram na resposta.
@@ -67,12 +78,14 @@ A ordem não importa — todos entram na resposta.
 `.header(...)` não mexe no status. Pra mudar o código, use a tupla
 `(resposta, codigo)` **ou** `.status(codigo)`:
 
-```
-# forma 1 — tupla no return
-return jsonify({"criado": True}).header("Location", "/itens/10"), 201
+```ps
+funct cria() {
+    # forma 1 — tupla no return
+    return jsonify({"criado": True}).header("Location", "/itens/10"), 201
 
-# forma 2 — .status() dispensa a tupla
-return jsonify({"criado": True}).header("Location", "/itens/10").status(201)
+    # forma 2 — .status() dispensa a tupla
+    return jsonify({"criado": True}).header("Location", "/itens/10").status(201)
+}
 ```
 
 As duas produzem uma resposta `201 Created` com o header `Location`.
@@ -85,7 +98,7 @@ As duas produzem uma resposta `201 Created` com o header `Location`.
 quem lê o arquivo é o `render()`; o header `Content-Disposition: attachment` é
 o que manda o navegador **baixar**:
 
-```
+```ps
 funct baixar() {
     return render("relatorios/vendas.csv")
         .header("Content-Disposition", "attachment; filename=\"vendas.csv\"")
@@ -98,7 +111,7 @@ funct baixar() {
 
 **Rastrear requisições com um ID nos logs:**
 
-```
+```ps
 funct processar() {
     rid = request.get("request_id")
     # ... faz o trabalho ...
@@ -108,8 +121,10 @@ funct processar() {
 
 **Controlar cache de uma resposta que muda toda hora:**
 
-```
-return jsonify({"agora": date.now()}).header("Cache-Control", "no-store")
+```ps
+funct agora() {
+    return jsonify({"agora": date.now()}).header("Cache-Control", "no-store")
+}
 ```
 
 ---

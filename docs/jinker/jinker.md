@@ -22,7 +22,7 @@ Uma **rota** liga:
 
 O ciclo é sempre este:
 
-```
+```ps
 navegador pede  GET /api/hello
         │
         ▼
@@ -41,7 +41,7 @@ que volta). Todo o resto é detalhe dessas duas pontas.
 
 `app.pr`:
 
-```
+```ps sem-rodar: sobe o servidor na porta 8080 e fica escutando
 from jinker import Jinker, cors, jsonify
 import os
 
@@ -147,7 +147,7 @@ inclusive, que é como o `psl install` baixa pacote de um registry —, então
 
 ## Estrutura típica de projeto
 
-```
+```texto
 meu_projeto/
   app.pr
   .env

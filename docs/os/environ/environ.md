@@ -3,7 +3,7 @@
 Devolve uma **variável de ambiente**, ou **todas** de uma vez se você não
 passar chave.
 
-```
+```assinatura
 os.environ(key: str = Null) -> str | dict | Null
 ```
 
@@ -16,7 +16,7 @@ os.environ(key: str = Null) -> str | dict | Null
 
 ## Uso
 
-```
+```ps
 import os
 
 path = os.environ("PATH")           # uma variável

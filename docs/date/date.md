@@ -3,7 +3,7 @@
 Lib pra pegar a **data e hora atuais** em vários formatos, o **timestamp** Unix,
 e calcular **durações em segundos** (útil pra expiração de tokens JWT).
 
-```
+```ps
 import date
 ```
 
@@ -32,7 +32,7 @@ Todas as funções usam o horário **local** da máquina.
 
 ## Exemplo rápido
 
-```
+```ps
 import date
 
 post(date.today())        # 25/07/2026

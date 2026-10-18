@@ -3,15 +3,21 @@
 Devolve o e-mail montado como **texto** (o formato MIME cru). Útil pra
 inspecionar/depurar o que será enviado, ou pra salvar/logar a mensagem.
 
-```
+```assinatura
 m.get_as_string() -> str
+```
+
+O exemplo desta página pressupõe:
+
+```ps contexto
+import mail
 ```
 
 ---
 
 ## Uso
 
-```
+```ps
 m = mail.MailMessage()
 m.fromAddress("eu@gmail.com")
 m.toAddress("destino@email.com")

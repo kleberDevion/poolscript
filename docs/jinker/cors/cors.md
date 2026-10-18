@@ -5,24 +5,36 @@ quais origens (domínios). O **primeiro argumento é o servidor** (a instância
 do `Jinker`), e pode ser mais de um — a mesma configuração vale pra todos os
 que forem passados.
 
-```
+```ps
 from jinker import Jinker, cors
 
 app = Jinker(__name__)
+```
+
+```assinatura
 cors(app, options: list = Null, origins: list = Null, local: bool = True) -> cors
+```
+
+Os exemplos desta página pressupõem três servidores:
+
+```ps contexto
+from jinker import Jinker, cors
+Jinker app = Jinker(__name__)
+Jinker api = Jinker(__name__)
+Jinker admin = Jinker(__name__)
 ```
 
 Chamar `cors(...)` é **opcional** — servidor sem `cors(app, ...)` libera tudo
 (qualquer método configurável por rota, qualquer origem).
 
-```
+```ps
 cors(app, origins=["https://meusite.com"])                # um servidor
 cors(api, admin, options=["GET", "POST"], origins=["https://meusite.com"])   # dois
 ```
 
 Sem o servidor é erro, antes de configurar qualquer coisa:
 
-```
+```ps
 cors(origins=["https://meusite.com"])
 # TypeError: cors() precisa do servidor como primeiro argumento: cors(app, origins=[...])
 ```
@@ -46,7 +58,7 @@ ou outro backend não passam por CORS (por isso continuam funcionando mesmo com
 
 Lista dos métodos HTTP liberados pro servidor:
 
-```
+```ps
 cors(app, options=["GET", "POST", "PUT", "PATCH", "DELETE"])
 ```
 
@@ -58,7 +70,7 @@ esse conjunto com [`cors.options([...])`](options/options.md) no `methods=`.
 
 ## `origins` — domínios permitidos
 
-```
+```ps
 cors(app, origins=["https://meusite.com"])
 ```
 
@@ -73,7 +85,7 @@ do WebSocket** de todo `@app.socket` do servidor — um site fora da lista não
 abre o socket. A comparação é exata (esquema, host e porta; barra final é
 ignorada). A recusa é `403`:
 
-```
+```json
 {"error": true, "code": 403, "message": "Origem não autorizada: https://outro.com"}
 ```
 
@@ -95,7 +107,7 @@ Ver [`cors.origins()`](origins/origins.md) para usar no `auth=` de uma rota.
 
 ## `local` — modo estrito
 
-```
+```ps
 cors(app, origins=["https://meusite.com"], local=False)
 ```
 
@@ -121,7 +133,7 @@ Cada `cors(app, ...)` cria a configuração **daquele(s)** servidor(es): é
 ela que o registro das rotas e o preflight leem. Dois servidores no mesmo
 programa podem ter configurações diferentes:
 
-```
+```ps
 cors(api, origins=["https://app.meusite.com"])
 cors(admin, origins=["https://admin.meusite.com"])
 ```
@@ -134,7 +146,7 @@ a **última** chamada de `cors(...)` configurou — é o que se usa no
 
 ## Uso completo
 
-```
+```ps
 from jinker import Jinker, cors, jsonify
 
 app = Jinker(__name__)

@@ -3,7 +3,7 @@
 Compila o padrão de expressão regular num objeto `Pattern`, que casa com os
 métodos dele (`match`, `search` e os outros, abaixo).
 
-```
+```assinatura
 regex.compile(pattern: str) -> Pattern
 ```
 

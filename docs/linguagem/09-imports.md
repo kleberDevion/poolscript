@@ -127,7 +127,7 @@ from json import *
 post(stringify([1]), parse("[2]"))    # [1] [2]
 ```
 
-```
+```ps
 import json *          # igual a `from json import *`
 PUSH json GET *        # igual a `from json import *`
 ```
@@ -167,7 +167,7 @@ Duas consequências dessa escolha:
   conserto — dentro de funct os slots são decididos na compilação, e o fim de
   um bloco apaga os nomes que nasceram nele pelo nome:
 
-  ```
+  ```ps
   funct g() {
       from json import *
   }
@@ -181,14 +181,14 @@ Duas consequências dessa escolha:
   reexportando um ao outro) também é recusada. Um arquivo que o próprio
   programa gera antes do `import *` não tem nomes a trazer:
 
-  ```
+  ```texto
   ImportError: `*` de 'gerado': os nomes do `*` sao resolvidos antes de o programa rodar, e nessa hora nao deu pra ler o modulo (ausente, sem compilar, ou cadeia de `*` funda demais) — importe pelo nome (from gerado import a, b)
   ```
 
 Módulo que não existe é o `ImportError: No module named '…'` de sempre, na
 linha do import. As formas misturadas são recusadas:
 
-```
+```ps
 import json as j *
 SyntaxError: `import m as x *` mistura as duas formas: `import m as x` liga o modulo, `import m *` liga os nomes dele — escolha uma
 
@@ -222,7 +222,7 @@ Cada forma tem a **sua** palavra antes dos nomes: `from … import` e
 `PUSH … GET`. Trocar uma pela outra é `SyntaxError`, e a frase diz de qual forma
 é a palavra que foi escrita — com o `*` quando foi `*`:
 
-```
+```ps
 from mymod GET *
 SyntaxError: `GET` e do PUSH; no from os nomes vem depois de `import`: from m import * — ou PUSH m GET *
 
@@ -255,7 +255,7 @@ import '/opt/app/util.pr' as u           # caminho absoluto, com `as`
   (`'../pacote/modulo.pr'` liga `modulo`). Com `as`, é o nome do `as`. Se o
   nome do arquivo não serve de nome de variável, o `as` é obrigatório:
 
-  ```
+  ```ps
   import 'sub/meu-mod.pr'
   SyntaxError: 'meu-mod' nao serve de nome de variavel: ligue com `as` (import 'sub/meu-mod.pr' as nome)
   ```
@@ -305,7 +305,7 @@ e o erro diz as duas formas que funcionam, com os nomes escritos — o caminho
 entre aspas liga o módulo (um ponto é `./`, cada ponto a mais é um `../`), e o
 `from` traz os nomes:
 
-```
+```ps
 import ..pacote.modulo
 SyntaxError: import com ponto na frente nao existe (o relativo e so com from); pra ligar o modulo: import '../pacote/modulo.pr' — pra trazer nomes: from ..pacote.modulo import nome
 ```
@@ -350,7 +350,7 @@ ordem.
 A lib instalada também atende pelo nome completo, com o prefixo
 `jinga.libs.`:
 
-```
+```ps
 import jinga.libs.minhalib          # liga `minhalib`
 import jinga.libs.minhalib as m
 from jinga.libs.minhalib import nome
@@ -376,7 +376,7 @@ local. É a forma explícita, para quem quer deixar escrito de onde o nome vem.
 O ponto na frente **não** vale aqui: `import .jinga.libs.minhalib` é o
 `import` relativo, que não existe (ver 9.4.1), e o erro diz a forma certa:
 
-```
+```ps
 import .jinga.libs.minhalib
 SyntaxError: import com ponto na frente nao existe (o relativo e so com from); pra lib instalada, sem o ponto: import jinga.libs.minhalib
 ```
@@ -386,7 +386,7 @@ SyntaxError: import com ponto na frente nao existe (o relativo e so com from); p
 Quando o módulo é achado mas **não compila**, o traceback tem dois quadros: o
 `import` de quem pediu e, por último, o **arquivo e a linha do defeito**:
 
-```
+```ps
 SyntaxError: random: '//' e divisao inteira, nao comentario — comentario e '#' (ou bloco entre tres aspas)
 
 Traceback (arquivo mais recente por último):

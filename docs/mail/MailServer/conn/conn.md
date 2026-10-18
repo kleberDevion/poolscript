@@ -3,18 +3,25 @@
 Conecta ao servidor SMTP (envio) no `host` dado. Sem `port`, usa a 587 (a porta
 de envio com STARTTLS).
 
-```
+```assinatura
 s.conn(host: str, port: int = Null) -> bool
 ```
 
 Devolve `True` quando conectou; falha de rede, de TLS ou de host inexistente é
 erro (não devolve `False`).
 
+O exemplo desta página pressupõe:
+
+```ps contexto
+import mail
+MailServer s = mail.MailServer()
+```
+
 ---
 
 ## Exemplo
 
-```
+```ps sem-rodar: precisa do servidor de e-mail
 s.conn("smtp.meuservidor.com")          # porta 587
 s.conn("smtp.meuservidor.com", 2525)    # outra porta
 ```

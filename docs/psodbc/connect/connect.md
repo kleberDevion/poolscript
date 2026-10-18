@@ -3,7 +3,16 @@
 Conecta a um banco de dados. O mesmo `connect` serve pra todos os bancos —
 muda só o `driver` e os parâmetros que cada um usa.
 
+Os exemplos desta página pressupõem (o `conn` é `Object` porque o `connect`
+devolve `DbConnection` ou `MongoConnection`, conforme o driver):
+
+```ps contexto
+import psodbc
+from psodbc import connect
+Object conn = psodbc.connect(driver="sqlite", base="loja.db")
 ```
+
+```ps
 connect(driver="sqlite", host="localhost", port=0, user="", password="",
         database="", base="", url="")
 ```
@@ -33,13 +42,13 @@ vazio = autenticação do Windows.
 
 **SQLite** (arquivo local — use `base`):
 
-```
+```ps
 conn = psodbc.connect(driver="sqlite", base="loja.db")
 ```
 
 **PostgreSQL / MySQL** (host + credenciais):
 
-```
+```ps sem-rodar: precisa do servidor PostgreSQL
 conn = psodbc.connect(
     driver="postgres",
     host="localhost", port=5432,
@@ -49,7 +58,7 @@ conn = psodbc.connect(
 
 **SQL Server** (ver detalhes abaixo):
 
-```
+```ps sem-rodar: precisa do SQL Server e do driver ODBC 18
 conn = psodbc.connect(
     driver="sqlserver",
     host="localhost", database="loja",
@@ -59,13 +68,13 @@ conn = psodbc.connect(
 
 **MongoDB**:
 
-```
+```ps
 conn = psodbc.connect(driver="mongo", host="localhost", port=27017, database="loja")
 ```
 
 **Por URL** (qualquer driver, escolhido pelo prefixo):
 
-```
+```ps sem-rodar: precisa do servidor PostgreSQL
 conn = psodbc.connect(url="postgres://admin:senha@localhost:5432/loja")
 conn = psodbc.connect(url="sqlserver://sa:senha@10.0.0.5:1433/loja")
 conn = psodbc.connect(url="mongodb://localhost:27017/loja")
@@ -94,7 +103,7 @@ conn = psodbc.connect(url="mongodb://localhost:27017/loja")
 
 ## Depois de conectar
 
-```
+```ps
 cursor = conn.cursor()                       # SQL
 col = conn.collection("nome")                # Mongo
 ```

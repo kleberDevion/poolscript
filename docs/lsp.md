@@ -427,7 +427,7 @@ entrada padrão em outras linguagens. Com ele, `import util` ao lado resolve
 igual ao arquivo salvo, de onde quer que se rode — é a forma que o servidor
 usa.
 
-```
+```bash
 printf 'import util\nutil.naoexiste()\n' | jinga --check --path src/main.pr
 ```
 
@@ -536,7 +536,7 @@ não ocupa texto (`INDENT`, `DEDENT`, `SINC`) acaba onde começa; o token de
 dentro da f-string traz o fim na posição do arquivo; e os `erros` do
 `--tokens` e do `--ast` trazem o fim do trecho quando ele é medido.
 
-```
+```bash
 $ printf 'x = "ab"\n' | jinga --tokens
 {"tokens":[{"t":"IDENT","l":1,"c":1,"n":1,"l2":1,"c2":2,"v":"x"},…,
            {"t":"STR","l":1,"c":5,"n":4,"l2":1,"c2":9,"v":"ab"},…]}
@@ -548,7 +548,7 @@ ele que o editor sabe que ali não vale a regra de "cursor dentro de string",
 inclusive no espaço entre os tokens e com a chave ainda aberta, que é como o
 arquivo fica enquanto se digita:
 
-```
+```bash
 $ printf 'post(f"oi {x}")\n' | jinga --tokens
 {"t":"FSTRING","l":1,"c":6,"n":9,"l2":1,"c2":15,
  "interp":[{"l":1,"c":12,"l2":1,"c2":13}],"v":"oi {x}"}
@@ -558,7 +558,7 @@ O `--tokens` publica também os tokens de dentro, marcados com `"em":"fstring"`
 e com a posição real no fonte (quem só quer o realce de string ignora esses).
 O `--ast` traz as expressões como nós filhos do literal, em `lista`:
 
-```
+```bash
 $ printf 'post(f"oi {n.upper()}")\n' | jinga --ast
 … {"k":"Literal","l":1,"c":6,"l2":1,"c2":23,"texto":"oi {n.upper()}",
    "lista":[{"k":"Call","l":1,"c":19,…}]}
@@ -576,7 +576,7 @@ importado que não compila, e, no `--contexto`, também na coluna que se pede.
 No `--tokens` o `n` (o tamanho do token) vai na mesma conta: numa string com
 um caractere fora do plano básico, `n` e `c2 - c` dão o mesmo número.
 
-```
+```bash
 $ printf 'a = "x"\npost(a)\n' | jinga --tokens --utf16
 ```
 

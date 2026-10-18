@@ -3,7 +3,7 @@
 Constrói o e-mail a ser enviado: remetente, destinatário, assunto, corpo
 (texto ou HTML) e anexos. Depois passe pro [`MailServer.send()`](../MailServer/send/send.md).
 
-```
+```ps
 from mail import MailMessage
 m = mail.MailMessage()
 ```
@@ -25,7 +25,7 @@ m = mail.MailMessage()
 
 ## Exemplo completo
 
-```
+```ps
 import mail
 import os
 

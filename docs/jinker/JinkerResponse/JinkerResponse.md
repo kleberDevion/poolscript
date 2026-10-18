@@ -9,8 +9,15 @@ devolver um dict/lista/string) cobrem quase tudo. Use direto (`JinkerResponse()`
 quando quiser montar a resposta em etapas ou combinar corpo + status + headers
 com controle total.
 
-```
+```ps
 from jinker import JinkerResponse
+```
+
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import JinkerResponse, jsonify
+str token = "t-1"
 ```
 
 ---
@@ -46,12 +53,14 @@ quando você quer **encadear** ajustes.
 
 Como cada um devolve o próprio `JinkerResponse`, dá pra encaixar em cadeia:
 
-```
-return JinkerResponse()
-    .json({"criado": True})
-    .status(201)
-    .header("Location", "/itens/10")
-    .cookie("sid", token, max_age=3600)
+```ps
+funct cria() {
+    return JinkerResponse()
+        .json({"criado": True})
+        .status(201)
+        .header("Location", "/itens/10")
+        .cookie("sid", token, max_age=3600)
+}
 ```
 
 ---
@@ -70,18 +79,20 @@ atribuição e não encadeia.
 
 ## Montando na mão vs. atalhos
 
-```
-# atalho (dia a dia):
-return jsonify({"ok": True})
+```ps
+funct rota() {
+    # atalho (dia a dia):
+    return jsonify({"ok": True})
 
-# equivalente, na mão:
-return JinkerResponse().json({"ok": True})
+    # equivalente, na mão:
+    return JinkerResponse().json({"ok": True})
 
-# na mão faz sentido quando você combina várias coisas:
-return JinkerResponse()
-    .send("relatorio,linha1\n", 200)
-    .header("Content-Type", "text/csv")
-    .header("Content-Disposition", "attachment; filename=\"r.csv\"")
+    # na mão faz sentido quando você combina várias coisas:
+    return JinkerResponse()
+        .send("relatorio,linha1\n", 200)
+        .header("Content-Type", "text/csv")
+        .header("Content-Disposition", "attachment; filename=\"r.csv\"")
+}
 ```
 
 ---

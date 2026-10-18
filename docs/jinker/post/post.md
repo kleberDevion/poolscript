@@ -74,7 +74,7 @@ A URL existia; o **método** é que não. O servidor agora separa os dois casos:
 | path **existe**, método não | **`405 Method Not Allowed`**, com `Allow:` |
 | path não existe | `404` |
 
-```
+```texto
 GET /login
 → 405
   Allow: POST

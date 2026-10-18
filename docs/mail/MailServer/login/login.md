@@ -3,7 +3,7 @@
 Autentica no servidor SMTP com usuário e senha. Chame **depois** de
 [`.conn()`](../conn/conn.md).
 
-```
+```assinatura
 s.login(user: str, password: str) -> Null
 ```
 
@@ -11,7 +11,7 @@ s.login(user: str, password: str) -> Null
 
 ## Uso
 
-```
+```ps sem-rodar: lê a conta de e-mail do ambiente (MAIL_USER...) e precisa do servidor
 import mail
 import os
 from dotenv import load

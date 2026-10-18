@@ -3,7 +3,7 @@
 Busca os documentos que batem com o filtro. Devolve uma lista — ou **`Null`**
 quando nenhum bate.
 
-```
+```assinatura
 col.find(query: dict = Null, skip: int = 0, limit: int = 0, sort: dict = Null) -> list | Null
 ```
 
@@ -20,11 +20,19 @@ paginar possível sem trazer a coleção inteira pra memória.
 
 O `_id` **não** vem nos documentos devolvidos.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import psodbc
+MongoConnection conn = psodbc.connect(driver="mongo", host="localhost", database="loja")
+MongoCollection col = conn.collection("produtos")
+```
+
 ---
 
 ## Uso
 
-```
+```ps sem-rodar: precisa do servidor MongoDB
 col.find({"ativo": True})      # todos com ativo = True
 col.find()                     # todos (sem filtro)
 
@@ -35,7 +43,7 @@ for each doc in col.find({"preco": 15}) {
 
 ## Paginar
 
-```
+```ps sem-rodar: precisa do servidor MongoDB
 # página 3, de 20 em 20, os mais novos primeiro
 pagina = col.find({"ativo": True}, skip=40, limit=20, sort={"criado": -1})
 ```
@@ -45,7 +53,7 @@ repetir ou pular documento. Pra paginar, ordene por um campo que não se repete.
 
 A ordem posicional é `query, skip, limit, sort`, e dá pra passar só os nomeados:
 
-```
+```ps sem-rodar: precisa do servidor MongoDB
 col.find(limit=5, sort={"criado": -1})   # os 5 mais novos, sem filtro
 ```
 

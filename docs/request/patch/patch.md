@@ -4,7 +4,7 @@ Faz uma requisição HTTP **PATCH** — usada pra **atualizar parte** de um recu
 (só os campos que mudaram). Mesma assinatura de
 [`request.post`](../post/post.md). Devolve um [`Response`](../Response/Response.md).
 
-```
+```assinatura
 request.patch(url, headers=Null, body=Null, timeout=30, stream=False, max_size=Null,
               fields=Null, file=Null, save=Null) -> Response
 ```
@@ -13,7 +13,7 @@ request.patch(url, headers=Null, body=Null, timeout=30, stream=False, max_size=N
 
 ## Uso
 
-```
+```ps sem-rodar: faz pedido HTTP a um servidor de fora
 import request
 
 # muda SÓ o email do usuário 10, o resto fica como está

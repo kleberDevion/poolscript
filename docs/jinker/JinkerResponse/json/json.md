@@ -3,7 +3,7 @@
 Define o corpo da resposta como **JSON** e o `Content-Type` como
 `application/json`. Devolve o próprio `JinkerResponse` (encadeável).
 
-```
+```assinatura
 json(data: any, status: int = 200) -> JinkerResponse
 ```
 
@@ -12,6 +12,12 @@ json(data: any, status: int = 200) -> JinkerResponse
 | `data` | dict / lista / valor | — | o que vira JSON no corpo |
 | `status` | `int` | `200` | código HTTP da resposta |
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import JinkerResponse, jsonify
+```
+
 ---
 
 ## É o que o `jsonify` faz por baixo
@@ -19,9 +25,11 @@ json(data: any, status: int = 200) -> JinkerResponse
 `jsonify(data)` é literalmente `JinkerResponse().json(data)`. Então estas
 duas linhas são idênticas:
 
-```
-return jsonify({"msg": "ok"})
-return JinkerResponse().json({"msg": "ok"})
+```ps
+funct rota() {
+    return jsonify({"msg": "ok"})
+    return JinkerResponse().json({"msg": "ok"})
+}
 ```
 
 Use `jsonify` no dia a dia (é mais curto). Use `.json()` direto quando já tem
@@ -33,8 +41,10 @@ um `JinkerResponse` na mão e quer definir/trocar o corpo.
 
 O segundo argumento define o código já na chamada:
 
-```
-return JinkerResponse().json({"erro": "não encontrado"}, 404)
+```ps
+funct rota() {
+    return JinkerResponse().json({"erro": "não encontrado"}, 404)
+}
 ```
 
 Equivale a `jsonify({"erro": "não encontrado"}), 404`.
@@ -46,8 +56,9 @@ Equivale a `jsonify({"erro": "não encontrado"}), 404`.
 Qualquer coisa serializável em JSON: dict, lista, string, número, bool, `Null`
 (vira `Null`), e combinações aninhadas.
 
-```
-.json({"usuario": {"nome": "ana", "tags": [1, 2, 3], "ativo": True}})
+```ps
+JinkerResponse()
+    .json({"usuario": {"nome": "ana", "tags": [1, 2, 3], "ativo": True}})
 ```
 
 Acentos são preservados (`ensure_ascii=False` internamente) — `"ção"` sai como

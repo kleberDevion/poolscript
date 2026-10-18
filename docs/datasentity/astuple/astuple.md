@@ -3,7 +3,7 @@
 Converte uma instância de `@dataentity` numa **tupla**, com os valores na ordem
 de declaração dos campos.
 
-```
+```assinatura
 astuple(instance) -> tup
 ```
 
@@ -11,7 +11,7 @@ astuple(instance) -> tup
 
 ## Uso
 
-```
+```ps
 from datasentity import dataentity, astuple
 
 @dataentity

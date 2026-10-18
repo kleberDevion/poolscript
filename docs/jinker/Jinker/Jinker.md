@@ -4,7 +4,7 @@ O construtor da aplicação. Cria o objeto `app` onde tudo se pendura — rotas,
 sockets, middleware — e onde você configura segurança (rate limit, HTTPS) e
 arquivos estáticos.
 
-```
+```ps
 from jinker import Jinker
 
 app = Jinker(__name__)
@@ -18,6 +18,13 @@ app = Jinker(__name__)
 | `static_url` | `str` | `"/"` | (guardado, **ainda não usado** na correspondência de URL) |
 | `route_prefix` | `str` | `""` | prefixo aplicado a **todas** as rotas e sockets: `"api"` ou `"/api/"` viram `/api`, e `@app.route("/users")` responde em `/api/users` (a raiz `"/"` vira só `/api`) |
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker
+Jinker app = Jinker(__name__)
+```
+
 ---
 
 ## Subindo o servidor
@@ -25,7 +32,7 @@ app = Jinker(__name__)
 O objeto `app` é **chamável** — chamá-lo liga o servidor de verdade. Faça isso
 dentro do ponto de entrada `if __name__ == "main"`:
 
-```
+```ps sem-rodar: sobe o servidor na porta 8080 e fica escutando
 if __name__ == "main" {
     app(debug=False, host="0.0.0.0", port=8080)
 }
@@ -49,7 +56,7 @@ na porta **HTTP + 1**. Com `workers>1`, o WebSocket roda **só no worker 0**
 
 Um dict com chaves opcionais. Só o que você colocar é ativado.
 
-```
+```ps
 app = Jinker(__name__, oauth={poolip: True, rate: 60, bloq: 1, tls: True})
 ```
 
@@ -65,7 +72,7 @@ Como funciona: cada IP pode fazer até `rate` requisições por janela de 60s.
 Passou disso → recebe **429 Too Many Requests** e é **banido por `bloq` dias**
 (toda requisição durante o ban recebe 429 com `Retry-After`).
 
-```
+```ps
 # no máximo 60 req/min por IP; quem passar fica banido 1 dia
 app = Jinker(__name__, oauth={poolip: True, rate: 60, bloq: 1})
 ```
@@ -88,7 +95,7 @@ seguro" porque é self-signed.
 Cert e chave podem vir **juntos** num PEM só, ou **separados** (é como
 Let's Encrypt e mkcert entregam: `fullchain.pem` + `privkey.pem`):
 
-```
+```ps
 # juntos (cert e chave no mesmo arquivo)
 app = Jinker(__name__, oauth={tls: True, cert: ".jinkerTls"})
 
@@ -108,7 +115,7 @@ passo a passo: **[tls.md](../tls.md)**.
 
 ## Exemplo completo
 
-```
+```ps
 from jinker import Jinker, cors, jsonify
 import os
 
