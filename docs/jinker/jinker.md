@@ -130,6 +130,12 @@ Ordem de decisão de cada requisição: rota → path existe com outro método
 (`405`) → `/static/` → arquivo no `static_folder` → `index.html` do
 `static_folder` → 404.
 
+Pasta pedida serve o `index.html` dela (sem a barra no fim: `301` pra URL com
+a barra), o tipo do arquivo sai da tabela padrão do Python (`.wasm` é
+`application/wasm`), e valem pedido por pedaço (`Range`, `206`) e cache
+(`ETag`, `Last-Modified`, `304`). Detalhe em
+[static_folder](static_folder/static_folder.md#pasta-tipo-do-arquivo-pedaço-e-cache).
+
 **O que nunca sai** pelos dois: caminho que resolve pra **fora** da pasta
 (`..`, codificado ou não, e symlink) e nome que começa com **`.`** (`.env`,
 `.git`; a exceção é `.well-known`, do Let's Encrypt). O resto sai — `.pr`

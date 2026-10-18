@@ -23385,6 +23385,61 @@ static int jk_sob_a_raiz(const char *raiz, const char *cam, char *saida, size_t 
     return ok;
 }
 
+/* Pasta pedida: o `index.html` DELA, como o `FileServer` do Go ("use contents
+ * of index.html for directory, if present") e o `http.server` do Python ("the
+ * directory is checked for an index page"). Antes `GET /docs/` no
+ * `static_folder` devolvia o index.html da RAIZ, e na `/static/` dava 404.
+ * O index.html passa pelas mesmas travas do arquivo pedido (`jk_sob_a_raiz`:
+ * dentro da raiz, link simbólico resolvido, nome com `.` não sai). Pasta sem
+ * index.html não é listada. Devolve 1 e o caminho resolvido em `saida`. */
+static int jk_index_da_pasta(const char *raiz, const char *pasta, char *saida, size_t n)
+{
+    char idx[PS_CAMINHO_MAX];
+    struct stat st;
+    return junta_caminho(idx, sizeof(idx), pasta, "index.html") == 0
+        && jk_sob_a_raiz(raiz, idx, saida, n)
+        && stat(saida, &st) == 0 && S_ISREG(st.st_mode);
+}
+
+static int jk_termina_em_barra(const char *path)
+{
+    size_t k = path ? strlen(path) : 0;
+    return k > 0 && path[k - 1] == '/';
+}
+
+/* Pasta pedida sem a barra no fim: 301 pra mesma URL com a barra, como o Go
+ * ("redirect if the directory name doesn't end in a slash"). Sem a barra, os
+ * caminhos relativos do index.html da pasta apontariam pra pasta de cima.
+ *
+ * O Location é RELATIVO (o nome da pasta + "/"), como o `localRedirect` do Go:
+ * absoluto, um pedido `//outro.site` viraria redirecionamento pra outro site.
+ * O path chega decodificado, então volta codificado: byte fora do conjunto
+ * seguro vira %XX, inclusive \r e \n, que no cabeçalho dividiriam a resposta. */
+static void jk_redireciona_pasta(struct PSJkConn *c, const PSJkReq *hr)
+{
+    static const char HEX[] = "0123456789ABCDEF";
+    const char *nome = strrchr(hr->path, '/');
+    nome = nome ? nome + 1 : hr->path;
+    char loc[PS_CAMINHO_MAX];
+    size_t k = 0;
+    for (const unsigned char *p = (const unsigned char *)nome; *p && k + 4 < sizeof(loc); p++) {
+        unsigned char ch = *p;
+        int seguro = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')
+                     || ch == '-' || ch == '_' || ch == '.' || ch == '~';
+        if (seguro) loc[k++] = (char)ch;
+        else { loc[k++] = '%'; loc[k++] = HEX[ch >> 4]; loc[k++] = HEX[ch & 15]; }
+    }
+    loc[k++] = '/';
+    loc[k] = '\0';
+    /* a query vai junto (o Go também leva); ela vem crua da linha do pedido,
+     * que não tem \r nem \n, mas a trava fica */
+    const char *q = (hr->query && hr->query[0] && !strpbrk(hr->query, "\r\n")) ? hr->query : NULL;
+    char extra[PS_CAMINHO_MAX + 2048];
+    snprintf(extra, sizeof(extra), "Location: %s%s%.1900s\r\nAccess-Control-Allow-Origin: *\r\n",
+             loc, q ? "?" : "", q ? q : "");
+    ps_jk_responde(c, 301, NULL, "", 0, extra, hr->keep_alive);
+}
+
 /* `cabecalhos` = linhas extras já terminadas em "\r\n" (ou NULL). O 405 usa
  * pra mandar o `Allow:`, que a RFC 9110 exige nele. */
 static void jk_erro_json_h(struct PSJkConn *c, int code, const char *msg, int keep,
@@ -23829,21 +23884,28 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
             char raiz[PS_CAMINHO_MAX];
             int nraiz = snprintf(raiz, sizeof(raiz), "%s/static", base);
             char seguro[PS_CAMINHO_MAX];
+            char idx_pasta[PS_CAMINHO_MAX];
             struct stat st;
+            const char *serve = NULL;
             if (ncam >= 0 && (size_t)ncam < sizeof(cam) && nraiz >= 0 && (size_t)nraiz < sizeof(raiz)
                 && jk_sob_a_raiz(raiz, cam, seguro, sizeof(seguro))
-                && stat(seguro, &st) == 0 && S_ISREG(st.st_mode)) {
-                FILE *f = fopen(seguro, "rb");
-                if (f) {
-                    fseek(f, 0, SEEK_END); long t = ftell(f); fseek(f, 0, SEEK_SET);
-                    char *buf = malloc((size_t)(t > 0 ? t : 1));
-                    size_t rd = buf ? fread(buf, 1, (size_t)t, f) : 0;
-                    fclose(f);
-                    char extra[128]; snprintf(extra, sizeof(extra), "Access-Control-Allow-Origin: *\r\n");
-                    ps_jk_responde(c, 200, ps_jk_mime(seguro), buf ? buf : "", rd, extra, hr->keep_alive);
-                    free(buf);
+                && stat(seguro, &st) == 0) {
+                if (S_ISREG(st.st_mode)) serve = seguro;
+                else if (S_ISDIR(st.st_mode) && jk_index_da_pasta(raiz, seguro, idx_pasta, sizeof(idx_pasta))) {
+                    if (!jk_termina_em_barra(hr->path)) {
+                        jk_redireciona_pasta(c, hr);
+                        if (params) vm->sp--;
+                        return hr->keep_alive;
+                    }
+                    serve = idx_pasta;
+                }
+            }
+            if (serve) {
+                char extra[128]; snprintf(extra, sizeof(extra), "Access-Control-Allow-Origin: *\r\n");
+                int rs = ps_jk_serve_arquivo(c, hr, serve, ps_jk_mime(serve), extra, hr->keep_alive);
+                if (rs != -2) {
                     if (params) vm->sp--;
-                    return hr->keep_alive;
+                    return rs == 0 ? hr->keep_alive : 0;
                 }
             }
             if (params) vm->sp--;
@@ -23891,21 +23953,28 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
                 /* mesma trava do `/static/`: o pedido tem que RESOLVER dentro
                  * do static_folder. Fora dele, cai no index.html do SPA — que
                  * é o que a URL desconhecida já devolvia. */
-                if (cabe && jk_sob_a_raiz(base, cam, seguro, sizeof(seguro))
-                    && stat(seguro, &st) == 0 && S_ISREG(st.st_mode)) serve = seguro;
-                else if (junta_caminho(idx, sizeof(idx), base, "index.html") == 0 && stat(idx, &st) == 0) serve = idx;
+                char idx_pasta[PS_CAMINHO_MAX];
+                if (cabe && jk_sob_a_raiz(base, cam, seguro, sizeof(seguro)) && stat(seguro, &st) == 0) {
+                    if (S_ISREG(st.st_mode)) serve = seguro;
+                    else if (S_ISDIR(st.st_mode) && jk_index_da_pasta(base, seguro, idx_pasta, sizeof(idx_pasta))) {
+                        /* a raiz da montagem (`/app` com static_url="/app", ou
+                         * `/`) serve o index.html sem redirecionar, como o
+                         * static_url.md promete; o 301 é pra pasta de dentro */
+                        if (rel[0] && !jk_termina_em_barra(hr->path)) {
+                            jk_redireciona_pasta(c, hr);
+                            if (params) vm->sp--;
+                            return hr->keep_alive;
+                        }
+                        serve = idx_pasta;
+                    }
+                }
+                if (!serve && junta_caminho(idx, sizeof(idx), base, "index.html") == 0 && stat(idx, &st) == 0) serve = idx;
                 if (serve) {
-                    FILE *f = fopen(serve, "rb");
-                    if (f) {
-                        fseek(f, 0, SEEK_END); long t = ftell(f); fseek(f, 0, SEEK_SET);
-                        char *buf = malloc((size_t)(t > 0 ? t : 1));
-                        size_t rd = buf ? fread(buf, 1, (size_t)t, f) : 0;
-                        fclose(f);
-                        char extra[128]; snprintf(extra, sizeof(extra), "Access-Control-Allow-Origin: *\r\n");
-                        ps_jk_responde(c, 200, ps_jk_mime(serve), buf ? buf : "", rd, extra, hr->keep_alive);
-                        free(buf);
+                    char extra[128]; snprintf(extra, sizeof(extra), "Access-Control-Allow-Origin: *\r\n");
+                    int rs = ps_jk_serve_arquivo(c, hr, serve, ps_jk_mime(serve), extra, hr->keep_alive);
+                    if (rs != -2) {
                         if (params) vm->sp--;
-                        return hr->keep_alive;
+                        return rs == 0 ? hr->keep_alive : 0;
                     }
                 }
             }

@@ -122,9 +122,19 @@ int  ps_jk_multipart(const char *corpo, size_t n, const char *boundary,
 void ps_jk_partes_solta(PSJkParte *p, int n);
 
 /* ── utilidades ─────────────────────────────────────────────────────────── */
-/* MIME por extensão — tabela fixa com os tipos comuns; desconhecido =
- * application/octet-stream. */
+/* MIME por extensão — a tabela padrão do `mimetypes` do Python 3.15;
+ * desconhecido = application/octet-stream. */
 const char *ps_jk_mime(const char *caminho);
+
+/* Responde um arquivo já conferido (dentro da raiz e publicável): 200, 206,
+ * 304 ou 416, com Accept-Ranges, Last-Modified e ETag, e o corpo em blocos de
+ * 64 KB (nunca o arquivo inteiro na memória). Range, If-None-Match,
+ * If-Modified-Since e If-Range valem em GET e HEAD, pela RFC 9110. `extra` =
+ * linhas de cabeçalho a mais, já com "\r\n" (ou NULL). Devolve 0 servido;
+ * -1 a conexão caiu no meio (fechar); -2 o arquivo não abriu (nada foi
+ * escrito: quem chamou responde o 404). */
+int ps_jk_serve_arquivo(PSJkConn *c, const PSJkReq *r, const char *caminho,
+                        const char *ctype, const char *extra, int keep_alive);
 
 /* Percent-decoding in-place ('+' NÃO vira espaço — regra do path). */
 void ps_jk_urldecode(char *s);

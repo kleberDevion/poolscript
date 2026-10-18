@@ -394,9 +394,9 @@ Há **duas** formas de servir CSS/JS/imagens automaticamente — uma fixa
 
 ### 1. Pasta `/static/` (fixa, sem configuração)
 
-Qualquer URL que comece com `/static/` é servida a partir de uma pasta
-`static/` no diretório onde você rodou o servidor. Não precisa configurar nada,
-mas **o nome `static` é fixo** — não dá pra renomear.
+Qualquer URL que comece com `/static/` é servida a partir da pasta `static/`
+**ao lado do `.pr`** (não da pasta de onde o servidor foi chamado). Não precisa
+configurar nada, mas **o nome `static` é fixo** — não dá pra renomear.
 
 ```
 /static/style.css   →  serve  ./static/style.css
@@ -424,21 +424,25 @@ app = Jinker(__name__, static_folder="frontend/dist")
 Fluxo de uma requisição, na ordem em que o servidor decide o que responder:
 
 1. Bateu numa **rota** `@app.route(...)`? → executa o handler.
-2. Começa com **`/static/`** e o arquivo existe em `static/`? → serve o arquivo.
-3. `static_folder` está definido e a URL corresponde a um **arquivo físico**
+2. O path de uma rota bateu, mas o **método** não? → **`405`** com `Allow:`.
+3. Começa com **`/static/`** e o arquivo existe em `static/`? → serve o arquivo.
+4. `static_folder` está definido e a URL corresponde a um **arquivo físico**
    dentro dele (ex: `/app.js` → `frontend/dist/app.js`)? → serve o arquivo.
-4. `static_folder` definido mas a URL não é um arquivo? → serve o
+5. `static_folder` definido mas a URL não é um arquivo? → serve o
    **`index.html`** da pasta (fallback de SPA).
-5. Nada disso? → **404**.
+6. Nada disso? → **404**.
+
+Pasta pedida serve o `index.html` **dela** (`/docs/` → `docs/index.html`), e a
+pasta pedida sem a barra no fim recebe `301` pra URL com a barra. O tipo do
+arquivo sai da tabela padrão do Python (`.wasm` é `application/wasm`), e o
+servidor atende pedido por pedaço (`Range`, o que o Safari usa pra tocar vídeo)
+e cache (`ETag`, `Last-Modified`, `304`). Detalhe em
+[static_folder](jinker/static_folder/static_folder.md#pasta-tipo-do-arquivo-pedaço-e-cache).
 
 `static_folder` é buscado nas mesmas raízes do `render()` (pasta do `.pr` e
-`cwd`), então `"frontend/dist"` pode estar ao lado do seu `app.pr`.
-
-> **Nota:** o construtor também aceita `static_url="/"`, mas hoje esse valor é
-> **guardado e não usado** na hora de servir — a correspondência é feita contra
-> a URL inteira. Ou seja, não dá (ainda) pra "montar" o SPA num prefixo tipo
-> `/app`. Isso é justamente o que dá pra melhorar (ver a conversa sobre
-> flexibilizar a sintaxe).
+`cwd`), então `"frontend/dist"` pode estar ao lado do seu `app.pr`. Pra montar
+o `static_folder` num prefixo (`/app`), use `static_url`: ver
+[static_url](jinker/static_url/static_url.md).
 
 ---
 

@@ -27,6 +27,27 @@ os.writeFile(PASTA + "/estatico/.well-known/acme", "token")         # a UNICA ex
 # `./pool teste/jinker_alvo.pr` na raiz do repositorio; o `/__parar` apaga.
 os.mkdir("teste/static", exist_ok=True)
 os.writeFile("teste/static/solto.txt", "asset solto")
+# Pasta pedida serve o index.html DELA, e pasta sem index.html nao e listada
+# (17.0.20, como o FileServer do Go). Tipo pela tabela padrao do Python (o
+# `.wasm` saia octet-stream). Range e 304 num arquivo de 100 bytes conhecidos,
+# e um de 20 MB, que sai em blocos de 64 KB e nao inteiro na memoria.
+os.mkdir(PASTA + "/estatico/docs", exist_ok=True)
+os.writeFile(PASTA + "/estatico/docs/index.html", "index de docs")
+os.mkdir(PASTA + "/estatico/vazia", exist_ok=True)
+os.writeFile(PASTA + "/estatico/vazia/nada.txt", "x")
+os.writeFile(PASTA + "/estatico/modulo.wasm", "wasm")
+os.writeFile(PASTA + "/estatico/foto.avif", "avif")
+os.writeFile(PASTA + "/estatico/coisa.extensaoinventada", "x")
+os.writeFile(PASTA + "/estatico/cem.txt", "0123456789" * 10)
+os.writeFile(PASTA + "/estatico/grande.txt", "abcdefghij" * 2097152)
+os.mkdir("teste/static/sub", exist_ok=True)
+os.writeFile("teste/static/sub/index.html", "index de sub")
+os.mkdir("teste/static/semindex", exist_ok=True)
+os.writeFile("teste/static/semindex/a.txt", "a")
+# pasta FORA da publicada, com index.html: o link `estatico/link_pasta` aponta
+# pra ela, e a pasta pedida pelo link nao pode servir esse index.html
+os.mkdir(PASTA + "/fora_pasta", exist_ok=True)
+os.writeFile(PASTA + "/fora_pasta/index.html", "FORA da pasta publicada (index)")
 # symlink DENTRO da pasta publicada apontando pra FORA: nao tem `..` na URL,
 # so o `realpath` pega. O `os` nao cria link; quem cria e o sistema: o `ln` no
 # Linux e no macOS, o `mklink` no Windows (la o `os.cmd` e o `cmd.exe`, que nao
@@ -51,6 +72,7 @@ else
 {
     os.cmd("ln -sf /etc/passwd " + PASTA + "/estatico/link_passwd")
     os.cmd("ln -sf " + PASTA + "/segredo.txt teste/static/link_fora")
+    os.cmd("ln -sfn " + PASTA + "/fora_pasta " + PASTA + "/estatico/link_pasta")
 }
 
 app = jinker.Jinker(name="alvo", static_folder=PASTA + "/estatico", static_url="/estatico")

@@ -493,6 +493,7 @@ static const char *frase(int status)
         case 201: return "Created";
         case 202: return "Accepted";
         case 204: return "No Content";
+        case 206: return "Partial Content";
         case 301: return "Moved Permanently";
         case 302: return "Found";
         case 304: return "Not Modified";
@@ -502,6 +503,7 @@ static const char *frase(int status)
         case 404: return "Not Found";
         case 405: return "Method Not Allowed";
         case 409: return "Conflict";
+        case 416: return "Range Not Satisfiable";
         case 422: return "Unprocessable Content";
         case 429: return "Too Many Requests";
         case 500: return "Internal Server Error";
@@ -926,33 +928,442 @@ void ps_jk_partes_solta(PSJkParte *p, int n)
 
 /* ── utilidades ─────────────────────────────────────────────────────────── */
 
+/* O tipo do arquivo pela extensão.
+ *
+ * A tabela é a `_types_map_default` do `mimetypes` do Python 3.15 (213
+ * extensões), a mesma que o `http.server` usa, traduzida pra cá em ordem
+ * alfabética pra busca binária. Era uma tabela escrita à mão, com 36
+ * extensões: o `.wasm` saía `application/octet-stream`, e o navegador recusa
+ * esse tipo no `WebAssembly.instantiateStreaming` ("If mimeType is not a
+ * byte-case-insensitive match for application/wasm, reject returnValue with a
+ * TypeError", WebAssembly Web API). A única extensão da tabela antiga que
+ * mudou de tipo é `.wav`: `audio/x-wav` virou `audio/vnd.wave`, o do Python.
+ *
+ * Extensão desconhecida é `application/octet-stream`, como o
+ * `default_content_type` do Python. Pra pôr uma extensão nova, a fonte é a
+ * tabela do Python, e a ordem alfabética tem que se manter.
+ *
+ * O texto mora DENTRO da entrada (vetor de char), não num ponteiro: ponteiro
+ * em dado inicializado num executável PIE é uma relocação que o carregador
+ * faz na partida de TODO programa, use ele a jinker ou não. Com ponteiros
+ * esta tabela somava 366 relocações a mais (medido no Linux, 25.367 ->
+ * 25.733) e a partida subia 0,58%. A maior extensão tem 12 letras
+ * (".webmanifest") e o maior tipo 73. */
+typedef struct { char ext[13]; char mime[74]; } JkMime;
+
+static const JkMime JK_MIMES[] = {
+    { ".3g2", "audio/3gpp2" }, { ".3gp", "audio/3gpp" }, { ".3gpp", "audio/3gpp" },
+    { ".3gpp2", "audio/3gpp2" }, { ".7z", "application/x-7z-compressed" },
+    { ".a", "application/octet-stream" }, { ".aac", "audio/aac" }, { ".adts", "audio/aac" },
+    { ".ai", "application/pdf" }, { ".aif", "audio/x-aiff" }, { ".aifc", "audio/x-aiff" },
+    { ".aiff", "audio/x-aiff" }, { ".ass", "audio/aac" }, { ".au", "audio/basic" },
+    { ".avi", "video/vnd.avi" }, { ".avif", "image/avif" }, { ".bat", "text/plain" },
+    { ".bcpio", "application/x-bcpio" }, { ".bin", "application/octet-stream" },
+    { ".bmp", "image/bmp" }, { ".c", "text/plain" },
+    { ".cab", "application/vnd.ms-cab-compressed" }, { ".cdf", "application/x-netcdf" },
+    { ".chm", "application/vnd.ms-htmlhelp" }, { ".cjs", "application/node" },
+    { ".cpio", "application/x-cpio" }, { ".csh", "application/x-csh" }, { ".css", "text/css" },
+    { ".csv", "text/csv" }, { ".dcm", "application/dicom" },
+    { ".deb", "application/x-debian-package" },
+    { ".dll", "application/vnd.microsoft.portable-executable" },
+    { ".doc", "application/msword" },
+    { ".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+    { ".dot", "application/msword" }, { ".dvi", "application/x-dvi" },
+    { ".efi", "application/efi" }, { ".emf", "image/emf" }, { ".eml", "message/rfc822" },
+    { ".eot", "application/vnd.ms-fontobject" }, { ".eps", "application/postscript" },
+    { ".epub", "application/epub+zip" }, { ".etx", "text/x-setext" },
+    { ".exe", "application/vnd.microsoft.portable-executable" }, { ".fits", "image/fits" },
+    { ".flac", "audio/flac" }, { ".g3", "image/g3fax" }, { ".gif", "image/gif" },
+    { ".glb", "model/gltf-binary" }, { ".gltf", "model/gltf+json" },
+    { ".gtar", "application/x-gtar" }, { ".gz", "application/gzip" }, { ".h", "text/plain" },
+    { ".h5", "application/x-hdf5" }, { ".hdf", "application/x-hdf" }, { ".heic", "image/heic" },
+    { ".heif", "image/heif" }, { ".hjif", "haptics/hjif" }, { ".hmpg", "haptics/hmpg" },
+    { ".htm", "text/html" }, { ".html", "text/html" }, { ".ico", "image/vnd.microsoft.icon" },
+    { ".ief", "image/ief" }, { ".ivs", "haptics/ivs" }, { ".jp2", "image/jp2" },
+    { ".jpe", "image/jpeg" }, { ".jpeg", "image/jpeg" }, { ".jpg", "image/jpeg" },
+    { ".jpm", "image/jpm" }, { ".jpx", "image/jpx" }, { ".js", "text/javascript" },
+    { ".json", "application/json" }, { ".jxl", "image/jxl" }, { ".ksh", "text/plain" },
+    { ".latex", "application/x-latex" }, { ".loas", "audio/aac" }, { ".m1v", "video/mpeg" },
+    { ".m3u", "application/vnd.apple.mpegurl" }, { ".m3u8", "application/vnd.apple.mpegurl" },
+    { ".m4a", "audio/mp4" }, { ".m4v", "video/x-m4v" }, { ".man", "application/x-troff-man" },
+    { ".markdown", "text/markdown" }, { ".md", "text/markdown" },
+    { ".me", "application/x-troff-me" }, { ".mht", "message/rfc822" },
+    { ".mhtml", "message/rfc822" }, { ".mif", "application/x-mif" },
+    { ".mjs", "text/javascript" }, { ".mk3d", "video/matroska-3d" },
+    { ".mka", "audio/matroska" }, { ".mkv", "video/matroska" }, { ".mov", "video/quicktime" },
+    { ".movie", "video/x-sgi-movie" }, { ".mp2", "audio/mpeg" }, { ".mp3", "audio/mpeg" },
+    { ".mp4", "video/mp4" }, { ".mpa", "video/mpeg" }, { ".mpe", "video/mpeg" },
+    { ".mpeg", "video/mpeg" }, { ".mpg", "video/mpeg" }, { ".ms", "application/x-troff-ms" },
+    { ".n3", "text/n3" }, { ".nc", "application/x-netcdf" }, { ".nq", "application/n-quads" },
+    { ".nt", "application/n-triples" }, { ".nws", "message/rfc822" },
+    { ".o", "application/octet-stream" }, { ".obj", "application/octet-stream" },
+    { ".oda", "application/oda" }, { ".odg", "application/vnd.oasis.opendocument.graphics" },
+    { ".odp", "application/vnd.oasis.opendocument.presentation" },
+    { ".ods", "application/vnd.oasis.opendocument.spreadsheet" },
+    { ".odt", "application/vnd.oasis.opendocument.text" }, { ".ogg", "audio/ogg" },
+    { ".ogv", "video/ogg" }, { ".ogx", "application/ogg" }, { ".opus", "audio/opus" },
+    { ".otf", "font/otf" }, { ".p12", "application/x-pkcs12" },
+    { ".p7c", "application/pkcs7-mime" }, { ".pbm", "image/x-portable-bitmap" },
+    { ".pdf", "application/pdf" }, { ".pfx", "application/x-pkcs12" },
+    { ".pgm", "image/x-portable-graymap" }, { ".php", "application/x-httpd-php" },
+    { ".pl", "text/plain" }, { ".png", "image/png" }, { ".pnm", "image/x-portable-anymap" },
+    { ".pot", "application/vnd.ms-powerpoint" }, { ".ppa", "application/vnd.ms-powerpoint" },
+    { ".ppm", "image/x-portable-pixmap" }, { ".pps", "application/vnd.ms-powerpoint" },
+    { ".ppt", "application/vnd.ms-powerpoint" },
+    { ".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation" },
+    { ".ps", "application/postscript" }, { ".pwz", "application/vnd.ms-powerpoint" },
+    { ".py", "text/x-python" }, { ".pyc", "application/x-python-code" },
+    { ".pyo", "application/x-python-code" }, { ".qt", "video/quicktime" },
+    { ".ra", "audio/x-pn-realaudio" }, { ".ram", "application/x-pn-realaudio" },
+    { ".rar", "application/vnd.rar" }, { ".ras", "image/x-cmu-raster" },
+    { ".rdf", "application/xml" }, { ".rgb", "image/x-rgb" },
+    { ".roff", "application/x-troff" }, { ".rpm", "application/x-rpm" },
+    { ".rst", "text/x-rst" }, { ".rtf", "application/rtf" }, { ".rtx", "text/richtext" },
+    { ".sgm", "text/x-sgml" }, { ".sgml", "text/x-sgml" }, { ".sh", "application/x-sh" },
+    { ".shar", "application/x-shar" }, { ".snd", "audio/basic" },
+    { ".so", "application/octet-stream" }, { ".sql", "application/sql" },
+    { ".sqlite", "application/vnd.sqlite3" }, { ".sqlite3", "application/vnd.sqlite3" },
+    { ".src", "application/x-wais-source" }, { ".srt", "text/plain" }, { ".stl", "model/stl" },
+    { ".sv4cpio", "application/x-sv4cpio" }, { ".sv4crc", "application/x-sv4crc" },
+    { ".svg", "image/svg+xml" }, { ".swf", "application/x-shockwave-flash" },
+    { ".t", "application/x-troff" }, { ".t38", "image/t38" }, { ".tar", "application/x-tar" },
+    { ".tcl", "application/x-tcl" }, { ".tex", "application/x-tex" },
+    { ".texi", "application/texinfo" }, { ".texinfo", "application/texinfo" },
+    { ".tfx", "image/tiff-fx" }, { ".thmx", "application/vnd.ms-officetheme" },
+    { ".tif", "image/tiff" }, { ".tiff", "image/tiff" }, { ".toml", "application/toml" },
+    { ".tr", "application/x-troff" }, { ".trig", "application/trig" },
+    { ".tsv", "text/tab-separated-values" }, { ".ttc", "font/collection" },
+    { ".ttf", "font/ttf" }, { ".txt", "text/plain" }, { ".ustar", "application/x-ustar" },
+    { ".vcf", "text/x-vcard" }, { ".vtt", "text/vtt" }, { ".wasm", "application/wasm" },
+    { ".wav", "audio/vnd.wave" }, { ".weba", "audio/webm" }, { ".webm", "video/webm" },
+    { ".webmanifest", "application/manifest+json" }, { ".webp", "image/webp" },
+    { ".wiz", "application/msword" }, { ".wmf", "image/wmf" }, { ".wmv", "video/x-ms-wmv" },
+    { ".woff", "font/woff" }, { ".woff2", "font/woff2" }, { ".wsdl", "application/xml" },
+    { ".xbm", "image/x-xbitmap" }, { ".xlb", "application/vnd.ms-excel" },
+    { ".xls", "application/vnd.ms-excel" },
+    { ".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+    { ".xml", "text/xml" }, { ".xpdl", "application/xml" }, { ".xpm", "image/x-xpixmap" },
+    { ".xsl", "application/xml" }, { ".xwd", "image/x-xwindowdump" },
+    { ".yaml", "application/yaml" }, { ".yml", "application/yaml" },
+    { ".zip", "application/zip" },
+};
+
+static int jk_mime_cmp(const void *chave, const void *item)
+{
+    return strcasecmp((const char *)chave, ((const JkMime *)item)->ext);
+}
+
 const char *ps_jk_mime(const char *caminho)
 {
     const char *ponto = strrchr(caminho, '.');
-    if (!ponto) return "application/octet-stream";
-    static const struct { const char *ext, *mime; } TAB[] = {
-        { ".html", "text/html" },  { ".htm",  "text/html" },
-        { ".css",  "text/css" },   { ".js",   "text/javascript" },
-        { ".mjs",  "text/javascript" },
-        { ".json", "application/json" }, { ".txt",  "text/plain" },
-        { ".md",   "text/markdown" },    { ".csv",  "text/csv" },
-        { ".xml",  "text/xml" },
-        { ".png",  "image/png" },  { ".jpg",  "image/jpeg" },
-        { ".jpeg", "image/jpeg" }, { ".gif",  "image/gif" },
-        { ".svg",  "image/svg+xml" }, { ".webp", "image/webp" },
-        { ".ico",  "image/vnd.microsoft.icon" }, { ".bmp", "image/bmp" },
-        { ".pdf",  "application/pdf" },
-        { ".zip",  "application/zip" },
-        { ".mp3",  "audio/mpeg" }, { ".wav",  "audio/x-wav" },
-        { ".ogg",  "audio/ogg" },
-        { ".mp4",  "video/mp4" },  { ".webm", "video/webm" },
-        { ".mov",  "video/quicktime" },
-        { ".woff", "font/woff" },  { ".woff2","font/woff2" },
-        { ".ttf",  "font/ttf" },   { ".otf",  "font/otf" },
-    };
-    for (size_t i = 0; i < sizeof(TAB) / sizeof(TAB[0]); i++)
-        if (strcasecmp(ponto, TAB[i].ext) == 0) return TAB[i].mime;
-    return "application/octet-stream";
+    /* o ponto tem que estar no NOME, não numa pasta do caminho
+     * ("/srv/v1.2/LEIA" não tem extensão) */
+    const char *barra = strrchr(caminho, '/');
+    if (!ponto || (barra && barra > ponto)) return "application/octet-stream";
+    const JkMime *m = bsearch(ponto, JK_MIMES, sizeof(JK_MIMES) / sizeof(JK_MIMES[0]),
+                              sizeof(JK_MIMES[0]), jk_mime_cmp);
+    return m ? m->mime : "application/octet-stream";
+}
+
+/* ── arquivo inteiro, por pedaço e com cache ─────────────────────────────── */
+
+/* O que o servidor faz aqui segue o `ServeContent` do Go (`net/http`) e a
+ * RFC 9110. Antes os dois servidores de arquivo do jinker (`/static/` e o
+ * `static_folder`) liam o arquivo INTEIRO pra memória (um `malloc` do tamanho
+ * dele, por pedido: um vídeo de 2 GB pedia 2 GB) e respondiam 200 sempre:
+ * sem `Range` o Safari não toca vídeo, e sem `Last-Modified`/`ETag` o
+ * navegador baixa tudo de novo a cada visita. */
+
+#define JK_BLOCO (64u * 1024u)
+
+static int jk_mes(const char *s)
+{
+    static const char M[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+    for (int i = 0; i < 12; i++)
+        if (strncmp(s, M + 3 * i, 3) == 0) return i + 1;
+    return 0;
+}
+
+/* dias de 1970-01-01 até a data (o `days_from_civil` de Howard Hinnant, a
+ * conta que o `chrono` do C++ usa); `m` de 1 a 12 */
+static long long jk_dias(long long a, int m, int d)
+{
+    a -= m <= 2;
+    long long era = (a >= 0 ? a : a - 399) / 400;
+    long long ano_da_era = a - era * 400;
+    long long dia_do_ano = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    long long dia_da_era = ano_da_era * 365 + ano_da_era / 4 - ano_da_era / 100 + dia_do_ano;
+    return era * 146097 + dia_da_era - 719468;
+}
+
+/* `min` a `max` dígitos a partir de `p`; devolve onde parou, ou NULL */
+static const char *jk_digitos(const char *p, int min, int max, int *out)
+{
+    int v = 0, k = 0;
+    while (k < max && *p >= '0' && *p <= '9') { v = v * 10 + (*p - '0'); p++; k++; }
+    if (k < min) return NULL;
+    *out = v;
+    return p;
+}
+
+/* "hh:mm:ss" */
+static const char *jk_hora(const char *p, int *h, int *mi, int *se)
+{
+    if (!(p = jk_digitos(p, 2, 2, h)) || *p++ != ':') return NULL;
+    if (!(p = jk_digitos(p, 2, 2, mi)) || *p++ != ':') return NULL;
+    return jk_digitos(p, 2, 2, se);
+}
+
+/* HTTP-date (RFC 9110 5.6.7) em segundos desde 1970, ou -1 se não for data.
+ * A RFC manda aceitar os três formatos: o IMF-fixdate (o que todo navegador
+ * manda e o que o `Last-Modified` daqui escreve) e os dois obsoletos.
+ *
+ * Lida à mão, sem `sscanf`: no Linux o `sscanf` não estava entre os nomes que
+ * o binário importa, e nome importado a mais é resolvido na partida de TODO
+ * programa (o binário é BIND_NOW). Medido: com `sscanf` aqui entrava o
+ * `__isoc23_sscanf`, 311 nomes contra 310. */
+static long long jk_le_data(const char *s)
+{
+    const char *p = s;
+    int d = 0, m = 0, a = 0, h = 0, mi = 0, se = 0;
+    while (*p == ' ' || *p == '\t') p++;
+    const char *ini = p;
+    while ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z')) p++;   /* o dia da semana */
+    if (p == ini) return -1;
+    if (p[0] == ',' && p[1] == ' ') {
+        p += 2;
+        if (!(p = jk_digitos(p, 2, 2, &d))) return -1;
+        char sep = *p++;
+        if (sep != ' ' && sep != '-') return -1;
+        if (!(m = jk_mes(p))) return -1;
+        p += 3;
+        if (*p++ != sep) return -1;
+        if (sep == ' ') {
+            /* IMF-fixdate: "Sun, 06 Nov 1994 08:49:37 GMT" */
+            if (!(p = jk_digitos(p, 4, 4, &a))) return -1;
+        } else {
+            /* RFC 850: "Sunday, 06-Nov-94 08:49:37 GMT"; o ano de 2 dígitos é
+             * o mais recente que não passa de 50 anos no futuro (5.6.7) */
+            if (!(p = jk_digitos(p, 2, 2, &a))) return -1;
+            time_t agora = time(NULL);
+            struct tm gm; gmtime_r(&agora, &gm);
+            int ano = gm.tm_year + 1900;
+            a += ano - ano % 100;
+            if (a > ano + 50) a -= 100;
+        }
+        if (*p++ != ' ' || !(p = jk_hora(p, &h, &mi, &se))) return -1;
+        if (strncmp(p, " GMT", 4) != 0) return -1;
+        p += 4;
+    } else if (p[0] == ' ') {
+        /* asctime: "Sun Nov  6 08:49:37 1994" (dia de um dígito vem com um
+         * espaço na frente) */
+        p++;
+        if (!(m = jk_mes(p))) return -1;
+        p += 3;
+        if (*p++ != ' ') return -1;
+        if (*p == ' ') p++;
+        if (!(p = jk_digitos(p, 1, 2, &d))) return -1;
+        if (*p++ != ' ' || !(p = jk_hora(p, &h, &mi, &se))) return -1;
+        if (*p++ != ' ' || !(p = jk_digitos(p, 4, 4, &a))) return -1;
+    } else {
+        return -1;
+    }
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p || d < 1 || d > 31 || h > 23 || mi > 59 || se > 60) return -1;
+    return jk_dias(a, m, d) * 86400LL + h * 3600LL + mi * 60LL + se;
+}
+
+/* Algum ETag da lista de um `If-None-Match` é este? Comparação FRACA (RFC
+ * 9110 13.1.2): o `W/` não conta. "*" casa com qualquer arquivo que exista. */
+static int jk_etag_na_lista(const char *lista, const char *etag)
+{
+    const char *p = lista;
+    size_t ne = strlen(etag);
+    while (*p) {
+        while (*p == ' ' || *p == '\t' || *p == ',') p++;
+        if (!*p) break;
+        if (*p == '*') return 1;
+        if (p[0] == 'W' && p[1] == '/') p += 2;
+        const char *ini = p;
+        if (*p == '"') {
+            p++;
+            while (*p && *p != '"') p++;
+            if (*p == '"') p++;
+        } else {
+            while (*p && *p != ',' && *p != ' ' && *p != '\t') p++;
+        }
+        if ((size_t)(p - ini) == ne && strncmp(ini, etag, ne) == 0) return 1;
+    }
+    return 0;
+}
+
+/* lê um número decimal sem sinal; 0 se não houver dígito ou se estourar */
+static int jk_le_num(const char **pp, long long *out)
+{
+    const char *p = *pp;
+    long long v = 0;
+    if (*p < '0' || *p > '9') return 0;
+    while (*p >= '0' && *p <= '9') {
+        if (v > (0x7fffffffffffffffLL - 9) / 10) return 0;
+        v = v * 10 + (*p++ - '0');
+    }
+    *pp = p; *out = v;
+    return 1;
+}
+
+/* O `Range:` do pedido contra um arquivo de `total` bytes (RFC 9110 14.1 e
+ * 14.2). Devolve:
+ *    1  um intervalo que dá pra servir, em [*ini, *fim] (os dois inclusos);
+ *    0  sem Range, de outra unidade, malformado ou com VÁRIOS intervalos: vale
+ *       o arquivo inteiro (a RFC deixa o servidor ignorar o Range; navegador e
+ *       player de vídeo pedem um intervalo por vez);
+ *   -1  intervalo fora do arquivo: 416. */
+static int jk_le_range(const char *v, long long total, long long *ini, long long *fim)
+{
+    if (!v || total <= 0) return 0;
+    while (*v == ' ' || *v == '\t') v++;
+    if (strncasecmp(v, "bytes=", 6) != 0) return 0;
+    const char *p = v + 6;
+    while (*p == ' ' || *p == '\t') p++;
+    if (strchr(p, ',')) return 0;
+    long long a, b = -1;
+    if (*p == '-') {
+        /* "bytes=-n": os últimos n bytes; n = 0 não satisfaz (14.1.1) */
+        p++;
+        long long n;
+        if (!jk_le_num(&p, &n)) return 0;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p) return 0;
+        if (n == 0) return -1;
+        *ini = n >= total ? 0 : total - n;
+        *fim = total - 1;
+        return 1;
+    }
+    if (!jk_le_num(&p, &a)) return 0;
+    if (*p++ != '-') return 0;
+    if (*p >= '0' && *p <= '9' && !jk_le_num(&p, &b)) return 0;
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p) return 0;
+    if (b >= 0 && b < a) return 0;          /* inválido: ignora (14.1.1) */
+    if (a >= total) return -1;              /* começa depois do fim: 416 */
+    *ini = a;
+    *fim = (b < 0 || b >= total) ? total - 1 : b;
+    return 1;
+}
+
+int ps_jk_serve_arquivo(PSJkConn *c, const PSJkReq *r, const char *caminho,
+                        const char *ctype, const char *extra, int keep_alive)
+{
+    FILE *f = fopen(caminho, "rb");
+    if (!f) return -2;
+    struct stat st;
+    if (fstat(fileno(f), &st) != 0 || !S_ISREG(st.st_mode)) { fclose(f); return -2; }
+    long long total = (long long)st.st_size;
+    long long mtime = (long long)st.st_mtime;
+
+    char data[64], modif[64];
+    time_t agora = time(NULL);
+    struct tm gm;
+    gmtime_r(&agora, &gm);
+    strftime(data, sizeof(data), "%a, %d %b %Y %H:%M:%S GMT", &gm);
+    time_t tm_arq = (time_t)mtime;
+    gmtime_r(&tm_arq, &gm);
+    strftime(modif, sizeof(modif), "%a, %d %b %Y %H:%M:%S GMT", &gm);
+    /* ETag forte do tamanho e da data, no formato do nginx */
+    char etag[64];
+    snprintf(etag, sizeof(etag), "\"%llx-%llx\"", (unsigned long long)mtime, (unsigned long long)total);
+
+    int status = 200;
+    long long ini = 0, fim = total - 1;
+    int get_head = strcmp(r->metodo, "GET") == 0 || strcmp(r->metodo, "HEAD") == 0;
+    if (get_head) {
+        /* precondições na ordem da RFC 9110 13.2.2 */
+        const char *inm = ps_jk_header(r, "If-None-Match");
+        const char *ims = ps_jk_header(r, "If-Modified-Since");
+        if (inm) {
+            if (jk_etag_na_lista(inm, etag)) status = 304;
+        } else if (ims) {
+            /* ignorado com If-None-Match ou com data inválida (13.1.3) */
+            long long t = jk_le_data(ims);
+            if (t >= 0 && mtime <= t) status = 304;
+        }
+        if (status == 200) {
+            const char *rg = ps_jk_header(r, "Range");
+            const char *ifr = ps_jk_header(r, "If-Range");
+            int usa_range = rg != NULL;
+            if (rg && ifr) {
+                /* If-Range: ETag compara FORTE (W/ nunca casa); data tem que
+                 * ser a do Last-Modified, exata. Falso = arquivo inteiro. */
+                while (*ifr == ' ' || *ifr == '\t') ifr++;
+                if (ifr[0] == '"') usa_range = strncmp(ifr, etag, strlen(etag)) == 0 && ifr[strlen(etag)] == '\0';
+                else if (ifr[0] == 'W' && ifr[1] == '/') usa_range = 0;
+                else usa_range = jk_le_data(ifr) == mtime;
+            }
+            if (usa_range) {
+                int rr = jk_le_range(rg, total, &ini, &fim);
+                if (rr == 1) status = 206;
+                else if (rr == -1) status = 416;
+            }
+        }
+    }
+
+    char cab[2048];
+    int n;
+    const char *fecha = keep_alive ? "" : "Connection: close\r\n";
+    const char *mais = extra ? extra : "";
+    long long nbytes = 0;
+    if (status == 304) {
+        /* 304: sem corpo e sem Content-Length/Content-Type (RFC 9110 15.4.5
+         * e 8.6); vão Date, ETag e Last-Modified */
+        n = snprintf(cab, sizeof(cab),
+                     "HTTP/1.1 304 Not Modified\r\nServer: Jinker\r\nDate: %s\r\n"
+                     "ETag: %s\r\nLast-Modified: %s\r\n%s%s\r\n",
+                     data, etag, modif, fecha, mais);
+    } else if (status == 416) {
+        /* 416 leva o tamanho atual em "bytes *\/total" (15.5.17) */
+        n = snprintf(cab, sizeof(cab),
+                     "HTTP/1.1 416 Range Not Satisfiable\r\nServer: Jinker\r\nDate: %s\r\n"
+                     "Content-Range: bytes */%lld\r\nContent-Length: 0\r\nAccept-Ranges: bytes\r\n%s%s\r\n",
+                     data, total, fecha, mais);
+    } else {
+        nbytes = status == 206 ? fim - ini + 1 : total;
+        char faixa[96] = "";
+        if (status == 206)
+            snprintf(faixa, sizeof(faixa), "Content-Range: bytes %lld-%lld/%lld\r\n", ini, fim, total);
+        n = snprintf(cab, sizeof(cab),
+                     "HTTP/1.1 %d %s\r\nServer: Jinker\r\nDate: %s\r\n"
+                     "Content-Type: %s\r\nContent-Length: %lld\r\n%s"
+                     "Accept-Ranges: bytes\r\nLast-Modified: %s\r\nETag: %s\r\n%s%s\r\n",
+                     status, frase(status), data, ctype ? ctype : "application/octet-stream",
+                     nbytes, faixa, modif, etag, fecha, mais);
+    }
+    if (n < 0 || n >= (int)sizeof(cab) || conn_escreve(c, cab, (size_t)n) != 0) { fclose(f); return -1; }
+    if (c->sem_corpo || nbytes <= 0) { fclose(f); return 0; }
+
+    /* o corpo em blocos: a memória fica em 64 KB, seja o arquivo do tamanho que for */
+    if (ini > 0) {
+#ifdef _WIN32
+        if (_fseeki64(f, ini, SEEK_SET) != 0) { fclose(f); return -1; }
+#else
+        if (fseek(f, (long)ini, SEEK_SET) != 0) { fclose(f); return -1; }
+#endif
+    }
+    char *bloco = malloc(JK_BLOCO);
+    if (!bloco) { fclose(f); return -1; }
+    long long falta = nbytes;
+    int rc = 0;
+    while (falta > 0) {
+        size_t quer = falta > (long long)JK_BLOCO ? JK_BLOCO : (size_t)falta;
+        size_t lido = fread(bloco, 1, quer, f);
+        /* o arquivo encolheu no meio: o Content-Length já saiu, então a
+         * conexão fecha pra o cliente não esperar bytes que não vêm */
+        if (lido == 0) { rc = -1; break; }
+        if (conn_escreve(c, bloco, lido) != 0) { rc = -1; break; }
+        falta -= (long long)lido;
+    }
+    free(bloco);
+    fclose(f);
+    return rc;
 }
 
 static int hexval(int c)

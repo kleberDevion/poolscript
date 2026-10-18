@@ -53,6 +53,8 @@ Com `static_url="/app"`:
 | `/app/app.js` | serve `dist/app.js` |
 | `/app` | serve `dist/index.html` (entrada do SPA) |
 | `/app/perfil` (não é arquivo) | serve `dist/index.html` (fallback SPA) |
+| `/app/docs/` (pasta com `index.html`) | serve `dist/docs/index.html` |
+| `/app/docs` (a mesma pasta, sem a barra) | `301` com `Location: docs/` |
 | `/app.js` (fora do prefixo) | não é estático → 404 |
 | `/users` | não é estático → rota/404 |
 

@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.19`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `17.0.20`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -2197,8 +2197,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **17.0.19** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 17.0.19 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **17.0.20** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 17.0.20 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.12 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2820,7 +2820,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "17.0.19"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "17.0.20"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2901,7 +2901,8 @@ O que o código e o CI já mostram do macOS:
 ### 6.2 Estado medido em 2026-10-15
 
 - **2026-10-16, decisão sua: nada novo entra até a correção da base que já existe estar finalizada.** A base é este `main` (17.0.19). O C1 parou no ramo `obra/c1` (`b60e4a3`, no GitHub), sem merge: fatias 1 a 5a fechadas, 5b pela metade; o estado do ramo e os defeitos achados nele estão no `ESTADO.md` da sessão (`pausa-2026-10-05`). Param também o Plano 12, o LLVM e a trilha de dev. O critério da correção é decisão sua, ainda aberta; a proposta é a doc: o que a doc de cada módulo promete, o motor cumpre, no `--check` e rodando, pra qualquer programa. Medido em 2026-10-16 no código do 17.0.19 e aberto: a pasta da jinker (`/docs/` devolve o `index.html` da raiz e subpasta dá 404; `.wasm` sai como `application/octet-stream`; sem Range nem 304; a doc diz duas coisas sobre o `static_url`).
-- Versão da linguagem **17.0.19** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.19 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- **17.0.20 (2026-10-17), o primeiro lote da correção da base: jinker-1 a 5 e teste-1** de `notas/CORRECAO-BASE.md`, pelo que o `FileServer` do Go, o `http.server` do Python e a RFC 9110 fazem. Nos dois servidores de arquivo (`/static/` e `static_folder`): a pasta pedida serve o `index.html` dela, e sem a barra no fim recebe `301` relativo; o tipo do arquivo sai da tabela padrão do `mimetypes` do Python 3.15 (213 extensões, `.wasm` = `application/wasm`); `Range` (206/416), `ETag`, `Last-Modified`, 304 e `If-Range`; o arquivo sai em blocos de 64 KB (servindo 20 MB, o pico de memória do servidor caiu de 23,6 MB pra 3,6 MB). A doc do jinker parou de dizer que o `static_url` é ignorado e que a `/static/` é a do diretório de quem chamou. Nenhum nome importado novo (Linux 310 = 310, Mac 318 = 318) e 60 relocações a menos que no 17.0.19 (25.307 contra 25.367): a tabela de tipos guarda o texto na entrada, sem ponteiro (com ponteiro eram 366 a mais e a partida subia 0,58%), e a data do `If-Modified-Since` é lida à mão (o `sscanf` trazia o `__isoc23_sscanf` no Linux). As quatro conferências `sobra_temp` do `teste/jinker_roda.pr` dependiam do coletor ter passado: passaram a contar o que a operação deixou. No Mac, seis casos de aninhamento fundo falham dentro do `make check` (o make da Apple dá 64 MB de pilha aos filhos) no 17.0.19 e no 17.0.20: é o defeito motor-1 da lista.
+- Versão da linguagem **17.0.20** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.20 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.12** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código no `main`: a logo nova (`aca400d`, extensão 8.6.12), sobre o 17.0.19 (`58ae207`, Plano 6, lote 8, 2026-10-15), que levou o ramo `obra/lote8` num commit só, sobre o 17.0.18 (`with`, 2026-10-14, subido do Linux). No `2a668b9` (17.0.11) entrou, por engano meu (`git add -A`), o seu rename `examples/action.pr` → `examples/funct.pr` que estava na árvore (100% igual); desde então o commit leva só a lista de arquivos do lote. Fora do controle de versão ficam só arquivos seus (`examples/s.pr`), que nunca entram em commit. A sua mudança em `vm/ps_lexer.c` (de 2026-10-12: `with` sai das palavras reservadas) entrou no 17.0.18, por ordem sua de 2026-10-14.
 - **Lote 8 fechado no 17.0.19** (`58ae207`, 2026-10-15):
