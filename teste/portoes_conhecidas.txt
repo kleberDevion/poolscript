@@ -1341,7 +1341,7 @@ p3	docs/linguagem/04-variaveis-escopo-atribuicao.md	25c98ad77904	editor-3	todos	
 p3	docs/linguagem/04-variaveis-escopo-atribuicao.md	d7da24944bbe	editor-3	todos	linha 155: #p3 hover y 10:5
 p3	docs/linguagem/04-variaveis-escopo-atribuicao.md	f820b2d240f5	editor-3	todos	linha 257: #p3 hover x 4:29
 p3	docs/linguagem/04-variaveis-escopo-atribuicao.md	cf42e9c50c82	editor-3	todos	linha 257: #p3 hover x 4:41
-p3	docs/linguagem/04-variaveis-escopo-atribuicao.md	c615e2ef05dd	motor-18	todos	linha 271: #p3 hover prev 3:14
+p3	docs/linguagem/04-variaveis-escopo-atribuicao.md	c615e2ef05dd	editor-3	todos	linha 271: #p3 hover prev 3:14
 p3	docs/linguagem/04-variaveis-escopo-atribuicao.md	98528ab60721	editor-3	todos	linha 383: #p3 hover static 4:9
 p3	docs/linguagem/10-excecoes.md	fe6f529ff571	editor-3	todos	linha 15: #p3 hover ValorInvalido 1:7
 p3	docs/linguagem/10-excecoes.md	bf26eb83c1a4	editor-3	todos	linha 34: #p3 hover e 4:21

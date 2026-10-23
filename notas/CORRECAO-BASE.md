@@ -156,7 +156,7 @@ em cada item):
   (`docs/jinker/middleware/middleware.md:29`, `docs/jinker.md:53`).
 - **editor-3** (achado pelo portão P3, 2026-10-23) O hover diz "nome não
   definido neste arquivo nem por import (rodando dá `NameError`)" em nomes que
-  o motor liga, em blocos que o `--check` aprova. Na doc inteira são 549
+  o motor liga, em blocos que o `--check` aprova. Na doc inteira são 550
   lugares. Pelo papel que o portão dá ao nome:
   - **o módulo na linha do import** (96): o `X` de `from X import ...`
     (`from jinker import Jinker`, `from os import getenv`) e o de
@@ -176,12 +176,18 @@ em cada item):
     do `case` (`case v if v < 50`, `case [x, y]`, `case _`), o `global`, o
     membro de `enum`, o campo da Entity escrito `str nome`, a variável de topo
     com modificador (`private int n = 1`, que o `--ast` dá como `FieldDecl`) e
-    a exceção inventada no `raise` (`raise MinhaFalha`).
+    a exceção inventada no `raise` (`raise MinhaFalha`);
+  - **o nome lido antes da linha que o liga** (1): o `prev` de
+    `docs/linguagem/04-variaveis-escopo-atribuicao.md:271`, que o arquivo liga
+    duas linhas abaixo. Rodando, ele dá `NameError` na segunda volta, como a
+    doc promete (4.6.3), e o hover diz "não definido neste arquivo". Foi o
+    motor-18 até o conserto do mesmo dia: o checador só promete o nome que o
+    arquivo nunca liga (10.x), e o motor faz o que a doc diz.
 
   O contrário também acontece, pela mesma causa. Depois do laço
   `for each i in [1, 2, 3] { ultimo = i }`, o hover diz que `i` e `ultimo`
   existem ("declarada na linha 1", "na linha 2"), e rodando os dois dão
-  `NameError` (a doc promete isso em 4.6.3; o `--check` também erra, motor-18).
+  `NameError`, que é o que a doc promete em 4.6.3.
   As causas estão em dois lugares do editor:
   - no `editor/vscode/analise.js`, o `ligacoesDe` só liga a atribuição, a
     declaração (`VarDecl`), a variável do `for each`, as declarações de topo
@@ -399,24 +405,6 @@ em cada item):
   Por isso o membro neles também passa (`len.foo()`, `gen().foo()`). A
   chamada de membro que não existe do P2 acha o do builtin
   (`len.p2_nao_existe()`, na catraca). `motor` (checador).
-- **motor-18** (achado pelo portão P3, 2026-10-23,
-  `docs/linguagem/04-variaveis-escopo-atribuicao.md:271`) O `--check` não
-  aplica o escopo do corpo do laço. A doc promete (4.6.3) que o corpo é um
-  escopo por volta e que a variável do `for each` não vaza do laço. O
-  `--check` dá `{"ok":true}` em três programas que rodando dão `NameError`,
-  com JIT e sem:
-  - o nome criado numa volta e lido na seguinte (o exemplo da doc): no corpo
-    de `for each i in [1, 2, 3]`, `if i > 1 { post(prev) }` e depois
-    `prev = i`. Rodando: `NameError: name 'prev' is not defined`, na linha 3;
-  - a variável do `for each` depois do laço: `post(i)` depois de
-    `for each i in [1, 2, 3] { ultimo = i }`. Rodando: `NameError: name 'i'
-    is not defined`;
-  - o nome criado no corpo, depois do laço: `post(ultimo)` no mesmo
-    programa. Rodando: `NameError: name 'ultimo' is not defined`.
-
-  O portão achou o primeiro pelo hover. No `prev`, o editor diz "nome não
-  definido", que é o que o motor faz rodando. Nos outros dois, o editor erra
-  junto com o checador (editor-3). `motor` (checador).
 - **motor-19** (achado pelo portão P3, 2026-10-23,
   `docs/linguagem/01-estrutura-lexica.md:333`) O `--tokens` lê como código o
   formato da f-string, o trecho depois do `:`. Em

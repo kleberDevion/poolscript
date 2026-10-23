@@ -277,11 +277,17 @@ receptores declarados é a do `--metadata`. As 1.207 discordâncias:
 | causa | lugares | item |
 |---|---|---|
 | o hover do nome de argumento diz "não definido" (`room_id=`, o `length=` do campo do `model`) | 574 | editor-1 |
-| o hover diz "não definido" em nomes que o motor liga: o módulo na linha do `from`, o `__name__`, o decorador, o membro na declaração, a variável do `catch`, da lambda, da compreensão, do `using`, do `case` | 549 | editor-3 |
+| o hover diz "não definido" em nomes que o motor liga: o módulo na linha do `from`, o `__name__`, o decorador, o membro na declaração, a variável do `catch`, da lambda, da compreensão, do `using`, do `case`, e o nome lido antes da linha que o liga | 550 | editor-3 |
 | o `request` da rota leva o hover do módulo cliente ("falta `import request`") | 49 | editor-2 |
 | o completion dá os nomes do escopo depois do ponto que começa a linha (a cadeia que continua) e do ponto de uma lista ou tupla escrita | 33 | editor-4 |
-| o `--check` aprova o nome do laço lido fora da volta dele; o hover está certo | 1 | motor-18 |
 | o `--tokens` lê o formato da f-string como código: o `x` de `{n:x}` vira nome | 1 | motor-19 |
+
+O `prev` de `docs/linguagem/04-variaveis-escopo-atribuicao.md:271` entrou
+primeiro como motor-18 ("o `--check` aprova o nome do laço lido fora da volta
+dele") e saiu no conserto do mesmo dia. A doc só promete pegar antes de rodar
+o nome que o arquivo nunca liga (`docs/linguagem/10-excecoes.md`, 10.x), e o
+`prev` o arquivo liga duas linhas abaixo: o `NameError` rodando é o que a doc
+promete. O erro é do hover, que diz "não definido neste arquivo" (editor-3).
 
 A prova de que o portão pega: contra o 18.0.0, ele achou sozinho o editor-1,
 o relato do `forAll`, pelo `room_id` de `docs/jinker/channel/channel.md:25`. O
