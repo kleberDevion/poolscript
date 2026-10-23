@@ -47,11 +47,19 @@
 #   - no macOS, o `sandbox-exec`: escrita só na pasta, rede só no loopback
 #     (fora as portas de serviço da máquina, como a 8080), sinal só pros
 #     próprios filhos;
-#   - no Linux, o `bwrap` (bubblewrap), quando existe: o disco só de leitura
-#     fora da pasta, rede e processos num espaço próprio. Sem ele, roda sem
-#     isolamento e o relatório diz isso;
+#   - no Linux, o `bwrap` (bubblewrap): o disco só de leitura fora da pasta,
+#     rede e processos num espaço próprio;
 #   - prazo por rodada (10 s, ou o `--prazo`): o que passa disso é morto e
 #     sai como falha.
+#
+# Sem o isolador, nenhum exemplo roda: no Linux sem o `bwrap` e no macOS sem
+# o `sandbox-exec`, o portão para vermelho dizendo o que falta; no Windows,
+# que não tem isolador, ele diz que não rodou nada e sai com 0
+# (notas/PORTOES.md).
+#
+# O que o exemplo deixa vivo morre junto com o grupo de processos dele, pelo
+# `kill -9 -- -<grupo>` (`cmd_kill`). Antes do 1º exemplo, o portão prova
+# com o sinal 0 que o `kill` da máquina acerta o grupo (`prova_do_kill`).
 import os
 import sys
 import date
@@ -166,7 +174,8 @@ str PERFIL_MAC = '''(version 1)
 
 
 # O que vai na frente do comando pra isolar a rodada, pela máquina: em `r`,
-# "prefixo" (a lista) e "nome" (o que o relatório diz).
+# "prefixo" (a lista), "nome" (o que o relatório diz) e, sem isolador, "falta"
+# (o que instalar).
 Null funct isolador(str trab, dict r) {
     str sis = sys.platform()
     if sis == "darwin" and acha_programa("sandbox-exec") != "" {
@@ -183,8 +192,75 @@ Null funct isolador(str trab, dict r) {
                         "--die-with-parent"]
         return
     }
-    r["nome"] = "NENHUM (sem sandbox-exec nem bwrap nesta máquina)"
+    r["nome"] = "NENHUM"
     r["prefixo"] = []
+    r["falta"] = "não há isolador pra este sistema (" + sis + ")"
+    if sis == "linux" {
+        r["falta"] = "instale o bubblewrap (apt install bubblewrap)"
+    }
+    if sis == "darwin" {
+        r["falta"] = "o sandbox-exec do macOS não está no PATH"
+    }
+}
+
+
+# O comando que manda o sinal de número `sinal` ("9" ou "0") pro grupo de
+# processos `grupo`. A forma é a do POSIX, com o número negativo depois do
+# `--`: "If the first pid operand is negative, it should be preceded by "--"
+# to keep it from being interpreted as an option" (o `kill` do POSIX.1-2024).
+# Sem o `--`, o `kill` do procps (Ubuntu 24.04, `src/kill.c`: `pid = (long)('0'
+# - optopt);`) lê só o 1º dígito do número: `kill -9 -1426999` vira
+# `kill(-1, 9)`, que mata todos os processos da máquina. Foi o que derrubou a
+# VPS em 2026-10-22, com o portão rodando como root.
+#
+# O sinal vai como `-9`, no 1º argumento, e não como `-s KILL`: antes de
+# tudo, o procps procura em TODOS os argumentos um que pareça sinal e fica
+# com o 1º que achar. Com o `-s`, o grupo 83 (`-83`, o sinal 83) era tomado
+# por sinal e o `kill` saía só com o "Usage" (medido na VPS, num
+# `unshare --pid`, onde os números são pequenos). Com o `-9` na frente, é
+# ele o 1º que parece sinal, e o `--` guarda o resto.
+list funct cmd_kill(int grupo, str sinal) {
+    return ["kill", "-" + sinal, "--", "-" + str(grupo)]
+}
+
+
+# Roda o `cmd_kill` e põe em `r` o código do `kill` ("rc") e o que ele
+# escreveu no stderr ("erro"): é o que a prova confere.
+Null funct mata_grupo(int grupo, str sinal, dict r) {
+    Process p = os.run(cmd_kill(grupo, sinal), capture="live")
+    r["rc"] = p.wait()
+    r["erro"] = p.read_err()
+}
+
+
+# A prova de que o `kill` desta máquina acerta o grupo, antes do 1º exemplo.
+# Só vai sinal 0 (não chega em processo nenhum) até o alvo estar provado:
+#   1. o grupo 1000000000 não existe em sistema nenhum (o maior PID é
+#      4.194.304 no Linux e 99.999 no macOS): o `kill` tem que falhar dizendo
+#      esse número. O código de saída sozinho não basta: o caminho errado do
+#      procps manda pra `-1`, sai com 1 e não escreve nada;
+#   2. um grupo de verdade, o `sleep` que o `os.run` dispara com `setsid`: o
+#      sinal 0 tem que achar, e só então vai o KILL.
+# Devolve "" quando passa; senão, o que deu errado.
+str funct prova_do_kill() {
+    dict r = {}
+    mata_grupo(1000000000, "0", r)
+    if r["rc"] == 0 or "1000000000" not in r["erro"] {
+        return " ".join(cmd_kill(1000000000, "0")) + " deu rc " + str(r["rc"]) + " e '"
+               + r["erro"].strip() + "'"
+    }
+    int g = os.run(["sleep", "10"])
+    mata_grupo(g, "0", r)
+    if r["rc"] != 0 {
+        return " ".join(cmd_kill(g, "0")) + " (um sleep vivo) deu rc " + str(r["rc"]) + " e '"
+               + r["erro"].strip() + "'"
+    }
+    mata_grupo(g, "9", r)
+    if r["rc"] != 0 {
+        return " ".join(cmd_kill(g, "9")) + " (o mesmo sleep) deu rc " + str(r["rc"]) + " e '"
+               + r["erro"].strip() + "'"
+    }
+    return ""
 }
 
 
@@ -234,7 +310,7 @@ Null funct executa(str pasta, list prefixo, str nome, str arquivo, bool jit, flo
     }
     # no prazo e no fim normal: o que o exemplo deixou vivo no grupo morre
     if grupo > 1 {
-        os.run(["kill", "-9", "-" + str(grupo)], capture=True)
+        os.run(cmd_kill(grupo, "9"), capture=True)
     }
     int rc = -1
     if os.exists(nome + ".rc") {
@@ -416,6 +492,24 @@ str trab = os.cwd() + "/" + TMP
 os.mkdir(trab)
 dict iso = {}
 isolador(trab, iso)
+# sem isolador, nenhum exemplo roda (notas/PORTOES.md)
+if iso["prefixo"].len() == 0 {
+    os.rmdir(trab, force=True)
+    if sys.platform() == "windows" {
+        post("portão roda: no Windows não há isolador, e nenhum exemplo da doc roda sem isolamento: nada rodou (notas/PORTOES.md)")
+        sys.exit(0)
+    }
+    post("portão roda: sem isolamento nesta máquina: " + iso["falta"]
+         + ". Nenhum exemplo da doc roda sem isolamento (notas/PORTOES.md).")
+    sys.exit(1)
+}
+str prova = prova_do_kill()
+if prova != "" {
+    os.rmdir(trab, force=True)
+    post("portão roda: o kill desta máquina não acerta o grupo de processos (" + prova
+         + "): nenhum exemplo roda (notas/PORTOES.md)")
+    sys.exit(1)
+}
 
 int rodados = 0
 int com_saida = 0

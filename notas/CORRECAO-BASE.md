@@ -167,6 +167,17 @@ Achados em 2026-10-17, no conserto acima e no relato dele (abertos):
   dela quando o coletor passa. Passavam por sorte de tempo: um bloco de teste
   com texto grande vivo bastou pra derrubar as quatro.~~ Corrigido no 17.0.20:
   a conta é "não aumentou desde antes da operação" (o coletor só tira arquivo).
+- ~~**teste-2** (achado na rodada da VPS, 2026-10-22) O portão `roda` matava
+  o grupo de processos do exemplo com `kill -9 -<grupo>`. No Linux, o `kill`
+  do procps lê só o 1º dígito do número negativo: `kill -9 -1426999` virou
+  `kill(-1, 9)`, e a rodada como root matou todos os processos da VPS. Achado
+  no mesmo código: sem `bwrap` nem `sandbox-exec`, o portão rodava os
+  exemplos sem isolamento e só avisava.~~ Corrigido em 2026-10-23: o
+  `kill -9 -- -<grupo>` do POSIX, com o sinal no 1º argumento (`cmd_kill`;
+  com `-s KILL`, o procps tomava o grupo 83 por sinal); a prova com o sinal 0
+  antes do 1º exemplo (`prova_do_kill`), que reprova a forma sem o `--`; sem
+  isolador, nenhum exemplo roda (vermelho no Linux e no macOS; no Windows, o
+  portão diz que não rodou).
 
 ## doc
 

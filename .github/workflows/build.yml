@@ -33,7 +33,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends gcc libsqlite3-dev libpq-dev \
             libmariadb-dev libmariadb-dev-compat unixodbc-dev libssl-dev libpng-dev \
             libexpat1-dev zlib1g-dev libgmp-dev libmongoc-dev libbson-dev \
-            libpq5 libmariadb3 unixodbc libmongoc-1.0-0
+            libpq5 libmariadb3 unixodbc libmongoc-1.0-0 bubblewrap
       - name: compila
         run: make pool testar
       - name: suite

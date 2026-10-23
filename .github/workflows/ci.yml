@@ -41,13 +41,15 @@ jobs:
       # versão da Ubuntu. Sem ligação, qualquer libpq serve (a interface usada
       # é a estável, de soname 5). Kerberos, LDAP e ltdl só entravam arrastados
       # pelo link estático.
+      # O `bubblewrap` isola os exemplos da doc no portão `roda`: sem ele o
+      # portão para vermelho e nenhum exemplo roda (notas/PORTOES.md).
       - name: dependências
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             gcc libsqlite3-dev libpq-dev libmariadb-dev libmariadb-dev-compat unixodbc-dev \
             libssl-dev libpng-dev libexpat1-dev zlib1g-dev \
-            libgmp-dev libx11-dev libmongoc-dev libbson-dev
+            libgmp-dev libx11-dev libmongoc-dev libbson-dev bubblewrap
       - run: make pool testar
       # `make check` é o portão INTEIRO e é o mesmo comando que roda na máquina:
       # suíte + metadata + audita_doc + audita_c + exemplos da doc + replay de

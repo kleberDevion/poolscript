@@ -52,7 +52,23 @@ YARPGen).
   que é o HOME dele; ambiente limpo; no macOS o `sandbox-exec` (escrita só na
   pasta, rede só no loopback e fora das portas de serviço, como a 8080, sinal
   só pros próprios filhos); no Linux o `bwrap` (disco só de leitura fora da
-  pasta, rede e processos num espaço próprio); prazo por rodada.
+  pasta, rede e processos num espaço próprio); prazo por rodada. **Nenhum
+  exemplo roda sem o isolamento**: no Linux sem o `bwrap` e no macOS sem o
+  `sandbox-exec`, o portão para vermelho dizendo o que falta; no Windows, que
+  não tem isolador, o portão `roda` não roda nenhum exemplo, diz isso e sai
+  com 0 (decisão do Kleber, 2026-10-23). O portão `check` roda lá.
+- O que o exemplo deixa vivo (o servidor que ele abre) morre no prazo e no
+  fim junto com o grupo de processos dele, pelo `kill -9 -- -<grupo>`, a
+  forma do POSIX: o número negativo vem depois do `--`, e o sinal vai no 1º
+  argumento (com `-s KILL`, o procps toma um grupo pequeno, como o 83, por
+  sinal). Sem o `--`, o `kill` do procps (Ubuntu 24.04) lê só o 1º dígito do
+  número. Em 2026-10-22, com o
+  portão rodando como root na VPS, `kill -9 -1426999` virou `kill(-1, 9)` e
+  matou todos os processos da máquina (caíram o Postgres, o e-mail e as APIs).
+  Por isso, antes do 1º exemplo, o portão prova com o sinal 0 que o `kill` da
+  máquina acerta o grupo: o grupo 1000000000, que não existe em sistema
+  nenhum, tem que dar "No such process" com esse número, e um `sleep` de
+  verdade tem que ser achado e morto. Se a prova falha, nenhum exemplo roda.
 - Bloco que precisa de serviço de fora (servidor que fica escutando, banco,
   e-mail, rede) roda só no `--check` e leva a marca ```ps sem-rodar: motivo.
   O relatório lista cada um, com o motivo.
