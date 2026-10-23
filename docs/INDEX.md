@@ -4,7 +4,10 @@ Referência completa: uma pasta por lib, e dentro dela uma página por método.
 Cada página tem assinatura, parâmetros, o **porquê** e exemplos reais.
 
 Para a **linguagem em si** (sintaxe, tipos, `if`/`while`/`for`, `Entity`,
-`match`, decorators…), veja [`LANGUAGE.md`](LANGUAGE.md).
+`match`, decorators…), veja [`LANGUAGE.md`](LANGUAGE.md). A **gramática
+inteira** (os tokens e a sintaxe, na notação da gramática do Python, conferida
+contra o parser a cada commit) está em
+[`linguagem/gramatica.md`](linguagem/gramatica.md).
 
 Para usar a Jinga **em qualquer editor** (VS Code, IntelliJ IDEA,
 Neovim…) com completion type-aware e diagnóstico do parser real, veja

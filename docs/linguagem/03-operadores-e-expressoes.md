@@ -5,7 +5,8 @@ um nome, uma chamada, ou combinações disso por **operadores**. Esta seção
 especifica todos os operadores da linguagem — o que cada um faz, sobre que
 tipos, o que devolve, quando dá erro — e as regras que governam como uma
 expressão maior é montada a partir das menores: **precedência**,
-**associatividade** e **curto-circuito**.
+**associatividade** e **curto-circuito**. As regras de cada nível, como o
+parser lê, estão em [A gramática](gramatica.md#as-expressões).
 
 Cada
 comportamento desta seção foi verificado rodando o mesmo fonte nos dois e
@@ -633,6 +634,20 @@ post("total:" (x + 1))   # SyntaxError: '(' separado por espaco dentro dos argum
 
 Fora disso (num comando, dentro de `( )` de agrupamento, no índice, no corpo
 de uma lambda), o espaço antes do `(`/`[` não muda nada.
+
+O valor que segue outro sem vírgula começa com um literal, um nome, `-`, `+`,
+`!`, um tipo chamado (`int(`) ou uma das palavras que abrem valor (`not`,
+`count`, `to`, `await`, `self`, `post`...). Um `{` nunca: sem vírgula antes
+dele, é a vírgula que faltou. A lista exata é a regra `inicio_justaposto` da
+[gramática](gramatica.md#as-expressões).
+
+```ps
+list l = [1, 2, 1]
+post("uns:" count int(1) in l "vazia:" not l)
+```
+```saida
+uns: 2 vazia: False
+```
 
 Vírgula esquecida entre itens é erro no item que ficou sem ela, na linha
 dele: `faltou ',' entre os itens da lista` (e `... da tupla`, `... entre os

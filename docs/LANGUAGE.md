@@ -4,6 +4,9 @@ Este mark down tem alguams specs da linguagem.
 > parser recursive-descent que produz uma AST (`vm/ps_parser.c`) → compilador
 > pra bytecode (`vm/ps_compiler.c`) → máquina virtual (`vm/jinga_vm.c`).
 > Tudo em C, sem dependência de runtime externo.
+>
+> A gramática inteira (os tokens e a sintaxe), conferida contra o parser a
+> cada commit: [`linguagem/gramatica.md`](linguagem/gramatica.md).
 
 ---
 

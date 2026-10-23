@@ -422,6 +422,92 @@ em cada item):
   programa passa no `--check` e imprime `ff`, com JIT e sem. `motor` (o
   `--tokens`).
 
+  Medido montando o portão `gramatica` (2026-10-23): a f-string que está
+  dentro de um campo de outra (`f"a{f'b{1 + 2}' + 'x'}c"`) vem como um token
+  `FSTRING` marcado `"em":"fstring"`, sem o `interp` e sem os tokens de
+  dentro dela. O `docs/lsp.md` ("Dentro da f-string") promete os dois pra
+  f-string: o intervalo de cada interpolação e os tokens de dentro.
+- **motor-20** (achado escrevendo a gramática, 2026-10-23) O parser ainda tem
+  o ramo do `match` com `:` e recuo, de quando havia bloco com `:`, e as
+  frases dele pedem o `:` que saiu da linguagem. No `--check` e rodando, com
+  JIT e sem:
+  - `match x:` e embaixo `case 1 { post("um") }` dá `SyntaxError: esperado
+    ':' apos padrao do case` (3:12);
+  - `match x:` e embaixo `case 1:` com o corpo recuado dá `SyntaxError:
+    match indentado nao fechou`, no fim do arquivo (4:19).
+
+  O `if True:` dá a frase que aponta a causa, `bloco com ':' nao existe mais
+  — use '{ }'`, e o `case 1:` dentro de `match x {` também. A doc (5.5) só
+  tem o `match` de chaves. A gramática (`docs/linguagem/gramatica.md`)
+  escreve só a forma de chaves: o ramo do `:` não aceita programa nenhum, e
+  os dois recusam os mesmos. `motor` (a frase).
+- **motor-21** (achado escrevendo a gramática, 2026-10-23) O parser aceita
+  palavra reservada onde vai um valor ou o tipo de um campo, e o checador
+  acusa com uma frase que não aponta a causa. No `--check` e rodando, com JIT
+  e sem:
+  - `x = while` dá `NameError: name 'while' is not defined` (1:5);
+  - `class A { if x }` dá `AttributedValueError: tipo if não existe (campo x
+    de A)` (1:14), e o fim do erro sai `l2` 0, `c2` 0.
+
+  A palavra reservada no lugar do nome da variável já tem frase própria
+  (`while = 1`: `'while' e palavra reservada da linguagem e nao pode ser
+  usada como nome de variavel`). A gramática descreve o parser (o `KW` no
+  `corpo_primario` e no `tipo_de_campo`), com a nota no fim da página.
+  `motor` (a frase).
+- **motor-22** (achado escrevendo a gramática, 2026-10-23) No `count each
+  <tipo> in <texto literal> { ... }`, o `{` depois do texto é lido como a
+  interpolação (`"texto" {expr}`), e não como o bloco: o comando vira a
+  expressão `count` sem bloco, e o corpo roda uma vez, como parte do texto.
+  `count each str in "abca" { post("dentro") }` e embaixo `post("fim")` passa
+  no `--check` e imprime `dentro` e `fim`, com JIT e sem: calado. Com
+  `post(_match)` no corpo, a queixa é `NameError: name '_match' is not
+  defined` (1:33), que não aponta a causa. Com o texto numa variável (`str s
+  = "abca"`, `count each str in s { post(_match) }`), o bloco roda e imprime
+  as 4 letras; o `for each c in "ab" { ... }` também abre o bloco. A doc (5.6)
+  escreve `count each <Tipo> in <container> { }` sobre um container
+  qualquer. A causa: a cabeça do `if`, do `while` e do `for each` é lida no
+  modo em que o `{` depois de texto abre o bloco (`chave_abre_bloco`), e o
+  container do `count each` não (o `soma` da regra `contagem_com_bloco`, na
+  gramática). `motor` (resultado errado calado).
+- **motor-23** (achado pelo portão `gramatica`, 2026-10-23) O `--ast` põe os
+  erros do lexer na frente dos do parser, e o primeiro erro dele (o `msg`, a
+  `linha` e a `coluna` de cima, e o primeiro de `erros`) não é o do `--check`
+  nem o que sai rodando. No programa `post(1)` / `int x = = 1` / `post(2)` /
+  `post(3)` / `int y = 1 $ 2` (o caso "rodando sai o primeiro erro da lista do
+  --check", `teste/casos_linguagem.c`), o `--ast` dá `caractere inesperado:
+  '$'` (5:11) e depois `expressao invalida` (2:9); o `--check` e o programa
+  rodando dão `expressao invalida` (2:9) primeiro. O `docs/lsp.md` promete a
+  ordem do arquivo no `--check` ("os do lexer e os do parser juntos, na ordem
+  do arquivo"), e os dois modos do parser têm que dizer o mesmo do mesmo
+  programa. 10 lugares na catraca (portão `gramatica`): os 9 blocos da doc
+  que mostram um erro com a frase escrita como linha do bloco (a crase e o
+  travessão da frase são erro do lexer, depois do erro de verdade) e o caso
+  da suíte. `motor` (o `--ast`).
+- **motor-24** (achado escrevendo a gramática, 2026-10-23) O valor do `count`
+  (`int(7) count in xs`) aceita `*` e `**` e joga a estrela fora. Com `list
+  xs = [7, 7, 1]` e `list l = [7]`, `post(int(*l) count in xs, int(7) count
+  in xs)` passa no `--check` e imprime `0 2`, com JIT e sem: o `int(*l)` conta
+  os itens iguais à lista `l`, e não ao `7`. O mesmo com `int(**d)`. O
+  `count_esquerda` (`vm/ps_parser.c`) recusa o argumento com nome e mais de um
+  valor, e não olha a estrela. A doc (3.10) promete o valor entre parênteses
+  (`Tipo(valor) count in contêiner`). `motor` (resultado errado calado).
+- **motor-25** (achado montando o portão `gramatica`, 2026-10-23) O campo
+  dentro do formato da f-string (`f"{x:>{w}}"`) não passa pelo parser: quem
+  lê é o compilador, com outra frase e no lugar do campo de fora. No
+  `--check` e rodando, com JIT e sem:
+  - `f"{x:>{a b}}"` passa no `--ast` e dá `SyntaxError: dentro de {} da
+    f-string vai uma expressao so (sobrou texto, ou e um comando)` na coluna
+    do `x` (3:12), sem `erros` nem fim. O mesmo erro num campo de fora
+    (`f"{a b}"`) sai no `--ast` e no `--check` como `sobrou 'b' dentro de {}
+    da f-string: cada {} leva uma expressao so`, no `b`;
+  - `f"{x:>{a}}"` com o `a` que não existe dá `NameError: name 'a' is not
+    defined` na coluna do `x` (2:12), e o fim sai antes do começo (`l2` 1,
+    `c2` 2).
+
+  A doc (1.6.3) diz que o campo dentro do formato vale ("`{x:{w}.2f}` usa a
+  largura guardada em `w`"), e o `docs/lsp.md` diz que cada item de `erros`
+  traz onde o erro começa e onde termina. `motor`.
+
 ## os
 
 - **os-1** (achado montando o prazo do portão P1, 2026-10-18) O
@@ -485,6 +571,30 @@ em cada item):
   comentário).~~ Corrigido no commit do P3: o depurador usa o
   `scripts/enquadramento.pr`, o mesmo enquadramento do portão, que conta
   bytes.
+- **teste-8** (achado montando o P4, 2026-10-23) O `casos_de` do
+  `teste/geradores/diferencial.pr`, que lê os programas dos `teste/casos_*.c`
+  refazendo a leitura dos literais do C, lê errado dois casos:
+  - joga fora a macro `#define` (`DEC_NET`, `teste/casos_linguagem.c:4553`):
+    o "dif #914" e o "dif #922" congelaram o programa sem a classe `NET` e
+    esperam `NameError: name 'NET' is not defined`;
+  - corta como comentário o `/* ... */` de dentro de um literal
+    (`"a/* x\ny */b"`, `teste/casos_linguagem.c:3233`): o "dif #539"
+    congelou o texto `"ab"`.
+
+  E é lento: ler a suíte toda levou 93 s no Mac. O portão da gramática lê os
+  programas pelo `./testar --programas <pasta>`, que grava o texto que o
+  próprio compilador C leu (2 s). O conserto é o diferencial ler pelo mesmo
+  caminho e ser regerado (lote 2 do P4). `teste`.
+- **teste-9** (achado montando o P4, 2026-10-23, lendo o código) O
+  `teste/propriedade.pr` sorteia pelos bits baixos do gerador congruente
+  (`return semente % n`, linha 32). Com o módulo potência de 2, os bits
+  baixos repetem com período curto (o bit 0 alterna). O `teste/leis.pr` já
+  sorteia pelos bits altos (`int(semente / 65536) % n`, linha 68). `teste`.
+- **teste-10** (achado montando o P4, 2026-10-23, lendo o código) O
+  `teste/geradores/oraculo.pr` cria a pasta `/tmp/ps_oraculo` (linha 27) e
+  não apaga, e o cabeçalho dele diz que "a doc da linguagem diz "igual ao
+  Python" em toda parte", e a frase não aparece em nenhuma página de `docs/`
+  (medido com `grep`). `teste`.
 
 ## doc
 
@@ -739,3 +849,38 @@ e sem, e dá o mesmo erro.
   `editor/vscode/teste_servidor.js` ainda tinham "universais" no nome, e eles
   conferem que o `type` não aparece.~~ Corrigido no commit do P3: as duas
   frases e os três nomes dizem o que o editor faz.
+- **doc-28** (achado escrevendo a gramática, 2026-10-23) A precedência do
+  capítulo 3 diverge do parser em dois pontos, medidos no `--check` e
+  rodando, com JIT e sem:
+  - o resumo (3.13) diz "`*`/`/`/`%` < `**` < unários", e a tabela 3.1 e o
+    parser dizem o contrário (a potência no nível 13, os unários no 12):
+    `post(-2 ** 2)` imprime `-4`;
+  - o nível 11 da tabela 3.1 não tem o `//`, que o parser trata junto com
+    `*`, `/` e `%`, à esquerda: com `int a = 7` e `int b = 2`, `post(a + b //
+    2, a // 2 * 3)` imprime `8 9`.
+
+  A gramática (`docs/linguagem/gramatica.md`) tem a tabela que o portão
+  confere. `doc`.
+- **doc-29** (achado escrevendo a gramática, 2026-10-23) A tabela de padrões
+  do `case` (5.5) não tem o padrão de dicionário nem o número negativo, e o
+  motor aceita e roda os dois, com JIT e sem: com `dict d = {"a": 1}`, o
+  `match d` com `case {"a": x} { post("a vale", x) }` imprime `a vale 1`; com
+  `int n = -3`, o `case -3` casa. A gramática tem os dois
+  (`padrao_simples`). `doc`.
+- **doc-30** (achado escrevendo a gramática, 2026-10-23) A 4.5 diz que o alvo
+  do desempacotamento "é o mesmo da seção 4.4: nome, membro (`o.x`), índice
+  (`l[i]`, `d[k]`) e as cadeias deles (`o.d["k"]`)". O desempacotamento
+  aceita o membro depois do índice: com `Entity C { int c = 0 }` e `list a =
+  [C()]`, `a[0].c, x = 1, 2` roda e `post(a[0].c, x)` imprime `1 2`. A
+  atribuição simples não: `a[0].c = 1` dá `SyntaxError: '=' e atribuicao; pra
+  comparar use '=='` (5:8), no `--check` e rodando, com JIT e sem, uma frase
+  que não aponta a causa. Na gramática, a atribuição simples tem três formas
+  (`x = v`, `x.a.b = v` só com nomes, e o alvo que termina num índice:
+  `atribuicao`, `atribuicao_de_membro` e `atribuicao_a_indice`), e o
+  desempacotamento aceita qualquer cadeia (`alvo_com_sufixos`). Qual dos dois
+  fica é decisão dele. `os dois`.
+- ~~**doc-31** (achado montando o P4, 2026-10-23) A lista dos passos do
+  `make check` no `JINGA-TUDO.md` (5.6) não tinha o `mede_aridades.pr
+  --confere` nem os portões P1 (`confere_saida_doc.pr`), P2 e P3.~~
+  Corrigido no commit do P4 (lote 1): a lista segue o `Makefile`, com o
+  portão `gramatica`.

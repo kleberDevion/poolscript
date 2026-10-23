@@ -294,12 +294,117 @@ o relato do `forAll`, pelo `room_id` de `docs/jinker/channel/channel.md:25`. O
 bloco do próprio `forAll` o `--check` recusa (jinker-7), e o hover só se
 confere em bloco que passa.
 
-## P4: a gramática escrita e o gerador (a fazer)
+## P4: a gramática escrita e os programas gerados
 
-A gramática em EBNF, tirada do parser e conferida contra ele
-(`docs/linguagem/gramatica.md`), e um gerador de programas tipados a partir
-dela, com os oráculos: JIT e sem JIT idênticos, checador e motor de acordo,
-nada cai nem trava, e o Python onde a doc diz "como no Python".
+O P4 sai em três lotes (plano aprovado em 2026-10-23). O lote 1 é a gramática
+e o portão `gramatica`. Os lotes 2 e 3 estão no fim desta seção.
+
+### O portão `gramatica`
+
+`scripts/confere_gramatica.pr`, no `make check` depois do P3. A gramática
+inteira da linguagem está em `docs/linguagem/gramatica.md`, na notação da
+gramática do Python (EBNF com a escolha ordenada do PEG), cada regra tirada do
+parser e com o nome da função dele que a implementa. O que o parser decide
+pelo contexto (o fim do comando na mesma linha, o `{` depois de texto na
+cabeça do `if`, o `(` separado por espaço nos argumentos) entra como regra com
+nome em maiúscula, explicada na página. O `~` é o ponto em que o parser
+decidiu e não volta atrás: a falha depois dele é do programa inteiro.
+
+O portão lê os blocos ```gramatica da própria página
+(`scripts/gramatica_peg.pr`: a leitura das regras, o reconhecedor de PEG com
+memória, que é o packrat de Bryan Ford, de 2002, e o sorteio de frases) e
+confere, em cada programa:
+
+- **a gramática e o parser concordam.** O que o `--ast` aceita a gramática
+  reconhece, pelos tokens do `--tokens`, e o que ele recusa ela recusa. O nome
+  solto que o parser marca e deixa pro checador (`retrun x`) conta como
+  recusa. Cada campo `{...}` de f-string é reconhecido sozinho, com os tokens
+  marcados `"em":"fstring"`;
+- **os dois modos do parser concordam.** Quando o `--ast` recusa, o `--check`
+  recusa com o mesmo primeiro erro (a frase, a linha e a coluna); no nome
+  solto, o `--check` recusa. O erro de sintaxe que só o compilador acusa (o
+  `break` fora de laço) não é do parser e não se compara;
+- **o léxico.** Cada token casa com a forma escrita pra classe dele (o
+  `IDENT`, o `INT`, o `STR`... como expressão regular, o token inteiro), a
+  pontuação é o caractere dela, e nenhum nome é palavra reservada;
+- **toda regra é usada** por algum programa. Regra sem uso reprova: ou ela é
+  morta no parser, ou falta o exemplo.
+
+Os programas:
+
+- todo bloco ```ps da doc, com os ```ps contexto anteriores da página na
+  frente (os blocos do P1 e do P3);
+- todo programa da suíte, cada texto uma vez, pelo `./testar --programas
+  <pasta>`: o executor grava o texto que o compilador C leu dos literais, com
+  as macros e os escapes resolvidos, em 2 s. Refazer essa leitura em Jinga (o
+  `casos_de` do diferencial) levava 93 s e lia dois casos errado (teste-8);
+- 600 programas sorteados da gramática, com a semente fixa. Cada escolha do
+  sorteio é a feita menos vezes até ali, como no gerador de Purdom ("A
+  sentence generator for testing parsers", 1972), que escreve frases até
+  cobrir toda produção. A profundidade é a da recursão (uma regra aberta
+  dentro dela mesma), e passado o teto o sorteio pega o caminho mais curto. O
+  sorteio não olha o contexto (o olhar adiante e os modos), e parte do que ele
+  escreve a gramática recusa: aí o parser tem que recusar também.
+
+Como roda:
+
+- o motor é chamado por laços do `sh` em paralelo, na metade dos
+  processadores (de 1 a 8). A chamada pela Jinga (`os.run`) faz `fork` do
+  processo do portão, e no macOS isso custa 44 ms por chamada, contra 9,5 ms
+  do `--tokens` pelo shell. Sem o `sh`, o portão fica vermelho e diz isso;
+- o `--check` vai em lotes de 150 arquivos por processo, uma linha por
+  arquivo;
+- nenhum programa roda: só o `--tokens`, o `--ast` e o `--check`;
+- o programa com erro do lexer (o `--tokens` com erro) fica fora da
+  comparação sintática, que é sobre os tokens, e o parser tem que recusar;
+- a árvore funda demais pro `json.parse` (os casos de aninhamento da suíte) é
+  lida pelo começo do texto, onde estão o `ok` e os erros.
+
+Na catraca, o portão é `gramatica`; a página é a da doc, o caso da suíte
+(`suite:casos_<grupo>.c:<caso>`) ou o sorteio (`gerado:<n>`); a impressão é a
+do que se conferiu (`#gramatica ...`) junto do programa.
+
+Medido na entrada (2026-10-23, no Mac, 18.0.0): 10.267 programas (1.393
+blocos da doc; 8.274 programas da suíte, dos 10.062 casos; 600 sorteados, dos
+quais a gramática aceita 435), 280.459 tokens conferidos com a forma léxica,
+732 campos de f-string e as 114 regras usadas, em 98 s com 8 laços. A
+gramática e o parser aceitam 9.908 programas e recusam 322; 37 têm erro do
+lexer, e o parser recusa todos. As 10 discordâncias são de um item só:
+
+| causa | lugares | item |
+|---|---|---|
+| o `--ast` põe o erro do lexer na frente do erro do parser, e o primeiro erro dele não é o do `--check` | 10 | motor-23 |
+
+Escrevendo a gramática, os achados foram do parser contra a doc, e a
+gramática descreve o parser como ele é: motor-20 (o ramo do `match` com `:`
+que nunca fecha), motor-21 (palavra reservada como valor e como tipo de
+campo), motor-22 (no `count each` sobre texto escrito, o `{` interpola e o
+bloco some calado), motor-24 (o `*` no valor do `count` some calado),
+motor-25 (o campo dentro do formato da f-string, que só o compilador lê) e o
+acréscimo ao motor-19 (a f-string dentro de um campo vem sem os tokens de
+dentro); doc-28 (a precedência do capítulo 3), doc-29 (os padrões do `case`
+na 5.5) e doc-30 (o alvo da atribuição na 4.4 e na 4.5). Junto entraram o
+teste-8, o teste-9 e o teste-10, dos geradores (lote 2), e o doc-31 (a lista
+do `make check` no `JINGA-TUDO.md`, consertada no lote). Uma regra não tinha
+exemplo em nenhum programa, o argumento juntado que começa com palavra
+(`post("uns:" count int(1) in l)`): ele entrou na 3.11, com a saída
+conferida.
+
+A prova de que o portão pega: com a alternativa do `elif` tirada da regra
+`se`, ele ficou vermelho em 7 programas, todos com `elif`: 2 blocos da doc
+(`docs/Jinga.md:358` e `docs/linguagem/05-controle-de-fluxo.md:18`) e 5 casos
+da suíte.
+
+### Os lotes 2 e 3 (a fazer)
+
+- **Lote 2, portão `p4`:** um gerador de programas tipados a partir da
+  gramática (`teste/geradores/programas.pr`, como o Csmith e o YARPGen), com
+  os oráculos: com JIT e sem JIT, a mesma saída; o `--check` aprova o que é
+  bem tipado por construção, e recusa a variante com um erro da lista que a
+  doc promete pegar antes de rodar; nada cai nem passa do prazo. E a suíte
+  inteira no `--check`, contra o que cada caso espera.
+- **Lote 3:** o Python onde a doc cita o Python, congelado em
+  `teste/casos_python.c`.
 
 ## A sonda com agentes
 

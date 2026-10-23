@@ -1,0 +1,955 @@
+# A gramática escrita da Jinga (docs/linguagem/gramatica.md) como programa:
+# a leitura das regras dos blocos ```gramatica, o reconhecedor que confere uma
+# sequência de tokens com elas e o sorteio de frases da gramática. Quem usa é
+# o portão `gramatica` (scripts/confere_gramatica.pr, notas/PORTOES.md).
+#
+# O reconhecedor é o parser de PEG com memória (packrat: Bryan Ford, "Packrat
+# Parsing", 2002, e "Parsing Expression Grammars", POPL 2004): a escolha
+# ordenada, a repetição gulosa que não devolve, o olhar adiante (`&`, `!`) e o
+# corte (`~`), na notação da gramática do Python. O corte vale pro programa
+# inteiro, e não só dentro da regra como no Python: é o ponto em que o parser
+# da Jinga decidiu e não volta atrás. A memória guarda, por regra, posição e
+# modo, o resultado já calculado, e cada regra roda uma vez por posição.
+#
+# As regras de contexto (FIM, INTERPOLA, SUFIXO_SEPARADO...) e os modos
+# (MODO_CABECA...) estão descritos na página, e implementados aqui, cada um
+# pelo código do parser que ele espelha (vm/ps_parser.c).
+import regex
+
+# as classes de token do `jinga --tokens`
+list CLASSES = ["IDENT", "IDENT_UPPER", "KW", "INT", "FLO", "STR", "FSTRING", "BYTES", "BOOL",
+                "NULL", "COLOR", "NEWLINE", "INDENT", "DEDENT", "EOF"]
+# as regras de contexto: as que consomem um token e as que só olham
+list NATIVAS = ["FIM", "INTERPOLA", "SUFIXO_SEPARADO", "CABECA_REPETIDA", "PARECE_DESEMPACOTAMENTO",
+                "SEM_NOME_REPETIDO", "TEXTO_MAIN", "TEXTO_DE_MODULO", "QUALQUER"]
+list MODOS = ["MODO_CABECA", "MODO_GRUPO", "MODO_LIVRE", "MODO_ITENS", "MODO_ARGUMENTOS", "MODO_EXPRESSAO"]
+# os tipos de token que um `'texto'` da gramática casa (nunca literal)
+list COM_TEXTO = ["KW", "IDENT", "IDENT_UPPER", "OP", "LPAREN", "RPAREN", "LBRACE", "RBRACE", "LBRACK",
+                  "RBRACK", "COLON", "SEMI", "COMMA", "DOT", "AT"]
+# os que começam um comando (exige_fim_de_comando)
+list COMECA = ["KW", "IDENT", "IDENT_UPPER", "INT", "FLO", "STR", "FSTRING", "BOOL", "NULL", "COLOR",
+               "BYTES", "AT", "LPAREN", "LBRACK"]
+list TIPOS_DECL_KW = ["str", "int", "flo", "bool", "list", "dict", "tup", "char", "Object", "long", "json",
+                      "JSON", "object"]
+list MODS_DE_POSICAO = ["static", "nonnull", "NonNull"]
+
+
+# ── a leitura da gramática ──────────────────────────────────────────────────
+
+# Os pedaços de uma regra: nome, NOME, 'texto' e os símbolos da notação.
+list funct pedacos(str s) {
+    list saida = []
+    int i = 0
+    int n = s.len()
+    while i < n {
+        str ch = s[i]
+        if ch == " " or ch == "\t" or ch == "\n" {
+            i = i + 1
+        } elif ch == "'" {
+            int j = s.find("'", i + 1)
+            if j < 0 {
+                raise ValueError("aspa sem fecho na regra: " + s)
+            }
+            addEnd(saida, ["txt", s[i + 1:j]])
+            i = j + 1
+        } elif ch.isalpha() or ch == "_" {
+            int j = i
+            while j < n and (s[j].isalnum() or s[j] == "_") {
+                j = j + 1
+            }
+            str w = s[i:j]
+            addEnd(saida, ["NOME" if w == w.upper() and w[0] != "_" else "nome", w])
+            i = j
+        } elif ch in "()[]|*+?&!~." {
+            addEnd(saida, ["sym", ch])
+            i = i + 1
+        } else {
+            raise ValueError("caractere '" + ch + "' fora da notação na regra: " + s)
+        }
+    }
+    return saida
+}
+
+
+# A leitura recursiva da notação, sobre os pedaços (`st` guarda a posição).
+dict funct alternativas(list ps, dict st) {
+    if st["i"] < ps.len() and ps[st["i"]][0] == "sym" and ps[st["i"]][1] == "|" {
+        st["i"] = st["i"] + 1                       # a barra que abre a lista
+    }
+    list alts = [sequencia(ps, st)]
+    while st["i"] < ps.len() and ps[st["i"]][0] == "sym" and ps[st["i"]][1] == "|" {
+        st["i"] = st["i"] + 1
+        addEnd(alts, sequencia(ps, st))
+    }
+    if alts.len() == 1 {
+        return alts[0]
+    }
+    return {"k": "alt", "a": alts}
+}
+
+
+dict funct sequencia(list ps, dict st) {
+    list itens = []
+    while st["i"] < ps.len() {
+        list p = ps[st["i"]]
+        if p[0] == "sym" and (p[1] == ")" or p[1] == "]" or p[1] == "|") {
+            break
+        }
+        addEnd(itens, item(ps, st))
+    }
+    if itens.len() == 1 {
+        return itens[0]
+    }
+    return {"k": "seq", "a": itens}
+}
+
+
+dict funct item(list ps, dict st) {
+    list p = ps[st["i"]]
+    if p[0] == "sym" and (p[1] == "&" or p[1] == "!") {
+        st["i"] = st["i"] + 1
+        return {"k": "and" if p[1] == "&" else "not", "e": posfixo(ps, st)}
+    }
+    if p[0] == "sym" and p[1] == "~" {
+        st["i"] = st["i"] + 1
+        return {"k": "cut"}
+    }
+    return posfixo(ps, st)
+}
+
+
+dict funct posfixo(list ps, dict st) {
+    list p = ps[st["i"]]
+    dict a = atomo(ps, st)
+    # `','.e+`: o separador e o elemento
+    if p[0] == "txt" and st["i"] < ps.len() and ps[st["i"]][0] == "sym" and ps[st["i"]][1] == "." {
+        st["i"] = st["i"] + 1
+        dict e = atomo(ps, st)
+        if not (st["i"] < ps.len() and ps[st["i"]][0] == "sym" and ps[st["i"]][1] == "+") {
+            raise ValueError("depois de 's.e' vem '+'")
+        }
+        st["i"] = st["i"] + 1
+        return {"k": "gather", "s": a, "e": e}
+    }
+    if st["i"] < ps.len() and ps[st["i"]][0] == "sym" {
+        str s = ps[st["i"]][1]
+        if s == "*" or s == "+" or s == "?" {
+            st["i"] = st["i"] + 1
+            str k = "rep0" if s == "*" else ("rep1" if s == "+" else "opt")
+            return {"k": k, "e": a}
+        }
+    }
+    return a
+}
+
+
+dict funct atomo(list ps, dict st) {
+    if st["i"] >= ps.len() {
+        raise ValueError("regra acabou no meio")
+    }
+    list p = ps[st["i"]]
+    st["i"] = st["i"] + 1
+    if p[0] == "txt" {
+        return {"k": "txt", "t": p[1]}
+    }
+    if p[0] == "nome" {
+        return {"k": "ref", "n": p[1]}
+    }
+    if p[0] == "NOME" {
+        if p[1] in NATIVAS {
+            return {"k": "nat", "n": p[1]}
+        }
+        if p[1] in MODOS {
+            return {"k": "modo", "n": p[1]}
+        }
+        if p[1] in CLASSES {
+            return {"k": "cls", "n": p[1]}
+        }
+        raise ValueError("'" + p[1] + "' não é classe de token nem regra de contexto")
+    }
+    if p[1] == "(" or p[1] == "[" {
+        str fecha = ")" if p[1] == "(" else "]"
+        dict dentro = alternativas(ps, st)
+        if not (st["i"] < ps.len() and ps[st["i"]][0] == "sym" and ps[st["i"]][1] == fecha) {
+            raise ValueError("faltou '" + fecha + "'")
+        }
+        st["i"] = st["i"] + 1
+        if p[1] == "[" {
+            return {"k": "opt", "e": dentro}
+        }
+        return dentro
+    }
+    raise ValueError("'" + p[1] + "' fora do lugar")
+}
+
+
+# Tira o comentário (`#` fora de aspas) de uma linha de regra.
+str funct sem_comentario(str linha) {
+    bool aspa = False
+    int i = 0
+    while i < linha.len() {
+        if linha[i] == "'" {
+            aspa = not aspa
+        } elif linha[i] == "#" and not aspa {
+            return linha[0:i]
+        }
+        i = i + 1
+    }
+    return linha
+}
+
+
+# As regras e as formas léxicas dos blocos ```gramatica de `texto` (a página).
+# Devolve {"regras": nome -> nó, "ordem": [nomes], "lexico": NOME -> regex,
+# "erros": [frases]}.
+dict funct le_gramatica(str texto) {
+    dict g = {"regras": {}, "ordem": [], "lexico": {}, "erros": []}
+    dict corpos = {}
+    bool dentro = False
+    str atual = ""
+    int n = 0
+    for each linha in texto.splitlines() {
+        n = n + 1
+        str limpa = linha.strip()
+        if not dentro {
+            if limpa == "```gramatica" {
+                dentro = True
+                atual = ""
+            }
+            continue
+        }
+        if limpa == "```" {
+            dentro = False
+            atual = ""
+            continue
+        }
+        int dl = linha.find(":=")
+        if dl > 0 and linha[0:dl].strip() == linha[0:dl].strip().upper() and linha[0].isalpha() {
+            g["lexico"][linha[0:dl].strip()] = linha[dl + 2:linha.len()].strip()
+            atual = ""
+            continue
+        }
+        str sc = sem_comentario(linha)
+        if sc.strip() == "" {
+            continue
+        }
+        int dp = sc.find(":")
+        if not sc.startswith(" ") and not sc.startswith("\t") and dp > 0 {
+            str nome = sc[0:dp].strip()
+            if nome in corpos {
+                addEnd(g["erros"], "regra '" + nome + "' escrita duas vezes (linha " + str(n) + ")")
+            }
+            corpos[nome] = sc[dp + 1:sc.len()]
+            addEnd(g["ordem"], nome)
+            atual = nome
+        } elif atual != "" and (sc.startswith(" ") or sc.startswith("\t")) {
+            corpos[atual] = corpos[atual] + " " + sc.strip()
+        } else {
+            addEnd(g["erros"], "linha " + str(n) + " fora de uma regra: " + limpa)
+        }
+    }
+    for each nome in g["ordem"] {
+        try {
+            list ps = pedacos(corpos[nome])
+            dict st = {"i": 0}
+            dict no = alternativas(ps, st)
+            if st["i"] < ps.len() {
+                raise ValueError("sobrou '" + str(ps[st["i"]][1]) + "'")
+            }
+            g["regras"][nome] = no
+        } catch (Exception e) {
+            addEnd(g["erros"], "regra '" + nome + "': " + str(e))
+        }
+    }
+    for each nome in g["ordem"] {
+        if nome in g["regras"] {
+            confere_refs(g, g["regras"][nome], nome)
+        }
+    }
+    return g
+}
+
+
+Null funct confere_refs(dict g, dict no, str de) {
+    str k = no["k"]
+    if k == "ref" {
+        if not (no["n"] in g["regras"]) and not (no["n"] in g["ordem"]) {
+            addEnd(g["erros"], "a regra '" + de + "' usa '" + no["n"] + "', que não existe")
+        }
+    } elif k == "alt" or k == "seq" {
+        for each a in no["a"] {
+            confere_refs(g, a, de)
+        }
+    } elif k == "gather" {
+        confere_refs(g, no["s"], de)
+        confere_refs(g, no["e"], de)
+    } elif k == "rep0" or k == "rep1" or k == "opt" or k == "and" or k == "not" {
+        confere_refs(g, no["e"], de)
+    }
+}
+
+
+# ── o reconhecedor ──────────────────────────────────────────────────────────
+
+# O estado de um reconhecimento: os tokens (o último é o EOF), a memória, a
+# conta de uso das regras e o ponto mais longe que algum token casou.
+dict funct novo_estado(dict g, list toks) {
+    return {"g": g, "toks": toks, "memo": {}, "cob": {}, "longe": 0}
+}
+
+
+bool funct eh_mod_de_cabeca(dict t) {
+    str v = t["v"]
+    if t["t"] == "KW" and (v == "async" or v == "public" or v == "private") {
+        return True
+    }
+    return (t["t"] == "KW" or t["t"] == "IDENT" or t["t"] == "IDENT_UPPER") and v in MODS_DE_POSICAO
+}
+
+
+bool funct eh_tipo_de_retorno(dict t) {
+    str ty = t["t"]
+    if (ty == "KW" or ty == "IDENT" or ty == "IDENT_UPPER") and t["v"] in MODS_DE_POSICAO {
+        return False
+    }
+    if ty == "IDENT" or ty == "IDENT_UPPER" or ty == "NULL" {
+        return True
+    }
+    return ty == "KW" and t["v"] in TIPOS_DECL_KW
+}
+
+
+# CABECA_REPETIDA: a cabeça de funct que começa em `pos` repete modificador,
+# tem dois tipos ou tem `public` e `private` (le_cabeca).
+bool funct cabeca_repetida(list toks, int pos) {
+    dict c = {"async": 0, "vis": 0, "static": 0, "nnu": 0, "tipo": 0}
+    int j = pos
+    while j < toks.len() {
+        dict t = toks[j]
+        if eh_mod_de_cabeca(t) {
+            str v = t["v"]
+            str kind = "async"
+            if v == "public" or v == "private" {
+                kind = "vis"
+            } elif v == "static" {
+                kind = "static"
+            } elif v == "nonnull" or v == "NonNull" {
+                kind = "nnu"
+            }
+            c[kind] = c[kind] + 1
+        } elif eh_tipo_de_retorno(t) {
+            c["tipo"] = c["tipo"] + 1
+        } else {
+            break
+        }
+        j = j + 1
+    }
+    for each k in c.keys() {
+        if c[k] > 1 {
+            return True
+        }
+    }
+    return False
+}
+
+
+# PARECE_DESEMPACOTAMENTO: o olhar adiante de `parece_unpack`.
+bool funct parece_desempacotamento(list toks, int pos) {
+    int i = pos
+    bool virgula = False
+    bool estrela = False
+    int prof = 0
+    int n = toks.len()
+    while i < n {
+        dict t = toks[i]
+        str ty = t["t"]
+        if ty == "OP" and t["v"] == "*" {
+            estrela = True
+            i = i + 1
+            continue
+        }
+        if ty == "LPAREN" {
+            prof = prof + 1
+            i = i + 1
+            continue
+        }
+        if ty == "RPAREN" {
+            if prof == 0 {
+                return False
+            }
+            prof = prof - 1
+            i = i + 1
+            continue
+        }
+        if ty == "IDENT" or ty == "IDENT_UPPER" {
+            i = i + 1
+            bool segue = True
+            while segue {
+                if i + 1 < n and toks[i]["t"] == "DOT" and (toks[i + 1]["t"] == "IDENT"
+                        or toks[i + 1]["t"] == "IDENT_UPPER" or toks[i + 1]["t"] == "KW") {
+                    i = i + 2
+                } elif i < n and toks[i]["t"] == "LBRACK" {
+                    int d = 0
+                    bool fim = False
+                    while i < n and not fim {
+                        str tt = toks[i]["t"]
+                        if tt == "LBRACK" {
+                            d = d + 1
+                        } elif tt == "RBRACK" {
+                            d = d - 1
+                        } elif tt == "EOF" {
+                            return False
+                        }
+                        i = i + 1
+                        if d == 0 {
+                            fim = True
+                        }
+                    }
+                    if d != 0 {
+                        return False
+                    }
+                } else {
+                    segue = False
+                }
+            }
+            if i < n and toks[i]["t"] == "LPAREN" {
+                return False
+            }
+            continue
+        }
+        if ty == "COMMA" {
+            virgula = True
+            i = i + 1
+            continue
+        }
+        if ty == "OP" and t["v"] == "=" {
+            return prof == 0 and (virgula or estrela)
+        }
+        return False
+    }
+    return False
+}
+
+
+# SEM_NOME_REPETIDO: os parênteses que fecharam em `pos - 1` não passam o
+# mesmo `nome=` duas vezes.
+bool funct sem_nome_repetido(list toks, int pos) {
+    int d = 0
+    int k = pos - 1
+    int abre = -1
+    while k >= 0 and abre < 0 {
+        str ty = toks[k]["t"]
+        if ty == "RPAREN" or ty == "RBRACK" or ty == "RBRACE" {
+            d = d + 1
+        } elif ty == "LPAREN" or ty == "LBRACK" or ty == "LBRACE" {
+            d = d - 1
+            if d == 0 {
+                abre = k
+            }
+        }
+        k = k - 1
+    }
+    if abre < 0 {
+        return True
+    }
+    dict vistos = {}
+    int prof = 0
+    int i = abre + 1
+    while i < pos - 1 {
+        str ty = toks[i]["t"]
+        if ty == "LPAREN" or ty == "LBRACK" or ty == "LBRACE" {
+            prof = prof + 1
+        } elif ty == "RPAREN" or ty == "RBRACK" or ty == "RBRACE" {
+            prof = prof - 1
+        } elif (prof == 0 and (ty == "IDENT" or ty == "IDENT_UPPER" or ty == "KW")
+                and toks[i + 1]["t"] == "OP" and toks[i + 1]["v"] == "=") {
+            if toks[i]["v"] in vistos {
+                return False
+            }
+            vistos[toks[i]["v"]] = True
+        }
+        i = i + 1
+    }
+    return True
+}
+
+
+# Uma regra de contexto em `pos`: devolve a posição depois dela, ou -1.
+int funct nativa(dict r, str n, int pos, bool cab, int itens) {
+    list toks = r["toks"]
+    dict t = toks[pos]
+    if n == "FIM" {
+        if pos == 0 {
+            return pos
+        }
+        dict a = toks[pos - 1]
+        str ta = a["t"]
+        if (t["t"] in COMECA and ta != "NEWLINE" and ta != "INDENT" and ta != "DEDENT" and ta != "SEMI"
+                and t["l"] == a["l2"]) {
+            return -1
+        }
+        return pos
+    }
+    if n == "INTERPOLA" {
+        return -1 if cab else pos
+    }
+    if n == "SUFIXO_SEPARADO" {
+        if itens == 0 or pos == 0 or (t["t"] != "LPAREN" and t["t"] != "LBRACK") {
+            return -1
+        }
+        dict a = toks[pos - 1]
+        if a["l2"] == t["l"] and a["c2"] == t["c"] {
+            return -1
+        }
+        return pos
+    }
+    if n == "CABECA_REPETIDA" {
+        return pos if cabeca_repetida(toks, pos) else -1
+    }
+    if n == "PARECE_DESEMPACOTAMENTO" {
+        return pos if parece_desempacotamento(toks, pos) else -1
+    }
+    if n == "SEM_NOME_REPETIDO" {
+        return pos if sem_nome_repetido(toks, pos) else -1
+    }
+    if n == "TEXTO_MAIN" {
+        return pos + 1 if t["t"] == "STR" and t["v"] == "main" else -1
+    }
+    if n == "TEXTO_DE_MODULO" {
+        str v = t["v"]
+        return pos + 1 if t["t"] == "STR" and v != "" and v.find("\x00") < 0 else -1
+    }
+    if n == "QUALQUER" {
+        return pos + 1 if t["t"] != "EOF" else -1
+    }
+    raise ValueError("regra de contexto desconhecida: " + n)
+}
+
+
+# A regra `nome` em `pos`, no modo (cab, itens), com a memória. -1 = não casa.
+int funct regra(dict r, str nome, int pos, bool cab, int itens) {
+    str chave = nome + "|" + str(pos) + "|" + ("1" if cab else "0") + str(itens)
+    dict memo = r["memo"]
+    if chave in memo {
+        return memo[chave]
+    }
+    memo[chave] = -1                               # nenhuma regra é recursiva à esquerda
+    int q = casa(r, r["g"]["regras"][nome], pos, cab, itens)
+    if q >= 0 {
+        dict cob = r["cob"]
+        cob[nome] = cob.get(nome, 0) + 1
+    }
+    memo[chave] = q
+    return q
+}
+
+
+# O nó `no` em `pos`: a posição depois dele, -1 (não casa) ou -2 (não casa
+# depois de um corte). O corte é o ponto em que o parser decidiu e não volta
+# atrás: o -2 sobe por todas as regras de fora, e nenhuma escolha tenta outra
+# alternativa (o programa tem erro de sintaxe). Só o olhar adiante (`&`, `!`)
+# não sobe o -2: ele só pergunta.
+int funct casa(dict r, dict no, int pos, bool cab, int itens) {
+    str k = no["k"]
+    list toks = r["toks"]
+    if k == "txt" {
+        dict t = toks[pos]
+        if t["v"] == no["t"] and t["t"] in COM_TEXTO {
+            if pos + 1 > r["longe"] {
+                r["longe"] = pos + 1
+            }
+            return pos + 1
+        }
+        return -1
+    }
+    if k == "cls" {
+        if toks[pos]["t"] == no["n"] {
+            if pos + 1 > r["longe"] {
+                r["longe"] = pos + 1
+            }
+            return pos + 1
+        }
+        return -1
+    }
+    if k == "ref" {
+        return regra(r, no["n"], pos, cab, itens)
+    }
+    if k == "seq" {
+        int p = pos
+        bool cortou = False
+        bool c2 = cab
+        int i2 = itens
+        for each it in no["a"] {
+            str ik = it["k"]
+            if ik == "cut" {
+                cortou = True
+                continue
+            }
+            if ik == "modo" {
+                str m = it["n"]
+                if m == "MODO_CABECA" {
+                    c2 = True
+                } elif m == "MODO_GRUPO" {
+                    c2 = False
+                } elif m == "MODO_LIVRE" {
+                    c2 = False
+                    i2 = 0
+                } elif m == "MODO_ITENS" {
+                    i2 = 2
+                } elif m == "MODO_ARGUMENTOS" {
+                    i2 = 1
+                } else {
+                    i2 = 0
+                }
+                continue
+            }
+            int q = casa(r, it, p, c2, i2)
+            if q < 0 {
+                return -2 if cortou or q == -2 else -1
+            }
+            p = q
+        }
+        return p
+    }
+    if k == "alt" {
+        for each a in no["a"] {
+            int q = casa(r, a, pos, cab, itens)
+            if q >= 0 or q == -2 {
+                return q
+            }
+        }
+        return -1
+    }
+    if k == "opt" {
+        int q = casa(r, no["e"], pos, cab, itens)
+        if q == -2 {
+            return -2
+        }
+        return q if q >= 0 else pos
+    }
+    if k == "rep0" or k == "rep1" {
+        int p = pos
+        int vezes = 0
+        bool segue = True
+        while segue {
+            int q = casa(r, no["e"], p, cab, itens)
+            if q == -2 {
+                return -2
+            }
+            if q < 0 or q == p {
+                segue = False
+            } else {
+                p = q
+                vezes = vezes + 1
+            }
+        }
+        if k == "rep1" and vezes == 0 {
+            return -1
+        }
+        return p
+    }
+    if k == "gather" {
+        int p = casa(r, no["e"], pos, cab, itens)
+        if p < 0 {
+            return p
+        }
+        bool segue = True
+        while segue {
+            int s = casa(r, no["s"], p, cab, itens)
+            if s == -2 {
+                return -2
+            }
+            if s < 0 {
+                segue = False
+            } else {
+                int q = casa(r, no["e"], s, cab, itens)
+                if q == -2 {
+                    return -2
+                }
+                if q < 0 {
+                    segue = False
+                } else {
+                    p = q
+                }
+            }
+        }
+        return p
+    }
+    if k == "and" {
+        return pos if casa(r, no["e"], pos, cab, itens) >= 0 else -1
+    }
+    if k == "not" {
+        return -1 if casa(r, no["e"], pos, cab, itens) >= 0 else pos
+    }
+    if k == "nat" {
+        return nativa(r, no["n"], pos, cab, itens)
+    }
+    if k == "cut" or k == "modo" {
+        return pos
+    }
+    raise ValueError("nó desconhecido: " + k)
+}
+
+
+# Reconhece `toks` (o último é o EOF) pela regra `inicial`. Devolve o estado,
+# com "casou" (a regra leu todos os tokens) e "longe" (o primeiro token que
+# nenhuma regra conseguiu ler).
+dict funct reconhece(dict g, list toks, str inicial) {
+    dict r = novo_estado(g, toks)
+    int q = regra(r, inicial, 0, False, 0)
+    r["casou"] = q == toks.len()
+    return r
+}
+
+
+# ── a forma léxica de cada token ───────────────────────────────────────────
+
+# As formas compiladas (NOME -> Pattern), uma vez.
+dict funct formas_lexicas(dict g) {
+    dict f = {}
+    for each nome in g["lexico"].keys() {
+        f[nome] = regex.compile(g["lexico"][nome])
+    }
+    return f
+}
+
+
+# ── o sorteio de frases ─────────────────────────────────────────────────────
+
+# O gerador congruente das leis (teste/leis.pr): os bits altos.
+int funct sorteia(dict s, int n) {
+    s["v"] = (s["v"] * 1103515245 + 12345) % 2147483648
+    return (s["v"] // 65536) % n if n > 0 else 0
+}
+
+
+list NOMES_SORTEIO = ["a", "b", "c", "valor", "nome", "item", "total"]
+list NOMES_UPPER = ["A", "Tipo", "Ponto"]
+
+
+# A profundidade mínima de cada regra (quantos níveis até só sobrar token),
+# por ponto fixo. As alternativas com INDENT ficam de fora (o sorteio não
+# escreve o recuo).
+dict funct profundidades(dict g) {
+    dict prof = {}
+    for each nome in g["ordem"] {
+        prof[nome] = 1000
+    }
+    bool mudou = True
+    while mudou {
+        mudou = False
+        for each nome in g["ordem"] {
+            if nome in g["regras"] {
+                int p = 1 + prof_no(g, prof, g["regras"][nome])
+                if p < prof[nome] {
+                    prof[nome] = p
+                    mudou = True
+                }
+            }
+        }
+    }
+    return prof
+}
+
+
+int funct prof_no(dict g, dict prof, dict no) {
+    str k = no["k"]
+    if k == "ref" {
+        return prof.get(no["n"], 1000)
+    }
+    if k == "cls" {
+        return 1000 if no["n"] == "INDENT" or no["n"] == "DEDENT" else 0
+    }
+    if k == "seq" {
+        int m = 0
+        for each a in no["a"] {
+            int p = prof_no(g, prof, a)
+            if p > m {
+                m = p
+            }
+        }
+        return m
+    }
+    if k == "alt" {
+        int m = 1000
+        for each a in no["a"] {
+            int p = prof_no(g, prof, a)
+            if p < m {
+                m = p
+            }
+        }
+        return m
+    }
+    if k == "rep1" or k == "gather" {
+        return prof_no(g, prof, no["e"])
+    }
+    return 0
+}
+
+
+# Sorteia uma frase da regra `nome`: a lista de textos de token, com "\n"
+# no lugar do NEWLINE. A profundidade é a da recursão: quantas vezes uma
+# mesma regra já está aberta no caminho (um parêntese dentro do outro, um
+# bloco dentro do outro), e não o comprimento da cadeia das expressões. A
+# partir do `teto`, só se escolhe o caminho mais curto. O `s` guarda o
+# gerador e, de uma frase pra outra, quantas vezes cada escolha foi feita.
+list funct sorteia_frase(dict g, dict prof, str nome, dict s, int teto) {
+    if not ("uso" in s) {
+        s["uso"] = {}
+        s["prox"] = 0
+    }
+    s["abertas"] = {}
+    s["fundo"] = 0
+    list saida = []
+    expande(g, prof, g["regras"][nome], s, 0, teto, saida)
+    return saida
+}
+
+
+# Das `opcoes` (índices) de uma escolha do nó `no`, a feita menos vezes até
+# aqui; o empate, na sorte. Assim o sorteio passa por toda alternativa que
+# alcança, como o gerador de Purdom ("A sentence generator for testing
+# parsers", BIT 12, 1972), que escreve frases até cobrir toda produção.
+int funct menos_usada(dict no, list opcoes, dict s) {
+    if not ("id" in no) {
+        s["prox"] = s["prox"] + 1
+        no["id"] = s["prox"]
+    }
+    dict uso = s["uso"]
+    int menor = -1
+    list empate = []
+    for each i in opcoes {
+        int u = uso.get(str(no["id"]) + ":" + str(i), 0)
+        if menor < 0 or u < menor {
+            menor = u
+            empate = [i]
+        } elif u == menor {
+            addEnd(empate, i)
+        }
+    }
+    int e = empate[sorteia(s, empate.len())]
+    uso[str(no["id"]) + ":" + str(e)] = menor + 1
+    return e
+}
+
+
+Null funct expande(dict g, dict prof, dict no, dict s, int nivel, int teto, list saida) {
+    str k = no["k"]
+    if k == "txt" {
+        addEnd(saida, no["t"])
+    } elif k == "cls" {
+        str n = no["n"]
+        if n == "IDENT" {
+            addEnd(saida, NOMES_SORTEIO[sorteia(s, NOMES_SORTEIO.len())])
+        } elif n == "IDENT_UPPER" {
+            addEnd(saida, NOMES_UPPER[sorteia(s, NOMES_UPPER.len())])
+        } elif n == "INT" {
+            addEnd(saida, str(sorteia(s, 20)))
+        } elif n == "FLO" {
+            addEnd(saida, str(sorteia(s, 9)) + ".5")
+        } elif n == "STR" {
+            addEnd(saida, "\"s\"")
+        } elif n == "FSTRING" {
+            addEnd(saida, "f\"v{a}\"")
+        } elif n == "BYTES" {
+            addEnd(saida, "b\"x\"")
+        } elif n == "BOOL" {
+            addEnd(saida, "True")
+        } elif n == "NULL" {
+            addEnd(saida, "Null")
+        } elif n == "COLOR" {
+            addEnd(saida, "<red>")
+        } elif n == "KW" {
+            addEnd(saida, "post")
+        } elif n == "NEWLINE" {
+            addEnd(saida, "\n")
+        }
+    } elif k == "nat" {
+        if no["n"] == "TEXTO_MAIN" {
+            addEnd(saida, "\"main\"")
+        } elif no["n"] == "TEXTO_DE_MODULO" {
+            addEnd(saida, "\"json\"")
+        } elif no["n"] == "QUALQUER" {
+            addEnd(saida, "a")
+        } elif no["n"] == "FIM" {
+            addEnd(saida, "\n")
+        }
+    } elif k == "ref" {
+        str nome = no["n"]
+        dict abertas = s["abertas"]
+        int vezes = abertas.get(nome, 0)
+        s["fundo"] = s["fundo"] + 1
+        if s["fundo"] > 400 {
+            raise ValueError("fundo demais")
+        }
+        abertas[nome] = vezes + 1
+        expande(g, prof, g["regras"][nome], s, vezes if vezes > nivel else nivel, teto, saida)
+        abertas[nome] = vezes
+        s["fundo"] = s["fundo"] - 1
+    } elif k == "seq" {
+        for each a in no["a"] {
+            expande(g, prof, a, s, nivel, teto, saida)
+        }
+    } elif k == "alt" {
+        list alts = no["a"]
+        int menor = 1000
+        for each a in alts {
+            int p = prof_no(g, prof, a)
+            if p < menor {
+                menor = p
+            }
+        }
+        list boas = []
+        int i = 0
+        while i < alts.len() {
+            int p = prof_no(g, prof, alts[i])
+            if p < 1000 and (nivel < teto or p == menor) {
+                addEnd(boas, i)
+            }
+            i = i + 1
+        }
+        if boas.len() > 0 {
+            expande(g, prof, alts[menos_usada(no, boas, s)], s, nivel, teto, saida)
+        }
+    } elif k == "opt" {
+        if nivel < teto and prof_no(g, prof, no["e"]) < 1000 and menos_usada(no, [0, 1], s) == 1 {
+            expande(g, prof, no["e"], s, nivel, teto, saida)
+        }
+    } elif k == "rep0" or k == "rep1" {
+        int vezes = 1 if k == "rep1" else 0
+        if nivel < teto and prof_no(g, prof, no["e"]) < 1000 {
+            vezes = vezes + menos_usada(no, [0, 1], s)
+        }
+        int i = 0
+        while i < vezes {
+            expande(g, prof, no["e"], s, nivel, teto, saida)
+            i = i + 1
+        }
+    } elif k == "gather" {
+        expande(g, prof, no["e"], s, nivel, teto, saida)
+        if nivel < teto and menos_usada(no, [0, 1], s) == 1 {
+            expande(g, prof, no["s"], s, nivel, teto, saida)
+            expande(g, prof, no["e"], s, nivel, teto, saida)
+        }
+    }
+}
+
+
+# O texto de uma frase sorteada: espaço entre os tokens, menos antes de `(`,
+# `[`, `.`, `,`, `)`, `]`, `++`, `--` e `:`, e depois de `(`, `[`, `.` e `@`.
+str funct texto_da_frase(list frase) {
+    str saida = ""
+    str ant = "\n"
+    for each t in frase {
+        bool cola = t in ["(", "[", ".", ",", ")", "]", "++", "--", ":"] or ant in ["(", "[", ".", "@", "\n"]
+        if t == "\n" {
+            saida = saida + "\n"
+        } elif cola {
+            saida = saida + t
+        } else {
+            saida = saida + " " + t
+        }
+        ant = t
+    }
+    return saida + "\n"
+}

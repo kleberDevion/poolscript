@@ -727,6 +727,15 @@ check: pool testar
 	# em teste/portoes_conhecidas.txt (portao `p3`).
 	@./pool scripts/confere_editor.pr
 	@echo
+	# P4 dos portoes, a gramatica: a pagina docs/linguagem/gramatica.md contra o
+	# parser, nos dois sentidos, em todo bloco da doc, todo programa da suite
+	# (`./testar --programas`) e programas sorteados da propria gramatica; o
+	# `--ast` e o `--check` com o mesmo erro de sintaxe; cada token com a forma
+	# lexica da classe dele; e toda regra usada. Chama o motor por lacos do
+	# `sh`. Divergencia que ja e item aberto da lista fica em
+	# teste/portoes_conhecidas.txt (portao `gramatica`).
+	@./pool scripts/confere_gramatica.pr
+	@echo
 	@./pool teste/fuzz_replay.pr
 	@echo
 	# DEPURADOR: fala DAP com o motor igual o editor faz — breakpoint na linha

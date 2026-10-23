@@ -4,7 +4,9 @@ Esta seção especifica como o **lexer** (o primeiro estágio do compilador/
 transforma o texto-fonte de um `.pr` numa sequência
 de *tokens*. É o nível mais baixo da linguagem: o que conta como espaço,
 comentário, número, string, operador, e como blocos são delimitados. As seções
-seguintes (tipos, expressões, statements) assumem estas regras.
+seguintes (tipos, expressões, statements) assumem estas regras. A forma de cada
+classe de token, escrita como expressão regular e conferida contra o lexer a
+cada commit, está em [A gramática](gramatica.md#o-léxico).
 
 O
 mesmo fonte produz os mesmos tokens.

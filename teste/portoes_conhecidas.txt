@@ -5,11 +5,17 @@
 #
 # portão: check (o --check de cada bloco), roda (o bloco rodando, com JIT e
 # sem), p2 (cada chamada de cada membro: scripts/confere_checador.pr; a página
-# é o membro, `membro:dono.nome`, e a impressão é a do texto da chamada) ou
+# é o membro, `membro:dono.nome`, e a impressão é a do texto da chamada),
 # titulo (a assinatura do título de uma página de método contra o motor:
-# scripts/audita_doc.pr); impressão: os 12 primeiros dígitos do SHA-256 do
-# texto do bloco; item: o item aberto de notas/CORRECAO-BASE.md; sistema:
-# todos, linux, darwin ou windows; onde: só pra quem lê. Falha que não está
+# scripts/audita_doc.pr), p3 (o servidor do editor em cada bloco:
+# scripts/confere_editor.pr; a impressão é a do lugar conferido junto do
+# bloco) ou gramatica (a gramática escrita contra o parser:
+# scripts/confere_gramatica.pr; a página é também o caso da suíte,
+# `suite:casos_<grupo>.c:<caso>`, ou o sorteio, `gerado:<n>`, e a impressão é
+# a do que se conferiu junto do programa); impressão: os 12 primeiros dígitos
+# do SHA-256 do texto do bloco; item: o item aberto de
+# notas/CORRECAO-BASE.md; sistema: todos, linux, darwin ou windows; onde: só
+# pra quem lê. Falha que não está
 # aqui reprova o portão, e linha daqui que não falha mais também reprova
 # (consertado: tire a linha e risque o item).
 check	docs/LANGUAGE.md	ad54a78e33a9	doc-7	todos	linha 455: int funct f() { return 1 / 0 }
@@ -1794,3 +1800,13 @@ p3	docs/datasentity/aslist/aslist.md	13633a6c2f5e	editor-1	todos	linha 23: #p3 h
 p3	docs/tup/contains/contains.md	ea7e34b36119	editor-4	todos	linha 27: #p3 membro ).contains 4:15
 p3	docs/tup/contains/contains.md	fcdab241955c	editor-4	todos	linha 28: #p3 membro ).contains 5:23
 p3	docs/str/encode/encode.md	dd701a557330	editor-1	todos	linha 25: #p3 hover errors 4:28
+gramatica	docs/linguagem/09-imports.md	cb229558bbb6	motor-23	todos	linha 170: funct g() { (o --ast põe primeiro o erro do lexer da linha 174)
+gramatica	docs/linguagem/09-imports.md	cdaee6782bfe	motor-23	todos	linha 191: import json as j * (o --ast põe primeiro o erro do lexer da linha 193)
+gramatica	docs/linguagem/09-imports.md	e7b06cd769cf	motor-23	todos	linha 225: from mymod GET * (o --ast põe primeiro o erro do lexer da linha 227)
+gramatica	docs/linguagem/09-imports.md	bdd04c6b3568	motor-23	todos	linha 258: import 'sub/meu-mod.pr' (o --ast põe primeiro o erro do lexer da linha 260)
+gramatica	docs/linguagem/09-imports.md	cfc6d675d3db	motor-23	todos	linha 308: import ..pacote.modulo (o --ast põe primeiro o erro do lexer da linha 310)
+gramatica	docs/linguagem/09-imports.md	7825ac3fd01d	motor-23	todos	linha 389: SyntaxError: random: ... (o --ast põe primeiro o erro do lexer da linha 390)
+gramatica	docs/linguagem/06-funcoes.md	1ff017a6147f	motor-23	todos	linha 179: funct f(x: int) { post(x) } (o --ast põe primeiro o erro do lexer da linha 181)
+gramatica	docs/linguagem/06-funcoes.md	c714303fef9f	motor-23	todos	linha 205: funct f(*args, x) { } (o --ast põe primeiro o erro do lexer da linha 207)
+gramatica	docs/linguagem/14-decoradores.md	d4b9f98dc5ba	motor-23	todos	linha 386: SyntaxError: 'mapp' e campo de instancia ... (o --ast põe primeiro o erro do lexer da linha 387)
+gramatica	suite:casos_linguagem.c:rodando sai o primeiro erro da lista do --check	25b61422f612	motor-23	todos	linha 1: post(1) (o --ast põe primeiro o erro do lexer da linha 5)
