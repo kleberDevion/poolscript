@@ -3,12 +3,15 @@
 #
 #     portão  página  impressão  item  sistema  onde
 #
-# portão: check (o --check de cada bloco) ou roda (o bloco rodando, com JIT e
-# sem); impressão: os 12 primeiros dígitos do SHA-256 do texto do bloco; item:
-# o item aberto de notas/CORRECAO-BASE.md; sistema: todos, linux, darwin ou
-# windows; onde: só pra quem lê. Falha que não está aqui reprova o portão, e
-# linha daqui que não falha mais também reprova (consertado: tire a linha e
-# risque o item).
+# portão: check (o --check de cada bloco), roda (o bloco rodando, com JIT e
+# sem), p2 (cada chamada de cada membro: scripts/confere_checador.pr; a página
+# é o membro, `membro:dono.nome`, e a impressão é a do texto da chamada) ou
+# titulo (a assinatura do título de uma página de método contra o motor:
+# scripts/audita_doc.pr); impressão: os 12 primeiros dígitos do SHA-256 do
+# texto do bloco; item: o item aberto de notas/CORRECAO-BASE.md; sistema:
+# todos, linux, darwin ou windows; onde: só pra quem lê. Falha que não está
+# aqui reprova o portão, e linha daqui que não falha mais também reprova
+# (consertado: tire a linha e risque o item).
 check	docs/LANGUAGE.md	ad54a78e33a9	doc-7	todos	linha 455: int funct f() { return 1 / 0 }
 check	docs/Jinga.md	4de580d08911	doc-7	todos	linha 303: int x = 10
 check	docs/Jinga.md	d123e62078f9	doc-7	todos	linha 462: try {
@@ -77,3 +80,509 @@ roda	docs/manpu/read/read.md	fe5f49104b5c	motor-5	todos	linha 27: import manpu a
 roda	docs/os/loadFile/loadFile.md	592d8ea5b84f	motor-8	todos	linha 98: os.loadFile("legado.csv", mode="latin-1")
 roda	docs/os/loadFile/loadFile.md	fa94a719f6ae	motor-8	todos	linha 108: os.loadFile("x.txt", mode="xyz")
 roda	docs/manpu.md	f4ca85e6ae62	motor-9	todos	linha 58: nm = mp.write(
+p2	membro:os.PoolFile	ca3e17945694	motor-11	todos	linha 11: os.PoolFile(p2_nao_existe=1)
+p2	membro:sys.argv	4badad23f461	motor-12	todos	linha 6: sys.argv([])
+p2	membro:sys.executable	6ffd0d4a6317	motor-12	todos	linha 5: sys.executable("")
+p2	membro:qrcode.ERROR_CORRECT_L	efeb81f154a9	motor-12	todos	linha 5: qrcode.ERROR_CORRECT_L("")
+p2	membro:qrcode.ERROR_CORRECT_M	25c01009a51e	motor-12	todos	linha 5: qrcode.ERROR_CORRECT_M("")
+p2	membro:qrcode.ERROR_CORRECT_Q	054a16741c4e	motor-12	todos	linha 5: qrcode.ERROR_CORRECT_Q("")
+p2	membro:qrcode.ERROR_CORRECT_H	29e7df4b60a0	motor-12	todos	linha 5: qrcode.ERROR_CORRECT_H("")
+p2	membro:jinker.cors	ea2dfa011852	motor-11	todos	linha 3: jinker.cors(0)
+p2	membro:jinker.cors	ece4e8fa5c7c	motor-11	todos	linha 4: jinker.cors(1.5)
+p2	membro:jinker.cors	76ba781a001e	motor-11	todos	linha 5: jinker.cors("")
+p2	membro:jinker.cors	a3d087b293e2	motor-11	todos	linha 6: jinker.cors([])
+p2	membro:jinker.cors	4a23bba13865	motor-11	todos	linha 7: jinker.cors(())
+p2	membro:jinker.cors	5a5e7e1819f8	motor-11	todos	linha 8: jinker.cors({})
+p2	membro:jinker.cors	769760ccad59	motor-11	todos	linha 9: jinker.cors(b"")
+p2	membro:jinker.cors	5bca45e7feb9	motor-11	todos	linha 10: jinker.cors(True)
+p2	membro:jinker.cors	0fb34eabfe12	motor-11	todos	linha 15: jinker.cors(app=Null)
+p2	membro:jinker.cors	37ffe5b35406	motor-11	todos	linha 16: jinker.cors(p2_nao_existe=1)
+p2	membro:sockets.AF_INET	2c5930777d8d	motor-12	todos	linha 3: sockets.AF_INET(0)
+p2	membro:sockets.AF_INET6	0bdf774ed847	motor-12	todos	linha 3: sockets.AF_INET6(0)
+p2	membro:sockets.AF_UNIX	37e7178fa2f4	motor-12	todos	linha 3: sockets.AF_UNIX(0)
+p2	membro:sockets.AF_UNSPEC	987d2657385d	motor-12	todos	linha 3: sockets.AF_UNSPEC(0)
+p2	membro:sockets.SOCK_STREAM	b30965f2069b	motor-12	todos	linha 3: sockets.SOCK_STREAM(0)
+p2	membro:sockets.SOCK_DGRAM	8f1a0ab3ef87	motor-12	todos	linha 3: sockets.SOCK_DGRAM(0)
+p2	membro:sockets.SOCK_RAW	807be513aa27	motor-12	todos	linha 3: sockets.SOCK_RAW(0)
+p2	membro:sockets.SOCK_SEQPACKET	f5e5f778314e	motor-12	todos	linha 3: sockets.SOCK_SEQPACKET(0)
+p2	membro:sockets.SOL_SOCKET	f10b4cf491f0	motor-12	todos	linha 3: sockets.SOL_SOCKET(0)
+p2	membro:sockets.SO_REUSEADDR	d9252db560c2	motor-12	todos	linha 3: sockets.SO_REUSEADDR(0)
+p2	membro:sockets.SO_KEEPALIVE	1897555d2d86	motor-12	todos	linha 3: sockets.SO_KEEPALIVE(0)
+p2	membro:sockets.SO_REUSEPORT	fe4d30c7355a	motor-12	todos	linha 3: sockets.SO_REUSEPORT(0)
+p2	membro:sockets.SO_BROADCAST	ee6ea6aaee18	motor-12	todos	linha 3: sockets.SO_BROADCAST(0)
+p2	membro:sockets.SO_LINGER	b8f04d11b96c	motor-12	todos	linha 3: sockets.SO_LINGER(0)
+p2	membro:sockets.SO_RCVBUF	66e56999b20c	motor-12	todos	linha 3: sockets.SO_RCVBUF(0)
+p2	membro:sockets.SO_SNDBUF	3ee59931e024	motor-12	todos	linha 3: sockets.SO_SNDBUF(0)
+p2	membro:sockets.SO_ERROR	8f4cb845fec6	motor-12	todos	linha 3: sockets.SO_ERROR(0)
+p2	membro:sockets.SO_RCVTIMEO	f6f5e99ef47e	motor-12	todos	linha 3: sockets.SO_RCVTIMEO(0)
+p2	membro:sockets.SO_SNDTIMEO	6817a41f6ce9	motor-12	todos	linha 3: sockets.SO_SNDTIMEO(0)
+p2	membro:sockets.SO_OOBINLINE	cca35e83f4fc	motor-12	todos	linha 3: sockets.SO_OOBINLINE(0)
+p2	membro:sockets.SO_DONTROUTE	d1f8a45d1f2c	motor-12	todos	linha 3: sockets.SO_DONTROUTE(0)
+p2	membro:sockets.SO_TYPE	2e010c10c0b4	motor-12	todos	linha 3: sockets.SO_TYPE(0)
+p2	membro:sockets.TCP_NODELAY	813e6fbc2d4d	motor-12	todos	linha 3: sockets.TCP_NODELAY(0)
+p2	membro:sockets.TCP_KEEPALIVE	9ab57d73116b	motor-12	darwin	linha 3: sockets.TCP_KEEPALIVE(0)
+p2	membro:sockets.TCP_KEEPIDLE	81128ab8c989	motor-12	linux	linha 3: sockets.TCP_KEEPIDLE(0)
+p2	membro:sockets.AF_PACKET	4dc51e7df5d0	motor-12	linux	linha 3: sockets.AF_PACKET(0)
+p2	membro:sockets.TCP_KEEPINTVL	8a3d4cde324c	motor-12	todos	linha 3: sockets.TCP_KEEPINTVL(0)
+p2	membro:sockets.TCP_KEEPCNT	f939cbabbda0	motor-12	todos	linha 3: sockets.TCP_KEEPCNT(0)
+p2	membro:sockets.IPPROTO_IP	07b16cc980f6	motor-12	todos	linha 3: sockets.IPPROTO_IP(0)
+p2	membro:sockets.IPPROTO_TCP	b385f85f85a1	motor-12	todos	linha 3: sockets.IPPROTO_TCP(0)
+p2	membro:sockets.IPPROTO_UDP	586ac2f0f5e1	motor-12	todos	linha 3: sockets.IPPROTO_UDP(0)
+p2	membro:sockets.IPPROTO_ICMP	0e528c15ee53	motor-12	todos	linha 3: sockets.IPPROTO_ICMP(0)
+p2	membro:sockets.IPPROTO_RAW	27e7e08801da	motor-12	todos	linha 3: sockets.IPPROTO_RAW(0)
+p2	membro:sockets.SHUT_RD	0b187eabd1c4	motor-12	todos	linha 3: sockets.SHUT_RD(0)
+p2	membro:sockets.SHUT_WR	491a4a7bb0c4	motor-12	todos	linha 3: sockets.SHUT_WR(0)
+p2	membro:sockets.SHUT_RDWR	6046283006e8	motor-12	todos	linha 3: sockets.SHUT_RDWR(0)
+p2	membro:sockets.MSG_PEEK	5730931e137e	motor-12	todos	linha 3: sockets.MSG_PEEK(0)
+p2	membro:sockets.MSG_WAITALL	ec71aaec6f0d	motor-12	todos	linha 3: sockets.MSG_WAITALL(0)
+p2	membro:sockets.MSG_OOB	32bccc1a5303	motor-12	todos	linha 3: sockets.MSG_OOB(0)
+p2	membro:sockets.MSG_DONTROUTE	98ea0e32c5bf	motor-12	todos	linha 3: sockets.MSG_DONTROUTE(0)
+p2	membro:sockets.MSG_DONTWAIT	93883c188e87	motor-12	todos	linha 3: sockets.MSG_DONTWAIT(0)
+p2	membro:sockets.MSG_TRUNC	f17002380e79	motor-12	todos	linha 3: sockets.MSG_TRUNC(0)
+p2	membro:sockets.AI_PASSIVE	31e14e33f4cd	motor-12	todos	linha 3: sockets.AI_PASSIVE(0)
+p2	membro:sockets.AI_CANONNAME	c66fabc8c30e	motor-12	todos	linha 3: sockets.AI_CANONNAME(0)
+p2	membro:sockets.AI_NUMERICHOST	b80723b9051d	motor-12	todos	linha 3: sockets.AI_NUMERICHOST(0)
+p2	membro:sockets.AI_NUMERICSERV	8caf8fa0b3cb	motor-12	todos	linha 3: sockets.AI_NUMERICSERV(0)
+p2	membro:sockets.AI_ADDRCONFIG	f01786817949	motor-12	todos	linha 3: sockets.AI_ADDRCONFIG(0)
+p2	membro:sockets.AI_V4MAPPED	1e02c40bab6d	motor-12	todos	linha 3: sockets.AI_V4MAPPED(0)
+p2	membro:sockets.AI_ALL	1f8ec96ee24e	motor-12	todos	linha 3: sockets.AI_ALL(0)
+p2	membro:sockets.NI_NUMERICHOST	ddd56553e10c	motor-12	todos	linha 3: sockets.NI_NUMERICHOST(0)
+p2	membro:sockets.NI_NUMERICSERV	355352b4e2a0	motor-12	todos	linha 3: sockets.NI_NUMERICSERV(0)
+p2	membro:sockets.NI_NOFQDN	49f3c532c42d	motor-12	todos	linha 3: sockets.NI_NOFQDN(0)
+p2	membro:sockets.NI_NAMEREQD	f17d255ae635	motor-12	todos	linha 3: sockets.NI_NAMEREQD(0)
+p2	membro:sockets.NI_DGRAM	c8d1c72cc351	motor-12	todos	linha 3: sockets.NI_DGRAM(0)
+p2	membro:sockets.SOMAXCONN	5b8d5ffcf8fe	motor-12	todos	linha 3: sockets.SOMAXCONN(0)
+p2	membro:sockets.INADDR_ANY	0a7a50729326	motor-12	todos	linha 3: sockets.INADDR_ANY(0)
+p2	membro:sockets.INADDR_LOOPBACK	d93c8107661a	motor-12	todos	linha 3: sockets.INADDR_LOOPBACK(0)
+p2	membro:sockets.INADDR_BROADCAST	9c4050d03bd4	motor-12	todos	linha 3: sockets.INADDR_BROADCAST(0)
+p2	membro:sockets.IP_TTL	44202296b749	motor-12	todos	linha 3: sockets.IP_TTL(0)
+p2	membro:sockets.IP_MULTICAST_TTL	3063d8618a53	motor-12	todos	linha 3: sockets.IP_MULTICAST_TTL(0)
+p2	membro:sockets.IP_MULTICAST_LOOP	e7eb6de87fc7	motor-12	todos	linha 3: sockets.IP_MULTICAST_LOOP(0)
+p2	membro:sockets.IP_ADD_MEMBERSHIP	bd6d2e9bc2ff	motor-12	todos	linha 3: sockets.IP_ADD_MEMBERSHIP(0)
+p2	membro:sockets.IP_DROP_MEMBERSHIP	83838a8e6848	motor-12	todos	linha 3: sockets.IP_DROP_MEMBERSHIP(0)
+p2	membro:sockets.IPV6_V6ONLY	a888a8d10bbd	motor-12	todos	linha 3: sockets.IPV6_V6ONLY(0)
+p2	membro:__universal__.type	ff6e8f387b34	motor-14	todos	linha 13: int x = 1.type()
+p2	membro:PoolFile.ext	bde2c75e936b	motor-12	todos	linha 11: open("./f.txt", "w").ext(p2_nao_existe=1)
+p2	membro:PoolFile.name	344292f6f93a	motor-12	todos	linha 11: open("./f.txt", "w").name(p2_nao_existe=1)
+p2	membro:PoolFile.size	ebad0144996e	motor-12	todos	linha 11: open("./f.txt", "w").size(path="")
+p2	membro:PoolFile.size	9f2bad12cce5	motor-12	todos	linha 12: open("./f.txt", "w").size(p2_nao_existe=1)
+p2	membro:PoolCursor.lastrowid	4bc5afcbd954	motor-12	todos	linha 11: sqlite3.connect(":memory:").cursor().lastrowid(p2_nao_existe
+p2	membro:PoolCursor.rowcount	1d1dbdddf024	motor-12	todos	linha 11: sqlite3.connect(":memory:").cursor().rowcount(p2_nao_existe=
+p2	membro:QRPoolFile.ext	df92fd563a6d	motor-12	todos	linha 11: qrcode.gen("x").ext(p2_nao_existe=1)
+p2	membro:QRPoolFile.name	54732a6e893c	motor-12	todos	linha 11: qrcode.gen("x").name(p2_nao_existe=1)
+p2	membro:QRPoolFile.size	b62f904fed21	motor-12	todos	linha 11: qrcode.gen("x").size(path="")
+p2	membro:QRPoolFile.size	eba4a1063bdc	motor-12	todos	linha 12: qrcode.gen("x").size(p2_nao_existe=1)
+p2	membro:DbConnection.cursor	ceb968322188	motor-11	todos	linha 2: psodbc.connect(driver="sqlite", base="p2.db").cursor(Null)
+p2	membro:DbConnection.cursor	dbcdeaefae9d	motor-11	todos	linha 3: psodbc.connect(driver="sqlite", base="p2.db").cursor(0)
+p2	membro:DbConnection.cursor	788913820021	motor-11	todos	linha 4: psodbc.connect(driver="sqlite", base="p2.db").cursor(1.5)
+p2	membro:DbConnection.cursor	fb62e62f502e	motor-11	todos	linha 5: psodbc.connect(driver="sqlite", base="p2.db").cursor("")
+p2	membro:DbConnection.cursor	f5a5b5633613	motor-11	todos	linha 6: psodbc.connect(driver="sqlite", base="p2.db").cursor([])
+p2	membro:DbConnection.cursor	ad35b48c988e	motor-11	todos	linha 7: psodbc.connect(driver="sqlite", base="p2.db").cursor(())
+p2	membro:DbConnection.cursor	084a945de151	motor-11	todos	linha 8: psodbc.connect(driver="sqlite", base="p2.db").cursor({})
+p2	membro:DbConnection.cursor	39cd283edf8b	motor-11	todos	linha 9: psodbc.connect(driver="sqlite", base="p2.db").cursor(b"")
+p2	membro:DbConnection.cursor	c879a2ec6088	motor-11	todos	linha 10: psodbc.connect(driver="sqlite", base="p2.db").cursor(True)
+p2	membro:DbConnection.cursor	c5186eba2ade	motor-11	todos	linha 11: psodbc.connect(driver="sqlite", base="p2.db").cursor(p2_nao_
+p2	membro:DbConnection.commit	1e85079bd516	motor-11	todos	linha 2: psodbc.connect(driver="sqlite", base="p2.db").commit(Null)
+p2	membro:DbConnection.commit	7232d2667ebb	motor-11	todos	linha 3: psodbc.connect(driver="sqlite", base="p2.db").commit(0)
+p2	membro:DbConnection.commit	3bafef29ca1e	motor-11	todos	linha 4: psodbc.connect(driver="sqlite", base="p2.db").commit(1.5)
+p2	membro:DbConnection.commit	1a0e550f23ab	motor-11	todos	linha 5: psodbc.connect(driver="sqlite", base="p2.db").commit("")
+p2	membro:DbConnection.commit	8a9a12aafa69	motor-11	todos	linha 6: psodbc.connect(driver="sqlite", base="p2.db").commit([])
+p2	membro:DbConnection.commit	3945805eb93c	motor-11	todos	linha 7: psodbc.connect(driver="sqlite", base="p2.db").commit(())
+p2	membro:DbConnection.commit	4e97c2d8edb8	motor-11	todos	linha 8: psodbc.connect(driver="sqlite", base="p2.db").commit({})
+p2	membro:DbConnection.commit	59e67d762f65	motor-11	todos	linha 9: psodbc.connect(driver="sqlite", base="p2.db").commit(b"")
+p2	membro:DbConnection.commit	8400e5a8a287	motor-11	todos	linha 10: psodbc.connect(driver="sqlite", base="p2.db").commit(True)
+p2	membro:DbConnection.commit	72aa87b9f750	motor-11	todos	linha 11: psodbc.connect(driver="sqlite", base="p2.db").commit(p2_nao_
+p2	membro:DbConnection.close	2e1f8094114e	motor-11	todos	linha 2: psodbc.connect(driver="sqlite", base="p2.db").close(Null)
+p2	membro:DbConnection.close	b20b9a27ced9	motor-11	todos	linha 3: psodbc.connect(driver="sqlite", base="p2.db").close(0)
+p2	membro:DbConnection.close	e7bf8098b872	motor-11	todos	linha 4: psodbc.connect(driver="sqlite", base="p2.db").close(1.5)
+p2	membro:DbConnection.close	ff0f02a6d43a	motor-11	todos	linha 5: psodbc.connect(driver="sqlite", base="p2.db").close("")
+p2	membro:DbConnection.close	4eb280efc66c	motor-11	todos	linha 6: psodbc.connect(driver="sqlite", base="p2.db").close([])
+p2	membro:DbConnection.close	266175873a9e	motor-11	todos	linha 7: psodbc.connect(driver="sqlite", base="p2.db").close(())
+p2	membro:DbConnection.close	ce2457b88a9b	motor-11	todos	linha 8: psodbc.connect(driver="sqlite", base="p2.db").close({})
+p2	membro:DbConnection.close	52b8173fac15	motor-11	todos	linha 9: psodbc.connect(driver="sqlite", base="p2.db").close(b"")
+p2	membro:DbConnection.close	f0ba4f7c502d	motor-11	todos	linha 10: psodbc.connect(driver="sqlite", base="p2.db").close(True)
+p2	membro:DbConnection.close	1657dbe5c65e	motor-11	todos	linha 11: psodbc.connect(driver="sqlite", base="p2.db").close(p2_nao_e
+p2	membro:DbCursor.execute	8427055be340	motor-11	todos	linha 1: psodbc.connect(driver="sqlite", base="p2.db").cursor().execu
+p2	membro:DbCursor.execute	8a525059bc1f	motor-11	todos	linha 4: psodbc.connect(driver="sqlite", base="p2.db").cursor().execu
+p2	membro:DbCursor.execute	a22f186a18eb	motor-11	todos	linha 5: psodbc.connect(driver="sqlite", base="p2.db").cursor().execu
+p2	membro:DbCursor.execute	4d326be89f39	motor-11	todos	linha 6: psodbc.connect(driver="sqlite", base="p2.db").cursor().execu
+p2	membro:DbCursor.execute	bf91fc822c6d	motor-11	todos	linha 8: psodbc.connect(driver="sqlite", base="p2.db").cursor().execu
+p2	membro:DbCursor.execute	450a161240ec	motor-11	todos	linha 9: psodbc.connect(driver="sqlite", base="p2.db").cursor().execu
+p2	membro:DbCursor.execute	4ff81ee35f23	motor-11	todos	linha 10: psodbc.connect(driver="sqlite", base="p2.db").cursor().execu
+p2	membro:DbCursor.execute	5ea87940e8c5	motor-11	todos	linha 11: psodbc.connect(driver="sqlite", base="p2.db").cursor().execu
+p2	membro:DbCursor.execute	05098eb87fcd	motor-11	todos	linha 12: psodbc.connect(driver="sqlite", base="p2.db").cursor().execu
+p2	membro:DbCursor.execute	70cfc9f9f594	motor-11	todos	linha 15: psodbc.connect(driver="sqlite", base="p2.db").cursor().execu
+p2	membro:DbCursor.fetchall	480dcb5bbd00	motor-11	todos	linha 2: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchall	5061f6d74cfe	motor-11	todos	linha 3: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchall	4cae8d827ea9	motor-11	todos	linha 4: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchall	5d9a4b50cbfc	motor-11	todos	linha 5: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchall	040fcfd7a9d2	motor-11	todos	linha 6: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchall	b25f11800a66	motor-11	todos	linha 7: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchall	54dcc9df586b	motor-11	todos	linha 8: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchall	0d611073e978	motor-11	todos	linha 9: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchall	850e203b5d99	motor-11	todos	linha 10: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchall	fd4d3c24a2c0	motor-11	todos	linha 11: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchone	bd5b41044910	motor-11	todos	linha 2: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchone	16bfdf871261	motor-11	todos	linha 3: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchone	1ca4538164da	motor-11	todos	linha 4: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchone	ffc826277120	motor-11	todos	linha 5: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchone	017b050be8bd	motor-11	todos	linha 6: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchone	e0ab5b9af2b6	motor-11	todos	linha 7: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchone	9d8ae7a9c85b	motor-11	todos	linha 8: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchone	30e30d964b79	motor-11	todos	linha 9: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchone	5d3e813dc726	motor-11	todos	linha 10: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchone	3636fc723151	motor-11	todos	linha 11: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchmany	f0cd1c0384c7	motor-11	todos	linha 3: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.fetchmany	157f323b3d7a	motor-11	todos	linha 13: psodbc.connect(driver="sqlite", base="p2.db").cursor().fetch
+p2	membro:DbCursor.close	3b7d7035cff7	motor-11	todos	linha 2: psodbc.connect(driver="sqlite", base="p2.db").cursor().close
+p2	membro:DbCursor.close	eedd8396c680	motor-11	todos	linha 3: psodbc.connect(driver="sqlite", base="p2.db").cursor().close
+p2	membro:DbCursor.close	9de0259d0475	motor-11	todos	linha 4: psodbc.connect(driver="sqlite", base="p2.db").cursor().close
+p2	membro:DbCursor.close	a89c9a813bcb	motor-11	todos	linha 5: psodbc.connect(driver="sqlite", base="p2.db").cursor().close
+p2	membro:DbCursor.close	a567aadd6eb7	motor-11	todos	linha 6: psodbc.connect(driver="sqlite", base="p2.db").cursor().close
+p2	membro:DbCursor.close	4c7393be903c	motor-11	todos	linha 7: psodbc.connect(driver="sqlite", base="p2.db").cursor().close
+p2	membro:DbCursor.close	0d7c7701bc51	motor-11	todos	linha 8: psodbc.connect(driver="sqlite", base="p2.db").cursor().close
+p2	membro:DbCursor.close	ea2df42b226b	motor-11	todos	linha 9: psodbc.connect(driver="sqlite", base="p2.db").cursor().close
+p2	membro:DbCursor.close	352657c2ac47	motor-11	todos	linha 10: psodbc.connect(driver="sqlite", base="p2.db").cursor().close
+p2	membro:DbCursor.close	ff30d49ff984	motor-11	todos	linha 11: psodbc.connect(driver="sqlite", base="p2.db").cursor().close
+p2	membro:DbCursor.rowcount	9b548b68c6e3	motor-11	todos	linha 3: psodbc.connect(driver="sqlite", base="p2.db").cursor().rowco
+p2	membro:Jinker.channel	20c0571107a6	jinker-7	todos	linha 11: jinker.Jinker().channel(forAll=Null)
+p2	membro:Jinker.channel	e898fdcd480b	jinker-7	todos	linha 12: jinker.Jinker().channel(p2_nao_existe=1)
+p2	membro:Jinker.name	90f9e5c608b0	motor-12	todos	linha 11: jinker.Jinker().name(p2_nao_existe=1)
+p2	membro:Jinker.socket	a033611de95e	jinker-7	todos	linha 11: jinker.Jinker().socket(channel=Null)
+p2	membro:Jinker.socket	6d8ba5dc85f1	jinker-7	todos	linha 12: jinker.Jinker().socket(path=Null)
+p2	membro:Jinker.socket	ca0996d61f18	jinker-7	todos	linha 13: jinker.Jinker().socket(p2_nao_existe=1)
+p2	membro:Jinker.static_url	a4c07b14ce0b	motor-12	todos	linha 11: jinker.Jinker().static_url(p2_nao_existe=1)
+p2	membro:RouteRegistrar.register	d9f219643a6d	motor-11	todos	linha 1: jinker.Jinker().route("/p2").register()
+p2	membro:RouteRegistrar.register	537d59dcf16b	motor-11	todos	linha 3: jinker.Jinker().route("/p2").register(Null, Null)
+p2	membro:RouteRegistrar.register	be2a6859a9c3	motor-11	todos	linha 13: jinker.Jinker().route("/p2").register(Null, p2_nao_existe=1)
+p2	membro:RouteRegistrar.register	0b0ab1f8df21	motor-13	todos	linha 14: int x = jinker.Jinker().route("/p2").register(Null)
+p2	membro:JinkerResponse.status_code	61e9c135046a	motor-12	todos	linha 11: jinker.jsonify({}).status_code(p2_nao_existe=1)
+p2	membro:SocketNamespace.emit	cdb253f8ea07	motor-11	todos	linha 5: jinker.Jinker().socket.emit(Null, Null, Null, Null)
+p2	membro:SocketNamespace.emit	92936b84f84a	motor-11	todos	linha 17: jinker.Jinker().socket.emit(p2_nao_existe=1)
+p2	membro:SocketNamespace.status_send	d31469edbeca	motor-11	todos	linha 2: jinker.Jinker().socket.status_send(Null)
+p2	membro:SocketNamespace.status_send	44ba9d90f3c8	motor-11	todos	linha 3: jinker.Jinker().socket.status_send(0)
+p2	membro:SocketNamespace.status_send	51021d4626bd	motor-11	todos	linha 4: jinker.Jinker().socket.status_send(1.5)
+p2	membro:SocketNamespace.status_send	1a8295cf09c0	motor-11	todos	linha 5: jinker.Jinker().socket.status_send("")
+p2	membro:SocketNamespace.status_send	7841a47eccf9	motor-11	todos	linha 6: jinker.Jinker().socket.status_send([])
+p2	membro:SocketNamespace.status_send	1792c9313d3b	motor-11	todos	linha 7: jinker.Jinker().socket.status_send(())
+p2	membro:SocketNamespace.status_send	11717021e284	motor-11	todos	linha 8: jinker.Jinker().socket.status_send({})
+p2	membro:SocketNamespace.status_send	f84138db115c	motor-11	todos	linha 9: jinker.Jinker().socket.status_send(b"")
+p2	membro:SocketNamespace.status_send	01eeb2ee7aa6	motor-11	todos	linha 10: jinker.Jinker().socket.status_send(True)
+p2	membro:SocketNamespace.status_send	6b745056ad68	motor-11	todos	linha 11: jinker.Jinker().socket.status_send(p2_nao_existe=1)
+p2	membro:SocketEmitter.emit	61e107e4615e	motor-11	todos	linha 5: jinker.Jinker().socket().emit(Null, Null, Null, Null)
+p2	membro:SocketEmitter.emit	b03b3ea639e6	motor-11	todos	linha 17: jinker.Jinker().socket().emit(p2_nao_existe=1)
+p2	membro:SocketEmitter.status_send	f27f5c45cbc8	motor-11	todos	linha 2: jinker.Jinker().socket().status_send(Null)
+p2	membro:SocketEmitter.status_send	f88f525ecb29	motor-11	todos	linha 3: jinker.Jinker().socket().status_send(0)
+p2	membro:SocketEmitter.status_send	d8c48ba33716	motor-11	todos	linha 4: jinker.Jinker().socket().status_send(1.5)
+p2	membro:SocketEmitter.status_send	a8f3b35f9d40	motor-11	todos	linha 5: jinker.Jinker().socket().status_send("")
+p2	membro:SocketEmitter.status_send	22e8ffc58c0f	motor-11	todos	linha 6: jinker.Jinker().socket().status_send([])
+p2	membro:SocketEmitter.status_send	e5bdff4b079f	motor-11	todos	linha 7: jinker.Jinker().socket().status_send(())
+p2	membro:SocketEmitter.status_send	8e31cf4c4527	motor-11	todos	linha 8: jinker.Jinker().socket().status_send({})
+p2	membro:SocketEmitter.status_send	f17624c56219	motor-11	todos	linha 9: jinker.Jinker().socket().status_send(b"")
+p2	membro:SocketEmitter.status_send	932981ba84c7	motor-11	todos	linha 10: jinker.Jinker().socket().status_send(True)
+p2	membro:SocketEmitter.status_send	a3c184e9bf11	motor-11	todos	linha 11: jinker.Jinker().socket().status_send(p2_nao_existe=1)
+p2	membro:ChannelManager.emit	adcbb3614460	motor-11	todos	linha 4: jinker.Jinker().channel.emit(Null, Null, Null)
+p2	membro:ChannelManager.emit	01758eabe6c9	motor-11	todos	linha 15: jinker.Jinker().channel.emit(exclude_self=Null)
+p2	membro:ChannelManager.emit	5a44a87ab038	motor-11	todos	linha 16: jinker.Jinker().channel.emit(p2_nao_existe=1)
+p2	membro:QRImage.name	d62e7fad0a69	motor-12	todos	linha 11: qrcode.make("x").name(p2_nao_existe=1)
+p2	membro:ManpuFile.write	21c40d953302	motor-11	todos	linha 23: manpu.open("p2.csv").write(target=Null)
+p2	membro:ManpuFile.write	738043901863	motor-11	todos	linha 24: manpu.open("p2.csv").write(end=Null)
+p2	membro:ManpuFile.write	e0ad5bb14333	motor-11	todos	linha 25: manpu.open("p2.csv").write(p2_nao_existe=1)
+p2	membro:ManpuFile.read	16c06933091f	motor-11	todos	linha 2: manpu.open("p2.csv").read(Null)
+p2	membro:ManpuFile.read	4719f8e78233	motor-11	todos	linha 3: manpu.open("p2.csv").read(0)
+p2	membro:ManpuFile.read	adad34558e64	motor-11	todos	linha 4: manpu.open("p2.csv").read(1.5)
+p2	membro:ManpuFile.read	3324ac595d59	motor-11	todos	linha 5: manpu.open("p2.csv").read("")
+p2	membro:ManpuFile.read	f3b259fa4265	motor-11	todos	linha 6: manpu.open("p2.csv").read([])
+p2	membro:ManpuFile.read	792853563c3a	motor-11	todos	linha 7: manpu.open("p2.csv").read(())
+p2	membro:ManpuFile.read	31dde2e5fa71	motor-11	todos	linha 8: manpu.open("p2.csv").read({})
+p2	membro:ManpuFile.read	6caf1dfaa220	motor-11	todos	linha 9: manpu.open("p2.csv").read(b"")
+p2	membro:ManpuFile.read	21dd7d94c2d5	motor-11	todos	linha 10: manpu.open("p2.csv").read(True)
+p2	membro:ManpuFile.read	432e6db56cb0	motor-11	todos	linha 11: manpu.open("p2.csv").read(filepath="")
+p2	membro:ManpuFile.read	8cbe1078b19a	motor-11	todos	linha 12: manpu.open("p2.csv").read(p2_nao_existe=1)
+p2	membro:ManpuFile.save	85ee9403cfa4	motor-11	todos	linha 2: manpu.open("p2.csv").save(Null)
+p2	membro:ManpuFile.save	beaf1316a0fd	motor-11	todos	linha 3: manpu.open("p2.csv").save(0)
+p2	membro:ManpuFile.save	5107cb4ee582	motor-11	todos	linha 4: manpu.open("p2.csv").save(1.5)
+p2	membro:ManpuFile.save	5509625555fb	motor-11	todos	linha 5: manpu.open("p2.csv").save("")
+p2	membro:ManpuFile.save	37f288d685de	motor-11	todos	linha 6: manpu.open("p2.csv").save([])
+p2	membro:ManpuFile.save	450c09e6e4a8	motor-11	todos	linha 7: manpu.open("p2.csv").save(())
+p2	membro:ManpuFile.save	165758f9d3f2	motor-11	todos	linha 8: manpu.open("p2.csv").save({})
+p2	membro:ManpuFile.save	1507a20a4f43	motor-11	todos	linha 9: manpu.open("p2.csv").save(b"")
+p2	membro:ManpuFile.save	2b4280f635bd	motor-11	todos	linha 10: manpu.open("p2.csv").save(True)
+p2	membro:ManpuFile.save	d4010eb4e5a3	motor-11	todos	linha 11: manpu.open("p2.csv").save(path=Null)
+p2	membro:ManpuFile.save	df7b7e25329f	motor-11	todos	linha 12: manpu.open("p2.csv").save(p2_nao_existe=1)
+p2	membro:socket.family	321515a41908	motor-12	todos	linha 11: sockets.socket().family(p2_nao_existe=1)
+p2	membro:socket.proto	4514a8f1b0ca	motor-12	todos	linha 11: sockets.socket().proto(p2_nao_existe=1)
+p2	membro:socket.type	ea477616f41b	motor-12	todos	linha 11: sockets.socket().type(x=Null)
+p2	membro:socket.type	3c892c9753fc	motor-12	todos	linha 12: sockets.socket().type(p2_nao_existe=1)
+p2	membro:Process.pid	d1ef2cd74dfb	motor-12	todos	linha 11: os.run(["true"], capture="live").pid(p2_nao_existe=1)
+p2	membro:Pattern.pattern	a716c569016b	motor-12	todos	linha 11: regex.compile("a").pattern(p2_nao_existe=1)
+p2	membro:RequestProxy.get_json	68ace6d4328d	motor-11	todos	linha 2: request.get_json(Null)
+p2	membro:RequestProxy.get_json	ebfaa2f82469	motor-11	todos	linha 3: request.get_json(0)
+p2	membro:RequestProxy.get_json	09598866f3cf	motor-11	todos	linha 4: request.get_json(1.5)
+p2	membro:RequestProxy.get_json	85187ee6eac4	motor-11	todos	linha 5: request.get_json("")
+p2	membro:RequestProxy.get_json	b73abbe1630c	motor-11	todos	linha 6: request.get_json([])
+p2	membro:RequestProxy.get_json	56604c9ccf39	motor-11	todos	linha 7: request.get_json(())
+p2	membro:RequestProxy.get_json	d9b25a6b9b35	motor-11	todos	linha 8: request.get_json({})
+p2	membro:RequestProxy.get_json	43cc80423803	motor-11	todos	linha 9: request.get_json(b"")
+p2	membro:RequestProxy.get_json	96a6083f9348	motor-11	todos	linha 10: request.get_json(True)
+p2	membro:RequestProxy.get_json	1114d1fa50cf	motor-11	todos	linha 11: request.get_json(chave=Null)
+p2	membro:RequestProxy.get_json	e3d9bffdc401	motor-11	todos	linha 12: request.get_json(p2_nao_existe=1)
+p2	membro:RequestProxy.json	89f7a882e68d	motor-11	todos	linha 2: request.json(Null)
+p2	membro:RequestProxy.json	e0f0b8513656	motor-11	todos	linha 3: request.json(0)
+p2	membro:RequestProxy.json	94b349fe0835	motor-11	todos	linha 4: request.json(1.5)
+p2	membro:RequestProxy.json	e49268bf7e02	motor-11	todos	linha 5: request.json("")
+p2	membro:RequestProxy.json	ecc8ab48ee8d	motor-11	todos	linha 6: request.json([])
+p2	membro:RequestProxy.json	2f882891af96	motor-11	todos	linha 7: request.json(())
+p2	membro:RequestProxy.json	e547546df87f	motor-11	todos	linha 8: request.json({})
+p2	membro:RequestProxy.json	370c031da350	motor-11	todos	linha 9: request.json(b"")
+p2	membro:RequestProxy.json	8c2c8ca94a04	motor-11	todos	linha 10: request.json(True)
+p2	membro:RequestProxy.json	4010e4bca8a1	motor-11	todos	linha 11: request.json(data=Null)
+p2	membro:RequestProxy.json	cc6f120670e7	motor-11	todos	linha 12: request.json(status=0)
+p2	membro:RequestProxy.json	17cbf61606cc	motor-11	todos	linha 13: request.json(p2_nao_existe=1)
+p2	membro:RequestProxy.get	52f52e9785d2	motor-11	todos	linha 1: request.get()
+p2	membro:RequestProxy.get	ab019f7858ad	motor-11	todos	linha 3: request.get(Null, Null)
+p2	membro:RequestProxy.get	a16a4b541389	motor-11	todos	linha 4: request.get(0)
+p2	membro:RequestProxy.get	dae3d373fc94	motor-11	todos	linha 5: request.get(1.5)
+p2	membro:RequestProxy.get	828cc1ad98fa	motor-11	todos	linha 7: request.get([])
+p2	membro:RequestProxy.get	d808ea16043f	motor-11	todos	linha 8: request.get(())
+p2	membro:RequestProxy.get	cd3ffa5d3fe2	motor-11	todos	linha 9: request.get({})
+p2	membro:RequestProxy.get	ed34649c5c04	motor-11	todos	linha 10: request.get(b"")
+p2	membro:RequestProxy.get	c7cfc1e27c11	motor-11	todos	linha 11: request.get(True)
+p2	membro:RequestProxy.get	c1bd7e922f45	motor-11	todos	linha 13: request.get("", b=b"")
+p2	membro:RequestProxy.get	3fb6503b048e	motor-11	todos	linha 14: request.get("", i=0)
+p2	membro:RequestProxy.get	97f636e962e2	motor-11	todos	linha 15: request.get("", headers=Null)
+p2	membro:RequestProxy.get	8a70f521d7ae	motor-11	todos	linha 16: request.get("", path=Null)
+p2	membro:RequestProxy.get	af14677918ba	motor-11	todos	linha 17: request.get("", auth=Null)
+p2	membro:RequestProxy.get	36e2c111674f	motor-11	todos	linha 18: request.get("", middleware=Null)
+p2	membro:RequestProxy.get	089fd1aba7b0	motor-11	todos	linha 19: request.get("", model=Null)
+p2	membro:RequestProxy.get	8d556eab8f50	motor-11	todos	linha 20: request.get("", url=Null)
+p2	membro:RequestProxy.get	45bae71da889	motor-11	todos	linha 21: request.get("", timeout=Null)
+p2	membro:RequestProxy.get	ccaf9a3799e4	motor-11	todos	linha 22: request.get("", body=Null)
+p2	membro:RequestProxy.get	64f84a4a823f	motor-11	todos	linha 23: request.get("", stream=Null)
+p2	membro:RequestProxy.get	21c80819e939	motor-11	todos	linha 24: request.get("", max_size=Null)
+p2	membro:RequestProxy.get	440e454647c6	motor-11	todos	linha 25: request.get("", fields=Null)
+p2	membro:RequestProxy.get	fa4b311e7fef	motor-11	todos	linha 26: request.get("", file=Null)
+p2	membro:RequestProxy.get	417557ed804b	motor-11	todos	linha 27: request.get("", save=Null)
+p2	membro:RequestProxy.get	e36547f56abc	motor-11	todos	linha 28: request.get("", chave=Null)
+p2	membro:RequestProxy.get	962355095a19	motor-11	todos	linha 29: request.get("", default=Null)
+p2	membro:RequestProxy.get	b0baa0405d1e	motor-11	todos	linha 30: request.get("", p2_nao_existe=1)
+p2	membro:RequestProxy.text	c8ad60055994	motor-11	todos	linha 2: request.text(Null)
+p2	membro:RequestProxy.text	bc9ce9d72e7b	motor-11	todos	linha 3: request.text(0)
+p2	membro:RequestProxy.text	8d9eec7b86bf	motor-11	todos	linha 4: request.text(1.5)
+p2	membro:RequestProxy.text	dd47246e3a39	motor-11	todos	linha 5: request.text("")
+p2	membro:RequestProxy.text	c5ec4545369d	motor-11	todos	linha 6: request.text([])
+p2	membro:RequestProxy.text	b1e1dcaf2e1b	motor-11	todos	linha 7: request.text(())
+p2	membro:RequestProxy.text	1dd27ed2bee9	motor-11	todos	linha 8: request.text({})
+p2	membro:RequestProxy.text	b6d91b3711a3	motor-11	todos	linha 9: request.text(b"")
+p2	membro:RequestProxy.text	7f141c80044d	motor-11	todos	linha 10: request.text(True)
+p2	membro:RequestProxy.text	7183773b20bb	motor-11	todos	linha 11: request.text(p2_nao_existe=1)
+p2	membro:RequestProxy.path_param	7305d34d0424	motor-11	todos	linha 1: request.path_param()
+p2	membro:RequestProxy.path_param	58d171a75f32	motor-11	todos	linha 3: request.path_param(Null, Null)
+p2	membro:RequestProxy.path_param	ab033b752197	motor-11	todos	linha 4: request.path_param(0)
+p2	membro:RequestProxy.path_param	fb1424ac9b22	motor-11	todos	linha 5: request.path_param(1.5)
+p2	membro:RequestProxy.path_param	e86e8e143242	motor-11	todos	linha 7: request.path_param([])
+p2	membro:RequestProxy.path_param	c5e73d45c03a	motor-11	todos	linha 8: request.path_param(())
+p2	membro:RequestProxy.path_param	cb1e89ac8155	motor-11	todos	linha 9: request.path_param({})
+p2	membro:RequestProxy.path_param	2e783a80fa79	motor-11	todos	linha 10: request.path_param(b"")
+p2	membro:RequestProxy.path_param	7d91a67fd311	motor-11	todos	linha 11: request.path_param(True)
+p2	membro:RequestProxy.path_param	26c249daa6a3	motor-11	todos	linha 13: request.path_param("", p2_nao_existe=1)
+p2	membro:RequestProxy.header	0c71442c9d51	motor-11	todos	linha 1: request.header()
+p2	membro:RequestProxy.header	b99a64659639	motor-11	todos	linha 3: request.header(Null, Null)
+p2	membro:RequestProxy.header	2d067f28a69c	motor-11	todos	linha 4: request.header(0)
+p2	membro:RequestProxy.header	a0f2fc0abac3	motor-11	todos	linha 5: request.header(1.5)
+p2	membro:RequestProxy.header	067161878c0c	motor-11	todos	linha 7: request.header([])
+p2	membro:RequestProxy.header	95cb136589b1	motor-11	todos	linha 8: request.header(())
+p2	membro:RequestProxy.header	7c9162283435	motor-11	todos	linha 9: request.header({})
+p2	membro:RequestProxy.header	f247dbc2afe5	motor-11	todos	linha 10: request.header(b"")
+p2	membro:RequestProxy.header	d03c18097570	motor-11	todos	linha 11: request.header(True)
+p2	membro:RequestProxy.header	947aaf1f2840	motor-11	todos	linha 13: request.header("", value="")
+p2	membro:RequestProxy.header	a1171659ae4c	motor-11	todos	linha 14: request.header("", p2_nao_existe=1)
+p2	membro:RequestProxy.cookie	359ea2151f21	motor-11	todos	linha 1: request.cookie()
+p2	membro:RequestProxy.cookie	4992bbf2f5b6	motor-11	todos	linha 3: request.cookie(Null, Null)
+p2	membro:RequestProxy.cookie	34e091ecd122	motor-11	todos	linha 4: request.cookie(0)
+p2	membro:RequestProxy.cookie	5786cfce1187	motor-11	todos	linha 5: request.cookie(1.5)
+p2	membro:RequestProxy.cookie	f8a8414ddebc	motor-11	todos	linha 7: request.cookie([])
+p2	membro:RequestProxy.cookie	6e184fbcd559	motor-11	todos	linha 8: request.cookie(())
+p2	membro:RequestProxy.cookie	bf0b2edda085	motor-11	todos	linha 9: request.cookie({})
+p2	membro:RequestProxy.cookie	bed210ddf731	motor-11	todos	linha 10: request.cookie(b"")
+p2	membro:RequestProxy.cookie	6d23747d3e25	motor-11	todos	linha 11: request.cookie(True)
+p2	membro:RequestProxy.cookie	f05459d1bb09	motor-11	todos	linha 13: request.cookie("", valor="")
+p2	membro:RequestProxy.cookie	670741e7004b	motor-11	todos	linha 14: request.cookie("", path="")
+p2	membro:RequestProxy.cookie	7d41ae8a7d22	motor-11	todos	linha 15: request.cookie("", max_age=0)
+p2	membro:RequestProxy.cookie	28d6054cd782	motor-11	todos	linha 16: request.cookie("", httponly=True)
+p2	membro:RequestProxy.cookie	6a3ec555f04a	motor-11	todos	linha 17: request.cookie("", secure=True)
+p2	membro:RequestProxy.cookie	acd219efccd9	motor-11	todos	linha 18: request.cookie("", samesite="")
+p2	membro:RequestProxy.cookie	689deb5955c2	motor-11	todos	linha 19: request.cookie("", domain="")
+p2	membro:RequestProxy.cookie	abd7443c15f5	motor-11	todos	linha 20: request.cookie("", p2_nao_existe=1)
+p2	membro:RequestProxy.file	7719816a2780	motor-11	todos	linha 1: request.file()
+p2	membro:RequestProxy.file	d8c239ab992b	motor-11	todos	linha 4: request.file(Null, Null, Null)
+p2	membro:RequestProxy.file	dad1a7245f3c	motor-11	todos	linha 5: request.file(0)
+p2	membro:RequestProxy.file	30d8a3c1381b	motor-11	todos	linha 6: request.file(1.5)
+p2	membro:RequestProxy.file	ab474229b648	motor-11	todos	linha 8: request.file([])
+p2	membro:RequestProxy.file	18b175416f9e	motor-11	todos	linha 9: request.file(())
+p2	membro:RequestProxy.file	71b70421c888	motor-11	todos	linha 10: request.file({})
+p2	membro:RequestProxy.file	4b91274ea93a	motor-11	todos	linha 11: request.file(b"")
+p2	membro:RequestProxy.file	7672efd22140	motor-11	todos	linha 12: request.file(True)
+p2	membro:RequestProxy.file	18454470f706	motor-11	todos	linha 15: request.file("", p2_nao_existe=1)
+p2	membro:RequestProxy.files	3f4642021105	motor-11	todos	linha 1: request.files()
+p2	membro:RequestProxy.files	5898a7b96c05	motor-11	todos	linha 4: request.files(Null, Null, Null)
+p2	membro:RequestProxy.files	5a52d979fe23	motor-11	todos	linha 5: request.files(0)
+p2	membro:RequestProxy.files	a85249dd8e30	motor-11	todos	linha 6: request.files(1.5)
+p2	membro:RequestProxy.files	fa97afff540d	motor-11	todos	linha 8: request.files([])
+p2	membro:RequestProxy.files	82ac0e0e5daa	motor-11	todos	linha 9: request.files(())
+p2	membro:RequestProxy.files	e04ce74f434e	motor-11	todos	linha 10: request.files({})
+p2	membro:RequestProxy.files	0ce68c455002	motor-11	todos	linha 11: request.files(b"")
+p2	membro:RequestProxy.files	d70855419d0a	motor-11	todos	linha 12: request.files(True)
+p2	membro:RequestProxy.files	39e91c08b250	motor-11	todos	linha 15: request.files("", p2_nao_existe=1)
+p2	membro:RequestProxy.headers	ddc02ad2514f	motor-11	todos	linha 8: request.headers({})
+p2	membro:RequestProxy.method	bb488631ac4d	motor-11	todos	linha 5: request.method("")
+p2	membro:RequestProxy.path	722ed92c4bc6	motor-11	todos	linha 5: request.path("")
+p2	membro:PoolFileUpload.save	ed80508127be	motor-11	todos	linha 1: request.file("arquivo").save()
+p2	membro:PoolFileUpload.save	40394c4e8862	motor-11	todos	linha 3: request.file("arquivo").save(Null, Null)
+p2	membro:PoolFileUpload.save	e94da8efa7fe	motor-11	todos	linha 4: request.file("arquivo").save(0)
+p2	membro:PoolFileUpload.save	48823d867612	motor-11	todos	linha 5: request.file("arquivo").save(1.5)
+p2	membro:PoolFileUpload.save	75791d0b2e7f	motor-11	todos	linha 7: request.file("arquivo").save([])
+p2	membro:PoolFileUpload.save	5c5571606d7e	motor-11	todos	linha 8: request.file("arquivo").save(())
+p2	membro:PoolFileUpload.save	587088cbb214	motor-11	todos	linha 9: request.file("arquivo").save({})
+p2	membro:PoolFileUpload.save	f3a59d29ade4	motor-11	todos	linha 10: request.file("arquivo").save(b"")
+p2	membro:PoolFileUpload.save	66e2dd3daeec	motor-11	todos	linha 11: request.file("arquivo").save(True)
+p2	membro:PoolFileUpload.save	f93555880c6b	motor-11	todos	linha 13: request.file("arquivo").save(Null, path=Null)
+p2	membro:PoolFileUpload.save	6cffc241e318	motor-11	todos	linha 14: request.file("arquivo").save(Null, p2_nao_existe=1)
+p2	membro:PoolFileUpload.move	3afe602f6239	motor-11	todos	linha 1: request.file("arquivo").move()
+p2	membro:PoolFileUpload.move	bfff1db61b22	motor-11	todos	linha 3: request.file("arquivo").move(Null, Null)
+p2	membro:PoolFileUpload.move	1c84429f9de1	motor-11	todos	linha 4: request.file("arquivo").move(0)
+p2	membro:PoolFileUpload.move	d4c5b6a3550c	motor-11	todos	linha 5: request.file("arquivo").move(1.5)
+p2	membro:PoolFileUpload.move	dac1d6f4b703	motor-11	todos	linha 7: request.file("arquivo").move([])
+p2	membro:PoolFileUpload.move	41c021773fce	motor-11	todos	linha 8: request.file("arquivo").move(())
+p2	membro:PoolFileUpload.move	d83fa7a3c66b	motor-11	todos	linha 9: request.file("arquivo").move({})
+p2	membro:PoolFileUpload.move	b8feeebd3879	motor-11	todos	linha 10: request.file("arquivo").move(b"")
+p2	membro:PoolFileUpload.move	e8268bc5a31a	motor-11	todos	linha 11: request.file("arquivo").move(True)
+p2	membro:PoolFileUpload.move	b65f944d9575	motor-11	todos	linha 13: request.file("arquivo").move(Null, src="")
+p2	membro:PoolFileUpload.move	6351aa3176d8	motor-11	todos	linha 14: request.file("arquivo").move(Null, dst="")
+p2	membro:PoolFileUpload.move	425e61584c7b	motor-11	todos	linha 15: request.file("arquivo").move(Null, p2_nao_existe=1)
+p2	membro:PoolFileUpload.bytes	9870daf98283	motor-11	todos	linha 2: request.file("arquivo").bytes(Null)
+p2	membro:PoolFileUpload.bytes	3b3e7e08fb88	motor-11	todos	linha 3: request.file("arquivo").bytes(0)
+p2	membro:PoolFileUpload.bytes	1c3ae05b49c6	motor-11	todos	linha 4: request.file("arquivo").bytes(1.5)
+p2	membro:PoolFileUpload.bytes	f778b32107a9	motor-11	todos	linha 5: request.file("arquivo").bytes("")
+p2	membro:PoolFileUpload.bytes	8472b3e4b279	motor-11	todos	linha 6: request.file("arquivo").bytes([])
+p2	membro:PoolFileUpload.bytes	53468511b147	motor-11	todos	linha 7: request.file("arquivo").bytes(())
+p2	membro:PoolFileUpload.bytes	afff6ba71dd8	motor-11	todos	linha 8: request.file("arquivo").bytes({})
+p2	membro:PoolFileUpload.bytes	5af21ead41b0	motor-11	todos	linha 9: request.file("arquivo").bytes(b"")
+p2	membro:PoolFileUpload.bytes	b355db9a1c1a	motor-11	todos	linha 10: request.file("arquivo").bytes(True)
+p2	membro:PoolFileUpload.bytes	9783c915dc80	motor-11	todos	linha 11: request.file("arquivo").bytes(p2_nao_existe=1)
+p2	membro:PoolFileUpload.content_type	7e13917f3b51	motor-11	todos	linha 5: request.file("arquivo").content_type("")
+p2	membro:PoolFileUpload.ext	a18ab9060d59	motor-11	todos	linha 5: request.file("arquivo").ext("")
+p2	membro:PoolFileUpload.name	973d1764a349	motor-11	todos	linha 5: request.file("arquivo").name("")
+p2	membro:PoolFileUpload.size	7df003d494e3	motor-11	todos	linha 3: request.file("arquivo").size(0)
+p2	membro:Response.decode	494c0209f5b2	motor-11	todos	linha 3: request.get("http://127.0.0.1:@P@/p2r?a=1").decode(Null, Nul
+p2	membro:Response.decode	956cabfdd387	motor-11	todos	linha 13: request.get("http://127.0.0.1:@P@/p2r?a=1").decode(errors=Nu
+p2	membro:Response.decode	771f9eb5bc4e	motor-11	todos	linha 14: request.get("http://127.0.0.1:@P@/p2r?a=1").decode(p2_nao_ex
+p2	membro:Response.content_type	83767a0e3188	motor-11	todos	linha 1: request.get("http://127.0.0.1:@P@/p2r?a=1").content_type()
+p2	membro:Response.content_type	3529938eb721	motor-11	todos	linha 3: request.get("http://127.0.0.1:@P@/p2r?a=1").content_type(Nul
+p2	membro:Response.content_type	c2264078fe01	motor-11	todos	linha 4: request.get("http://127.0.0.1:@P@/p2r?a=1").content_type(0)
+p2	membro:Response.content_type	30c633b0b4c4	motor-11	todos	linha 5: request.get("http://127.0.0.1:@P@/p2r?a=1").content_type(1.5
+p2	membro:Response.content_type	7b4628586c36	motor-11	todos	linha 7: request.get("http://127.0.0.1:@P@/p2r?a=1").content_type([])
+p2	membro:Response.content_type	b115f03ee58e	motor-11	todos	linha 8: request.get("http://127.0.0.1:@P@/p2r?a=1").content_type(())
+p2	membro:Response.content_type	c017e2f108f6	motor-11	todos	linha 9: request.get("http://127.0.0.1:@P@/p2r?a=1").content_type({})
+p2	membro:Response.content_type	05344c366ab6	motor-11	todos	linha 10: request.get("http://127.0.0.1:@P@/p2r?a=1").content_type(b""
+p2	membro:Response.content_type	ce1ea4fc3f65	motor-11	todos	linha 11: request.get("http://127.0.0.1:@P@/p2r?a=1").content_type(Tru
+p2	membro:Response.content_type	a6da3229354b	motor-11	todos	linha 13: request.get("http://127.0.0.1:@P@/p2r?a=1").content_type(Nul
+p2	membro:Response.get	56782396398c	motor-11	todos	linha 1: request.get("http://127.0.0.1:@P@/p2r?a=1").get()
+p2	membro:Response.get	eb6cfc4fd733	motor-11	todos	linha 3: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, Null)
+p2	membro:Response.get	1bfc2cab2911	motor-11	todos	linha 4: request.get("http://127.0.0.1:@P@/p2r?a=1").get(0)
+p2	membro:Response.get	d8b3b3a3aebc	motor-11	todos	linha 5: request.get("http://127.0.0.1:@P@/p2r?a=1").get(1.5)
+p2	membro:Response.get	098de9a809d7	motor-11	todos	linha 7: request.get("http://127.0.0.1:@P@/p2r?a=1").get([])
+p2	membro:Response.get	f8c4833980ad	motor-11	todos	linha 8: request.get("http://127.0.0.1:@P@/p2r?a=1").get(())
+p2	membro:Response.get	d487c8b79bcd	motor-11	todos	linha 9: request.get("http://127.0.0.1:@P@/p2r?a=1").get({})
+p2	membro:Response.get	b4d47e55c313	motor-11	todos	linha 10: request.get("http://127.0.0.1:@P@/p2r?a=1").get(b"")
+p2	membro:Response.get	db96d845a0bd	motor-11	todos	linha 11: request.get("http://127.0.0.1:@P@/p2r?a=1").get(True)
+p2	membro:Response.get	6891475c634f	motor-11	todos	linha 13: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, b=b"")
+p2	membro:Response.get	4179ce117cf6	motor-11	todos	linha 14: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, i=0)
+p2	membro:Response.get	6be202c5753c	motor-11	todos	linha 15: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, header
+p2	membro:Response.get	0a4e6b6bd042	motor-11	todos	linha 16: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, path=N
+p2	membro:Response.get	6ab0c7127801	motor-11	todos	linha 17: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, auth=N
+p2	membro:Response.get	d21f8dd74c11	motor-11	todos	linha 18: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, middle
+p2	membro:Response.get	425542c1d2c9	motor-11	todos	linha 19: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, model=
+p2	membro:Response.get	54b859a9ccab	motor-11	todos	linha 20: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, key=""
+p2	membro:Response.get	f191423c74af	motor-11	todos	linha 21: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, url=Nu
+p2	membro:Response.get	cc0411282a99	motor-11	todos	linha 22: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, timeou
+p2	membro:Response.get	f8281a9033a9	motor-11	todos	linha 23: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, body=N
+p2	membro:Response.get	20235f23cbfc	motor-11	todos	linha 24: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, stream
+p2	membro:Response.get	ae05e4b020de	motor-11	todos	linha 25: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, max_si
+p2	membro:Response.get	7ef74d531b26	motor-11	todos	linha 26: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, fields
+p2	membro:Response.get	b4935c20daa7	motor-11	todos	linha 27: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, file=N
+p2	membro:Response.get	4917ca1fb57a	motor-11	todos	linha 28: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, save=N
+p2	membro:Response.get	24c9f31f1f88	motor-11	todos	linha 29: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, defaul
+p2	membro:Response.get	b3ea7d96693b	motor-11	todos	linha 30: request.get("http://127.0.0.1:@P@/p2r?a=1").get(Null, p2_nao
+p2	membro:Response.get_json	dd1b6f2da6f8	motor-11	todos	linha 3: request.get("http://127.0.0.1:@P@/p2r?a=1").get_json(Null, N
+p2	membro:Response.get_json	cf2cb9fe2ffd	motor-11	todos	linha 13: request.get("http://127.0.0.1:@P@/p2r?a=1").get_json(p2_nao_
+p2	membro:Response.json	4622ee858091	motor-11	todos	linha 2: request.get("http://127.0.0.1:@P@/p2r?a=1").json(Null)
+p2	membro:Response.json	72e3717f1835	motor-11	todos	linha 3: request.get("http://127.0.0.1:@P@/p2r?a=1").json(0)
+p2	membro:Response.json	90a65e5f5c57	motor-11	todos	linha 4: request.get("http://127.0.0.1:@P@/p2r?a=1").json(1.5)
+p2	membro:Response.json	f4b452b3457c	motor-11	todos	linha 5: request.get("http://127.0.0.1:@P@/p2r?a=1").json("")
+p2	membro:Response.json	1ab61478df8b	motor-11	todos	linha 6: request.get("http://127.0.0.1:@P@/p2r?a=1").json([])
+p2	membro:Response.json	b7e1092ddc0a	motor-11	todos	linha 7: request.get("http://127.0.0.1:@P@/p2r?a=1").json(())
+p2	membro:Response.json	0e4f6651f915	motor-11	todos	linha 8: request.get("http://127.0.0.1:@P@/p2r?a=1").json({})
+p2	membro:Response.json	d71d082dd232	motor-11	todos	linha 9: request.get("http://127.0.0.1:@P@/p2r?a=1").json(b"")
+p2	membro:Response.json	69bfdab6fe7d	motor-11	todos	linha 10: request.get("http://127.0.0.1:@P@/p2r?a=1").json(True)
+p2	membro:Response.json	93dcc02797b6	motor-11	todos	linha 11: request.get("http://127.0.0.1:@P@/p2r?a=1").json(data=Null)
+p2	membro:Response.json	0a0cfcf6dda4	motor-11	todos	linha 12: request.get("http://127.0.0.1:@P@/p2r?a=1").json(status=0)
+p2	membro:Response.json	c7b03742cd65	motor-11	todos	linha 13: request.get("http://127.0.0.1:@P@/p2r?a=1").json(p2_nao_exis
+p2	membro:Response.save	ae9ff494be78	motor-11	todos	linha 3: request.get("http://127.0.0.1:@P@/p2r?a=1").save(Null, Null)
+p2	membro:Response.save	bcb9c9632940	motor-11	todos	linha 4: request.get("http://127.0.0.1:@P@/p2r?a=1").save(0)
+p2	membro:Response.save	09455119c023	motor-11	todos	linha 5: request.get("http://127.0.0.1:@P@/p2r?a=1").save(1.5)
+p2	membro:Response.save	f57983a81f25	motor-11	todos	linha 7: request.get("http://127.0.0.1:@P@/p2r?a=1").save([])
+p2	membro:Response.save	a8dda32d996b	motor-11	todos	linha 8: request.get("http://127.0.0.1:@P@/p2r?a=1").save(())
+p2	membro:Response.save	8ad0f2e9194f	motor-11	todos	linha 9: request.get("http://127.0.0.1:@P@/p2r?a=1").save({})
+p2	membro:Response.save	23976bca6ccb	motor-11	todos	linha 10: request.get("http://127.0.0.1:@P@/p2r?a=1").save(b"")
+p2	membro:Response.save	5a2e85ab2673	motor-11	todos	linha 11: request.get("http://127.0.0.1:@P@/p2r?a=1").save(True)
+p2	membro:Response.save	fee1ed774989	motor-11	todos	linha 13: request.get("http://127.0.0.1:@P@/p2r?a=1").save(path=Null)
+p2	membro:Response.save	e0f422d042b4	motor-11	todos	linha 14: request.get("http://127.0.0.1:@P@/p2r?a=1").save(p2_nao_exis
+p2	membro:Response.content	17050d18c636	motor-11	todos	linha 9: request.get("http://127.0.0.1:@P@/p2r?a=1").content(b"")
+p2	membro:Response.filename	5557fab391bf	motor-11	todos	linha 5: request.get("http://127.0.0.1:@P@/p2r?a=1").filename("")
+p2	membro:Response.headers	44e5ea5c671d	motor-11	todos	linha 8: request.get("http://127.0.0.1:@P@/p2r?a=1").headers({})
+p2	membro:Response.ok	726003d3dd78	motor-11	todos	linha 10: request.get("http://127.0.0.1:@P@/p2r?a=1").ok(True)
+p2	membro:Response.size	ba52b280f9ac	motor-11	todos	linha 3: request.get("http://127.0.0.1:@P@/p2r?a=1").size(0)
+p2	membro:Response.status	002e6c950547	motor-11	todos	linha 3: request.get("http://127.0.0.1:@P@/p2r?a=1").status(0)
+p2	membro:Response.status_code	316f9dda653d	motor-11	todos	linha 3: request.get("http://127.0.0.1:@P@/p2r?a=1").status_code(0)
+p2	membro:Response.text	e2ed52607f22	motor-11	todos	linha 5: request.get("http://127.0.0.1:@P@/p2r?a=1").text("")
+p2	membro:Response.url	629755340bf5	motor-11	todos	linha 5: request.get("http://127.0.0.1:@P@/p2r?a=1").url("")
+p2	membro:WsConnection.send	47132c1ad571	motor-11	todos	linha 1: request.ws_connect("ws://127.0.0.1:@W@/ws").send()
+p2	membro:WsConnection.send	fdc7fe762372	motor-11	todos	linha 3: request.ws_connect("ws://127.0.0.1:@W@/ws").send(Null, Null)
+p2	membro:WsConnection.send	ac95c399e591	motor-11	todos	linha 10: request.ws_connect("ws://127.0.0.1:@W@/ws").send(b"")
+p2	membro:WsConnection.send	10cfd09a4a96	motor-11	todos	linha 13: request.ws_connect("ws://127.0.0.1:@W@/ws").send(Null, flags
+p2	membro:WsConnection.send	983372e5c035	motor-11	todos	linha 14: request.ws_connect("ws://127.0.0.1:@W@/ws").send(Null, to_or
+p2	membro:WsConnection.send	1f29cce460b2	motor-11	todos	linha 15: request.ws_connect("ws://127.0.0.1:@W@/ws").send(Null, subje
+p2	membro:WsConnection.send	07c299b6a9bb	motor-11	todos	linha 16: request.ws_connect("ws://127.0.0.1:@W@/ws").send(Null, body=
+p2	membro:WsConnection.send	87ac86ada219	motor-11	todos	linha 17: request.ws_connect("ws://127.0.0.1:@W@/ws").send(Null, html=
+p2	membro:WsConnection.send	51ea699deeee	motor-11	todos	linha 18: request.ws_connect("ws://127.0.0.1:@W@/ws").send(Null, msg=N
+p2	membro:WsConnection.send	e9affa3088b0	motor-11	todos	linha 19: request.ws_connect("ws://127.0.0.1:@W@/ws").send(Null, text=
+p2	membro:WsConnection.send	604d966cc0d5	motor-11	todos	linha 20: request.ws_connect("ws://127.0.0.1:@W@/ws").send(Null, statu
+p2	membro:WsConnection.send	bcde519a686e	motor-11	todos	linha 21: request.ws_connect("ws://127.0.0.1:@W@/ws").send(Null, p2_na
+p2	membro:WsConnection.on_message	51952ec2eefc	motor-11	todos	linha 1: request.ws_connect("ws://127.0.0.1:@W@/ws").on_message()
+p2	membro:WsConnection.on_message	d0aca99c067d	motor-11	todos	linha 3: request.ws_connect("ws://127.0.0.1:@W@/ws").on_message(Null,
+p2	membro:WsConnection.on_message	cde56a4e9233	motor-11	todos	linha 13: request.ws_connect("ws://127.0.0.1:@W@/ws").on_message(Null,
+p2	membro:WsConnection.close	bbd2f506db0d	motor-11	todos	linha 2: request.ws_connect("ws://127.0.0.1:@W@/ws").close(Null)
+p2	membro:WsConnection.close	cea6f7daf377	motor-11	todos	linha 3: request.ws_connect("ws://127.0.0.1:@W@/ws").close(0)
+p2	membro:WsConnection.close	4ce17f359451	motor-11	todos	linha 4: request.ws_connect("ws://127.0.0.1:@W@/ws").close(1.5)
+p2	membro:WsConnection.close	a4c670c72a3c	motor-11	todos	linha 5: request.ws_connect("ws://127.0.0.1:@W@/ws").close("")
+p2	membro:WsConnection.close	fc6fe7520e7e	motor-11	todos	linha 6: request.ws_connect("ws://127.0.0.1:@W@/ws").close([])
+p2	membro:WsConnection.close	488a636d4df2	motor-11	todos	linha 7: request.ws_connect("ws://127.0.0.1:@W@/ws").close(())
+p2	membro:WsConnection.close	867bf6456c8e	motor-11	todos	linha 8: request.ws_connect("ws://127.0.0.1:@W@/ws").close({})
+p2	membro:WsConnection.close	d8dd2eccec89	motor-11	todos	linha 9: request.ws_connect("ws://127.0.0.1:@W@/ws").close(b"")
+p2	membro:WsConnection.close	149b13d6e777	motor-11	todos	linha 10: request.ws_connect("ws://127.0.0.1:@W@/ws").close(True)
+p2	membro:WsConnection.close	961d2b6345c4	motor-11	todos	linha 11: request.ws_connect("ws://127.0.0.1:@W@/ws").close(p2_nao_exi
+titulo	docs/mail/MailReader/login/login.md	c0748ee62a63	doc-26	todos	linha 1: MailReader.login(user, password)
+titulo	docs/mail/MailReader/conn/conn.md	058de648be64	doc-26	todos	linha 1: MailReader.conn(host, port)
+titulo	docs/mail/MailServer/login/login.md	8672571320f7	doc-26	todos	linha 1: MailServer.login(user, password)
+titulo	docs/mail/MailServer/conn/conn.md	ff80addaa40b	doc-26	todos	linha 1: MailServer.conn(host, port)
+titulo	docs/mail/MailMessage/subject/subject.md	b1f1d8252e5e	doc-26	todos	linha 1: MailMessage.subject(title)
+titulo	docs/mail/MailMessage/fromAddress/fromAddress.md	d07525842136	doc-26	todos	linha 1: MailMessage.fromAddress(address)
+titulo	docs/mail/MailMessage/body/body.md	523d4a74f14b	doc-26	todos	linha 1: MailMessage.body(content, is_html)
+titulo	docs/mail/MailMessage/attach/attach.md	dc6a0bfe29d2	doc-26	todos	linha 1: MailMessage.attach(file_or_path)
+titulo	docs/mail/MailMessage/toAddress/toAddress.md	47355bfa32e7	doc-26	todos	linha 1: MailMessage.toAddress(address)
+titulo	docs/psodbc/MongoCollection/insert/insert.md	334933bc6775	doc-26	todos	linha 1: MongoCollection.insert(document)
+titulo	docs/psodbc/MongoCollection/insert_many/insert_many.md	995ccb98e9da	doc-26	todos	linha 1: MongoCollection.insert_many(documents)
+titulo	docs/psodbc/MongoCollection/update/update.md	60990b0d5e86	doc-26	todos	linha 1: MongoCollection.update(query, new_values)
+titulo	docs/psodbc/MongoConnection/collection/collection.md	367727f346f0	doc-26	todos	linha 1: MongoConnection.collection(name)
+titulo	docs/str/format/format.md	401eac1b9579	doc-26	todos	linha 1: s.format(a, b)

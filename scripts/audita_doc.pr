@@ -22,6 +22,7 @@ import os
 import sys
 import json
 import regex
+from './portoes_catraca.pr' import aplica, relata, linha_nova
 
 DOCS = "docs"
 
@@ -293,6 +294,42 @@ funct confere_motor_na_doc() {
 }
 
 
+# ── as páginas de MÉTODO contra o `tipos` do `--metadata` (portão P2) ───────
+#
+# O título de uma página de método escreve o receptor com o nome do tipo
+# (`DbConnection.cursor()`) ou com uma letra (`s.upper()`). Quem diz o tipo é o
+# título, quando ele escreve o nome de um tipo do motor, ou a pasta de cima do
+# membro (`docs/str/upper/`, `docs/psodbc/DbConnection/cursor/`): a mesma regra
+# do caminho das funções, sem mapa digitado. Os nomes e a ordem dos parâmetros
+# têm que ser os do motor; a divergência que já é item aberto da lista fica na
+# catraca dos portões (portão `titulo`, notas/PORTOES.md).
+#
+# O método que não tem página com a assinatura no título conta numa catraca de
+# número, que só pode descer: é o item doc-23 da lista (a reavaliação da doc).
+int TETO_SEM_PAGINA = 73
+
+str funct tipo_da_pagina(str caminho, str receptor, dict tipos) {
+    if receptor in tipos {
+        return receptor
+    }
+    list pastas = caminho.split("/")
+    if pastas.len() >= 4 and pastas[pastas.len() - 3] in tipos {
+        return pastas[pastas.len() - 3]
+    }
+    return ""
+}
+
+
+# Os nomes dos parâmetros sem a estrela (`*valores` é `valores`).
+list funct sem_estrela(list nomes) {
+    list r = []
+    for each n in nomes {
+        addEnd(r, n.replace("*", ""))
+    }
+    return r
+}
+
+
 if __name__ == "main" {
     tudo = False
     for each a in sys.argv {
@@ -522,11 +559,87 @@ if __name__ == "main" {
         }
     }
 
+    # ── as páginas de método ─────────────────────────────────────────────────
+    list met_achados = []
+    list met_paginas = []
+    int met_ok = 0
+    dict com_pagina = {}
+    for each caminho in junta_md(DOCS, []) {
+        t = le_titulo(caminho)
+        if len(t) == 0 {
+            continue
+        }
+        list partes = t[0].split(".")
+        if partes.len() != 2 {
+            continue
+        }
+        str tp = tipo_da_pagina(caminho, partes[0], meta["tipos"])
+        if tp == "" {
+            continue
+        }
+        for each m in meta["tipos"][tp] {
+            if m["nome"] != partes[1] {
+                continue
+            }
+            com_pagina[tp + "." + partes[1]] = True
+            addEnd(met_paginas, caminho)
+            list nomes_motor = []
+            for each p in m["params"] {
+                addEnd(nomes_motor, p["nome"])
+            }
+            list doc_m = sem_estrela(t[1])
+            list motor_m = sem_estrela(nomes_motor)
+            if doc_m == motor_m {
+                met_ok = met_ok + 1
+            } else {
+                addEnd(met_achados, {"pagina": caminho, "codigo": t[0] + "(" + ", ".join(t[1]) + ")",
+                                     "onde": caminho + ": a doc diz " + tp + "." + partes[1] + "("
+                                             + ", ".join(doc_m) + ") e o motor " + tp + "."
+                                             + partes[1] + "(" + ", ".join(motor_m) + ")",
+                                     "linha": 1})
+            }
+        }
+    }
+    int sem_pagina = 0
+    for each tp in meta["tipos"].keys() {
+        for each m in meta["tipos"][tp] {
+            if m.get("kind", "method") == "method" and not ((tp + "." + m["nome"]) in com_pagina) {
+                sem_pagina = sem_pagina + 1
+            }
+        }
+    }
+    dict cat_met = {}
+    aplica("titulo", met_achados, met_paginas, cat_met)
+    post("")
+    post("páginas de método conferidas contra o motor:", met_ok + len(met_achados))
+    post("  batem:", met_ok)
+    relata(cat_met)
+    bool falha_met = cat_met["reprova"]
+    if len(cat_met["novos"]) > 0 {
+        post("")
+        post("PÁGINA DE MÉTODO COM OUTROS PARÂMETROS QUE O MOTOR:", len(cat_met["novos"]))
+        for each a in cat_met["novos"] {
+            post("  " + a["onde"])
+            post("    catraca: " + linha_nova("titulo", a["pagina"], a["codigo"], 1))
+        }
+        falha_met = True
+    }
+    post("métodos do motor sem página com a assinatura no título:", sem_pagina,
+         "(teto " + str(TETO_SEM_PAGINA) + ", item doc-23)")
+    if sem_pagina > TETO_SEM_PAGINA {
+        post("  SUBIU: método novo sem página (ou página que perdeu o título de assinatura)")
+        falha_met = True
+    } elif sem_pagina < TETO_SEM_PAGINA {
+        post("  DESCEU: abaixe o TETO_SEM_PAGINA de scripts/audita_doc.pr pra " + str(sem_pagina))
+        falha_met = True
+    }
+
     post("")
     post("páginas com título de assinatura:", paginas)
     post("  conferidas contra o motor:", okey + len(divergentes))
     post("  batem:", okey)
-    post("  fora do alcance (método de objeto / conceito):", len(fora_do_motor))
+    post("  fora do alcance (método de objeto, conferido na seção de cima, ou conceito):",
+         len(fora_do_motor))
     post("arquivos .md sem título de assinatura:", len(sem_titulo))
     post("  motor nao declara os parametros (lacuna do --metadata):", len(motor_mudo))
     post("")
@@ -548,7 +661,9 @@ if __name__ == "main" {
         post("nenhuma divergencia de nome/ordem entre doc e motor.")
         # `exit` exige int: bool não converte sozinho (e o motor está certo em
         # não adivinhar). Lacuna do motor também reprova — é achado, não aviso.
-        if len(motor_mudo) > 0 {
+        # E a página de método que diverge, ou a conta das sem página fora do
+        # teto, também.
+        if len(motor_mudo) > 0 or falha_met {
             sys.exit(1)
         }
         sys.exit(0)

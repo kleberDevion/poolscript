@@ -711,6 +711,13 @@ check: pool testar
 	# fica em teste/portoes_conhecidas.txt.
 	@./pool scripts/confere_saida_doc.pr docs
 	@echo
+	# P2 dos portoes: cada membro do `--metadata` chamado do mesmo jeito no
+	# `--check` (receptor tipado) e rodando (receptor `Object`, com JIT e sem),
+	# isolado: o checador nao pode recusar o que o motor aceita (o `forAll`),
+	# nem aceitar o que ele promete pegar. Divergencia que ja e item aberto da
+	# lista fica em teste/portoes_conhecidas.txt (portao `p2`).
+	@./pool scripts/confere_checador.pr
+	@echo
 	@./pool teste/fuzz_replay.pr
 	@echo
 	# DEPURADOR: fala DAP com o motor igual o editor faz — breakpoint na linha

@@ -1,0 +1,240 @@
+# O isolamento das rodadas dos portões que RODAM código (notas/PORTOES.md): o
+# `roda` do P1 (`scripts/confere_saida_doc.pr`, cada exemplo da doc) e o P2
+# (`scripts/confere_checador.pr`, cada chamada de cada membro). Os dois rodam
+# o que a doc e o motor fazem de verdade: apagam arquivo, abrem porta, mandam
+# sinal, disparam processo. A regra do isolamento e a do `kill` ficam aqui,
+# num lugar só, porque a do `kill` não pode divergir.
+#
+#   - pasta própria, vazia, que é a pasta corrente e o HOME do programa;
+#   - no macOS, o `sandbox-exec`: escrita só na pasta, rede só no loopback
+#     (fora as portas de serviço da máquina, como a 8080), sinal só pros
+#     próprios filhos;
+#   - no Linux, o `bwrap` (bubblewrap): o disco só de leitura fora da pasta,
+#     rede e processos num espaço próprio;
+#   - prazo por rodada: o que passa dele é morto e sai como falha.
+#
+# Sem o isolador, nada roda: no Linux sem o `bwrap` e no macOS sem o
+# `sandbox-exec`, o portão para vermelho dizendo o que falta; no Windows, que
+# não tem isolador, ele diz que não rodou nada e sai com 0.
+#
+# O que o programa deixa vivo morre junto com o grupo de processos dele, pelo
+# `kill -9 -- -<grupo>` (`cmd_kill`). Antes da 1ª rodada, o portão prova com o
+# sinal 0 que o `kill` da máquina acerta o grupo (`prova_do_kill`).
+import os
+import sys
+import date
+
+
+# O comando que procura um programa no PATH (`command -v`), sem shell do
+# usuário no meio: "" quando não existe.
+str funct acha_programa(str nome) {
+    if sys.platform() == "windows" {
+        return ""
+    }
+    str r = os.run(["sh", "-c", "command -v \"$1\" || true", "sh", nome], capture=True)
+    return r.strip()
+}
+
+
+# O perfil do sandbox do macOS. A última regra que casa é a que vale: tudo é
+# permitido, menos o que vem negado depois, e a pasta do exemplo é liberada
+# por último. As portas de serviço do loopback ficam fechadas: a 8080 é a do
+# Kleber, e as de banco e e-mail não podem receber o INSERT de um exemplo.
+str PERFIL_MAC = '''(version 1)
+(allow default)
+(deny network-outbound (remote ip "*:*"))
+(allow network-outbound (remote ip "localhost:*"))
+(deny network-outbound (remote ip "localhost:8080") (remote ip "localhost:5432")
+      (remote ip "localhost:3306") (remote ip "localhost:27017") (remote ip "localhost:6379")
+      (remote ip "localhost:1433") (remote ip "localhost:25") (remote ip "localhost:465")
+      (remote ip "localhost:587") (remote ip "localhost:11211"))
+(deny network-bind (local ip "*:8080"))
+(deny file-write* (subpath "/"))
+(allow file-write* (subpath (param "PASTA")) (subpath "/dev/fd") (literal "/dev/null")
+       (literal "/dev/tty") (literal "/dev/stdout") (literal "/dev/stderr")
+       (literal "/dev/dtracehelper") (literal "/dev/ptmx") (regex #"^/dev/ttys[0-9]+$"))
+(deny signal)
+(allow signal (target self))
+(allow signal (target children))
+'''
+
+
+# O que vai na frente do comando pra isolar a rodada, pela máquina: em `r`,
+# "prefixo" (a lista), "nome" (o que o relatório diz) e, sem isolador, "falta"
+# (o que instalar). A rodada acontece em `trab + "/ex"`.
+Null funct isolador(str trab, dict r) {
+    str sis = sys.platform()
+    if sis == "darwin" and acha_programa("sandbox-exec") != "" {
+        os.writeFile(trab + "/isola.sb", PERFIL_MAC)
+        r["nome"] = "sandbox-exec (macOS)"
+        r["prefixo"] = ["sandbox-exec", "-D", "PASTA=" + trab + "/ex", "-f", trab + "/isola.sb"]
+        return
+    }
+    if sis == "linux" and acha_programa("bwrap") != "" {
+        str pasta = trab + "/ex"
+        r["nome"] = "bwrap (Linux)"
+        r["prefixo"] = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
+                        "--bind", pasta, pasta, "--chdir", pasta, "--unshare-all",
+                        "--die-with-parent"]
+        return
+    }
+    r["nome"] = "NENHUM"
+    r["prefixo"] = []
+    r["falta"] = "não há isolador pra este sistema (" + sis + ")"
+    if sis == "linux" {
+        r["falta"] = "instale o bubblewrap (apt install bubblewrap)"
+    }
+    if sis == "darwin" {
+        r["falta"] = "o sandbox-exec do macOS não está no PATH"
+    }
+}
+
+
+# O comando que manda o sinal de número `sinal` ("9" ou "0") pro grupo de
+# processos `grupo`. A forma é a do POSIX, com o número negativo depois do
+# `--`: "If the first pid operand is negative, it should be preceded by "--"
+# to keep it from being interpreted as an option" (o `kill` do POSIX.1-2024).
+# Sem o `--`, o `kill` do procps (Ubuntu 24.04, `src/kill.c`: `pid = (long)('0'
+# - optopt);`) lê só o 1º dígito do número: `kill -9 -1426999` vira
+# `kill(-1, 9)`, que mata todos os processos da máquina. Foi o que derrubou a
+# VPS em 2026-10-22, com o portão rodando como root.
+#
+# O sinal vai como `-9`, no 1º argumento, e não como `-s KILL`: antes de
+# tudo, o procps procura em TODOS os argumentos um que pareça sinal e fica
+# com o 1º que achar. Com o `-s`, o grupo 83 (`-83`, o sinal 83) era tomado
+# por sinal e o `kill` saía só com o "Usage" (medido na VPS, num
+# `unshare --pid`, onde os números são pequenos). Com o `-9` na frente, é
+# ele o 1º que parece sinal, e o `--` guarda o resto.
+list funct cmd_kill(int grupo, str sinal) {
+    return ["kill", "-" + sinal, "--", "-" + str(grupo)]
+}
+
+
+# Roda o `cmd_kill` e põe em `r` o código do `kill` ("rc") e o que ele
+# escreveu no stderr ("erro"): é o que a prova confere.
+Null funct mata_grupo(int grupo, str sinal, dict r) {
+    Process p = os.run(cmd_kill(grupo, sinal), capture="live")
+    r["rc"] = p.wait()
+    r["erro"] = p.read_err()
+}
+
+
+# A prova de que o `kill` desta máquina acerta o grupo, antes da 1ª rodada.
+# Só vai sinal 0 (não chega em processo nenhum) até o alvo estar provado:
+#   1. o grupo 1000000000 não existe em sistema nenhum (o maior PID é
+#      4.194.304 no Linux e 99.999 no macOS): o `kill` tem que falhar dizendo
+#      esse número. O código de saída sozinho não basta: o caminho errado do
+#      procps manda pra `-1`, sai com 1 e não escreve nada;
+#   2. um grupo de verdade, o `sleep` que o `os.run` dispara com `setsid`: o
+#      sinal 0 tem que achar, e só então vai o KILL.
+# Devolve "" quando passa; senão, o que deu errado.
+str funct prova_do_kill() {
+    dict r = {}
+    mata_grupo(1000000000, "0", r)
+    if r["rc"] == 0 or "1000000000" not in r["erro"] {
+        return " ".join(cmd_kill(1000000000, "0")) + " deu rc " + str(r["rc"]) + " e '"
+               + r["erro"].strip() + "'"
+    }
+    int g = os.run(["sleep", "10"])
+    mata_grupo(g, "0", r)
+    if r["rc"] != 0 {
+        return " ".join(cmd_kill(g, "0")) + " (um sleep vivo) deu rc " + str(r["rc"]) + " e '"
+               + r["erro"].strip() + "'"
+    }
+    mata_grupo(g, "9", r)
+    if r["rc"] != 0 {
+        return " ".join(cmd_kill(g, "9")) + " (o mesmo sleep) deu rc " + str(r["rc"]) + " e '"
+               + r["erro"].strip() + "'"
+    }
+    return ""
+}
+
+
+# Põe em `iso` o isolamento desta máquina e prova o `kill`. Devolve "" quando
+# o `portao` pode rodar; senão, a frase do porquê. Quem chama imprime a frase
+# e sai: com 0 no Windows (que não tem isolador, e o portão diz que não rodou)
+# e com 1 no resto.
+str funct prepara_isolamento(str trab, str portao, dict iso) {
+    isolador(trab, iso)
+    if iso["prefixo"].len() == 0 {
+        if sys.platform() == "windows" {
+            return ("portão " + portao + ": no Windows não há isolador, e nada roda sem "
+                    + "isolamento: nada rodou (notas/PORTOES.md)")
+        }
+        return ("portão " + portao + ": sem isolamento nesta máquina: " + iso["falta"]
+                + ". Nada roda sem isolamento (notas/PORTOES.md).")
+    }
+    str prova = prova_do_kill()
+    if prova != "" {
+        return ("portão " + portao + ": o kill desta máquina não acerta o grupo de processos ("
+                + prova + "): nada roda (notas/PORTOES.md)")
+    }
+    return ""
+}
+
+
+# Roda o programa `arquivo` (já na pasta da rodada, que é a pasta corrente),
+# com o `entrada.txt` no stdin e o JIT ligado ou não, e põe em `r` o stdout,
+# o stderr, o código de saída e se estourou o prazo. Os arquivos de saída
+# levam o `nome` na frente. A saída vai pra arquivo, não pra cano: o processo
+# que o programa dispara e deixa vivo não prende a leitura. O `sh` de fora
+# espera o programa e grava o código; o prazo é contado aqui, olhando esse
+# arquivo (o `returncode` do `Process` não serve: fica `Null` até o `wait()`,
+# o item os-1 da lista).
+#
+# O ambiente é limpo (`env -i`), com o PATH de quem roda e o HOME e o TMPDIR
+# na pasta: o exemplo do `os.environ` não mostra o ambiente de quem confere, e
+# o resultado é o mesmo em qualquer máquina. O modo vai no `JINGA_JIT` (1 ou
+# 0) nas duas rodadas: o `--sem-jit` é o mesmo que `JINGA_JIT=0` (o motor faz
+# o `setenv`, `docs/Jinga.md`), e só numa das rodadas o programa veria a
+# variável a mais no `os.environ`.
+Null funct executa(str pasta, list prefixo, str nome, str arquivo, bool jit, flo prazo, dict r) {
+    str modo = "JINGA_JIT=1"
+    if not jit {
+        modo = "JINGA_JIT=0"
+    }
+    # O código vai pra um arquivo com outro nome e só então ganha o nome
+    # certo: quem olha nunca lê o arquivo pela metade.
+    list cmd = prefixo + ["sh", "-c",
+                          "n=\"$1\"; shift; \"$@\" > \"$n.saida\" 2> \"$n.erro\" < entrada.txt; "
+                          + "echo $? > \"$n.rc_\"; mv \"$n.rc_\" \"$n.rc\"",
+                          "sh", nome,
+                          "env", "-i", "PATH=" + os.getenv("PATH", "/usr/bin:/bin"),
+                          "HOME=" + pasta, "TMPDIR=" + pasta, modo, sys.executable, arquivo]
+    # Disparado sem `capture`, o processo sai num grupo novo (`setsid`), à
+    # frente do qual fica o `sh`: o número que volta é o do grupo. O programa
+    # que abre servidor deixa os filhos dele (os processos da jinker) no mesmo
+    # grupo, e o `kill` no grupo leva todos. Matar só o `sh` deixava os filhos
+    # órfãos escutando na porta (medido em 2026-10-18: quatro, na porta 2000,
+    # 20 minutos depois da rodada).
+    int grupo = os.run(cmd)
+    flo ini = date.monotonic()
+    bool estourou = False
+    while not os.exists(nome + ".rc") {
+        if date.monotonic() - ini > prazo {
+            estourou = True
+            break
+        }
+        sleep(0.002)
+    }
+    # no prazo e no fim normal: o que o programa deixou vivo no grupo morre
+    if grupo > 1 {
+        os.run(cmd_kill(grupo, "9"), capture=True)
+    }
+    int rc = -1
+    if os.exists(nome + ".rc") {
+        rc = int(os.readFile(nome + ".rc").strip())
+    }
+    str saida = ""
+    str erro = ""
+    if os.exists(nome + ".saida") {
+        saida = os.readFile(nome + ".saida")
+    }
+    if os.exists(nome + ".erro") {
+        erro = os.readFile(nome + ".erro")
+    }
+    r["saida"] = saida
+    r["erro"] = erro
+    r["rc"] = rc
+    r["estourou"] = estourou
+}

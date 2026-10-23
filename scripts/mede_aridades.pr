@@ -28,63 +28,18 @@
 import os
 import sys
 import json
+# os receptores, os valores de amostra e a leitura das frases, os mesmos do
+# portão P2
+from './portoes_donos.pr' import TIPOS, VALOR, DONOS, SO_QUANTIDADE, eh_aridade, cita_tipo, sem_linha
 
 # a pasta de trabalho, absoluta e com `/` (o caminho entra no fonte das sondas,
 # e a barra invertida do Windows viraria escape la dentro)
 str TMP = os.cwd().replace("\\", "/") + "/ps_mede_aridade_tmp"
 str SAIDA = "vm/aridades_medidas.inc"
 str POOL = ""
-list TIPOS = ["int", "flo", "str", "list", "tup", "dict", "byte", "bool", "Null"]
-# Texto, bytes e coleção VAZIOS: a recusa tem que ser do tipo, nunca do
-# conteúdo (`", ".join([1])` recusa o int de dentro e a lista vale;
-# `b"".join("x")` recusa o caractere de dentro e o texto vazio vale).
-dict VALOR = {"int": "0", "flo": "1.5", "str": "\"\"", "list": "[]", "tup": "()",
-              "dict": "{}", "byte": "b\"\"", "bool": "True", "Null": "Null"}
-
-# dono -> [import, expressao que cria o dono]. Dono que so existe com servico
-# (banco, mongo, resposta HTTP, objetos de dentro da rota) fica de fora: o
-# checador nao confere a quantidade dos metodos dele (a VM confere rodando).
-dict DONOS = {
-    "str": ["", "\"abc\""],
-    "list": ["", "[3, 1, 2]"],
-    "dict": ["", "{\"a\": 1}"],
-    "tup": ["", "(1, 2)"],
-    "byte": ["", "b\"abc\""],
-    "__universal__": ["", "1"],
-    "PoolFile": ["", "open(\"@TMP@/f.txt\", \"w\")"],
-    "Pattern": ["import regex", "regex.compile(\"a\")"],
-    "PoolQRCode": ["import qrcode", "qrcode.QRCode()"],
-    "QRImage": ["import qrcode", "qrcode.make(\"x\")"],
-    "QRPoolFile": ["import qrcode", "qrcode.gen(\"x\")"],
-    "socket": ["import sockets", "sockets.socket()"],
-    "Jinker": ["import jinker", "jinker.Jinker()"],
-    "CorsConfig": ["import jinker", "jinker.cors(jinker.Jinker())"],
-    "JinkerResponse": ["import jinker", "jinker.jsonify({})"],
-    "Process": ["import os", "os.run([\"true\"], capture=\"live\")"],
-    "PoolConnection": ["import sqlite3", "sqlite3.connect(\":memory:\")"],
-    "PoolCursor": ["import sqlite3", "sqlite3.connect(\":memory:\").cursor()"],
-    "MailServer": ["import mail", "mail.MailServer()"],
-    "MailMessage": ["import mail", "mail.MailMessage()"],
-    "MailReader": ["import mail", "mail.MailReader()"]
-}
-
-# Chamada com valor de verdade que mexe fora do programa: so a quantidade
-# (com Null) e medida. `os.kill(0)` mandaria sinal pro grupo de processos.
-list SO_QUANTIDADE = ["os|kill", "Process|kill"]
 
 list ERROS = []
 list AVISOS = []
-
-
-bool funct eh_aridade(str msg) {
-    for each m in ["takes no arguments", "takes exactly", "takes at least", "takes at most",
-                   "takes from", "takes no keyword"] {
-        if m in msg {
-            return True
-        }
-    }
-    return False
-}
 
 
 # O caminho do binario, absoluto: as sondas rodam com a pasta de trabalho
@@ -95,22 +50,6 @@ str funct absoluto(str p) {
         return q
     }
     return os.cwd().replace("\\", "/") + "/" + q
-}
-
-
-# A frase cita o tipo `t` como palavra (`'str' object`, `not int`, `int found`)?
-bool funct cita_tipo(str msg, str t) {
-    int k = msg.find(t)
-    while k >= 0 {
-        bool antes = k == 0 or not (msg[k - 1].isalnum() or msg[k - 1] == "_")
-        int d = k + len(t)
-        bool depois = d >= len(msg) or not (msg[d].isalnum() or msg[d] == "_")
-        if antes and depois {
-            return True
-        }
-        k = msg.find(t, k + 1)
-    }
-    return False
 }
 
 
@@ -131,16 +70,6 @@ str funct frase(str nome, int minimo, int maximo, int n) {
         quanto = "at most " + str(maximo) + " argument" + ("" if maximo == 1 else "s")
     }
     return nome + "() takes " + quanto + " (" + str(n) + " given)"
-}
-
-
-# A frase sem o " (linha N)" que o `catch` junta.
-str funct sem_linha(str msg) {
-    int k = msg.rfind(" (linha ")
-    if k >= 0 {
-        return msg[:k]
-    }
-    return msg
 }
 
 

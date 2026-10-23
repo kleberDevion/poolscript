@@ -114,13 +114,81 @@ Conferido no Linux em 2026-10-23, na VPS (`make check` dentro de
 `roda` conta 63 falhas conhecidas contra 68 no Mac (a conta junta as do
 `check`): as 5 que só falham fora do Linux não falham lá.
 
-## P2: o checador e o motor concordam (a fazer)
+## P2: o checador e o motor concordam
 
-Cada membro do `--metadata`, chamado com cada parâmetro da doc e do metadata,
-por posição e por nome, com o receptor tipado (o `--check` decide) e com o
-receptor `Object` (o motor decide). As páginas de membro que se chama trazem a
-assinatura no título. Todo programa da suíte e da doc: o que o `--check`
-aprova não quebra rodando com erro que ele promete pegar.
+`scripts/confere_checador.pr`, no `make check` depois do portão `roda`. Cada
+membro que o motor publica no `--metadata` é chamado do mesmo jeito dos dois
+lados:
+
+- num programa com o receptor DECLARADO com o tipo dele (`Process p =
+  os.run(...)`), uma chamada por linha: o `--check` diz quais recusa, e com
+  que frase. Chamado direto na expressão, o checador não sabe o tipo do que
+  uma função de união devolve (`os.run` dá `int|str|Process`);
+- no mesmo programa com o membro guardado num `Object`, rodando, com o JIT e
+  sem: o checador não confere a chamada, e quem decide é o motor.
+
+Quem é chamado: os builtins, as funções e os valores de módulo (o
+`jinker.cors` é valor e se chama), os métodos e as propriedades dos tipos (a
+propriedade é lida, e chamada: o `app.channel` se chama). Os receptores saem
+de `scripts/portoes_donos.pr`, a mesma tabela do `scripts/mede_aridades.pr`,
+e dos que nascem de outro dono (`app.channel`, `app.route(...)`, o `psodbc`
+no sqlite). Os tipos que só existem com a jinker no ar (`request` da rota,
+`PoolFileUpload`, `Response`, `WsConnection`) rodam com uma jinker de verdade
+no loopback da rodada isolada, numa porta nova a cada rodada. O Mongo fica de
+fora (precisa de um `mongod`), e o relatório diz quantos membros e por quê.
+
+As chamadas de cada membro: de 0 a um argumento a mais que os parâmetros, por
+posição; o 1º argumento com cada tipo básico; cada parâmetro por nome (os do
+`--metadata`, os da assinatura da doc e os que os exemplos da doc passam por
+nome: o `forAll` só aparece num exemplo); um nome que não existe; a chamada
+com os tipos da assinatura da doc; e o retorno guardado numa variável de um
+tipo que não é o publicado (o checador tem que recusar a declaração, como o
+motor recusa rodando).
+
+Reprova:
+
+- o `--check` recusa e o motor aceita (a classe do `forAll`);
+- o `--check` aceita e o motor recusa pelo que o checador promete pegar: a
+  quantidade, o nome de parâmetro, o tipo do 1º argumento, o membro ou o nome
+  que não existe, o tipo do retorno;
+- os dois recusam com frases diferentes;
+- rodar com o JIT e sem dá resultado diferente, ou o motor cai;
+- o receptor não nasce, ou a jinker da rodada não fica de pé (nada se
+  compararia: o portão para em vez de passar calado).
+
+A chamada sobre um membro que vale `Null` rodando não se compara (o `Object`
+não guarda `Null`) e sai contada no relatório. Tudo roda no isolamento dos
+portões (`scripts/portoes_isola.pr`, o mesmo do P1): as chamadas mexem de
+verdade.
+
+O título de cada página de método também é conferido
+(`scripts/audita_doc.pr`): o tipo sai do título, quando ele escreve o nome do
+tipo, ou da pasta de cima do membro (`docs/str/upper/`), e os nomes e a ordem
+dos parâmetros têm que ser os do motor (portão `titulo` na catraca). O método
+sem página com a assinatura no título conta numa catraca de número, que só
+pode descer (`TETO_SEM_PAGINA`, item doc-23).
+
+"Todo programa da suíte" ficou pro P4: a regra "o `--check` aprova e quebra
+rodando com o que ele promete pegar" só se decide sabendo o tipo de cada
+chamada, e os casos da suíte usam `Object` de propósito pra o erro sair
+rodando; quem sabe o tipo é o gerador do P4, que escreve o programa tipado. Os
+blocos da doc o P1 já cobre.
+
+Medido na entrada (2026-10-23, no Mac): 565 membros, 8.269 chamadas, cada uma
+no `--check` e rodando com JIT e sem, em 3 minutos. 490 discordâncias, nenhuma
+entre o JIT e sem ele, nenhuma queda:
+
+| causa | chamadas | item |
+|---|---|---|
+| o `--check` recusa e o motor aceita: `app.channel(forAll=)`, `app.socket(path=, channel=)` | 5 | jinker-7 |
+| o `--check` não confere a chamada dos membros de 11 tipos (os de fora da tabela medida) nem dos valores que se chamam (`jinker.cors`, `os.PoolFile`) | 395 | motor-11 |
+| chamar o que não se chama: a propriedade como método (frases diferentes) e a constante de módulo (`sockets.AF_INET(0)` passa no `--check`) | 88 | motor-12 |
+| o tipo do `app.route(...)` com dois nomes e o retorno do `register` | 1 | motor-13 |
+| o `.type()`, que sai da linguagem (decisão do Kleber) | 1 | motor-14 |
+
+Nas páginas de método: 206 conferidas, 192 batem; 14 dão aos parâmetros
+outros nomes que o motor (doc-26); 73 métodos sem página com a assinatura no
+título.
 
 ## P3: o editor e o motor concordam (a fazer)
 

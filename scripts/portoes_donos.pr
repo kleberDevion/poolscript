@@ -1,0 +1,82 @@
+# Os receptores de cada tipo, os valores de amostra de cada tipo básico e a
+# leitura das frases de recusa, num lugar só: o `scripts/mede_aridades.pr`
+# (que mede o que cada nativo aceita) e o `scripts/confere_checador.pr` (o
+# portão P2, notas/PORTOES.md) chamam os mesmos membros com os mesmos valores
+# e leem as frases do mesmo jeito. Regra escrita em dois lugares diverge.
+
+list TIPOS = ["int", "flo", "str", "list", "tup", "dict", "byte", "bool", "Null"]
+# Texto, bytes e coleção VAZIOS: a recusa tem que ser do tipo, nunca do
+# conteúdo (`", ".join([1])` recusa o int de dentro e a lista vale;
+# `b"".join("x")` recusa o caractere de dentro e o texto vazio vale).
+dict VALOR = {"int": "0", "flo": "1.5", "str": "\"\"", "list": "[]", "tup": "()",
+              "dict": "{}", "byte": "b\"\"", "bool": "True", "Null": "Null"}
+
+# dono -> [import, expressao que cria o dono]. Dono que so existe com servico
+# (banco, mongo, resposta HTTP, objetos de dentro da rota) fica de fora: o
+# checador nao confere a quantidade dos metodos dele (a VM confere rodando).
+# `@TMP@` e a pasta de trabalho de quem chama.
+dict DONOS = {
+    "str": ["", "\"abc\""],
+    "list": ["", "[3, 1, 2]"],
+    "dict": ["", "{\"a\": 1}"],
+    "tup": ["", "(1, 2)"],
+    "byte": ["", "b\"abc\""],
+    "__universal__": ["", "1"],
+    "PoolFile": ["", "open(\"@TMP@/f.txt\", \"w\")"],
+    "Pattern": ["import regex", "regex.compile(\"a\")"],
+    "PoolQRCode": ["import qrcode", "qrcode.QRCode()"],
+    "QRImage": ["import qrcode", "qrcode.make(\"x\")"],
+    "QRPoolFile": ["import qrcode", "qrcode.gen(\"x\")"],
+    "socket": ["import sockets", "sockets.socket()"],
+    "Jinker": ["import jinker", "jinker.Jinker()"],
+    "CorsConfig": ["import jinker", "jinker.cors(jinker.Jinker())"],
+    "JinkerResponse": ["import jinker", "jinker.jsonify({})"],
+    "Process": ["import os", "os.run([\"true\"], capture=\"live\")"],
+    "PoolConnection": ["import sqlite3", "sqlite3.connect(\":memory:\")"],
+    "PoolCursor": ["import sqlite3", "sqlite3.connect(\":memory:\").cursor()"],
+    "MailServer": ["import mail", "mail.MailServer()"],
+    "MailMessage": ["import mail", "mail.MailMessage()"],
+    "MailReader": ["import mail", "mail.MailReader()"]
+}
+
+# Chamada com valor de verdade que mexe fora do programa: so a quantidade
+# (com Null) e medida. `os.kill(0)` mandaria sinal pro grupo de processos.
+list SO_QUANTIDADE = ["os|kill", "Process|kill"]
+
+
+# A frase e de QUANTIDADE de argumentos (a do ps_frase_aridade)?
+bool funct eh_aridade(str msg) {
+    for each m in ["takes no arguments", "takes exactly", "takes at least", "takes at most",
+                   "takes from", "takes no keyword"] {
+        if m in msg {
+            return True
+        }
+    }
+    return False
+}
+
+
+# A frase cita o tipo `t` como palavra (`'str' object`, `not int`, `int found`)?
+bool funct cita_tipo(str msg, str t) {
+    int k = msg.find(t)
+    while k >= 0 {
+        bool antes = k == 0 or not (msg[k - 1].isalnum() or msg[k - 1] == "_")
+        int d = k + len(t)
+        bool depois = d >= len(msg) or not (msg[d].isalnum() or msg[d] == "_")
+        if antes and depois {
+            return True
+        }
+        k = msg.find(t, k + 1)
+    }
+    return False
+}
+
+
+# A frase sem o " (linha N)" que o `catch` junta.
+str funct sem_linha(str msg) {
+    int k = msg.rfind(" (linha ")
+    if k >= 0 {
+        return msg[:k]
+    }
+    return msg
+}

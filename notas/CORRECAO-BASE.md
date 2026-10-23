@@ -72,7 +72,11 @@ Achados em 2026-10-17, no conserto acima e no relato dele (abertos):
   causa: o `--metadata` publica a propriedade (`channel`, `socket`) com
   `params: []`, sem os parâmetros da chamada do valor dela (`forAll`; `path`,
   `channel`), e o medidor de aridades gravou "não aceita nome". `motor`
-  (checador).
+  (checador). O portão P2 achou sozinho, em 2026-10-23: `app.channel(forAll=)`,
+  `app.socket(path=)` e `app.socket(channel=)`, o `--check` recusa e o motor
+  aceita; com um nome que não existe, os dois recusam com frases diferentes
+  (`Jinker.channel() takes no keyword arguments` e `ChannelManager.__call__()
+  got an unexpected keyword argument`). 5 chamadas na catraca do P2.
 - **jinker-8** Argumento a mais passa calado: `app.channel("a", "b")` e
   `app.socket("/x", True, 3)` rodam sem erro. Promessa: `channel.md` (um
   parâmetro, `forAll`) e `socket.md` (`path`, `channel`). `motor`.
@@ -235,6 +239,50 @@ em cada item):
   em 256 bytes (`char erro[256]` da VM). O caso só passa com o caminho curto
   (a VPS, o checkout dele). É a classe do Plano 10: caminho cortado calado
   por buffer fixo. `motor`.
+- **motor-11** (achado pelo portão P2, 2026-10-23) O `--check` não confere a
+  chamada dos membros de 11 tipos nem dos valores de módulo que se chamam:
+  aceita qualquer quantidade, qualquer nome de parâmetro e qualquer tipo, e o
+  motor recusa rodando. Os tipos são os que a tabela medida
+  (`vm/aridades_medidas.inc`, do `scripts/mede_aridades.pr`) deixa de fora:
+  - os da jinker que nascem sem servidor: `ChannelManager`, `SocketNamespace`,
+    `SocketEmitter`, `RouteRegistrar`;
+  - os do `psodbc`, `DbConnection` e `DbCursor`, e o `ManpuFile`;
+  - os que só existem com a jinker no ar: `RequestProxy` (o `request` da
+    rota), `PoolFileUpload`, `Response` e `WsConnection`;
+  - e os valores que se chamam: `jinker.cors(...)` e `os.PoolFile(...)`.
+
+  Exemplos: `request.get()` dentro da rota passa no `--check`, e rodando dá
+  `TypeError: get() takes exactly one argument (0 given)`; `jinker.cors(0)`
+  passa, e rodando dá `cors() argument 1 must be Jinker, not int`. O
+  comentário do `mede_aridades.pr` dizia que os de serviço ficavam de fora de
+  propósito ("a VM confere rodando"). 395 chamadas na catraca do P2.
+  `motor` (checador).
+- **motor-12** (achado pelo portão P2, 2026-10-23) Chamar o que não se chama.
+  - A propriedade chamada como método (`f.name()`, `regex.compile("a")
+    .pattern()`, `app.static_url()`): o `--check` diz `PoolFile.name() takes no
+    keyword arguments`, como se fosse método sem parâmetro, e o motor diz
+    `'str' object is not callable`.
+  - A constante de módulo chamada (`sockets.AF_INET(0)`,
+    `qrcode.ERROR_CORRECT_L("")`, `sys.argv([])`): o `--check` aceita, e o
+    motor diz `'int' object is not callable`.
+
+  88 chamadas na catraca do P2. `motor` (checador).
+- **motor-13** (achado pelo portão P2, 2026-10-23) O tipo que o
+  `app.route(...)` devolve tem dois nomes: o `--metadata` publica
+  `RouteRegistrar` (e a doc tem `docs/jinker/RouteRegistrar/`), e o motor e o
+  checador chamam de `_RouteRegistrar`. `RouteRegistrar r =
+  app.route("/x")` o `--check` recusa (`esperava RouteRegistrar, recebeu
+  _RouteRegistrar`). E o `--check` não conhece o retorno do `register` dele:
+  `int x = app.route("/x").register(f)` passa, e rodando dá `esperava int,
+  recebeu Null` (o `--metadata` diz `Null`). `motor`.
+- **motor-14** (decisão do Kleber, 2026-10-23) O `.type()` sai da linguagem:
+  fica só o `type(x)`. Nas palavras dele: "o uso deve ser somente type() não
+  .type(), retire ele, isso faz ter menos trabalho". Medido pelo portão P2: o
+  `.type()` é o único membro universal (`METODOS_UNIV`, `vm/jinga_vm.c`) e
+  devolve `str`, e o `--check` não sabe (`int x = 1.type()` passa e rodando
+  dá `esperava int, recebeu str`). Tirar quebra quem usa `.type()`: no
+  repositório são 10 linhas (a doc, dois casos de teste, o checador).
+  `motor`.
 
 ## os
 
@@ -493,3 +541,23 @@ e sem, e dá o mesmo erro.
   com o caminho de destino), e o `os.rmdir` de pasta com conteúdo dá
   `OSError` com o número do sistema (66, medido no macOS); as páginas
   do `copy`, do `move` e do `rmdir` também não dizem. `doc`.
+- **doc-26** (achado pelo portão P2, 2026-10-23, na conferência das páginas
+  de método do `scripts/audita_doc.pr`) 14 páginas de método dão aos
+  parâmetros outros nomes que o motor. A doc escreve em inglês e o motor em
+  português:
+  - `MailServer` e `MailReader`: `login(user, password)` na doc e
+    `login(usuario, senha)` no motor; `conn(host, port)` e `conn(host, porta)`;
+  - `MailMessage`: `subject(title)` e `subject(titulo)`; `fromAddress` e
+    `toAddress` (`address` e `endereco`); `body(content, is_html)` e
+    `body(conteudo, is_html)`; `attach(file_or_path)` e
+    `attach(arquivo_ou_caminho)`;
+  - `MongoCollection`: `insert(document)` e `insert(documento)`,
+    `insert_many(documents)` e `insert_many(documentos)`,
+    `update(query, new_values)` e `update(query, novo)`; `MongoConnection`:
+    `collection(name)` e `collection(nome)`;
+  - `str.format`: a doc mostra `s.format(a, b)` e o motor recebe `*valores`.
+
+  Quem segue a doc e passa o argumento por nome leva erro, no `--check` e
+  rodando: `login(user="x", password="y")` dá `TypeError: 'user' is an invalid
+  keyword argument for login()`. Qual dos dois nomes fica é decisão dele. 14
+  páginas na catraca (portão `titulo`). `os dois`.

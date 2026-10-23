@@ -1,0 +1,1165 @@
+# O portão P2 (notas/PORTOES.md): o checador e o motor concordam, membro por
+# membro.
+#
+# POR QUE ELE EXISTE. O `app.channel(forAll=msg)` que a doc ensina, o
+# `--check` recusava e o motor rodava. Quem achou foi o Kleber, não a suíte.
+# Cada membro que o motor publica no `--metadata` (os builtins, as funções de
+# módulo, os métodos e as propriedades dos tipos) é chamado do mesmo jeito dos
+# dois lados:
+#
+#   - num programa com o receptor do tipo dele, uma chamada por linha: o
+#     `--check` diz quais linhas recusa, e com que frase;
+#   - no mesmo programa com o membro guardado num `Object`, rodando, com o JIT
+#     e sem: o checador não confere a chamada, e quem decide é o motor.
+#
+# As chamadas de cada membro:
+#   - de 0 a um argumento a mais que os parâmetros, por posição, com Null;
+#   - o 1º argumento com cada tipo básico, vazio (`scripts/portoes_donos.pr`);
+#   - cada parâmetro por nome: os do `--metadata`, os da assinatura da doc e os
+#     que os exemplos da doc passam por nome (o `forAll` só aparece num
+#     exemplo); os obrigatórios antes dele vão por posição;
+#   - um nome de parâmetro que não existe;
+#   - a chamada com os valores dos tipos da assinatura da doc, quando ela dá
+#     o tipo de cada obrigatório;
+#   - na propriedade, também a leitura dela, sem chamar.
+#
+# Reprova:
+#   - o `--check` recusa e o motor aceita (a classe do `forAll`);
+#   - o `--check` aceita e o motor recusa pelo que o checador promete pegar:
+#     a quantidade, o nome de parâmetro, o tipo do 1º argumento (o que o
+#     `scripts/mede_aridades.pr` mede), o membro ou o nome que não existe;
+#   - os dois recusam com frases diferentes;
+#   - rodar com o JIT e rodar sem dão resultado diferente, ou o motor cai.
+#
+# Tudo roda no isolamento dos portões (`scripts/portoes_isola.pr`), porque as
+# chamadas mexem de verdade (`os.remove`, `os.run`, `sockets`). O programa que
+# sai antes do fim (`sys.exit`) ou passa do prazo é refeito com uma chamada por
+# programa, como no `mede_aridades`; a chamada que não volta no prazo foi
+# aceita (estava executando).
+#
+# A falha que já é item aberto de notas/CORRECAO-BASE.md fica na catraca
+# (`teste/portoes_conhecidas.txt`, portão `p2`, a chave `membro:dono.nome` e a
+# impressão do texto da chamada).
+#
+#     ./pool scripts/confere_checador.pr              # todos os membros
+#     ./pool scripts/confere_checador.pr jinker os    # só os donos citados
+import os
+import sys
+import json
+import date
+from './portoes_catraca.pr' import aplica, relata, linha_nova
+from './portoes_isola.pr' import prepara_isolamento, executa
+from './portoes_doc.pr' import lista_md, blocos_de
+from './portoes_donos.pr' import TIPOS, VALOR, DONOS, SO_QUANTIDADE, eh_aridade, cita_tipo, sem_linha
+
+str TMP = "ps_confere_checador_tmp_" + str(date.timestamp_ms())
+# o prazo do programa de um membro inteiro, e o de uma chamada sozinha
+flo PRAZO = 30.0
+flo PRAZO_UM = 4.0
+
+# Os donos que nascem sem serviço e não estão na tabela dos donos: eles saem
+# de uma propriedade ou de um método de outro dono, ou de uma função de
+# módulo que cria arquivo (na pasta da rodada).
+dict DONOS_A_MAIS = {
+    "ChannelManager": ["import jinker", "jinker.Jinker().channel"],
+    "SocketNamespace": ["import jinker", "jinker.Jinker().socket"],
+    "SocketEmitter": ["import jinker", "jinker.Jinker().socket()"],
+    "RouteRegistrar": ["import jinker", "jinker.Jinker().route(\"/p2\")"],
+    "DbConnection": ["import psodbc", "psodbc.connect(driver=\"sqlite\", base=\"p2.db\")"],
+    "DbCursor": ["import psodbc", "psodbc.connect(driver=\"sqlite\", base=\"p2.db\").cursor()"],
+    "ManpuFile": ["import manpu", "manpu.open(\"p2.csv\")"]
+}
+
+# Os donos que só existem com a jinker no ar: onde a chamada roda (dentro da
+# rota, ou no cliente que fala com ela) e a expressão que cria o receptor.
+# `@P@` é a porta HTTP da rodada e `@W@` a do WebSocket (a seguinte).
+dict DONOS_SERVIDOS = {
+    "RequestProxy": ["rota", "request"],
+    "PoolFileUpload": ["rota", "request.file(\"arquivo\")"],
+    "Response": ["cliente", "request.get(\"http://127.0.0.1:@P@/p2r?a=1\")"],
+    "WsConnection": ["cliente", "request.ws_connect(\"ws://127.0.0.1:@W@/ws\")"]
+}
+# A porta da 1ª rodada com servidor; cada rodada sobe a jinker numa porta
+# nova, pra não esbarrar na anterior, que ainda está fechando.
+int PORTA_BASE = 28970
+
+
+# ── o que a doc diz de cada membro ───────────────────────────────────────────
+
+# Junta `nome` na lista de `d[chave]`, sem repetir.
+Null funct junta(dict d, str chave, str nome) {
+    if not (chave in d) {
+        d[chave] = []
+    }
+    if not (nome in d[chave]) {
+        addEnd(d[chave], nome)
+    }
+}
+
+
+bool funct eh_letra(str c) {
+    return c.isalnum() or c == "_"
+}
+
+
+# Onde fecha o parêntese que abre em `ini` (o índice do "("), ou -1.
+int funct fecha(str s, int ini) {
+    int fundo = 0
+    int i = ini
+    while i < s.len() {
+        if s[i] == "(" {
+            fundo = fundo + 1
+        }
+        elif s[i] == ")" {
+            fundo = fundo - 1
+            if fundo == 0 {
+                return i
+            }
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+
+# Os pedaços de `s` separados pelas vírgulas de fora de (), [] e {}.
+list funct partes_de(str s) {
+    list r = []
+    int fundo = 0
+    str atual = ""
+    for each c in s {
+        if c in "([{" {
+            fundo = fundo + 1
+        }
+        elif c in ")]}" {
+            fundo = fundo - 1
+        }
+        if c == "," and fundo == 0 {
+            addEnd(r, atual.strip())
+            atual = ""
+        } else {
+            atual = atual + c
+        }
+    }
+    if atual.strip() != "" {
+        addEnd(r, atual.strip())
+    }
+    return r
+}
+
+
+# O nome que vem logo antes da posição `fim` (o chamado de um "(").
+str funct nome_antes(str s, int fim) {
+    int i = fim
+    while i > 0 and eh_letra(s[i - 1]) {
+        i = i - 1
+    }
+    return s[i:fim]
+}
+
+
+# Uma assinatura (`os.run(args: list | str, capture: bool = False)`): os
+# nomes dos parâmetros vão pra `nomes_doc[membro]`, e o 1º tipo de cada um pra
+# `tipos_doc[membro][parâmetro]`.
+Null funct le_assinatura(str s, dict nomes_doc, dict tipos_doc) {
+    int ab = s.find("(")
+    if ab <= 0 {
+        return
+    }
+    str membro = nome_antes(s, ab)
+    int fe = fecha(s, ab)
+    if membro == "" or fe < 0 {
+        return
+    }
+    for each p in partes_de(s[ab + 1:fe]) {
+        str q = p.strip()
+        while q.startswith("*") {
+            q = q[1:]
+        }
+        int dois = q.find(":")
+        int igual = q.find("=")
+        int corte = q.len()
+        if dois >= 0 {
+            corte = dois
+        } elif igual >= 0 {
+            corte = igual
+        }
+        str nome = q[0:corte].strip()
+        if nome == "" or not nome.replace("_", "").isalnum() or nome == "..." {
+            continue
+        }
+        junta(nomes_doc, membro, nome)
+        if dois >= 0 {
+            str tipos = q[dois + 1:].strip()
+            if igual > dois {
+                tipos = q[dois + 1:igual].strip()
+            }
+            if not (membro in tipos_doc) {
+                tipos_doc[membro] = {}
+            }
+            tipos_doc[membro][nome] = tipos.split("|")[0].strip()
+        }
+    }
+}
+
+
+# Os nomes que as chamadas de um exemplo passam por nome
+# (`app.channel(forAll=msg)`): `nome=` dentro dos parênteses, fora de outros
+# parênteses, e que não seja `==`.
+Null funct le_exemplo(str texto, dict nomes_doc) {
+    int i = 0
+    while i < texto.len() {
+        if texto[i] == "(" {
+            str membro = nome_antes(texto, i)
+            int fe = fecha(texto, i)
+            if membro != "" and fe > i {
+                for each p in partes_de(texto[i + 1:fe]) {
+                    int igual = p.find("=")
+                    if igual > 0 and not p[igual:].startswith("==") and not ("!" in p[igual - 1:igual]) {
+                        str nome = p[0:igual].strip()
+                        if nome != "" and nome.replace("_", "").isalnum() and not nome[0].isdigit() {
+                            junta(nomes_doc, membro, nome)
+                        }
+                    }
+                }
+            }
+        }
+        i = i + 1
+    }
+}
+
+
+# Lê a doc inteira: os títulos com assinatura, os blocos ```assinatura e os
+# exemplos (```ps, ```ps contexto, ```ps sem-rodar).
+Null funct le_doc(dict nomes_doc, dict tipos_doc) {
+    for each md in lista_md("docs") {
+        str txt = os.readFile(md)
+        for each l in txt.splitlines() {
+            if l.startswith("# `") and "(" in l {
+                le_assinatura(l[3:].replace("`", ""), nomes_doc, tipos_doc)
+            }
+            break
+        }
+        for each b in blocos_de(txt) {
+            if b["rotulo"] == "assinatura" {
+                # a assinatura pode quebrar linha no meio dos parâmetros
+                le_assinatura(b["texto"].replace("\n", " "), nomes_doc, tipos_doc)
+            }
+            elif b["rotulo"].startswith("ps") or b["rotulo"] == "jinga" {
+                le_exemplo(b["texto"], nomes_doc)
+            }
+        }
+    }
+}
+
+
+# ── as chamadas ──────────────────────────────────────────────────────────────
+
+# O valor de amostra do tipo que a doc escreve ("Null" quando ela não dá, ou
+# quando o tipo não é básico).
+str funct amostra(str tipo) {
+    str t = tipo.strip()
+    if t == "bytes" {
+        t = "byte"
+    }
+    if t in VALOR {
+        return VALOR[t]
+    }
+    return "Null"
+}
+
+
+str funct args_de(int n, str valor) {
+    list partes = []
+    for each i in range(n) {
+        addEnd(partes, valor)
+    }
+    return ", ".join(partes)
+}
+
+
+# As chamadas de um membro, cada uma [rótulo, argumentos]. O rótulo diz o que
+# a chamada confere: P (a propriedade lida, sem chamar), A<n> (n argumentos
+# Null por posição), Y<tipo> (o 1º argumento desse tipo), K<nome> (o
+# parâmetro por nome), X (um nome que não existe), D (os obrigatórios com o
+# tipo da doc), R (o retorno guardado numa variável de outro tipo; `boas`:
+# as chamadas que dão certo, de `chamadas_boas`).
+list funct chamadas_de(dict mb, dict nomes_doc, dict tipos_doc, dict boas) {
+    list cs = []
+    if mb["kind"] == "property" {
+        addEnd(cs, ["P", ""])
+    }
+    list params = mb["params"]
+    bool variadico = False
+    for each p in params {
+        if p["nome"].startswith("*") {
+            variadico = True
+        }
+    }
+    int teto = 6
+    if not variadico and params.len() + 1 < 6 {
+        teto = params.len() + 1
+    }
+    for each n in range(teto + 1) {
+        addEnd(cs, ["A" + str(n), args_de(n, "Null")])
+    }
+    if (mb["dono"] + "|" + mb["membro"]) in SO_QUANTIDADE {
+        return cs
+    }
+    for each t in TIPOS {
+        addEnd(cs, ["Y" + t, VALOR[t]])
+    }
+    dict tipos_m = tipos_doc.get(mb["membro"], {})
+    list obrig = []
+    list nomes = []
+    for each p in params {
+        if p["nome"].startswith("*") {
+            continue
+        }
+        addEnd(nomes, p["nome"])
+        if p["default"] == Null {
+            addEnd(obrig, p["nome"])
+        }
+    }
+    for each k in nomes_doc.get(mb["membro"], []) {
+        if not (k in nomes) {
+            addEnd(nomes, k)
+        }
+    }
+    for each k in nomes {
+        list partes = []
+        for each o in obrig {
+            if o == k {
+                break
+            }
+            addEnd(partes, amostra(tipos_m.get(o, "")))
+        }
+        addEnd(partes, k + "=" + amostra(tipos_m.get(k, "")))
+        addEnd(cs, ["K" + k, ", ".join(partes)])
+    }
+    list por_posicao = []
+    bool todos_tipados = obrig.len() > 0
+    for each o in obrig {
+        addEnd(por_posicao, amostra(tipos_m.get(o, "")))
+        if not (o in tipos_m) {
+            todos_tipados = False
+        }
+    }
+    list com_x = []
+    for each v in por_posicao {
+        addEnd(com_x, v)
+    }
+    addEnd(com_x, "p2_nao_existe=1")
+    addEnd(cs, ["X", ", ".join(com_x)])
+    if todos_tipados {
+        addEnd(cs, ["D", ", ".join(por_posicao)])
+    }
+    # a mesma chamada por dois caminhos (`Null` é 1 argumento Null e o 1º do
+    # tipo Null) entra uma vez só
+    list unicas = []
+    list vistas = []
+    for each c in cs {
+        if not (c[1] in vistas) or c[0] == "P" {
+            addEnd(unicas, c)
+            addEnd(vistas, c[1])
+        }
+    }
+    # R: o que o membro devolve, guardado numa variável de um tipo que NÃO é o
+    # do retorno publicado: o checador tem que recusar a declaração, como o
+    # motor recusa rodando. A chamada é a que tem que dar certo (a D, ou sem
+    # argumento quando nenhum é obrigatório); a propriedade é só lida.
+    str errado = tipo_errado(mb["retorna"])
+    if errado != "" {
+        if mb["kind"] == "property" {
+            addEnd(unicas, ["R", "", errado])
+        } elif mb["chamado"] in boas {
+            addEnd(unicas, ["R", boas[mb["chamado"]], errado])
+        } elif obrig.len() == 0 {
+            addEnd(unicas, ["R", "", errado])
+        } elif todos_tipados {
+            addEnd(unicas, ["R", ", ".join(por_posicao), errado])
+        }
+    }
+    return unicas
+}
+
+
+# As chamadas que dão certo, tiradas das expressões que criam os donos
+# (`jinker.cors(jinker.Jinker())`, `regex.compile("a")`): o nome chamado ->
+# os argumentos. A chamada R do membro usa estes argumentos quando a doc não
+# dá o tipo dos parâmetros. Põe em `boas`.
+Null funct chamadas_boas(dict donos, dict boas) {
+    for each t in donos.keys() {
+        str e = donos[t][1].replace("@TMP@", ".")
+        int ab = e.find("(")
+        if ab <= 0 {
+            continue
+        }
+        int fe = fecha(e, ab)
+        str nome = e[0:ab]
+        if fe > ab and nome.replace(".", "").replace("_", "").isalnum() and not (nome in boas) {
+            boas[nome] = e[ab + 1:fe]
+        }
+    }
+}
+
+
+# Um tipo que não está no retorno publicado (`str|Null` -> `int`), ou "" quando
+# o retorno não se sabe (vazio, `Object`, `*`).
+str funct tipo_errado(str retorna) {
+    if retorna == "" or "Object" in retorna or "*" in retorna {
+        return ""
+    }
+    list tipos = []
+    for each t in retorna.split("|") {
+        addEnd(tipos, t.strip())
+    }
+    for each t in ["int", "str", "bool"] {
+        if not (t in tipos) {
+            return t
+        }
+    }
+    return ""
+}
+
+
+# O texto da chamada `c` do membro: o que o programa tipado tem na linha dela.
+str funct texto_de(dict mb, list c) {
+    if c[0] == "P" or (c[0] == "R" and mb["kind"] == "property") {
+        return mb["chamado"]
+    }
+    return mb["chamado"] + "(" + c[1] + ")"
+}
+
+
+# ── os dois lados ────────────────────────────────────────────────────────────
+
+# Grava o arquivo. É `Null funct` porque, numa funct tipada, a chamada solta
+# que devolve valor (o `os.writeFile`) conta como saída dela.
+Null funct grava(str caminho, str texto) {
+    os.writeFile(caminho, texto)
+}
+
+# O programa tipado: os imports e uma chamada por linha. O método chama pelo
+# receptor DECLARADO com o tipo dele (`Process p2_x = os.run(...)`), como se
+# escreve Jinga tipada: chamado direto na expressão, o checador não sabe o tipo
+# do que uma função de união devolve (`os.run` dá `int|str|Process`). Com
+# `declara` falso, o receptor é a própria expressão (o tipo dele não se
+# declara). Põe em `linhas` o número da linha de cada chamada.
+str funct programa_tipado(dict mb, list cs, list linhas, bool declara) {
+    list l = abertura_tipada(mb)
+    int i = 0
+    for each c in cs {
+        str t = texto_de(mb, c)
+        bool so_le = c[0] == "P" or (c[0] == "R" and mb["kind"] == "property")
+        if declara and mb["tipo"] != "" {
+            str x = "p2_x" + str(i)
+            addEnd(l, mb["tipo"] + " " + x + " = " + mb["criado"])
+            t = x + "." + mb["membro"]
+            if not so_le {
+                t = t + "(" + c[1] + ")"
+            }
+        }
+        if c[0] == "P" {
+            addEnd(l, "Object p2_v" + str(i) + " = " + t)
+        } elif c[0] == "R" {
+            addEnd(l, c[2] + " p2_r" + str(i) + " = " + t)
+        } else {
+            addEnd(l, t)
+        }
+        addEnd(linhas, l.len())
+        i = i + 1
+    }
+    for each f in fechamento_tipado(mb) {
+        addEnd(l, f)
+    }
+    return "\n".join(l) + "\n"
+}
+
+
+# O começo do programa tipado: os imports; no membro de rota, a jinker e a
+# rota em volta das chamadas (o `request` só existe dentro dela).
+list funct abertura_tipada(dict mb) {
+    list l = []
+    str lado = mb.get("lado", "")
+    if lado == "rota" {
+        addEnd(l, "import jinker")
+        addEnd(l, "from jinker import request")
+        addEnd(l, "Jinker app = jinker.Jinker(name=\"p2\")")
+        addEnd(l, "@app.route(\"/p2\", methods=[\"POST\"])")
+        addEnd(l, "funct p2_rota() {")
+    } elif lado == "cliente" {
+        addEnd(l, "import request")
+    } elif mb["imp"] != "" {
+        addEnd(l, mb["imp"])
+    }
+    return l
+}
+
+
+list funct fechamento_tipado(dict mb) {
+    list l = []
+    if mb.get("lado", "") == "rota" {
+        addEnd(l, "    return \"ok\"")
+        addEnd(l, "}")
+    }
+    return l
+}
+
+
+# O `--check` do programa: linha -> "Tipo|frase". Com erro de sintaxe, o
+# arquivo inteiro deixa de ser lido: cada chamada é conferida sozinha.
+dict funct confere(str trab, str fonte) {
+    grava(trab + "/t.pr", fonte)
+    dict j = json.parse(os.run([sys.executable, "--check", trab + "/t.pr"], capture=True).strip())
+    dict r = {}
+    if j["ok"] {
+        return r
+    }
+    list erros = j.get("erros", [j])
+    for each e in erros {
+        r[str(e["linha"])] = e["tipo"] + "|" + e["msg"]
+    }
+    return r
+}
+
+
+# A anotação de cada chamada, num arquivo da pasta da rodada: o que o programa
+# escreveu antes de sair (`sys.exit`) ou de travar fica.
+str funct anota_def(str pasta) {
+    return ("Null funct p2_anota(str p2_l) {\n    using open(\"" + pasta
+            + "/p2_r.txt\", \"a\") as p2_a {\n"
+            + "        p2_a.write(p2_l.replace(\"\\n\", \" \") + \"\\n\")\n    }\n}\n")
+}
+
+
+str funct cabeca(dict mb, str pasta) {
+    str imp = mb["imp"] + "\n" if mb["imp"] != "" else ""
+    return imp + anota_def(pasta)
+}
+
+
+# Uma chamada vigiada, pelo membro guardado num `Object`: anota `i|ok`, ou o
+# tipo do erro (T, A, N; `o` pra outro) e a frase.
+str funct vigiada(dict mb, list c, int i) {
+    str f = "p2_f" + str(i)
+    str n = str(i)
+    str chama = ""
+    if c[0] == "R" {
+        str valor = f if mb["kind"] == "property" else f + "(" + c[1] + ")"
+        chama = "    " + c[2] + " p2_r" + n + " = " + valor + "\n"
+    } elif c[0] != "P" {
+        chama = "    " + f + "(" + c[1] + ")\n"
+    }
+    return ("try {\n    Object " + f + " = " + mb["chamado"] + "\n" + chama
+            + "    p2_anota(\"" + n + "|ok\")\n"
+            + "} catch (TypeError p2_e) {\n    p2_anota(\"" + n + "|T|\" + p2_e)\n"
+            + "} catch (AttributeError p2_e) {\n    p2_anota(\"" + n + "|A|\" + p2_e)\n"
+            + "} catch (NameError p2_e) {\n    p2_anota(\"" + n + "|N|\" + p2_e)\n"
+            + "} catch (Exception p2_e) {\n    p2_anota(\"" + n + "|o|\" + p2_e)\n}\n")
+}
+
+
+# O receptor nasce? Sem isto, um receptor que não se cria daria o mesmo erro em
+# todas as chamadas, dos dois lados, e o portão passaria calado. Anota
+# `REC|ok` ou `REC|frase`.
+str funct vigia_receptor(dict mb) {
+    if mb["criado"] == "" {
+        return ""
+    }
+    str criado = mb["criado"]
+    if mb.get("lado", "") != "" {
+        criado = mb["chamado"][0:mb["chamado"].len() - mb["membro"].len() - 1]
+    }
+    return ("try {\n    Object p2_rec = " + criado + "\n    p2_anota(\"REC|ok\")\n"
+            + "} catch (Exception p2_e) {\n    p2_anota(\"REC|\" + p2_e)\n}\n")
+}
+
+
+# Roda `fonte` na pasta da rodada (isolada) e devolve as linhas anotadas e o
+# resultado do `executa` em `r`.
+list funct roda_programa(str trab, list prefixo, str fonte, bool jit, flo prazo, dict r) {
+    str pasta = trab + "/ex"
+    if os.isdir(pasta) {
+        os.rmdir(pasta, force=True)
+    }
+    os.mkdir(pasta)
+    grava(pasta + "/o.pr", fonte)
+    grava(pasta + "/entrada.txt", "")
+    str volta = os.cwd()
+    os.chdir(pasta)
+    executa(pasta, prefixo, "o", "o.pr", jit, prazo, r)
+    os.chdir(volta)
+    list linhas = []
+    if os.exists(pasta + "/p2_r.txt") {
+        for each l in os.readFile(pasta + "/p2_r.txt").split("\n") {
+            if l != "" {
+                addEnd(linhas, l)
+            }
+        }
+    }
+    return linhas
+}
+
+
+# O que o motor fez com cada chamada (índice -> "ok", "T|frase", "A|frase",
+# "N|frase", "o|frase" ou "Q|..." quando caiu). O programa que não chega ao
+# fim é refeito com uma chamada por programa.
+dict funct roda_lado(str trab, list prefixo, dict mb, list cs, bool jit) {
+    str pasta = trab + "/ex"
+    str fonte = cabeca(mb, pasta) + vigia_receptor(mb)
+    int i = 0
+    for each c in cs {
+        fonte = fonte + vigiada(mb, c, i)
+        i = i + 1
+    }
+    fonte = fonte + "p2_anota(\"FIM\")\n"
+    dict r = {}
+    list linhas = roda_programa(trab, prefixo, fonte, jit, PRAZO, r)
+    dict res = {}
+    bool fim = False
+    for each l in linhas {
+        if l == "FIM" {
+            fim = True
+            continue
+        }
+        if l.startswith("REC|") {
+            if l != "REC|ok" {
+                res["__receptor__"] = sem_linha(l[4:])
+            }
+            continue
+        }
+        int k = l.find("|")
+        res[l[:k]] = sem_linha(l[k + 1:])
+    }
+    if fim or "__receptor__" in res {
+        return res
+    }
+    res = {}
+    i = 0
+    for each c in cs {
+        str n = str(i)
+        dict um = {}
+        list ls = roda_programa(trab, prefixo, cabeca(mb, pasta) + vigiada(mb, c, i) + "p2_anota(\"FIM\")\n",
+                                jit, PRAZO_UM, um)
+        res[n] = "ok"
+        bool achou = False
+        for each l in ls {
+            if l.startswith(n + "|") {
+                res[n] = sem_linha(l[n.len() + 1:])
+                achou = True
+            }
+        }
+        if not achou and not um["estourou"] {
+            if um["rc"] >= 128 {
+                res[n] = "Q|o motor caiu (código " + str(um["rc"]) + ")"
+            }
+            elif um["rc"] != 0 and not ("FIM" in ls) {
+                # não compilou: a primeira linha do erro
+                str e = um["erro"].strip()
+                if e != "" {
+                    res[n] = "S|" + e.splitlines()[0]
+                }
+            }
+        }
+        i = i + 1
+    }
+    return res
+}
+
+
+# ── a rodada com a jinker no ar ──────────────────────────────────────────────
+
+# O membro com as portas da rodada no lugar de `@P@` e `@W@`.
+dict funct com_portas(dict mb, int porta) {
+    dict m = {}
+    for each k in mb.keys() {
+        m[k] = mb[k]
+    }
+    m["chamado"] = mb["chamado"].replace("@P@", str(porta)).replace("@W@", str(porta + 1))
+    return m
+}
+
+
+# A jinker da rodada: a rota /p2 (POST) com as chamadas vigiadas do membro de
+# rota, a /p2r que o cliente lê e o WebSocket /ws.
+str funct servidor(dict mb, list cs, list indices, str pasta, int porta) {
+    str s = ("import jinker\nfrom jinker import request\n" + anota_def(pasta)
+             + "Jinker app = jinker.Jinker(name=\"p2\")\n"
+             + "@app.route(\"/p2\", methods=[\"POST\"])\nfunct p2_rota() {\n")
+    if mb["lado"] == "rota" {
+        dict m = com_portas(mb, porta)
+        s = s + vigia_receptor(m)
+        for each i in indices {
+            s = s + vigiada(m, cs[i], i)
+        }
+    }
+    return (s + "    return \"ok\"\n}\n@app.route(\"/p2r\")\nfunct p2_resposta() {\n"
+            + "    return {\"a\": 1}\n}\n@app.socket(\"/ws\")\nfunct p2_ws() {\n    return \"eco\"\n}\n"
+            + "if __name__ == \"main\" {\n    app(debug=False, host=\"127.0.0.1\", port=" + str(porta)
+            + ")\n}\n")
+}
+
+
+# O cliente da rodada: sobe a jinker (no mesmo grupo de processos, que o
+# `kill` leva no fim), espera a porta, manda o POST com um arquivo (as
+# chamadas de rota rodam dentro dele) e roda as chamadas de cliente.
+str funct cliente(dict mb, list cs, list indices, str pasta, int porta) {
+    str url = "http://127.0.0.1:" + str(porta)
+    str s = ("import os\nimport sys\nimport request\n" + anota_def(pasta)
+             + "Null funct p2_grava(str c, str t) {\n    os.writeFile(c, t)\n}\n"
+             + "p2_grava(\"up.txt\", \"conteudo do upload\")\n"
+             + "Process p2_srv = os.run([sys.executable, \"srv.pr\"], capture=\"live\")\n"
+             + "int p2_n = 0\nbool p2_pronto = False\n"
+             + "while p2_n < 100 and not p2_pronto {\n    try {\n"
+             + "        Object p2_t = request.get(\"" + url + "/p2r\", timeout=1)\n"
+             + "        p2_pronto = True\n    } catch (Exception p2_e) {\n        sleep(0.05)\n    }\n"
+             + "    p2_n = p2_n + 1\n}\n"
+             + "if not p2_pronto {\n    p2_anota(\"SEM_SERVIDOR\")\n}\n")
+    if mb["lado"] == "rota" {
+        s = s + ("try {\n    Object p2_post = request.post(\"" + url + "/p2?a=1&b=2\", "
+                 + "fields={\"campo\": \"valor\"}, file={\"arquivo\": {\"name\": \"up.txt\"}}, timeout=20)\n"
+                 + "} catch (Exception p2_e) {\n    p2_anota(\"POST|\" + p2_e)\n}\n")
+    } else {
+        dict m = com_portas(mb, porta)
+        s = s + vigia_receptor(m)
+        for each i in indices {
+            s = s + vigiada(m, cs[i], i)
+        }
+    }
+    return s + "p2_anota(\"FIM\")\n"
+}
+
+
+# Roda o par (a jinker e o cliente) com as chamadas `indices` e devolve as
+# linhas anotadas.
+list funct roda_par(str trab, list prefixo, dict mb, list cs, list indices, bool jit, int porta,
+                    flo prazo, dict r) {
+    str pasta = trab + "/ex"
+    if os.isdir(pasta) {
+        os.rmdir(pasta, force=True)
+    }
+    os.mkdir(pasta)
+    grava(pasta + "/srv.pr", servidor(mb, cs, indices, pasta, porta))
+    grava(pasta + "/o.pr", cliente(mb, cs, indices, pasta, porta))
+    grava(pasta + "/entrada.txt", "")
+    str volta = os.cwd()
+    os.chdir(pasta)
+    executa(pasta, prefixo, "o", "o.pr", jit, prazo, r)
+    os.chdir(volta)
+    list linhas = []
+    if os.exists(pasta + "/p2_r.txt") {
+        for each l in os.readFile(pasta + "/p2_r.txt").split("\n") {
+            if l != "" {
+                addEnd(linhas, l)
+            }
+        }
+    }
+    return linhas
+}
+
+
+# Como o `roda_lado`, com a jinker no ar: cada rodada sobe a jinker numa
+# porta nova (`porta`, `porta + 2`...). Sem a jinker de pé, a chave
+# "__servidor__" diz o porquê.
+dict funct roda_servido(str trab, list prefixo, dict mb, list cs, bool jit, int porta) {
+    list todos = []
+    for each i in range(cs.len()) {
+        addEnd(todos, i)
+    }
+    dict r = {}
+    list linhas = roda_par(trab, prefixo, mb, cs, todos, jit, porta, PRAZO, r)
+    dict res = {}
+    bool fim = False
+    for each l in linhas {
+        if l == "FIM" {
+            fim = True
+        } elif l == "SEM_SERVIDOR" or l.startswith("POST|") {
+            res["__servidor__"] = l + " (porta " + str(porta) + "; " + r["erro"].strip()[0:300] + ")"
+        } elif l.startswith("REC|") {
+            if l != "REC|ok" {
+                res["__receptor__"] = sem_linha(l[4:])
+            }
+        } else {
+            int k = l.find("|")
+            res[l[:k]] = sem_linha(l[k + 1:])
+        }
+    }
+    if fim or "__servidor__" in res or "__receptor__" in res {
+        return res
+    }
+    res = {}
+    int p = porta + 2
+    for each i in todos {
+        str n = str(i)
+        dict um = {}
+        list ls = roda_par(trab, prefixo, mb, cs, [i], jit, p, PRAZO_UM + 2.0, um)
+        p = p + 2
+        res[n] = "ok"
+        for each l in ls {
+            if l.startswith(n + "|") {
+                res[n] = sem_linha(l[n.len() + 1:])
+            }
+        }
+    }
+    return res
+}
+
+
+# ── a comparação ─────────────────────────────────────────────────────────────
+
+# O que o checador promete pegar, quando o motor recusa e ele não: a
+# quantidade, o nome de parâmetro, o tipo do 1º argumento (na chamada Y), o
+# membro ou o nome que não existe.
+bool funct promete(str rotulo, str r) {
+    if r.startswith("A|") or r.startswith("N|") {
+        return True
+    }
+    if not r.startswith("T|") {
+        return False
+    }
+    str msg = r[2:]
+    if eh_aridade(msg) or "keyword argument" in msg or "multiple values" in msg {
+        return True
+    }
+    if rotulo.startswith("Y") and cita_tipo(msg, rotulo[1:]) {
+        return True
+    }
+    return False
+}
+
+
+# A frase do erro rodando, sem o tipo ("T|frase" -> "frase").
+str funct frase_de(str r) {
+    int k = r.find("|")
+    return r[k + 1:] if k >= 0 else r
+}
+
+
+# O membro vale Null rodando: o `Object` em que o programa guarda o membro não
+# guarda Null (`variável p2_f esperava Object, recebeu Null`), e a chamada
+# nem acontece.
+bool funct vale_null(str r) {
+    return r.startswith("o|") and "esperava Object, recebeu Null" in r
+}
+
+
+# Os achados de um membro: cada chamada em que os lados não concordam. A
+# chamada sobre um membro que vale Null não se compara: vai pra
+# `sem_comparar` (a leitura da propriedade que vale Null deu certo).
+Null funct compara(dict mb, list cs, list linhas, dict chk, dict r1, dict r2, list achados,
+                   list sem_comparar) {
+    int i = 0
+    for each c in cs {
+        str n = str(i)
+        str t = texto_de(mb, c)
+        if c[0] == "R" {
+            t = c[2] + " x = " + t
+        }
+        str k = chk.get(str(linhas[i]), "")
+        str a = r1.get(n, "ok")
+        str b = r2.get(n, "ok")
+        if vale_null(a) or vale_null(b) {
+            if c[0] != "P" {
+                addEnd(sem_comparar, t)
+                i = i + 1
+                continue
+            }
+            a = "ok"
+            b = "ok"
+        }
+        str falha = ""
+        if a.startswith("Q|") or b.startswith("Q|") {
+            falha = "o motor caiu: " + (a if a.startswith("Q|") else b)[2:]
+        }
+        elif a != b {
+            falha = "com JIT dá '" + a + "' e sem JIT dá '" + b + "'"
+        }
+        elif c[0] == "R" {
+            # a declaração com o tipo errado: só conta quando a chamada deu
+            # certo (o motor chegou a recusar a declaração, ou a aceitou)
+            bool recusa_rodando = a.startswith("o|") and ("esperava " + c[2]) in a
+            if recusa_rodando and k == "" {
+                falha = ("o --check aceita '" + c[2] + " x = ...' e rodando dá '" + frase_de(a)
+                         + "': o checador não sabe o tipo que o membro devolve (o --metadata diz "
+                         + mb["retorna"] + ")")
+            } elif a == "ok" and k != "" {
+                falha = ("o --check recusa (" + k.replace("|", ": ") + ") e rodando a declaração passa: "
+                         + "o membro devolveu " + c[2] + ", e o --metadata diz " + mb["retorna"])
+            }
+        }
+        elif k != "" and (a == "ok" or a.startswith("o|")) {
+            falha = "o --check recusa (" + k.replace("|", ": ") + ") e o motor aceita"
+        }
+        elif k != "" and frase_de(k) != frase_de(a) {
+            falha = "o --check diz '" + frase_de(k) + "' e o motor diz '" + frase_de(a) + "'"
+        }
+        elif k == "" and promete(c[0], a) {
+            falha = "o --check aceita e o motor recusa: " + frase_de(a)
+        }
+        if falha != "" {
+            addEnd(achados, {"pagina": "membro:" + mb["dono"] + "." + mb["membro"], "codigo": t,
+                             "onde": t + " -> " + falha, "linha": i + 1})
+        }
+        i = i + 1
+    }
+}
+
+
+# ── os membros ───────────────────────────────────────────────────────────────
+
+# O retorno publicado do membro ("" quando o `--metadata` não diz: a chave
+# falta, ou vem Null).
+str funct retorno_de(dict m) {
+    if m.get("retorna", Null) == Null {
+        return ""
+    }
+    return str(m["retorna"])
+}
+
+# Os membros a chamar, cada um {dono, membro, imp, chamado, params, kind,
+# tipo, criado}: `tipo` e `criado` são o tipo do receptor e a expressão que o
+# cria (vazios pra builtin e função de módulo). `filtro` vazio = todos; senão,
+# só os donos citados.
+list funct membros_de(dict meta, list filtro) {
+    list ms = []
+    for each b in meta["builtins"] {
+        addEnd(ms, {"dono": "builtins", "membro": b["nome"], "imp": "", "chamado": b["nome"],
+                    "params": b["params"], "kind": "function", "tipo": "", "criado": "",
+                    "retorna": retorno_de(b)})
+    }
+    for each mod in meta["modulos"].keys() {
+        str imp = "import " + mod.split(".")[0]
+        for each m in meta["modulos"][mod] {
+            # o valor do módulo (a constante, e o `jinker.cors`, que é valor e
+            # se chama) é lido e chamado como a propriedade
+            str kind = m.get("kind", "function")
+            if kind == "value" {
+                kind = "property"
+            }
+            addEnd(ms, {"dono": mod, "membro": m["nome"], "imp": imp, "chamado": mod + "." + m["nome"],
+                        "params": m["params"], "kind": kind, "tipo": "", "criado": "",
+                        "retorna": retorno_de(m)})
+        }
+    }
+    dict donos = {}
+    for each t in DONOS.keys() {
+        donos[t] = DONOS[t]
+    }
+    for each t in DONOS_A_MAIS.keys() {
+        donos[t] = DONOS_A_MAIS[t]
+    }
+    for each t in meta["tipos"].keys() {
+        if not (t in donos) {
+            continue
+        }
+        str criado = donos[t][1].replace("@TMP@", ".")
+        # o membro universal vale em todo valor: o receptor é um int
+        str tipo = "int" if t == "__universal__" else t
+        for each m in meta["tipos"][t] {
+            addEnd(ms, {"dono": t, "membro": m["nome"], "imp": donos[t][0],
+                        "chamado": criado + "." + m["nome"], "params": m["params"],
+                        "kind": m.get("kind", "method"), "tipo": tipo, "criado": criado,
+                        "retorna": retorno_de(m)})
+        }
+    }
+    for each t in DONOS_SERVIDOS.keys() {
+        if not (t in meta["tipos"]) {
+            continue
+        }
+        str criado = DONOS_SERVIDOS[t][1]
+        for each m in meta["tipos"][t] {
+            addEnd(ms, {"dono": t, "membro": m["nome"], "imp": "",
+                        "chamado": criado + "." + m["nome"], "params": m["params"],
+                        "kind": m.get("kind", "method"), "tipo": t, "criado": criado,
+                        "retorna": retorno_de(m), "lado": DONOS_SERVIDOS[t][0]})
+        }
+    }
+    if filtro.len() == 0 {
+        return ms
+    }
+    list so = []
+    for each m in ms {
+        if m["dono"] in filtro or m["dono"].split(".")[0] in filtro {
+            addEnd(so, m)
+        }
+    }
+    return so
+}
+
+
+# Os tipos que o P2 não chama, com o motivo: o relatório diz quais são.
+list funct fora_de(dict meta) {
+    list f = []
+    for each t in meta["tipos"].keys() {
+        if t in DONOS or t in DONOS_A_MAIS or t in DONOS_SERVIDOS or meta["tipos"][t].len() == 0 {
+            continue
+        }
+        str motivo = "sem dono que se crie aqui"
+        if t.startswith("Mongo") {
+            motivo = "precisa de um mongod no ar"
+        }
+        addEnd(f, t + " (" + str(meta["tipos"][t].len()) + " membros: " + motivo + ")")
+    }
+    return f
+}
+
+
+# ── o portão ─────────────────────────────────────────────────────────────────
+
+list filtro = []
+for each a in sys.argv[1:] {
+    addEnd(filtro, a)
+}
+
+dict meta = json.parse(os.run([sys.executable, "--metadata"], capture=True))
+dict nomes_doc = {}
+dict tipos_doc = {}
+le_doc(nomes_doc, tipos_doc)
+list membros = membros_de(meta, filtro)
+
+str trab = os.cwd() + "/" + TMP
+os.mkdir(trab)
+dict iso = {}
+str motivo = prepara_isolamento(trab, "p2", iso)
+if motivo != "" {
+    os.rmdir(trab, force=True)
+    post(motivo)
+    sys.exit(0 if sys.platform() == "windows" else 1)
+}
+
+list achados = []
+list paginas = []
+int n_chamadas = 0
+dict todos_donos = {}
+for each t in DONOS.keys() {
+    todos_donos[t] = DONOS[t]
+}
+for each t in DONOS_A_MAIS.keys() {
+    todos_donos[t] = DONOS_A_MAIS[t]
+}
+dict boas = {}
+chamadas_boas(todos_donos, boas)
+
+list nao_declara = []
+list sem_comparar = []
+list sem_rodar = []
+int porta = PORTA_BASE
+for each mb in membros {
+    list cs = chamadas_de(mb, nomes_doc, tipos_doc, boas)
+    list linhas = []
+    bool declara = True
+    dict chk = confere(trab, programa_tipado(mb, cs, linhas, declara))
+    # o tipo do receptor não se declara (o `--check` recusa a linha da
+    # declaração, que não é linha de chamada): o receptor vira a expressão
+    list de_chamada = []
+    for each n in linhas {
+        addEnd(de_chamada, str(n))
+    }
+    bool recusou_declaracao = False
+    for each k in chk.keys() {
+        bool do_import = mb["imp"] != "" and k == "1"
+        if not (k in de_chamada) and not do_import {
+            recusou_declaracao = True
+        }
+    }
+    if recusou_declaracao {
+        declara = False
+        addEnd(nao_declara, mb["dono"] + "." + mb["membro"])
+        linhas = []
+        chk = confere(trab, programa_tipado(mb, cs, linhas, declara))
+    }
+    # erro de sintaxe: cada chamada conferida sozinha
+    bool sintaxe = False
+    for each v in chk.values() {
+        if v.startswith("SyntaxError|") {
+            sintaxe = True
+        }
+    }
+    if sintaxe {
+        chk = {}
+        int i = 0
+        for each c in cs {
+            list l1 = []
+            dict um = confere(trab, programa_tipado(mb, [c], l1, declara))
+            if str(l1[0]) in um {
+                chk[str(linhas[i])] = um[str(l1[0])]
+            }
+            i = i + 1
+        }
+    }
+    dict r1 = {}
+    dict r2 = {}
+    if mb.get("lado", "") != "" {
+        r1 = roda_servido(trab, iso["prefixo"], mb, cs, True, porta)
+        porta = porta + 2 * (cs.len() + 2)
+        r2 = roda_servido(trab, iso["prefixo"], mb, cs, False, porta)
+        porta = porta + 2 * (cs.len() + 2)
+    } else {
+        r1 = roda_lado(trab, iso["prefixo"], mb, cs, True)
+        r2 = roda_lado(trab, iso["prefixo"], mb, cs, False)
+    }
+    # sem a jinker de pé, ou sem o receptor, nada se compara: reprova com o
+    # motivo, em vez de passar calado
+    str falta = ""
+    for each r in [r1, r2] {
+        if "__servidor__" in r {
+            falta = "a jinker da rodada não ficou de pé: " + r["__servidor__"]
+        } elif "__receptor__" in r {
+            falta = "o receptor não nasceu: " + r["__receptor__"]
+        }
+    }
+    if falta != "" {
+        addEnd(sem_rodar, mb["dono"] + "." + mb["membro"] + ": " + falta)
+    } else {
+        compara(mb, cs, linhas, chk, r1, r2, achados, sem_comparar)
+    }
+    addEnd(paginas, "membro:" + mb["dono"] + "." + mb["membro"])
+    n_chamadas = n_chamadas + cs.len()
+}
+os.rmdir(trab, force=True)
+
+dict catraca = {}
+aplica("p2", achados, paginas, catraca)
+list novos = catraca["novos"]
+
+post("isolamento das rodadas:", iso["nome"])
+post("membros chamados:", membros.len(), "| chamadas (cada uma no --check e rodando com JIT e sem):",
+     n_chamadas)
+list fora = fora_de(meta)
+post("tipos que o P2 não chama (só existem com serviço de fora):", fora.len())
+for each f in fora {
+    post("  " + f)
+}
+post("membros com o receptor pela expressão (o --check recusa declarar o tipo dele):",
+     nao_declara.len())
+for each d in nao_declara {
+    post("  " + d)
+}
+post("chamadas que não se comparam (o membro vale Null rodando, e o Object não guarda Null):",
+     sem_comparar.len())
+for each s in sem_comparar {
+    post("  " + s)
+}
+relata(catraca)
+if sem_rodar.len() > 0 {
+    post("")
+    post("MEMBROS QUE NÃO RODARAM (a rodada não ficou de pé; nada deles se comparou):", sem_rodar.len())
+    for each s in sem_rodar {
+        post("  " + s)
+    }
+}
+if novos.len() == 0 and not catraca["reprova"] and sem_rodar.len() == 0 {
+    post("  o checador e o motor concordam (ou são itens abertos)")
+    sys.exit(0)
+}
+if novos.len() == 0 {
+    sys.exit(1)
+}
+post("")
+post("CHAMADAS EM QUE O CHECADOR E O MOTOR NÃO CONCORDAM:", novos.len())
+for each a in novos {
+    post("  " + a["onde"])
+    post("    catraca: " + linha_nova("p2", a["pagina"], a["codigo"], a["linha"]))
+}
+sys.exit(1)

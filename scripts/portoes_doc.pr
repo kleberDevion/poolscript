@@ -1,0 +1,77 @@
+# A leitura da doc pros portões (notas/PORTOES.md): as páginas de uma pasta e
+# os blocos cercados de cada página, com o rótulo da cerca. O `roda` do P1
+# (`scripts/confere_saida_doc.pr`) e o P2 (`scripts/confere_checador.pr`) leem
+# a doc do mesmo jeito.
+import os
+
+
+# As páginas `.md` de `dir` (ou a própria, quando é uma página), em ordem de
+# pasta.
+list funct lista_md(str dir) {
+    list saida = []
+    if dir.endswith(".md") {
+        addEnd(saida, dir)
+        return saida
+    }
+    for each item in os.ls(dir) {
+        str caminho = dir + "/" + item["name"]
+        if item["type"] == "dir" {
+            for each f in lista_md(caminho) {
+                addEnd(saida, f)
+            }
+        }
+        elif item["name"].endswith(".md") {
+            addEnd(saida, caminho)
+        }
+    }
+    return saida
+}
+
+
+# A cerca pode estar indentada (bloco dentro de item de lista): a margem é do
+# markdown, não do código.
+int funct recuo(str linha) {
+    int n = 0
+    while n < linha.len() and linha[n] == " " {
+        n = n + 1
+    }
+    return n
+}
+
+
+# Os blocos cercados da página, na ordem: o rótulo da cerca (`ps`, `ps
+# contexto`, `saida`, `entrada`, `erro`, `c`...), a linha e o texto.
+list funct blocos_de(str txt) {
+    list blocos = []
+    bool dentro = False
+    list atual = []
+    str rotulo = ""
+    int ini = 0
+    int margem = 0
+    int n = 0
+    for each linha in txt.splitlines() {
+        n = n + 1
+        str limpa = linha.strip()
+        if dentro {
+            if limpa == "```" {
+                addEnd(blocos, {"rotulo": rotulo, "linha": ini, "texto": "\n".join(atual)})
+                dentro = False
+                atual = []
+            }
+            elif recuo(linha) >= margem {
+                addEnd(atual, linha[margem:linha.len()])
+            }
+            else {
+                addEnd(atual, limpa)
+            }
+        }
+        elif limpa.startswith("```") {
+            dentro = True
+            rotulo = limpa[3:limpa.len()].strip()
+            ini = n
+            margem = recuo(linha)
+            atual = []
+        }
+    }
+    return blocos
+}
