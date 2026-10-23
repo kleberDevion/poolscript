@@ -13,6 +13,7 @@ import sockets
 import json
 import os
 import sys
+from '../scripts/enquadramento.pr' import manda_mensagem, le_mensagem as le_quadro
 
 PORTA = 47119
 ALVO  = "teste/alvo_debug.pr"
@@ -28,51 +29,23 @@ funct checa(nome, veio, esperado) {
 }
 
 # ── enquadramento do DAP ────────────────────────────────────────────────────
-# `Content-Length: N\r\n\r\n` + N bytes. O `recv` devolve o que tiver chegado,
-# não o que se pediu, então ler byte a byte é o que garante não invadir a
-# mensagem seguinte nem ficar com meia mensagem no buffer.
-funct le_byte(sock) {
-    b = sock.recv(1)
-    if b == Null {
-        return ""
-    }
-    return str(b.decode())
-}
+# `Content-Length: N\r\n\r\n` + N BYTES: o de `scripts/enquadramento.pr`, o
+# mesmo do portão P3. Aqui o tamanho era o `len` do texto, que conta
+# caracteres, e a leitura comparava essa conta com os bytes que chegavam: com
+# acento numa mensagem, a ida saía cortada e a volta esperava bytes que não
+# vinham (teste-7). `BUF` guarda o que já chegou e ainda não é mensagem.
+BUF = { "b": b"" }
 
 funct le_mensagem(sock) {
-    cab = ""
-    while True {
-        c = le_byte(sock)
-        if c == "" {
-            return Null
-        }
-        cab = cab + c
-        if len(cab) >= 4 and cab[len(cab) - 4:len(cab)] == "\r\n\r\n" {
-            break
-        }
-    }
-    marca = cab.find("Content-Length:")
-    if marca < 0 {
+    m = le_quadro(sock, BUF)
+    if m.len() == 0 {
         return Null
     }
-    resto = cab[marca + 15:len(cab)]
-    fim = resto.find("\r\n")
-    tam = int(resto[0:fim].strip())
-
-    corpo = ""
-    while len(corpo) < tam {
-        pedaco = sock.recv(tam - len(corpo))
-        if pedaco == Null {
-            return Null
-        }
-        corpo = corpo + str(pedaco.decode())
-    }
-    return json.parse(corpo)
+    return m
 }
 
 funct manda(sock, obj) {
-    texto = json.stringify(obj)
-    sock.sendall("Content-Length: " + str(len(texto)) + "\r\n\r\n" + texto)
+    manda_mensagem(sock, obj)
 }
 
 # Lê até chegar uma resposta ao pedido `seq`. Eventos que vierem no caminho são

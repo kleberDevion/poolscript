@@ -124,6 +124,17 @@ em cada item):
   nem por import (rodando dá `NameError`)": o servidor do editor trata o nome
   do argumento como variável. Medido no `server.js` do 17.0.20, com um pedido
   de hover na coluna do `forAll`. `motor` (editor).
+
+  O portão P3 (2026-10-23, no 18.0.0) mediu a doc inteira: 574 lugares, em
+  blocos que o `--check` aprova. Ele achou sozinho o `room_id` de
+  `app.channel.emit(msg, room_id="geral")` (`docs/jinker/channel/channel.md:25`).
+  Entram também o parâmetro de validação do campo do `model` (`length` em
+  `nome: str(length=60)`, `docs/LANGUAGE.md:737`) e o argumento nomeado que
+  fica numa linha só dele, dentro de uma chamada de várias linhas (`border=2,`
+  em `docs/qrcode.md:29`). A causa está no `editor/vscode/server.js`. O
+  `chamadaEm`, que acha a chamada e os argumentos nomeados em volta do
+  cursor, é usado só pelo completion e pela ajuda de assinatura; o `onHover`
+  não pergunta a ele.
 - **editor-2** (relato dele, 2026-10-21: "a lib sockets não tem as constantes
   em sua doc") Medido no servidor do editor instalado (17.0.20), com pedidos
   de hover:
@@ -137,6 +148,67 @@ em cada item):
     `request` da rota: sai "receptor de tipo desconhecido · 5 tipos têm
     `get`" com a frase do `str.get`, que fala de outra coisa.
   `motor` (editor).
+
+  O portão P3 (2026-10-23) achou o terceiro caso em 49 lugares da doc. O
+  `request` que a jinker põe à disposição dentro da rota e do middleware tem
+  o hover "módulo `request` — falta `import request` neste arquivo (rodando
+  dá `NameError`)": o editor toma o nome pelo módulo cliente `request`
+  (`docs/jinker/middleware/middleware.md:29`, `docs/jinker.md:53`).
+- **editor-3** (achado pelo portão P3, 2026-10-23) O hover diz "nome não
+  definido neste arquivo nem por import (rodando dá `NameError`)" em nomes que
+  o motor liga, em blocos que o `--check` aprova. Na doc inteira são 549
+  lugares. Pelo papel que o portão dá ao nome:
+  - **o módulo na linha do import** (96): o `X` de `from X import ...`
+    (`from jinker import Jinker`, `from os import getenv`) e o de
+    `import X as Y` (`import manpu as mp`). O `import X` sozinho responde
+    certo. No `from json import parse`, o `json` sai como o apelido de tipo
+    (`json = dict`);
+  - **o nome que o motor põe à disposição** (102): `__name__`, os `_index`,
+    `_match` e `_count` do `count each`, o nome do decorador (`@dataentity`,
+    `@NonNull`) e o modificador `static`;
+  - **o membro na própria declaração** (123): o campo escrito `nome: str`
+    (no `model` e na Entity, `Entity P { nome: str }`) e o método
+    (`funct falar(self)`, o `__init__`);
+  - **o nome que o programa liga sem ser por atribuição** (228): a variável do
+    `catch`, o parâmetro de lambda (com tipo ou sem), a variável da
+    compreensão e do gerador (`[n * 2 for each n in nums]`), os nomes depois
+    do primeiro no `for each nome, idade in ...`, o `as` do `using`, o nome
+    do `case` (`case v if v < 50`, `case [x, y]`, `case _`), o `global`, o
+    membro de `enum`, o campo da Entity escrito `str nome`, a variável de topo
+    com modificador (`private int n = 1`, que o `--ast` dá como `FieldDecl`) e
+    a exceção inventada no `raise` (`raise MinhaFalha`).
+
+  O contrário também acontece, pela mesma causa. Depois do laço
+  `for each i in [1, 2, 3] { ultimo = i }`, o hover diz que `i` e `ultimo`
+  existem ("declarada na linha 1", "na linha 2"), e rodando os dois dão
+  `NameError` (a doc promete isso em 4.6.3; o `--check` também erra, motor-18).
+  As causas estão em dois lugares do editor:
+  - no `editor/vscode/analise.js`, o `ligacoesDe` só liga a atribuição, a
+    declaração (`VarDecl`), a variável do `for each`, as declarações de topo
+    e o desempacotamento. E o escopo só existe pro módulo, pra funct e pra
+    Entity: bloco (laço, `if`, `try`) não tem;
+  - no `editor/vscode/server.js`, o `onHover` não trata o nome do módulo na
+    linha do `from` nem na do `import ... as`, nem os nomes que o motor liga.
+    O `__name__`, por exemplo, o completion oferece e o hover não conhece.
+
+  `motor` (editor).
+- **editor-4** (achado pelo portão P3, 2026-10-23) O completion depois de um
+  ponto devolve todos os nomes do escopo (de 132 a 141 nos blocos da doc), e
+  não o membro que o programa usa, em dois casos:
+  - **a cadeia que continua na linha de baixo** (26 lugares): `.send(...)`
+    debaixo de `return jinker.JinkerResponse()` (`docs/jinker/cookie/cookie.md:43`),
+    `.get("dados")` debaixo de `request.get(url=u)` e `.json()`
+    (`docs/linguagem/01-estrutura-lexica.md:168`);
+  - **a lista ou a tupla escrita antes do ponto** (7 lugares):
+    `[10, 20, 30].index(20)` (`docs/list/index/index.md:24`),
+    `(10, 20).contains(10.0)`.
+
+  O `docs/lsp.md` promete que o literal responde pelo tipo dele (`[…]`, `{…}`
+  e `"abc".` direto) e que tipo desconhecido "não sugere nada". A causa está
+  no `cadeiaAntes` do `editor/vscode/analise.js`. Ele lê só a linha do
+  cursor, e o grupo `[...]` ou `(...)` sem nome antes dele termina a cadeia
+  vazia. Aí o completion responde como se não houvesse receptor. `motor`
+  (editor).
 
 ## motor
 
@@ -327,6 +399,40 @@ em cada item):
   Por isso o membro neles também passa (`len.foo()`, `gen().foo()`). A
   chamada de membro que não existe do P2 acha o do builtin
   (`len.p2_nao_existe()`, na catraca). `motor` (checador).
+- **motor-18** (achado pelo portão P3, 2026-10-23,
+  `docs/linguagem/04-variaveis-escopo-atribuicao.md:271`) O `--check` não
+  aplica o escopo do corpo do laço. A doc promete (4.6.3) que o corpo é um
+  escopo por volta e que a variável do `for each` não vaza do laço. O
+  `--check` dá `{"ok":true}` em três programas que rodando dão `NameError`,
+  com JIT e sem:
+  - o nome criado numa volta e lido na seguinte (o exemplo da doc): no corpo
+    de `for each i in [1, 2, 3]`, `if i > 1 { post(prev) }` e depois
+    `prev = i`. Rodando: `NameError: name 'prev' is not defined`, na linha 3;
+  - a variável do `for each` depois do laço: `post(i)` depois de
+    `for each i in [1, 2, 3] { ultimo = i }`. Rodando: `NameError: name 'i'
+    is not defined`;
+  - o nome criado no corpo, depois do laço: `post(ultimo)` no mesmo
+    programa. Rodando: `NameError: name 'ultimo' is not defined`.
+
+  O portão achou o primeiro pelo hover. No `prev`, o editor diz "nome não
+  definido", que é o que o motor faz rodando. Nos outros dois, o editor erra
+  junto com o checador (editor-3). `motor` (checador).
+- **motor-19** (achado pelo portão P3, 2026-10-23,
+  `docs/linguagem/01-estrutura-lexica.md:333`) O `--tokens` lê como código o
+  formato da f-string, o trecho depois do `:`. Em
+  `post(f"{3.5:.1f}|{7:>4}|{255:x}")` saem, marcados `"em":"fstring"`:
+  - um `DOT` e um `SINC` vazio pro `.1f`. O `SINC` é a marca de erro do
+    lexer, e aqui o programa é válido e o `--tokens` não lista erro nenhum;
+  - um `OP` e um `INT` pro `>4`;
+  - um `IDENT` pro `x`.
+
+  A doc (1.6.3) diz que depois do `:` vem o formato do `format()`
+  (`[preenche][<>^][0][largura][.precisao][tipo]`), e não uma expressão. Só o
+  campo entre chaves dentro do formato (`{x:{w}.2f}`) é expressão. Com
+  `int n = 255` e `post(f"{n:x}")`, o hover do editor sobre o `x` diz "nome
+  não definido neste arquivo nem por import (rodando dá `NameError`)", e o
+  programa passa no `--check` e imprime `ff`, com JIT e sem. `motor` (o
+  `--tokens`).
 
 ## os
 
@@ -374,6 +480,23 @@ em cada item):
   `TypeError: sequence item 1: expected a bytes-like object, int found`, o
   motor dá `... expected a byte-like object, int found`, e passa (doc-1).
   `teste`.
+- ~~**teste-6** (achado montando o P3, 2026-10-23) O trabalho `portao` do
+  `.github/workflows/ci.yml` roda o `make check` sem instalar o servidor do
+  editor em `editor/vscode`. O teste do LSP dizia "PULOU" e nunca rodava no
+  CI do Linux; o `build.yml` instala no macOS e no Windows. Com o P3, o
+  portão novo pararia vermelho lá.~~ Corrigido no commit do P3: o trabalho
+  roda o `npm install --omit=dev` em `editor/vscode` antes do `make check`,
+  como o `build.yml` (não dá pra conferir no runner enquanto o CI estiver
+  parado pela cobrança).
+- ~~**teste-7** (achado montando o P3, 2026-10-23, lendo o código) O
+  `teste/depurador.pr` montava o `Content-Length` com o `len` do texto, que
+  conta caracteres, e o protocolo conta bytes. Na leitura, ele comparava a
+  mesma conta com os bytes que chegavam. Com acento numa mensagem, a ida
+  sairia cortada, e a volta esperaria bytes que não vêm. O teste passava
+  porque as mensagens dele não têm acento (o alvo só tem acento em
+  comentário).~~ Corrigido no commit do P3: o depurador usa o
+  `scripts/enquadramento.pr`, o mesmo enquadramento do portão, que conta
+  bytes.
 
 ## doc
 
@@ -620,3 +743,11 @@ e sem, e dá o mesmo erro.
   rodando: `login(user="x", password="y")` dá `TypeError: 'user' is an invalid
   keyword argument for login()`. Qual dos dois nomes fica é decisão dele. 14
   páginas na catraca (portão `titulo`). `os dois`.
+- ~~**doc-27** (achado montando o P3, 2026-10-23) O lote do 18.0.0 deixou
+  frases sobre o `.type()` que saiu. No `docs/lsp.md`, o receptor de tipo
+  desconhecido "recebe ao menos o que todo valor tem", e o hover de `int n`
+  "diz que só tem `type()`". Medido no 18.0.0, o completion desse receptor
+  não dá nada, e o hover de `int n` diz **sem membros**. Três testes do
+  `editor/vscode/teste_servidor.js` ainda tinham "universais" no nome, e eles
+  conferem que o `type` não aparece.~~ Corrigido no commit do P3: as duas
+  frases e os três nomes dizem o que o editor faz.

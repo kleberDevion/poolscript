@@ -9,10 +9,12 @@
 #
 # - portão: `check` (o `--check` de cada bloco), `roda` (o bloco rodando,
 #   com JIT e sem), `p2` (cada chamada de cada membro, no `--check` e
-#   rodando: `scripts/confere_checador.pr`) ou `titulo` (a assinatura do
-#   título de uma página de método contra o motor: `scripts/audita_doc.pr`);
+#   rodando: `scripts/confere_checador.pr`), `titulo` (a assinatura do
+#   título de uma página de método contra o motor: `scripts/audita_doc.pr`)
+#   ou `p3` (o servidor do editor em cada bloco: `scripts/confere_editor.pr`);
 # - página: a página da doc (`docs/...`); no `p2`, o membro chamado
-#   (`membro:dono.nome`), e a impressão é a do texto da chamada;
+#   (`membro:dono.nome`), e a impressão é a do texto da chamada; no `p3`, a
+#   impressão é a do lugar conferido (`#p3 hover nome 2:9`) junto do bloco;
 # - impressão: os 12 primeiros dígitos do SHA-256 do texto do bloco. A chave
 #   não é o número da linha, que anda quando alguém escreve acima, nem a
 #   primeira linha, que se repete (`import sockets` abre todos os exemplos da
@@ -75,7 +77,7 @@ Null funct conhecidas_de(str portao, dict r, list ruins) {
             addEnd(ruins, CATRACA + ":" + str(n) + ": " + l)
             continue
         }
-        if not (p[0] in ["check", "roda", "p2", "titulo"]) or not (p[4] in ["todos", "linux", "darwin", "windows"]) {
+        if not (p[0] in ["check", "roda", "p2", "titulo", "p3"]) or not (p[4] in ["todos", "linux", "darwin", "windows"]) {
             addEnd(ruins, CATRACA + ":" + str(n) + ": " + l)
             continue
         }

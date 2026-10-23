@@ -208,11 +208,85 @@ Nas páginas de método: 206 conferidas, 192 batem; 14 dão aos parâmetros
 outros nomes que o motor (doc-26); 73 métodos sem página com a assinatura no
 título.
 
-## P3: o editor e o motor concordam (a fazer)
+## P3: o editor e o motor concordam
 
-O diagnóstico do servidor do editor é o do `--check` em todo bloco da doc; o
-hover nunca diz "nome não definido" num programa que o `--check` aprova; o
-completion depois de `x.` lista o que o motor dá ao tipo de `x`.
+`scripts/confere_editor.pr`, no `make check` depois do P2. Em cada bloco
+```ps da doc, com os ```ps contexto anteriores da página na frente (os blocos
+do portão `check`), o portão conversa com o servidor do editor
+(`editor/vscode/server.js`, o mesmo do VS Code, do Neovim e do IntelliJ) como
+o VS Code faz, e confere:
+
+- **o diagnóstico**, em todo bloco: o que o servidor publica é o que o
+  `--check --utf16` do mesmo arquivo diz. Cada erro tem a frase
+  (`Tipo: mensagem`), o começo e o fim (`l2`/`c2`); cada aviso tem a frase e o
+  começo. A posição é em UTF-16, a do protocolo. O servidor que não publica
+  nada também reprova;
+- **o hover**, no bloco que o `--check` aprova: em cada nome do bloco (os
+  `IDENT` do `--tokens --utf16`), ele não diz "não definido" nem "rodando dá
+  `NameError`", e não vem em branco (`docs/lsp.md`: "o hover nunca fica em
+  branco");
+- **o completion depois de `x.`**, no bloco que o `--check` aprova. Quando ele
+  lista alguma coisa, a lista tem o membro que o próprio programa usa; a
+  exceção é a chave de dict (`d.chave`), que vale qualquer nome. Quando `x` é
+  declarado com um tipo do motor (`Jinker app = ...`, o parâmetro `str s`; o
+  tipo sai do `--ast`), a lista é exatamente a desse tipo no `--metadata`.
+
+As duas fontes do completion são independentes do editor: o programa que
+passa no `--check` e a declaração escrita. Nenhum comando do motor diz o tipo
+que o checador deduz de um nome.
+
+Como roda:
+
+- o cliente do protocolo é em Jinga. O portão escuta numa porta do loopback
+  que o sistema escolhe, e o servidor (`node editor/vscode/server.js
+  --socket=<porta>`) conecta nela. O enquadramento (`Content-Length`, que
+  conta BYTES) está em `scripts/enquadramento.pr`, o mesmo do
+  `teste/depurador.pr`;
+- um servidor só pra doc inteira: um `didOpen` por bloco, os pedidos e um
+  `didClose`; no fim, `shutdown` e `exit`. Cada leitura tem prazo (60 s). O
+  servidor que não conecta ou não responde reprova, e o portão diz isso;
+- o servidor usa o motor do portão (`sys.executable`) e a doc da árvore. O
+  arquivo de cada bloco fica na pasta da rodada, e o `--check` do portão e o
+  do servidor leem o mesmo caminho;
+- nenhum exemplo roda (só o `--check`, o `--tokens`, o `--ast` e o servidor).
+  Por isso não há isolamento, e o portão roda também no Windows;
+- sem o `node`, ou sem o `npm install` em `editor/vscode`, o portão fica
+  vermelho e diz o que falta: portão que não roda calado é falso verde. O CI
+  do Linux instala antes do `make check` (teste-6);
+- o fragmento (bloco com `...` que o `--check` recusa) fica de fora, como no
+  portão `check`.
+
+O relatório diz o papel de cada nome, pelos tokens em volta dele: nome de
+argumento (`f(nome=valor)`), nome no import (a linha começa com `from` ou
+`import`), nome que o motor liga (depois de `@`, e o `__name__`, o `_index`,
+o `_match`, o `_count` e o `static`), membro na declaração (depois de
+`funct`, ou antes de `:`) e nome ligado pelo programa (o resto). O papel ajuda
+a ler o relatório; quem diz o item é a lista.
+
+Na catraca, o portão é `p3`, a página é a da doc, e a impressão é a do lugar
+conferido junto do bloco: `#p3 diag`, `#p3 hover nome 2:9` (linha e coluna
+dentro do bloco), `#p3 membro x.nome 2:9` e `#p3 tipo x:T 2:9`. Mudou o bloco,
+ou o lugar andou dentro dele, a falha volta a ser olhada.
+
+Medido na entrada (2026-10-23, no Mac, 18.0.0): 1.368 blocos conferidos (24
+fragmentos de fora), 10.121 hovers e 2.644 completions depois de `x.`, 233 com
+o tipo declarado, em 4 minutos. O diagnóstico do editor bateu com o do
+`--check` em todos os blocos, nenhum hover veio em branco, e a lista dos 233
+receptores declarados é a do `--metadata`. As 1.207 discordâncias:
+
+| causa | lugares | item |
+|---|---|---|
+| o hover do nome de argumento diz "não definido" (`room_id=`, o `length=` do campo do `model`) | 574 | editor-1 |
+| o hover diz "não definido" em nomes que o motor liga: o módulo na linha do `from`, o `__name__`, o decorador, o membro na declaração, a variável do `catch`, da lambda, da compreensão, do `using`, do `case` | 549 | editor-3 |
+| o `request` da rota leva o hover do módulo cliente ("falta `import request`") | 49 | editor-2 |
+| o completion dá os nomes do escopo depois do ponto que começa a linha (a cadeia que continua) e do ponto de uma lista ou tupla escrita | 33 | editor-4 |
+| o `--check` aprova o nome do laço lido fora da volta dele; o hover está certo | 1 | motor-18 |
+| o `--tokens` lê o formato da f-string como código: o `x` de `{n:x}` vira nome | 1 | motor-19 |
+
+A prova de que o portão pega: contra o 18.0.0, ele achou sozinho o editor-1,
+o relato do `forAll`, pelo `room_id` de `docs/jinker/channel/channel.md:25`. O
+bloco do próprio `forAll` o `--check` recusa (jinker-7), e o hover só se
+confere em bloco que passa.
 
 ## P4: a gramática escrita e o gerador (a fazer)
 
