@@ -150,6 +150,10 @@ em cada item):
   (17.0.19) e no 17.0.20; com 8 MB os seis passam. O conserto que o parser já
   recebeu (um teto contado, `PS_PARSE_PROF_MAX`, que dá o mesmo resultado em
   qualquer pilha) falta no regex e nos blocos e decoradores. `motor`.
+  Medido de novo em 2026-10-23, na rodada do P1: `ulimit -s` dá 8.192 KB no
+  shell e 65.532 KB dentro do `make` 3.81; os mesmos seis falham no `make
+  check` e passam com o teto em 8 MB (9.993 de 9.993). Nesse dia virou por
+  engano um item novo, o teste-3 do `ec7f562`, tirado no commit seguinte.
 - **motor-2** (achado pelo portão `check`, `docs/regex.md:17`) A chamada
   `match(r"\d+", "123")` sozinha na linha, a forma que `docs/regex.md` ensina
   (`from regex import match`), é lida como o comando `match`, e o erro sai na
@@ -263,16 +267,6 @@ em cada item):
   antes do 1º exemplo (`prova_do_kill`), que reprova a forma sem o `--`; sem
   isolador, nenhum exemplo roda (vermelho no Linux e no macOS; no Windows, o
   portão diz que não rodou).
-- **teste-3** (achado no `make check` do Mac, 2026-10-23) O GNU make 3.81 do
-  macOS sobe o limite da pilha até o teto e os filhos herdam: `ulimit -s` dá
-  8.192 KB no shell e 65.532 KB dentro do `make`. Com 64 MB, seis casos de
-  aninhamento fundo não estouram a pilha, e o teste, que espera o erro, falha:
-  "regex.compile com 20 mil grupos aninhados e ValueError", "8000 blocos
-  aninhados e 20000 decoradores sao erro limpo no --check", "regex profundo
-  demais e erro, nao morte" e os `dif #536`, `#1260` e `#1266`. O
-  `./testar` direto, ou o `make check` com o teto em 8 MB, passa nos 9.993. No
-  Linux, o GNU make 4.3 devolve aos filhos o limite de antes. A suíte depende
-  do limite da pilha de quem roda. `teste`.
 - **teste-4** (achado na rodada do P1, 2026-10-23) O `teste/e2e/mail_local.pr`
   passa e deixa os servidores falsos vivos, escutando até alguém matar. No
   Mac, depois de `./pool teste/e2e_roda.pr mail_local` (rc 0), sobraram 19:
