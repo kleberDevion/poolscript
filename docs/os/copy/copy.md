@@ -11,6 +11,16 @@ os.copy(src: str, dst: str) -> Null
 | `src` | caminho do arquivo de origem |
 | `dst` | caminho de destino |
 
+Os exemplos desta página pressupõem os arquivos `dados.db` e `config.json` e
+a pasta `backup` (o `copy` não cria a pasta de destino):
+
+```ps contexto
+import os
+os.writeFile("dados.db", "conteúdo do banco")
+os.writeFile("config.json", "{\"porta\": 8000}")
+os.mkdir("backup")
+```
+
 ---
 
 ## Uso

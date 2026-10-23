@@ -25,7 +25,7 @@ m = mail.MailMessage()
 
 ## Exemplo completo
 
-```ps
+```ps sem-rodar: lê o remetente do ambiente (MAIL_USER) e anexa arquivos da máquina
 import mail
 import os
 

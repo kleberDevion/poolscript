@@ -33,6 +33,12 @@ if (not os.exists("config.json")) {
 sys.exit()                     # encerra com sucesso (código 0)
 ```
 
+Sem o `config.json` na pasta:
+
+```saida rc=1
+config não encontrado
+```
+
 ---
 
 ## Com `finally`

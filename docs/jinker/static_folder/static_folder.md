@@ -160,7 +160,7 @@ uso legítimo e o servidor não tem como saber qual `.pr` é o seu.
 
 ## Exemplo: API + front no mesmo servidor
 
-```ps
+```ps sem-rodar: sobe o servidor na porta 8080 e fica escutando
 from jinker import Jinker, cors, jsonify
 
 app = Jinker(__name__, static_folder="frontend/dist")

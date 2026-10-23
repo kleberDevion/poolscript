@@ -18,7 +18,7 @@ bool autenticado = False
 `argv[0]` é o **nome do script**; os seus argumentos vêm a partir de `argv[1]`
 — a convenção de C, Python e JS:
 
-```ps
+```ps sem-rodar: lê os argumentos da linha de comando (jinga app.pr criar joao)
 # $ jinga app.pr criar joao
 script  = sys.argv[0]   # "app.pr"
 comando = sys.argv[1]   # "criar"

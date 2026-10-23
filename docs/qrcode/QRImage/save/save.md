@@ -16,7 +16,7 @@ obrigatório — `img.save()` é erro de aridade.
 
 **`QRImage`** — o **próprio objeto**, não `Null`. Por isso `save` encadeia:
 
-```ps
+```ps sem-rodar: grava em /tmp, fora da pasta do exemplo
 import qrcode
 
 img = qrcode.make("texto")
@@ -29,7 +29,7 @@ A extensão do caminho **não** escolhe formato nenhum. O motor gera PNG e grava
 esses bytes no caminho que você deu, seja qual for o nome. Salvar como `.jpg`
 produz um arquivo PNG com nome errado:
 
-```ps
+```ps sem-rodar: grava em /tmp, fora da pasta do exemplo
 import qrcode
 import os
 
@@ -46,7 +46,7 @@ arquivo pela extensão pode recusá-lo. Use `.png`.
 Se o caminho é um diretório existente, o arquivo nasce dentro dele com o nome
 do campo [`.name`](../name/name.md) (`"qrcode.png"` por padrão):
 
-```ps
+```ps sem-rodar: grava em /tmp, fora da pasta do exemplo
 import qrcode
 
 img = qrcode.make("texto")

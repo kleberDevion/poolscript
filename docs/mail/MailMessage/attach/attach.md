@@ -12,8 +12,17 @@ Os exemplos desta página pressupõem:
 
 ```ps contexto
 import mail
+import os
+import bytes
 from jinker import request
 MailMessage m = mail.MailMessage()
+# os arquivos dos exemplos (os binários com o começo de um arquivo de verdade)
+os.writeFile("relatorio.pdf", bytes.fromhex("255044462d312e340a25e2e3cfd30a0000"))
+os.writeFile("nota.pdf", bytes.fromhex("255044462d312e340a25e2e3cfd30a0000"))
+os.writeFile("doc1.pdf", bytes.fromhex("255044462d312e340a25e2e3cfd30a0000"))
+os.writeFile("doc2.pdf", bytes.fromhex("255044462d312e340a25e2e3cfd30a0000"))
+os.writeFile("planilha.xlsx", bytes.fromhex("504b030414000000080000"))
+os.writeFile("imagem.png", bytes.fromhex("89504e470d0a1a0a0000000d49484452"))
 ```
 
 ---

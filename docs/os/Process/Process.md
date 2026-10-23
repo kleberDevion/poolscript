@@ -95,7 +95,7 @@ continuam sendo atendidas.
 
 ## Terminal (`pty=True`)
 
-```ps
+```ps sem-rodar: abre o htop num terminal e espera quem usa
 p = os.run(["htop"], capture="live", pty=True)
 p.resize(120, 40)
 ```

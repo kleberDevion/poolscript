@@ -37,7 +37,7 @@ post("já estou aqui:", pid)     # imprime na hora, não depois de 3s
 
 O que volta é o **PID** (`int`) do processo, pra acompanhar ou matar:
 
-```ps
+```ps sem-rodar: dispara o ffmpeg, que a máquina pode não ter
 pid = os.run(["ffmpeg", "-i", entrada, saida])
 os.run(["kill", str(pid)])      # se precisar interromper
 ```
@@ -151,7 +151,7 @@ entre aspas: dado de fora não vai pro `cmd.exe` com `%`.
 `os.run` NÃO passa pelo shell, então metacaracteres não são interpretados —
 são só texto. Compare:
 
-```ps
+```ps sem-rodar: executa rm -rf ~ de propósito (é o exemplo do perigo do os.cmd)
 nome = "x; rm -rf ~"                # valor malicioso vindo de fora
 
 os.cmd("mkdir " + nome)             # PERIGO: o shell executa o `rm -rf ~`

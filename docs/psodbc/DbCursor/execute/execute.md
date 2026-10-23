@@ -14,6 +14,15 @@ quem usa):
 ```ps contexto
 import psodbc
 from jinker import request
+# as tabelas dos exemplos, com algumas linhas
+psodbc.query(base="loja.db", cmd="CREATE TABLE produtos (id INTEGER PRIMARY KEY, nome TEXT, preco REAL)")
+psodbc.query(base="loja.db", cmd="INSERT INTO produtos (nome, preco) VALUES ('caneta', 2.5), ('caderno', 15.0), ('mochila', 120.0)")
+psodbc.query(base="loja.db", cmd="CREATE TABLE users (id INTEGER PRIMARY KEY, nome TEXT, idade INT, ativo INT)")
+psodbc.query(base="loja.db", cmd="INSERT INTO users (nome, idade, ativo) VALUES ('Ana', 30, 1), ('Beto', 25, 1), ('Caio', 17, 0)")
+psodbc.query(base="loja.db", cmd="CREATE TABLE logs (id INTEGER PRIMARY KEY, mensagem TEXT)")
+psodbc.query(base="loja.db", cmd="INSERT INTO logs (mensagem) VALUES ('inicio'), ('login'), ('compra'), ('logout')")
+psodbc.query(base="loja.db", cmd="CREATE TABLE clientes (id INTEGER PRIMARY KEY, nome TEXT, ativo INT)")
+psodbc.query(base="loja.db", cmd="INSERT INTO clientes (nome, ativo) VALUES ('Loja A', 1), ('Loja B', 0)")
 DbConnection conn = psodbc.connect(driver="sqlite", base="loja.db")
 DbCursor cursor = conn.cursor()
 ```

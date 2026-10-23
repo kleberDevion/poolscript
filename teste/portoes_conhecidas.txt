@@ -50,3 +50,30 @@ check	docs/regex.md	12e0c09b89e5	motor-2	todos	linha 17: match("\d+", "abc123") 
 check	docs/jinker/channel/channel.md	bf409c08a970	jinker-7	todos	linha 18: app.channel(forAll=msg)
 check	docs/jinker.md	247ebb623b66	jinker-7	todos	linha 497: @app.socket("/chat", channel=True)
 check	docs/jinker.md	dc4d4c856043	jinker-7	todos	linha 719: import psodbc
+roda	docs/sockets/recv/recv.md	7e1625bc5090	doc-1	todos	linha 45: import sockets
+roda	docs/sockets/recvfrom/recvfrom.md	70162e1c0f7f	doc-1	todos	linha 47: import sockets
+roda	docs/sockets/getsockopt/getsockopt.md	eae40c20b1f9	doc-1, doc-6	todos	linha 46: import sockets
+roda	docs/sockets/close/close.md	f7f18296cc02	doc-2	todos	linha 55: import sockets
+roda	docs/sockets/getpeername/getpeername.md	d4d4d2aa9d47	doc-3	todos	linha 34: import sockets
+roda	docs/sockets/send/send.md	938a258ade33	doc-4	todos	linha 42: import sockets
+roda	docs/sockets/detach/detach.md	c05ab5d6fa97	doc-5	darwin	linha 47: import sockets
+roda	docs/sockets/connect_ex/connect_ex.md	a092e69eaf07	doc-5	darwin	linha 43: import sockets
+roda	docs/sockets/getpeername/getpeername.md	9807faa4f34b	doc-5	darwin	linha 55: import sockets
+roda	docs/sockets/setsockopt/setsockopt.md	c89ffa558fd7	doc-6	darwin	linha 35: import sockets
+roda	docs/sockets/setsockopt/setsockopt.md	cc682177f44c	doc-6	darwin	linha 70: import sockets
+roda	docs/psodbc/query/query.md	3973b289213e	doc-19	todos	linha 54: resultado = psodbc.query(
+roda	docs/psodbc/query/query.md	b8035cef64e4	doc-19	todos	linha 67: psodbc.query(
+roda	docs/jinker/request/path_param/path_param.md	a9e23d6442ca	doc-20	todos	linha 43: # GET /user/42?fmt=json
+roda	docs/jinker/request/file/file.md	e9b87f0e36e9	doc-20	todos	linha 74: # só imagens; um .pdf aqui levanta erro
+roda	docs/jinker/request/get_json/get_json.md	e5bf6a1d1c54	doc-20	todos	linha 54: # preciso de vários → get_json
+roda	docs/jinker/request/header/header.md	ada13b739c0f	doc-20	todos	linha 41: # um header, jeito recomendado
+roda	docs/mail/MailMessage/attach/attach.md	0cb0f783e9bf	doc-20	todos	linha 48: # dentro de uma rota que recebe upload
+roda	docs/psodbc/DbCursor/execute/execute.md	d4f46ce872ca	doc-20	todos	linha 54: nome = request.get("nome")
+roda	docs/json.md	0b9eb362e96c	doc-20	todos	linha 43: import json
+roda	docs/json/json.md	5b9f656e856c	doc-20	todos	linha 43: import json
+roda	docs/qrcode/QRImage/to_file/to_file.md	8842476ee3cf	doc-21	todos	linha 21: import qrcode
+roda	docs/os/loadFile/loadFile.md	6256e0fdc14b	doc-24	todos	linha 42: import os
+roda	docs/manpu/read/read.md	fe5f49104b5c	motor-5	todos	linha 27: import manpu as mp
+roda	docs/os/loadFile/loadFile.md	592d8ea5b84f	motor-8	todos	linha 98: os.loadFile("legado.csv", mode="latin-1")
+roda	docs/os/loadFile/loadFile.md	fa94a719f6ae	motor-8	todos	linha 108: os.loadFile("x.txt", mode="xyz")
+roda	docs/manpu.md	f4ca85e6ae62	motor-9	todos	linha 58: nm = mp.write(

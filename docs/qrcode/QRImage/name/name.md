@@ -54,7 +54,7 @@ termina em `/`, é `.`, é `..`, ou é um diretório que já existe — o arquiv
 gravado em `<pasta>/<name>`. Se for um **caminho de arquivo**, o `.name` é
 ignorado e vale o caminho.
 
-```ps
+```ps sem-rodar: grava em /tmp, fora da pasta do exemplo
 import qrcode
 
 img = qrcode.make("https://exemplo.com", name="site.png")

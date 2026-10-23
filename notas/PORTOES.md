@@ -48,30 +48,44 @@ YARPGen).
   linhas nas mensagens não anda. Nesse caso o contexto roda antes, na mesma
   pasta, pra criar o que a página pressupõe (um arquivo, uma tabela).
 - Cada rodada é isolada, porque o exemplo faz o que a doc ensina (apaga
-  arquivo, abre porta, manda sinal, dispara processo): pasta própria e vazia,
-  que é o HOME dele; ambiente limpo; no macOS o `sandbox-exec` (escrita só na
-  pasta, rede só no loopback e fora das portas de serviço, como a 8080, sinal
-  só pros próprios filhos); no Linux o `bwrap` (disco só de leitura fora da
-  pasta, rede e processos num espaço próprio); prazo por rodada. **Nenhum
-  exemplo roda sem o isolamento**: no Linux sem o `bwrap` e no macOS sem o
-  `sandbox-exec`, o portão para vermelho dizendo o que falta; no Windows, que
-  não tem isolador, o portão `roda` não roda nenhum exemplo, diz isso e sai
-  com 0 (decisão do Kleber, 2026-10-23). O portão `check` roda lá.
-- O que o exemplo deixa vivo (o servidor que ele abre) morre no prazo e no
-  fim junto com o grupo de processos dele, pelo `kill -9 -- -<grupo>`, a
-  forma do POSIX: o número negativo vem depois do `--`, e o sinal vai no 1º
-  argumento (com `-s KILL`, o procps toma um grupo pequeno, como o 83, por
-  sinal). Sem o `--`, o `kill` do procps (Ubuntu 24.04) lê só o 1º dígito do
-  número. Em 2026-10-22, com o
-  portão rodando como root na VPS, `kill -9 -1426999` virou `kill(-1, 9)` e
-  matou todos os processos da máquina (caíram o Postgres, o e-mail e as APIs).
-  Por isso, antes do 1º exemplo, o portão prova com o sinal 0 que o `kill` da
-  máquina acerta o grupo: o grupo 1000000000, que não existe em sistema
-  nenhum, tem que dar "No such process" com esse número, e um `sleep` de
-  verdade tem que ser achado e morto. Se a prova falha, nenhum exemplo roda.
+  arquivo, abre porta, manda sinal, dispara processo; o exemplo do
+  `docs/os/run/run.md` executa `rm -rf ~` de propósito, pra mostrar o perigo
+  do `os.cmd`): pasta própria e vazia, que é o HOME dele; ambiente limpo; no
+  macOS o `sandbox-exec` (escrita só na pasta, rede só no loopback e fora das
+  portas de serviço, como a 8080, sinal só pros próprios filhos); no Linux o
+  `bwrap` (disco só de leitura fora da pasta, rede e processos num espaço
+  próprio); prazo por rodada. **Nenhum exemplo roda sem o isolamento**: no
+  Linux sem o `bwrap` e no macOS sem o `sandbox-exec`, o portão para vermelho
+  dizendo o que falta; no Windows, que não tem isolador, o portão `roda` não
+  roda nenhum exemplo, diz isso e sai com 0 (decisão do Kleber, 2026-10-23).
+  O portão `check` roda lá.
+- Cada rodada roda num grupo de processos próprio (o `os.run` sem `capture`
+  faz `setsid`), e o grupo inteiro morre no prazo e no fim: o servidor que o
+  exemplo abre não fica órfão escutando na porta. O grupo morre pelo
+  `kill -9 -- -<grupo>`, a forma do POSIX: o número negativo vem depois do
+  `--`, e o sinal vai no 1º argumento (com `-s KILL`, o procps toma um grupo
+  pequeno, como o 83, por sinal). Sem o `--`, o `kill` do procps (Ubuntu
+  24.04) lê só o 1º dígito do número: em 2026-10-22, com o portão rodando
+  como root na VPS, `kill -9 -1426999` virou `kill(-1, 9)` e matou todos os
+  processos da máquina (caíram o Postgres, o e-mail e as APIs). Por isso,
+  antes do 1º exemplo, o portão prova com o sinal 0 que o `kill` da máquina
+  acerta o grupo: o grupo 1000000000, que não existe em sistema nenhum, tem
+  que dar "No such process" com esse número, e um `sleep` de verdade tem que
+  ser achado e morto. Se a prova falha, nenhum exemplo roda.
 - Bloco que precisa de serviço de fora (servidor que fica escutando, banco,
   e-mail, rede) roda só no `--check` e leva a marca ```ps sem-rodar: motivo.
   O relatório lista cada um, com o motivo.
+- Fragmento é o bloco com `...` no lugar de código, que o `--check` recusa:
+  ele sai listado e não roda. O `...` num comentário ou num texto
+  (`conn.execute(...)`) não faz fragmento; o bloco é conferido e roda como
+  os outros.
+- ```saida rc=N (ou ```erro rc=N) diz o código de saída que o exemplo
+  devolve de propósito (o `sys.exit(3)`).
+- O bloco que só para por importar um módulo de exemplo (`import mymod`,
+  `from '../pacote/modulo.pr' import x`) sai numa lista, como no portão
+  `check`.
+- No portão `roda`, a falha de um bloco que já está na catraca do `check`
+  (não compila) conta como conhecida.
 
 Medido na entrada (2026-10-17): 1.773 blocos em 467 páginas; 836 sem marca,
 marcados (659 ```ps, 140 ```assinatura, 28 ```texto, 5 ```bash, 2 ```json, 1
@@ -87,6 +101,18 @@ pastas, tabela de operadores marcadas como programa):
 |---|---|---|---|
 | `check` | 1.335 | 41 | todas itens abertos da lista; portão verde com a catraca |
 | `roda` | 1.185 rodados, 298 com a saída conferida | 228 na primeira rodada | em classificação |
+
+Fechado em 2026-10-22, medido no Mac:
+
+| portão | blocos | de fora (com o motivo) | falhas conhecidas | situação |
+|---|---|---|---|---|
+| `check` | 1.368 conferidos | 24 fragmentos | 41, todas itens abertos | verde |
+| `roda` | 1.116 rodados com JIT e sem, 306 com a saída conferida | 94 `sem-rodar`, 24 fragmentos, 17 de módulo de exemplo | 27, todas itens abertos (5 só fora do Linux) | verde |
+
+Conferido no Linux em 2026-10-23, na VPS (`make check` dentro de
+`unshare --pid`, com o `bwrap`): os mesmos blocos, os dois portões verdes. O
+`roda` conta 63 falhas conhecidas contra 68 no Mac (a conta junta as do
+`check`): as 5 que só falham fora do Linux não falham lá.
 
 ## P2: o checador e o motor concordam (a fazer)
 

@@ -37,7 +37,8 @@
 #     bloco roda de novo com o JIT: saída que muda sozinha (hora, número
 #     aleatório, endereço) não é defeito; a que só muda sem o JIT é.
 #
-# Não roda: o fragmento com `...` (não é programa) e o ```ps sem-rodar:
+# Não roda: o fragmento (o bloco com `...` no lugar de código, que o --check
+# recusa; o `...` num comentário não conta) e o ```ps sem-rodar:
 # motivo, o bloco que precisa de serviço de fora (servidor que fica
 # escutando, banco, e-mail, rede). Os dois saem listados, com o motivo.
 #
@@ -563,9 +564,15 @@ for each md in paginas {
             addEnd(sem_rodar, onde + "  " + rot[3:rot.len()])
             continue
         }
+        # Fragmento é o bloco com `...` no lugar de código, que o --check
+        # recusa; o `...` num comentário ou num texto não faz fragmento.
         if "..." in b["texto"] {
-            addEnd(fragmentos, onde)
-            continue
+            dict frag = {}
+            checa_sozinho(trab, contexto + b["texto"], frag)
+            if not frag["ok"] {
+                addEnd(fragmentos, onde)
+                continue
+            }
         }
         rodados = rodados + 1
         if tem_saida {

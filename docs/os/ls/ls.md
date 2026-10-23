@@ -11,10 +11,16 @@ os.ls(path: str = ".") -> list
 |---|---|---|
 | `path` | `"."` (pasta atual) | a pasta a listar |
 
-Os exemplos desta página pressupõem:
+Os exemplos desta página pressupõem as pastas `uploads` e `dados`, cada uma
+com arquivos e uma subpasta:
 
 ```ps contexto
 import os
+os.mkdir("uploads/fotos")
+os.writeFile("uploads/contrato.pdf", "contrato")
+os.mkdir("dados/antigos")
+os.writeFile("dados/clientes.csv", "nome\nana\n")
+os.writeFile("dados/vendas.csv", "valor\n10\n")
 ```
 
 ---

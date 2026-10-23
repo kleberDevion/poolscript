@@ -13,10 +13,19 @@ os.loadFile(path: str, mode: str = Null) -> str | dict | list | PoolFile
 | `path` | nome/caminho do arquivo (buscado a partir da pasta do `.pr` e do cwd) |
 | `mode` | `"r"` ou `"rb"`. Omitido = decidido pelo conteúdo do arquivo |
 
-Os exemplos desta página pressupõem:
+Os exemplos desta página pressupõem estes arquivos (os binários com o começo
+de um arquivo de verdade: o zip do `.xlsm`, o PNG e o PDF):
 
 ```ps contexto
 import os
+import bytes
+os.writeFile("planilha.xlsm", bytes.fromhex("504b030414000000080000"))
+os.writeFile("dump", bytes.fromhex("0001020304"))
+os.writeFile("logo.png", bytes.fromhex("89504e470d0a1a0a0000000d49484452"))
+os.writeFile("relatorio.pdf", bytes.fromhex("255044462d312e340a25e2e3cfd30a0000"))
+os.writeFile("config.json", "{\"versao\": \"1.2\", \"destinatario\": \"ana@exemplo.com\"}")
+os.writeFile("dados.csv", "nome,idade\nana,30\nbia,25\n")
+os.writeFile("leiame.txt", "Leia-me antes de instalar.")
 ```
 
 ---
@@ -91,8 +100,7 @@ os.loadFile("legado.csv", mode="latin-1")
 ```
 
 ```erro
-ValueError: loadFile: 'latin-1' e um charset, o 2 argumento e o mode ('r' ou 'rb').
-            Pra ler com charset: os.readFile(path, encoding="latin-1")
+ValueError: loadFile: 'latin-1' e um charset, o 2 argumento e o mode ('r' ou 'rb'). Pra ler com charset: os.readFile(path, encoding="latin-1")
 ```
 
 Valor que não é modo nem charset:
@@ -122,6 +130,10 @@ post(cfg["destinatario"])
 
 # binário vira PoolFile, pronto pra anexar
 pdf = os.loadFile("relatorio.pdf")       # PoolFile
+```
+
+```saida
+ana@exemplo.com
 ```
 
 ---

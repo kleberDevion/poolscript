@@ -31,8 +31,10 @@
 #     que o motor dá. Antes esses blocos eram pulados; agora são conferidos:
 #     doc que promete um erro e o motor dá outro é doc errada.
 #
-# O único bloco que não se confere é o fragmento com `...` — e ele sai
-# nomeado, pra revisão humana.
+# O único bloco que não se confere é o fragmento: o bloco com `...` no lugar
+# de código, que o --check recusa. Ele sai nomeado, pra revisão humana. O
+# bloco que tem `...` só num comentário ou num texto passa no --check e é
+# conferido como qualquer outro.
 import os
 import sys
 import json
@@ -296,23 +298,24 @@ for each md in paginas {
     }
     contexto = ""
     for each b in blocos_ps(os.readFile(md)) {
-        if "..." in b["codigo"] {
+        codigo = b["codigo"]
+        # o contexto se confere com o que veio antes dele e passa a valer pros
+        # blocos seguintes da página
+        resposta = confere(contexto + codigo)
+        if b["contexto"] {
+            contexto = contexto + codigo + "\n"
+        }
+        tipo = tipo_do_erro(resposta)
+        # Fragmento é o bloco com `...` no lugar de código, que o --check
+        # recusa. O `...` num comentário ou num texto (`conn.execute(...)`) não
+        # faz do bloco um fragmento: se ele passa, conta como qualquer outro.
+        # Antes todo bloco com `...` era pulado, e 49 blocos da doc não eram
+        # conferidos por nada.
+        if tipo != "" and "..." in codigo {
             addEnd(pulados, md + ":" + str(b["linha"]))
             continue
         }
         total = total + 1
-        codigo = b["codigo"]
-        resposta = ""                  # nasce aqui: o que nasce no `if` morre com ele
-        if b["contexto"] {
-            # o contexto se confere sozinho (com o que veio antes dele) e passa
-            # a valer pros blocos seguintes da página
-            resposta = confere(contexto + codigo)
-            contexto = contexto + codigo + "\n"
-        }
-        else {
-            resposta = confere(contexto + codigo)
-        }
-        tipo = tipo_do_erro(resposta)
         if tipo == "" {
             continue
         }

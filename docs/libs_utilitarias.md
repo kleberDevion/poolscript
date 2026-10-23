@@ -214,6 +214,14 @@ import os
 | `os.getenv("CHAVE", "default")` | Lê com valor padrão | `os.getenv("PORT", "8000")` |
 | `os.environ(key=Null)` | Lê 1 variável (sem `dotenv.load()` automático), ou o dict inteiro se `key` for omitido | `os.environ("PATH")`, `os.environ()` |
 
+Os exemplos de variável de ambiente desta página pressupõem o `.env` da seção
+do dotenv, abaixo, na pasta do programa:
+
+```ps contexto
+import os
+os.writeFile(".env", "DB_PATH=database.db\nSECRET_KEY=minha_chave_super_secreta_aqui\nMAIL_SMTP=smtp.meuservidor.com\nMAIL_IMAP=imap.meuservidor.com\nMAIL_SYSTEM=seu@gmail.com\nPASSWORD_SYSTEM=senha_app_gmail\nPORT=7700\n")
+```
+
 ```ps
 import os
 from dotenv import load
@@ -226,6 +234,11 @@ str porta = os.getenv("PORT", "7700")
 
 post(db)      # database.db
 post(porta)   # 7700
+```
+
+```saida
+database.db
+7700
 ```
 
 ### Caminhos e arquivos
@@ -384,7 +397,7 @@ conn.send({"user_name": "joao", "body_msg": "Oi!"})
 
 **Exemplo — chat no terminal:**
 
-```ps
+```ps sem-rodar: lê o teclado num laço e conecta num servidor WebSocket
 import request
 
 str nome = input("Seu nome: ")

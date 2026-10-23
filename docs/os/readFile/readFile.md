@@ -10,12 +10,26 @@ Para binário (imagem, zip…), use [`loadFile`](../loadFile/loadFile.md) (devol
 | `path` | str | — | caminho do arquivo |
 | `encoding` | str | `"utf-8"` | charset do ARQUIVO; o texto devolvido é sempre UTF-8 |
 
+Os exemplos desta página pressupõem o `legado.txt`, gravado em latin-1, como
+um arquivo antigo do Windows:
+
+```ps contexto
+import os
+Object h = open("legado.txt", "wb")
+h.write("café".encode("latin-1"))
+h.close()
+```
+
 O `encoding` diz em que charset o arquivo **está gravado** — a leitura decodifica
 dele para o texto da linguagem:
 
 ```ps
 import os
 post(os.readFile("legado.txt", encoding="latin-1"))   # café, com o acento certo
+```
+
+```saida
+café
 ```
 
 Vale **qualquer charset que a linguagem conhece** — os mesmos de

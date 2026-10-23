@@ -20,7 +20,7 @@ bytes
 
   ```ps
   post("ção".encode("latin-1"))            # b'\xe7\xe3o'   — bytes de latin-1
-  post("ção".encode("ascii"))              # erro: 'ascii' codec can't encode characters
+  post("ção".encode("ascii"))              # UnicodeEncodeError: 'ascii' codec can't encode characters
   post("ção".encode("ascii", "ignore"))    # b'o'
   post("ção".encode("ascii", errors="replace"))   # b'??o'
   ```

@@ -8,6 +8,9 @@ Os exemplos desta página pressupõem:
 ```ps contexto
 import psodbc
 from psodbc import connect
+# a tabela dos exemplos do SQLite, com algumas linhas
+psodbc.query(base="meu_banco.db", cmd="CREATE TABLE users (id INTEGER PRIMARY KEY, nome TEXT, idade INT, ativo INT)")
+psodbc.query(base="meu_banco.db", cmd="INSERT INTO users (nome, idade, ativo) VALUES ('Ana', 30, 1), ('Beto', 25, 1), ('Caio', 17, 0)")
 ```
 
 ---

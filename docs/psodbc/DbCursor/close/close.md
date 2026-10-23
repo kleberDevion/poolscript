@@ -11,6 +11,9 @@ Os exemplos desta página pressupõem:
 
 ```ps contexto
 import psodbc
+# a tabela dos exemplos, com algumas linhas
+psodbc.query(base="loja.db", cmd="CREATE TABLE produtos (id INTEGER PRIMARY KEY, nome TEXT, preco REAL)")
+psodbc.query(base="loja.db", cmd="INSERT INTO produtos (nome, preco) VALUES ('caneta', 2.5), ('caderno', 15.0), ('mochila', 120.0)")
 DbConnection conn = psodbc.connect(driver="sqlite", base="loja.db")
 ```
 

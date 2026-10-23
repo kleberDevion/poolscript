@@ -7,10 +7,11 @@ pasta do `.pr` em execução e depois do diretório atual. Erro se não encontra
 os.pathFile(name: str) -> str
 ```
 
-Os exemplos desta página pressupõem:
+Os exemplos desta página pressupõem o arquivo `dados.json`:
 
 ```ps contexto
 import os
+os.writeFile("dados.json", "{\"versao\": 1}")
 ```
 
 ---

@@ -7,6 +7,13 @@ partem da nova pasta.
 os.chdir(path: str) -> Null
 ```
 
+Os exemplos desta página pressupõem a pasta `dados`:
+
+```ps contexto
+import os
+os.mkdir("dados")
+```
+
 ---
 
 ## Uso

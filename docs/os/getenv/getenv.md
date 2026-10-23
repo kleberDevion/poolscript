@@ -36,7 +36,7 @@ partir da pasta atual (o mesmo que o [`dotenv.load()`](../../dotenv/load/load.md
 sem argumento faz), sem passar por cima de variável que já está no ambiente.
 O `load()` serve pra apontar outro arquivo ou pra pegar o dict do que foi lido.
 
-```ps
+```ps sem-rodar: lê DB_PATH e SECRET_KEY do ambiente de quem roda
 import os
 
 str banco = os.getenv("DB_PATH")         # "dados.db"

@@ -7,6 +7,13 @@ pasta do `.pr` e do diretório atual. Erro se não encontrar.
 os.pathFolder(name: str) -> str
 ```
 
+Os exemplos desta página pressupõem a pasta `uploads`:
+
+```ps contexto
+import os
+os.mkdir("uploads")
+```
+
 ---
 
 ## Uso

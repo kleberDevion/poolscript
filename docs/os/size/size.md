@@ -6,10 +6,12 @@ Devolve o **tamanho de um arquivo em bytes**.
 os.size(path: str) -> int
 ```
 
-Os exemplos desta página pressupõem:
+Os exemplos desta página pressupõem os arquivos `video.mp4` e `enviado.pdf`:
 
 ```ps contexto
 import os
+os.writeFile("video.mp4", "x" * 2048)
+os.writeFile("enviado.pdf", "y" * 512)
 ```
 
 ---

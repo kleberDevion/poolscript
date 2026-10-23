@@ -11,10 +11,14 @@ os.rmdir(path: str, force: bool = False) -> Null
 | `path` | — | pasta a remover |
 | `force` | `False` | `True` = remove **mesmo com conteúdo** dentro |
 
-Os exemplos desta página pressupõem:
+Os exemplos desta página pressupõem a pasta vazia `temp` e a pasta `cache`,
+com um arquivo dentro:
 
 ```ps contexto
 import os
+os.mkdir("temp")
+os.mkdir("cache")
+os.writeFile("cache/pagina.html", "<p>guardada</p>")
 ```
 
 ---

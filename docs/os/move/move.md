@@ -12,6 +12,17 @@ os.move(src: str, dst: str) -> Null
 | `src` | caminho de origem (arquivo ou pasta) |
 | `dst` | caminho de destino |
 
+Os exemplos desta página pressupõem o arquivo `temp/foto.png`, a pasta
+`final` (o `move` não cria a pasta de destino) e a pasta `rascunhos`:
+
+```ps contexto
+import os
+os.mkdir("temp")
+os.writeFile("temp/foto.png", "imagem")
+os.mkdir("final")
+os.mkdir("rascunhos")
+```
+
 ---
 
 ## Uso

@@ -77,6 +77,42 @@ Achados em 2026-10-17, no conserto acima e no relato dele (abertos):
   `app.socket("/x", True, 3)` rodam sem erro. Promessa: `channel.md` (um
   parâmetro, `forAll`) e `socket.md` (`path`, `channel`). `motor`.
 
+Medidos em 2026-10-22 (relato dele: "o `.get()` do `jinker.request.get()` e o
+do `request` não diz se obtém string também"), num servidor da jinker no
+loopback, com JIT e sem (`notas/` não guarda o programa; ele está descrito
+em cada item):
+
+- **jinker-9** O `request.get(chave)` da rota devolve LISTA quando a chave se
+  repete na query string: `?a=1&a=2` dá `['1', '2']`, e `?a=1` dá `'1'`. O
+  tipo muda conforme o que o cliente manda, e a rota escrita com tipo
+  (`str nome = request.get("nome")`) cai com 500 quando alguém repete o
+  parâmetro. A página (`docs/jinker/request/get/get.md`) não diz nada sobre
+  chave repetida. No Flask, `request.args.get` devolve o primeiro valor, e
+  `getlist` devolve todos. `duvida`: a sua decisão é o primeiro valor, como
+  no Flask, com um jeito de pegar todos, ou a lista de hoje escrita na doc.
+- **jinker-10** O que o `request.get(chave)` lê, medido:
+  - da query string, sempre texto: `?a=42` dá `'42'`, `?a=` dá `''`, e `%20`
+    e `+` saem decodificados;
+  - do corpo JSON, o tipo do JSON: `42` dá `int` (inteiro grande também),
+    `4.5` dá `flo`, `1e400` dá `inf`, `true` dá `bool`, e lista e objeto dão
+    `list` e `dict`;
+  - o `null` do JSON e a chave que não existe dão os dois `Null`; o corpo
+    JSON inválido e o corpo que é lista também dão `Null`, sem erro;
+  - o corpo é lido como JSON mesmo sem `Content-Type: application/json`;
+  - a chave diferencia maiúscula de minúscula (`?A=1` não acha `a`);
+  - campo de formulário (urlencoded ou multipart) NÃO é lido: dá `Null`, e
+    nenhum membro do `request` lê esses campos (só o `request.text()` cru).
+  A página só diz `-> valor | Null` e "query string, depois o corpo JSON". A
+  `docs/jinker/request/request.md` diz que o `request` representa "tudo que o
+  cliente mandou: corpo, campos, ..."; os campos de formulário não chegam.
+  `os dois`: a doc fica com tudo acima; o formulário é decisão sua (ler os
+  campos, ou a doc dizer que não lê e como fazer com o `text()`).
+- **jinker-11** O nome do tipo do `request` da rota: a doc diz que ele "é uma
+  instância de `JinkerRequest`" (`docs/jinker/request/request.md`), e no
+  `--metadata` o `JinkerRequest` não tem membro nenhum; os membros estão num
+  tipo `RequestProxy`, que a doc não cita. O editor e o `type()` mostram um
+  nome que a doc não tem. `os dois`.
+
 ## editor
 
 - **editor-1** (relato dele, 2026-10-17) O hover sobre o NOME de um argumento
@@ -84,6 +120,19 @@ Achados em 2026-10-17, no conserto acima e no relato dele (abertos):
   nem por import (rodando dá `NameError`)": o servidor do editor trata o nome
   do argumento como variável. Medido no `server.js` do 17.0.20, com um pedido
   de hover na coluna do `forAll`. `motor` (editor).
+- **editor-2** (relato dele, 2026-10-21: "a lib sockets não tem as constantes
+  em sua doc") Medido no servidor do editor instalado (17.0.20), com pedidos
+  de hover:
+  - sobre `sockets.SO_LINGER` sai `sockets.SO_LINGER() -> int`, como se a
+    constante fosse função, sem o valor e sem a linha que a tabela de
+    constantes do `docs/sockets/sockets.md` já tem;
+  - sobre `sockets.socket` e sobre `r.get` (o `Response` do `request`) sai
+    só a assinatura, sem nenhuma frase da página, e o `r.get` sem o tipo do
+    retorno;
+  - dentro de uma rota da jinker, o `request.get` não é reconhecido como o
+    `request` da rota: sai "receptor de tipo desconhecido · 5 tipos têm
+    `get`" com a frase do `str.get`, que fala de outra coisa.
+  `motor` (editor).
 
 ## motor
 
@@ -147,6 +196,42 @@ Achados em 2026-10-17, no conserto acima e no relato dele (abertos):
   `request.get("x")` devolvem `Null` calados; o Flask, no mesmo caso, levanta
   `RuntimeError: Working outside of request context`. `motor`.
 
+- **motor-7** (achado em 2026-10-22, medindo o jinker-10) O `--check` aprova
+  método que o `request` da rota não tem: `v = request.get_query("a")` dentro
+  de uma rota dá `{"ok":true}`, e rodando a rota cai com 500
+  (`'RequestProxy' object has no method 'get_query'`). É da classe do
+  `forAll` e do motor-6: o checador não confere os membros do `request`. A
+  P2 dos portões pega a classe toda. `motor`.
+- **motor-8** (achado pelo portão `roda`, 2026-10-22,
+  `docs/os/loadFile/loadFile.md:98` e `:109`) O `os.loadFile` confere o
+  `mode` DEPOIS de abrir o arquivo: `os.loadFile("nao_existe.txt",
+  mode="xyz")` dá `FileNotFoundError`, e só com o arquivo existente sai o
+  `ValueError: loadFile: 'xyz' nao e um mode valido`. A página mostra o
+  `ValueError` sem criar arquivo nenhum, e o `open` do Python confere o modo
+  antes de tocar no disco (`ValueError: invalid mode`). Com JIT e sem.
+  `motor`.
+- **motor-9** (achado pelo portão `roda`, 2026-10-22, `docs/manpu.md:58`) O
+  `mp.write(...)` devolve um `ManpuResult` que se imprime `Success` ou
+  `Error` e que é `== True` quando deu certo. As páginas (`docs/manpu.md:58`
+  e `docs/manpu/write/write.md:36`) leem o motivo do erro em `nm.status`, e o
+  `ManpuResult` não tem membro nenhum (`--metadata`): rodando, `nm.status` dá
+  `AttributeError: 'ManpuResult' object has no attribute 'status'`. E quando
+  a escrita falha (destino numa pasta que não existe) volta `Error` sem
+  motivo nenhum e sem exceção, com JIT e sem: o erro some. O `open` e o
+  `os.writeFile` levantam a exceção com o caminho. `os dois`: o motor dá o
+  motivo (o `.status` que a doc promete, ou a exceção), e a doc diz qual.
+- **motor-10** (achado no `make check` do Mac, 2026-10-23, pelo caso "import
+  de caminho com extensao velha ensina a nova" do `teste/cli_roda.pr`) O
+  `ImportError` do `import './x.ps'` manda rodar o migrador e corta o caminho
+  dele em 100 bytes, calado (`jinga %.100s <pasta> --aplica`,
+  `vm/jinga_vm.c:33343`). Com o repositório numa pasta comprida, sai
+  `(jinga /Users/.../06928479-1e0f-496c-807 <pasta> --aplica)`: um comando
+  que aponta pra um arquivo que não existe. O nome escrito no `import`
+  também é cortado (`%.40s`, `%.120s`, `%.200s`), e a mensagem inteira cabe
+  em 256 bytes (`char erro[256]` da VM). O caso só passa com o caminho curto
+  (a VPS, o checkout dele). É a classe do Plano 10: caminho cortado calado
+  por buffer fixo. `motor`.
+
 ## os
 
 - **os-1** (achado montando o prazo do portão P1, 2026-10-18) O
@@ -178,6 +263,23 @@ Achados em 2026-10-17, no conserto acima e no relato dele (abertos):
   antes do 1º exemplo (`prova_do_kill`), que reprova a forma sem o `--`; sem
   isolador, nenhum exemplo roda (vermelho no Linux e no macOS; no Windows, o
   portão diz que não rodou).
+- **teste-3** (achado no `make check` do Mac, 2026-10-23) O GNU make 3.81 do
+  macOS sobe o limite da pilha até o teto e os filhos herdam: `ulimit -s` dá
+  8.192 KB no shell e 65.532 KB dentro do `make`. Com 64 MB, seis casos de
+  aninhamento fundo não estouram a pilha, e o teste, que espera o erro, falha:
+  "regex.compile com 20 mil grupos aninhados e ValueError", "8000 blocos
+  aninhados e 20000 decoradores sao erro limpo no --check", "regex profundo
+  demais e erro, nao morte" e os `dif #536`, `#1260` e `#1266`. O
+  `./testar` direto, ou o `make check` com o teto em 8 MB, passa nos 9.993. No
+  Linux, o GNU make 4.3 devolve aos filhos o limite de antes. A suíte depende
+  do limite da pilha de quem roda. `teste`.
+- **teste-4** (achado na rodada do P1, 2026-10-23) O `teste/e2e/mail_local.pr`
+  passa e deixa os servidores falsos vivos, escutando até alguém matar. No
+  Mac, depois de `./pool teste/e2e_roda.pr mail_local` (rc 0), sobraram 19:
+  o `teste/smtp_falso.py` 8 vezes e o `teste/imap_falso.py` 11. Na VPS, dentro
+  do `unshare --pid`, sobraram 18 no fim do `check-e2e-local`. O teste chama
+  o `kill()` do `Process` em cada servidor (a funct que encerra,
+  `teste/e2e/mail_local.pr:87`), e eles continuam vivos. `teste`.
 
 ## doc
 
@@ -337,7 +439,9 @@ e sem, e dá o mesmo erro.
   jinker no topo do programa, fora de uma rota, onde a doc dele não promete
   nada (e o motor-6 faz o `--check` aprovar): `docs/jinker/request/path_param/path_param.md:43`,
   `docs/jinker/request/file/file.md:74`,
-  `docs/jinker/request/get_json/get_json.md:54`, `docs/json.md:43` e
+  `docs/jinker/request/get_json/get_json.md:54`,
+  `docs/jinker/request/header/header.md:41`,
+  `docs/psodbc/DbCursor/execute/execute.md:54`, `docs/json.md:43` e
   `docs/json/json.md:43`. Rodando: `NameError: name 'request' is not
   defined`, ou, com o `from jinker import request` do contexto do `json.md`,
   o `Null` do `request.text()` vira `TypeError: parse() argument 1 must be
@@ -355,3 +459,43 @@ e sem, e dá o mesmo erro.
   contradizem sobre o `QRPoolFile`, e o checador aprova o que o motor recusa.
   `os dois` (o `attach` aceitar o `QRPoolFile`, ou a página do `to_file`
   deixar de prometer; e o checador conferir o tipo do argumento).
+- **doc-22** (relato dele, 2026-10-21) O `get` do `Response` do `request`
+  cliente. A página (`docs/request/Response/Response.md`) diz só "um header
+  (case-insensitive) ou uma chave do JSON". Medido, com JIT e sem: cabeçalho
+  sai texto; chave do JSON sai o tipo do JSON (`int`, `bool`, `list`...);
+  quando cabeçalho e chave têm o mesmo nome, ganha o cabeçalho; o `null` do
+  JSON e a chave que não existe dão os dois `Null`; com corpo que não é JSON,
+  só cabeçalho acha. E o `.headers` é um `dict` que diferencia maiúscula
+  (`r.headers.get("x-dado")` dá `Null` e `"X-Dado"` dá o valor), ao contrário
+  do `get` (o `requests` do Python usa um dicionário que não diferencia). A
+  página não diz nada disso. `doc`.
+- **doc-23** (relato dele, 2026-10-21: "os documentos estão rasos, só dizem o
+  que é, mas não especifica se faz outra tarefa relevante ou como se
+  comporta") A doc dos módulos diz o que o membro é e não diz o contrato: o
+  tipo exato de cada retorno, o retorno nos casos especiais, o que acontece
+  com argumento de borda, os erros e o que muda de sistema pra sistema. O
+  jinker-10, o doc-22 e o editor-2 são exemplos medidos. A referência é a das
+  linguagens consolidadas: o guia do Javadoc chama a doc de "contrato entre
+  quem chama e as implementações", exige o `@param` de todo parâmetro e o
+  `@return` de todo método, pede "o retorno nos casos especiais", as
+  "condições de borda, faixas de parâmetro e casos de canto", e que o
+  comportamento que muda de sistema venha marcado "On <plataforma>"; a doc do
+  Python dá o tipo exato do que volta ("um objeto bytes"; "bytes vazio indica
+  que o cliente desconectou"). A reavaliação é um plano próprio, pra
+  aprovação dele. `doc`.
+- **doc-24** (achado pelo portão `roda`, `docs/os/loadFile/loadFile.md:42`)
+  `c = os.loadFile("logo.png", mode="r")   # o texto dos bytes`: num PNG de
+  verdade (começa com o byte `0x89`) sai `UnicodeDecodeError: 'utf-8' codec
+  can't decode byte 0x89 in position 0`, com JIT e sem. O `mode="r"` lê como
+  texto UTF-8, e a própria página diz que o que não é UTF-8 dá esse erro; o
+  comentário do exemplo promete outra coisa. `doc`.
+- **doc-25** `docs/os/PoolFile/PoolFile.md:31` comenta
+  `os.loadFile("logo.png")   # PoolFile (extensão binária)`. Quem decide é o
+  conteúdo, não a extensão: medido, um `.png` com texto dentro volta `str`, e
+  um `.txt` com bytes binários volta `PoolFile` (a regra está certa no
+  `docs/os/loadFile/loadFile.md`: byte NUL nos primeiros 8 KB). E na mesma
+  página faltam duas coisas que se mediu montando o contexto dela: o
+  `os.copy` e o `os.move` não criam a pasta de destino (`FileNotFoundError`
+  com o caminho de destino), e o `os.rmdir` de pasta com conteúdo dá
+  `OSError` com o número do sistema (66, medido no macOS); as páginas
+  do `copy`, do `move` e do `rmdir` também não dizem. `doc`.

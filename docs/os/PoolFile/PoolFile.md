@@ -12,6 +12,16 @@ Os exemplos desta página pressupõem:
 
 ```ps contexto
 import os
+import bytes
+# os arquivos dos exemplos: o começo de um PNG e de um PDF de verdade, e as
+# pastas de destino (o copy e o move não criam pasta)
+os.mkdir("temp")
+os.mkdir("backup")
+os.mkdir("final")
+os.writeFile("logo.png", bytes.fromhex("89504e470d0a1a0a0000000d49484452"))
+os.writeFile("temp/foto.png", bytes.fromhex("89504e470d0a1a0a0000000d49484452"))
+os.writeFile("nota.pdf", bytes.fromhex("255044462d312e340a25e2e3cfd30a0000"))
+os.writeFile("arquivo_qualquer.dat", bytes.fromhex("00ff10ee"))
 ```
 
 ---

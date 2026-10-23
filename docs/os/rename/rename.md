@@ -11,6 +11,15 @@ os.rename(src: str, dst: str) -> Null
 | `src` | nome/caminho atual |
 | `dst` | novo nome/caminho |
 
+Os exemplos desta página pressupõem o arquivo `rascunho.txt` e a pasta
+`fotos`:
+
+```ps contexto
+import os
+os.writeFile("rascunho.txt", "texto do rascunho")
+os.mkdir("fotos")
+```
+
 ---
 
 ## Uso

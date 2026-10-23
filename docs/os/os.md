@@ -72,6 +72,14 @@ outras — `exists`, `isfile`, `isdir`, `size`, `readFile`, `writeFile`, `ls`,
 
 ---
 
+O exemplo pressupõe o `.env` e o `config.json` na pasta do programa:
+
+```ps contexto
+import os
+os.writeFile(".env", "DB_PATH=dados.db\n")
+os.writeFile("config.json", "{\"versao\": \"1.2\"}")
+```
+
 ## Exemplo rápido
 
 ```ps

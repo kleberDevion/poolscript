@@ -11,6 +11,13 @@ nomes, no motor, da Connection e do Cursor descritos abaixo):
 import sqlite3
 PoolConnection conn = sqlite3.connect(":memory:")
 PoolCursor cur = conn.cursor()
+# a tabela dos exemplos, com algumas linhas, na memória e no app.db
+conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, nome TEXT, idade INT)")
+conn.execute("INSERT INTO users (nome, idade) VALUES ('Ana', 30), ('Beto', 25), ('Caio', 17)")
+PoolConnection disco = sqlite3.connect("app.db")
+disco.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, nome TEXT, idade INT)")
+disco.commit()
+disco.close()
 ```
 
 > Para Postgres/MySQL/SQL Server/Mongo (banco em rede), use [`psodbc`](../psodbc/psodbc.md).

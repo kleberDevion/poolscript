@@ -256,7 +256,7 @@ Um campo comum pertence à **instância**: nasce no `__init__`, um por objeto.
 Prefixado com `static`, o campo pertence à **classe**: é avaliado **uma vez**,
 quando a classe é declarada, e existe antes de qualquer instância.
 
-```ps
+```ps sem-rodar: sobe o servidor na porta 3003 e fica escutando
 import jinker
 
 class App {
