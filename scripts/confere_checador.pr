@@ -23,6 +23,11 @@
 #     o tipo de cada obrigatório;
 #   - na propriedade, também a leitura dela, sem chamar.
 #
+# E um membro que não existe (`p2_nao_existe()`), uma vez em cada tipo de
+# valor (os básicos, com a amostra, e os donos) e em dois valores `funct` (uma
+# função de módulo e um builtin): o `--check` e o motor têm que recusar, com a
+# mesma frase. Rodando, o receptor vai num `Object` e o membro é chamado nele.
+#
 # Reprova:
 #   - o `--check` recusa e o motor aceita (a classe do `forAll`);
 #   - o `--check` aceita e o motor recusa pelo que o checador promete pegar:
@@ -283,8 +288,12 @@ str funct args_de(int n, str valor) {
 # Null por posição), Y<tipo> (o 1º argumento desse tipo), K<nome> (o
 # parâmetro por nome), X (um nome que não existe), D (os obrigatórios com o
 # tipo da doc), R (o retorno guardado numa variável de outro tipo; `boas`:
-# as chamadas que dão certo, de `chamadas_boas`).
+# as chamadas que dão certo, de `chamadas_boas`), N (o membro que não existe,
+# de `inexistentes`).
 list funct chamadas_de(dict mb, dict nomes_doc, dict tipos_doc, dict boas) {
+    if mb.get("inexistente", False) {
+        return [["N", ""]]
+    }
     list cs = []
     if mb["kind"] == "property" {
         addEnd(cs, ["P", ""])
@@ -540,18 +549,23 @@ str funct cabeca(dict mb, str pasta) {
 
 
 # Uma chamada vigiada, pelo membro guardado num `Object`: anota `i|ok`, ou o
-# tipo do erro (T, A, N; `o` pra outro) e a frase.
+# tipo do erro (T, A, N; `o` pra outro) e a frase. Na chamada N, quem vai no
+# `Object` é o receptor, e o membro que não existe é chamado nele (guardado
+# antes, ele daria a frase do membro lido, não a do chamado).
 str funct vigiada(dict mb, list c, int i) {
     str f = "p2_f" + str(i)
     str n = str(i)
-    str chama = ""
-    if c[0] == "R" {
+    str corpo = "    Object " + f + " = " + mb["chamado"] + "\n"
+    if c[0] == "N" {
+        str rec = mb["chamado"][0:mb["chamado"].len() - mb["membro"].len() - 1]
+        corpo = "    Object " + f + " = " + rec + "\n    " + f + "." + mb["membro"] + "(" + c[1] + ")\n"
+    } elif c[0] == "R" {
         str valor = f if mb["kind"] == "property" else f + "(" + c[1] + ")"
-        chama = "    " + c[2] + " p2_r" + n + " = " + valor + "\n"
+        corpo = corpo + "    " + c[2] + " p2_r" + n + " = " + valor + "\n"
     } elif c[0] != "P" {
-        chama = "    " + f + "(" + c[1] + ")\n"
+        corpo = corpo + "    " + f + "(" + c[1] + ")\n"
     }
-    return ("try {\n    Object " + f + " = " + mb["chamado"] + "\n" + chama
+    return ("try {\n" + corpo
             + "    p2_anota(\"" + n + "|ok\")\n"
             + "} catch (TypeError p2_e) {\n    p2_anota(\"" + n + "|T|\" + p2_e)\n"
             + "} catch (AttributeError p2_e) {\n    p2_anota(\"" + n + "|A|\" + p2_e)\n"
@@ -954,12 +968,10 @@ list funct membros_de(dict meta, list filtro) {
             continue
         }
         str criado = donos[t][1].replace("@TMP@", ".")
-        # o membro universal vale em todo valor: o receptor é um int
-        str tipo = "int" if t == "__universal__" else t
         for each m in meta["tipos"][t] {
             addEnd(ms, {"dono": t, "membro": m["nome"], "imp": donos[t][0],
                         "chamado": criado + "." + m["nome"], "params": m["params"],
-                        "kind": m.get("kind", "method"), "tipo": tipo, "criado": criado,
+                        "kind": m.get("kind", "method"), "tipo": t, "criado": criado,
                         "retorna": retorno_de(m)})
         }
     }
@@ -975,6 +987,12 @@ list funct membros_de(dict meta, list filtro) {
                         "retorna": retorno_de(m), "lado": DONOS_SERVIDOS[t][0]})
         }
     }
+    return so_os_citados(ms, filtro)
+}
+
+
+# Os membros de `ms` cujo dono está em `filtro` (vazio = todos).
+list funct so_os_citados(list ms, list filtro) {
     if filtro.len() == 0 {
         return ms
     }
@@ -985,6 +1003,48 @@ list funct membros_de(dict meta, list filtro) {
         }
     }
     return so
+}
+
+
+# Um membro que não existe em cada tipo de valor: os básicos (com a amostra;
+# o Null fica de fora, porque o `Object` não guarda Null), os donos, os que
+# só existem com a jinker no ar, e dois valores `funct` (uma função de módulo e
+# um builtin, que são o dono e o receptor). Hoje o checador acusa membro que o
+# tipo não tem pelas mesmas tabelas que o motor consulta; isto confere que
+# acusa em todo tipo, com a frase do motor.
+list funct inexistentes(list filtro) {
+    dict rec = {}
+    for each t in TIPOS {
+        if t != "Null" {
+            rec[t] = ["", VALOR[t]]
+        }
+    }
+    for each t in DONOS.keys() {
+        rec[t] = DONOS[t]
+    }
+    for each t in DONOS_A_MAIS.keys() {
+        rec[t] = DONOS_A_MAIS[t]
+    }
+    list ms = []
+    for each t in rec.keys() {
+        str criado = rec[t][1].replace("@TMP@", ".")
+        addEnd(ms, {"dono": t, "membro": "p2_nao_existe", "imp": rec[t][0],
+                    "chamado": criado + ".p2_nao_existe", "params": [], "kind": "method",
+                    "tipo": t, "criado": criado, "retorna": "", "inexistente": True})
+    }
+    for each t in DONOS_SERVIDOS.keys() {
+        str criado = DONOS_SERVIDOS[t][1]
+        addEnd(ms, {"dono": t, "membro": "p2_nao_existe", "imp": "",
+                    "chamado": criado + ".p2_nao_existe", "params": [], "kind": "method",
+                    "tipo": t, "criado": criado, "retorna": "", "inexistente": True,
+                    "lado": DONOS_SERVIDOS[t][0]})
+    }
+    for each f in [["os.getenv", "import os"], ["len", ""]] {
+        addEnd(ms, {"dono": f[0], "membro": "p2_nao_existe", "imp": f[1],
+                    "chamado": f[0] + ".p2_nao_existe", "params": [], "kind": "method",
+                    "tipo": "", "criado": "", "retorna": "", "inexistente": True})
+    }
+    return so_os_citados(ms, filtro)
 }
 
 
@@ -1017,6 +1077,10 @@ dict nomes_doc = {}
 dict tipos_doc = {}
 le_doc(nomes_doc, tipos_doc)
 list membros = membros_de(meta, filtro)
+list sem_membro = inexistentes(filtro)
+for each m in sem_membro {
+    addEnd(membros, m)
+}
 
 str trab = os.cwd() + "/" + TMP
 os.mkdir(trab)
@@ -1124,8 +1188,10 @@ aplica("p2", achados, paginas, catraca)
 list novos = catraca["novos"]
 
 post("isolamento das rodadas:", iso["nome"])
-post("membros chamados:", membros.len(), "| chamadas (cada uma no --check e rodando com JIT e sem):",
-     n_chamadas)
+post("membros chamados:", membros.len() - sem_membro.len(),
+     "| chamadas (cada uma no --check e rodando com JIT e sem):", n_chamadas)
+post("membro que não existe, chamado em cada tipo de valor e em dois valores funct:",
+     sem_membro.len())
 list fora = fora_de(meta)
 post("tipos que o P2 não chama (só existem com serviço de fora):", fora.len())
 for each f in fora {

@@ -274,15 +274,59 @@ em cada item):
   app.route("/x")` o `--check` recusa (`esperava RouteRegistrar, recebeu
   _RouteRegistrar`). E o `--check` não conhece o retorno do `register` dele:
   `int x = app.route("/x").register(f)` passa, e rodando dá `esperava int,
-  recebeu Null` (o `--metadata` diz `Null`). `motor`.
-- **motor-14** (decisão do Kleber, 2026-10-23) O `.type()` sai da linguagem:
+  recebeu Null` (o `--metadata` diz `Null`). Pelo mesmo nome, ele não
+  confere os membros: `app.route("/x").p2_nao_existe()` passa, e rodando dá
+  `'_RouteRegistrar' object has no method 'p2_nao_existe'` (achado pela
+  chamada de membro que não existe do P2, 18.0.0). `motor`.
+- ~~**motor-14** (decisão do Kleber, 2026-10-23) O `.type()` sai da linguagem:
   fica só o `type(x)`. Nas palavras dele: "o uso deve ser somente type() não
   .type(), retire ele, isso faz ter menos trabalho". Medido pelo portão P2: o
   `.type()` é o único membro universal (`METODOS_UNIV`, `vm/jinga_vm.c`) e
   devolve `str`, e o `--check` não sabe (`int x = 1.type()` passa e rodando
   dá `esperava int, recebeu str`). Tirar quebra quem usa `.type()`: no
   repositório são 10 linhas (a doc, dois casos de teste, o checador).
-  `motor`.
+  `motor`.~~ Corrigido no 18.0.0: saíram o método (`met_type`, a segunda
+  tabela de nomes de tipo), a `METODOS_UNIV` e o `__universal__` do
+  `--metadata`. `x.type()` dá o erro de membro que não existe em todo tipo de
+  valor, antes de rodar e rodando, e o `type(x)` é a única forma (casos
+  ".type() saiu" de `teste/casos_linguagem.c`).
+- ~~**motor-15** (achado no conserto do motor-14, 2026-10-23) O `--check`
+  aceitava nome de módulo como tipo: `bytes d = b"x"` dava `esperava bytes,
+  recebeu byte`, e `os x = os`, `esperava os, recebeu module`, quando o tipo
+  que não existe dá `tipo X não existe (variável x)`. O `tp_tipo_existe`
+  perguntava se o nome "tinha o membro `type`", e pra módulo a resposta era
+  "não tem", não "não sei". O `bytes d` veio da análise da `ssl.pr` dele (o
+  `recv.md` diz que o retorno é `bytes`; doc-1). No mesmo caminho: a
+  declaração de topo com tipo que não existe saía com dois erros na linha (a
+  pré-passada conferia o valor contra o tipo inexistente: `esperava
+  naoexiste, recebeu int`). `motor` (checador).~~ Corrigido no 18.0.0: o
+  `ps_nativo_eh_tipo` responde "é tipo" sem os módulos, e a pré-passada não
+  confere o valor contra tipo que não existe (casos "nome de modulo nao e
+  tipo" e o "um erro por declaracao" do `teste/cli_roda.pr`).
+- ~~**motor-16** (achado na análise da `ssl.pr` dele, 2026-10-23) O `--check`
+  aceitava qualquer membro de um valor sem membro nenhum, `funct` e `Null`:
+  `sockets.socket.sendall(s, "x")` (a forma das linhas 90 e 95 da `ssl.pr`,
+  o método chamado pela classe, como no Python), `g.foo()` com `g` uma funct
+  e `Null.foo()` davam `{"ok":true}`, e rodando `AttributeError: 'funct'
+  object has no method 'sendall'`. `motor` (checador).~~ Corrigido no
+  18.0.0: funct e Null não têm membro (`ps_nativo_tem_membro`), e o Null só
+  fica fora da conferência como lado de uma união (casos "membro de funct" e
+  "membro de Null"). A chamada de membro que não existe do P2 achou sozinha,
+  rodando contra o 17.0.20.
+- **motor-17** (achado no conserto do motor-14, 2026-10-23) O `--check` não
+  sabe o tipo de quatro valores, e aceita o que o motor recusa rodando:
+  - o nome de um builtin usado como valor: `int x = len` passa, e rodando dá
+    `esperava int, recebeu funct`;
+  - a chamada de uma funct com `yield`: `str s = gen()` passa, e rodando dá
+    `esperava str, recebeu generator`;
+  - a chamada de uma `async funct`: com `int async funct f()`, `int x = f()`
+    passa, e rodando dá `esperava int, recebeu future`;
+  - o membro de enum: `Cor.RED.foo()` passa, e rodando dá `'int' object has
+    no method 'foo'`.
+
+  Por isso o membro neles também passa (`len.foo()`, `gen().foo()`). A
+  chamada de membro que não existe do P2 acha o do builtin
+  (`len.p2_nao_existe()`, na catraca). `motor` (checador).
 
 ## os
 
@@ -322,6 +366,14 @@ em cada item):
   do `unshare --pid`, sobraram 18 no fim do `check-e2e-local`. O teste chama
   o `kill()` do `Process` em cada servidor (a funct que encerra,
   `teste/e2e/mail_local.pr:87`), e eles continuam vivos. `teste`.
+- **teste-5** (achado no conserto do motor-14, 2026-10-23) O P1 confere só o
+  TIPO do erro que um bloco anuncia em comentário (`# TypeError: frase`), não
+  a frase: o `scripts/audita_exemplos_doc.pr` e o
+  `scripts/confere_saida_doc.pr` (`erro_anunciado`) aceitam o bloco quando o
+  nome do tipo aparece no código. `docs/bytes/concat/concat.md:37` anuncia
+  `TypeError: sequence item 1: expected a bytes-like object, int found`, o
+  motor dá `... expected a byte-like object, int found`, e passa (doc-1).
+  `teste`.
 
 ## doc
 
@@ -338,7 +390,14 @@ da linguagem promete, e o exemplo da página está errado. As páginas ficam em
   `getsockopt/getsockopt.md:46` (`bytes 4 ...`). O motor dá `byte`. O mesmo
   nome errado está no resumo dos membros de `docs/request/download/download.md:16`
   (`resp.content -> bytes`; no `--metadata`, `Response.content` devolve
-  `byte`). `doc`.
+  `byte`). E cinco páginas escrevem `bytes-like` na frase do erro (achado na
+  análise da `ssl.pr` dele, 2026-10-23): `send/send.md:33`,
+  `sendall/sendall.md:29`, `sendto/sendto.md:30`, `setsockopt/setsockopt.md:28`
+  (`a bytes-like object is required`) e `docs/bytes/concat/concat.md:37`
+  (`expected a bytes-like object`); o motor, o checador e
+  `teste/casos_libs.c` dizem `byte-like`, pelo nome do tipo. O P1 não pega:
+  a seção de erros não roda, e no erro anunciado em comentário ele confere o
+  tipo, não a frase. `doc`.
 - **doc-2** `close/close.md:55` imprime o `str(e)` de um `OSError` pego e
   espera `[Errno 9] Bad file descriptor`. A doc da linguagem (10.3) diz que a
   variável do `catch` vale `mensagem (linha N)`, e o motor dá

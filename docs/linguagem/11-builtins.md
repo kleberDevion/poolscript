@@ -25,7 +25,7 @@ Tudo aqui foi verificado rodando o fonte na VM em C.
 | Builtin | Assinatura | O que faz |
 |---|---|---|
 | `len` | `len(x)` | tamanho de `str` (em **caracteres**, não bytes: `len("olá")`→3), `list`, `tup`, `dict` ou `byte`. `len(Null)` → `0`. |
-| `type` | `type(x)` | nome do tipo como `str` (`"int"`, `"str"`, `"list"`, `"Null"`, nome da Entity, `"funct"`, `"type"`, `"generator"`). Igual ao método `x.type()`. |
+| `type` | `type(x)` | nome do tipo como `str` (`"int"`, `"str"`, `"list"`, `"Null"`, nome da Entity, `"funct"`, `"type"`, `"generator"`). É a única forma: o método `x.type()` saiu no 18.0.0. |
 | `range` | `range(fim)` / `range(início, fim, passo=1)` | **lista** concreta de inteiros, `início` (inclusive) a `fim` (exclusive), de `passo` em `passo` (negativo conta pra trás). Só inteiro: `int`, `bool` e inteiro grande; texto e `flo` são `TypeError` (`range(int(x))` converte). `passo=0` → erro. |
 
 ---

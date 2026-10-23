@@ -145,6 +145,15 @@ com os tipos da assinatura da doc; e o retorno guardado numa variável de um
 tipo que não é o publicado (o checador tem que recusar a declaração, como o
 motor recusa rodando).
 
+E um membro que não existe (`p2_nao_existe()`, desde o 18.0.0), uma vez em
+cada tipo de valor (os básicos com a amostra, menos o `Null`, que o `Object`
+não guarda; os donos; os da jinker no ar) e em dois valores `funct` (o
+`os.getenv` e o `len`): os dois lados têm que recusar, com a mesma frase.
+Rodando, o receptor vai num `Object` e o membro é chamado nele (guardado
+antes, o membro daria a frase da leitura, não a da chamada). Contra o
+17.0.20, ela achou sozinha o motor-16 (`os.getenv.p2_nao_existe()` passava
+no `--check`).
+
 Reprova:
 
 - o `--check` recusa e o motor aceita (a classe do `forAll`);
@@ -185,6 +194,15 @@ entre o JIT e sem ele, nenhuma queda:
 | chamar o que não se chama: a propriedade como método (frases diferentes) e a constante de módulo (`sockets.AF_INET(0)` passa no `--check`) | 88 | motor-12 |
 | o tipo do `app.route(...)` com dois nomes e o retorno do `register` | 1 | motor-13 |
 | o `.type()`, que sai da linguagem (decisão do Kleber) | 1 | motor-14 |
+
+No 18.0.0 (2026-10-23, no Mac) o `.type()` saiu (motor-14 consertado, e a
+linha dele saiu da catraca) e entrou a chamada de membro que não existe: 564
+membros, 8.292 chamadas, 36 delas de membro que não existe. As 491
+conhecidas: as 490 de antes, menos a do motor-14, mais a do
+`app.route(...).p2_nao_existe()` (motor-13, o `_RouteRegistrar` que o
+checador não conhece) e a do `len.p2_nao_existe()` (motor-17, o `--check`
+não sabe o tipo do nome do builtin). O membro de funct de módulo
+(`os.getenv.p2_nao_existe()`, motor-16) foi consertado no mesmo lote.
 
 Nas páginas de método: 206 conferidas, 192 batem; 14 dão aos parâmetros
 outros nomes que o motor (doc-26); 73 métodos sem página com a assinatura no

@@ -361,7 +361,7 @@ function apresentaTipo(doc, alvo) {
     const sec = secaoDaLinguagem(nome);
     if (sec) s += '\n\n' + trechoDaSecao(sec);
   }
-  s += '\n\n' + (n ? '**' + n + ' membros** — ' + listaMembros(nome, 12) : '**sem membros** — só o universal `type()`');
+  s += '\n\n' + (n ? '**' + n + ' membros** — ' + listaMembros(nome, 12) : '**sem membros**');
   if (pg && pg.exemplo) s += '\n\n```ps\n' + pg.exemplo + '\n```';
   if (pg && pg.arq) s += '\n\n' + linkDoc(pg.arq);
   return s;
@@ -1028,9 +1028,10 @@ function tipoDoNome(doc, nome, linha) {
     }
   }
   /* Nome que EXISTE (variável, parâmetro, variável de laço) mas cujo tipo
-   * ninguém sabe: ao menos o que todo valor tem (`type`…). Devolver nada
-   * fazia `for each x in …` + `x.` ficar mudo. */
-  for (const b of A.visiveisEm(idx, linha)) if (b.nome === nome) return { tipo: 'universal' };
+   * ninguém sabe: o alvo é o tipo desconhecido (o hover lista candidatos
+   * pelo nome do membro). Devolver nada fazia `for each x in …` + `x.`
+   * ficar mudo. */
+  for (const b of A.visiveisEm(idx, linha)) if (b.nome === nome) return { tipo: 'desconhecido' };
   /* `str(x).upper().` — a cadeia começa numa CONVERSÃO: o nome é o do tipo
    * do motor (`bytes(...)` produz `byte`). Sem isto a cadeia morria no
    * primeiro passo e o completion não oferecia nada. */
@@ -1074,7 +1075,7 @@ function tipoDaExpressao(doc, no, linha) {
     case 'IndexAccess': {
       /* `s[i]` de texto é texto; o item de lista/dict ninguém sabe */
       const t = tipoDaExpressao(doc, no.a, linha);
-      return t && t.tipo === 'tipo_motor' && t.nome === 'str' ? t : { tipo: 'universal' };
+      return t && t.tipo === 'tipo_motor' && t.nome === 'str' ? t : { tipo: 'desconhecido' };
     }
     case 'Name': case 'MemberAccess': case 'Call': case 'BaseCall': {
       const partes = partesDoNo(no);
@@ -1122,7 +1123,7 @@ function retornoInferido(doc, m) {
       if (no.k === 'FunctDecl' || no.k === 'LambdaExpr') return;   /* retorno de outra funct */
       if (no.k === 'ReturnStmt') {
         const t = no.a ? tipoDaExpressao(doc, no.a, no.l - 1) : null;
-        if (!t || t.tipo === 'universal') { bate = false; return; }
+        if (!t || t.tipo === 'desconhecido') { bate = false; return; }
         const rot = t.tipo + ':' + (t.nome || (t.nomes || []).join('|'));
         if (achado && achado.rot !== rot) { bate = false; return; }
         achado = { rot, alvo: t };
@@ -1135,16 +1136,6 @@ function retornoInferido(doc, m) {
   } finally {
     INFERINDO.delete(chave);
   }
-}
-
-/* O universal (`type()`, que todo valor tem) NÃO entra em lista de
- * completion: colado em toda lista, ele lia como "o editor não sabe o tipo"
- * (ele, 2026-09-26: "por que diabos tem type?"). Receptor conhecido lista
- * só o que o tipo tem; desconhecido não sugere nada. O hover em `.type`
- * continua respondendo (`universalChamado`). */
-function universalChamado(nome) {
-  const u = (META.tipos.__universal__ || []).find((m) => m.nome === nome);
-  return u ? Object.assign({ kind: 'funct', escopo: '__universal__' }, u) : null;
 }
 
 /* A EXPRESSÃO que a atribuição mais recente antes da linha deu ao nome
@@ -1174,9 +1165,9 @@ function tabelaDe(t) {
   return null;
 }
 
-/* `int`, `flo`, `bool`: tipo conhecido SEM tabela de métodos — o completion
- * oferece só o universal (`type`), mas dizendo de que tipo é, em vez de
- * fingir que não sabe. */
+/* `int`, `flo`, `bool`: tipo conhecido SEM membro nenhum — o completion não
+ * oferece nada, mas o alvo diz de que tipo é, em vez de fingir que não
+ * sabe. */
 const ESCALARES = new Set(['int', 'flo', 'bool']);
 
 /* Resolve a cadeia `a.b.c` e devolve a LISTA DE MEMBROS do que ela designa. */
@@ -1184,17 +1175,17 @@ function membrosDaCadeia(doc, partes, linha) {
   return membrosDe(doc, alvoDaCadeia(doc, partes, linha), linha);
 }
 
-/* O ALVO que a cadeia `a.b.c` designa (Entity, módulo, tipo do motor,
- * universal…), ou null quando um passo não existe. Separado de
- * `membrosDaCadeia` porque o hover precisa saber se o alvo é `universal`
- * (tipo desconhecido — cabe listar candidatos) ou uma Entity/módulo onde o
- * membro simplesmente não existe (aí é erro de digitação, fica mudo). */
+/* O ALVO que a cadeia `a.b.c` designa (Entity, módulo, tipo do motor, tipo
+ * desconhecido…), ou null quando um passo não existe. Separado de
+ * `membrosDaCadeia` porque o hover precisa saber se o alvo é `desconhecido`
+ * (cabe listar candidatos) ou uma Entity/módulo onde o membro simplesmente
+ * não existe (aí é erro de digitação, fica mudo). */
 /* `x[]` (a marca que `cadeiaAntes` põe em `x[i]`): o tipo do ITEM — texto
- * indexado é texto; item de lista/dict/tup ninguém sabe (universal). */
+ * indexado é texto; item de lista/dict/tup ninguém sabe (desconhecido). */
 function alvoIndexado(alvo) {
   if (!alvo) return null;
   if (alvo.tipo === 'tipo_motor' && alvo.nome === 'str') return alvo;
-  return { tipo: 'universal' };
+  return { tipo: 'desconhecido' };
 }
 
 function alvoDaCadeia(doc, partes, linha) {
@@ -1260,15 +1251,15 @@ function alvoDaCadeia(doc, partes, linha) {
     else if (t && achaEntidade(doc, t)) alvo = { tipo: 'entity', nome: t, interno: false };
     else if (t && ESCALARES.has(t)) alvo = { tipo: 'escalar', nome: t };
     else if (m.kind === 'class' && achaEntidade(doc, m.nome)) alvo = { tipo: 'entity', nome: m.nome, interno: false };
-    /* membro existe, retorno desconhecido (`request.get(...).`): universais */
-    else alvo = { tipo: 'universal' };
+    /* membro existe, retorno desconhecido (`request.get(...).`) */
+    else alvo = { tipo: 'desconhecido' };
   }
   return alvo;
 }
 
 function membrosDe(doc, alvo, linha) {
   if (!alvo) return [];
-  if (alvo.tipo === 'universal') return [];          /* tipo desconhecido: nada */
+  if (alvo.tipo === 'desconhecido') return [];       /* tipo desconhecido: nada */
   if (alvo.tipo === 'escalar') return [];            /* int/flo/bool: sem membros */
   if (alvo.tipo === 'model') {
     return (alvo.no.lista || []).filter((f) => f && f.k === 'ModelField')
@@ -1846,7 +1837,6 @@ function hoverCandidatos(nome) {
   const decl = META.tipos_nomes || [];
   const cands = [];
   for (const t of Object.keys(META.tipos || {})) {
-    if (t === '__universal__') continue;
     const m = (META.tipos[t] || []).find((x) => x.nome === nome);
     if (m) cands.push({ t, m });
   }
@@ -2473,7 +2463,7 @@ conexao.onHover((p) => {
     const lit = receptorLiteral(doc, { line: p.position.line, character: tok.c0 });
     if (lit) {
       const m = membrosDe(doc, { tipo: 'tipo_motor', nome: lit }, p.position.line)
-                  .find((x) => x.nome === nome) || universalChamado(nome);
+                  .find((x) => x.nome === nome);
       if (!m) return semMembro(lit, nome);
       const prosa = m.escopo ? resumoDe(m.escopo, m.nome) : '';
       return md('```ps\n' + lit + '.' + assinatura(m) + '\n```' + (prosa ? '\n\n' + prosa : ''));
@@ -2484,7 +2474,7 @@ conexao.onHover((p) => {
   if (partes.length) {                       /* `alvo.membro` */
     const alvo = alvoDaCadeia(doc, partes, p.position.line);
     const membros = membrosDe(doc, alvo, p.position.line);
-    const m = membros.find((x) => x.nome === nome) || universalChamado(nome);
+    const m = membros.find((x) => x.nome === nome);
     /* receptor conhecido mas de tipo desconhecido (`head = lines[0]`): os
      * candidatos por nome; membro inexistente num tipo conhecido: diz que
      * não existe e o que existe — hover nunca em branco (ele, 2026-09-26) */
@@ -2669,8 +2659,7 @@ function hoverDaLinguagem(doc, nome, receptorDeModulo) {
               + (pg.arq ? '\n\n' + linkDoc(pg.arq) : ''));
   }
   const real = (META.tipos_apelidos || {})[nome] || nome;
-  /* `__universal__` é a tabela dos métodos que todo valor tem, não tipo */
-  const tipoDoMotor = META.tipos[real] && !real.startsWith('__');
+  const tipoDoMotor = !!META.tipos[real];
   if (ehPrimitivo(nome) || tipoDoMotor || (META.tipos_nomes || []).includes(nome)) {
     /* `Response` solto não é valor (o motor dá NameError), mas é o tipo na
      * declaração e no parâmetro (`Response r`) */

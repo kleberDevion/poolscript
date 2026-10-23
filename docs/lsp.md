@@ -70,8 +70,7 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   `cur = con.cursor()` (construído de outra variável), `v = jinker.request`
   (valor de módulo), `y = x`, `x = x.upper()` (o `x` da direita é o de
   antes). `cur.` lista `execute/fetchall`; `self.con.cursor().` idem. A
-  lista é só o que o tipo tem: o universal `type()` não é colado nela
-  (colado em toda lista, lia como "não sei o tipo"). Tipo sem métodos
+  lista é só o que o tipo tem. Tipo sem métodos
   (`int`, `flo`, `bool`) e retorno que depende do conteúdo (`json.parse`,
   `list.pop`) não oferecem nada; o hover diz o tipo. Dentro de uma
   chamada (`connect(url=…`) os `nome=` que ainda faltam vêm no topo e o

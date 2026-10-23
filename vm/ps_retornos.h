@@ -29,6 +29,11 @@ int ps_retorno_tipo_existe(const char *nome);
  * VM, junto das tabelas que o acesso a membro consulta. */
 int ps_nativo_tem_membro(const char *dono, const char *membro);
 
+/* `nome` é um tipo de valor do motor cujos membros o motor conhece todos
+ * (número, bool, Null, funct e os donos das tabelas de métodos e de campos)?
+ * Módulo não é tipo. */
+int ps_nativo_eh_tipo(const char *nome);
+
 /* `import nome` liga um módulo NATIVO da linguagem? (Os nativos ganham de
  * qualquer arquivo de mesmo nome — é a ordem de resolução do import.) */
 int ps_nativo_eh_modulo(const char *nome);

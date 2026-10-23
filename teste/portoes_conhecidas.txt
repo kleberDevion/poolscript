@@ -161,7 +161,6 @@ p2	membro:sockets.IP_MULTICAST_LOOP	e7eb6de87fc7	motor-12	todos	linha 3: sockets
 p2	membro:sockets.IP_ADD_MEMBERSHIP	bd6d2e9bc2ff	motor-12	todos	linha 3: sockets.IP_ADD_MEMBERSHIP(0)
 p2	membro:sockets.IP_DROP_MEMBERSHIP	83838a8e6848	motor-12	todos	linha 3: sockets.IP_DROP_MEMBERSHIP(0)
 p2	membro:sockets.IPV6_V6ONLY	a888a8d10bbd	motor-12	todos	linha 3: sockets.IPV6_V6ONLY(0)
-p2	membro:__universal__.type	ff6e8f387b34	motor-14	todos	linha 13: int x = 1.type()
 p2	membro:PoolFile.ext	bde2c75e936b	motor-12	todos	linha 11: open("./f.txt", "w").ext(p2_nao_existe=1)
 p2	membro:PoolFile.name	344292f6f93a	motor-12	todos	linha 11: open("./f.txt", "w").name(p2_nao_existe=1)
 p2	membro:PoolFile.size	ebad0144996e	motor-12	todos	linha 11: open("./f.txt", "w").size(path="")
@@ -572,6 +571,8 @@ p2	membro:WsConnection.close	867bf6456c8e	motor-11	todos	linha 8: request.ws_con
 p2	membro:WsConnection.close	d8dd2eccec89	motor-11	todos	linha 9: request.ws_connect("ws://127.0.0.1:@W@/ws").close(b"")
 p2	membro:WsConnection.close	149b13d6e777	motor-11	todos	linha 10: request.ws_connect("ws://127.0.0.1:@W@/ws").close(True)
 p2	membro:WsConnection.close	961d2b6345c4	motor-11	todos	linha 11: request.ws_connect("ws://127.0.0.1:@W@/ws").close(p2_nao_exi
+p2	membro:RouteRegistrar.p2_nao_existe	7d1c262b672a	motor-13	todos	linha 1: jinker.Jinker().route("/p2").p2_nao_existe()
+p2	membro:len.p2_nao_existe	453240fcc82a	motor-17	todos	linha 1: len.p2_nao_existe()
 titulo	docs/mail/MailReader/login/login.md	c0748ee62a63	doc-26	todos	linha 1: MailReader.login(user, password)
 titulo	docs/mail/MailReader/conn/conn.md	058de648be64	doc-26	todos	linha 1: MailReader.conn(host, port)
 titulo	docs/mail/MailServer/login/login.md	8672571320f7	doc-26	todos	linha 1: MailServer.login(user, password)

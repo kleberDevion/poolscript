@@ -1225,12 +1225,8 @@ quais existem lendo código — e "etc." não é documentação.
 
 ### Em qualquer valor
 
-| | Devolve |
-|---|---|
-| `.type()` | nome do tipo: `str` `int` `flo` `bool` `list` `dict` `tup` `Null` `funct`, ou o nome da Entity |
-
-Mesmos nomes que o builtin `type(x)` — os dois já discordaram (`json` contra
-`dict`), hoje não discordam mais.
+Nenhum. O nome do tipo é o builtin `type(x)`; o método `.type()`, que todo
+valor tinha, saiu no 18.0.0.
 
 ### String
 

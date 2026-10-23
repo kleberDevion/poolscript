@@ -931,6 +931,15 @@ os.writeFile(PASTA + "/fim_tipo.pr", "int x = \"abc\"\n")
 r = roda([POOL, "--check", "fim_tipo.pr"])
 confere("--check: l2/c2 do erro de tipo cobre a expressao inteira",
         fins_do_check(r["saida"]) == [[1, 9, 1, 14]])
+# O tipo escrito que nao existe e UM erro, no nome da variavel. A pre-passada
+# do topo conferia o valor contra o tipo inexistente, e o mesmo erro saia de
+# novo com outra frase (`esperava naoexiste, recebeu int`). Nome de modulo
+# nao e tipo (motor-15): `bytes` e o modulo, o tipo e `byte`.
+os.writeFile(PASTA + "/tipo_falso.pr", "naoexiste x = 1\nbytes d = b\"x\"\n")
+r = roda([POOL, "--check", "tipo_falso.pr"])
+confere("tipo que nao existe: um erro por declaracao, no nome",
+        erros_do_check(r["saida"]) == [[1, 11, "tipo naoexiste não existe (variável x)"],
+                                       [2, 7, "tipo bytes não existe (variável d)"]])
 r = roda([POOL, "--check"], entrada="x = \"𠮷\" = 2\n")
 confere("--check sem --utf16: c2 em caractere", fins_do_check(r["saida"]) == [[1, 9, 1, 10]])
 r = roda([POOL, "--check", "--utf16"], entrada="x = \"𠮷\" = 2\n")

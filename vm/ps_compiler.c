@@ -3023,13 +3023,15 @@ static int tp_aceita(C *c, const char *d, const char *v, PSNode *no, int declara
 
 /* O nome de tipo escrito existe? Tipo da linguagem, Entity/model/enum do
  * arquivo, tipo que um nativo devolve ou tem tabela, ou nome que um import
- * liga sem que se saiba o que é (a classe pode vir do módulo). */
+ * liga sem que se saiba o que é (a classe pode vir do módulo). Nome de
+ * módulo não é tipo: `bytes d = b"x"` é "tipo bytes não existe" (o tipo é
+ * `byte`). */
 static SimInfo *tp_sim_de(C *c, Unidade *u, const char *nome);
 static int tp_tipo_existe(C *c, Unidade *u, const char *t)
 {
     if (!t) return 1;
     if (ps_tipo_info(t) || tp_tipo_decl_arq(c, t)) return 1;
-    if (ps_retorno_tipo_existe(t) || ps_nativo_tem_membro(t, "type") != -1) return 1;
+    if (ps_retorno_tipo_existe(t) || ps_nativo_eh_tipo(t)) return 1;
     SimInfo *s = tp_sim_de(c, u, t);
     return s && s->estado == 1 && !s->tipo && !s->decl;
 }
@@ -3661,7 +3663,6 @@ static int tp_classe_tem(C *c, const char *classe, const char *nome, int prof)
 {
     PSNode *d = tp_tipo_arq(c, classe);
     if (!d || d->kind != N_ENTITY_DECL || prof > 32) return -1;
-    if (strcmp(nome, "type") == 0) return 1;
     for (int32_t i = 0; i < d->lista2_alias.n; i++)
         if (d->lista2_alias.itens[i]->texto && strcmp(d->lista2_alias.itens[i]->texto, nome) == 0) return 1;
     for (int32_t i = 0; i < d->lista.n; i++) {
@@ -4866,7 +4867,6 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
             return;
         }
         if (s && s->decl && s->decl->kind == N_ENUM_DECL) {
-            if (!strcmp(n->texto, "type")) return;
             for (int32_t i = 0; i < s->decl->lista.n; i++)
                 if (s->decl->lista.itens[i]->texto && !strcmp(s->decl->lista.itens[i]->texto, n->texto)) return;
             terro(c, n, "AttributeError", "type object '%s' has no attribute '%s'",
@@ -4893,7 +4893,8 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
             return;
         }
     }
-    /* união: só é erro se NENHUM lado (fora o Null) tem o membro */
+    /* união: só é erro se NENHUM lado (fora o Null) tem o membro. O Null
+     * sozinho não tem membro nenhum: `Null.foo()` é erro, como rodando. */
     int lados = 0;
     const char *q = t;
     while (q && *q) {
@@ -4903,7 +4904,7 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
         if (len >= sizeof(lado)) return;
         memcpy(lado, q, len); lado[len] = '\0';
         q = bar ? bar + 1 : NULL;
-        if (!strcmp(lado, "Null")) continue;
+        if (!strcmp(lado, "Null") && strchr(t, '|')) continue;
         PSNode *d = tp_tipo_arq(c, lado);
         int r = (d && d->kind == N_ENTITY_DECL) ? tp_classe_tem(c, lado, n->texto, 0)
               : d ? -1 : ps_nativo_tem_membro(lado, n->texto);
@@ -5364,11 +5365,9 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
     const char *t = tp_de(c, u, f->a);
     if (t && !strchr(t, '|') && !tp_tipo_arq(c, t)) {
         /* método de valor nativo: `"a".upper(1)`, `[1].index(1, 2, 3, 4)`.
-         * `char` e `long` rodam como str e int; o que nenhum tipo tem pode
-         * ser o membro de todo valor (`x.type()`) */
+         * `char` e `long` rodam como str e int */
         const char *dono = tp_basico(t) ? tp_basico(t) : t;
         if (ps_aridade_de(dono, f->texto, NULL)) tp_confere_nativo(c, n, dono, f->texto, dono, t_unico);
-        else tp_confere_nativo(c, n, "__universal__", f->texto, dono, t_unico);
         return;
     }
     if (!t || strchr(t, '|')) return;
@@ -9050,7 +9049,11 @@ static void tp_pre_stmt(C *c, Unidade *mod, PSNode *s, int decorado)
         case N_VAR_DECL:
             if (!s->texto) return;
             grava_valor(c, mod, s->a);
-            c->grava.declara = s->texto2;
+            /* o tipo escrito que não existe é o erro da declaração, na
+             * segunda passada ("tipo X não existe"): aqui ele não vira o tipo
+             * do nome, senão o valor seria conferido contra ele e o mesmo
+             * erro sairia de novo, com outra frase */
+            c->grava.declara = tp_tipo_existe(c, mod, s->texto2) ? s->texto2 : NULL;
             tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
             break;
         case N_ASSIGNMENT:

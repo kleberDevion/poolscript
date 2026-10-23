@@ -1,4 +1,4 @@
-# Jinga v17.0.20
+# Jinga v18.0.0
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 jinga --version
-# Jinga 17.0.20 [PSVM] (2026-09-24) Runtime standalone
+# Jinga 18.0.0 [PSVM] (2026-09-24) Runtime standalone
 #                       ^ a data da compilação DESTE binário: duas
 #                         cópias da mesma versão se distinguem por ela
 ```
@@ -623,7 +623,7 @@ public enum Mix { A, B = 10, C, D = "x", E }
 
 Membros separados por vírgula (opcional no último). Acessar um membro que não
 existe é erro: `AttributeError: type object 'Cor' has no attribute 'ROXO'`.
-`Cor.type()` devolve `"enum"`.
+`type(Cor)` devolve `"enum"`.
 
 ---
 

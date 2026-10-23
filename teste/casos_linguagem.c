@@ -4185,6 +4185,64 @@ const Caso CASOS_LINGUAGEM[] = {
   "'K' object has no method 'dobr'. Did you mean: 'dobro'?", 2 },
 { "nome sem parecido nenhum: a frase fica como era",
   "s = \"abc\"\npost(s.zzzz())\n", "", "AttributeError: 'str' object has no method 'zzzz'", 2 },
+
+/* O `.type()` saiu no 18.0.0 (motor-14, decisão do Kleber: "o uso deve ser
+ * somente type() nao .type()"): fica o builtin `type(x)`. Em todo tipo de
+ * valor, `x.type()` é membro que não existe, com a frase de qualquer outro,
+ * antes de rodar (rc 2) e rodando (rc 1, o tipo só se sabe na chamada); num
+ * dict, `d.type` é a chave, como todo `d.chave`. E o `type(x)` de cada tipo
+ * de valor dá o que sempre deu. */
+{ ".type() saiu: int", "post(1.type())\n", "", "AttributeError: 'int' object has no method 'type'", 2 },
+{ ".type() saiu: str", "post(\"a\".type())\n", "", "AttributeError: 'str' object has no method 'type'", 2 },
+{ ".type() saiu: list", "post([1].type())\n", "", "AttributeError: 'list' object has no method 'type'", 2 },
+{ ".type() saiu: tup", "post((1, 2).type())\n", "", "AttributeError: 'tup' object has no method 'type'", 2 },
+{ ".type() saiu: Null", "post(Null.type())\n", "", "AttributeError: 'Null' object has no method 'type'", 2 },
+{ ".type() saiu: instancia de Entity",
+  "class A {\n    int x = 1\n}\nA a = A()\npost(a.type())\n", "",
+  "AttributeError: 'A' object has no method 'type'", 2 },
+{ ".type() saiu: enum",
+  "enum Cor {\n    RED,\n    GREEN\n}\npost(Cor.type())\n", "",
+  "AttributeError: type object 'Cor' has no attribute 'type'", 2 },
+{ ".type() saiu: funct",
+  "Null funct g() {\n    post(1)\n}\ng.type()\n", "", "AttributeError: 'funct' object has no method 'type'", 2 },
+{ ".type() saiu: funcao de modulo",
+  "import sockets\nsockets.socket.type()\n", "", "AttributeError: 'funct' object has no method 'type'", 2 },
+{ ".type() saiu: metodo ligado",
+  "post(\"a\".upper.type())\n", "", "AttributeError: 'funct' object has no method 'type'", 2 },
+{ ".type sem chamar: attribute", "post(1.type)\n", "", "AttributeError: 'int' object has no attribute 'type'", 2 },
+{ ".type() saiu: a mesma frase rodando",
+  "funct f(x) {\n    return x.type()\n}\npost(f(1))\n", "", "AttributeError: 'int' object has no method 'type'", 1 },
+{ ".type() num dict e a chave type", "dict d = {\"a\": 1}\npost(d.type())\n", "", "KeyError: 'type'", 1 },
+{ "type(x) de cada tipo de valor",
+  "import sockets\nclass A {\n    int x = 1\n}\nenum Cor {\n    RED,\n    GREEN\n}\n"
+  "post(type(1), type(\"a\"), type([1]), type((1, 2)), type({\"a\": 1}), type(Null), type(True), type(1.5), type(b\"x\"))\n"
+  "post(type(A()), type(A), type(Cor), type(Cor.RED), type(len), type(sockets), type(sockets.socket))\n",
+  "int str list tup dict Null bool flo byte\nA Entity enum int funct module funct", NULL, 0 },
+
+/* Nome de módulo não é tipo (motor-15): `bytes d = b"x"` dizia `esperava
+ * bytes, recebeu byte`, como se o tipo `bytes` existisse (o valor binário é
+ * `byte`; `bytes` é o módulo). O checador perguntava se o nome "tinha o
+ * membro type", e pra módulo a resposta era "não tem", não "não sei". */
+{ "nome de modulo nao e tipo: bytes", "bytes d = b\"x\"\npost(d)\n", "",
+  "AttributedValueError: tipo bytes não existe (variável d)", 2 },
+{ "nome de modulo nao e tipo: os", "import os\nos x = os\npost(x)\n", "",
+  "AttributedValueError: tipo os não existe (variável x)", 2 },
+{ "o tipo do valor binario e byte", "byte d = b\"x\"\npost(type(d))\n", "byte", NULL, 0 },
+
+/* Valor sem membro nenhum (motor-16): funct e Null. O `--check` aceitava
+ * qualquer membro deles (`sockets.socket.sendall(s, d)`, a forma do Python
+ * de chamar o método pela classe), e o motor recusava rodando. */
+{ "membro de funct de modulo: erro antes de rodar",
+  "import sockets\nsockets.socket.sendall(1, \"x\")\n", "",
+  "AttributeError: 'funct' object has no method 'sendall'", 2 },
+{ "membro de funct do arquivo: erro antes de rodar",
+  "Null funct g() {\n    post(1)\n}\ng.foo()\n", "", "AttributeError: 'funct' object has no method 'foo'", 2 },
+{ "membro lido de metodo ligado: erro antes de rodar",
+  "post(\"a\".upper.foo)\n", "", "AttributeError: 'funct' object has no attribute 'foo'", 2 },
+{ "membro de Null: erro antes de rodar", "post(Null.foo())\n", "",
+  "AttributeError: 'Null' object has no method 'foo'", 2 },
+{ "membro do Null que a funct devolve: erro antes de rodar",
+  "Null funct f() {\n    post(1)\n}\nf().foo()\n", "", "AttributeError: 'Null' object has no method 'foo'", 2 },
 /* O nome escrito e a PRIMEIRA PALAVRA de um membro (`send` -> `send_linux`):
  * pela distancia de edicao ficava longe demais e o erro saia sem dica. Dois
  * membros com a mesma primeira palavra = nao se sabe qual, e nao sugere. */
@@ -4457,11 +4515,13 @@ const Caso CASOS_LINGUAGEM[] = {
 { "raise de variavel que guarda excecao: o catch da familia pega",
   "erro = FileNotFoundError\ntry { raise erro } catch (OSError e) { post(\"pegou\", \"[\" + e + \"]\") }\n",
   "pegou [ (linha 2)]", NULL, 0 },
-/* A expectativa e a primeira linha INTEIRA do stderr: `KeyError: ` com o
- * espaco no fim, porque a mensagem e vazia. So "KeyError:" era prefixo dela
- * e o portao das assercoes recusa prefixo. */
+/* A expectativa e a primeira linha INTEIRA do stderr, com a quebra:
+ * `KeyError: ` com o espaco no fim, porque a mensagem e vazia. So
+ * "KeyError:" era prefixo dela, e sem a quebra ela era prefixo de
+ * `KeyError: 'type'` (o `.type()` num dict, 18.0.0): o portao das assercoes
+ * recusa prefixo. */
 { "raise de variavel sem catch: o tipo sai no traceback",
-  "erro = KeyError\nraise erro\n", "", "KeyError: ", 1 },
+  "erro = KeyError\nraise erro\n", "", "KeyError: \n", 1 },
 { "raise Nome maiusculo continua tipo LITERAL, mesmo sendo variavel",
   "Boom = ValueError\ntry { raise Boom } catch (ValueError e) { post(\"NAO DEVIA\") }\n", "", "Boom:  (linha 2)", 1 },
 { "chamar excecao fora do raise e TypeError que diz onde ela vale",

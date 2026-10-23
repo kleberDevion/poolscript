@@ -353,8 +353,7 @@ async funct mr_af() {
         ["builtins", "gather", 'gather(mr_af(), mr_af())'],
         ["builtins", "input", 'input()', 'input()'],
         ["builtins", "id", 'id([])'],
-        ["builtins", "load", 'load("@TMP@/b.env")'],
-        ["__universal__", "type", '[1].type()']
+        ["builtins", "load", 'load("@TMP@/b.env")']
     ]
 })
 
@@ -1271,9 +1270,15 @@ if __name__ == "main" {
         post("--so: fora da tabela (nao medidos agora e ausentes da gravada):", ", ".join(fora))
     }
     # e o contrario: o que a tabela gravada tem e este sistema nao publica
-    # (`sockets.AF_PACKET`, `TCP_KEEPIDLE`, que o macOS nao tem) continua nela
+    # (`sockets.AF_PACKET`, `TCP_KEEPIDLE`, que o macOS nao tem) continua nela,
+    # quando o dono existe aqui. Dono que nenhum sistema publica sai (o
+    # `__universal__` do `.type()`, que saiu no 18.0.0).
+    dict donos_aqui = {}
+    for each chave in publicados.keys() {
+        donos_aqui[chave.split("|")[0]] = True
+    }
     for each chave in gravada.keys() {
-        if not (chave in publicados) and not (chave in RES) {
+        if not (chave in publicados) and not (chave in RES) and chave.split("|")[0] in donos_aqui {
             finais[chave] = gravada[chave]
         }
     }

@@ -38,14 +38,11 @@ import json
 DOCS = "docs"
 BASE = "teste/cobertura_doc_base.txt"
 
-# Escopo do motor -> pasta da doc, quando os dois não têm o mesmo nome. Tipo mora
-# na pasta com o nome dele (`docs/str/`, `docs/byte/`, `docs/list/`…) — havia
-# aqui `str -> string` e `byte -> bytes`, e o mapa envelheceu quando o tipo
-# virou `byte`. Sobram os sub-escopos de módulo (`sys.stdin` documenta na página
-# do `sys`: é o trecho antes do ponto) e o pseudo-tipo `__universal__`.
-PASTA_DO_ESCOPO = {
-    "__universal__": "objetos-internos"
-}
+# Escopo do motor -> pasta da doc: tipo mora na pasta com o nome dele
+# (`docs/str/`, `docs/byte/`, `docs/list/`…). Havia um mapa pros nomes que
+# diferiam (`str -> string`, `byte -> bytes`, o pseudo-tipo `__universal__`
+# do `.type()`, que saiu no 18.0.0); sobram os sub-escopos de módulo
+# (`sys.stdin` documenta na página do `sys`: é o trecho antes do ponto).
 
 
 # Todos os `.md` de uma pasta, descendo nas subpastas. Mesmo andador do
@@ -77,10 +74,7 @@ funct mds_de(alvo, acc) {
 # TÍTULO — que é o que faz dela a página daquele escopo.
 funct arquivos_do_escopo(escopo, todos, linhas_de) {
     pasta = escopo
-    if escopo in PASTA_DO_ESCOPO.keys() {
-        pasta = PASTA_DO_ESCOPO[escopo]
-    }
-    elif "." in escopo {
+    if "." in escopo {
         pasta = escopo.split(".")[0]      # `sys.stdin` -> a página do `sys`
     }
     achados = []

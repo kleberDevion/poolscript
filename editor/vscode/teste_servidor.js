@@ -357,8 +357,9 @@ async function main() {
            && txt(12).includes('`route(...)`') && txt(12).includes('from jinker import Jinker')
            && txt(12).includes('](file://') && txt(12).includes('Jinker.md)') && linksDeArquivoValidos(txt(12)),
          txt(12).slice(0, 300));
-    conf('hover de `n = 1` diz `int n` (tipo primitivo: so type())',
-         txt(13).includes('int n') && txt(13).includes('int   # tipo primitivo') && txt(13).includes('só o universal `type()`'), txt(13).slice(0, 200));
+    conf('hover de `n = 1` diz `int n` (tipo primitivo, sem membros)',
+         txt(13).includes('int n') && txt(13).includes('int   # tipo primitivo') && txt(13).includes('**sem membros**')
+           && !txt(13).includes('type()'), txt(13).slice(0, 200));
     conf('hover de instancia de Entity do arquivo mostra a classe com campos tipados e metodos com assinatura',
          txt(14).includes('Osx o') && txt(14).includes('class Osx {') && txt(14).includes('int x') && txt(14).includes('funct dobra(self)'),
          txt(14).slice(0, 300));
@@ -577,6 +578,22 @@ async function main() {
     const ultimo = ds[ds.length - 1];
     conf('programa valido nao gera diagnostico', !ultimo || ultimo.params.diagnostics.length === 0,
          ultimo && ultimo.params.diagnostics);
+  }
+  /* O `.type()` saiu no 18.0.0 (fica o `type(x)`): `x.type()` é membro que
+   * não existe, com a frase do motor, e o completion não oferece `type`. */
+  {
+    const m = await conversa('str s = "a"\npost(s.type())\n', []);
+    const ds = m.filter((x) => x.method === 'textDocument/publishDiagnostics');
+    const lista = ds.length ? ds[ds.length - 1].params.diagnostics : [];
+    conf('`s.type()` vira diagnostico: o .type() saiu (18.0.0)',
+         lista.length === 1 && lista[0].range.start.line === 1
+           && lista[0].message.includes("'str' object has no method 'type'"), lista);
+  }
+  {
+    const m = await conversa('str s = "a"\ns.\n', [compl(2, 1, 2)]);
+    const L = rotulos(resp(m, 2));
+    conf('depois de `s.`, o completion lista os metodos do str e nenhum `type`',
+         L.includes('upper') && !L.includes('type'), L.slice(0, 8));
   }
   /* O `--check` diz onde o trecho acusado TERMINA (`l2`/`c2`): o sublinhado
    * cobre a expressao inteira (`"abc"`, colunas 9-13), nao um caractere. */
@@ -1431,7 +1448,7 @@ async function main() {
       const src = `import ${comClasse}\ninst = ${comClasse}.${classe}()\ninst.\n`;
       const m = await conversa(src, [compl(2, 2, 5)]);
       const L = rotulos(resp(m, 2));
-      conf(`sem teto: \`${comClasse}.${classe}()\` expoe os METODOS da classe (e nao o universal \`type\`)`,
+      conf(`sem teto: \`${comClasse}.${classe}()\` expoe os METODOS da classe (e nenhum \`type\`)`,
            L.length > 0 && !L.includes('type'), L.slice(0, 8));
       /* `import lib` liga o MODULO: `lib.` lista a classe (o motor recusa
        * `lib.estatico()`: "module 'lib' has no attribute"); a Entity de mesmo

@@ -117,26 +117,19 @@ tup dict bool
 int flo
 ```
 
-## O escopo `__universal__`
+## Só `type(x)`
 
-`type` é o único membro do escopo `__universal__` do motor: além do builtin
-`type(x)`, todo valor — sem exceção — expõe o **método** `x.type()`, sem
-argumento, que devolve exatamente o mesmo `str`.
+O nome do tipo sai só do builtin. Até o 17.0.20, todo valor tinha também o
+método `x.type()`; ele saiu no 18.0.0, pra ficar uma forma só. Hoje
+`x.type()` é membro que não existe, com o mesmo erro de qualquer outro, antes
+de rodar e rodando. A troca é `type(x)`.
 
 ```ps
-post((1, 2).type(), "a".type(), 1.5.type())
+post((1, 2).type())    # AttributeError: 'tup' object has no method 'type'
 ```
 
-```saida
-tup str flo
-```
-
-As duas formas saem de duas funções diferentes em C (`nativa_type` e
-`met_type`), com tabelas **idênticas** — já foram divergentes no passado, e
-hoje um caso novo tem que entrar nas duas.
-
-- `x.type()` não aceita argumento: `type() takes no arguments (1 given)`
-- em `Null` as duas funcionam: `Null.type()` e `type(Null)` respondem `"Null"`
+Num dict, `d.type` é a chave `"type"`, como todo `d.chave`: sem a chave, dá
+`KeyError: 'type'` rodando.
 
 ## Bordas
 

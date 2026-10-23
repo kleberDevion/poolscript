@@ -366,7 +366,7 @@ typedef struct {
     int16_t  idx;      /* posição dentro dela */
 } PSMetodoNat;
 
-enum { T_MET_STR = 0, T_MET_LIST, T_MET_DICT, T_MET_UNIV, T_MET_ARQ,
+enum { T_MET_STR = 0, T_MET_LIST, T_MET_DICT, T_MET_ARQ,
        T_MET_BYTES, T_MET_PFILE, T_MET_SQLCONN, T_MET_SQLCUR,
        T_MET_MAILSRV, T_MET_MAILMSG, T_MET_MAILRD, T_MET_RESP, T_MET_QRFILE,
        T_MET_DBCONN, T_MET_DBCUR, T_MET_MONGOCONN, T_MET_MONGOCOL,
@@ -7892,91 +7892,6 @@ static int met_d_len(VM *vm, Value alvo, Value *args, int n, Value *out)
     return 0;
 }
 
-/* ── universal ──────────────────────────────────────────────────────────── */
-/* `.type()` existe em QUALQUER valor, e devolve os MESMOS nomes do builtin
- * `type(x)`. Já foram diferentes (`dict`/`tup` aqui contra `json`/`tuple` lá)
- * — duas implementações independentes que ninguém tinha comparado. */
-static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
-{
-    (void)args;
-    if (n != 0) return erro_aridade(vm, "type", 0, 0, n);
-    const char *t = "object";
-    switch (alvo.t) {
-        case V_NULL: case V_UNSET:  t = "Null";   break;
-        case V_BOOL:                t = "bool";   break;
-        case V_INT:                 t = "int";    break;
-        case V_FLOAT:               t = "flo";    break;
-        case V_FUNC: case V_NATIVE: t = "funct"; break;
-        case V_TIPO:                t = "type";  break;
-        case V_OBJ:
-            switch (alvo.as.obj->type) {
-                case OBJ_BIGINT:      t = "int";   break;
-                case OBJ_FUTURO:      t = "future";break;
-                case OBJ_STRING:      t = "str";   break;
-                case OBJ_LIST:        t = "list";  break;
-                case OBJ_TUPLE:       t = "tup";   break;
-                case OBJ_DICT:        t = "dict";  break;
-                case OBJ_CLASS:       t = "Entity"; break;
-                case OBJ_INSTANCE:    t = COMO_INST(alvo)->classe->nome; break;
-                case OBJ_CELULA:   /* nunca escapa pro usuário; só pra tabela ficar completa */
-                case OBJ_CLOSURE:
-                case OBJ_BOUND:
-                case OBJ_NATIVA:
-                case OBJ_METODO_NAT:  t = "funct"; break;
-                case OBJ_MODULO:      t = "module"; break;
-                case OBJ_MODEL:       t = "PoolModel"; break;
-                case OBJ_ENUM:        t = "enum";   break;
-                case OBJ_GERADOR:     t = "generator"; break;
-                case OBJ_ARQUIVO:     t = "PoolFile"; break;   /* todo arquivo é PoolFile */
-                case OBJ_MODULO_PS:   t = "module"; break;
-                case OBJ_BYTES:       t = "byte";   break;   /* o tipo é `byte`; `bytes` é o módulo */
-                case OBJ_POOLFILE:    t = "PoolFile"; break;
-                case OBJ_SQLCONN:     t = "PoolConnection"; break;
-                case OBJ_SQLCUR:      t = "PoolCursor"; break;
-                case OBJ_MAILSRV:     t = "MailServer"; break;
-                case OBJ_MAILMSG:     t = "MailMessage"; break;
-                case OBJ_MAILRD:      t = "MailReader"; break;
-                case OBJ_RESPONSE:    t = "Response"; break;
-                case OBJ_QRFILE:      t = "QRPoolFile"; break;
-                case OBJ_MANPU_RES:   t = "ManpuResult"; break;
-                case OBJ_DBCONN:      t = "DbConnection"; break;
-                case OBJ_DBCUR:       t = "DbCursor"; break;
-                case OBJ_MONGOCONN:   t = "MongoConnection"; break;
-                case OBJ_MONGOCOL:    t = "MongoCollection"; break;
-                case OBJ_JINKER:      t = "Jinker"; break;
-                case OBJ_JCORS:       t = "CorsConfig"; break;
-                case OBJ_JREG: {
-                    PSJReg *rg = (PSJReg *)alvo.as.obj;
-                    t = rg->kind == JREG_MIDDLEWARE ? "MiddlewareRegistrar"
-                      : rg->kind == JREG_SOCKET    ? "_SocketRegistrar"
-                                                   : "_RouteRegistrar";
-                    break;
-                }
-                case OBJ_JRESP:       t = "JinkerResponse"; break;
-                case OBJ_JREQ:        t = "JinkerRequest"; break;
-                case OBJ_JPROXY:      t = "RequestProxy"; break;
-                case OBJ_JUPLOAD:     t = "PoolFileUpload"; break;
-                case OBJ_JSOCKNS:     t = "SocketNamespace"; break;
-                case OBJ_JEMIT:       t = "SocketEmitter"; break;
-                case OBJ_JCHAN:       t = "ChannelManager"; break;
-                case OBJ_JCHST:       t = "ChannelStatus"; break;
-                case OBJ_WSCONN:      t = "WsConnection"; break;
-                case OBJ_QRBUILD:     t = "PoolQRCode"; break;
-                case OBJ_QRIMAGE:     t = "QRImage"; break;
-                case OBJ_MANPU_FILE:  t = "ManpuFile"; break;
-                case OBJ_SOCKET:      t = "socket"; break;
-                case OBJ_PROCESSO:    t = "Process"; break;
-                case OBJ_REGEX:       t = "Pattern"; break;
-                case OBJ__COUNT:      break;   /* sentinela: nunca ocorre */
-            }
-            break;
-    }
-    PSString *r = nova_string(vm, t, (int)strlen(t));
-    if (!r) MERRO(vm, "MemoryError", "sem memoria");
-    *out = MK_OBJ(r);
-    return 0;
-}
-
 
 /* ── arquivo ────────────────────────────────────────────────────────────── */
 static int arq_exige(VM *vm, Value v, const char *quem, PSArquivo **out)
@@ -9992,7 +9907,6 @@ static const MetodoNat METODOS_DICT[] = {
     { "pop", met_d_pop, "chave,default=Null" }, { "update", met_d_update, "outro" }, { "clear", met_d_clear, NULL },
     { "copy", met_d_copy, NULL }, { "len", met_d_len, NULL },
 };
-static const MetodoNat METODOS_UNIV[] = { { "type", met_type, NULL } };
 
 static int met_ms_conn(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_ms_login(VM *vm, Value alvo, Value *args, int n, Value *out);
@@ -10318,7 +10232,7 @@ static const MetodoNat METODOS_REGEX[] = {
 };
 
 static const MetodoNat *TABELAS[] = { METODOS_STR, METODOS_LIST, METODOS_DICT,
-                                      METODOS_UNIV, METODOS_ARQ, METODOS_BYTES,
+                                      METODOS_ARQ, METODOS_BYTES,
                                       METODOS_PFILE, METODOS_SQLCONN, METODOS_SQLCUR,
                                       METODOS_MAILSRV, METODOS_MAILMSG, METODOS_MAILRD,
                                       METODOS_RESP, METODOS_QRFILE,
@@ -10335,7 +10249,6 @@ static const int TAM_TABELA[] = {
     N_METODOS_STR,
     (int)(sizeof(METODOS_LIST) / sizeof(METODOS_LIST[0])),
     (int)(sizeof(METODOS_DICT) / sizeof(METODOS_DICT[0])),
-    (int)(sizeof(METODOS_UNIV) / sizeof(METODOS_UNIV[0])),
     (int)(sizeof(METODOS_ARQ) / sizeof(METODOS_ARQ[0])),
     (int)(sizeof(METODOS_BYTES) / sizeof(METODOS_BYTES[0])),
     (int)(sizeof(METODOS_PFILE) / sizeof(METODOS_PFILE[0])),
@@ -10369,11 +10282,11 @@ static const int TAM_TABELA[] = {
     (int)(sizeof(METODOS_TUPLA) / sizeof(METODOS_TUPLA[0])),
 };
 
-/* Resolve `alvo.nome`. `.type()` vem primeiro porque vale pra todo valor. */
+/* Resolve `alvo.nome` na tabela do tipo do valor. Número, bool, Null, funct,
+ * gerador e future não têm tabela: nenhum método (o nome do tipo é o
+ * builtin `type(x)`). */
 static int acha_metodo_valor(Value alvo, const char *nome, int *tab, int *idx)
 {
-    for (int i = 0; i < TAM_TABELA[T_MET_UNIV]; i++)
-        if (strcmp(METODOS_UNIV[i].nome, nome) == 0) { *tab = T_MET_UNIV; *idx = i; return 0; }
     int qual;
     /* Só texto tem método de texto. Número já recebeu por conversão calada
      * (`(150).isdigit()` virava `"150".isdigit()`) — conversão que ninguém
@@ -14482,7 +14395,7 @@ static const MembroMod MOD_DOTENV[] = { { "load", mod_dotenv_load, 0, "path=Null
  * do valor, inclusive depois de aritmética (`x / 3` marca "flo" e o valor é
  * float). O embrulho só aparecia em `type(x)`, devolvendo o nome da classe
  * interna do interpretador — o mesmo vazamento de `PoolEntityInstance`. Aqui
- * devolvemos o valor puro, e `.type()` responde igual.
+ * devolvemos o valor puro, e o `type()` dele é o do valor.
  */
 
 /* O número dentro de um texto sujo, pela regra BR do `Parsing` (decisão
@@ -30692,19 +30605,6 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                             break;
                         }
                     }
-                    /* `.type()` vale em qualquer valor, inclusive instância.
-                     * Fica DEPOIS de campo e método por disciplina: hoje
-                     * `type` é palavra reservada e uma Entity não pode ter
-                     * membro com esse nome, mas a ordem certa não depende
-                     * disso continuar verdade. */
-                    int tab, mi;
-                    if (acha_metodo_valor(alvo, nome, &tab, &mi) == 0 && tab == T_MET_UNIV) {
-                        vm->sp = sp; vm->locals_top = locals_top;
-                        PSMetodoNat *mn = novo_metnat(vm, alvo, tab, mi);
-                        if (!mn) ERRO(vm, "sem memoria");
-                        stack[sp - 1] = MK_OBJ(mn);
-                        break;
-                    }
                     {
                         char dica[PS_FRASE_SEM_VALOR_CAP];
                         ERRO_TF(vm, "AttributeError", "'%s' object has no %s '%s'%s",
@@ -30770,12 +30670,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     stack[sp - 1] = e->valores[k];
                     goto membro_ok;
                 }
-                /* `.type` é universal: deixa cair no dispatch geral lá embaixo.
-                 * Qualquer outro nome é membro inexistente do enum. */
-                if (strcmp(nome, "type") != 0)
-                    ERRO_TF(vm, "AttributeError",
-                            "type object '%s' has no %s '%s'",
-                            e->nome ? e->nome : "?", rotulo, nome);
+                ERRO_TF(vm, "AttributeError",
+                        "type object '%s' has no %s '%s'",
+                        e->nome ? e->nome : "?", rotulo, nome);
             }
             if (EH_MODPS(alvo) || EH_MODULO(alvo)) {
                 /* a regra de o que sai do módulo mora em `membro_de_modulo` */
@@ -33705,7 +33602,6 @@ static const char *jm_rotulo_tabela(int t)
         case T_MET_LIST:      return "list";
         case T_MET_DICT:      return "dict";
         case T_MET_TUPLA:     return "tup";
-        case T_MET_UNIV:      return "__universal__";
         case T_MET_ARQ:       return "PoolFile";   /* todo arquivo é PoolFile */
         case T_MET_PFILE:     return NULL;         /* mesmo tipo: entra na chave do T_MET_ARQ (união) */
         case T_MET_BYTES:     return "byte";    /* o tipo; o módulo `bytes` sai em "modulos" */
@@ -33767,8 +33663,7 @@ const char *ps_nativo_sugestao(const char *mod, const char *membro)
         return sugere_nome(membro, cands, nc);
     }
     /* tipo nativo (`str`, `list`, `byte`, `PoolFile`…): a tabela de métodos
-     * dele, os campos e o que todo valor tem — a mesma lista do
-     * `ps_nativo_tem_membro` */
+     * dele e os campos — a mesma lista do `ps_nativo_tem_membro` */
     const char *cands[512];
     int n = 0, achou = 0;
     for (int t = 0; t < (int)(sizeof(TAM_TABELA) / sizeof(TAM_TABELA[0])); t++) {
@@ -33780,7 +33675,6 @@ const char *ps_nativo_sugestao(const char *mod, const char *membro)
     for (int k = 0; k < N_CAMPOS && n < 512; k++)
         if (strcmp(CAMPOS[k].dono, mod) == 0) { achou = 1; cands[n++] = CAMPOS[k].campo; }
     if (!achou) return NULL;
-    for (int k = 0; k < TAM_TABELA[T_MET_UNIV] && n < 512; k++) cands[n++] = METODOS_UNIV[k].nome;
     return sugere_nome(membro, cands, n);
 }
 
@@ -33829,6 +33723,27 @@ int ps_nativo_eh_modulo(const char *nome)
     return 0;
 }
 
+/* `nome` é um tipo de valor do motor cujos membros o motor conhece todos?
+ * Número, bool, Null e funct, que não têm membro nenhum, e os donos das
+ * tabelas de métodos e de campos (`str`, `socket`, `Process`…). Módulo não é
+ * tipo: o valor binário é `byte`, e `bytes` é o módulo. É a pergunta do
+ * checador pra "o tipo escrito existe?", e o `ps_nativo_tem_membro` parte
+ * dela. */
+int ps_nativo_eh_tipo(const char *nome)
+{
+    if (!nome) return 0;
+    if (!strcmp(nome, "int") || !strcmp(nome, "flo") || !strcmp(nome, "bool")
+            || !strcmp(nome, "Null") || !strcmp(nome, "funct"))
+        return 1;
+    for (int t = 0; t < (int)(sizeof(TAM_TABELA) / sizeof(TAM_TABELA[0])); t++) {
+        const char *rot = t == T_MET_PFILE ? "PoolFile" : jm_rotulo_tabela(t);
+        if (rot && strcmp(rot, nome) == 0) return 1;
+    }
+    for (int k = 0; k < N_CAMPOS; k++)
+        if (strcmp(CAMPOS[k].dono, nome) == 0) return 1;
+    return 0;
+}
+
 /* O nativo `dono` tem o membro `membro`? É a pergunta do checador de tipos —
  * "método que o tipo não tem é erro antes de rodar" —, respondida pelas MESMAS
  * tabelas que o OP_GET_MEMBER consulta e o `--metadata` publica. `dono` é o
@@ -33846,26 +33761,15 @@ int ps_nativo_tem_membro(const char *dono, const char *membro)
                 return MODULOS[i].membros[k].eh_valor ? 2 : 1;
         return 0;
     }
-    /* número, bool e Null não têm tabela: só o que todo valor tem */
-    int achou = !strcmp(dono, "int") || !strcmp(dono, "flo") || !strcmp(dono, "bool")
-             || !strcmp(dono, "Null");
+    if (!ps_nativo_eh_tipo(dono)) return -1;
     for (int t = 0; t < (int)(sizeof(TAM_TABELA) / sizeof(TAM_TABELA[0])); t++) {
         const char *rot = t == T_MET_PFILE ? "PoolFile" : jm_rotulo_tabela(t);
         if (!rot || strcmp(rot, dono) != 0) continue;
-        achou = 1;
         for (int k = 0; k < TAM_TABELA[t]; k++)
             if (strcmp(TABELAS[t][k].nome, membro) == 0) return 1;
     }
-    /* campo antes do método universal: é a ordem do OP_GET_MEMBER (o
-     * `sock.type` é o campo int, não o `.type()` de todo valor) */
-    for (int k = 0; k < N_CAMPOS; k++) {
-        if (strcmp(CAMPOS[k].dono, dono) != 0) continue;
-        achou = 1;
-        if (strcmp(CAMPOS[k].campo, membro) == 0) return 2;
-    }
-    if (!achou) return -1;
-    for (int k = 0; k < TAM_TABELA[T_MET_UNIV]; k++)
-        if (strcmp(METODOS_UNIV[k].nome, membro) == 0) return 1;
+    for (int k = 0; k < N_CAMPOS; k++)
+        if (strcmp(CAMPOS[k].dono, dono) == 0 && strcmp(CAMPOS[k].campo, membro) == 0) return 2;
     /* `d.chave` é acesso à chave: fora os métodos, qualquer nome vale num
      * dict, e o que volta é o valor guardado */
     if (strcmp(dono, "dict") == 0) return 2;

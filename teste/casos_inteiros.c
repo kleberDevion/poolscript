@@ -57,7 +57,7 @@ const Caso CASOS_INTEIROS[] = {
   "18446744073709551616 1", NULL, 0 },
 { "round/int/flo de bignum", "x = 18446744073709551616\npost(round(x), int(x))\n",
   "18446744073709551616 18446744073709551616", NULL, 0 },
-{ "type() de bignum diz int", "x = 18446744073709551616\npost(type(x), x.type())\n", "int int", NULL, 0 },
+{ "type() de bignum diz int", "x = 18446744073709551616\npost(type(x))\n", "int", NULL, 0 },
 
 { "json.parse de inteiro grande não satura",
   "import json\nd = json.parse(\"{\\\"n\\\": 123456789012345678901234567890}\")\npost(d[\"n\"])\n",

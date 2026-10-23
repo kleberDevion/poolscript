@@ -99,15 +99,15 @@ além disso, o sentinela 500/False da seção 6.
 
 ## 2.2. Descobrindo o tipo — `type(x)`
 
-O builtin `type(x)` devolve o **nome** do tipo como string, e todo valor também
-expõe o método `.type()` (equivalente):
+O builtin `type(x)` devolve o **nome** do tipo como string. É a única forma: o
+método `.type()`, que todo valor tinha, saiu no 18.0.0.
 
 ```ps
 post(type(42))        # int
 post(type(3.14))      # flo
 post(type("oi"))      # str
 post(type([1,2]))     # list
-post((1,2).type())    # tup
+post(type((1,2)))     # tup
 ```
 
 Um número gigante (bignum) continua sendo `"int"` — a promoção é transparente:

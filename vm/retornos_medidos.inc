@@ -177,7 +177,6 @@
     { "WsConnection", "close", "Null" },
     { "WsConnection", "on_message", "Null" },
     { "WsConnection", "send", "Null" },
-    { "__universal__", "type", "str" },
     { "builtins", "abs", "int|flo" },
     { "builtins", "addEnd", "Null" },
     { "builtins", "addStart", "Null" },

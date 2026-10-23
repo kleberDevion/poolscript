@@ -21,7 +21,6 @@ dict DONOS = {
     "dict": ["", "{\"a\": 1}"],
     "tup": ["", "(1, 2)"],
     "byte": ["", "b\"abc\""],
-    "__universal__": ["", "1"],
     "PoolFile": ["", "open(\"@TMP@/f.txt\", \"w\")"],
     "Pattern": ["import regex", "regex.compile(\"a\")"],
     "PoolQRCode": ["import qrcode", "qrcode.QRCode()"],
