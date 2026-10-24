@@ -718,6 +718,24 @@ check: pool testar
 	# lista fica em teste/portoes_conhecidas.txt (portao `p2`).
 	@./pool scripts/confere_checador.pr
 	@echo
+	# P3 dos portoes: em cada bloco da doc, o servidor do editor conversado como
+	# o VS Code faz (`editor/vscode/server.js`): o diagnostico e o do `--check`,
+	# o hover de nenhum nome diz "nao definido" num programa que o `--check`
+	# aprova, e o completion depois de `x.` tem o que o motor da ao tipo de `x`.
+	# Sem o node ou sem o `npm install` em editor/vscode, vermelho: portao que nao
+	# roda calado e falso verde. Divergencia que ja e item aberto da lista fica
+	# em teste/portoes_conhecidas.txt (portao `p3`).
+	@./pool scripts/confere_editor.pr
+	@echo
+	# P4 dos portoes, a gramatica: a pagina docs/linguagem/gramatica.md contra o
+	# parser, nos dois sentidos, em todo bloco da doc, todo programa da suite
+	# (`./testar --programas`) e programas sorteados da propria gramatica; o
+	# `--ast` e o `--check` com o mesmo erro de sintaxe; cada token com a forma
+	# lexica da classe dele; e toda regra usada. Chama o motor por lacos do
+	# `sh`. Divergencia que ja e item aberto da lista fica em
+	# teste/portoes_conhecidas.txt (portao `gramatica`).
+	@./pool scripts/confere_gramatica.pr
+	@echo
 	@./pool teste/fuzz_replay.pr
 	@echo
 	# DEPURADOR: fala DAP com o motor igual o editor faz — breakpoint na linha

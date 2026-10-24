@@ -3,7 +3,9 @@
 Uma variável é um nome ligado a um valor. Esta seção especifica como criar esse
 vínculo (declaração e atribuição), como alterá-lo (atribuição aumentada,
 incremento, desempacotamento, atribuição a índice/membro) e — o ponto mais
-sutil — **onde** cada nome existe e por quanto tempo (escopo).
+sutil — **onde** cada nome existe e por quanto tempo (escopo). A forma de cada
+declaração e de cada atribuição, como o parser lê, está em
+[A gramática](gramatica.md#os-comandos).
 
 Como no resto da linguagem, tudo aqui foi verificado rodando o mesmo fonte nos
 VM e comparando a saída.

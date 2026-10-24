@@ -51,6 +51,10 @@ jobs:
             libssl-dev libpng-dev libexpat1-dev zlib1g-dev \
             libgmp-dev libx11-dev libmongoc-dev libbson-dev bubblewrap
       - run: make pool testar
+      # As dependências do servidor do editor (`vscode-languageserver`), como no
+      # build.yml: sem elas o teste do LSP pulava aqui, e o portão P3 para
+      # vermelho (teste-6).
+      - run: (cd editor/vscode && npm install --omit=dev --no-audit --no-fund)
       # `make check` é o portão INTEIRO e é o mesmo comando que roda na máquina:
       # suíte + metadata + audita_doc + audita_c + exemplos da doc + replay de
       # fuzz + LSP + analisador + check-debug (invariantes ligadas) + e2e local.

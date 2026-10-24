@@ -125,6 +125,9 @@ editor/intellij/plugin/dist/
 /ps_cli_teste/
 /ps_cm_tmp/
 /ps_cobre_stdlib/
+/ps_confere_checador_tmp_*/
+/ps_confere_editor_tmp_*/
+/ps_confere_gramatica_tmp_*/
 /ps_e2e_*/
 /ps_leis_tmp/
 /ps_mongo_teste/

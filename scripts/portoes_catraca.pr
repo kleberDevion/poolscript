@@ -9,10 +9,17 @@
 #
 # - portão: `check` (o `--check` de cada bloco), `roda` (o bloco rodando,
 #   com JIT e sem), `p2` (cada chamada de cada membro, no `--check` e
-#   rodando: `scripts/confere_checador.pr`) ou `titulo` (a assinatura do
-#   título de uma página de método contra o motor: `scripts/audita_doc.pr`);
+#   rodando: `scripts/confere_checador.pr`), `titulo` (a assinatura do
+#   título de uma página de método contra o motor: `scripts/audita_doc.pr`),
+#   `p3` (o servidor do editor em cada bloco: `scripts/confere_editor.pr`)
+#   ou `gramatica` (a gramática escrita contra o parser:
+#   `scripts/confere_gramatica.pr`);
 # - página: a página da doc (`docs/...`); no `p2`, o membro chamado
-#   (`membro:dono.nome`), e a impressão é a do texto da chamada;
+#   (`membro:dono.nome`), e a impressão é a do texto da chamada; no `p3`, a
+#   impressão é a do lugar conferido (`#p3 hover nome 2:9`) junto do bloco;
+#   na `gramatica`, também o caso da suíte (`suite:casos_<grupo>.c:<caso>`) e
+#   o programa sorteado (`gerado:<n>`), e a impressão é a do que se conferiu
+#   (`#gramatica ...`) junto do programa;
 # - impressão: os 12 primeiros dígitos do SHA-256 do texto do bloco. A chave
 #   não é o número da linha, que anda quando alguém escreve acima, nem a
 #   primeira linha, que se repete (`import sockets` abre todos os exemplos da
@@ -75,13 +82,25 @@ Null funct conhecidas_de(str portao, dict r, list ruins) {
             addEnd(ruins, CATRACA + ":" + str(n) + ": " + l)
             continue
         }
-        if not (p[0] in ["check", "roda", "p2", "titulo"]) or not (p[4] in ["todos", "linux", "darwin", "windows"]) {
+        if not (p[0] in ["check", "roda", "p2", "titulo", "p3", "gramatica"]) or not (p[4] in ["todos", "linux", "darwin", "windows"]) {
             addEnd(ruins, CATRACA + ":" + str(n) + ": " + l)
             continue
         }
-        # a chave do P1 é a página da doc; a do P2, o membro chamado
-        str prefixo = "membro:" if p[0] == "p2" else "docs/"
-        if not p[1].startswith(prefixo) {
+        # a chave do P1 é a página da doc; a do P2, o membro chamado; a da
+        # gramática, a página, o caso da suíte ou o programa sorteado
+        list prefixos = ["docs/"]
+        if p[0] == "p2" {
+            prefixos = ["membro:"]
+        } elif p[0] == "gramatica" {
+            prefixos = ["docs/", "suite:", "gerado:"]
+        }
+        bool prefixo_ok = False
+        for each pr in prefixos {
+            if p[1].startswith(pr) {
+                prefixo_ok = True
+            }
+        }
+        if not prefixo_ok {
             addEnd(ruins, CATRACA + ":" + str(n) + ": " + l)
             continue
         }

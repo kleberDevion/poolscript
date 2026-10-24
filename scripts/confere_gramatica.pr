@@ -1,0 +1,739 @@
+# O portão da gramática (notas/PORTOES.md, P4): a gramática escrita em
+# docs/linguagem/gramatica.md e o parser da Jinga dizem a mesma coisa.
+#
+# POR QUE ELE EXISTE. A única definição da sintaxe era o parser
+# (vm/ps_parser.c). Gramática escrita que ninguém confere apodrece na primeira
+# mudança do parser; a do Python não apodrece porque é ela que gera o parser.
+# Aqui é o contrário: o portão lê os blocos ```gramatica da página e, com
+# eles, reconhece os tokens que o `jinga --tokens` entrega de cada programa
+# (scripts/gramatica_peg.pr):
+#
+#   - todo bloco ```ps da doc, com os ```ps contexto anteriores da página na
+#     frente (os blocos do P1 e do P3);
+#   - todo programa da suíte, cada texto uma vez (`./testar --programas`: o
+#     texto que o compilador C leu dos literais);
+#   - programas sorteados da própria gramática, com a semente fixa.
+#
+# Em cada programa ele confere:
+#
+#   1. a gramática e o parser concordam: o que o `--ast` aceita a gramática
+#      reconhece, e o que ele recusa ela recusa. O nome solto que o parser
+#      marca e deixa pro checador (`retrun x`) conta como recusa. Cada campo
+#      `{...}` de f-string é reconhecido sozinho (`campo_de_fstring`);
+#   2. os dois modos do parser concordam: quando o `--ast` recusa, o `--check`
+#      recusa com o mesmo primeiro erro (a frase, a linha e a coluna); no nome
+#      solto, o `--check` recusa (o nome que não existe, os dois comandos na
+#      mesma linha, ou a causa que ele acha, como o `//` que não é comentário);
+#   3. cada token casa com a forma léxica que a página escreve pra classe dele,
+#      e nenhum nome é palavra reservada;
+#
+# e, no fim, que toda regra da gramática foi usada por algum programa.
+#
+# O programa com erro do lexer (o `--tokens` com erro) fica fora da comparação
+# sintática, que é sobre os tokens: o parser tem que recusar, e o relatório diz
+# quantos são. O erro de sintaxe que só o compilador acusa (o `break` fora de
+# laço) não é do parser e não se compara.
+#
+# O motor é chamado por laços do shell (`sh`) em paralelo: a chamada pela
+# Jinga (`os.run`) faz `fork` do processo do portão, e no macOS isso custa
+# quatro vezes o próprio `--tokens`. Sem o `sh`, o portão fica vermelho
+# dizendo isso. Nenhum programa roda: só o `--tokens`, o `--ast` e o `--check`.
+#
+# A falha que já é item aberto de notas/CORRECAO-BASE.md fica na catraca
+# (`teste/portoes_conhecidas.txt`, portão `gramatica`): a página da doc, o caso
+# da suíte (`suite:casos_<grupo>.c:<caso>`) ou o sorteio (`gerado:<n>`), e a
+# impressão do programa junto do que se conferiu.
+#
+#     ./pool scripts/confere_gramatica.pr
+import os
+import sys
+import json
+import date
+import regex
+from './portoes_catraca.pr' import aplica, relata, linha_nova
+from './portoes_doc.pr' import lista_md, blocos_de
+from './gramatica_peg.pr' import le_gramatica, reconhece, formas_lexicas, profundidades, sorteia_frase, texto_da_frase
+
+str PAGINA = "docs/linguagem/gramatica.md"
+str TMP = "ps_confere_gramatica_tmp_" + str(date.timestamp_ms())
+# os programas sorteados da gramática: quantos, a semente e a recursão (uma
+# regra aberta dentro dela mesma) a partir da qual o sorteio só pega o caminho
+# mais curto
+int SORTEIOS = 600
+int SEMENTE = 20261023
+int TETO = 2
+# um programa do `--check` por lote: a linha de comando do Windows tem 32 mil
+# caracteres
+int LOTE = 150
+# a pontuação: um caractere por token
+dict PONTUACAO = {"LPAREN": "(", "RPAREN": ")", "LBRACK": "[", "RBRACK": "]", "LBRACE": "{", "RBRACE": "}",
+                  "COLON": ":", "SEMI": ";", "COMMA": ",", "DOT": ".", "AT": "@"}
+
+
+# ── os programas ───────────────────────────────────────────────────────────
+
+# Grava o programa e guarda de onde ele veio.
+Null funct novo(list progs, str trab, str texto, dict de) {
+    str arq = trab + "/p" + str(progs.len() + 1) + ".pr"
+    os.writeFile(arq, texto)
+    de["arq"] = arq
+    de["texto"] = texto
+    de["le"] = True
+    addEnd(progs, de)
+}
+
+
+# Os blocos da doc, como no portão `check` do P1: cada bloco ```ps (com
+# `jinga`, `ps contexto` e `ps sem-rodar`) com os ```ps contexto anteriores da
+# página na frente.
+Null funct da_doc(list progs, list paginas, str trab) {
+    for each md in lista_md("docs") {
+        str contexto = ""
+        for each b in blocos_de(os.readFile(md)) {
+            str rot = b["rotulo"]
+            bool eh_ctx = rot == "ps contexto"
+            if rot == "ps" or rot == "jinga" or eh_ctx or rot.startswith("ps sem-rodar") {
+                str prog = contexto + b["texto"] + "\n"
+                novo(progs, trab, prog, {"origem": "doc", "pagina": md, "codigo": b["texto"],
+                                         "onde": md + ":" + str(b["linha"]), "linha": b["linha"],
+                                         "desloc": contexto.count("\n")})
+                if eh_ctx {
+                    contexto = prog
+                }
+            }
+        }
+        addEnd(paginas, md)
+    }
+}
+
+
+# Os programas da suíte, pelo `./testar --programas`. Cada texto entra uma vez,
+# com o nome do primeiro caso que o tem. Devolve quantos casos são.
+int funct da_suite(list progs, list paginas, str trab) {
+    str testar = "./testar.exe" if os.isfile("testar.exe") else "./testar"
+    str pasta = trab + "/suite"
+    os.mkdir(pasta)
+    str linhas = os.run([testar, "--programas", pasta], capture=True)
+    dict vistos = {}
+    int casos = 0
+    for each l in linhas.splitlines() {
+        if not l.startswith("{") {
+            continue
+        }
+        dict c = json.parse(l)
+        casos = casos + 1
+        str arq = pasta + "/" + str(c["n"]) + ".pr"
+        str texto = ""
+        bool le = True
+        try {
+            texto = os.readFile(arq)
+        } catch (Exception e) {
+            le = False          # o fonte que não é UTF-8: o lexer tem que recusar
+        }
+        if le and texto in vistos {
+            continue
+        }
+        if le {
+            vistos[texto] = True
+        }
+        str chave = "suite:casos_" + c["grupo"] + ".c:" + c["nome"]
+        addEnd(progs, {"arq": arq, "texto": texto, "le": le, "origem": "suite", "pagina": chave,
+                       "codigo": texto if le else chave, "onde": chave, "linha": 1, "desloc": 0})
+        addEnd(paginas, chave)
+    }
+    return casos
+}
+
+
+# Os programas sorteados da gramática. Devolve quantos sorteios passaram do
+# fundo (o sorteio seguinte vale no lugar).
+int funct sorteados(list progs, list paginas, str trab, dict g) {
+    dict prof = profundidades(g)
+    dict s = {"v": SEMENTE}
+    int fundos = 0
+    int i = 0
+    while i < SORTEIOS {
+        i = i + 1
+        str texto = ""
+        try {
+            texto = texto_da_frase(sorteia_frase(g, prof, "arquivo", s, TETO))
+        } catch (ValueError e) {
+            fundos = fundos + 1
+            continue
+        }
+        str chave = "gerado:" + str(i)
+        novo(progs, trab, texto, {"origem": "gerado", "pagina": chave, "codigo": texto, "onde": chave,
+                                  "linha": 1, "desloc": 0})
+        addEnd(paginas, chave)
+    }
+    return fundos
+}
+
+
+# ── o motor ────────────────────────────────────────────────────────────────
+
+# Quantos laços do shell em paralelo: a metade dos processadores, de 1 a 8.
+int funct faixas() {
+    int n = 1
+    try {
+        if sys.platform() == "windows" {
+            n = int(os.getenv("NUMBER_OF_PROCESSORS", "1"))
+        } else {
+            n = int(os.run(["getconf", "_NPROCESSORS_ONLN"], capture=True).strip())
+        }
+    } catch (Exception e) {
+        n = 1
+    }
+    n = n // 2
+    if n < 1 {
+        n = 1
+    }
+    if n > 8 {
+        n = 8
+    }
+    return n
+}
+
+
+# O `--tokens` e o `--ast` de cada programa, gravados ao lado dele
+# (`p1.pr.tok`, `p1.pr.ast`), em `n` laços do shell em paralelo.
+Null funct chama_motor(list progs, str trab, int n) {
+    list listas = []
+    int j = 0
+    while j < n {
+        addEnd(listas, [])
+        j = j + 1
+    }
+    int k = 0
+    for each p in progs {
+        addEnd(listas[k % n], p["arq"])
+        k = k + 1
+    }
+    j = 0
+    while j < n {
+        str corpo = ""
+        if listas[j].len() > 0 {
+            corpo = "\n".join(listas[j]) + "\n"
+        }
+        os.writeFile(trab + "/lista" + str(j + 1) + ".txt", corpo)
+        j = j + 1
+    }
+    str script = ("POOL=\"$1\"; D=\"$2\"; N=\"$3\"\n"
+                  + "j=1\n"
+                  + "while [ \"$j\" -le \"$N\" ]; do\n"
+                  + "  while IFS= read -r f; do\n"
+                  + "    [ -n \"$f\" ] || continue\n"
+                  + "    \"$POOL\" --tokens \"$f\" > \"$f.tok\" 2>/dev/null\n"
+                  + "    \"$POOL\" --ast \"$f\" > \"$f.ast\" 2>/dev/null\n"
+                  + "  done < \"$D/lista$j.txt\" &\n"
+                  + "  j=$((j + 1))\n"
+                  + "done\n"
+                  + "wait\n")
+    os.writeFile(trab + "/motor.sh", script)
+    os.run(["sh", trab + "/motor.sh", sys.executable, trab, str(n)], capture=True)
+}
+
+
+# O `--check` de todos os programas, em lotes: um processo confere vários
+# arquivos e responde uma linha por arquivo, com o caminho. Devolve caminho ->
+# resposta.
+dict funct checa_todos(list progs) {
+    dict r = {}
+    int i = 0
+    while i < progs.len() {
+        list lote = [sys.executable, "--check"]
+        int j = i
+        while j < progs.len() and j < i + LOTE {
+            addEnd(lote, progs[j]["arq"])
+            j = j + 1
+        }
+        for each l in os.run(lote, capture=True).splitlines() {
+            if l.startswith("{") {
+                dict d = json.parse(l)
+                r[d.get("arquivo", "")] = d
+            }
+        }
+        i = j
+    }
+    return r
+}
+
+
+str funct le_ou_vazio(str arq) {
+    try {
+        return os.readFile(arq)
+    } catch (Exception e) {
+        return ""
+    }
+}
+
+
+# ── o que o parser disse ───────────────────────────────────────────────────
+
+# A marca do nome solto na árvore: o comando que terminou num nome, com outro
+# comando na mesma linha (`marca_nome_solto`). Devolve o lugar do nome e o do
+# segundo comando, ou {} sem marca.
+dict funct marca_de(Object no) {
+    if type(no) == "dict" {
+        dict d = no
+        if d.get("k", "") == "ExpressionStmt" and "e" in d {
+            dict a = d["a"]
+            dict e = d["e"]
+            return {"nl": a["l"], "nc": a["c"], "el": e["l"], "ec": e["c"]}
+        }
+        for each ch in d.keys() {
+            if d[ch] != Null {
+                dict m = marca_de(d[ch])
+                if m.len() > 0 {
+                    return m
+                }
+            }
+        }
+    } elif type(no) == "list" {
+        list l = no
+        for each x in l {
+            if x != Null {
+                dict m = marca_de(x)
+                if m.len() > 0 {
+                    return m
+                }
+            }
+        }
+    }
+    return {}
+}
+
+
+# O veredito do `--ast`: aceitou, o primeiro erro e a marca do nome solto. A
+# árvore funda demais pro `json.parse` (os casos de aninhamento da suíte) é lida
+# pelo começo do texto, onde estão o "ok" e os erros; a marca, pela forma do
+# nó dela no texto (`"e":{"k":"PassStmt",...}`).
+dict funct veredito_da_arvore(str txt) {
+    dict v = {"ok": False, "erro": {}, "marca": {}}
+    dict a = {}
+    bool inteira = True
+    try {
+        a = json.parse(txt)
+    } catch (Exception e) {
+        inteira = False
+        int k = txt.find(",\"arvore\":")
+        a = json.parse(txt[0:k] + "}" if k > 0 else txt)
+    }
+    v["ok"] = a["ok"]
+    if not a["ok"] {
+        list es = a.get("erros", [])
+        dict e = es[0] if es.len() > 0 else a
+        v["erro"] = {"msg": e.get("msg", ""), "linha": e.get("linha", 0), "coluna": e.get("coluna", 0)}
+    } elif inteira {
+        v["marca"] = marca_de(a.get("arvore", {}))
+    } else {
+        list m = regex.findall("\"e\":\\{\"k\":\"PassStmt\",\"l\":([0-9]+),\"c\":([0-9]+)", txt)
+        if m.len() > 0 {
+            v["marca"] = {"nl": -1, "nc": -1, "el": int(m[0][0]), "ec": int(m[0][1])}
+        }
+    }
+    return v
+}
+
+
+# ── o texto do fonte ───────────────────────────────────────────────────────
+
+# O trecho do fonte de (l, c) até (l2, c2), com c2 de fora (posições em
+# caractere, desde 1).
+str funct trecho(list linhas, int l, int c, int l2, int c2) {
+    if l < 1 or l > linhas.len() or l2 > linhas.len() {
+        return ""
+    }
+    if l == l2 {
+        return linhas[l - 1][c - 1:c2 - 1]
+    }
+    str t = linhas[l - 1][c - 1:linhas[l - 1].len()]
+    int i = l + 1
+    while i < l2 {
+        t = t + "\n" + linhas[i - 1]
+        i = i + 1
+    }
+    return t + "\n" + linhas[l2 - 1][0:c2 - 1]
+}
+
+
+# A posição (linha, coluna) do caractere `idx` de um trecho que começa em (l, c).
+list funct posicao(int l, int c, str txt, int idx) {
+    str antes = txt[0:idx]
+    int nl = antes.count("\n")
+    if nl == 0 {
+        return [l, c + idx]
+    }
+    return [l + nl, idx - antes.rfind("\n")]
+}
+
+
+bool funct antes_de(int l1, int c1, int l2, int c2) {
+    return l1 < l2 or (l1 == l2 and c1 < c2)
+}
+
+
+# Onde acaba a expressão de um `{...}` da f-string e começa o formato: o
+# primeiro `:` fora de parêntese, colchete, chave e texto entre aspas. -1
+# quando não há. É o `ps_fstring_formato` do parser (vm/ps_parser.c).
+int funct formato(str t) {
+    int prof = 0
+    int n = t.len()
+    int i = 0
+    while i < n {
+        str ch = t[i]
+        if ch == "\"" or ch == "'" {
+            bool tripla = i + 2 < n and t[i + 1] == ch and t[i + 2] == ch
+            int j = i + (3 if tripla else 1)
+            bool fechou = False
+            while j < n and not fechou {
+                if t[j] == "\\" {
+                    j = j + 2
+                } elif t[j] != ch {
+                    j = j + 1
+                } elif not tripla {
+                    fechou = True
+                } elif j + 2 < n and t[j + 1] == ch and t[j + 2] == ch {
+                    j = j + 2
+                    fechou = True
+                } else {
+                    j = j + 1
+                }
+            }
+            i = j + 1
+            continue
+        }
+        if ch == "(" or ch == "[" or ch == "{" {
+            prof = prof + 1
+        } elif ch == ")" or ch == "]" or ch == "}" {
+            if prof > 0 {
+                prof = prof - 1
+            }
+        } elif ch == ":" and prof == 0 {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+
+# ── a conferência de um programa ───────────────────────────────────────────
+
+# Cada token casa com a forma da classe dele (o token inteiro), e o nome não é
+# palavra reservada. Devolve o que não casa.
+list funct confere_lexico(dict formas, list linhas, list todos) {
+    list r = []
+    for each t in todos {
+        str ty = t["t"]
+        if ty in PONTUACAO or ty in formas {
+            str txt = trecho(linhas, t["l"], t["c"], t["l2"], t["c2"])
+            str lugar = str(t["l"]) + ":" + str(t["c"])
+            if ty in PONTUACAO {
+                if txt != PONTUACAO[ty] {
+                    addEnd(r, "o token " + ty + " em " + lugar + " é `" + txt + "`, não `" + PONTUACAO[ty] + "`")
+                }
+            } elif not formas[ty].fullmatch(txt) {
+                addEnd(r, "o token " + ty + " em " + lugar + " (`" + txt[0:60] + "`) não casa com a forma de " + ty)
+            } elif ((ty == "IDENT" or ty == "IDENT_UPPER")
+                    and (formas["KW"].fullmatch(txt) or formas["BOOL"].fullmatch(txt) or formas["NULL"].fullmatch(txt))) {
+                addEnd(r, "o nome `" + txt + "` em " + lugar + " é palavra reservada")
+            }
+        }
+    }
+    return r
+}
+
+
+# Os tokens de um campo de f-string: os marcados `"em": "fstring"` de [ini, fim).
+# Devolve "" quando a gramática reconhece o campo, ou a frase do que não.
+str funct confere_campo(dict g, list todos, int l, int c, int l2, int c2, dict cob) {
+    list toks = []
+    for each t in todos {
+        if "em" in t and not antes_de(t["l"], t["c"], l, c) and antes_de(t["l"], t["c"], l2, c2) {
+            if t["t"] == "ERRO" {
+                return "o campo da f-string em " + str(l) + ":" + str(c) + " tem erro do lexer (`" + t["v"] + "`)"
+            }
+            addEnd(toks, t)
+        }
+    }
+    addEnd(toks, {"t": "EOF", "v": "", "l": 0, "c": 0, "l2": 0, "c2": 0})
+    dict r = reconhece(g, toks, "campo_de_fstring")
+    for each nome in r["cob"].keys() {
+        cob[nome] = cob.get(nome, 0) + 1
+    }
+    if r["casou"] {
+        return ""
+    }
+    return "a gramática recusa o campo da f-string em " + str(l) + ":" + str(c)
+}
+
+
+# Os campos `{...}` das f-strings do programa, cada um sozinho, até o `:` do
+# formato; e os campos dentro do formato (`{x:>{w}}`). Devolve [frase do campo
+# de fora que a gramática recusa, frase do campo de dentro do formato], ""
+# quando reconhece; e soma os campos em `conta`.
+list funct campos_de_fstring(dict g, list linhas, list todos, dict cob, dict conta) {
+    str fora = ""
+    str dentro = ""
+    for each t in todos {
+        if t["t"] == "FSTRING" and "interp" in t {
+            for each sp in t["interp"] {
+                str txt = trecho(linhas, sp["l"], sp["c"], sp["l2"], sp["c2"])
+                int dp = formato(txt)
+                list fim = [sp["l2"], sp["c2"]]
+                if dp >= 0 {
+                    fim = posicao(sp["l"], sp["c"], txt, dp)
+                }
+                conta["campos"] = conta["campos"] + 1
+                str r = confere_campo(g, todos, sp["l"], sp["c"], fim[0], fim[1], cob)
+                if r != "" and fora == "" {
+                    fora = r
+                }
+                # os campos dentro do formato: cada `{...}` de fora a fora
+                int prof = 0
+                int ini = -1
+                int i = dp + 1 if dp >= 0 else txt.len()
+                while i < txt.len() {
+                    if txt[i] == "{" {
+                        if prof == 0 {
+                            ini = i + 1
+                        }
+                        prof = prof + 1
+                    } elif txt[i] == "}" and prof > 0 {
+                        prof = prof - 1
+                        if prof == 0 {
+                            list a = posicao(sp["l"], sp["c"], txt, ini)
+                            list b = posicao(sp["l"], sp["c"], txt, i)
+                            conta["campos"] = conta["campos"] + 1
+                            str r2 = confere_campo(g, todos, a[0], a[1], b[0], b[1], cob)
+                            if r2 != "" and dentro == "" {
+                                dentro = r2
+                            }
+                        }
+                    }
+                    i = i + 1
+                }
+            }
+        }
+    }
+    return [fora, dentro]
+}
+
+
+# Guarda um achado: a página, a impressão (o programa junto do que se
+# conferiu) e o texto pra quem lê.
+Null funct acha(list achados, dict p, str o_que, str frase) {
+    addEnd(achados, {"pagina": p["pagina"], "codigo": p["codigo"] + "\n#gramatica " + o_que,
+                     "onde": p["onde"] + ": " + frase, "linha": p["linha"]})
+}
+
+
+# A linha do programa dita como a de quem lê: na doc, a linha da página.
+str funct lugar_de(dict p, int l) {
+    if p["origem"] == "doc" {
+        if l <= p["desloc"] {
+            return "linha " + str(l) + " do contexto"
+        }
+        return "linha " + str(p["linha"] + l - p["desloc"]) + " da página"
+    }
+    return "linha " + str(l)
+}
+
+
+# Confere um programa: o léxico, a gramática contra o parser e os dois modos.
+Null funct confere(dict g, dict formas, dict p, dict chk, list achados, dict conta, dict cob) {
+    str tok_txt = le_ou_vazio(p["arq"] + ".tok")
+    str ast_txt = le_ou_vazio(p["arq"] + ".ast")
+    if not tok_txt.startswith("{") or not ast_txt.startswith("{") {
+        acha(achados, p, "motor", "o motor não respondeu JSON ao " + ("--tokens" if not tok_txt.startswith("{") else "--ast"))
+        return
+    }
+    dict tk = json.parse(tok_txt)
+    dict av = veredito_da_arvore(ast_txt)
+    dict m = av["marca"]
+    bool parser_aceita = av["ok"] and m.len() == 0
+    if m.len() > 0 {
+        conta["marcas"] = conta["marcas"] + 1
+    }
+
+    # os dois modos do parser
+    if not ("ok" in chk) {
+        acha(achados, p, "check", "o --check não respondeu")
+    } elif not av["ok"] {
+        dict e = av["erro"]
+        if (chk["ok"] or chk.get("tipo", "") != "SyntaxError" or chk.get("msg", "") != e["msg"]
+                or chk.get("linha", 0) != e["linha"] or chk.get("coluna", 0) != e["coluna"]) {
+            acha(achados, p, "dois modos " + str(e["linha"]) + ":" + str(e["coluna"]),
+                 "o --ast recusa (`" + e["msg"] + "`, " + lugar_de(p, e["linha"]) + ") e o --check diz "
+                 + ("ok" if chk["ok"] else "`" + chk.get("tipo", "") + ": " + chk.get("msg", "") + "` na "
+                    + lugar_de(p, chk.get("linha", 0))))
+        }
+    } elif m.len() > 0 and chk["ok"] {
+        acha(achados, p, "marca " + str(m["el"]) + ":" + str(m["ec"]),
+             "o --ast marca o nome solto (" + lugar_de(p, m["el"]) + ") e o --check aprova")
+    }
+
+    if tk.get("erros", []).len() > 0 {
+        conta["lexico_erro"] = conta["lexico_erro"] + 1
+        if parser_aceita {
+            acha(achados, p, "lexer", "o --tokens dá erro (`" + tk["erros"][0]["msg"] + "`) e o --ast aceita")
+        }
+        return
+    }
+    if not p["le"] {
+        acha(achados, p, "utf8", "o fonte não é UTF-8 e o lexer não recusou")
+        return
+    }
+
+    list linhas = p["texto"].split("\n")
+    if linhas.len() > 0 and linhas[0].startswith("\U0000FEFF") {
+        linhas[0] = linhas[0][1:linhas[0].len()]       # o lexer pula o BOM
+    }
+    list todos = tk["tokens"]
+    conta["tokens"] = conta["tokens"] + todos.len()
+    for each frase in confere_lexico(formas, linhas, todos) {
+        acha(achados, p, "lexico " + frase, frase)
+    }
+
+    list toks = []
+    for each t in todos {
+        if t["t"] != "COMMENT" and not ("em" in t) {
+            addEnd(toks, t)
+        }
+    }
+    addEnd(toks, {"t": "EOF", "v": "", "l": 0, "c": 0, "l2": 0, "c2": 0})
+    dict r = {}
+    try {
+        r = reconhece(g, toks, "arquivo")
+    } catch (RecursionError e) {
+        # aninhado demais pro reconhecedor: o parser também tem que parar
+        conta["fundos"] = conta["fundos"] + 1
+        if parser_aceita {
+            acha(achados, p, "fundo", "o reconhecedor passou do fundo e o --ast aceita")
+        }
+        return
+    }
+    for each nome in r["cob"].keys() {
+        cob[nome] = cob.get(nome, 0) + 1
+    }
+    list campos = campos_de_fstring(g, linhas, todos, cob, conta)
+    bool gramatica_aceita = r["casou"] and campos[0] == "" and campos[1] == ""
+    if gramatica_aceita and p["origem"] == "gerado" {
+        conta["gerados_aceitos"] = conta["gerados_aceitos"] + 1
+    }
+
+    if gramatica_aceita == parser_aceita {
+        str qual = "acordo_aceita" if parser_aceita else "acordo_recusa"
+        conta[qual] = conta[qual] + 1
+        return
+    }
+    if parser_aceita {
+        str porque = campos[0] if campos[0] != "" else campos[1]
+        if r["casou"] == False {
+            int k = r["longe"]
+            dict t = toks[k] if k < toks.len() else toks[toks.len() - 1]
+            porque = ("a gramática para no token " + t["t"] + " `" + str(t["v"]) + "` ("
+                      + lugar_de(p, t["l"]) + ", coluna " + str(t["c"]) + ")")
+        }
+        acha(achados, p, "gramatica recusa " + porque, "o parser aceita e " + porque)
+        return
+    }
+    str erro = "o nome solto marcado (" + lugar_de(p, m["el"]) + ")" if m.len() > 0 else "`" + av["erro"]["msg"] + "` (" + lugar_de(p, av["erro"]["linha"]) + ", coluna " + str(av["erro"]["coluna"]) + ")"
+    acha(achados, p, "gramatica aceita", "a gramática aceita e o parser recusa: " + erro)
+}
+
+
+# ── o portão ───────────────────────────────────────────────────────────────
+
+flo inicio = date.monotonic()
+dict g = le_gramatica(os.readFile(PAGINA))
+if g["erros"].len() > 0 {
+    post("portão gramatica: a página " + PAGINA + " tem regra mal escrita:")
+    for each e in g["erros"] {
+        post("  " + e)
+    }
+    sys.exit(1)
+}
+dict formas = formas_lexicas(g)
+
+str trab = os.cwd() + "/" + TMP
+os.mkdir(trab)
+list progs = []
+list paginas = [PAGINA]
+list achados = []
+dict conta = {"acordo_aceita": 0, "acordo_recusa": 0, "lexico_erro": 0, "marcas": 0, "tokens": 0,
+              "campos": 0, "fundos": 0, "gerados_aceitos": 0}
+dict cob = {}
+dict por_origem = {"doc": 0, "suite": 0, "gerado": 0}
+int casos = 0
+int fundos = 0
+int nf = 0
+str parou = ""
+try {
+    os.run(["sh", "-c", "exit 0"], capture=True)
+} catch (Exception e) {
+    parou = "não achei o sh (" + str(e) + "): o portão chama o motor por laços do shell"
+}
+# a pasta de trabalho sai no fim, mesmo quando algo para no meio
+if parou == "" {
+    try {
+        da_doc(progs, paginas, trab)
+        casos = da_suite(progs, paginas, trab)
+        fundos = sorteados(progs, paginas, trab, g)
+        nf = faixas()
+        chama_motor(progs, trab, nf)
+        dict checks = checa_todos(progs)
+        for each p in progs {
+            por_origem[p["origem"]] = por_origem[p["origem"]] + 1
+            confere(g, formas, p, checks.get(p["arq"], {}), achados, conta, cob)
+        }
+    } catch (Exception e) {
+        parou = str(e)
+    }
+}
+os.rmdir(trab, force=True)
+if parou != "" {
+    post("portão gramatica: " + parou + ": a conferência parou (notas/PORTOES.md)")
+    sys.exit(1)
+}
+
+# toda regra usada por algum programa
+list sem_uso = []
+for each nome in g["ordem"] {
+    if not (nome in cob) {
+        addEnd(sem_uso, nome)
+        addEnd(achados, {"pagina": PAGINA, "codigo": "regra " + nome, "onde": PAGINA + ": a regra `" + nome
+                         + "` não foi usada por nenhum programa", "linha": 1})
+    }
+}
+
+dict catraca = {}
+aplica("gramatica", achados, paginas, catraca)
+list novos = catraca["novos"]
+
+post("programas:", progs.len(), "| da doc:", por_origem["doc"], "| da suíte:", por_origem["suite"],
+     "(de", casos, "casos) | sorteados:", por_origem["gerado"], "(a gramática aceita",
+     str(conta["gerados_aceitos"]) + ";", fundos, "passaram do fundo)")
+post("a gramática e o parser aceitam:", conta["acordo_aceita"], "| os dois recusam:", conta["acordo_recusa"],
+     "| nome solto marcado:", conta["marcas"])
+post("erro do lexer (fora da comparação sintática; o parser recusa):", conta["lexico_erro"],
+     "| fundo demais pro reconhecedor:", conta["fundos"])
+post("tokens conferidos com a forma léxica:", conta["tokens"], "| campos de f-string:", conta["campos"],
+     "| regras:", g["ordem"].len(), "(sem uso:", str(sem_uso.len()) + ")")
+post("laços do shell:", nf, "| tempo:", str(int(date.monotonic() - inicio)) + " s")
+relata(catraca)
+if novos.len() == 0 and not catraca["reprova"] {
+    post("  a gramática e o parser concordam (ou são itens abertos)")
+    sys.exit(0)
+}
+if novos.len() == 0 {
+    sys.exit(1)
+}
+post("")
+post("LUGARES EM QUE A GRAMÁTICA E O PARSER NÃO CONCORDAM:", novos.len())
+for each a in novos {
+    post("  " + a["onde"])
+    post("    catraca: " + linha_nova("gramatica", a["pagina"], a["codigo"], a["linha"]))
+}
+sys.exit(1)

@@ -105,11 +105,12 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   `"abc".` direto), retorno de método ou de funct com tipo declarado,
   `model` e `enum` do arquivo (`Rota.`, `Cor.`), `self.` com campos do corpo
   da classe, de `self.x = …` e os herdados. Receptor que existe mas cujo tipo
-  é desconhecido (`for each x in …`) recebe ao menos o que todo valor tem;
+  é desconhecido (`for each x in …`) não recebe nada: desde o 18.0.0 nenhum
+  membro vale pra todo valor;
 - **hover de um valor apresenta o TIPO dele** — `Jinker nome` e, embaixo,
   o que `Jinker` é (quantos métodos), o resumo e o primeiro exemplo da
   página da doc; instância de Entity do arquivo mostra `class X { … }` com
-  os membros; `int n` diz que só tem `type()`; retorno com mais de um tipo
+  os membros; `int n` diz **sem membros**; retorno com mais de um tipo
   (`str|Process`) descreve cada lado. Apelido de tipo (`String`,
   `Integer`, `json`… a tabela `tipos_apelidos` do motor, inteira) responde
   como o tipo que designa. O tipo primitivo (`str`, `int`, `list`, `dict`,

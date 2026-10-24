@@ -1,0 +1,599 @@
+# O portão P3 (notas/PORTOES.md): o editor e o motor concordam, bloco por
+# bloco da doc.
+#
+# POR QUE ELE EXISTE. O hover sobre o `forAll` de `app.channel(forAll=msg)`
+# dizia "nome não definido" (editor-1, relato do Kleber): o editor e o motor
+# contavam histórias diferentes do mesmo programa, e nada conferia os dois.
+# Em cada bloco ```ps da doc, com os ```ps contexto anteriores da página na
+# frente (os blocos do portão `check` do P1), o portão conversa com o servidor
+# do editor (`editor/vscode/server.js`, o mesmo do VS Code, do Neovim e do
+# IntelliJ) e confere:
+#
+#   1. o diagnóstico: o que o servidor publica é o que o `--check --utf16`
+#      diz (a frase, o começo e o fim de cada erro; a frase e o começo de cada
+#      aviso), com a posição em UTF-16, que é a do editor;
+#   2. o hover, em bloco que o `--check` aprova: em cada nome do bloco, ele
+#      não diz "não definido" nem "rodando dá NameError", e não vem em branco
+#      (`docs/lsp.md`: "o hover nunca fica em branco");
+#   3. o completion depois de `x.`, em bloco que o `--check` aprova: quando
+#      ele lista alguma coisa, tem o membro que o próprio programa usa (fora a
+#      chave de dict, `d.chave`, que vale qualquer nome); quando `x` é
+#      declarado com um tipo do motor (`Jinker app = ...`, o parâmetro `str
+#      s`), a lista é exatamente a desse tipo no `--metadata`.
+#
+# As duas fontes do completion são independentes do editor: o programa que
+# passa no `--check` e a declaração escrita. Nenhum comando do motor diz o
+# tipo que o checador deduz de um nome.
+#
+# O servidor conecta numa porta do loopback que o sistema escolhe
+# (`--socket=<porta>`), e a conversa é a do LSP (`scripts/enquadramento.pr`).
+# Um servidor só pra doc inteira: um `didOpen` por bloco, os pedidos, um
+# `didClose`. Nenhum exemplo roda (só o `--check`, o `--tokens`, o `--ast` e o
+# servidor), então não há isolamento. Sem o `node` ou sem o `npm install` em
+# `editor/vscode`, o portão fica vermelho dizendo o que falta: portão que não
+# roda calado é falso verde.
+#
+# A falha que já é item aberto de notas/CORRECAO-BASE.md fica na catraca
+# (`teste/portoes_conhecidas.txt`, portão `p3`, a página da doc e a impressão
+# do lugar conferido junto do bloco).
+#
+#     ./pool scripts/confere_editor.pr                 # a doc inteira
+#     ./pool scripts/confere_editor.pr docs/jinker     # uma pasta ou uma página
+import os
+import sys
+import json
+import date
+import sockets
+from './portoes_catraca.pr' import aplica, relata, linha_nova
+from './portoes_doc.pr' import lista_md, blocos_de
+from './enquadramento.pr' import manda_mensagem, le_mensagem
+
+str TMP = "ps_confere_editor_tmp_" + str(date.timestamp_ms())
+# o prazo de cada leitura da conversa com o servidor
+flo PRAZO = 60.0
+
+
+# ── a conversa com o servidor do editor ──────────────────────────────────────
+
+Null funct notifica(dict c, str metodo, dict params) {
+    manda_mensagem(c["sock"], {"jsonrpc": "2.0", "method": metodo, "params": params})
+}
+
+
+# Manda o pedido e devolve a resposta (a mensagem inteira, com `result` ou
+# `error`). O que chega no caminho: o diagnóstico publicado fica guardado em
+# `c["diag"]` (uri -> lista); o pedido do servidor ao cliente
+# (`workspace/configuration`, `client/registerCapability`) recebe resposta
+# vazia, senão o servidor fica esperando.
+dict funct pede(dict c, str metodo, dict params) {
+    int meu = c["id"] + 1
+    c["id"] = meu
+    manda_mensagem(c["sock"], {"jsonrpc": "2.0", "id": meu, "method": metodo, "params": params})
+    dict resposta = {}
+    while resposta.len() == 0 {
+        dict m = le_mensagem(c["sock"], c["buf"])
+        if m.len() == 0 {
+            raise RuntimeError("o servidor do editor fechou a conexão")
+        }
+        if "method" in m {
+            if m["method"] == "textDocument/publishDiagnostics" {
+                c["diag"][m["params"]["uri"]] = m["params"]["diagnostics"]
+            } elif "id" in m {
+                manda_mensagem(c["sock"], {"jsonrpc": "2.0", "id": m["id"], "result": Null})
+            }
+        } elif m.get("id", Null) == meu {
+            resposta = m
+        }
+    }
+    return resposta
+}
+
+
+# Sobe o servidor e espera ele conectar na porta que o sistema escolheu.
+# Devolve a conversa: o socket, o processo, os bytes que chegaram e ainda não
+# são de mensagem nenhuma, o último id e os diagnósticos publicados.
+dict funct abre_servidor() {
+    socket escuta = sockets.socket()
+    escuta.bind(("127.0.0.1", 0))
+    escuta.listen(1)
+    escuta.settimeout(PRAZO)
+    tup onde = escuta.getsockname()
+    Process srv = os.run(["node", "editor/vscode/server.js", "--socket=" + str(onde[1])], capture="live")
+    dict c = {"srv": srv, "buf": {"b": b""}, "id": 0, "diag": {}}
+    try {
+        tup par = escuta.accept()
+        c["sock"] = par[0]
+    } catch (Exception e) {
+        escuta.close()
+        srv.kill()
+        srv.wait()
+        raise RuntimeError("o servidor do editor não conectou em " + str(PRAZO) + " s: " + str(e)
+                           + " " + srv.read_err().strip())
+    }
+    escuta.close()
+    c["sock"].settimeout(PRAZO)
+    dict r = pede(c, "initialize", {"processId": Null, "rootUri": Null, "capabilities": {},
+                                   "initializationOptions": {"jinga": sys.executable}})
+    if "error" in r {
+        raise RuntimeError("o servidor do editor recusou o initialize: " + str(r["error"]))
+    }
+    notifica(c, "initialized", {})
+    return c
+}
+
+
+# Encerra pelo protocolo (`shutdown` e `exit`) e espera o processo sair; o
+# processo que não sai pelo protocolo é derrubado.
+Null funct fecha_servidor(dict c) {
+    if "sock" in c {
+        try {
+            pede(c, "shutdown", {})
+            notifica(c, "exit", {})
+        } catch (Exception e) {
+            post("  (o servidor do editor não fechou pelo protocolo: " + str(e) + ")")
+        }
+        c["sock"].close()
+    }
+    Process srv = c["srv"]
+    try {
+        srv.kill()
+    } catch (Exception e) {
+        # já tinha saído pelo `exit`
+    }
+    srv.wait()
+}
+
+
+# ── o bloco, do lado do motor ────────────────────────────────────────────────
+
+Null funct grava(str caminho, str texto) {
+    os.writeFile(caminho, texto)
+}
+
+
+# O JSON que o motor responde a `args`.
+dict funct motor_json(list args) {
+    return json.parse(os.run([sys.executable] + args, capture=True).strip())
+}
+
+
+# O caminho como o editor manda o arquivo: `file:///...`.
+str funct uri_de(str caminho) {
+    str p = caminho.replace("\\", "/").replace("%", "%25").replace(" ", "%20").replace("#", "%23")
+    if p.startswith("/") {
+        return "file://" + p
+    }
+    return "file:///" + p
+}
+
+
+# O diagnóstico que o editor tem que publicar, pelo `--check --utf16` do
+# bloco: o erro com a frase (`Tipo: mensagem`), o começo e o fim; o aviso com
+# a frase e o começo (o motor não diz onde o aviso termina). Posição a partir
+# de 0, como no LSP.
+list funct esperado_de(dict j) {
+    list r = []
+    if not j["ok"] {
+        list erros = j.get("erros", [])
+        if erros.len() == 0 {
+            erros = [j]
+        }
+        for each e in erros {
+            int l = e["linha"] - 1
+            int col = e["coluna"] - 1
+            if col < 0 {
+                col = 0
+            }
+            int l2 = e.get("l2", 0)
+            int c2 = e.get("c2", 0)
+            str fim = str(l) + ":" + str(col + 1)
+            if l2 > 0 and c2 > 0 {
+                fim = str(l2 - 1) + ":" + str(c2 - 1)
+            }
+            addEnd(r, "erro " + str(l) + ":" + str(col) + "-" + fim + " " + e["tipo"] + ": " + e["msg"])
+        }
+    }
+    for each a in j.get("avisos", []) {
+        addEnd(r, "aviso " + str(a["linha"] - 1) + ":" + str(a["coluna"] - 1) + " " + a["msg"])
+    }
+    return sorted(r)
+}
+
+
+# O que o editor publicou, na mesma forma do `esperado_de`.
+list funct publicado_de(list diags) {
+    list r = []
+    for each d in diags {
+        dict ini = d["range"]["start"]
+        dict fim = d["range"]["end"]
+        str pos = str(ini["line"]) + ":" + str(ini["character"])
+        if d.get("severity", 1) == 1 {
+            addEnd(r, "erro " + pos + "-" + str(fim["line"]) + ":" + str(fim["character"]) + " " + d["message"])
+        } else {
+            addEnd(r, "aviso " + pos + " " + d["message"])
+        }
+    }
+    return sorted(r)
+}
+
+
+# O texto do hover ("" quando não veio nenhum): o `contents` do LSP é um dict
+# (`{kind, value}`), um texto, ou uma lista deles.
+str funct texto_do_hover(dict resp) {
+    if resp.get("result", Null) == Null {
+        return ""
+    }
+    dict res = resp["result"]
+    if type(res["contents"]) == "dict" {
+        return str(res["contents"].get("value", ""))
+    }
+    if type(res["contents"]) == "str" {
+        return res["contents"]
+    }
+    list partes = []
+    for each p in res["contents"] {
+        if type(p) == "dict" {
+            addEnd(partes, str(p.get("value", "")))
+        } else {
+            addEnd(partes, str(p))
+        }
+    }
+    return "\n".join(partes)
+}
+
+
+# Os rótulos do completion: a resposta é a lista ou `{items: [...]}`.
+list funct rotulos_de(dict resp) {
+    list r = []
+    if resp.get("result", Null) == Null {
+        return r
+    }
+    list itens = []
+    if type(resp["result"]) == "list" {
+        itens = resp["result"]
+    } else {
+        itens = resp["result"].get("items", [])
+    }
+    for each i in itens {
+        addEnd(r, i["label"])
+    }
+    return r
+}
+
+
+# Os tipos com que o programa declara cada nome: `VarDecl` e o parâmetro (o
+# `Name` com tipo, na funct e na lambda) põem em `tipos` (nome -> lista); o
+# nome que também se liga de outro jeito (laço, compreensão, catch, apelido de
+# import, funct, classe, enum...) vai pra `outros`.
+Null funct anda_decl(Object n, dict tipos, dict outros) {
+    if type(n) == "list" {
+        for each v in n {
+            if type(v) == "dict" or type(v) == "list" {
+                anda_decl(v, tipos, outros)
+            }
+        }
+    } elif type(n) == "dict" {
+        str k = str(n.get("k", ""))
+        str t = str(n.get("texto", ""))
+        str t2 = str(n.get("texto2", ""))
+        if k == "VarDecl" or (k == "Name" and t2 != "") {
+            if not (t in tipos) {
+                tipos[t] = []
+            }
+            if not (t2 in tipos[t]) {
+                addEnd(tipos[t], t2)
+            }
+        } elif k == "ImportStmt" and t2 != "" {
+            outros[t2] = True
+        } elif t != "" and not (k in ["Name", "MemberAccess", "CallArg", "Assignment", "Literal"]) {
+            outros[t] = True
+        }
+        for each v in n.values() {
+            if type(v) == "dict" or type(v) == "list" {
+                anda_decl(v, tipos, outros)
+            }
+        }
+    }
+}
+
+
+# Nome -> o tipo do motor com que ele é declarado, quando é um só, ele não se
+# liga de outro jeito no programa, e o tipo tem tabela no `--metadata` (o
+# apelido, como `string`, vira o nome do tipo).
+dict funct declarados_de(dict arvore, dict meta) {
+    dict tipos = {}
+    dict outros = {}
+    anda_decl(arvore, tipos, outros)
+    dict r = {}
+    for each nome in tipos.keys() {
+        if not (nome in outros) and tipos[nome].len() == 1 {
+            str t = meta["tipos_apelidos"].get(tipos[nome][0], tipos[nome][0])
+            if t in meta["tipos"] {
+                r[nome] = t
+            }
+        }
+    }
+    return r
+}
+
+
+# Os nomes dos membros de um tipo no `--metadata`.
+list funct membros_do_tipo(dict meta, str t) {
+    list r = []
+    for each m in meta["tipos"][t] {
+        addEnd(r, m["nome"])
+    }
+    return sorted(r)
+}
+
+
+# O token vizinho de `toks[i]` no sentido `passo` (-1 ou 1), pulando o
+# comentário e a quebra de linha: num argumento depois de uma linha que
+# termina em comentário, o vizinho de antes é a vírgula, não o `# ...`.
+dict funct vizinho(list toks, int i, int passo) {
+    int j = i + passo
+    while j >= 0 and j < toks.len() and (toks[j]["t"] == "COMMENT" or toks[j]["t"] == "NEWLINE") {
+        j = j + passo
+    }
+    if j < 0 or j >= toks.len() {
+        return {"t": "", "v": ""}
+    }
+    return toks[j]
+}
+
+
+# O tipo do parêntese, colchete ou chave aberto mais perto antes de
+# `toks[i]` ("" quando nenhum está aberto).
+str funct aberto_antes(list toks, int i) {
+    int prof = 0
+    int j = i - 1
+    while j >= 0 {
+        str tt = toks[j]["t"]
+        if tt == "RPAREN" or tt == "RBRACK" or tt == "RBRACE" {
+            prof = prof + 1
+        } elif tt == "LPAREN" or tt == "LBRACK" or tt == "LBRACE" {
+            if prof == 0 {
+                return tt
+            }
+            prof = prof - 1
+        }
+        j = j - 1
+    }
+    return ""
+}
+
+
+# O papel do nome no programa, pelos tokens em volta. É só pra quem lê o
+# relatório: a conferência é a mesma pra todo nome.
+str funct papel_do_nome(list toks, int i) {
+    dict t = toks[i]
+    dict ant = vizinho(toks, i, -1)
+    dict prox = vizinho(toks, i, 1)
+    int j = i
+    while j > 0 and toks[j - 1]["l"] == t["l"] {
+        j = j - 1
+    }
+    str primeiro = toks[j]["v"]
+    # `nome=` logo depois de `(` ou `,`, com o `(` da chamada aberto: o
+    # `GREEN = "#0f0",` de um enum tem a `{` aberta
+    if (prox["t"] == "OP" and prox["v"] == "=" and (ant["t"] == "LPAREN" or ant["t"] == "COMMA")
+            and aberto_antes(toks, i) == "LPAREN") {
+        return "nome de argumento"
+    }
+    if primeiro == "from" or primeiro == "import" {
+        return "nome no import"
+    }
+    if ant["t"] == "AT" or t["v"] in ["__name__", "_index", "_match", "_count", "static"] {
+        return "nome que o motor liga"
+    }
+    if (ant["t"] == "KW" and ant["v"] == "funct") or prox["t"] == "COLON" {
+        return "membro na declaração"
+    }
+    return "nome ligado pelo programa"
+}
+
+
+# ── o portão ─────────────────────────────────────────────────────────────────
+
+# Um achado do P3: a impressão é a do lugar (`#p3 hover nome 2:9`) junto do
+# bloco, e a linha é a da página.
+dict funct achado(str md, dict b, str lugar, int linha, str desc) {
+    return {"pagina": md, "codigo": "#p3 " + lugar + "\n" + b["texto"], "linha": linha,
+            "onde": md + ":" + str(linha) + ": " + desc}
+}
+
+
+Null funct confere_bloco(dict c, dict meta, str md, dict b, str prog, str arq, int n_ctx,
+                         list achados, dict conta) {
+    dict j = {}
+    try {
+        j = motor_json(["--check", "--utf16", arq])
+    } catch (Exception e) {
+        conta["sem_resposta"] = conta["sem_resposta"] + 1
+        return
+    }
+    bool aprovado = j["ok"]
+    if not aprovado and "..." in b["texto"] {
+        conta["fragmentos"] = conta["fragmentos"] + 1
+        return
+    }
+    conta["blocos"] = conta["blocos"] + 1
+    str uri = uri_de(arq)
+    notifica(c, "textDocument/didOpen", {"textDocument": {"uri": uri, "languageId": "jinga", "version": 1,
+                                                          "text": prog}})
+    # barreira: o servidor publica o diagnóstico no próprio didOpen, então ele
+    # chega antes da resposta de qualquer pedido seguinte
+    pede(c, "textDocument/hover", {"textDocument": {"uri": uri}, "position": {"line": 0, "character": 0}})
+    if not (uri in c["diag"]) {
+        addEnd(achados, achado(md, b, "diag", b["linha"], "o servidor do editor não publicou diagnóstico"))
+    } else {
+        list pub = publicado_de(c["diag"][uri])
+        list esp = esperado_de(j)
+        if pub != esp {
+            addEnd(achados, achado(md, b, "diag", b["linha"], "o editor publica " + str(pub)
+                                   + " e o --check --utf16 diz " + str(esp)))
+        }
+    }
+    if aprovado {
+        list toks = motor_json(["--tokens", "--utf16", arq])["tokens"]
+        dict decl = declarados_de(motor_json(["--ast", arq]), meta)
+        list do_dict = membros_do_tipo(meta, "dict")
+        int i = 0
+        for each t in toks {
+            bool nome = t["t"] == "IDENT" or t["t"] == "IDENT_UPPER"
+            if nome and t["l"] > n_ctx {
+                int lr = t["l"] - n_ctx
+                int linha = b["linha"] + lr
+                str lugar = str(lr) + ":" + str(t["c"])
+                dict pos = {"textDocument": {"uri": uri}, "position": {"line": t["l"] - 1, "character": t["c"] - 1}}
+                conta["hovers"] = conta["hovers"] + 1
+                str h = texto_do_hover(pede(c, "textDocument/hover", pos))
+                if h.strip() == "" {
+                    addEnd(achados, achado(md, b, "hover " + t["v"] + " " + lugar, linha,
+                                           "o hover de `" + t["v"] + "` (" + papel_do_nome(toks, i)
+                                           + ") vem em branco"))
+                } elif "não definido" in h or "rodando dá `NameError`" in h {
+                    addEnd(achados, achado(md, b, "hover " + t["v"] + " " + lugar, linha,
+                                           "o hover de `" + t["v"] + "` (" + papel_do_nome(toks, i) + ") diz: "
+                                           + h.strip().splitlines()[-1]))
+                }
+                # `x.membro`: o completion pedido logo depois do ponto
+                if i >= 2 and toks[i - 1]["t"] == "DOT" and toks[i - 1]["l"] == t["l"] {
+                    dict rec = toks[i - 2]
+                    if rec["t"] in ["IDENT", "IDENT_UPPER", "RPAREN", "RBRACK", "STR", "KW"] {
+                        conta["completions"] = conta["completions"] + 1
+                        list rot = rotulos_de(pede(c, "textDocument/completion", pos))
+                        bool simples = ((rec["t"] == "IDENT" or rec["t"] == "IDENT_UPPER")
+                                        and (i < 3 or toks[i - 3]["t"] != "DOT"))
+                        if rot.len() > 0 and not (t["v"] in rot) and sorted(rot) != do_dict {
+                            addEnd(achados, achado(md, b, "membro " + rec["v"] + "." + t["v"] + " " + lugar, linha,
+                                                   "depois de `" + rec["v"] + ".` o editor lista " + str(rot.len())
+                                                   + " membros e não o `" + t["v"] + "` que o programa usa"))
+                        }
+                        if simples and rec["v"] in decl {
+                            conta["declarados"] = conta["declarados"] + 1
+                            list esperado = membros_do_tipo(meta, decl[rec["v"]])
+                            if sorted(rot) != esperado {
+                                list falta = []
+                                for each m in esperado {
+                                    if not (m in rot) {
+                                        addEnd(falta, m)
+                                    }
+                                }
+                                list sobra = []
+                                for each m in rot {
+                                    if not (m in esperado) {
+                                        addEnd(sobra, m)
+                                    }
+                                }
+                                addEnd(achados, achado(md, b, "tipo " + rec["v"] + ":" + decl[rec["v"]] + " " + lugar,
+                                                       linha, "`" + rec["v"] + "` é " + decl[rec["v"]]
+                                                       + " e o editor lista " + str(rot.len()) + " de "
+                                                       + str(esperado.len()) + " membros (faltam "
+                                                       + str(falta[0:5]) + ", sobram " + str(sobra[0:5]) + ")"))
+                            }
+                        }
+                    }
+                }
+            }
+            i = i + 1
+        }
+    }
+    notifica(c, "textDocument/didClose", {"textDocument": {"uri": uri}})
+}
+
+
+list alvos = []
+for each a in sys.argv[1:] {
+    addEnd(alvos, a)
+}
+if alvos.len() == 0 {
+    addEnd(alvos, "docs")
+}
+
+str falta = ""
+try {
+    str v = os.run(["node", "--version"], capture=True)
+    if not v.strip().startswith("v") {
+        falta = "o node não respondeu ao --version"
+    }
+} catch (Exception e) {
+    falta = "não achei o node (" + str(e) + ")"
+}
+if falta == "" and not os.isdir("editor/vscode/node_modules/vscode-languageserver") {
+    falta = "falta o servidor do editor (não há editor/vscode/node_modules/vscode-languageserver; instale com: cd editor/vscode && npm install --omit=dev)"
+}
+if falta != "" {
+    post("portão P3: " + falta + ": nada se conferiu (notas/PORTOES.md)")
+    sys.exit(1)
+}
+
+dict meta = json.parse(os.run([sys.executable, "--metadata"], capture=True))
+str trab = os.cwd() + "/" + TMP
+os.mkdir(trab)
+flo inicio = date.monotonic()
+list achados = []
+list paginas = []
+dict conta = {"blocos": 0, "fragmentos": 0, "sem_resposta": 0, "hovers": 0, "completions": 0, "declarados": 0}
+dict c = {}
+str parou = ""
+try {
+    c = abre_servidor()
+    int n = 0
+    for each alvo in alvos {
+        for each md in lista_md(alvo) {
+            str contexto = ""
+            for each b in blocos_de(os.readFile(md)) {
+                str rot = b["rotulo"]
+                bool eh_ctx = rot == "ps contexto"
+                if rot == "ps" or rot == "jinga" or eh_ctx or rot.startswith("ps sem-rodar") {
+                    n = n + 1
+                    str prog = contexto + b["texto"] + "\n"
+                    str arq = trab + "/b" + str(n) + ".pr"
+                    grava(arq, prog)
+                    confere_bloco(c, meta, md, b, prog, arq, contexto.count("\n"), achados, conta)
+                    if eh_ctx {
+                        contexto = prog
+                    }
+                }
+            }
+            addEnd(paginas, md)
+        }
+    }
+} catch (Exception e) {
+    parou = str(e)
+}
+if c.len() > 0 {
+    fecha_servidor(c)
+}
+os.rmdir(trab, force=True)
+
+dict catraca = {}
+aplica("p3", achados, paginas, catraca)
+list novos = catraca["novos"]
+
+post("blocos conferidos:", conta["blocos"], "| fragmentos fora:", conta["fragmentos"],
+     "| sem resposta do motor:", conta["sem_resposta"])
+post("hovers:", conta["hovers"], "| completions depois de `x.`:", conta["completions"],
+     "(com o tipo declarado:", str(conta["declarados"]) + ")")
+post("tempo:", str(int(date.monotonic() - inicio)) + " s")
+relata(catraca)
+if parou != "" {
+    post("")
+    post("A CONVERSA COM O SERVIDOR DO EDITOR PAROU:", parou)
+    sys.exit(1)
+}
+if novos.len() == 0 and not catraca["reprova"] {
+    post("  o editor e o motor concordam (ou são itens abertos)")
+    sys.exit(0)
+}
+if novos.len() == 0 {
+    sys.exit(1)
+}
+post("")
+post("LUGARES EM QUE O EDITOR E O MOTOR NÃO CONCORDAM:", novos.len())
+for each a in novos {
+    post("  " + a["onde"])
+    post("    catraca: " + linha_nova("p3", a["pagina"], a["codigo"], a["linha"]))
+}
+sys.exit(1)

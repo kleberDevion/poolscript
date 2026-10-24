@@ -3,6 +3,8 @@
 Statements que decidem **o que roda e quantas vezes**: condicionais (`if`),
 laços (`while`, `for each`, `count each`), o casamento de padrões (`match`), os
 desvios `break`/`continue`/`pass` e o guard de entrada `if __name__ == "main"`.
+A forma de cada comando, na ordem em que o parser tenta, está em
+[A gramática](gramatica.md#os-comandos).
 
 O bloco da linguagem é `{ }` (seção 1.3) — e só. Toda regra desta seção foi
 verificada rodando o fonte na VM em C.

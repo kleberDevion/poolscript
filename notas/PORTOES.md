@@ -208,18 +208,203 @@ Nas páginas de método: 206 conferidas, 192 batem; 14 dão aos parâmetros
 outros nomes que o motor (doc-26); 73 métodos sem página com a assinatura no
 título.
 
-## P3: o editor e o motor concordam (a fazer)
+## P3: o editor e o motor concordam
 
-O diagnóstico do servidor do editor é o do `--check` em todo bloco da doc; o
-hover nunca diz "nome não definido" num programa que o `--check` aprova; o
-completion depois de `x.` lista o que o motor dá ao tipo de `x`.
+`scripts/confere_editor.pr`, no `make check` depois do P2. Em cada bloco
+```ps da doc, com os ```ps contexto anteriores da página na frente (os blocos
+do portão `check`), o portão conversa com o servidor do editor
+(`editor/vscode/server.js`, o mesmo do VS Code, do Neovim e do IntelliJ) como
+o VS Code faz, e confere:
 
-## P4: a gramática escrita e o gerador (a fazer)
+- **o diagnóstico**, em todo bloco: o que o servidor publica é o que o
+  `--check --utf16` do mesmo arquivo diz. Cada erro tem a frase
+  (`Tipo: mensagem`), o começo e o fim (`l2`/`c2`); cada aviso tem a frase e o
+  começo. A posição é em UTF-16, a do protocolo. O servidor que não publica
+  nada também reprova;
+- **o hover**, no bloco que o `--check` aprova: em cada nome do bloco (os
+  `IDENT` do `--tokens --utf16`), ele não diz "não definido" nem "rodando dá
+  `NameError`", e não vem em branco (`docs/lsp.md`: "o hover nunca fica em
+  branco");
+- **o completion depois de `x.`**, no bloco que o `--check` aprova. Quando ele
+  lista alguma coisa, a lista tem o membro que o próprio programa usa; a
+  exceção é a chave de dict (`d.chave`), que vale qualquer nome. Quando `x` é
+  declarado com um tipo do motor (`Jinker app = ...`, o parâmetro `str s`; o
+  tipo sai do `--ast`), a lista é exatamente a desse tipo no `--metadata`.
 
-A gramática em EBNF, tirada do parser e conferida contra ele
-(`docs/linguagem/gramatica.md`), e um gerador de programas tipados a partir
-dela, com os oráculos: JIT e sem JIT idênticos, checador e motor de acordo,
-nada cai nem trava, e o Python onde a doc diz "como no Python".
+As duas fontes do completion são independentes do editor: o programa que
+passa no `--check` e a declaração escrita. Nenhum comando do motor diz o tipo
+que o checador deduz de um nome.
+
+Como roda:
+
+- o cliente do protocolo é em Jinga. O portão escuta numa porta do loopback
+  que o sistema escolhe, e o servidor (`node editor/vscode/server.js
+  --socket=<porta>`) conecta nela. O enquadramento (`Content-Length`, que
+  conta BYTES) está em `scripts/enquadramento.pr`, o mesmo do
+  `teste/depurador.pr`;
+- um servidor só pra doc inteira: um `didOpen` por bloco, os pedidos e um
+  `didClose`; no fim, `shutdown` e `exit`. Cada leitura tem prazo (60 s). O
+  servidor que não conecta ou não responde reprova, e o portão diz isso;
+- o servidor usa o motor do portão (`sys.executable`) e a doc da árvore. O
+  arquivo de cada bloco fica na pasta da rodada, e o `--check` do portão e o
+  do servidor leem o mesmo caminho;
+- nenhum exemplo roda (só o `--check`, o `--tokens`, o `--ast` e o servidor).
+  Por isso não há isolamento, e o portão roda também no Windows;
+- sem o `node`, ou sem o `npm install` em `editor/vscode`, o portão fica
+  vermelho e diz o que falta: portão que não roda calado é falso verde. O CI
+  do Linux instala antes do `make check` (teste-6);
+- o fragmento (bloco com `...` que o `--check` recusa) fica de fora, como no
+  portão `check`.
+
+O relatório diz o papel de cada nome, pelos tokens em volta dele: nome de
+argumento (`f(nome=valor)`), nome no import (a linha começa com `from` ou
+`import`), nome que o motor liga (depois de `@`, e o `__name__`, o `_index`,
+o `_match`, o `_count` e o `static`), membro na declaração (depois de
+`funct`, ou antes de `:`) e nome ligado pelo programa (o resto). O papel ajuda
+a ler o relatório; quem diz o item é a lista.
+
+Na catraca, o portão é `p3`, a página é a da doc, e a impressão é a do lugar
+conferido junto do bloco: `#p3 diag`, `#p3 hover nome 2:9` (linha e coluna
+dentro do bloco), `#p3 membro x.nome 2:9` e `#p3 tipo x:T 2:9`. Mudou o bloco,
+ou o lugar andou dentro dele, a falha volta a ser olhada.
+
+Medido na entrada (2026-10-23, no Mac, 18.0.0): 1.368 blocos conferidos (24
+fragmentos de fora), 10.121 hovers e 2.644 completions depois de `x.`, 233 com
+o tipo declarado, em 4 minutos. O diagnóstico do editor bateu com o do
+`--check` em todos os blocos, nenhum hover veio em branco, e a lista dos 233
+receptores declarados é a do `--metadata`. As 1.207 discordâncias:
+
+| causa | lugares | item |
+|---|---|---|
+| o hover do nome de argumento diz "não definido" (`room_id=`, o `length=` do campo do `model`) | 574 | editor-1 |
+| o hover diz "não definido" em nomes que o motor liga: o módulo na linha do `from`, o `__name__`, o decorador, o membro na declaração, a variável do `catch`, da lambda, da compreensão, do `using`, do `case`, e o nome lido antes da linha que o liga | 550 | editor-3 |
+| o `request` da rota leva o hover do módulo cliente ("falta `import request`") | 49 | editor-2 |
+| o completion dá os nomes do escopo depois do ponto que começa a linha (a cadeia que continua) e do ponto de uma lista ou tupla escrita | 33 | editor-4 |
+| o `--tokens` lê o formato da f-string como código: o `x` de `{n:x}` vira nome | 1 | motor-19 |
+
+O `prev` de `docs/linguagem/04-variaveis-escopo-atribuicao.md:271` entrou
+primeiro como motor-18 ("o `--check` aprova o nome do laço lido fora da volta
+dele") e saiu no conserto do mesmo dia. A doc só promete pegar antes de rodar
+o nome que o arquivo nunca liga (`docs/linguagem/10-excecoes.md`, 10.x), e o
+`prev` o arquivo liga duas linhas abaixo: o `NameError` rodando é o que a doc
+promete. O erro é do hover, que diz "não definido neste arquivo" (editor-3).
+
+A prova de que o portão pega: contra o 18.0.0, ele achou sozinho o editor-1,
+o relato do `forAll`, pelo `room_id` de `docs/jinker/channel/channel.md:25`. O
+bloco do próprio `forAll` o `--check` recusa (jinker-7), e o hover só se
+confere em bloco que passa.
+
+## P4: a gramática escrita e os programas gerados
+
+O P4 sai em três lotes (plano aprovado em 2026-10-23). O lote 1 é a gramática
+e o portão `gramatica`. Os lotes 2 e 3 estão no fim desta seção.
+
+### O portão `gramatica`
+
+`scripts/confere_gramatica.pr`, no `make check` depois do P3. A gramática
+inteira da linguagem está em `docs/linguagem/gramatica.md`, na notação da
+gramática do Python (EBNF com a escolha ordenada do PEG), cada regra tirada do
+parser e com o nome da função dele que a implementa. O que o parser decide
+pelo contexto (o fim do comando na mesma linha, o `{` depois de texto na
+cabeça do `if`, o `(` separado por espaço nos argumentos) entra como regra com
+nome em maiúscula, explicada na página. O `~` é o ponto em que o parser
+decidiu e não volta atrás: a falha depois dele é do programa inteiro.
+
+O portão lê os blocos ```gramatica da própria página
+(`scripts/gramatica_peg.pr`: a leitura das regras, o reconhecedor de PEG com
+memória, que é o packrat de Bryan Ford, de 2002, e o sorteio de frases) e
+confere, em cada programa:
+
+- **a gramática e o parser concordam.** O que o `--ast` aceita a gramática
+  reconhece, pelos tokens do `--tokens`, e o que ele recusa ela recusa. O nome
+  solto que o parser marca e deixa pro checador (`retrun x`) conta como
+  recusa. Cada campo `{...}` de f-string é reconhecido sozinho, com os tokens
+  marcados `"em":"fstring"`;
+- **os dois modos do parser concordam.** Quando o `--ast` recusa, o `--check`
+  recusa com o mesmo primeiro erro (a frase, a linha e a coluna); no nome
+  solto, o `--check` recusa. O erro de sintaxe que só o compilador acusa (o
+  `break` fora de laço) não é do parser e não se compara;
+- **o léxico.** Cada token casa com a forma escrita pra classe dele (o
+  `IDENT`, o `INT`, o `STR`... como expressão regular, o token inteiro), a
+  pontuação é o caractere dela, e nenhum nome é palavra reservada;
+- **toda regra é usada** por algum programa. Regra sem uso reprova: ou ela é
+  morta no parser, ou falta o exemplo.
+
+Os programas:
+
+- todo bloco ```ps da doc, com os ```ps contexto anteriores da página na
+  frente (os blocos do P1 e do P3);
+- todo programa da suíte, cada texto uma vez, pelo `./testar --programas
+  <pasta>`: o executor grava o texto que o compilador C leu dos literais, com
+  as macros e os escapes resolvidos, em 2 s. Refazer essa leitura em Jinga (o
+  `casos_de` do diferencial) levava 93 s e lia dois casos errado (teste-8);
+- 600 programas sorteados da gramática, com a semente fixa. Cada escolha do
+  sorteio é a feita menos vezes até ali, como no gerador de Purdom ("A
+  sentence generator for testing parsers", 1972), que escreve frases até
+  cobrir toda produção. A profundidade é a da recursão (uma regra aberta
+  dentro dela mesma), e passado o teto o sorteio pega o caminho mais curto. O
+  sorteio não olha o contexto (o olhar adiante e os modos), e parte do que ele
+  escreve a gramática recusa: aí o parser tem que recusar também.
+
+Como roda:
+
+- o motor é chamado por laços do `sh` em paralelo, na metade dos
+  processadores (de 1 a 8). A chamada pela Jinga (`os.run`) faz `fork` do
+  processo do portão, e no macOS isso custa 44 ms por chamada, contra 9,5 ms
+  do `--tokens` pelo shell. Sem o `sh`, o portão fica vermelho e diz isso;
+- o `--check` vai em lotes de 150 arquivos por processo, uma linha por
+  arquivo;
+- nenhum programa roda: só o `--tokens`, o `--ast` e o `--check`;
+- o programa com erro do lexer (o `--tokens` com erro) fica fora da
+  comparação sintática, que é sobre os tokens, e o parser tem que recusar;
+- a árvore funda demais pro `json.parse` (os casos de aninhamento da suíte) é
+  lida pelo começo do texto, onde estão o `ok` e os erros.
+
+Na catraca, o portão é `gramatica`; a página é a da doc, o caso da suíte
+(`suite:casos_<grupo>.c:<caso>`) ou o sorteio (`gerado:<n>`); a impressão é a
+do que se conferiu (`#gramatica ...`) junto do programa.
+
+Medido na entrada (2026-10-23, no Mac, 18.0.0): 10.267 programas (1.393
+blocos da doc; 8.274 programas da suíte, dos 10.062 casos; 600 sorteados, dos
+quais a gramática aceita 435), 280.459 tokens conferidos com a forma léxica,
+732 campos de f-string e as 114 regras usadas, em 98 s com 8 laços. A
+gramática e o parser aceitam 9.908 programas e recusam 322; 37 têm erro do
+lexer, e o parser recusa todos. As 10 discordâncias são de um item só:
+
+| causa | lugares | item |
+|---|---|---|
+| o `--ast` põe o erro do lexer na frente do erro do parser, e o primeiro erro dele não é o do `--check` | 10 | motor-23 |
+
+Escrevendo a gramática, os achados foram do parser contra a doc, e a
+gramática descreve o parser como ele é: motor-20 (o ramo do `match` com `:`
+que nunca fecha), motor-21 (palavra reservada como valor e como tipo de
+campo), motor-22 (no `count each` sobre texto escrito, o `{` interpola e o
+bloco some calado), motor-24 (o `*` no valor do `count` some calado),
+motor-25 (o campo dentro do formato da f-string, que só o compilador lê) e o
+acréscimo ao motor-19 (a f-string dentro de um campo vem sem os tokens de
+dentro); doc-28 (a precedência do capítulo 3), doc-29 (os padrões do `case`
+na 5.5) e doc-30 (o alvo da atribuição na 4.4 e na 4.5). Junto entraram o
+teste-8, o teste-9 e o teste-10, dos geradores (lote 2), e o doc-31 (a lista
+do `make check` no `JINGA-TUDO.md`, consertada no lote). Uma regra não tinha
+exemplo em nenhum programa, o argumento juntado que começa com palavra
+(`post("uns:" count int(1) in l)`): ele entrou na 3.11, com a saída
+conferida.
+
+A prova de que o portão pega: com a alternativa do `elif` tirada da regra
+`se`, ele ficou vermelho em 7 programas, todos com `elif`: 2 blocos da doc
+(`docs/Jinga.md:358` e `docs/linguagem/05-controle-de-fluxo.md:18`) e 5 casos
+da suíte.
+
+### Os lotes 2 e 3 (a fazer)
+
+- **Lote 2, portão `p4`:** um gerador de programas tipados a partir da
+  gramática (`teste/geradores/programas.pr`, como o Csmith e o YARPGen), com
+  os oráculos: com JIT e sem JIT, a mesma saída; o `--check` aprova o que é
+  bem tipado por construção, e recusa a variante com um erro da lista que a
+  doc promete pegar antes de rodar; nada cai nem passa do prazo. E a suíte
+  inteira no `--check`, contra o que cada caso espera.
+- **Lote 3:** o Python onde a doc cita o Python, congelado em
+  `teste/casos_python.c`.
 
 ## A sonda com agentes
 

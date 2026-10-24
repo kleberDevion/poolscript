@@ -514,10 +514,70 @@ static int no_filtro(const char *filtro, const char *grupo, const Caso *c)
     return !filtro || strstr(grupo, filtro) || strstr(c->nome, filtro);
 }
 
+/* ── os programas, pros portões ──────────────────────────────────────────── */
+
+/* O texto em JSON, entre aspas: `"` e `\` escapados, o caractere de controle
+ * como \u00XX, e o resto (o UTF-8 inclusive) como está. */
+static void json_texto(const char *s)
+{
+    if (!s) { fputs("null", stdout); return; }
+    putchar('"');
+    for (const unsigned char *c = (const unsigned char *)s; *c; c++) {
+        if (*c == '"' || *c == '\\') printf("\\%c", *c);
+        else if (*c < 0x20) printf("\\u%04x", *c);
+        else putchar(*c);
+    }
+    putchar('"');
+}
+
+/* `./testar --programas <pasta>`: grava o programa de cada caso em
+ * `<pasta>/<n>.pr` (n desde 1, na ordem dos grupos) e escreve uma linha de
+ * JSON por caso: o número, o grupo, o nome, o sistema, o código de saída, o
+ * trecho do erro e se é pendente. Nenhum caso roda. Quem lê é o portão da
+ * gramática (scripts/confere_gramatica.pr): o programa é o que o compilador C
+ * leu dos literais, com as macros e os escapes resolvidos, e nenhum script
+ * precisa refazer essa leitura. */
+static int grava_programas(const char *pasta)
+{
+    int k = 0;
+    for (int g = 0; g < (int)(sizeof(GRUPOS) / sizeof(GRUPOS[0])); g++) {
+        int n = tamanho_do_grupo(GRUPOS[g].grupo);
+        for (int i = 0; i < n; i++) {
+            const Caso *c = &GRUPOS[g].casos[i];
+            const char *fonte = c->fonte ? c->fonte : "";
+            char arq[4096];
+            snprintf(arq, sizeof arq, "%s/%d.pr", pasta, ++k);
+            FILE *f = fopen(arq, "wb");
+            if (!f) {
+                fprintf(stderr, "testar: nao consegui criar %s\n", arq);
+                return 2;
+            }
+            size_t tam = strlen(fonte);
+            int ok = fwrite(fonte, 1, tam, f) == tam;
+            if (fclose(f) != 0) ok = 0;
+            if (!ok) {
+                fprintf(stderr, "testar: nao consegui gravar %s\n", arq);
+                return 2;
+            }
+            printf("{\"n\":%d,\"grupo\":", k);
+            json_texto(GRUPOS[g].grupo);
+            fputs(",\"nome\":", stdout);
+            json_texto(c->nome);
+            fputs(",\"so\":", stdout);
+            json_texto(c->so);
+            printf(",\"rc\":%d,\"erro\":", c->rc);
+            json_texto(c->erro);
+            printf(",\"pendente\":%d}\n", c->pendente);
+        }
+    }
+    return fflush(stdout) == 0 ? 0 : 2;
+}
+
 /* ── principal ───────────────────────────────────────────────────────────── */
 
 int main(int argc, char **argv)
 {
+    if (argc == 3 && !strcmp(argv[1], "--programas")) return grava_programas(argv[2]);
     const char *filtro = NULL;
     int verboso = 0;
     for (int i = 1; i < argc; i++) {

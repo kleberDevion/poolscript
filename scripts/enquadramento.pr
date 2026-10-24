@@ -1,0 +1,57 @@
+# Mensagem com `Content-Length`: a do LSP (o servidor do editor, que o portão
+# P3 conversa) e a do DAP (o depurador, `teste/depurador.pr`). O cabeçalho
+# `Content-Length: N\r\n\r\n` e depois N BYTES de JSON.
+#
+# Tudo aqui é `byte`, porque o protocolo conta bytes e o `len` de um `str`
+# conta caracteres: com acento numa mensagem, a conta de caracteres cortava a
+# mensagem na ida e esperava bytes que não vinham na volta.
+import json
+
+# Manda `obj` como uma mensagem.
+Null funct manda_mensagem(socket sock, dict obj) {
+    byte corpo = json.stringify(obj).encode()
+    sock.sendall(("Content-Length: " + str(len(corpo)) + "\r\n\r\n").encode() + corpo)
+}
+
+
+# O N do `Content-Length` de um cabeçalho, ou -1 quando ele não tem.
+int funct tamanho_de(str cabecalho) {
+    for each linha in cabecalho.split("\r\n") {
+        if linha.lower().startswith("content-length:") {
+            return int(linha[15:len(linha)].strip())
+        }
+    }
+    return -1
+}
+
+
+# A próxima mensagem da conexão. `buf["b"]` guarda os bytes que já chegaram e
+# ainda não são de mensagem nenhuma: o `recv` devolve o que tiver chegado, que
+# pode ser o começo da mensagem seguinte. Devolve `{}` quando a conexão fecha
+# (nenhuma mensagem do protocolo é vazia). O prazo é o do `settimeout` do
+# socket: estourado, sai o `RuntimeError` dele.
+dict funct le_mensagem(socket sock, dict buf) {
+    bool aberta = True
+    while aberta {
+        byte b = buf["b"]
+        int fim = b.find(b"\r\n\r\n")
+        if fim >= 0 {
+            int tam = tamanho_de(b[0:fim].decode())
+            if tam < 0 {
+                raise ValueError("mensagem sem Content-Length: " + b[0:fim].decode())
+            }
+            int ini = fim + 4
+            if len(b) >= ini + tam {
+                buf["b"] = b[ini + tam:len(b)]
+                return json.parse(b[ini:ini + tam].decode())
+            }
+        }
+        byte veio = sock.recv(65536)
+        if len(veio) == 0 {
+            aberta = False
+        } else {
+            buf["b"] = b + veio
+        }
+    }
+    return {}
+}
