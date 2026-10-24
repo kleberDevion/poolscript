@@ -5,8 +5,15 @@
 # roda FORA de catch — erro depois de conectar é bug do driver e derruba o
 # script com rc != 0. A versão antiga envolvia o exercício inteiro no try, e
 # aí bug real e serviço ausente eram o mesmo "PULOU": falso verde.
+#
+# A porta de cada banco pode vir do ambiente (PS_E2E_PG_PORTA,
+# PS_E2E_MY_PORTA, PS_E2E_MS_PORTA; sem ela, a padrão), pra rodar contra um
+# banco de teste sem encostar no que já ocupa a porta padrão da máquina. O SQL
+# Server (driver `mssql`, o ODBC 18 da Microsoft) entra com o usuário `sa` e a
+# senha de PS_E2E_MS_SENHA; sem a senha, PULOU.
 import psodbc
 import sys
+import os
 
 falhas = []
 ok = 0
@@ -26,6 +33,14 @@ funct conecta(drv, porta) {
     return psodbc.connect(driver=drv, host="127.0.0.1", port=porta,
                           user="ps_teste", password="ps_teste",
                           database="ps_teste")
+}
+
+int funct porta_de(str var, int padrao) {
+    str v = os.getenv(var, "")
+    if v == "" {
+        return padrao
+    }
+    return int(v)
 }
 
 funct exercita(nome, drv, porta) {
@@ -91,6 +106,46 @@ funct exercita(nome, drv, porta) {
     cur.execute("SELECT id FROM tb WHERE ? = 'a''b'", ("a'b",))
     confere(nome + ": texto com aspa segue escapado", len(cur.fetchall()) == 2)
     cur.execute("DROP TABLE IF EXISTS tb")
+    con.commit()
+
+    # ── o SQL que roda é o SQL que foi escrito ──────────────────────────────
+    # motor-4: o mysql recusava o SQL acima de 16 KB e o postgres com
+    # parâmetro acima de 8 KB ("sql grande demais"). Vai inteiro, e o valor
+    # longo volta inteiro.
+    cur.execute("SELECT ? + 1 AS v, '" + "x" * 20000 + "' AS longo", (7,))
+    r = cur.fetchone()
+    confere(nome + ": SQL de mais de 20 KB com parâmetro", r["v"] == 8 and len(r["longo"]) == 20000)
+    # motor-29: o SQL com NUL rodava até o NUL
+    erro_msg = ""
+    try {
+        cur.execute("SELECT id FROM t\x00 WHERE id = 1")
+        erro_msg = "NAO LEVANTOU"
+    } catch (DatabaseError e) {
+        erro_msg = str(e)
+    }
+    confere(nome + ": NUL no SQL recusa", "null character" in erro_msg)
+    # motor-30: o parâmetro com NUL ia cortado. O postgres não guarda NUL em
+    # texto e recusa (a frase do psycopg2); o mysql grava e devolve igual.
+    cur.execute("DROP TABLE IF EXISTS tn")
+    cur.execute("CREATE TABLE tn (s VARCHAR(10))")
+    con.commit()
+    if drv == "postgres" {
+        erro_msg = ""
+        try {
+            cur.execute("INSERT INTO tn (s) VALUES (?)", ("a\x00b",))
+            erro_msg = "NAO LEVANTOU"
+        } catch (DatabaseError e) {
+            erro_msg = str(e)
+        }
+        confere(nome + ": parâmetro com NUL recusa", "cannot contain NUL" in erro_msg)
+    } else {
+        cur.execute("INSERT INTO tn (s) VALUES (?)", ("a\x00b",))
+        con.commit()
+        cur.execute("SELECT s FROM tn")
+        r = cur.fetchone()
+        confere(nome + ": parâmetro com NUL vai e volta inteiro", r["s"] == "a\x00b")
+    }
+    cur.execute("DROP TABLE IF EXISTS tn")
     con.commit()
 
     # ── ERRO: o caminho que decide se o defeito aparece ou some ─────────────
@@ -210,7 +265,27 @@ funct exercita(nome, drv, porta) {
     post(nome, "-> ok")
 }
 
-for each alvo in [["postgres", "postgres", 5432], ["mysql", "mysql", 3306]] {
+# O SQL Server, pelo ODBC: o que o caminho dele corta ou recusa.
+Null funct exercita_mssql(DbConnection con) {
+    post("===== mssql")
+    DbCursor cur = con.cursor()
+    # motor-32: cada valor vinha num buffer de 4 KB, com uma leitura só, e o
+    # maior voltava cortado
+    cur.execute("SELECT REPLICATE(CAST('x' AS VARCHAR(MAX)), 10000) AS v")
+    confere("mssql: valor de 10 KB volta inteiro", len(cur.fetchone()["v"]) == 10000)
+    # motor-4: o ODBC recusava o SQL acima de 16 KB
+    cur.execute("SELECT ? + 1 AS v, '" + "x" * 20000 + "' AS longo", (7,))
+    dict r = cur.fetchone()
+    confere("mssql: SQL de mais de 20 KB com parâmetro", r["v"] == 8 and len(r["longo"]) == 20000)
+    # motor-30: o parâmetro ia até o NUL
+    cur.execute("SELECT ? AS s", ("a\x00b",))
+    confere("mssql: parâmetro com NUL vai e volta inteiro", cur.fetchone()["s"] == "a\x00b")
+    con.close()
+    post("mssql -> ok")
+}
+
+for each alvo in [["postgres", "postgres", porta_de("PS_E2E_PG_PORTA", 5432)],
+                  ["mysql", "mysql", porta_de("PS_E2E_MY_PORTA", 3306)]] {
     de_pe = False
     try {
         c = conecta(alvo[1], alvo[2])
@@ -222,6 +297,28 @@ for each alvo in [["postgres", "postgres", 5432], ["mysql", "mysql", 3306]] {
     }
     if de_pe {
         exercita(alvo[0], alvo[1], alvo[2])
+    }
+}
+
+DbConnection funct conecta_ms(str senha) {
+    return psodbc.connect(driver="mssql", host="127.0.0.1", port=porta_de("PS_E2E_MS_PORTA", 1433),
+                          user="sa", password=senha, database="master")
+}
+
+str senha_ms = os.getenv("PS_E2E_MS_SENHA", "")
+if senha_ms == "" {
+    post("PULOU mssql -> sem PS_E2E_MS_SENHA")
+} else {
+    bool ms_de_pe = False
+    try {
+        DbConnection teste_ms = conecta_ms(senha_ms)
+        teste_ms.close()
+        ms_de_pe = True
+    } catch (e) {
+        post("PULOU mssql ->", e)
+    }
+    if ms_de_pe {
+        exercita_mssql(conecta_ms(senha_ms))
     }
 }
 

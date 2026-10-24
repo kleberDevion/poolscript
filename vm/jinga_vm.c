@@ -16585,6 +16585,17 @@ static const MembroMod MOD_OS[] = {
     return -1; \
 } while (0)
 
+/* O SQL vai pro sqlite (e pros drivers do psodbc) como texto do C, que acaba no
+ * primeiro NUL: o `"DELETE FROM t\x00 WHERE id = 1"` rodava `DELETE FROM t`
+ * (motor-29). Texto com NUL não roda; a frase é a do `sqlite3` do Python. Vale
+ * pro módulo `sqlite3` e pro `psodbc`. */
+static int db_sql_sem_nul(VM *vm, const char *s, int n)
+{
+    if (memchr(s, 0, (size_t)n))
+        BERRO(vm, "DatabaseError", "the query contains a null character");
+    return 0;
+}
+
 static int sql_conn_aberta(VM *vm, PSSqlConn *cn)
 {
     if (!cn->fechado && cn->db) return 0;
@@ -16715,6 +16726,7 @@ static int sql_executa(VM *vm, PSSqlCur *cur, const char *sql, int sql_len,
 {
     PSSqlConn *cn = COMO_SQLCONN(cur->conn);
     if (sql_conn_aberta(vm, cn) != 0) return -1;
+    if (db_sql_sem_nul(vm, sql, sql_len) != 0) return -1;
 
     if (cur->stmt) { sqlite3_finalize(cur->stmt); cur->stmt = NULL; }
 
@@ -16731,8 +16743,15 @@ static int sql_executa(VM *vm, PSSqlCur *cur, const char *sql, int sql_len,
     }
 
     sqlite3_stmt *stmt = NULL;
-    if (sqlite3_prepare_v2(cn->db, sql, sql_len, &stmt, NULL) != SQLITE_OK)
+    const char *resto = NULL;
+    if (sqlite3_prepare_v2(cn->db, sql, sql_len, &stmt, &resto) != SQLITE_OK)
         SQL_ERRO(vm, cn->db);
+    /* o `prepare` só lê o primeiro comando, e o resto era jogado fora, calado
+     * (motor-31); a regra é a do psodbc (ps_db_sql_resto) */
+    if (resto && ps_db_sql_resto(resto)) {
+        if (stmt) sqlite3_finalize(stmt);
+        BERRO(vm, "DatabaseError", "You can only execute one statement at a time.");
+    }
     if (!stmt) {
         /* SQL vazio prepara "nada" sem erro */
         cur->rowcount = -1;
@@ -20923,7 +20942,7 @@ static Value db_cel_valor(VM *vm, PSCel *cel)
         case PS_CEL_BOOL:  return MK_BOOL(cel->b);
         case PS_CEL_NULL:  return MK_NULL();
         default: {
-            PSString *s = nova_string(vm, cel->txt ? cel->txt : "", cel->txt ? (int)strlen(cel->txt) : 0);
+            PSString *s = nova_string(vm, cel->txt ? cel->txt : "", cel->txt ? cel->n : 0);
             return s ? MK_OBJ(s) : MK_NULL();
         }
     }
@@ -20961,36 +20980,51 @@ static PSDbCursor *novo_dbcursor(VM *vm, Value conexao, int drv)
 }
 
 /* tupla/lista de params -> array de textos (malloc); NULL = SQL NULL.
+ * `*lens_out` recebe o tamanho de cada texto: o texto guarda o NUL, e o
+ * parâmetro que ia até o NUL gravava outro valor (motor-30).
  * `*tipos_out` recebe o tipo de cada um ('i' int, 'f' flo, 'b' bool, 's' o
  * resto) — ver ps_db_exec: sqlite e mysql precisam dele pra ligar número e bool
  * como número e bool. Bool vai como "true"/"false" (o postgres aceita e o tipo
- * decide o resto). */
-static char **db_params_txt(VM *vm, Value v, int *nout, char **tipos_out)
+ * decide o resto). Devolve 0, ou -1 com o erro na VM: o parâmetro que não virava
+ * texto (sem memória) ia como NULL, calado. */
+static void db_params_libera(char **arr, int n) { if (!arr) return; for (int i=0;i<n;i++) free(arr[i]); free(arr); }
+static int db_params_txt(VM *vm, Value v, char ***arr_out, int **lens_out, char **tipos_out, int *nout)
 {
-    *nout = 0;
-    *tipos_out = NULL;
-    if (v.t == V_NULL || v.t == V_UNSET) return NULL;
-    if (!EH_SEQ(v)) return NULL;
+    *arr_out = NULL; *lens_out = NULL; *tipos_out = NULL; *nout = 0;
+    if (v.t == V_NULL || v.t == V_UNSET) return 0;
+    if (!EH_SEQ(v)) return 0;
     PSList *l = COMO_LIST(v);
-    char **arr = calloc((size_t)(l->len > 0 ? l->len : 1), sizeof(char *));
-    if (!arr) return NULL;
-    char *tipos = calloc((size_t)l->len + 1, 1);
-    if (!tipos) { free(arr); return NULL; }
+    size_t cap = (size_t)(l->len > 0 ? l->len : 1);
+    char **arr = calloc(cap, sizeof(char *));
+    int *lens = calloc(cap, sizeof(int));
+    char *tipos = calloc(cap + 1, 1);
+    if (!arr || !lens || !tipos) { free(arr); free(lens); free(tipos); BERRO(vm, "MemoryError", "sem memoria"); }
     for (int i = 0; i < l->len; i++) {
         Value e = l->itens[i];
         tipos[i] = e.t == V_INT ? 'i' : e.t == V_FLOAT ? 'f' : e.t == V_BOOL ? 'b' : 's';
         if (e.t == V_NULL || e.t == V_UNSET) { arr[i] = NULL; continue; }
-        if (e.t == V_BOOL) { arr[i] = strdup(e.as.b ? "true" : "false"); continue; }
         TXTBUF_AUTO t = {0};
-        if (valor_para_texto(&t, &e, 0) != 0) { continue; }
-        arr[i] = malloc((size_t)t.n + 1);
-        if (arr[i]) { memcpy(arr[i], t.b ? t.b : "", (size_t)t.n); arr[i][t.n] = 0; }
+        const char *s;
+        int ns;
+        if (e.t == V_BOOL) {
+            s = e.as.b ? "true" : "false";
+            ns = (int)strlen(s);
+        } else {
+            if (valor_para_texto(&t, &e, 0) != 0) {
+                db_params_libera(arr, l->len); free(lens); free(tipos);
+                BERRO(vm, "MemoryError", "sem memoria");
+            }
+            s = t.b ? t.b : ""; ns = t.n;
+        }
+        arr[i] = malloc((size_t)ns + 1);
+        if (!arr[i]) { db_params_libera(arr, l->len); free(lens); free(tipos); BERRO(vm, "MemoryError", "sem memoria"); }
+        memcpy(arr[i], s, (size_t)ns);
+        arr[i][ns] = 0;
+        lens[i] = ns;
     }
-    *nout = l->len;
-    *tipos_out = tipos;
-    return arr;
+    *arr_out = arr; *lens_out = lens; *tipos_out = tipos; *nout = l->len;
+    return 0;
 }
-static void db_params_libera(char **arr, int n) { if (!arr) return; for (int i=0;i<n;i++) free(arr[i]); free(arr); }
 
 /* offload de ps_db_exec pra thread pool: a chamada é C pura (enche PSDbRes, não
  * toca a VM), então roda numa thread enquanto a fibra cede — o `recv` bloqueante
@@ -20998,13 +21032,13 @@ static void db_params_libera(char **arr, int n) { if (!arr) return; for (int i=0
 static void fib_offload(VM *vm, void (*fn)(void *), void *arg);
 static void fib_espera_ms(VM *vm, int ms);   /* cede a fibra por `ms`; def. junto do sleep() */
 typedef struct {
-    PSDbConn *c; const char *sql; const char **params; const char *tipos; int nparams;
+    PSDbConn *c; const char *sql; const char **params; const int *lens; const char *tipos; int nparams;
     PSDbRes *res; char *erro; size_t ecap; char *tipo_out; size_t tcap; int rc;
 } DbExecArgs;
 static void db_exec_offload(void *p)
 {
     DbExecArgs *a = (DbExecArgs *)p;
-    a->rc = ps_db_exec(a->c, a->sql, a->params, a->tipos, a->nparams, a->res,
+    a->rc = ps_db_exec(a->c, a->sql, a->params, a->lens, a->tipos, a->nparams, a->res,
                        a->erro, a->ecap, a->tipo_out, a->tcap);
 }
 /* mesmo esquema pro connect() — o handshake de rede também é bloqueante */
@@ -21041,6 +21075,14 @@ static int met_dbcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
      * cru pro banco. Erra claro, igual ao caminho do sqlite. */
     if (n == 2 && args[1].t != V_NULL && args[1].t != V_UNSET && !EH_SEQ(args[1]))
         MERRO(vm, "TypeError", "parameters are of unsupported type");
+    if (db_sql_sem_nul(vm, COMO_STRING(args[0])->chars, COMO_STRING(args[0])->len) != 0) return -1;
+    /* os parâmetros viram texto antes do BEGIN implícito: o que falha aqui não
+     * deixa transação aberta pra trás */
+    int np = 0;
+    char *tipos = NULL;
+    char **pars = NULL;
+    int *lens = NULL;
+    if (n == 2 && db_params_txt(vm, args[1], &pars, &lens, &tipos, &np) != 0) return -1;
     ps_db_res_libera(&cu->res);
     cu->pos = 0;
     /* Transação implícita antes de DML: sem isto o postgres/mysql cru fica em
@@ -21052,16 +21094,13 @@ static int met_dbcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
     sql_palavra(COMO_STRING(args[0])->chars, kw, sizeof(kw));
     if (sql_eh_dml(kw) && !cn->em_transacao) {
         PSDbRes rb = {0}; char eb[256] = "", tb[64] = "";
-        if (ps_db_exec(cn->conn, "BEGIN", NULL, NULL, 0, &rb, eb, sizeof(eb), tb, sizeof(tb)) == 0) {
+        if (ps_db_exec(cn->conn, "BEGIN", NULL, NULL, NULL, 0, &rb, eb, sizeof(eb), tb, sizeof(tb)) == 0) {
             ps_db_res_libera(&rb);
             cn->em_transacao = 1;
         }
     }
-    int np = 0;
-    char *tipos = NULL;
-    char **pars = (n == 2) ? db_params_txt(vm, args[1], &np, &tipos) : NULL;
     char erro[512], tp[64];
-    DbExecArgs dea = { cn->conn, COMO_STRING(args[0])->chars, (const char **)pars, tipos, np,
+    DbExecArgs dea = { cn->conn, COMO_STRING(args[0])->chars, (const char **)pars, lens, tipos, np,
                        &cu->res, erro, sizeof(erro), tp, sizeof(tp), 0 };
     /* SQLite é local e rápido -> roda inline (offload seria só overhead de thread).
      * Drivers de rede (postgres/mysql/mssql) fazem recv bloqueante -> offload pra
@@ -21077,6 +21116,7 @@ static int met_dbcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
     else                         fib_offload(vm, db_exec_offload, &dea);
     cn->ocupada = 0;
     free(tipos);
+    free(lens);
     if (dea.rc != 0) {
         db_params_libera(pars, np);
         snprintf(vm->erro, sizeof(vm->erro), "%.200s", erro);
@@ -21163,7 +21203,7 @@ static int met_dbconn_commit(VM *vm, Value alvo, Value *args, int n, Value *out)
      * sqlite, que só tem `em_transacao` quando o BEGIN de fato rodou. */
     if (cn->em_transacao) {
         char erro[256]; PSDbRes r;
-        ps_db_exec(cn->conn, "COMMIT", NULL, NULL, 0, &r, erro, sizeof(erro), NULL, 0);
+        ps_db_exec(cn->conn, "COMMIT", NULL, NULL, NULL, 0, &r, erro, sizeof(erro), NULL, 0);
         ps_db_res_libera(&r);
         cn->em_transacao = 0;
     }
@@ -21317,17 +21357,33 @@ static int mod_db_query(VM *vm, Value *args, int n, Value *out)
     if (!EH_STRING(args[1])) { ps_db_solta(c);
         BERRO(vm, "TypeError", "query() argument 2 must be str, not %s",
               nome_do_tipo_valor(args[1])); }
-    const char *tabela = (n > 2 && EH_STRING(args[2])) ? COMO_STRING(args[2])->chars : "";
-    char sql[4096];
-    const char *cmd = COMO_STRING(args[1])->chars;
-    if (tabela[0]) {
-        const char *at = strstr(cmd, "@t");
-        if (at) snprintf(sql, sizeof(sql), "%.*s%s%s", (int)(at - cmd), cmd, tabela, at + 2);
-        else snprintf(sql, sizeof(sql), "%s", cmd);
-    } else snprintf(sql, sizeof(sql), "%s", cmd);
+    PSString *cmd_s = COMO_STRING(args[1]);
+    PSString *tab_s = (n > 2 && EH_STRING(args[2])) ? COMO_STRING(args[2]) : NULL;
+    if (db_sql_sem_nul(vm, cmd_s->chars, cmd_s->len) != 0
+            || (tab_s && db_sql_sem_nul(vm, tab_s->chars, tab_s->len) != 0)) {
+        ps_db_solta(c);
+        return -1;
+    }
+    /* O SQL inteiro, em memória do tamanho dele. Era um buffer fixo de 4.096
+     * bytes, e o que passava era cortado calado: o `DELETE` com o `WHERE` depois
+     * do corte apagava a tabela inteira (motor-4). */
+    const char *cmd = cmd_s->chars;
+    const char *tabela = tab_s ? tab_s->chars : "";
+    const char *at = tabela[0] ? strstr(cmd, "@t") : NULL;
+    size_t ncmd = (size_t)cmd_s->len, ntab = at ? (size_t)tab_s->len : 0;
+    char *sql = malloc(ncmd + ntab + 1);
+    if (!sql) { ps_db_solta(c); BERRO(vm, "MemoryError", "sem memoria"); }
+    if (at) {
+        size_t antes = (size_t)(at - cmd);
+        memcpy(sql, cmd, antes);
+        memcpy(sql + antes, tabela, ntab);
+        memcpy(sql + antes + ntab, at + 2, ncmd - antes - 2 + 1);   /* com o NUL do fim */
+    } else memcpy(sql, cmd, ncmd + 1);
 
     PSDbRes res; char tp[64];
-    if (ps_db_exec(c, sql, NULL, NULL, 0, &res, erro, sizeof(erro), tp, sizeof(tp)) != 0) {
+    int rq = ps_db_exec(c, sql, NULL, NULL, NULL, 0, &res, erro, sizeof(erro), tp, sizeof(tp));
+    free(sql);
+    if (rq != 0) {
         ps_db_solta(c);
         snprintf(vm->erro,sizeof(vm->erro),"%.200s",erro); snprintf(vm->erro_tipo,sizeof(vm->erro_tipo),"%.60s",tp);
         return -1;

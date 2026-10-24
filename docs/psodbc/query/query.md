@@ -44,6 +44,29 @@ post(resultado)      # [{"id": 1, "nome": "café"}, ...]
 
 Se o comando não for `SELECT` (INSERT/UPDATE/DELETE), executa e devolve `Null`.
 
+O `cmd` vai inteiro, do tamanho que for. Duas coisas não rodam, e nada do SQL
+é executado, como no [`execute`](../DbCursor/execute/execute.md):
+
+- texto com o caractere NUL (`\x00`), no `cmd` ou no `table`:
+  `DatabaseError: the query contains a null character`;
+- mais de um comando: `DatabaseError: You can only execute one statement at a
+  time.` O `;` no fim e um comentário depois dele valem.
+
+```ps
+import psodbc
+try {
+    psodbc.query(base="loja.db", cmd="DELETE FROM produtos WHERE id = 1; DELETE FROM produtos")
+} catch (DatabaseError e) {
+    post(e)
+}
+post(psodbc.query(base="loja.db", cmd="SELECT COUNT(*) AS n FROM produtos"))
+```
+
+```saida
+You can only execute one statement at a time. (linha 3)
+[{'n': 3}]
+```
+
 ---
 
 ## Com parâmetros (tupla)

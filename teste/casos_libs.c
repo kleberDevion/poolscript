@@ -724,6 +724,119 @@ const Caso CASOS_LIBS[] = {
   "post(cur.fetchall())\n"
   "c.close()\n",
   "[{'a': 1, 'b': Null}]", NULL, 0 },
+/* motor-4: o `query` copiava o SQL num buffer de 4.096 bytes e executava o
+ * pedaco que coube, calado: com o `WHERE` depois do corte, o `DELETE` apagava
+ * a tabela inteira. O mysql (16 KB), o postgres com parametro (8 KB) e o odbc
+ * (16 KB) recusavam o SQL maior com "sql grande demais". O SQL vai inteiro. */
+{ "psodbc query: o SQL de mais de 4096 bytes vai inteiro (motor-4)",
+  "import psodbc\n"
+  "psodbc.query(base=\"corte.db\", cmd=\"CREATE TABLE t (id INT)\")\n"
+  "psodbc.query(base=\"corte.db\", cmd=\"INSERT INTO t VALUES (1), (2), (3)\")\n"
+  "psodbc.query(base=\"corte.db\", cmd=\"DELETE FROM t\" + \" \" * 4090 + \"WHERE id = 1\")\n"
+  "post(psodbc.query(base=\"corte.db\", cmd=\"SELECT COUNT(*) AS n FROM t\"))\n",
+  "[{'n': 2}]", NULL, 0 },
+{ "psodbc query: INSERT em lote de mais de 20 KB (motor-4)",
+  "import psodbc\n"
+  "psodbc.query(base=\"lote.db\", cmd=\"CREATE TABLE t (id INT)\")\n"
+  "list vs = []\n"
+  "int i = 0\n"
+  "while i < 3000 {\n"
+  "    addEnd(vs, \"(\" + str(i) + \")\")\n"
+  "    i = i + 1\n"
+  "}\n"
+  "str sql = \"INSERT INTO t VALUES \" + \", \".join(vs)\n"
+  "post(sql.len() > 20000)\n"
+  "psodbc.query(base=\"lote.db\", cmd=sql)\n"
+  "post(psodbc.query(base=\"lote.db\", cmd=\"SELECT COUNT(*) AS n, SUM(id) AS s FROM t\"))\n",
+  "True\n[{'n': 3000, 's': 4498500}]", NULL, 0 },
+{ "psodbc execute: SQL de 100 KB (motor-4)",
+  "import psodbc\n"
+  "DbConnection c = psodbc.connect(driver=\"sqlite\", base=\":memory:\")\n"
+  "DbCursor cur = c.cursor()\n"
+  "cur.execute(\"create table t (s text)\")\n"
+  "cur.execute(\"insert into t values ('\" + \"x\" * 100000 + \"')\")\n"
+  "cur.execute(\"select length(s) as n from t\")\n"
+  "post(cur.fetchall())\n",
+  "[{'n': 100000}]", NULL, 0 },
+/* motor-29: o SQL ia pro driver como texto do C, que acaba no primeiro NUL, e
+ * `delete from t\x00 where id = 1` rodava `delete from t`. Texto com NUL nao
+ * roda, no execute, no query e no `table=`; a frase e a do sqlite3 do Python. */
+{ "psodbc: NUL no SQL e erro e nada roda (motor-29)",
+  "import psodbc\n"
+  "DbConnection c = psodbc.connect(driver=\"sqlite\", base=\"nul.db\")\n"
+  "DbCursor cur = c.cursor()\n"
+  "cur.execute(\"create table t (id int)\")\n"
+  "cur.execute(\"insert into t values (1), (2), (3)\")\n"
+  "c.commit()\n"
+  "try {\n"
+  "    cur.execute(\"delete from t\\x00 where id = 1\")\n"
+  "} catch (DatabaseError e) {\n"
+  "    post(e)\n"
+  "}\n"
+  "try {\n"
+  "    psodbc.query(base=\"nul.db\", cmd=\"delete from t\\x00 where id = 1\")\n"
+  "} catch (DatabaseError e) {\n"
+  "    post(e)\n"
+  "}\n"
+  "try {\n"
+  "    psodbc.query(base=\"nul.db\", cmd=\"delete from @t where id = 1\", table=\"t\\x00\")\n"
+  "} catch (DatabaseError e) {\n"
+  "    post(e)\n"
+  "}\n"
+  "cur.execute(\"select count(*) as n from t\")\n"
+  "post(cur.fetchall())\n",
+  "the query contains a null character (linha 8)\n"
+  "the query contains a null character (linha 13)\n"
+  "the query contains a null character (linha 18)\n"
+  "[{'n': 3}]", NULL, 0 },
+/* motor-30: o parametro ia como texto do C, e `"a\x00b"` gravava `"a"`; na
+ * leitura, a celula media o texto com strlen. Vai e volta inteiro. */
+{ "psodbc sqlite: parametro com NUL vai e volta inteiro (motor-30)",
+  "import psodbc\n"
+  "DbConnection c = psodbc.connect(driver=\"sqlite\", base=\":memory:\")\n"
+  "DbCursor cur = c.cursor()\n"
+  "cur.execute(\"create table u (s text)\")\n"
+  "cur.execute(\"insert into u values (?)\", (\"a\\x00b\",))\n"
+  "cur.execute(\"select length(cast(s as blob)) as n, s from u\")\n"
+  "list r = cur.fetchall()\n"
+  "post(r[0][\"n\"], r[0][\"s\"] == \"a\\x00b\", r[0][\"s\"].len())\n",
+  "3 True 3", NULL, 0 },
+/* motor-31: o prepare do sqlite le so o primeiro comando, e o resto era jogado
+ * fora: `delete from t where id = 1; delete from t` rodava so o primeiro. Como
+ * no sqlite3 do Python, sobrou comando e erro, antes de rodar qualquer um; o
+ * `;` do fim, o comentario depois dele e o `;` do comeco valem. */
+{ "psodbc sqlite: um comando por vez (motor-31)",
+  "import psodbc\n"
+  "DbConnection c = psodbc.connect(driver=\"sqlite\", base=\":memory:\")\n"
+  "DbCursor cur = c.cursor()\n"
+  "cur.execute(\"create table t (id int)\")\n"
+  "cur.execute(\"insert into t values (1), (2), (3)\")\n"
+  "for each sql in [\"delete from t where id = 1; delete from t\", \"select 1;;\"] {\n"
+  "    try {\n"
+  "        cur.execute(sql)\n"
+  "    } catch (DatabaseError e) {\n"
+  "        post(e)\n"
+  "    }\n"
+  "}\n"
+  "for each sql in [\"select 1;\", \"select 1; -- comentario\", \"select 1; /* bloco */ \", \"; select 1\"] {\n"
+  "    cur.execute(sql)\n"
+  "}\n"
+  "cur.execute(\"select count(*) as n from t\")\n"
+  "post(cur.fetchall())\n",
+  "You can only execute one statement at a time. (linha 8)\n"
+  "You can only execute one statement at a time. (linha 8)\n"
+  "[{'n': 3}]", NULL, 0 },
+{ "psodbc query: um comando por vez (motor-31)",
+  "import psodbc\n"
+  "psodbc.query(base=\"dois.db\", cmd=\"CREATE TABLE t (id INT)\")\n"
+  "psodbc.query(base=\"dois.db\", cmd=\"INSERT INTO t VALUES (1), (2), (3)\")\n"
+  "try {\n"
+  "    psodbc.query(base=\"dois.db\", cmd=\"DELETE FROM t WHERE id = 1; DELETE FROM t\")\n"
+  "} catch (DatabaseError e) {\n"
+  "    post(e)\n"
+  "}\n"
+  "post(psodbc.query(base=\"dois.db\", cmd=\"SELECT COUNT(*) AS n FROM t\"))\n",
+  "You can only execute one statement at a time. (linha 5)\n[{'n': 3}]", NULL, 0 },
 
 /* ── sqlite3: o outro caminho (nativo, dentro do jinga_vm.c) ─────────────── */
 { "sqlite3: cria, insere e le",
@@ -737,6 +850,27 @@ const Caso CASOS_LIBS[] = {
   "post(cur.fetchall())\n"
   "c.close()\n",
   "[{'a': 7}]", NULL, 0 },
+/* motor-29 e motor-31 no modulo sqlite3: o mesmo corte no NUL e o mesmo resto
+ * jogado fora, no prepare dele. */
+{ "sqlite3: NUL no SQL e dois comandos sao erro, e nada roda (motor-29, motor-31)",
+  "import sqlite3\n"
+  "PoolConnection c = sqlite3.connect(\":memory:\")\n"
+  "PoolCursor cur = c.cursor()\n"
+  "cur.execute(\"create table t (id int)\")\n"
+  "cur.execute(\"insert into t values (1), (2), (3)\")\n"
+  "for each sql in [\"delete from t\\x00 where id = 1\", \"delete from t where id = 1; delete from t\"] {\n"
+  "    try {\n"
+  "        cur.execute(sql)\n"
+  "    } catch (DatabaseError e) {\n"
+  "        post(e)\n"
+  "    }\n"
+  "}\n"
+  "cur.execute(\"select 1; -- fim\")\n"
+  "cur.execute(\"select count(*) as n from t\")\n"
+  "post(cur.fetchall())\n",
+  "the query contains a null character (linha 8)\n"
+  "You can only execute one statement at a time. (linha 8)\n"
+  "[{'n': 3}]", NULL, 0 },
 
 /* ── os: arquivo de verdade, no diretorio temporario do caso ─────────────── */
 { "os: escreve, le, tamanho e existencia",

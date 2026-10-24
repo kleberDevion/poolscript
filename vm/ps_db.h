@@ -19,6 +19,8 @@ typedef enum { PS_CEL_NULL, PS_CEL_INT, PS_CEL_FLOAT, PS_CEL_STR, PS_CEL_BOOL } 
 typedef struct {
     PSCelTipo tipo;
     char     *txt;      /* representação textual (int/float/str); NULL se nulo */
+    int       n;        /* tamanho do txt de PS_CEL_STR, em bytes: o texto pode ter
+                         * NUL, e medido com strlen ele voltava cortado (motor-30) */
     int64_t   i;
     double    f;
     int       b;
@@ -56,9 +58,20 @@ int ps_db_eh_nome_erro(const char *nome);
  * VALOR na linguagem — 'i' int, 'f' flo, 'b' bool, 's' o resto. O texto em
  * `params` perde o tipo, e sqlite e mysql precisam dele: sem isto `True` ia
  * como 'True' (casava com nada no sqlite e com FALSE no mysql) e `LIMIT ?` ia
- * como LIMIT '10', que o mysql recusa. O postgres deduz o tipo no servidor. */
-int ps_db_exec(PSDbConn *c, const char *sql, const char **params, const char *tipos,
+ * como LIMIT '10', que o mysql recusa. O postgres deduz o tipo no servidor.
+ *
+ * `lens` (pode ser NULL = cada texto vai até o NUL): o tamanho em bytes de cada
+ * parâmetro. O texto da linguagem guarda o NUL, e o parâmetro que parava nele
+ * gravava outro valor, calado (motor-30). O `sql` é um texto do C sem NUL no
+ * meio: quem chama confere antes (motor-29). */
+int ps_db_exec(PSDbConn *c, const char *sql, const char **params, const int *lens, const char *tipos,
                int nparams, PSDbRes *res, char *erro, size_t ecap, char *tipo_out, size_t tcap);
+
+/* O resto do SQL depois do primeiro comando, sem brancos nem comentários; NULL
+ * quando não sobra nada. O `prepare` do sqlite só lê o primeiro comando, e o
+ * resto era jogado fora, calado (motor-31): sobrou comando é erro, no psodbc e
+ * no módulo `sqlite3`. */
+const char *ps_db_sql_resto(const char *sql);
 
 void ps_db_res_libera(PSDbRes *r);
 void ps_db_fecha(PSDbConn *c);

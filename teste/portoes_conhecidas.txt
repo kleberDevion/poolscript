@@ -73,8 +73,8 @@ roda	docs/sockets/connect_ex/connect_ex.md	a092e69eaf07	doc-5	darwin	linha 43: i
 roda	docs/sockets/getpeername/getpeername.md	9807faa4f34b	doc-5	darwin	linha 55: import sockets
 roda	docs/sockets/setsockopt/setsockopt.md	c89ffa558fd7	doc-6	darwin	linha 35: import sockets
 roda	docs/sockets/setsockopt/setsockopt.md	cc682177f44c	doc-6	darwin	linha 70: import sockets
-roda	docs/psodbc/query/query.md	3973b289213e	doc-19	todos	linha 54: resultado = psodbc.query(
-roda	docs/psodbc/query/query.md	b8035cef64e4	doc-19	todos	linha 67: psodbc.query(
+roda	docs/psodbc/query/query.md	3973b289213e	doc-19	todos	linha 77: resultado = psodbc.query(
+roda	docs/psodbc/query/query.md	b8035cef64e4	doc-19	todos	linha 90: psodbc.query(
 roda	docs/jinker/request/path_param/path_param.md	a9e23d6442ca	doc-20	todos	linha 43: # GET /user/42?fmt=json
 roda	docs/jinker/request/file/file.md	e9b87f0e36e9	doc-20	todos	linha 74: # só imagens; um .pdf aqui levanta erro
 roda	docs/jinker/request/get_json/get_json.md	e5bf6a1d1c54	doc-20	todos	linha 54: # preciso de vários → get_json
@@ -1231,6 +1231,10 @@ p3	docs/psodbc/query/query.md	b56a4db852e0	editor-1	todos	linha 40: #p3 hover cm
 p3	docs/psodbc/query/query.md	4732d0a05c98	editor-1	todos	linha 57: #p3 hover cmd 3:5
 p3	docs/psodbc/query/query.md	22beb0235af5	editor-1	todos	linha 70: #p3 hover cmd 3:5
 p3	docs/psodbc/query/query.md	762f531de02d	editor-1	todos	linha 71: #p3 hover table 4:5
+p3	docs/psodbc/query/query.md	b8ed1acfeff1	editor-1	todos	linha 58: #p3 hover cmd 3:34
+p3	docs/psodbc/query/query.md	c1b8badfcdb4	editor-3	todos	linha 59: #p3 hover e 4:24
+p3	docs/psodbc/query/query.md	9cdf752db522	editor-3	todos	linha 60: #p3 hover e 5:10
+p3	docs/psodbc/query/query.md	a1aee454da70	editor-1	todos	linha 62: #p3 hover cmd 7:35
 p3	docs/psodbc/connect/connect.md	e10f2deba131	editor-1	todos	linha 12: #p3 hover driver 3:30
 p3	docs/psodbc/connect/connect.md	81e73b0c932f	editor-1	todos	linha 16: #p3 hover driver 1:9
 p3	docs/psodbc/connect/connect.md	8231b8462786	editor-1	todos	linha 16: #p3 hover host 1:26
@@ -1280,6 +1284,12 @@ p3	docs/psodbc/DbCursor/execute/execute.md	bda2c6574573	editor-1	todos	linha 23:
 p3	docs/psodbc/DbCursor/execute/execute.md	a9cff3f7f039	editor-1	todos	linha 24: #p3 hover cmd 10:30
 p3	docs/psodbc/DbCursor/execute/execute.md	97ab9154af68	editor-1	todos	linha 25: #p3 hover cmd 11:30
 p3	docs/psodbc/DbCursor/execute/execute.md	9b9a38844c86	editor-1	todos	linha 26: #p3 hover driver 12:36
+p3	docs/psodbc/DbCursor/execute/execute.md	dae5f8d10b41	editor-1	todos	linha 89: #p3 hover driver 2:36
+p3	docs/psodbc/DbCursor/execute/execute.md	0ba5ca217cf8	editor-1	todos	linha 114: #p3 hover driver 2:36
+p3	docs/psodbc/DbCursor/execute/execute.md	a35e949ff891	editor-3	todos	linha 118: #p3 hover e 6:24
+p3	docs/psodbc/DbCursor/execute/execute.md	cf6b140491fa	editor-3	todos	linha 119: #p3 hover e 7:10
+p3	docs/psodbc/DbCursor/execute/execute.md	990f2e7732a3	editor-3	todos	linha 123: #p3 hover e 11:24
+p3	docs/psodbc/DbCursor/execute/execute.md	ea519347a75b	editor-3	todos	linha 124: #p3 hover e 12:10
 p3	docs/psodbc/DbCursor/fetchmany/fetchmany.md	66b6394ba2ca	editor-1	todos	linha 15: #p3 hover cmd 3:30
 p3	docs/psodbc/DbCursor/fetchmany/fetchmany.md	3b5e518d681d	editor-1	todos	linha 16: #p3 hover cmd 4:30
 p3	docs/psodbc/DbCursor/fetchmany/fetchmany.md	6b82e1d630a5	editor-1	todos	linha 17: #p3 hover driver 5:36
@@ -1682,7 +1692,7 @@ p3	docs/request/WsConnection/send/send.md	c9fcfb0255f9	editor-3	todos	linha 21: 
 p3	docs/request/WsConnection/send/send.md	4d1666287cdc	editor-3	todos	linha 21: #p3 hover msg 4:35
 p3	docs/request/WsConnection/WsConnection.md	5e236cba936e	editor-3	todos	linha 26: #p3 hover msg 5:23
 p3	docs/request/WsConnection/WsConnection.md	1527459ca72c	editor-3	todos	linha 26: #p3 hover msg 5:35
-p3	docs/os/cmd/cmd.md	e9e9cfada75e	editor-1	todos	linha 40: #p3 hover capture 1:36
+p3	docs/os/cmd/cmd.md	0183c265b422	editor-1	todos	linha 40: #p3 hover capture 1:36
 p3	docs/os/cmd/cmd.md	fa08bbe85a00	editor-1	todos	linha 56: #p3 hover capture 4:55
 p3	docs/os/loadFile/loadFile.md	c40b16130cdc	editor-1	todos	linha 45: #p3 hover mode 3:34
 p3	docs/os/loadFile/loadFile.md	c15e7df8af52	editor-1	todos	linha 46: #p3 hover mode 4:25
@@ -1703,7 +1713,7 @@ p3	docs/os/ls/ls.md	80207a15ad00	editor-3	todos	linha 74: #p3 hover i 1:41
 p3	docs/os/ls/ls.md	be3fbe3bfbf3	editor-3	todos	linha 74: #p3 hover i 1:53
 p3	docs/os/ls/ls.md	59e925a2325a	editor-3	todos	linha 75: #p3 hover i 2:41
 p3	docs/os/ls/ls.md	deffdedbcead	editor-3	todos	linha 75: #p3 hover i 2:53
-p3	docs/os/run/run.md	6ca807eb26ab	editor-1	todos	linha 58: #p3 hover capture 1:41
+p3	docs/os/run/run.md	61ad6fde3d55	editor-1	todos	linha 58: #p3 hover capture 1:41
 p3	docs/os/run/run.md	0d2b63d4787b	editor-1	todos	linha 78: #p3 hover capture 1:34
 p3	docs/os/run/run.md	db118d6266c9	editor-1	todos	linha 88: #p3 hover capture 1:28
 p3	docs/os/run/run.md	853e45f79781	editor-3	todos	linha 88: #p3 hover p 1:47

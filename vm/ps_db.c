@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <errno.h>
 
 #include <sqlite3.h>
@@ -191,7 +192,7 @@ static void cel_texto(PSCel *cel, const char *s, int n)
 {
     cel->tipo = PS_CEL_STR;
     cel->txt = malloc((size_t)n + 1);
-    if (cel->txt) { memcpy(cel->txt, s, (size_t)n); cel->txt[n] = 0; }
+    if (cel->txt) { memcpy(cel->txt, s, (size_t)n); cel->txt[n] = 0; cel->n = n; }
 }
 static void cel_int(PSCel *cel, int64_t v)   { cel->tipo = PS_CEL_INT; cel->i = v; char b[32]; snprintf(b,sizeof(b),"%lld",(long long)v); cel->txt = strdup(b); }
 static void cel_float(PSCel *cel, double v)   { cel->tipo = PS_CEL_FLOAT; cel->f = v; char b[40]; snprintf(b,sizeof(b),"%g",v); cel->txt = strdup(b); }
@@ -201,8 +202,10 @@ static void cel_bool(PSCel *cel, int v)       { cel->tipo = PS_CEL_BOOL; cel->b 
 /* O parâmetro com o tipo do valor, como o atalho `psodbc.query` já ligava: bool
  * e int viram inteiro, flo vira real, o resto texto. Tudo como texto, `True`
  * era 'True' e `WHERE ativo = ?` não casava com linha nenhuma. Inteiro que não
- * cabe em 64 bits (bignum) segue como texto. */
-static void sqlite_liga(sqlite3_stmt *st, int i, const char *pv, char tipo)
+ * cabe em 64 bits (bignum) segue como texto. O texto vai com o tamanho `n`
+ * (-1 = até o NUL): o texto da linguagem guarda o NUL, e o `"a\x00b"` que ia até
+ * o NUL gravava `"a"` (motor-30). */
+static void sqlite_liga(sqlite3_stmt *st, int i, const char *pv, int n, char tipo)
 {
     if (!pv) { sqlite3_bind_null(st, i + 1); return; }
     if (tipo == 'b') { sqlite3_bind_int64(st, i + 1, (pv[0] == 't' || pv[0] == '1') ? 1 : 0); return; }
@@ -216,20 +219,60 @@ static void sqlite_liga(sqlite3_stmt *st, int i, const char *pv, char tipo)
         double d = strtod(pv, &fim);
         if (*fim == '\0' && fim != pv) { sqlite3_bind_double(st, i + 1, d); return; }
     }
-    sqlite3_bind_text(st, i + 1, pv, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, i + 1, pv, n, SQLITE_TRANSIENT);
 }
 
-static int sqlite_exec(PSDbConn *c, const char *sql, const char **params, const char *tipos,
+/* O resto do SQL depois do primeiro comando, sem os brancos e os comentários
+ * (o de linha, de `--` até o fim dela, e o de bloco): NULL quando não sobra
+ * nada. É o `lstrip_sql` do `sqlite3` do CPython (Modules/_sqlite/statement.c),
+ * com os mesmos brancos. */
+const char *ps_db_sql_resto(const char *sql)
+{
+    for (const char *p = sql; *p; p++) {
+        switch (*p) {
+            case ' ': case '\t': case '\f': case '\n': case '\r':
+                break;
+            case '-':
+                if (p[1] != '-') return p;
+                p += 2;
+                while (*p && *p != '\n') p++;
+                if (!*p) return NULL;
+                break;
+            case '/':
+                if (p[1] != '*') return p;
+                p += 2;
+                while (*p && (p[0] != '*' || p[1] != '/')) p++;
+                if (!*p) return NULL;
+                p++;
+                break;
+            default:
+                return p;
+        }
+    }
+    return NULL;
+}
+
+static int sqlite_exec(PSDbConn *c, const char *sql, const char **params, const int *lens, const char *tipos,
                        int nparams, PSDbRes *res, char *erro, size_t ecap, char *tipo_out, size_t tcap)
 {
     if (tipo_out && tcap) snprintf(tipo_out, tcap, "DatabaseError");
     sqlite3_stmt *st = NULL;
-    if (sqlite3_prepare_v2(c->sq, sql, -1, &st, NULL) != SQLITE_OK) {
+    const char *resto = NULL;
+    if (sqlite3_prepare_v2(c->sq, sql, -1, &st, &resto) != SQLITE_OK) {
         snprintf(erro, ecap, "erro de banco de dados: %s", sqlite3_errmsg(c->sq));
         return -1;
     }
+    /* O `prepare` só lê o primeiro comando, e o resto era jogado fora: em
+     * `DELETE FROM t WHERE id = 1; DELETE FROM t` só o primeiro rodava, calado
+     * (motor-31). Como o `sqlite3` do Python, sobrou comando = erro, antes de
+     * rodar qualquer um; a frase é a de lá. */
+    if (resto && ps_db_sql_resto(resto)) {
+        sqlite3_finalize(st);
+        snprintf(erro, ecap, "You can only execute one statement at a time.");
+        return -1;
+    }
     for (int i = 0; i < nparams; i++)
-        sqlite_liga(st, i, params[i], tipos ? tipos[i] : 's');
+        sqlite_liga(st, i, params[i], lens ? lens[i] : -1, tipos ? tipos[i] : 's');
     int ncol = sqlite3_column_count(st);
     if (ncol == 0) {                     /* DML/DDL */
         int rc = sqlite3_step(st);
@@ -308,55 +351,96 @@ int ps_db_eh_nome_erro(const char *nome)
  * no postgres; a cópia do mysql não pulava literal e um `?` dentro de texto
  * comia o parâmetro seguinte e corrompia a query. Cada driver só decide o que
  * escrever no lugar do marcador (`emite`): postgres `$k`, mysql o valor
- * escapado, odbc `?`. */
-typedef int (*PhEmite)(void *ctx, int k, char *out, size_t cap);
+ * escapado, odbc `?`.
+ *
+ * A query reescrita vai num texto que cresce. Era um buffer fixo (8 KB no
+ * postgres, 16 KB no mysql e no odbc), e o SQL maior era recusado com "sql
+ * grande demais": um `INSERT` em lote é uso válido (motor-4). */
+typedef struct { char *b; size_t n, cap; } TxtCresce;
 
-static int sql_varre_placeholders(const char *sql, char *out, size_t cap,
-                                  PhEmite emite, void *ctx)
+static int tc_reserva(TxtCresce *t, size_t mais)
 {
-    size_t j = 0; int k = 0, em_texto = 0;
-    for (const char *p = sql; *p; p++) {
-        if (j + 2 >= cap) return -1;
-        if (*p == '\'') { em_texto = !em_texto; out[j++] = *p; continue; }
+    if (mais > SIZE_MAX - t->n - 1) return -1;
+    if (t->n + mais + 1 <= t->cap) return 0;
+    size_t nc = t->cap ? t->cap : 256;
+    while (nc < t->n + mais + 1) {
+        if (nc > SIZE_MAX / 2) return -1;
+        nc *= 2;
+    }
+    char *nb = realloc(t->b, nc);
+    if (!nb) return -1;
+    t->b = nb; t->cap = nc;
+    return 0;
+}
+
+static int tc_poe(TxtCresce *t, const char *s, size_t n)
+{
+    if (tc_reserva(t, n) != 0) return -1;
+    memcpy(t->b + t->n, s, n);
+    t->n += n;
+    t->b[t->n] = '\0';
+    return 0;
+}
+
+typedef int (*PhEmite)(void *ctx, int k, TxtCresce *out);
+
+/* Devolve a query reescrita (malloc: quem chama libera), com o tamanho em
+ * `*nout`; NULL é falta de memória. */
+static char *sql_varre_placeholders(const char *sql, size_t *nout, PhEmite emite, void *ctx)
+{
+    TxtCresce t = { NULL, 0, 0 };
+    if (tc_reserva(&t, strlen(sql)) != 0 || !t.b) return NULL;
+    t.b[0] = '\0';
+    int k = 0, em_texto = 0, ok = 1;
+    for (const char *p = sql; *p && ok; p++) {
+        if (*p == '\'') { em_texto = !em_texto; ok = tc_poe(&t, p, 1) == 0; continue; }
         int marca = em_texto ? 0 : (p[0] == '%' && p[1] == 's') ? 2 : (p[0] == '?') ? 1 : 0;
-        if (!marca) { out[j++] = *p; continue; }
-        int n = emite(ctx, k++, out + j, cap - j);
-        if (n < 0) return -1;
-        j += (size_t)n;
+        if (!marca) { ok = tc_poe(&t, p, 1) == 0; continue; }
+        ok = emite(ctx, k++, &t) == 0;
         if (marca == 2) p++;
     }
-    out[j] = '\0';
-    return (int)j;
+    if (!ok) { free(t.b); return NULL; }
+    *nout = t.n;
+    return t.b;
 }
 
-static int ph_pg(void *ctx, int k, char *out, size_t cap)
+static int ph_pg(void *ctx, int k, TxtCresce *out)
 {
     (void)ctx;
-    int n = snprintf(out, cap, "$%d", k + 1);
-    return (n < 0 || (size_t)n >= cap) ? -1 : n;
+    char b[24];
+    int n = snprintf(b, sizeof(b), "$%d", k + 1);
+    return tc_poe(out, b, (size_t)n);
 }
 
-static int ph_odbc(void *ctx, int k, char *out, size_t cap)
+static int ph_odbc(void *ctx, int k, TxtCresce *out)
 {
     (void)ctx; (void)k;
-    if (cap < 2) return -1;
-    out[0] = '?';
-    return 1;
+    return tc_poe(out, "?", 1);
 }
 
-static int pg_exec(PSDbConn *c, const char *sql, const char **params, int nparams,
+static int pg_exec(PSDbConn *c, const char *sql, const char **params, const int *lens, int nparams,
                    PSDbRes *res, char *erro, size_t ecap, char *tipo_out, size_t tcap)
 {
     PGresult *r;
     if (nparams > 0) {
+        /* O parâmetro vai como texto do C, e o tipo text do postgres não guarda
+         * NUL: com NUL no meio ele chegava cortado, calado (motor-30). A frase
+         * é a do psycopg2. */
+        for (int i = 0; i < nparams; i++)
+            if (params[i] && lens && (size_t)lens[i] != strlen(params[i])) {
+                snprintf(erro, ecap, "A string literal cannot contain NUL (0x00) characters.");
+                return -1;
+            }
         /* `?` vira $1,$2,... (o estilo do postgres); `%s` segue aceito */
-        char conv[8192];
-        if (sql_varre_placeholders(sql, conv, sizeof(conv), ph_pg, NULL) < 0) {
-            snprintf(erro, ecap, "erro de banco de dados: sql grande demais");
-            if (tipo_out && tcap) snprintf(tipo_out, tcap, "DatabaseError");
+        size_t nconv;
+        char *conv = sql_varre_placeholders(sql, &nconv, ph_pg, NULL);
+        if (!conv) {
+            snprintf(erro, ecap, "sem memoria");
+            if (tipo_out && tcap) snprintf(tipo_out, tcap, "MemoryError");
             return -1;
         }
         r = PQexecParams(c->pg, conv, nparams, NULL, params, NULL, NULL, 0);
+        free(conv);
     } else {
         r = PQexec(c->pg, sql);
     }
@@ -415,7 +499,7 @@ static int my_eh_float(enum enum_field_types t) {
          ||t==MYSQL_TYPE_DECIMAL||t==MYSQL_TYPE_NEWDECIMAL;
 }
 
-typedef struct { MYSQL *my; const char **params; const char *tipos; int nparams; } PhMy;
+typedef struct { MYSQL *my; const char **params; const int *lens; const char *tipos; int nparams; } PhMy;
 
 /* Texto de número que a VM formatou (int ou flo): só dígito, sinal, ponto e
  * expoente. É o que pode ir SEM aspas pro mysql — `inf`/`nan` e bignum com
@@ -429,51 +513,54 @@ static int eh_numero_literal(const char *s)
     return 1;
 }
 
-static int ph_mysql(void *ctx, int k, char *out, size_t cap)
+static int ph_mysql(void *ctx, int k, TxtCresce *out)
 {
     PhMy *m = ctx;
-    if (k >= m->nparams) {            /* marcador sem valor: fica como veio */
-        if (cap < 2) return -1;
-        out[0] = '?';
-        return 1;
-    }
+    if (k >= m->nparams)              /* marcador sem valor: fica como veio */
+        return tc_poe(out, "?", 1);
     const char *pv = m->params[k];
-    if (!pv) {
-        int n = snprintf(out, cap, "NULL");
-        return (n < 0 || (size_t)n >= cap) ? -1 : n;
-    }
+    if (!pv) return tc_poe(out, "NULL", 4);
     /* o mysql não tem placeholder no protocolo de texto: o valor entra na
      * query. Número e bool entram SEM aspas — entre aspas, `LIMIT '10'` era
      * erro de sintaxe, `'True'` virava 0 (casava com FALSE) e `'41' + 1` virava
      * float. O texto de número vem da própria VM, nunca do usuário. */
     char tipo = m->tipos ? m->tipos[k] : 's';
     if (tipo == 'b') {
-        int n = snprintf(out, cap, "%s", (pv[0] == 't' || pv[0] == '1') ? "TRUE" : "FALSE");
-        return (n < 0 || (size_t)n >= cap) ? -1 : n;
+        const char *s = (pv[0] == 't' || pv[0] == '1') ? "TRUE" : "FALSE";
+        return tc_poe(out, s, strlen(s));
     }
-    if ((tipo == 'i' || tipo == 'f') && eh_numero_literal(pv)) {
-        int n = snprintf(out, cap, "%s", pv);
-        return (n < 0 || (size_t)n >= cap) ? -1 : n;
-    }
-    size_t lv = strlen(pv);
-    if (2 * lv + 3 > cap) return -1;  /* o escape pode dobrar */
-    out[0] = '\'';
-    unsigned long en = mysql_real_escape_string(m->my, out + 1, pv, (unsigned long)lv);
-    out[1 + en] = '\'';
-    return (int)(en + 2);
+    if ((tipo == 'i' || tipo == 'f') && eh_numero_literal(pv))
+        return tc_poe(out, pv, strlen(pv));
+    /* o tamanho vem de quem chama: o texto guarda o NUL, e o escape do mysql
+     * o escreve como `\0` (motor-30) */
+    size_t lv = m->lens ? (size_t)m->lens[k] : strlen(pv);
+    if (lv > (SIZE_MAX - 3) / 2) return -1;
+    if (tc_reserva(out, 2 * lv + 2) != 0) return -1;   /* o escape pode dobrar */
+    out->b[out->n++] = '\'';
+    unsigned long en = mysql_real_escape_string(m->my, out->b + out->n, pv, (unsigned long)lv);
+    out->n += en;
+    out->b[out->n++] = '\'';
+    out->b[out->n] = '\0';
+    return 0;
 }
 
-static int mysql_exec(PSDbConn *c, const char *sql, const char **params, const char *tipos,
+static int mysql_exec(PSDbConn *c, const char *sql, const char **params, const int *lens, const char *tipos,
                       int nparams, PSDbRes *res, char *erro, size_t ecap, char *tipo_out, size_t tcap)
 {
     if (tipo_out && tcap) snprintf(tipo_out, tcap, "DatabaseError");
     /* monta a query final: cada `?`/`%s` fora de literal recebe o param
      * escapado (o mysql não tem placeholder nativo no protocolo de texto) */
-    char q[16384];
-    PhMy ctx = { c->my, params, tipos, nparams };
-    int j = sql_varre_placeholders(sql, q, sizeof(q), ph_mysql, &ctx);
-    if (j < 0) { snprintf(erro, ecap, "erro de banco de dados: sql grande demais"); return -1; }
-    if (mysql_real_query(c->my, q, (unsigned long)j) != 0) {
+    PhMy ctx = { c->my, params, lens, tipos, nparams };
+    size_t j;
+    char *q = sql_varre_placeholders(sql, &j, ph_mysql, &ctx);
+    if (!q) {
+        snprintf(erro, ecap, "sem memoria");
+        if (tipo_out && tcap) snprintf(tipo_out, tcap, "MemoryError");
+        return -1;
+    }
+    int rq = mysql_real_query(c->my, q, (unsigned long)j);
+    free(q);
+    if (rq != 0) {
         snprintf(erro, ecap, "erro de banco de dados: %s", mysql_error(c->my));
         return -1;
     }
@@ -499,14 +586,14 @@ static int mysql_exec(PSDbConn *c, const char *sql, const char **params, const c
         }
     MYSQL_ROW row;
     while ((row = mysql_fetch_row(r))) {
-        unsigned long *lens = mysql_fetch_lengths(r);
+        unsigned long *tams = mysql_fetch_lengths(r);
         PSCel *lin;
         if (res_nova_linha(res, &lin) != 0) { mysql_free_result(r); snprintf(erro,ecap,"sem memoria"); return -1; }
         for (int i = 0; i < ncol; i++) {
             if (!row[i]) { lin[i].tipo = PS_CEL_NULL; continue; }
             if (my_eh_int(campos[i].type)) cel_int(&lin[i], strtoll(row[i], NULL, 10));
             else if (my_eh_float(campos[i].type)) cel_float(&lin[i], strtod(row[i], NULL));
-            else cel_texto(&lin[i], row[i], (int)lens[i]);
+            else cel_texto(&lin[i], row[i], (int)tams[i]);
         }
     }
     mysql_free_result(r);
@@ -522,29 +609,78 @@ static void od_erro(SQLSMALLINT tipo, SQLHANDLE h, char *erro, size_t ecap)
     else snprintf(erro, ecap, "erro de banco de dados");
 }
 
-static int odbc_exec(PSDbConn *c, const char *sql, const char **params, int nparams,
+/* O valor inteiro da coluna `col` da linha corrente, como texto. O SQLGetData
+ * entrega em pedaços: enquanto o valor não cabe, ele escreve o que coube (com
+ * o NUL no fim), avisa com SQL_SUCCESS_WITH_INFO, e a chamada seguinte continua
+ * dali. Uma chamada só, num buffer de 4 KB, devolvia o valor maior cortado,
+ * calado (motor-32). Devolve 1 pro NULL, 0 com o valor em `*out` (malloc) e -1
+ * com erro do driver ou sem memória. */
+static int od_le_coluna(SQLHSTMT st, SQLUSMALLINT col, char **out, size_t *nout)
+{
+    size_t cap = 4096, n = 0;
+    char *b = malloc(cap);
+    if (!b) return -1;
+    for (;;) {
+        size_t espaco = cap - n;                  /* conta o NUL que o driver põe */
+        SQLLEN ind = 0;
+        SQLRETURN rc = SQLGetData(st, col, SQL_C_CHAR, b + n, (SQLLEN)espaco, &ind);
+        if (rc == SQL_NO_DATA) break;
+        if (!SQL_SUCCEEDED(rc)) { free(b); return -1; }
+        if (ind == SQL_NULL_DATA) { free(b); return 1; }
+        if (ind != SQL_NO_TOTAL && ind >= 0 && (size_t)ind < espaco) {   /* coube: o último pedaço */
+            n += (size_t)ind;
+            break;
+        }
+        n += espaco - 1;                          /* não coube: veio o que cabia */
+        size_t falta = (ind == SQL_NO_TOTAL || ind < 0) ? cap : (size_t)ind - (espaco - 1);
+        size_t nc = n + falta + 1;
+        if (nc < 2 * cap) nc = 2 * cap;
+        char *nb = realloc(b, nc);
+        if (!nb) { free(b); return -1; }
+        b = nb; cap = nc;
+    }
+    b[n] = '\0';
+    *out = b; *nout = n;
+    return 0;
+}
+
+static int odbc_exec(PSDbConn *c, const char *sql, const char **params, const int *lens, int nparams,
                      PSDbRes *res, char *erro, size_t ecap, char *tipo_out, size_t tcap)
 {
     if (tipo_out && tcap) snprintf(tipo_out, tcap, "DatabaseError");
     SQLHSTMT st;
     if (!SQL_SUCCEEDED(SQLAllocHandle(SQL_HANDLE_STMT, c->od_dbc, &st))) { snprintf(erro,ecap,"erro de banco de dados: sem statement"); return -1; }
-    /* liga params (?): como texto, o driver converte pro tipo da coluna */
+    /* liga params (?): como texto, o driver converte pro tipo da coluna. O
+     * tamanho vai no indicador de cada um: sem ele (ponteiro nulo) o driver lê
+     * até o NUL, e o texto com NUL no meio entrava cortado (motor-30). Os
+     * indicadores vivem até o fim da execução, que é quando o driver os lê. */
+    SQLLEN *ind = calloc((size_t)(nparams > 0 ? nparams : 1), sizeof(SQLLEN));
+    if (!ind) {
+        snprintf(erro, ecap, "sem memoria");
+        if (tipo_out && tcap) snprintf(tipo_out, tcap, "MemoryError");
+        SQLFreeHandle(SQL_HANDLE_STMT, st); return -1;
+    }
     for (int i = 0; i < nparams; i++) {
         const char *v = params[i];
+        ind[i] = v ? (SQLLEN)(lens ? (size_t)lens[i] : strlen(v)) : SQL_NULL_DATA;
         SQLBindParameter(st, (SQLUSMALLINT)(i+1), SQL_PARAM_INPUT, SQL_C_CHAR, SQL_VARCHAR,
-                         0, 0, (SQLPOINTER)(v ? v : ""), v ? (SQLLEN)strlen(v) : 0,
-                         v ? NULL : (SQLLEN[]){SQL_NULL_DATA});
+                         0, 0, (SQLPOINTER)(v ? v : ""), v ? ind[i] : 0, &ind[i]);
     }
     /* `%s` vira `?` (o placeholder do odbc); `?` dentro de literal fica */
-    char conv[16384];
-    if (sql_varre_placeholders(sql, conv, sizeof(conv), ph_odbc, NULL) < 0) {
-        snprintf(erro, ecap, "erro de banco de dados: sql grande demais");
-        SQLFreeHandle(SQL_HANDLE_STMT, st); return -1;
+    size_t nconv;
+    char *conv = sql_varre_placeholders(sql, &nconv, ph_odbc, NULL);
+    if (!conv) {
+        snprintf(erro, ecap, "sem memoria");
+        if (tipo_out && tcap) snprintf(tipo_out, tcap, "MemoryError");
+        free(ind); SQLFreeHandle(SQL_HANDLE_STMT, st); return -1;
     }
-    if (!SQL_SUCCEEDED(SQLExecDirect(st, (SQLCHAR *)conv, SQL_NTS))) {
+    SQLRETURN xr = SQLExecDirect(st, (SQLCHAR *)conv, (SQLINTEGER)nconv);
+    free(conv);
+    if (!SQL_SUCCEEDED(xr)) {
         od_erro(SQL_HANDLE_STMT, st, erro, ecap);
-        SQLFreeHandle(SQL_HANDLE_STMT, st); return -1;
+        free(ind); SQLFreeHandle(SQL_HANDLE_STMT, st); return -1;
     }
+    free(ind);
     SQLSMALLINT ncol = 0;
     SQLNumResultCols(st, &ncol);
     if (ncol == 0) {                      /* DML */
@@ -562,12 +698,25 @@ static int odbc_exec(PSDbConn *c, const char *sql, const char **params, int npar
          * SQLDescribeCol só promete tê-los escrito quando devolve sucesso. Sem
          * isso, um SQL_ERROR mandava 128 bytes de pilha pro `strdup` — nome de
          * coluna formado por lixo, sem terminador garantido. */
-        SQLCHAR nome[128] = {0}; SQLSMALLINT nl = 0, dt = SQL_UNKNOWN_TYPE, dd = 0, nul = 0;
+        SQLCHAR nome[256] = {0}; SQLSMALLINT nl = 0, dt = SQL_UNKNOWN_TYPE, dd = 0, nul = 0;
         SQLULEN tam = 0;
         SQLRETURN dr = SQLDescribeCol(st, (SQLUSMALLINT)(i+1), nome, sizeof(nome),
                                       &nl, &dt, &tam, &dd, &nul);
         if (!SQL_SUCCEEDED(dr)) { nome[0] = 0; dt = SQL_UNKNOWN_TYPE; }
-        if (res_col_nome(res, i, (char *)nome, erro, ecap) != 0) {
+        /* nome que não coube: `nl` diz o tamanho inteiro, e a segunda chamada
+         * pega ele todo (o buffer fixo cortava o nome) */
+        char *grande = NULL;
+        if (SQL_SUCCEEDED(dr) && nl >= (SQLSMALLINT)sizeof(nome)) {
+            grande = calloc((size_t)nl + 1, 1);
+            SQLSMALLINT nl2 = 0;
+            if (grande && !SQL_SUCCEEDED(SQLDescribeCol(st, (SQLUSMALLINT)(i+1), (SQLCHAR *)grande,
+                                                        (SQLSMALLINT)(nl + 1), &nl2, &dt, &tam, &dd, &nul))) {
+                free(grande); grande = NULL;
+            }
+        }
+        int rn = res_col_nome(res, i, grande ? grande : (char *)nome, erro, ecap);
+        free(grande);
+        if (rn != 0) {
             free(ctipo); SQLFreeHandle(SQL_HANDLE_STMT, st); return -1;
         }
         ctipo[i] = dt;
@@ -576,18 +725,25 @@ static int odbc_exec(PSDbConn *c, const char *sql, const char **params, int npar
         PSCel *lin;
         if (res_nova_linha(res, &lin) != 0) { free(ctipo); SQLFreeHandle(SQL_HANDLE_STMT, st); snprintf(erro,ecap,"sem memoria"); return -1; }
         for (int i = 0; i < ncol; i++) {
-            char buf[4096]; SQLLEN ind;
-            if (!SQL_SUCCEEDED(SQLGetData(st, (SQLUSMALLINT)(i+1), SQL_C_CHAR, buf, sizeof(buf), &ind))
-                    || ind == SQL_NULL_DATA) { lin[i].tipo = PS_CEL_NULL; continue; }
+            /* erro do driver na leitura é erro, não NULL: o valor que não veio
+             * virava NULL calado */
+            char *v = NULL; size_t nv = 0;
+            int lr = od_le_coluna(st, (SQLUSMALLINT)(i+1), &v, &nv);
+            if (lr < 0) {
+                od_erro(SQL_HANDLE_STMT, st, erro, ecap);
+                free(ctipo); SQLFreeHandle(SQL_HANDLE_STMT, st); return -1;
+            }
+            if (lr == 1) { lin[i].tipo = PS_CEL_NULL; continue; }
             SQLSMALLINT dt = ctipo[i];
             if (dt==SQL_INTEGER||dt==SQL_SMALLINT||dt==SQL_TINYINT||dt==SQL_BIGINT)
-                cel_int(&lin[i], strtoll(buf, NULL, 10));
+                cel_int(&lin[i], strtoll(v, NULL, 10));
             else if (dt==SQL_REAL||dt==SQL_FLOAT||dt==SQL_DOUBLE||dt==SQL_DECIMAL||dt==SQL_NUMERIC)
-                cel_float(&lin[i], strtod(buf, NULL));
+                cel_float(&lin[i], strtod(v, NULL));
             else if (dt==SQL_BIT)
-                cel_bool(&lin[i], buf[0]=='1');
+                cel_bool(&lin[i], v[0]=='1');
             else
-                cel_texto(&lin[i], buf, (int)(ind >= 0 && ind < (SQLLEN)sizeof(buf) ? (size_t)ind : strlen(buf)));
+                cel_texto(&lin[i], v, (int)nv);
+            free(v);
         }
     }
     free(ctipo);
@@ -669,7 +825,7 @@ PSDbConn *ps_db_conecta(PSDbDriver drv, const char *host, int porta,
     return NULL;
 }
 
-int ps_db_exec(PSDbConn *c, const char *sql, const char **params, const char *tipos,
+int ps_db_exec(PSDbConn *c, const char *sql, const char **params, const int *lens, const char *tipos,
                int nparams, PSDbRes *res, char *erro, size_t ecap, char *tipo_out, size_t tcap)
 {
     memset(res, 0, sizeof(*res));
@@ -677,10 +833,10 @@ int ps_db_exec(PSDbConn *c, const char *sql, const char **params, const char *ti
     if (tipo_out && tcap) snprintf(tipo_out, tcap, "DatabaseError");
     if (c->fechado) { snprintf(erro, ecap, "erro de banco de dados: conexao fechada"); return -1; }
     switch (c->drv) {
-        case PS_DB_SQLITE:   return sqlite_exec(c, sql, params, tipos, nparams, res, erro, ecap, tipo_out, tcap);
-        case PS_DB_POSTGRES: return pg_exec(c, sql, params, nparams, res, erro, ecap, tipo_out, tcap);
-        case PS_DB_MYSQL:    return mysql_exec(c, sql, params, tipos, nparams, res, erro, ecap, tipo_out, tcap);
-        case PS_DB_MSSQL:    return odbc_exec(c, sql, params, nparams, res, erro, ecap, tipo_out, tcap);
+        case PS_DB_SQLITE:   return sqlite_exec(c, sql, params, lens, tipos, nparams, res, erro, ecap, tipo_out, tcap);
+        case PS_DB_POSTGRES: return pg_exec(c, sql, params, lens, nparams, res, erro, ecap, tipo_out, tcap);
+        case PS_DB_MYSQL:    return mysql_exec(c, sql, params, lens, tipos, nparams, res, erro, ecap, tipo_out, tcap);
+        case PS_DB_MSSQL:    return odbc_exec(c, sql, params, lens, nparams, res, erro, ecap, tipo_out, tcap);
         default: snprintf(erro, ecap, "driver nao suportado"); return -1;
     }
 }

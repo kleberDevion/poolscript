@@ -97,6 +97,28 @@ sudo -u postgres psql -c "DROP DATABASE ps_teste;" -c "DROP USER ps_teste;"
 sudo mysql -e "DROP DATABASE ps_teste; DROP USER 'ps_teste'@'localhost';"
 ```
 
+A porta vem do ambiente quando a padrão já está ocupada (por um banco que não
+é de teste): `PS_E2E_PG_PORTA`, `PS_E2E_MY_PORTA` e `PS_E2E_MS_PORTA`. Com
+contêineres de teste, só no loopback:
+
+```bash
+docker run -d --name ps-teste-pg -p 127.0.0.1:55432:5432 \
+  -e POSTGRES_USER=ps_teste -e POSTGRES_PASSWORD=ps_teste -e POSTGRES_DB=ps_teste postgres:16-alpine
+docker run -d --name ps-teste-my -p 127.0.0.1:53306:3306 \
+  -e MARIADB_USER=ps_teste -e MARIADB_PASSWORD=ps_teste -e MARIADB_DATABASE=ps_teste \
+  -e MARIADB_RANDOM_ROOT_PASSWORD=1 mariadb:11
+PS_E2E_PG_PORTA=55432 PS_E2E_MY_PORTA=53306 ./pool teste/e2e/db.pr
+```
+
+O SQL Server entra pelo ODBC 18 da Microsoft (o `msodbcsql18`), com o usuário
+`sa` e a senha de `PS_E2E_MS_SENHA`; sem ela, o script diz `PULOU`:
+
+```bash
+docker run -d --name ps-teste-ms -p 127.0.0.1:51433:1433 --memory 2g \
+  -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD='<senha forte>' mcr.microsoft.com/mssql/server:2022-latest
+PS_E2E_MS_PORTA=51433 PS_E2E_MS_SENHA='<senha forte>' ./pool teste/e2e/db.pr
+```
+
 ## mongo
 
 Sem tocar na instalação do sistema — sobe numa pasta vazia e numa porta

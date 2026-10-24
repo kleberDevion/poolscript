@@ -253,7 +253,7 @@ em cada item):
   declaração `str to = "x"` dá a frase certa: `'to' e palavra reservada da
   linguagem e nao pode ser usada como nome de variavel`. A frase do primeiro
   caso não aponta a causa. `motor`.
-- **motor-4** (GRAVE, perda de dado; achado lendo o `psodbc.query` em
+- ~~**motor-4** (GRAVE, perda de dado; achado lendo o `psodbc.query` em
   2026-10-18, por causa do doc-19) O `psodbc.query` copia o SQL num buffer
   fixo de 4.096 bytes com `snprintf` (`mod_db_query`, `vm/jinga_vm.c:21408`) e
   executa o pedaço que coube, calado. Programa: tabela `t` com 3 linhas e
@@ -261,7 +261,14 @@ em cada item):
   (4.115 bytes): sobram 0 linhas, não 2, rc 0, com JIT e sem. O `WHERE` caiu
   no corte e o `DELETE` apagou tudo. No mesmo assunto, o caminho do MySQL
   (`mysql_exec`, `vm/ps_db.c:472`) recusa com "sql grande demais" o SQL acima
-  de 16 KB: não corta, mas recusa uso válido (um `INSERT` em lote). `motor`.
+  de 16 KB: não corta, mas recusa uso válido (um `INSERT` em lote). O mesmo
+  no postgres com parâmetro (acima de 8 KB) e no ODBC (16 KB). `motor`.~~
+  Corrigido no 18.0.1: o `query` monta o SQL em memória do tamanho dele, e os
+  três drivers que reescrevem os marcadores escrevem num texto que cresce.
+  Testes: `psodbc query: o SQL de mais de 4096 bytes vai inteiro`, o `INSERT`
+  de mais de 20 KB e o SQL de 100 KB (`teste/casos_libs.c`); no
+  `teste/e2e/db.pr`, o SQL de mais de 20 KB com parâmetro no postgres, no
+  MySQL e no SQL Server.
 - **motor-5** (achado pelo portão `roda`, `docs/manpu/read/read.md:27`) O
   `manpu.read` de um arquivo que não existe não levanta erro: devolve o texto
   `Error: arquivo não encontrado: nao_existe.csv` como se fosse o conteúdo,
@@ -557,6 +564,50 @@ em cada item):
   depois do arquivo vai pro programa, como no Python; o executável sai com a
   opção antes do arquivo (`jinga -o nome arquivo.pr`), e a doc e o `--help`
   acompanham. `motor` (linha de comando).
+- ~~**motor-29** (GRAVE, perda de dado; achado no conserto do motor-4,
+  2026-10-24) O SQL vai pro banco como texto do C, que acaba no primeiro NUL.
+  `cur.execute("delete from t\x00 where id = 1")` roda `delete from t` e apaga
+  a tabela inteira, com JIT e sem, no `psodbc` (os quatro drivers e o
+  `query`) e no módulo `sqlite3`. O `sqlite3` do Python recusa com
+  `ProgrammingError: the query contains a null character`. `motor`.~~
+  Corrigido no 18.0.1: uma função só confere o SQL antes de qualquer banco
+  (`db_sql_sem_nul`), no `execute`, no `query` (e no `table=`) e no módulo
+  `sqlite3`: `DatabaseError: the query contains a null character`, e nada
+  roda. Testes: `psodbc: NUL no SQL e erro e nada roda` e o do `sqlite3`.
+- ~~**motor-30** (achado no conserto do motor-4) O texto com NUL era cortado
+  no caminho do banco, nos dois sentidos. Na ida, o parâmetro ia como texto
+  do C: `cur.execute("insert into u values (?)", ("a\x00b",))` gravava `"a"`
+  no sqlite, no MySQL e no ODBC, e chegava cortado ao postgres. Na volta, a
+  célula do resultado media o texto com `strlen`. E o parâmetro que não virava
+  texto (sem memória) ia como `NULL`, calado (lido no código). `motor`.~~
+  Corrigido no 18.0.1: o tamanho de cada parâmetro vai até o driver (o
+  `bind` do sqlite, o escape do MySQL, o indicador do ODBC), e a célula guarda
+  o tamanho. O tipo texto do postgres não guarda NUL: lá o parâmetro com NUL é
+  `DatabaseError: A string literal cannot contain NUL (0x00) characters.` (a
+  frase do psycopg2). A conversão que falha é `MemoryError`. Testes: `psodbc
+  sqlite: parametro com NUL vai e volta inteiro`; no `db.pr`, o postgres
+  recusa e o MySQL e o SQL Server devolvem igual.
+- ~~**motor-31** (GRAVE, perda de dado; achado no conserto do motor-4) O
+  `prepare` do sqlite lê só o primeiro comando, e o resto era jogado fora:
+  `delete from t where id = 1; delete from t` rodava só o primeiro, calado,
+  no `psodbc` e no módulo `sqlite3`. O `sqlite3` do Python recusa com
+  `ProgrammingError: You can only execute one statement at a time.`, sem rodar
+  nenhum. `motor`.~~ Corrigido no 18.0.1: depois do `prepare`, o resto tem que
+  ser só branco ou comentário (`ps_db_sql_resto`, o `lstrip_sql` do CPython);
+  senão é `DatabaseError: You can only execute one statement at a time.`, antes
+  de rodar. O `;` no fim, um comentário depois dele e o `;` do começo valem,
+  como no Python. Testes: `psodbc sqlite: um comando por vez`, `psodbc query:
+  um comando por vez` e o do `sqlite3`.
+- ~~**motor-32** (achado no conserto do motor-4, lendo o código) O ODBC (o
+  SQL Server) lia cada valor num buffer de 4.096 bytes com um `SQLGetData`
+  só: o valor maior voltava cortado, calado (o aviso de corte conta como
+  sucesso). O nome de coluna cortava em 127 bytes, o erro de leitura virava
+  `NULL`, e o indicador do parâmetro nulo apontava pra memória que já tinha
+  saído de escopo quando o driver o lia. `motor`.~~ Corrigido no 18.0.1: a
+  leitura repete o `SQLGetData` enquanto o valor não cabe, num buffer que
+  cresce; o nome de coluna pede o tamanho inteiro; o erro de leitura é erro; os
+  indicadores vivem até o fim da execução. Teste: no `db.pr`, o valor de 10
+  KB lido de volta inteiro do SQL Server.
 
 ## os
 

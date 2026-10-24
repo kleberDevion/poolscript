@@ -79,6 +79,60 @@ No postgres, quem decide o tipo final é o servidor, pelo contexto: um `flo`
 comparado com coluna `INTEGER` é recusado (`invalid input syntax for type
 integer`), e `? IS NULL` sem outro uso do parâmetro não tem tipo de onde tirar.
 
+O texto do parâmetro vai inteiro, mesmo com o caractere NUL (`\x00`) no meio:
+o sqlite, o mysql e o SQL Server guardam e devolvem igual. O tipo texto do
+postgres não guarda NUL, e o parâmetro com NUL é `DatabaseError: A string
+literal cannot contain NUL (0x00) characters.`, como no psycopg2.
+
+```ps
+import psodbc
+DbConnection conn = psodbc.connect(driver="sqlite", base="loja.db")
+DbCursor cursor = conn.cursor()
+cursor.execute("INSERT INTO logs (mensagem) VALUES (?)", ("a\x00b",))
+cursor.execute("SELECT mensagem FROM logs WHERE id = 5")
+post(cursor.fetchone()["mensagem"] == "a\x00b")
+```
+
+```saida
+True
+```
+
+## O SQL que roda é o que foi escrito
+
+O SQL vai inteiro, do tamanho que for: um `INSERT` em lote de muitos KB roda
+como foi escrito. Duas coisas não rodam, e nada do SQL é executado:
+
+- texto com o caractere NUL: `DatabaseError: the query contains a null
+  character`, como o `sqlite3` do Python. O banco leria só até o NUL, e um
+  `DELETE` perderia o `WHERE`;
+- no sqlite, mais de um comando: `DatabaseError: You can only execute one
+  statement at a time.`, também como o `sqlite3` do Python. O `;` no fim e um
+  comentário depois dele valem.
+
+```ps
+import psodbc
+DbConnection conn = psodbc.connect(driver="sqlite", base="loja.db")
+DbCursor cursor = conn.cursor()
+try {
+    cursor.execute("DELETE FROM logs\x00 WHERE id = 1")
+} catch (DatabaseError e) {
+    post(e)
+}
+try {
+    cursor.execute("DELETE FROM logs WHERE id = 1; DELETE FROM logs")
+} catch (DatabaseError e) {
+    post(e)
+}
+cursor.execute("SELECT COUNT(*) AS n FROM logs")
+post(cursor.fetchall())
+```
+
+```saida
+the query contains a null character (linha 5)
+You can only execute one statement at a time. (linha 10)
+[{'n': 4}]
+```
+
 ---
 
 ## Relacionados
