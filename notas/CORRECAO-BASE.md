@@ -524,8 +524,9 @@ em cada item):
   `upper`/`lower` do Python" (linha 36) e "a tabela do Unicode inteira (UCD
   15.1)" (linha 89). Quem decide é ele: as tabelas do motor passam pro Unicode
   17.0 (o `scripts/gera_unicode.pr` com o UCD 17.0), ou a doc diz que a
-  referência é o UCD 15.1. O caso pendente lista os 110. `motor` (tabelas do
-  Unicode).
+  referência é o UCD 15.1. O caso pendente lista os 110. Decisão dele
+  (2026-10-24): as tabelas do motor passam pro Unicode 17.0, o do Python 3.15
+  que a doc cita, e a doc deixa de dizer 15.1. `motor` (tabelas do Unicode).
 - **motor-27** (achado pelo gerador do P4, lote 3) O `Parsing.string` junta
   só quatro brancos: o espaço, o tab, o `\n` e o `\r`. O
   `" ".join(s.split())` do Python, que a doc cita, junta também estes:
@@ -552,7 +553,10 @@ em cada item):
 
   Quem decide é ele: a doc do `sys.argv` diz que o `-o` logo depois do
   arquivo é o pedido de gerar o executável, ou o executável sai só por outro
-  comando e o `-o` vai pro programa. `motor` (linha de comando).
+  comando e o `-o` vai pro programa. Decisão dele (2026-10-24): o `-o`
+  depois do arquivo vai pro programa, como no Python; o executável sai com a
+  opção antes do arquivo (`jinga -o nome arquivo.pr`), e a doc e o `--help`
+  acompanham. `motor` (linha de comando).
 
 ## os
 
@@ -996,4 +1000,6 @@ e sem, e dá o mesmo erro.
   As três primeiras a jinker serve como `application/octet-stream`. Quem
   decide é ele: a doc tira o "a mesma do `http.server`", ou a jinker soma as
   quatro. Lugar: `docs/jinker/static_folder/static_folder.md`, linha 84.
-  `doc`.
+  Decisão dele (2026-10-24): a jinker soma as quatro do `http.server`, e a
+  doc passa a contar 217 extensões. Com isso o conserto é do motor (a tabela
+  da jinker), com a doc junto. `jinker` (e `doc`).
