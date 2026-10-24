@@ -12,8 +12,9 @@
 #   rodando: `scripts/confere_checador.pr`), `titulo` (a assinatura do
 #   título de uma página de método contra o motor: `scripts/audita_doc.pr`),
 #   `p3` (o servidor do editor em cada bloco: `scripts/confere_editor.pr`)
-#   ou `gramatica` (a gramática escrita contra o parser:
-#   `scripts/confere_gramatica.pr`);
+#   `gramatica` (a gramática escrita contra o parser:
+#   `scripts/confere_gramatica.pr`) ou `p4` (a suíte no `--check`:
+#   `scripts/confere_suite.pr`; a página é o caso, `suite:...`);
 # - página: a página da doc (`docs/...`); no `p2`, o membro chamado
 #   (`membro:dono.nome`), e a impressão é a do texto da chamada; no `p3`, a
 #   impressão é a do lugar conferido (`#p3 hover nome 2:9`) junto do bloco;
@@ -82,7 +83,7 @@ Null funct conhecidas_de(str portao, dict r, list ruins) {
             addEnd(ruins, CATRACA + ":" + str(n) + ": " + l)
             continue
         }
-        if not (p[0] in ["check", "roda", "p2", "titulo", "p3", "gramatica"]) or not (p[4] in ["todos", "linux", "darwin", "windows"]) {
+        if not (p[0] in ["check", "roda", "p2", "titulo", "p3", "gramatica", "p4"]) or not (p[4] in ["todos", "linux", "darwin", "windows"]) {
             addEnd(ruins, CATRACA + ":" + str(n) + ": " + l)
             continue
         }
@@ -93,6 +94,8 @@ Null funct conhecidas_de(str portao, dict r, list ruins) {
             prefixos = ["membro:"]
         } elif p[0] == "gramatica" {
             prefixos = ["docs/", "suite:", "gerado:"]
+        } elif p[0] == "p4" {
+            prefixos = ["suite:", "teste/p4_achados/"]
         }
         bool prefixo_ok = False
         for each pr in prefixos {

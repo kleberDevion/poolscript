@@ -395,14 +395,48 @@ A prova de que o portão pega: com a alternativa do `elif` tirada da regra
 (`docs/Jinga.md:358` e `docs/linguagem/05-controle-de-fluxo.md:18`) e 5 casos
 da suíte.
 
-### Os lotes 2 e 3 (a fazer)
+### A suíte no `--check` (portão `p4`, lote 2)
 
-- **Lote 2, portão `p4`:** um gerador de programas tipados a partir da
-  gramática (`teste/geradores/programas.pr`, como o Csmith e o YARPGen), com
-  os oráculos: com JIT e sem JIT, a mesma saída; o `--check` aprova o que é
-  bem tipado por construção, e recusa a variante com um erro da lista que a
-  doc promete pegar antes de rodar; nada cai nem passa do prazo. E a suíte
-  inteira no `--check`, contra o que cada caso espera.
+`scripts/confere_suite.pr`, no `make check` depois da gramática. Cada
+programa da suíte (`./testar --programas`, com o código de saída e o trecho
+do erro que o caso espera) passa pelo `--check`, em lotes de 150 por
+processo, e a resposta tem que bater:
+
+1. **o caso que termina com 0 passa no `--check`.** A exceção é a do
+   `docs/lsp.md`: o módulo que o programa gera rodando e depois importa;
+2. **o caso que termina com 2 é recusado, e o primeiro erro tem o trecho
+   que o caso espera.** O trecho é a primeira linha do que o caso espera; o
+   que é só a linha do código no quadro do erro (`|  ...`) confere só a
+   recusa, e o `sys.exit(2)` sem erro fica de fora;
+3. **o caso que quebra rodando com um erro da lista da doc é recusado.** A
+   lista é a de `docs/linguagem/10-excecoes.md`, 10.x: o nome que o arquivo
+   nunca liga, o valor conhecido no lugar tipado (o literal de outro tipo na
+   declaração, no campo e no argumento de uma chamada direta), a aridade
+   numa chamada direta a uma funct do arquivo sem padrão nem `*`, o membro
+   num literal ou num módulo, e o nome que um módulo do motor não exporta.
+   Quem decide é a árvore do programa (`--ast`), não o texto. O resto do
+   que quebra rodando a doc deixa pra rodar, de propósito (o nome que ainda
+   não recebeu valor, o valor de `l[0]` e de `json.parse`).
+
+A prova (`--prova`, no `make check` antes da conferência): três casos de
+fora da suíte, cada um com a expectativa que contradiz o motor, e cada regra
+tem que reprovar o dela. Na catraca, o portão é `p4` e a página é o caso
+(`suite:casos_<grupo>.c:<caso>`).
+
+Medido na entrada (2026-10-23, no Mac, 18.0.0): 9.997 dos 10.062 casos
+conferidos (8.075 rodam limpo, 909 com erro antes de rodar, 1.011 com erro
+rodando), em 11 s. Fora: 28 de outro sistema, 37 sem código conferido e 2
+`sys.exit(2)` sem erro. Nenhuma discordância. Dos 1.011 que quebram rodando,
+144 têm um erro de uma classe da lista; o `--check` aprova 128, e nenhum
+desses está na lista pela árvore: todos usam o que a doc deixa pra rodar.
+
+### O lote 2, o gerador, e o lote 3 (a fazer)
+
+- **Portão `p4`, o gerador:** programas tipados a partir da gramática
+  (`teste/geradores/programas.pr`, como o Csmith e o YARPGen), com os
+  oráculos: com JIT e sem JIT, a mesma saída; o `--check` aprova o que é bem
+  tipado por construção, e recusa a variante com um erro da lista que a doc
+  promete pegar antes de rodar; nada cai nem passa do prazo.
 - **Lote 3:** o Python onde a doc cita o Python, congelado em
   `teste/casos_python.c`.
 

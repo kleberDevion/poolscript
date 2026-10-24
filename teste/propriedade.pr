@@ -27,9 +27,11 @@ TMP = "/tmp/ps_prop"
 semente = 1
 
 
+# O resto sai dos bits ALTOS, como em teste/leis.pr: com o módulo potência de
+# 2, os bits baixos repetem com período curto (o bit 0 alterna) (teste-9).
 funct rnd(n) {
     semente = (semente * 1103515245 + 12345) % 2147483648
-    return semente % n
+    return int(semente / 65536) % n
 }
 
 

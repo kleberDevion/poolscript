@@ -567,6 +567,8 @@ static int grava_programas(const char *pasta)
             json_texto(c->so);
             printf(",\"rc\":%d,\"erro\":", c->rc);
             json_texto(c->erro);
+            fputs(",\"arquivo\":", stdout);
+            json_texto(c->arquivo);
             printf(",\"pendente\":%d}\n", c->pendente);
         }
     }

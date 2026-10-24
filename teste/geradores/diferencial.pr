@@ -18,6 +18,7 @@
 # e o `git diff` mostra exatamente quais casos mudaram.
 import os
 import sys
+import json
 import bytes
 
 ARQS = ["teste/casos_linguagem.c", "teste/casos_erros.c", "teste/casos_crash.c",
@@ -299,6 +300,54 @@ funct casos_de(arq) {
 }
 
 
+# Os casos dos arquivos de `ARQS` como o compilador C leu, pelo
+# `./testar --programas` (teste-8): o `casos_de` acima refaz a leitura dos
+# literais do C e jogava fora a macro `#define` (o "dif #914" e o "dif #922"
+# congelaram o programa sem a classe `NET`) e cortava como comentário o
+# `/* */` de dentro de um literal (o "dif #539" virou `"ab"`). Na ordem de
+# `ARQS`, que é a ordem dos casos gerados. Cada caso: [nome, fonte em bytes,
+# sistema].
+list funct casos_do_runner() {
+    str pasta = TMP + "_programas"
+    if os.exists(pasta) {
+        os.rmdir(pasta, force=True)
+    }
+    os.mkdir(pasta, exist_ok=True)
+    str testar = "./testar.exe" if os.isfile("testar.exe") else "./testar"
+    dict por_grupo = {}
+    for each l in os.run([testar, "--programas", pasta], capture=True).splitlines() {
+        if not l.startswith("{") {
+            continue
+        }
+        dict c = json.parse(l)
+        Object f = open(pasta + "/" + str(c["n"]) + ".pr", "rb")
+        Object dado = f.read()
+        f.close()
+        list fonte = []
+        for each b in dado {
+            addEnd(fonte, b)
+        }
+        if fonte.len() == 0 {
+            continue
+        }
+        str so = c["so"] if c["so"] != Null else ""
+        if not (c["grupo"] in por_grupo) {
+            por_grupo[c["grupo"]] = []
+        }
+        addEnd(por_grupo[c["grupo"]], [c["nome"], fonte, so])
+    }
+    os.rmdir(pasta, force=True)
+    list casos = []
+    for each arq in ARQS {
+        str grupo = arq.replace("teste/casos_", "").replace(".c", "")
+        for each x in por_grupo.get(grupo, []) {
+            addEnd(casos, x)
+        }
+    }
+    return casos
+}
+
+
 # O caso vale neste sistema? A regra do runner (`so_ok` em teste/ps_teste.c):
 # sem sistema vale em todos, e "unix" é todo sistema menos o Windows. Antes
 # só valia o nome igual ao `sys.platform()`, e os casos "unix" saíam daqui
@@ -409,62 +458,60 @@ funct principal() {
     int fora_outro_so = 0
     # quem ficou de fora, pelo nome: o relatório diz quais, não só quantos
     list nomes_fora = []
-    for each arq in ARQS {
-        for each caso in casos_de(arq) {
-            lidos = lidos + 1
-            fonte = caso[1]
-            so = caso[2]
-            # caso de OUTRO sistema: a saída gravada aqui seria a deste
-            if not vale_aqui(so) {
-                fora_outro_so += 1
-                continue
-            }
-            texto = ""
-            try {
-                texto = texto_de(fonte)
-            } catch (e) {
-                fora_binario = fora_binario + 1
-                nomes_fora.append(caso[0] + " (o fonte nao e UTF-8)")
-                continue
-            }
-            depende = False
-            for each marca in DEPENDE_DE_FORA {
-                if texto.find(marca) >= 0 {
-                    depende = True
-                }
-            }
-            if depende {
-                fora_dependencia = fora_dependencia + 1
-                continue
-            }
-            r1 = Null
-            r2 = Null
-            try {
-                r1 = roda(fonte)
-                r2 = roda(fonte)
-            } catch (e) {
-                fora_binario = fora_binario + 1
-                nomes_fora.append(caso[0] + " (falhou ao rodar: " + str(e) + ")")
-                continue
-            }
-            if not iguais(r1, r2) {
-                fora_instavel = fora_instavel + 1
-                nomes_fora.append(caso[0] + " (instavel)")
-                continue
-            }
-            addEnd(linhas, "{ \"dif #" + str(n) + "\",")
-            addEnd(linhas, "  \"" + esc_bytes(fonte) + "\",")
-            err_c = "NULL"
-            if r1[2] != "" {
-                err_c = "\"" + esc_bytes(r1[2].encode()) + "\""
-            }
-            fim = " },"
-            if so != "" {
-                fim = ", NULL, 0, \"" + so + "\" },"
-            }
-            addEnd(linhas, "  \"" + esc_bytes(r1[1]) + "\", " + err_c + ", " + str(r1[0]) + fim)
-            n = n + 1
+    for each caso in casos_do_runner() {
+        lidos = lidos + 1
+        fonte = caso[1]
+        so = caso[2]
+        # caso de OUTRO sistema: a saída gravada aqui seria a deste
+        if not vale_aqui(so) {
+            fora_outro_so += 1
+            continue
         }
+        texto = ""
+        try {
+            texto = texto_de(fonte)
+        } catch (e) {
+            fora_binario = fora_binario + 1
+            nomes_fora.append(caso[0] + " (o fonte nao e UTF-8)")
+            continue
+        }
+        depende = False
+        for each marca in DEPENDE_DE_FORA {
+            if texto.find(marca) >= 0 {
+                depende = True
+            }
+        }
+        if depende {
+            fora_dependencia = fora_dependencia + 1
+            continue
+        }
+        r1 = Null
+        r2 = Null
+        try {
+            r1 = roda(fonte)
+            r2 = roda(fonte)
+        } catch (e) {
+            fora_binario = fora_binario + 1
+            nomes_fora.append(caso[0] + " (falhou ao rodar: " + str(e) + ")")
+            continue
+        }
+        if not iguais(r1, r2) {
+            fora_instavel = fora_instavel + 1
+            nomes_fora.append(caso[0] + " (instavel)")
+            continue
+        }
+        addEnd(linhas, "{ \"dif #" + str(n) + "\",")
+        addEnd(linhas, "  \"" + esc_bytes(fonte) + "\",")
+        err_c = "NULL"
+        if r1[2] != "" {
+            err_c = "\"" + esc_bytes(r1[2].encode()) + "\""
+        }
+        fim = " },"
+        if so != "" {
+            fim = ", NULL, 0, \"" + so + "\" },"
+        }
+        addEnd(linhas, "  \"" + esc_bytes(r1[1]) + "\", " + err_c + ", " + str(r1[0]) + fim)
+        n = n + 1
     }
     addEnd(linhas, "};")
     addEnd(linhas, "const int NC_DIFERENCIAL = N_CASOS(CASOS_DIFERENCIAL);")

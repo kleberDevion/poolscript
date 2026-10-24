@@ -736,6 +736,15 @@ check: pool testar
 	# teste/portoes_conhecidas.txt (portao `gramatica`).
 	@./pool scripts/confere_gramatica.pr
 	@echo
+	# P4 dos portoes, a suite no checador: cada programa da suite passa pelo
+	# `--check`, e a resposta bate com o que o caso espera (roda limpo = passa;
+	# erro antes de rodar = recusa com a frase; erro rodando que a doc promete
+	# pegar antes = recusa). Antes, a prova: cada regra reprova um caso feito
+	# pra contradizer o motor. Divergencia que ja e item aberto fica em
+	# teste/portoes_conhecidas.txt (portao `p4`).
+	@./pool scripts/confere_suite.pr --prova
+	@./pool scripts/confere_suite.pr
+	@echo
 	@./pool teste/fuzz_replay.pr
 	@echo
 	# DEPURADOR: fala DAP com o motor igual o editor faz — breakpoint na linha

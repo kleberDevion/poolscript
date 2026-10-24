@@ -1,8 +1,9 @@
 # Gera `teste/casos_oraculo.c` a partir do produto (receptor x método x args)
 # pra str/list/dict/tup/bytes e builtins.
 #
-# O Python é o ORÁCULO: a doc da linguagem diz "igual ao Python" em toda parte,
-# então divergência é defeito até prova em contrário. O que este script faz:
+# O Python é o ORÁCULO: estes métodos têm o nome e o papel dos do Python, e a
+# divergência fica marcada no comentário do caso pra ser julgada (defeito, ou
+# diferença que a doc explica). O que este script faz:
 #
 #   1. avalia cada expressão no Python  -> esperado
 #   2. avalia cada expressão no ./pool  -> obtido
@@ -608,6 +609,8 @@ if __name__ == "main" {
     using open(SAIDA, "w") as f {
         f.write("\n".join(out) + "\n")
     }
+    # a pasta de trabalho sai no fim: nada do gerador fica no /tmp (teste-10)
+    os.rmdir(TMP, force=True)
     post("")
     post(SAIDA + ":", n, "casos")
 }

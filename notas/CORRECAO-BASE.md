@@ -571,7 +571,7 @@ em cada item):
   comentário).~~ Corrigido no commit do P3: o depurador usa o
   `scripts/enquadramento.pr`, o mesmo enquadramento do portão, que conta
   bytes.
-- **teste-8** (achado montando o P4, 2026-10-23) O `casos_de` do
+- ~~**teste-8** (achado montando o P4, 2026-10-23) O `casos_de` do
   `teste/geradores/diferencial.pr`, que lê os programas dos `teste/casos_*.c`
   refazendo a leitura dos literais do C, lê errado dois casos:
   - joga fora a macro `#define` (`DEC_NET`, `teste/casos_linguagem.c:4553`):
@@ -584,17 +584,23 @@ em cada item):
   E é lento: ler a suíte toda levou 93 s no Mac. O portão da gramática lê os
   programas pelo `./testar --programas <pasta>`, que grava o texto que o
   próprio compilador C leu (2 s). O conserto é o diferencial ler pelo mesmo
-  caminho e ser regerado (lote 2 do P4). `teste`.
-- **teste-9** (achado montando o P4, 2026-10-23, lendo o código) O
+  caminho e ser regerado (lote 2 do P4). `teste`.~~ Corrigido no lote 2 do
+  P4: o gerador lê os casos pelo `./testar --programas` (`casos_do_runner`),
+  e o `teste/casos_diferencial.c` foi regerado na VPS. O `casos_de` fica,
+  porque o `scripts/modelo/indice.pr` usa.
+- ~~**teste-9** (achado montando o P4, 2026-10-23, lendo o código) O
   `teste/propriedade.pr` sorteia pelos bits baixos do gerador congruente
   (`return semente % n`, linha 32). Com o módulo potência de 2, os bits
   baixos repetem com período curto (o bit 0 alterna). O `teste/leis.pr` já
-  sorteia pelos bits altos (`int(semente / 65536) % n`, linha 68). `teste`.
-- **teste-10** (achado montando o P4, 2026-10-23, lendo o código) O
+  sorteia pelos bits altos (`int(semente / 65536) % n`, linha 68). `teste`.~~
+  Corrigido no lote 2 do P4: o resto sai dos bits altos, como nas leis.
+- ~~**teste-10** (achado montando o P4, 2026-10-23, lendo o código) O
   `teste/geradores/oraculo.pr` cria a pasta `/tmp/ps_oraculo` (linha 27) e
   não apaga, e o cabeçalho dele diz que "a doc da linguagem diz "igual ao
   Python" em toda parte", e a frase não aparece em nenhuma página de `docs/`
-  (medido com `grep`). `teste`.
+  (medido com `grep`). `teste`.~~ Corrigido no lote 2 do P4: a pasta sai no
+  fim, e o cabeçalho diz o que o script faz (a divergência fica marcada pra
+  ser julgada).
 
 ## doc
 

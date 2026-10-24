@@ -1,0 +1,481 @@
+# O portão da suíte no `--check` (notas/PORTOES.md, P4, portão `p4`): cada
+# programa da suíte passa pelo checador, e a resposta tem que bater com o que o
+# caso espera rodando.
+#
+# POR QUE ELE EXISTE. O P2 confere o checador membro por membro, e o P1 bloco
+# por bloco da doc. Os 10 mil programas da suíte nunca tinham passado pelo
+# `--check`: um caso que roda limpo e o checador recusa (o checador inventa
+# erro), ou um erro de antes de rodar que o checador não dá, passavam calados.
+#
+# As regras, por caso (os casos do `./testar --programas`, com o código de
+# saída e o trecho do erro que cada um espera):
+#
+#   1. o caso que termina com 0 passa no `--check`. A exceção é a que o
+#      `docs/lsp.md` documenta: o módulo que o programa gera rodando e depois
+#      importa, que antes de rodar não existe (todos os erros são `No module
+#      named` de um nome que o programa escreve);
+#   2. o caso que termina com 2 (erro antes de rodar) é recusado pelo
+#      `--check`, e o primeiro erro dele tem o trecho que o caso espera.
+#
+# Ficam de fora o caso pendente (ele descreve o que o motor ainda não faz), o
+# caso de outro sistema e o caso sem código de saída conferido; o relatório diz
+# quantos. Nenhum programa roda: só o `--check`.
+#
+# A falha que já é item aberto de notas/CORRECAO-BASE.md fica na catraca
+# (`teste/portoes_conhecidas.txt`, portão `p4`, o caso `suite:casos_<grupo>.c:
+# <caso>` e a impressão do programa junto da regra).
+#
+#     ./pool scripts/confere_suite.pr
+import os
+import sys
+import json
+import date
+from './portoes_catraca.pr' import aplica, relata, linha_nova
+
+str TMP = "ps_confere_suite_tmp_" + str(date.timestamp_ms())
+# arquivos por processo do `--check`: a linha de comando do Windows tem 32 mil
+# caracteres
+int LOTE = 150
+
+
+# O caso vale neste sistema? A regra do runner (`vale_aqui`, teste/ps_teste.c).
+bool funct vale_aqui(dict c) {
+    if c["so"] == Null {
+        return True
+    }
+    str so = c["so"]
+    str aqui = sys.platform()
+    return so == aqui or (so == "unix" and aqui != "windows")
+}
+
+
+# O `--check` de cada arquivo, em lotes. Devolve caminho -> resposta.
+dict funct checa_todos(list arqs) {
+    dict r = {}
+    int i = 0
+    while i < arqs.len() {
+        list cmd = [sys.executable, "--check"]
+        int j = i
+        while j < arqs.len() and j < i + LOTE {
+            addEnd(cmd, arqs[j])
+            j = j + 1
+        }
+        for each l in os.run(cmd, capture=True).splitlines() {
+            if l.startswith("{") {
+                dict d = json.parse(l)
+                r[d.get("arquivo", "")] = d
+            }
+        }
+        i = j
+    }
+    return r
+}
+
+
+# O primeiro erro do `--check`, como sai rodando: `Tipo: mensagem`.
+str funct primeiro_erro(dict chk) {
+    list es = chk.get("erros", [chk])
+    dict e = es[0] if es.len() > 0 else chk
+    return e.get("tipo", "") + ": " + e.get("msg", "")
+}
+
+
+# Todos os erros são do módulo que não existe, e o programa escreve o nome dele
+# (o módulo gerado rodando, a exceção do `docs/lsp.md`).
+bool funct modulo_gerado(dict chk, str texto) {
+    list es = chk.get("erros", [chk])
+    if es.len() == 0 {
+        return False
+    }
+    for each e in es {
+        str m = e.get("msg", "")
+        if e.get("tipo", "") != "ImportError" or not m.startswith("No module named '") {
+            return False
+        }
+        str nome = m[17:m.len()].split("'")[0]
+        if texto.find(nome + ".pr") < 0 {
+            return False
+        }
+    }
+    return True
+}
+
+
+# ── a regra 3: o erro rodando que a doc promete pegar antes de rodar ─────────
+
+# Os nós da árvore, todos, numa lista (a árvore em `json` do `--ast`).
+Null funct nos_de(Object no, list saida) {
+    if type(no) == "dict" {
+        dict d = no
+        if "k" in d {
+            addEnd(saida, d)
+        }
+        for each ch in d.keys() {
+            if d[ch] != Null {
+                nos_de(d[ch], saida)
+            }
+        }
+    } elif type(no) == "list" {
+        list l = no
+        for each x in l {
+            if x != Null {
+                nos_de(x, saida)
+            }
+        }
+    }
+}
+
+
+# Os nomes que o arquivo liga: declaração, atribuição, funct e os parâmetros,
+# classe, laço, catch, import, desempacotamento. O nome lido (`Name` numa
+# expressão), o membro (`MemberAccess`) e o nome de argumento (`CallArg`) não
+# ligam nada.
+dict funct ligados(list nos) {
+    dict r = {}
+    for each n in nos {
+        str k = n["k"]
+        if k != "Name" and k != "MemberAccess" and k != "CallArg" and "texto" in n and type(n["texto"]) == "str" {
+            r[n["texto"]] = True
+        }
+        # os nomes dentro de parâmetros, alvos e imports são `Name`
+        if k == "FunctDecl" or k == "Lambda" or k == "UnpackTarget" or k == "ImportStmt" or k == "ForEachStmt" {
+            for each campo in ["lista", "lista2", "alias"] {
+                if campo in n and type(n[campo]) == "list" {
+                    for each x in n[campo] {
+                        if type(x) == "dict" and "texto" in x {
+                            r[x["texto"]] = True
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return r
+}
+
+
+# O último nome entre aspas simples da frase (`... has no attribute 'm'`), sem
+# a sugestão do "Did you mean".
+str funct ultimo_citado(str frase) {
+    list partes = frase.split(". Did you mean")[0].split("'")
+    return partes[partes.len() - 2] if partes.len() >= 3 else ""
+}
+
+
+# O caso que quebra rodando com este erro está na lista do que a doc promete
+# pegar antes de rodar (docs/linguagem/10-excecoes.md, 10.x, e o 3.8.1)?
+# Devolve o motivo, ou "" quando não está (o que a doc deixa pra rodar).
+str funct promete(list nos, str erro, list modulos) {
+    if erro.startswith("NameError: name '") and erro.find("is not defined") >= 0 {
+        str nome = erro[17:erro.len()].split("'")[0]
+        if not (nome in ligados(nos)) and not nome.startswith("_") {
+            return "o nome `" + nome + "`, que o arquivo nunca liga"
+        }
+        return ""
+    }
+    if erro.startswith("AttributeError:") {
+        str membro = ultimo_citado(erro)
+        dict lig = ligados(nos)
+        for each n in nos {
+            if n["k"] == "MemberAccess" and n.get("texto", "") == membro and type(n.get("a", Null)) == "dict" {
+                dict a = n["a"]
+                if a["k"] == "Literal" {
+                    return "o membro `" + membro + "` chamado num literal"
+                }
+                if a["k"] == "Name" and a.get("texto", "") in modulos {
+                    return "o membro `" + membro + "` chamado no módulo `" + a["texto"] + "`"
+                }
+            }
+        }
+        return ""
+    }
+    if erro.startswith("AttributedValueError:") and erro.find("esperava ") >= 0 and erro.find(", recebeu ") >= 0 {
+        str quer = erro.split("esperava ")[1].split(",")[0].strip()
+        str veio = erro.split(", recebeu ")[1].split(" ")[0].strip()
+        # o literal na declaração (`str s = 10`) e no campo da classe
+        for each n in nos {
+            if ((n["k"] == "VarDecl" or n["k"] == "EntityField") and n.get("texto2", "") == quer
+                    and type(n.get("a", Null)) == "dict") {
+                dict a = n["a"]
+                if a["k"] == "Literal" and a.get("lit", "") == veio {
+                    return "o literal `" + veio + "` no lugar tipado `" + quer + " " + n["texto"] + "`"
+                }
+            }
+        }
+        # o literal passado por posição ao parâmetro tipado, numa chamada direta
+        # a uma funct do arquivo (`parâmetro n de f() esperava int, recebeu str`)
+        if erro.find("parâmetro ") >= 0 and erro.find("() esperava") >= 0 {
+            str p = erro.split("parâmetro ")[1].split(" ")[0]
+            str f = erro.split(" de ")[1].split("(")[0]
+            for each n in nos {
+                if n["k"] == "FunctDecl" and n.get("texto", "") == f {
+                    int i = 0
+                    for each par in n.get("lista", []) {
+                        if par.get("texto", "") == p and par.get("texto2", "") == quer {
+                            for each ch in nos {
+                                if (ch["k"] == "Call" and type(ch.get("a", Null)) == "dict" and ch["a"]["k"] == "Name"
+                                        and ch["a"].get("texto", "") == f and ch.get("lista", []).len() > i) {
+                                    dict arg = ch["lista"][i]
+                                    if (not ("texto" in arg) and arg.get("i2", 0) == 0 and type(arg.get("a", Null)) == "dict"
+                                            and arg["a"]["k"] == "Literal" and arg["a"].get("lit", "") == veio) {
+                                        return "o literal `" + veio + "` no parâmetro `" + quer + " " + p + "` de `" + f + "`"
+                                    }
+                                }
+                            }
+                        }
+                        i = i + 1
+                    }
+                }
+            }
+        }
+        return ""
+    }
+    if erro.startswith("TypeError: ") and erro.find("() ") > 0 and (erro.find("positional argument") >= 0
+            or erro.find(" takes ") >= 0) {
+        str f = erro[11:erro.len()].split("(")[0]
+        list decls = []
+        for each n in nos {
+            if n["k"] == "FunctDecl" and n.get("texto", "") == f {
+                addEnd(decls, n)
+            }
+        }
+        if decls.len() != 1 {
+            return ""
+        }
+        for each p in decls[0].get("lista", []) {
+            if "a" in p or p.get("i2", 0) != 0 {
+                return ""                      # padrão ou `*`: a conta é rodando
+            }
+        }
+        for each n in nos {
+            if n["k"] == "Call" and type(n.get("a", Null)) == "dict" and n["a"]["k"] == "Name" and n["a"].get("texto", "") == f {
+                bool simples = True
+                for each arg in n.get("lista", []) {
+                    if arg.get("i2", 0) != 0 or "texto" in arg {
+                        simples = False
+                    }
+                }
+                if simples {
+                    return "a aridade na chamada direta de `" + f + "`, funct do arquivo sem padrão nem `*`"
+                }
+            }
+        }
+        return ""
+    }
+    if erro.startswith("ImportError: cannot import name '") {
+        str m = ultimo_citado(erro)
+        if m in modulos {
+            return "o nome que o módulo `" + m + "` não exporta"
+        }
+    }
+    return ""
+}
+
+
+Null funct acha(list achados, dict c, str regra, str frase) {
+    addEnd(achados, {"pagina": c["chave"], "codigo": c["texto"] + "\n#p4 " + regra,
+                     "onde": c["chave"] + ": " + frase, "linha": 1})
+}
+
+
+# As três regras num caso: `c` (o caso, com o arquivo e o texto) e `chk` (a
+# resposta do `--check`).
+Null funct classifica(dict c, dict chk, list modulos, list achados, dict conta) {
+    if not ("ok" in chk) {
+        acha(achados, c, "sem resposta", "o --check não respondeu")
+    } elif c["rc"] == 1 {
+        conta["rc1"] = conta["rc1"] + 1
+        str erro = c["erro"].strip().split("\n")[0].strip() if c["erro"] != Null else ""
+        bool candidato = False
+        for each prefixo in ["NameError:", "AttributeError:", "AttributedValueError:", "TypeError:", "ImportError:"] {
+            if erro.startswith(prefixo) {
+                candidato = True
+            }
+        }
+        if candidato {
+            conta["candidatos"] = conta["candidatos"] + 1
+        }
+        if candidato and chk["ok"] {
+            # só o caso que o --check aprova precisa da árvore
+            conta["aprovados"] = conta["aprovados"] + 1
+            if "--lista" in sys.argv {
+                post("  aprovado:", c["chave"], "|", erro[0:100])
+            }
+            str porque = ""
+            try {
+                dict a = json.parse(os.run([sys.executable, "--ast", c["arq"]], capture=True).strip())
+                list nos = []
+                nos_de(a.get("arvore", {}), nos)
+                porque = promete(nos, erro, modulos)
+            } catch (Exception e) {
+                porque = ""
+            }
+            if porque != "" {
+                conta["promessa"] = conta["promessa"] + 1
+                acha(achados, c, "rc1 " + erro, "quebra rodando com `" + erro[0:90] + "`, que a doc promete pegar antes "
+                     + "de rodar (" + porque + "), e o --check aprova")
+            }
+        }
+    } elif c["rc"] == 0 {
+        conta["rc0"] = conta["rc0"] + 1
+        if not chk["ok"] {
+            if modulo_gerado(chk, c["texto"]) {
+                conta["gerado"] = conta["gerado"] + 1
+            } else {
+                acha(achados, c, "rc0", "o caso roda limpo e o --check recusa: `" + primeiro_erro(chk) + "` (linha "
+                     + str(chk.get("linha", 0)) + ")")
+            }
+        }
+    } elif c["erro"] == Null or c["erro"].strip() == "" {
+        conta["sai2"] = conta["sai2"] + 1        # o `sys.exit(2)` do programa, sem erro
+    } else {
+        conta["rc2"] = conta["rc2"] + 1
+        # o trecho esperado pode seguir pelo quadro do erro (a linha do código,
+        # `|  ...`, que o JSON do `--check` não traz): a frase é a primeira
+        # linha, e o trecho que é só o quadro confere só a recusa
+        str quer = c["erro"].strip().split("\n")[0].strip()
+        if quer.startswith("|") or quer.startswith("em ") {
+            quer = ""
+        }
+        if chk["ok"] {
+            acha(achados, c, "rc2 aceita", "o caso tem erro antes de rodar (`" + c["erro"].strip()[0:80]
+                 + "`) e o --check aprova")
+        } elif quer != "" and primeiro_erro(chk).find(quer) < 0 {
+            acha(achados, c, "rc2 frase", "o caso espera `" + quer[0:80] + "` e o primeiro erro do --check é `"
+                 + primeiro_erro(chk)[0:100] + "`")
+        }
+    }
+}
+
+
+# A prova de que cada regra reprova: três casos de fora da suíte, cada um com a
+# expectativa que contradiz o motor. Cada regra tem que achar o dela.
+Null funct prova(str trab) {
+    list falsos = [
+        {"nome": "regra 1", "rc": 0, "erro": Null, "texto": "post(nome_que_nao_existe)\n"},
+        {"nome": "regra 2", "rc": 2, "erro": "SyntaxError: inventado", "texto": "post(1)\n"},
+        {"nome": "regra 3", "rc": 1, "erro": "NameError: name 'q' is not defined", "texto": "post(1)\n"}]
+    list arqs = []
+    int i = 0
+    for each c in falsos {
+        i = i + 1
+        c["arq"] = trab + "/prova" + str(i) + ".pr"
+        c["chave"] = "suite:prova:" + c["nome"]
+        os.writeFile(c["arq"], c["texto"])
+        addEnd(arqs, c["arq"])
+    }
+    dict checks = checa_todos(arqs)
+    list achados = []
+    dict conta = {"rc0": 0, "rc1": 0, "rc2": 0, "gerado": 0, "sai2": 0, "promessa": 0, "candidatos": 0, "aprovados": 0}
+    for each c in falsos {
+        classifica(c, checks.get(c["arq"], {}), [], achados, conta)
+    }
+    for each a in achados {
+        post("  pegou: " + a["onde"])
+    }
+    os.rmdir(trab, force=True)
+    if achados.len() != 3 {
+        post("PROVA FALHOU: as três regras tinham que reprovar, e reprovaram", achados.len())
+        sys.exit(1)
+    }
+    post("prova: as três regras reprovam o caso de fora da suíte")
+    sys.exit(0)
+}
+
+
+flo inicio = date.monotonic()
+str trab = os.cwd() + "/" + TMP
+os.mkdir(trab)
+if "--prova" in sys.argv {
+    prova(trab)
+}
+str testar = "./testar.exe" if os.isfile("testar.exe") else "./testar"
+list casos = []
+dict conta = {"casos": 0, "pendentes": 0, "outro_sistema": 0, "sem_rc": 0, "rc1": 0, "rc0": 0, "rc2": 0,
+              "gerado": 0, "sai2": 0, "promessa": 0, "candidatos": 0, "aprovados": 0}
+list achados = []
+list paginas = []
+str parou = ""
+try {
+    str pasta = trab + "/suite"
+    os.mkdir(pasta)
+    for each l in os.run([testar, "--programas", pasta], capture=True).splitlines() {
+        if not l.startswith("{") {
+            continue
+        }
+        dict c = json.parse(l)
+        conta["casos"] = conta["casos"] + 1
+        if c["pendente"] != 0 {
+            conta["pendentes"] = conta["pendentes"] + 1
+            continue
+        }
+        if not vale_aqui(c) {
+            conta["outro_sistema"] = conta["outro_sistema"] + 1
+            continue
+        }
+        if c["rc"] != 0 and c["rc"] != 1 and c["rc"] != 2 {
+            conta["sem_rc"] = conta["sem_rc"] + 1
+            continue
+        }
+        str arq = pasta + "/" + str(c["n"]) + ".pr"
+        str texto = ""
+        try {
+            texto = os.readFile(arq)
+        } catch (Exception e) {
+            texto = "(o fonte não é UTF-8) " + str(c["n"])
+        }
+        if c["arquivo"] != Null {
+            # o programa que precisa do próprio nome: numa pasta só dele
+            str dir = pasta + "/a" + str(c["n"])
+            os.mkdir(dir)
+            arq = dir + "/" + c["arquivo"]
+            os.writeFile(arq, texto)
+        }
+        c["arq"] = arq
+        c["texto"] = texto
+        c["chave"] = "suite:casos_" + c["grupo"] + ".c:" + c["nome"]
+        addEnd(casos, c)
+        addEnd(paginas, c["chave"])
+    }
+    list arqs = []
+    for each c in casos {
+        addEnd(arqs, c["arq"])
+    }
+    dict checks = checa_todos(arqs)
+    list modulos = json.parse(os.run([sys.executable, "--metadata"], capture=True))["modulos"].keys()
+    for each c in casos {
+        classifica(c, checks.get(c["arq"], {}), modulos, achados, conta)
+    }
+} catch (Exception e) {
+    parou = str(e)
+}
+os.rmdir(trab, force=True)
+if parou != "" {
+    post("portão p4 (suíte): " + parou + ": a conferência parou (notas/PORTOES.md)")
+    sys.exit(1)
+}
+
+dict catraca = {}
+aplica("p4", achados, paginas, catraca)
+list novos = catraca["novos"]
+post("casos:", conta["casos"], "| conferidos:", casos.len(), "(roda limpo:", str(conta["rc0"]) + "; erro antes de rodar:",
+     str(conta["rc2"]) + "; erro rodando:", str(conta["rc1"]) + ")")
+post("erro rodando de uma classe da lista da doc:", conta["candidatos"], "| o --check aprova:", conta["aprovados"],
+     "| desses, na lista da doc pela árvore:", conta["promessa"])
+post("fora: pendentes", conta["pendentes"], "| de outro sistema", conta["outro_sistema"], "| sem código conferido",
+     conta["sem_rc"], "| sys.exit(2) sem erro", conta["sai2"], "| módulo gerado rodando (docs/lsp.md)", conta["gerado"])
+post("tempo:", str(int(date.monotonic() - inicio)) + " s")
+relata(catraca)
+if novos.len() == 0 and not catraca["reprova"] {
+    post("  o checador e a suíte concordam (ou são itens abertos)")
+    sys.exit(0)
+}
+if novos.len() == 0 {
+    sys.exit(1)
+}
+post("")
+post("CASOS EM QUE O CHECADOR E A SUÍTE NÃO CONCORDAM:", novos.len())
+for each a in novos {
+    post("  " + a["onde"])
+}
+sys.exit(1)

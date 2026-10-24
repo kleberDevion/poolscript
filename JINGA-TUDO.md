@@ -2369,22 +2369,23 @@ Ele depende de `pool` e `testar`, e executa:
 15. `./pool scripts/confere_checador.pr` (o P2)
 16. `./pool scripts/confere_editor.pr` (o P3; vermelho sem `node` ou sem `node_modules`)
 17. `./pool scripts/confere_gramatica.pr` (o portão `gramatica` do P4)
-18. `./pool teste/fuzz_replay.pr`
-19. `./pool teste/depurador.pr`
-20. `./pool teste/exemplos_roda.pr`
-21. `make leis`
-22. `./pool teste/cli_roda.pr`
-23. `./pool teste/sockets_roda.pr`
-24. `./pool teste/jinker_roda.pr`
-25. `./pool teste/mongo_roda.pr` (PULA sem `mongod`)
-26. `node editor/vscode/teste_servidor.js ./pool` (PULA sem `node` ou sem `node_modules`)
-27. `./pool scripts/gera_realce.pr --portao`
-28. `editor/nvim/teste_nvim.sh` (PULA sem `nvim`)
-29. `editor/intellij/plugin/teste_intellij.sh` (PULA sem IDEA)
-30. `make analisa`
-31. `make avisos`
-32. `make check-debug`
-33. `make check-e2e-local`
+18. `./pool scripts/confere_suite.pr --prova` e `./pool scripts/confere_suite.pr` (a suíte no `--check`, portão `p4`)
+19. `./pool teste/fuzz_replay.pr`
+20. `./pool teste/depurador.pr`
+21. `./pool teste/exemplos_roda.pr`
+22. `make leis`
+23. `./pool teste/cli_roda.pr`
+24. `./pool teste/sockets_roda.pr`
+25. `./pool teste/jinker_roda.pr`
+26. `./pool teste/mongo_roda.pr` (PULA sem `mongod`)
+27. `node editor/vscode/teste_servidor.js ./pool` (PULA sem `node` ou sem `node_modules`)
+28. `./pool scripts/gera_realce.pr --portao`
+29. `editor/nvim/teste_nvim.sh` (PULA sem `nvim`)
+30. `editor/intellij/plugin/teste_intellij.sh` (PULA sem IDEA)
+31. `make analisa`
+32. `make avisos`
+33. `make check-debug`
+34. `make check-e2e-local`
 
 No fim ele lista o que fica fora do portão: `check-e2e`, `check-asan` (o Makefile anuncia ~4 min), `oom` (~5 min), `fuzz` e `cobertura`.
 
@@ -2921,6 +2922,7 @@ O que o código e o CI já mostram do macOS:
 - **18.0.0 (2026-10-23): o `.type()` sai da linguagem** (motor-14, decisão sua: "o uso deve ser somente type() não .type()"). O nome do tipo é só o builtin `type(x)`. Saíram o método, a segunda tabela de nomes de tipo que ele tinha (`met_type`) e o `__universal__` do `--metadata`; `x.type()` dá o erro de membro que não existe, antes de rodar e rodando, em todo tipo de valor (num dict, `d.type` é a chave). Quebra quem usa `.type()`, por isso a major; a troca é `type(x)`. Achados no caminho, consertados no mesmo lote: nome de módulo deixou de valer como tipo (`bytes d = b"x"` dá `tipo bytes não existe`; o tipo é `byte`), e a declaração com tipo que não existe dá um erro só (motor-15); o `--check` passou a acusar membro de funct e de `Null` (`sockets.socket.sendall(s, d)`, a forma da sua `ssl.pr`, motor-16). O P2 ganhou a chamada de um membro que não existe em cada tipo de valor e em dois valores funct: rodando contra o 17.0.20, ela achou o motor-16 sozinha. Abertos na lista: motor-17 (o `--check` não sabe o tipo de `len` como valor, do gerador, da `async funct` e do membro de enum), teste-5 (o P1 confere só o tipo do erro anunciado, não a frase) e o doc-1 com mais cinco páginas que escrevem `bytes-like`. Verde no Mac (10.034 casos com JIT e sem; o `make check`, com a pilha de 8 MB, até o `cli_roda`, que para no motor-10) e na VPS, dentro do `unshare --pid` (10.062 casos com JIT, sem JIT, no `check-debug` e no `check-asan`; os portões, o LSP, o Neovim e o e2e local ok). `perf stat` contra o 17.0.20, em instruções: `metodo` -1,16% com JIT e -1,31% sem; `objeto` -0,38% e -0,42%.
 - **O P3 entrou em 2026-10-23** (`scripts/confere_editor.pr`, no `make check` depois do P2): em cada bloco da doc, o portão conversa com o servidor do editor como o VS Code faz, numa porta do loopback, e confere três coisas. O diagnóstico tem que ser o do `--check`, com a posição em UTF-16. O hover não pode dizer "não definido" nem vir em branco num programa que o `--check` aprova. E o completion depois de `x.` tem o membro que o programa usa, e é a tabela do `--metadata` quando `x` é declarado com um tipo do motor. O cliente é em Jinga, e o enquadramento do protocolo (`scripts/enquadramento.pr`, que conta bytes) passou a ser o mesmo do `teste/depurador.pr`, que contava caracteres (teste-7). Sem o `node` ou sem o `npm install` em `editor/vscode`, o portão fica vermelho, e o CI do Linux passou a instalar o servidor antes do `make check` (teste-6). Medido no Mac, no 18.0.0: 1.368 blocos, 10.121 hovers e 2.644 completions em 4 minutos. O diagnóstico bateu em todos os blocos, nenhum hover veio em branco, e as 1.207 discordâncias apontam itens. Ele achou sozinho o editor-1, o relato do `forAll`, pelo `room_id` da `channel.md`. Os itens novos: editor-3 (o hover diz "não definido" em 550 nomes que o motor liga: o módulo na linha do `from`, o `__name__`, o membro na declaração, as variáveis do `catch`, da lambda, da compreensão, do `using` e do `case`, e o nome lido antes da linha que o liga), editor-4 (o completion dá os nomes do escopo depois do ponto que começa a linha e do ponto de uma lista escrita) e motor-19 (o `--tokens` lê o formato da f-string como código). Um item que eu abri, o motor-18, saiu no mesmo dia: o `--check` não acusar o `prev` lido antes da linha que o liga é o que a doc promete (só o nome que o arquivo nunca liga sai antes de rodar, 10.x), e o erro era do hover. O editor-1 tem 574 lugares, e o editor-2 ganhou 49 (o `request` da rota com o hover do módulo cliente). No caminho, o `docs/lsp.md` ainda falava do `.type()` em duas frases, e três testes do servidor ainda tinham "universais" no nome (doc-27, consertado no mesmo commit).
 - **O P4 começou em 2026-10-23: a gramática escrita e o portão `gramatica`** (o lote 1 de 3). A gramática inteira da linguagem está em `docs/linguagem/gramatica.md`, na notação da gramática do Python, tirada do parser regra por regra. O portão (`scripts/confere_gramatica.pr`, no `make check` depois do P3) lê a gramática da própria página e reconhece com ela os tokens de cada programa: os 1.393 blocos da doc, os 8.274 programas da suíte e 600 sorteados da gramática. Ele confere que a gramática e o parser aceitam e recusam os mesmos programas, que o `--ast` e o `--check` dão o mesmo primeiro erro de sintaxe, que cada token casa com a forma léxica da classe dele e que toda regra é usada. Os programas da suíte saem do `./testar --programas`, o texto que o compilador C leu dos literais: refazer essa leitura em Jinga levava 93 s e lia dois casos errado (teste-8). Medido no Mac: 98 s, e as 10 discordâncias são o motor-23 (o `--ast` põe o erro do lexer na frente do erro do parser). Com o `elif` tirado da gramática, o portão fica vermelho nos 7 programas que usam `elif`. Os itens novos: motor-20 a motor-25, um acréscimo ao motor-19, doc-28 a doc-31 (o doc-31, a lista do `make check` em 5.6, consertado no lote) e teste-8 a teste-10. Dois deles dão resultado errado calado: no `count each str in "abca" { ... }` o corpo roda uma vez, como parte do texto (motor-22), e `int(*l) count in xs` conta os itens iguais à lista `l` (motor-24). Faltam os lotes 2 (o gerador de programas tipados e a suíte no `--check`) e 3 (o Python onde a doc cita o Python).
+- **O lote 2 do P4, primeira parte (2026-10-23, à noite): a suíte no `--check`** (`scripts/confere_suite.pr`, portão `p4`). Cada programa da suíte passa pelo checador, e a resposta bate com o que o caso espera: o caso que roda limpo passa; o caso com erro antes de rodar é recusado com a frase dele; o caso que quebra rodando com um erro da lista que a doc promete pegar antes de rodar (10.x) é recusado, decidido pela árvore do programa. Antes da conferência, a prova: cada regra reprova um caso feito pra contradizer o motor. Medido no Mac: 9.997 casos em 11 s, nenhuma discordância; dos 1.011 que quebram rodando, nenhum é da lista (os que parecem usam o que a doc deixa pra rodar, como o `l[0]`). No mesmo lote: o diferencial lê os casos pelo `./testar --programas` e foi regerado na VPS (teste-8: três casos tinham congelado o programa errado), o `teste/propriedade.pr` sorteia pelos bits altos (teste-9), e o `teste/geradores/oraculo.pr` apaga a pasta dele no fim e não diz mais que a doc diz "igual ao Python" em toda parte (teste-10). Falta a segunda parte do lote 2: o gerador de programas tipados.
 - Versão da linguagem **18.0.0** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 18.0.0 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.12** (`editor/vscode/package.json`) <!-- bump ext -->
 - **O P3 e o lote 1 do P4 entraram juntos no `main` (2026-10-23, à noite)**, depois da rodada na VPS sobre o ramo, dentro do `unshare --pid`: a suíte com 10.062 casos com JIT, sem JIT e no `check-debug`; os portões só com as falhas conhecidas (`check` 41, `roda` 63, P2 492, P3 1.207 em 1.369 blocos, a gramática 10 em 61 s); LSP, depurador, Neovim (fora do `unshare`), `analisa`, `avisos` e o e2e local ok. A VPS tinha voltado a um estado sem o `bubblewrap`, e o portão `roda` parou vermelho dizendo isso, como deve; ele foi instalado de novo. No Mac, o `make check` roda com `sh -c 'ulimit -Hs 8192; ulimit -s 8192; make check'` (sem o teto duro, o `make` da Apple sobe a pilha dos filhos pra 64 MB, e a suíte para nos 6 casos do motor-1); ele para no `cli_roda` (motor-10).
