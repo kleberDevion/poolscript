@@ -18,6 +18,31 @@ navega — não existe `.status` (tentar acessar dá `AttributeError: 'ChannelSt
 | `if x:` | verdadeiro quando deu certo |
 
 `Success` = a mensagem chegou a **pelo menos uma** conexão. Sem alvo nenhum
-(nenhuma conexão aberta, ou nenhuma no canal) o resultado é `Error`.
+(nenhuma conexão aberta, ou nenhuma no canal) o resultado é `Error`, e antes
+do primeiro envio também: nada chegou a ninguém.
+
+## Não vira JSON
+
+`ChannelStatus` não é texto: ele não vira JSON, nem no `json.stringify`, nem
+na rota que o devolve dentro de um dict (que dá `500`), nem no `emit`. O
+`str()` vira:
+
+```ps
+from jinker import Jinker
+import json
+Jinker app = Jinker(__name__)
+post(json.stringify({"status": str(app.channel.status)}))
+```
+```saida
+{"status": "Error"}
+```
+
+```ps
+from jinker import Jinker
+import json
+Jinker app = Jinker(__name__)
+post(json.stringify({"status": app.channel.status}))
+# TypeError: Object of type ChannelStatus is not JSON serializable
+```
 
 [← índice](objetos-internos.md)

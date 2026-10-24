@@ -116,6 +116,41 @@ funct eco()
     return {"metodo": request.method, "corpo": request.text(), "caminho": request.path}
 }
 
+# O que a rota devolve e não vira resposta (jinker-6, jinker-12): o dict, a
+# lista e a tupla com o que não vira JSON (o próprio `app` dentro), e a
+# tupla com o status em texto ou fora de 100..999. Saía 200 com o corpo
+# vazio, ou 200 no lugar do status, ou uma linha de status que o cliente
+# recusa; agora é 500, e a frase sai na saída do servidor.
+@app.route("/nao_json")
+dict funct nao_json()
+{
+    return {"s": app}
+}
+
+@app.route("/nao_json_tupla")
+tup funct nao_json_tupla()
+{
+    return {"s": app}, 201
+}
+
+@app.route("/nao_json_lista")
+list funct nao_json_lista()
+{
+    return [app]
+}
+
+@app.route("/status_texto")
+tup funct status_texto()
+{
+    return {"a": 1}, "201"
+}
+
+@app.route("/status_fora")
+tup funct status_fora()
+{
+    return "x", 99999
+}
+
 @app.route("/json", methods=["POST"])
 funct recebe_json()
 {
@@ -236,6 +271,15 @@ funct subir()
 @app.middleware()
 funct confere_chave()
 {
+    # a tupla do middleware que não vira resposta é erro dele (jinker-6)
+    if request.get("mw_ruim") == "1"
+    {
+        return {"s": app}, 401
+    }
+    if request.get("mw_ruim") == "2"
+    {
+        return {"a": 1}, "401"
+    }
     if request.header("X-Chave") != "abre"
     {
         return jinker.jsonify({"msg": "sem permissao"}), 401
@@ -258,51 +302,6 @@ funct cors_info()
 }
 
 
-# ── canal e websocket ───────────────────────────────────────────────────────
-@app.route("/emitir")
-funct emitir()
-{
-    st = app.channel.emit("aviso", {"n": 1})
-    return {"emit": str(st), "status": str(app.channel.status)}
-}
-
-# Socket SEM canal: o `return` do handler volta pro REMETENTE da mensagem.
-# `app.socket().emit(...)` é pro caso de CANAL (`channel=True`), onde a mensagem
-# vai pra todo mundo inscrito — sem canal não há a quem emitir, e o cliente
-# ficava esperando um eco que nunca vinha.
-@app.socket("/ws")
-funct ws_sala()
-{
-    return "eco: " + request.text()
-}
-
-# Handler de socket LENTO: enquanto ele roda, o servidor tem que continuar
-# atendendo — rota HTTP e OUTRA conexão WebSocket. Antes o handler era chamado
-# direto do laço do worker, sem fibra, e o `sleep` dele parava o servidor
-# inteiro: `/ok` levava 3,4 s e a segunda conexão só entrava no fim.
-@app.socket("/lentows")
-funct ws_lento()
-{
-    sleep(3)
-    return "lento-fim"
-}
-
-# Socket LONGO antes do curto com o mesmo parametro: a conexao em `/chat/geral`
-# tem que entrar na sala automatica `geral` (mesmo reset de params das rotas).
-@app.socket("/chat/<sala>/admin", channel=True)
-funct chat_admin()
-{
-    return "admin"
-}
-
-@app.socket("/chat/<sala>", channel=True)
-funct chat()
-{
-    sala = request.path_param("sala")
-    send = app.socket()
-    send.emit(payload={"emit": sala}, room_id=sala, exclude_self=False)
-    return "ret:" + str(sala)
-}
 
 
 # ── validação do corpo com `model` ──────────────────────────────────────────

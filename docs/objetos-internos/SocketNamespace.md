@@ -14,6 +14,11 @@ app.socket — dupla função:
 
      sk.socket.emit(payload=msg, room_id=identify["id"])  # direto, sem instanciar
 
+Chamar o `app.socket` tem dois parâmetros, `path=Null` (`str` ou `Null`) e
+`channel=False` (`bool`): argumento a mais, nome que não é parâmetro e
+argumento de outro tipo são `TypeError`. A página da lib é
+[`socket`](../jinker/socket/socket.md).
+
 ## Métodos e propriedades
 
 | Acesso | O que faz |

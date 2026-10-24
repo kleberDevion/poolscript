@@ -45,7 +45,6 @@ typedef struct {
     char     *corpo;
     size_t    ncorpo;
     int       keep_alive; /* HTTP/1.1 sem "Connection: close" */
-    int       eh_ws;      /* Upgrade: websocket */
     /* ARENA do request (opaca, ps_jinker.c): path/query/cabs/nome/valor saem
      * de UM bloco bump-alocado em vez de ~10-20 mallocs; ps_jk_req_solta
      * devolve tudo de uma vez. O corpo (até 64MB, 1 alocação) fica em malloc. */
@@ -81,19 +80,16 @@ int ps_jk_responde(PSJkConn *c, int status, const char *ctype,
                    const char *corpo, size_t ncorpo,
                    const char *extra, int keep_alive);
 
-/* ── WebSocket ──────────────────────────────────────────────────────────── */
-/* Responde o 101 com o Sec-WebSocket-Accept (SHA1+base64). 0 ok. */
-int ps_jk_ws_handshake(PSJkConn *c, const PSJkReq *r);
-
+/* ── WebSocket CLIENTE (o `ws_connect` do módulo request) ───────────────── */
 /* Lê um frame de dados. Trata ping (responde pong) e continua. Devolve:
  * 0 = mensagem completa em `msg`/`n` (malloc — caller libera);
- * 1 = close recebido (já respondido); -1 = erro/conexão caiu. */
+ * 1 = close recebido (já respondido); -1 = erro/conexão caiu, ou frame
+ * mascarado vindo do servidor (RFC 6455 §5.1). */
 int ps_jk_ws_le_frame(PSJkConn *c, char **msg, size_t *n);
 
-int ps_jk_ws_envia_texto(PSJkConn *c, const char *msg, size_t n);
+/* Frame de close, MASCARADO como todo frame do cliente. */
 int ps_jk_ws_envia_close(PSJkConn *c, int codigo, const char *motivo);
 
-/* ── WebSocket CLIENTE (o `ws_connect` do módulo request) ───────────────── */
 /* Conecta e faz o handshake de cliente (Sec-WebSocket-Key + validação do
  * Accept). NULL em erro (mensagem em `erro`). */
 PSJkConn *ps_jk_ws_conecta(const char *host, int porta, const char *path,

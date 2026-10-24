@@ -1371,6 +1371,8 @@ function assinatura(m) {
   const ps = (m.params || []).map(rotuloParam);
   const ret = retornoVisivel(m.retorna) ? ` -> ${m.retorna}` : '';
   if (m.kind === 'campo') return `${m.tipo ? m.tipo + ' ' : ''}${m.nome}`;
+  /* propriedade do motor: lida sem parênteses (`r.status_code -> int`) */
+  if (m.kind === 'property') return `${m.nome}${ret}`;
   if (m.kind === 'class') return `class ${m.nome}`;
   /* módulo que um arquivo importa e reexporta (`import os as o` no topo dele) */
   if (m.kind === 'modulo') return `modulo ${m.nome}`;
@@ -1484,15 +1486,22 @@ function paramsDoImportado(doc, alvo) {
 }
 
 function paramsDoChamado(doc, ch, linha) {
+  return paramsConhecidos(doc, ch, linha) || [];
+}
+
+/* Os parâmetros do chamado, ou null quando ele não é conhecido aqui (o
+ * receptor de tipo desconhecido, o nome que nada liga): `[]` é o chamado SEM
+ * parâmetro. O hover do argumento nomeado precisa da diferença. */
+function paramsConhecidos(doc, ch, linha) {
   if (ch.receptor) {                         /* `"a,b".split(` / `b"x".decode(` */
     const m = membrosDe(doc, { tipo: 'tipo_motor', nome: ch.receptor }, linha)
                 .find((x) => x.nome === ch.partes[ch.partes.length - 1]);
-    return m ? (m.params || []) : [];
+    return m ? (m.params || []) : null;
   }
   if (ch.partes.length > 1) {
     const membros = membrosDaCadeia(doc, ch.partes.slice(0, -1), linha);
     const m = membros.find((x) => x.nome === ch.partes[ch.partes.length - 1]);
-    return m ? (m.params || []) : [];
+    return m ? (m.params || []) : null;
   }
   /* o `*` que vale NESTA linha vem antes do que o arquivo declara mais
    * abaixo — a ordem do motor; `alvoDaEstrela` devolve null quando não é ele
@@ -1506,7 +1515,109 @@ function paramsDoChamado(doc, ch, linha) {
   const e = achaEntidade(doc, ch.chamado);
   if (e) return e.membros.filter((m) => m.nome === '__init__')
                          .map((m) => m.params || []).flat();
-  return paramsDoImportado(doc, alvoDoImport(doc, ch.chamado, linha));
+  const alvo = alvoDoImport(doc, ch.chamado, linha);
+  if (alvo) return paramsDoImportado(doc, alvo);
+  /* builtin que o arquivo não sombreou (`open(path, mode="w")`) */
+  const bi = (META.builtins || []).find((x) => x.nome === ch.chamado);
+  return bi ? (bi.params || []) : null;
+}
+
+/* O chamado de um nó `Call` (pelo callee, `a`) ou `DecoratorCall` (pelos
+ * nomes, `lista`), como o `chamadaEm` monta: as partes, o receptor literal e
+ * o texto. null quando o callee não é uma cadeia de nomes. */
+function chamadoDoNo(no) {
+  if (no.k === 'DecoratorCall') {
+    const partes = (no.lista || []).map((x) => x && x.texto).filter(Boolean);
+    return partes.length ? { partes, receptor: null, chamado: partes.join('.') } : null;
+  }
+  const partes = [];
+  let receptor = null;
+  for (let cur = no.a; cur; ) {
+    if (cur.k === 'Name') { partes.unshift(cur.texto); break; }
+    if (cur.k === 'MemberAccess') { partes.unshift(cur.texto); cur = cur.a; continue; }
+    if (cur.k === 'BaseCall') { partes.unshift('base(' + (cur.texto2 || '') + ')'); break; }
+    if (cur.k === 'Literal' && typeof cur.texto === 'string' && partes.length) {
+      receptor = cur.lit === 'bytes' ? 'byte' : 'str';
+      break;
+    }
+    return null;
+  }
+  if (!partes.length) return null;
+  return { partes, receptor, chamado: (receptor ? receptor + '.' : '') + partes.join('.') };
+}
+
+/* O hover do NOME de um argumento nomeado (`origins` em
+ * `cors(app, origins=lista)`, `methods` em `@app.route("/chat",
+ * methods=["GET"])`): é o parâmetro do chamado, não uma variável. Achado pela
+ * árvore, no `CallArg` que tem esse nome e começa exatamente no token, e por
+ * isso vale na chamada de várias linhas e no decorador. Caía no "nome não
+ * definido (rodando dá NameError)" (editor-1). null quando o token não é
+ * nome de argumento. */
+function hoverDeArgumentoNomeado(doc, tok) {
+  let pai = null;
+  const anda = (no, dono) => {
+    if (pai || !no || typeof no !== 'object') return;
+    if (no.k === 'CallArg' && no.texto === tok.v && no.l === tok.l && no.c === tok.c) { pai = dono; return; }
+    A.cada(no, (f) => anda(f, no));
+  };
+  anda(idxDoc(doc).arvore || null, null);
+  if (!pai || (pai.k !== 'Call' && pai.k !== 'DecoratorCall')) return null;
+  const ch = chamadoDoNo(pai);
+  const nome = tok.v;
+  if (!ch) return md('```ps\n' + nome + '\n```\n\nargumento nomeado (o chamado não é um nome: os parâmetros dele não são conhecidos aqui)');
+  const ps = paramsConhecidos(doc, ch, tok.l0);
+  if (!ps) return md('```ps\n' + nome + '\n```\n\nargumento nomeado de `' + ch.chamado + '` (os parâmetros dele não são conhecidos aqui)');
+  const p = ps.find((x) => x.nome === nome);
+  const sig = '`' + ch.chamado + '(' + ps.map(rotuloParam).join(', ') + ')`';
+  if (p) return md('```ps\n' + rotuloParam(p) + '\n```\n\nparâmetro de `' + ch.chamado + '` · ' + sig);
+  const kw = ps.find((x) => String(x.nome).startsWith('**'));
+  if (kw) return md('```ps\n' + nome + '\n```\n\nargumento nomeado de `' + ch.chamado + '`, recebido em `' + kw.nome + '` · ' + sig);
+  const nomes = ps.filter((x) => !String(x.nome).startsWith('*')).map((x) => '`' + x.nome + '`');
+  return md('```ps\n' + nome + '\n```\n\n`' + nome + '` não é parâmetro de `' + ch.chamado + '`'
+            + (nomes.length ? ' — os parâmetros: ' + nomes.join(', ') : ' — ele não tem parâmetro com nome'));
+}
+
+/* O campo de `model` em cujos parênteses o token está (`length` em
+ * `nome: str(length=60)`), pelos TOKENS: o `(` aberto antes dele, com
+ * `nome : tipo` na frente, dentro do `{` de um `model Nome() {`. Vale com
+ * os parâmetros em várias linhas. null fora disso. */
+function campoDeModelDoToken(doc, tok) {
+  const toks = tokensDe(doc).filter((t) => t.t !== 'NEWLINE' && t.t !== 'INDENT' && t.t !== 'DEDENT');
+  const ehNome = (t) => t && (t.t === 'IDENT' || t.t === 'IDENT_UPPER' || t.t === 'KW');
+  const i = toks.indexOf(tok);
+  if (i < 0) return null;
+  let prof = 0, abre = -1;
+  for (let k = i - 1; k >= 0; k--) {
+    const t = toks[k];
+    if (t.t === 'RPAREN') prof++;
+    else if (t.t === 'LPAREN') { if (prof === 0) { abre = k; break; } prof--; }
+    else if (t.t === 'LBRACE' || t.t === 'RBRACE') return null;
+  }
+  if (abre < 3 || !ehNome(toks[abre - 3]) || toks[abre - 2].t !== 'COLON' || !ehNome(toks[abre - 1])) return null;
+  /* o `{` aberto mais próximo acima do campo, saltando blocos fechados */
+  let chave = -1;
+  prof = 0;
+  for (let k = abre - 4; k >= 0; k--) {
+    if (toks[k].t === 'RBRACE') prof++;
+    else if (toks[k].t === 'LBRACE') { if (prof === 0) { chave = k; break; } prof--; }
+  }
+  if (chave < 4) return null;
+  const cab = toks.slice(chave - 4, chave);          /* model Nome ( ) */
+  if (!(cab[0].t === 'KW' && cab[0].v === 'model' && ehNome(cab[1])
+        && cab[2].t === 'LPAREN' && cab[3].t === 'RPAREN')) return null;
+  return { campo: toks[abre - 3].v, tipo: toks[abre - 1].v, model: cab[1].v };
+}
+
+/* O hover do parâmetro de validação do campo de `model` (`length`, `in`,
+ * ...): a tabela da doc 08 (`PARAMS_MODEL`). null quando o token não é um. */
+function hoverDeParamDeModel(doc, tok) {
+  const f = campoDeModelDoToken(doc, tok);
+  if (!f) return null;
+  const p = PARAMS_MODEL.find(([nome]) => nome === tok.v);
+  if (p) return md('```ps\n' + tok.v + '=\n```\n\nparâmetro de validação do campo `' + f.campo + ': ' + f.tipo
+                   + '` (`model ' + f.model + '`): ' + p[1]);
+  return md('```ps\n' + tok.v + '\n```\n\n`' + tok.v + '` não é parâmetro de validação de campo de `model` — os parâmetros: '
+            + PARAMS_MODEL.map(([nome]) => '`' + nome + '`').join(', '));
 }
 
 /* ── protocolo ──────────────────────────────────────────────────────────── */
@@ -2416,6 +2527,16 @@ conexao.onHover((p) => {
   const toksAqui = tokensDe(doc);
   const antes = tok ? toksAqui[toksAqui.indexOf(tok) - 1] : null;
   const aposPonto = !!(antes && antes.t === 'DOT' && antes.l0 === tok.l0);
+  /* o nome seguido de `=` que não é atribuição: o de um argumento nomeado
+   * (`count=2` também, que o lexer marca KW) ou o parâmetro de validação do
+   * campo de `model` (`in=[...]`). Antes da palavra-chave: o `count` do
+   * argumento não é o `count each`. */
+  const seguinte = tok ? toksAqui[toksAqui.indexOf(tok) + 1] : null;
+  if (tok && !aposPonto && (tok.t === 'IDENT' || tok.t === 'IDENT_UPPER' || tok.t === 'KW')
+      && seguinte && seguinte.t === 'OP' && seguinte.v === '=') {
+    const h = hoverDeArgumentoNomeado(doc, tok) || hoverDeParamDeModel(doc, tok);
+    if (h) return h;
+  }
   /* `json.parse`: o nome antes do `.` que é MÓDULO do motor é o módulo, não
    * o tipo de mesmo nome (`json` solto é o dict) */
   const depois = tok ? toksAqui[toksAqui.indexOf(tok) + 1] : null;

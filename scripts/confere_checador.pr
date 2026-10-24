@@ -1,7 +1,7 @@
 # O portão P2 (notas/PORTOES.md): o checador e o motor concordam, membro por
 # membro.
 #
-# POR QUE ELE EXISTE. O `app.channel(forAll=msg)` que a doc ensina, o
+# POR QUE ELE EXISTE. O jinker-7 da lista: a forma que a doc ensinava, o
 # `--check` recusava e o motor rodava. Quem achou foi o Kleber, não a suíte.
 # Cada membro que o motor publica no `--metadata` (os builtins, as funções de
 # módulo, os métodos e as propriedades dos tipos) é chamado do mesmo jeito dos
@@ -16,8 +16,8 @@
 #   - de 0 a um argumento a mais que os parâmetros, por posição, com Null;
 #   - o 1º argumento com cada tipo básico, vazio (`scripts/portoes_donos.pr`);
 #   - cada parâmetro por nome: os do `--metadata`, os da assinatura da doc e os
-#     que os exemplos da doc passam por nome (o `forAll` só aparece num
-#     exemplo); os obrigatórios antes dele vão por posição;
+#     que os exemplos da doc passam por nome (o nome do jinker-7 só aparecia
+#     num exemplo); os obrigatórios antes dele vão por posição;
 #   - um nome de parâmetro que não existe;
 #   - a chamada com os valores dos tipos da assinatura da doc, quando ela dá
 #     o tipo de cada obrigatório;
@@ -29,7 +29,7 @@
 # mesma frase. Rodando, o receptor vai num `Object` e o membro é chamado nele.
 #
 # Reprova:
-#   - o `--check` recusa e o motor aceita (a classe do `forAll`);
+#   - o `--check` recusa e o motor aceita (a classe do jinker-7);
 #   - o `--check` aceita e o motor recusa pelo que o checador promete pegar:
 #     a quantidade, o nome de parâmetro, o tipo do 1º argumento (o que o
 #     `scripts/mede_aridades.pr` mede), o membro ou o nome que não existe;
@@ -209,7 +209,7 @@ Null funct le_assinatura(str s, dict nomes_doc, dict tipos_doc) {
 
 
 # Os nomes que as chamadas de um exemplo passam por nome
-# (`app.channel(forAll=msg)`): `nome=` dentro dos parênteses, fora de outros
+# (`cors(app, origins=lista)`): `nome=` dentro dos parênteses, fora de outros
 # parênteses, e que não seja `==`.
 Null funct le_exemplo(str texto, dict nomes_doc) {
     int i = 0

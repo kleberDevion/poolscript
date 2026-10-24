@@ -5,8 +5,8 @@
 #
 # POR QUE EXISTE. A doc tinha 1.773 blocos em 467 páginas, e 836 sem marca
 # nenhuma. O auditor só passava o `--check` nos ```ps, então os 836 não eram
-# conferidos por nada. O `app.channel(forAll=msg)` da `channel.md`, que o
-# `--check` recusa, estava num deles, e quem achou foi o usuário.
+# conferidos por nada. O exemplo do jinker-7, que o `--check` recusava,
+# estava num deles, e quem achou foi o usuário.
 #
 # A proposta de cada bloco sai do lexer do motor (`jinga --tokens`) e do
 # vizinho de cima:

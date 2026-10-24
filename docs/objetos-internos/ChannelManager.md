@@ -13,6 +13,10 @@ app.channel(forAll=msg)               → broadcast pra todos
 app.channel.emit(msg, room_id="123")  → manda só pra sala "123"
 app.channel.status                    → status do último envio
 
+Chamar o `app.channel` tem um parâmetro só, `forAll=Null` (o que enviar):
+argumento a mais e nome que não é `forAll` são `TypeError`, e o que não
+vira JSON também. A página da lib é [`channel`](../jinker/channel/channel.md).
+
 ## Métodos e propriedades
 
 | Acesso | O que faz |

@@ -1847,6 +1847,77 @@ async function main() {
     conf('fora de model, parênteses de chamada não oferecem os parâmetros do campo', !L5.includes('regex='), L5.slice(0, 6));
   }
 
+  /* editor-1 (relato dele, 2026-10-17): o hover sobre o NOME de um argumento
+   * nomeado dizia "nome não definido neste arquivo nem por import (rodando
+   * dá NameError)". É o parâmetro do chamado: o do valor de módulo que se
+   * chama (`cors`), o do decorador, o da chamada de várias linhas, o do
+   * builtin, o da funct do arquivo, o parâmetro de validação do campo de
+   * model e o nome que não é parâmetro. */
+  {
+    const S = ['from jinker import Jinker, cors',
+               'Jinker app = Jinker(__name__)',
+               'cors(app, origins=["https://x.com"])',
+               '@app.route("/chat", methods=["GET"])',
+               'funct sala() { return "x" }',
+               'funct soma(int a, int b) { return a + b }',
+               'int r = soma(1,',
+               '             b=2)',
+               'post(open("x.txt", mode="w"))',
+               'model U() {',
+               '    nome: str(length=60)',
+               '}'];
+    const hv = (id, l, c) => ({ jsonrpc: '2.0', id, method: 'textDocument/hover',
+                                params: { textDocument: { uri: URI }, position: { line: l, character: c } } });
+    const m = await conversa(S.join('\n') + '\n', [
+      hv(500, 2, 12), hv(501, 3, 22), hv(502, 7, 13), hv(503, 8, 20), hv(504, 10, 15),
+      { jsonrpc: '2.0', id: 505, method: 'textDocument/signatureHelp',
+        params: { textDocument: { uri: URI }, position: { line: 2, character: 10 } } },
+    ]);
+    const tx = (id) => { const h = resp(m, id); return h && h.result && h.result.contents ? (h.result.contents.value || '') : ''; };
+    const bom = (t) => !t.includes('não definido') && !t.includes('NameError');
+    conf('hover no `origins` de `cors(app, origins=...)` é o parâmetro, não "nome não definido"',
+         tx(500).includes('origins = Null') && tx(500).includes('parâmetro de `cors`') && bom(tx(500)), tx(500));
+    conf('hover no argumento nomeado do decorador (`methods=`) é o parâmetro de `app.route`',
+         tx(501).includes('methods = Null') && tx(501).includes('parâmetro de `app.route`'), tx(501));
+    conf('hover no argumento nomeado numa linha só dele, na chamada de várias linhas',
+         tx(502).includes('int b') && tx(502).includes('parâmetro de `soma`'), tx(502));
+    conf('hover no argumento nomeado de um builtin (`open(..., mode=)`)',
+         tx(503).includes('parâmetro de `open`') && tx(503).includes('mode'), tx(503));
+    conf('hover no parâmetro de validação do campo de model (`length=60`)',
+         tx(504).includes('parâmetro de validação') && tx(504).includes('nome: str'), tx(504));
+    const s5 = resp(m, 505);
+    const l5 = s5 && s5.result && s5.result.signatures[0] ? s5.result.signatures[0].label : '';
+    conf('signatureHelp em `cors(` mostra `origins = Null`', l5.includes('origins = Null'), l5);
+    const ds = m.filter((x) => x.method === 'textDocument/publishDiagnostics');
+    const lista = ds.length ? ds[ds.length - 1].params.diagnostics : null;
+    conf('o arquivo com `cors(app, origins=...)` e `@app.route(..., methods=...)` não tem diagnóstico',
+         !!lista && lista.length === 0, lista);
+  }
+  {
+    const S = ['funct soma(int a, int b) { return a + b }', 'int r = soma(1, c=2)',
+               'funct junta(**opcoes) { return 1 }', 'int q = junta(cor="azul")'];
+    const hv = (id, l, c) => ({ jsonrpc: '2.0', id, method: 'textDocument/hover',
+                                params: { textDocument: { uri: URI }, position: { line: l, character: c } } });
+    const m = await conversa(S.join('\n') + '\n', [hv(510, 1, 16), hv(511, 3, 15)]);
+    const tx = (id) => { const h = resp(m, id); return h && h.result && h.result.contents ? (h.result.contents.value || '') : ''; };
+    conf('hover num nome que não é parâmetro diz isso e lista os parâmetros',
+         tx(510).includes('não é parâmetro de `soma`') && tx(510).includes('`a`, `b`'), tx(510));
+    conf('hover num argumento que o `**opcoes` recebe diz isso',
+         tx(511).includes('recebido em `**opcoes`'), tx(511));
+  }
+  /* o valor de módulo que se chama (`cors`): o --metadata publica os
+   * parâmetros da chamada, como na propriedade; sem eles o hover diria que
+   * `origins` não é parâmetro */
+  {
+    const S = ['from jinker import Jinker, cors', 'Jinker app = Jinker(__name__)', 'cors(app, origins=["https://x.com"])'];
+    const m = await conversa(S.join('\n') + '\n', [{ jsonrpc: '2.0', id: 520, method: 'textDocument/hover',
+                                                       params: { textDocument: { uri: URI }, position: { line: 2, character: 11 } } }]);
+    const h = resp(m, 520);
+    const t = h && h.result && h.result.contents ? (h.result.contents.value || '') : '';
+    conf('hover no `origins` de `cors(app, origins=...)` é o parâmetro do cors',
+         t.includes('origins = Null') && t.includes('parâmetro de `cors`'), t);
+  }
+
   apagaPastaDeTeste();
   console.log('');
   const naoRodaram = pulos ? `; ${pulos} PULARAM (ver os PULOU acima)` : '';

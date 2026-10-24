@@ -13,7 +13,11 @@ status(code: int) -> JinkerResponse
 
 Erros: `code` que não é inteiro é `TypeError: 'str' object cannot be
 interpreted as an integer`; fora de 100 a 999 é `ValueError: status(): codigo
-HTTP fora da faixa 100..999: 42` (o código do HTTP tem três dígitos).
+HTTP fora da faixa 100..999: 42` (o código do HTTP tem três dígitos). A
+regra é a mesma no `status_code = N`, no status do
+[`.json()`](../json/json.md) e do [`.send()`](../send/send.md) e na tupla
+`(corpo, status)` que a rota devolve; nela, o erro sai como o de qualquer
+handler, `500` com a frase no terminal do servidor.
 
 Os exemplos desta página pressupõem:
 

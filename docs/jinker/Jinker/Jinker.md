@@ -15,7 +15,7 @@ app = Jinker(__name__)
 | `name` | `str` | `"main"` | nome da app — passe `__name__`, que no arquivo executado vale `"main"` |
 | `oauth` | dict | `Null` | segurança: rate limit (`poolip`) e HTTPS (`tls`) — ver abaixo |
 | `static_folder` | `str` | `Null` | pasta com build de front a servir (SPA) — ver [static_folder](../static_folder/static_folder.md) |
-| `static_url` | `str` | `"/"` | (guardado, **ainda não usado** na correspondência de URL) |
+| `static_url` | `str` | `"/"` | prefixo da URL sob o qual o `static_folder` é servido — ver [static_url](../static_url/static_url.md) |
 | `route_prefix` | `str` | `""` | prefixo aplicado a **todas** as rotas e sockets: `"api"` ou `"/api/"` viram `/api`, e `@app.route("/users")` responde em `/api/users` (a raiz `"/"` vira só `/api`) |
 
 Os exemplos desta página pressupõem:
@@ -38,13 +38,33 @@ if __name__ == "main" {
 }
 ```
 
-| Argumento de `app(...)` | Padrão | O que faz |
-|---|---|---|
-| `debug` | `False` | imprime logs de requisição e erros detalhados no terminal |
-| `host` | `"0.0.0.0"` | interface de rede (`"0.0.0.0"` = aceita de qualquer IP; `"127.0.0.1"` = só local) |
-| `port` | `2000` | porta HTTP |
-| `reload` | `False` | reinicia sozinho quando o arquivo `.pr` muda (dev). No Windows o processo que o terminal esperou supervisiona e roda o programa de novo a cada mudança |
-| `workers` | `1` | nº de processos (prefork). `>1` usa vários núcleos: forka N processos que dividem o socket HTTP. No Windows (sem `fork`) cada worker roda o programa de novo e recebe a porta já aberta: o que vem antes do `run()` roda em cada um |
+| Argumento de `app(...)` | Tipo | Padrão | O que faz |
+|---|---|---|---|
+| `debug` | `bool` | `False` | imprime logs de requisição e erros detalhados no terminal |
+| `host` | `str` | `"127.0.0.1"` | interface de rede (`"127.0.0.1"` = só local, como no Flask; `"0.0.0.0"` = aceita de qualquer IP) |
+| `port` | `int` | `2000` | porta HTTP, de 0 a 65535 |
+| `reload` | `bool` | `False` | reinicia sozinho quando o arquivo `.pr` muda (dev). No Windows o processo que o terminal esperou supervisiona e roda o programa de novo a cada mudança |
+| `workers` | `int` | `1` | nº de processos (prefork), de 1 a 256. `>1` usa vários núcleos: forka N processos que dividem o socket HTTP. No Windows (sem `fork`) cada worker roda o programa de novo e recebe a porta já aberta: o que vem antes do `app(...)` roda em cada um |
+
+O tipo e a faixa de cada argumento são conferidos antes de abrir a porta, e
+o argumento a mais e o nome que não é parâmetro também, com a frase das
+funções da linguagem. A porta tem 16 bits, como no
+[`sockets`](../../sockets/sockets.md):
+
+```ps
+app(port="8080")
+# TypeError: app() argument 'port' must be int, not str
+```
+
+```ps
+app(port=70000)
+# OverflowError: app(): port must be 0-65535
+```
+
+```ps
+app(workers=0)
+# ValueError: app(): workers fora da faixa 1..256: 0
+```
 
 Se houver algum `@app.socket(...)`, o servidor WebSocket sobe automaticamente
 na porta **HTTP + 1**. Com `workers>1`, o WebSocket roda **só no worker 0**

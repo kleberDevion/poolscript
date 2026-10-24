@@ -22,9 +22,9 @@ ESTATICA = PASTA + "/static"
 # o teste RE-EXECUTÁVEL (um `os.mkdir` cru em cima da sobra falhava já na
 # primeira linha — a classe do E1, teste não hermético, que a suíte principal
 # fechou com mkdtemp+chdir e que não tinha alcançado os e2e) e que impede
-# arquivo velho de passar por novo: o cliente lê o que o upload e os handlers
-# de WebSocket gravam NESTA rodada, e um da rodada anterior esconderia um
-# handler que não rodou. Sobra existe: no Windows o `kill()` do e2e_roda é
+# arquivo velho de passar por novo: o cliente lê o que o handler do upload
+# grava NESTA rodada, e um arquivo da rodada anterior esconderia um handler
+# que não rodou. Sobra existe: no Windows o `kill()` do e2e_roda é
 # TerminateProcess, e a limpeza do fim (lá embaixo) não chega a rodar.
 if os.exists(PASTA) {
     os.rmdir(PASTA, force=True)
@@ -203,42 +203,11 @@ funct ups() {
             "vazio": len(jinker.request.files("nao-existe"))}
 }
 
-# ── WebSocket: SocketNamespace / SocketEmitter / ChannelManager ─────────────
-# socket SEM canal: o `return` do handler volta pro REMETENTE daquela mensagem.
-# É o único jeito de responder a quem mandou sem estar num canal (o emit só
-# alcança conexão com channel=True).
-@app.socket("/ws")
-funct ws_handler() {
-    using open(PASTA + "/ps_ws_sem_canal.txt", "w") as f {
-        f.write(jinker.request.text())
-    }
-    return "eco: " + jinker.request.text()
-}
-
-# canal de verdade: `channel=True` põe a conexão no broadcast. É o caso dos
-# "dois terminais" — quem está só ouvindo tem que receber o que o outro manda.
-@app.socket("/sala", channel=True)
-funct ws_sala() {
-    envia = app.socket()
-    envia.emit(jinker.request.text(), exclude_self=False)
-    using open(PASTA + "/ps_ws_status.txt", "w") as f {
-        f.write(str(envia.status_send()) + "|" + str(app.socket.status_send()))
-    }
-}
-
 # Content-Disposition: é daí que o cliente tira o Response.filename
 @app.route("/baixar")
 funct baixar() {
     r = jinker.JinkerResponse()
     return r.header("Content-Disposition", "attachment; filename=relatorio.csv").send("a,b\n1,2\n")
-}
-
-@app.route("/emitir")
-funct emitir() {
-    # `st` e a funct da rota /status: gravar nesse nome de dentro daqui
-    # escreveria NELA (write-through do global) — o checador pegou isso
-    estado = app.channel.emit("aviso", {"n": 1})
-    return {"emit": str(estado), "status": str(app.channel.status)}
 }
 
 # a app é CHAMÁVEL: `app(...)` sobe o servidor (não existe `.run`)

@@ -581,9 +581,9 @@ sujeito ao `exclude_self`).
 | `app.socket()` | instancia um emissor (`SocketEmitter`) pra usar em runtime |
 | `app.socket.emit(payload, room_id=Null, exclude_self=True)` | emite direto, sem instanciar |
 | `send = app.socket(); send.emit(...)` | emite via instância |
-| `send.status_send()` | status do último emit feito por essa instância |
+| `send.status_send()` | status do último envio do app, por qualquer emissor ou pelo `app.channel` (o mesmo valor do `app.channel.status`) |
 | `app.channel(forAll=msg)` | broadcast geral (todas as salas), API antiga |
-| `app.channel.status` | status do último `app.channel(forAll=...)` |
+| `app.channel.status` | status do último envio do app; antes do primeiro, `Error` |
 
 ---
 
@@ -716,7 +716,7 @@ abrir um banco) roda uma vez em cada worker, e não uma só como no Linux.
 
 ## Exemplo completo com WebSocket e rotas
 
-```ps
+```ps sem-rodar: sobe o servidor na porta 7700 e lê DB_PATH e SECRET_KEY do ambiente de quem roda
 import psodbc
 import hash
 import jwt

@@ -54,17 +54,32 @@ bloco "arquivo grande sai em blocos".
   3,6 MB. Testes: "arquivo de 20 MB sai inteiro e igual (em blocos)" e "pedaco
   de 1 MB do arquivo de 20 MB sai certo".
 
-Achados em 2026-10-17, no conserto acima e no relato dele (abertos):
+Achados em 2026-10-17, no conserto acima e no relato dele; consertados no
+**18.0.2** (2026-10-24), com os achados no caminho (jinker-12 a 15). Os
+objetos da jinker que se chamam (o `app`, o `cors`, o `app.socket` e o
+`app.channel`) leem uma tabela só (`JK_CHAMAVEIS`, `vm/jinga_vm.c`): o nome
+da chamada, os parâmetros com o padrão e o tipo de cada um. Quem lê: as três
+chamadas (com nome, sem nome e a indireta, do `map`) e o `--metadata` da
+propriedade cujo valor se chama.
 
-- **jinker-6** Rota que devolve um `dict` que não vira JSON responde 200 com o
+- ~~**jinker-6** Rota que devolve um `dict` que não vira JSON responde 200 com o
   corpo vazio, calada (nem com `debug=True` sai erro). Programa: rota com
   `return {"status": app.channel.status}`; o `ChannelStatus` não vira JSON
   (`json.stringify` dá "Object of type ChannelStatus is not JSON
   serializable"). Saída no 17.0.19 e no 17.0.20: `HTTP/1.1 200 OK`,
   `Content-Length: 0`. Promessa: `docs/jinker/route/route.md` ("dict/lista →
   JSON 200"); o que não vira JSON tem que dar erro visível (500 com a frase),
-  como no Flask. `motor`.
-- **jinker-7** (relato dele) `app.channel(forAll=msg)`, a forma que
+  como no Flask. `motor`.~~ Corrigido no 18.0.2: o retorno que não vira
+  resposta (o dict, a lista, a tupla `(corpo, status)` e a tupla do
+  middleware) segue o caminho de uma exceção no handler, `500` e
+  `[jinker] erro no handler /rota: Object of type ChannelStatus is not JSON
+  serializable` no terminal; a tupla é decidida por uma função só
+  (`jk_resposta_da_tupla`), que a rota e o middleware usam. Medido no 18.0.1:
+  a tupla com 201 também dava 200 com o corpo vazio, e a do middleware barrava
+  com 200 vazio. Testes (`teste/jinker_roda.pr`): "a rota /nao_json... dá
+  500" (cinco rotas), "a tupla do middleware que não vira resposta dá 500" e
+  "a saída do servidor diz: ..." (nove frases).
+- ~~**jinker-7** (relato dele) `app.channel(forAll=msg)`, a forma que
   `channel.md`, `jinker.md` e `ChannelManager.md` ensinam, é recusada antes de
   rodar com `TypeError: Jinker.channel() takes no keyword arguments` quando o
   `app` tem tipo (`Jinker app = Jinker(__name__)`) ou é atribuído direto; o
@@ -76,10 +91,77 @@ Achados em 2026-10-17, no conserto acima e no relato dele (abertos):
   `app.socket(path=)` e `app.socket(channel=)`, o `--check` recusa e o motor
   aceita; com um nome que não existe, os dois recusam com frases diferentes
   (`Jinker.channel() takes no keyword arguments` e `ChannelManager.__call__()
-  got an unexpected keyword argument`). 5 chamadas na catraca do P2.
-- **jinker-8** Argumento a mais passa calado: `app.channel("a", "b")` e
+  got an unexpected keyword argument`). 5 chamadas na catraca do P2.~~
+  Corrigido no 18.0.2: o `--metadata` publica `forAll=Null` e
+  `path=Null, channel=False` (e os parâmetros do `cors(...)`, o valor de
+  módulo que se chama), o `scripts/mede_aridades.pr` gravou os dois, e o
+  nome desconhecido dá rodando a frase do checador (`'x' is an invalid keyword
+  argument for channel()`). Teste: "jinker-7: app.channel(forAll=) e
+  app.socket(path=, channel=) com o app tipado" (`teste/casos_libs.c`); as 8
+  linhas saíram da catraca. O exemplo completo da `jinker.md` (o do
+  WebSocket com rotas), que não compilava por isso, passou no `--check`, e
+  rodando ele sobe o servidor na 7700 e lê o `DB_PATH` do ambiente: leva
+  `sem-rodar`, como o do `getenv.md`.
+- ~~**jinker-8** Argumento a mais passa calado: `app.channel("a", "b")` e
   `app.socket("/x", True, 3)` rodam sem erro. Promessa: `channel.md` (um
-  parâmetro, `forAll`) e `socket.md` (`path`, `channel`). `motor`.
+  parâmetro, `forAll`) e `socket.md` (`path`, `channel`). `motor`.~~
+  Corrigido no 18.0.2, junto com o argumento de outro tipo, que também passava
+  calado (medido no 18.0.1: `app.socket(5)` devolvia o emissor e
+  `app.socket("/x", 5)` valia `channel=True`), e com o `map`, que dizia
+  "'ChannelManager' object is not callable". As frases são as dos nativos,
+  iguais no `--check` e rodando, na mesma linha: `channel() takes at most 1
+  argument (2 given)`, `socket() argument 'path' must be str or Null, not
+  int`. Testes: os cinco "jinker-8: ..." de `teste/casos_libs.c`.
+- ~~**jinker-12** (achado no jinker-6) O status da resposta não seguia a regra do
+  `.status()` (inteiro de 100 a 999) na tupla `(corpo, status)` da rota e do
+  middleware, nem no `json(data, status)` e no `send(texto, status)`. Medido
+  no 18.0.1: `return {"a": 1}, "201"` respondia 200; `return "x", 99999` e
+  `JinkerResponse().json({"a": 1}, 99999)` saíam em `HTTP/1.1 99999 Server
+  Error`, linha de status que o `curl` recusa; no `json`/`send` o texto era
+  ignorado calado. `motor`.~~ Corrigido no 18.0.2: uma função só
+  (`jk_status_de`) pros cinco lugares, com a frase do `.status()`; na tupla, o
+  erro é 500 com a frase no terminal. Junto: o `jsonify` e o `.json()` davam
+  `TypeError` pro `nan` (o `json.stringify` dá `ValueError`); a jinker passa a
+  usar a mesma função do `json.stringify` (`json_escreve_ou_erro`). Testes:
+  "jinker-12: o status do json() e do send() pela regra do status()" e as
+  rotas `/status_texto` e `/status_fora` do `teste/jinker_roda.pr`.
+- ~~**jinker-13** (achado no jinker-6) No WebSocket o erro sumia: o do handler só
+  saía no terminal com `debug=True` (o da rota HTTP sai sempre); o retorno do
+  handler que não vira JSON era descartado; e o `emit` (`app.channel(forAll=x)`,
+  `.emit(x)`) com o que não vira JSON devolvia `Error` sem exceção, como se a
+  rede tivesse falhado. Medido no 18.0.1 o do `emit`; os do handler, lidos no
+  código. No Python, o `json.dumps` e o `emit` do Flask-SocketIO dão
+  `TypeError`, e o python-socketio escreve o erro do handler por padrão.
+  `motor`.~~ Corrigido no 18.0.2: `[jinker-ws] erro no handler /caminho:
+  frase` sempre, e o `emit` dá o erro do `json.stringify`. Testes:
+  "jinker-13: emit do que nao vira JSON e erro, com a classe do
+  json.stringify" e os sockets `/ws_erro` e `/ws_nao_json` do
+  `teste/jinker_roda.pr`.
+- ~~**jinker-14** (achado na tabela do jinker-7) Os argumentos do `app(...)` e
+  do `cors(...)` passavam calados. Medido no 18.0.1: `app(port=70000)`
+  escutava na porta 4464 e o terminal dizia 70000; `app(port="18740")` subia
+  na 2000; o `host` que não é texto virava `127.0.0.1`, o `workers` fora de
+  1..256 virava 1 ou 256, e `debug`/`reload` valiam pela verdade do valor;
+  `cors(app, origins="https://x.com")` (texto no lugar da lista) era
+  ignorado, e o servidor ficava aberto a toda origem; o item que não é texto
+  saía da lista calado. Na doc, o `Jinker.md` dizia que o host padrão é
+  `0.0.0.0` (o motor usa `127.0.0.1`, como o Flask) e que o `static_url` não
+  era usado (sobra do jinker-4). `os dois` (a doc estava errada no host e no
+  `static_url`; o motor, no resto).~~ Corrigido no 18.0.2: o tipo de cada
+  argumento pela tabela, a porta de 0 a 65535 (`OverflowError: app(): port
+  must be 0-65535`, a frase do `sockets`), o `workers` de 1 a 256, os itens
+  de `options`/`origins` texto, e o `ps_jk_listen` recusa a porta fora da
+  faixa (a do WebSocket de um servidor na 65535 ia pra uma porta sorteada).
+  Testes: "jinker-14: os argumentos do app(...) fora do tipo ou da faixa" e
+  "jinker-14: os argumentos do cors(...) e os itens das listas".
+- ~~**jinker-15** (achado escrevendo a doc do jinker-6) Antes do primeiro
+  envio, `app.channel.status` e `app.socket().status_send()` diziam `Success`,
+  e a regra do `ChannelStatus` é "chegou a pelo menos uma conexão". Na doc, o
+  `jinker.md` dizia que o `status_send()` é o do último envio "feito por essa
+  instância", e o status é um só por app. `os dois` (o motor estava errado no
+  primeiro; a doc, no segundo).~~ Corrigido no 18.0.2: antes do primeiro
+  envio é `Error`, e o `jinker.md` diz que o status é o do último envio do
+  app. Teste: "jinker-15: o status antes do primeiro envio e Error".
 
 Medidos em 2026-10-22 (relato dele: "o `.get()` do `jinker.request.get()` e o
 do `request` não diz se obtém string também"), num servidor da jinker no
@@ -119,7 +201,7 @@ em cada item):
 
 ## editor
 
-- **editor-1** (relato dele, 2026-10-17) O hover sobre o NOME de um argumento
+- ~~**editor-1** (relato dele, 2026-10-17) O hover sobre o NOME de um argumento
   (`forAll` em `app.channel(forAll=msg)`) diz "nome não definido neste arquivo
   nem por import (rodando dá `NameError`)": o servidor do editor trata o nome
   do argumento como variável. Medido no `server.js` do 17.0.20, com um pedido
@@ -134,7 +216,18 @@ em cada item):
   em `docs/qrcode.md:29`). A causa está no `editor/vscode/server.js`. O
   `chamadaEm`, que acha a chamada e os argumentos nomeados em volta do
   cursor, é usado só pelo completion e pela ajuda de assinatura; o `onHover`
-  não pergunta a ele.
+  não pergunta a ele.~~ Corrigido no 18.0.2 (extensão 8.6.15): o hover acha
+  o argumento pela árvore (o `CallArg` com o nome, que começa no token; no
+  decorador, o `DecoratorCall`), antes da palavra-chave (o `count=2` não é o
+  `count each`), e mostra o parâmetro do chamado (`forAll = Null`,
+  "parâmetro de `app.channel`", com a assinatura); o nome que não é parâmetro
+  diz isso e lista os parâmetros; o que um `**opcoes` recebe diz onde cai; o
+  parâmetro de validação do campo de `model` mostra o que confere, pelos
+  tokens (vale em várias linhas). Os parâmetros do builtin (`open(...,
+  mode=)`) entram na busca, e com eles a ajuda de assinatura do builtin.
+  Testes (`editor/vscode/teste_servidor.js`): os sete "hover no ..." e
+  "signatureHelp em `app.channel(` mostra `forAll = Null`", e as linhas do
+  editor-1 saíram da catraca do P3.
 - **editor-2** (relato dele, 2026-10-21: "a lib sockets não tem as constantes
   em sua doc") Medido no servidor do editor instalado (17.0.20), com pedidos
   de hover:

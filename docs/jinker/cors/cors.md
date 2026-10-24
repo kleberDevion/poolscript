@@ -122,8 +122,38 @@ Com `local=False` **só a lista vale**, no HTTP e no WebSocket:
 | `Origin: null` | `403` | passa **só** se `"null"` estiver na lista |
 
 Sem `origins` (lista vazia), `local=False` não muda nada: sem lista não há o
-que conferir. `local=` que não é bool é `TypeError` na chamada. O valor
-configurado vem em [`cors.local()`](local/local.md).
+que conferir. O valor configurado vem em [`cors.local()`](local/local.md).
+
+---
+
+## Os tipos
+
+`options` e `origins` são lista (ou tup) de texto, ou `Null`; `local` é
+`bool`. O que não é isso é `TypeError` na chamada, antes de configurar
+qualquer coisa, com a frase das funções da linguagem. O texto no lugar da
+lista não é ignorado: com ele o servidor ficaria aberto a toda origem.
+
+```ps
+cors(app, origins="https://meusite.com")
+# TypeError: cors() argument 'origins' must be list, tup or Null, not str
+```
+
+```ps
+cors(app, origins=["https://meusite.com", 443])
+# TypeError: cors() argument 'origins' item 1 must be str, not int
+```
+
+```ps
+cors(app, local="nao")
+# TypeError: cors() argument 'local' must be bool, not str
+```
+
+Nome que não é parâmetro também é erro:
+
+```ps
+cors(app, metodos=["GET"])
+# TypeError: 'metodos' is an invalid keyword argument for cors()
+```
 
 ---
 

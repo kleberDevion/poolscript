@@ -1416,7 +1416,7 @@ const Caso CASOS_LIBS[] = {
   "['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] []", NULL, 0 },
 { "cors: nomeado desconhecido continua sendo erro",
   "from jinker import Jinker, cors\napp = Jinker()\ncors(app, metodos=[\"GET\"])\n",
-  "", "TypeError: CorsConfig.__call__() got an unexpected keyword argument 'metodos'", 1 },
+  "", "TypeError: 'metodos' is an invalid keyword argument for cors()", 1 },
 /* writeFile aceita 3 (path, content, encoding) e dizia "exactly 2"; ela e
  * readFile deixavam o argumento sobrando passar calado. */
 { "os.writeFile com 1 argumento diz 'at least 2', nao 'exactly 2'",
@@ -1640,10 +1640,80 @@ const Caso CASOS_LIBS[] = {
 { "sendto: flags que nao e int e TypeError",
   "import sockets\nu2 = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)\nu2.sendto(\"x\", (\"127.0.0.1\", 9), \"flags\")\n",
   "", "TypeError: 'str' object cannot be interpreted as an integer", 1 },
-/* channel.emit anunciava `exclude=` que ninguem lia: saiu da tabela. */
-{ "channel.emit nao aceita mais exclude=",
-  "import jinker\napp = jinker.Jinker()\napp.channel.emit(\"x\", exclude=1)\n", "",
-  "TypeError: 'exclude' is an invalid keyword argument for emit()", 1 },
+/* O WebSocket da jinker saiu no 19.0.0 (decisao dele): `app.socket` e
+ * `app.channel` sao membros que nao existem, com a frase de qualquer membro
+ * que nao existe, antes de rodar e rodando, na mesma linha. O decorador passa
+ * pelo checador como qualquer chamada (motor-33). O cliente
+ * (`request.ws_connect`) continua, testado no `teste/jinker_roda.pr`. */
+{ "WebSocket da jinker saiu: app.channel(...) antes de rodar",
+  "from jinker import Jinker\nJinker app = Jinker(__name__)\napp.channel(forAll=\"x\")\n",
+  "", "AttributeError: 'Jinker' object has no method 'channel'", 2 },
+{ "WebSocket da jinker saiu: @app.socket(...) antes de rodar",
+  "from jinker import Jinker\nJinker app = Jinker(__name__)\n@app.socket(\"/ws\")\nfunct ws() {\n    return \"x\"\n}\n",
+  "", "AttributeError: 'Jinker' object has no method 'socket'", 2 },
+{ "WebSocket da jinker saiu: rodando (pelo Object), a mesma frase na mesma linha",
+  "from jinker import Jinker\nJinker app = Jinker(__name__)\nObject a = app\n"
+  "try { a.channel(forAll=\"x\") } catch (AttributeError e) { post(e) }\n"
+  "try { post(a.socket) } catch (AttributeError e) { post(e) }\n",
+  "'Jinker' object has no method 'channel' (linha 4)\n'Jinker' object has no attribute 'socket' (linha 5)", NULL, 0 },
+{ "WebSocket da jinker saiu: @a.socket(...) rodando (pelo Object), na linha do decorador",
+  "from jinker import Jinker\nJinker app = Jinker(__name__)\nObject a = app\n@a.socket(\"/ws\")\nfunct ws() {\n    return \"x\"\n}\n",
+  "", "AttributeError: 'Jinker' object has no method 'socket'", 1 },
+/* jinker-14: os argumentos do `app(...)` e do `cors(...)`. A porta 70000
+ * escutava na 4464 e o terminal dizia 70000; `port="8080"` subia na 2000;
+ * `workers` fora de 1..256 virava 1 ou 256; o texto no lugar da lista de
+ * origens era ignorado, e o servidor ficava aberto a toda origem. Nada
+ * aqui chega a abrir porta: todo erro sai antes. */
+{ "jinker-14: os argumentos do app(...) fora do tipo ou da faixa",
+  "from jinker import Jinker\nJinker app = Jinker(__name__)\nObject rodar = app\n"
+  "try { rodar(port=\"8080\") } catch (TypeError e) { post(e) }\n"
+  "try { rodar(port=70000) } catch (OverflowError e) { post(e) }\n"
+  "try { rodar(port=-1) } catch (OverflowError e) { post(e) }\n"
+  "try { rodar(workers=0) } catch (ValueError e) { post(e) }\n"
+  "try { rodar(workers=1000) } catch (ValueError e) { post(e) }\n"
+  "try { rodar(debug=1) } catch (TypeError e) { post(e) }\n"
+  "try { rodar(host=5) } catch (TypeError e) { post(e) }\n"
+  "try { rodar(True, \"127.0.0.1\", 2000, False, 1, 9) } catch (TypeError e) { post(e) }\n"
+  "try { rodar(x=1) } catch (TypeError e) { post(e) }\n",
+  "app() argument 'port' must be int, not str (linha 4)\n"
+  "app(): port must be 0-65535 (linha 5)\n"
+  "app(): port must be 0-65535 (linha 6)\n"
+  "app(): workers fora da faixa 1..256: 0 (linha 7)\n"
+  "app(): workers fora da faixa 1..256: 1000 (linha 8)\n"
+  "app() argument 'debug' must be bool, not int (linha 9)\n"
+  "app() argument 'host' must be str, not int (linha 10)\n"
+  "app() takes at most 5 arguments (6 given) (linha 11)\n"
+  "'x' is an invalid keyword argument for app() (linha 12)", NULL, 0 },
+{ "jinker-14: os argumentos do cors(...) e os itens das listas",
+  "from jinker import Jinker, cors\nJinker app = Jinker(__name__)\n"
+  "try { cors(app, origins=\"https://x.com\") } catch (TypeError e) { post(e) }\n"
+  "try { cors(app, origins=[\"https://x.com\", 1]) } catch (TypeError e) { post(e) }\n"
+  "try { cors(app, options=[\"GET\", Null]) } catch (TypeError e) { post(e) }\n"
+  "try { cors(app, local=Null) } catch (TypeError e) { post(e) }\n"
+  "cors(app, origins=(\"https://y.com\", \"https://z.com\"))\npost(cors.origins())\n",
+  "cors() argument 'origins' must be list, tup or Null, not str (linha 3)\n"
+  "cors() argument 'origins' item 1 must be str, not int (linha 4)\n"
+  "cors() argument 'options' item 1 must be str, not Null (linha 5)\n"
+  "cors() argument 'local' must be bool, not Null (linha 6)\n"
+  "['https://y.com', 'https://z.com']", NULL, 0 },
+/* jinker-12: o status do `json(data, status)` e do `send(texto, status)`
+ * segue a regra do `.status()`: o texto era ignorado calado, e 99999 saia
+ * em `HTTP/1.1 99999 Server Error`, que o cliente recusa. `Null` nao mexe.
+ * E o nan e ValueError, como no json.stringify (a jinker dizia TypeError). */
+{ "jinker-12: o status do json() e do send() pela regra do status()",
+  "from jinker import JinkerResponse\n"
+  "try { JinkerResponse().json({\"a\": 1}, \"201\") } catch (TypeError e) { post(e) }\n"
+  "try { JinkerResponse().json({\"a\": 1}, 99999) } catch (ValueError e) { post(e) }\n"
+  "try { JinkerResponse().send(\"x\", 42) } catch (ValueError e) { post(e) }\n"
+  "JinkerResponse r = JinkerResponse().status(418)\n"
+  "post(r.json({\"a\": 1}).status_code)\npost(r.json({\"a\": 1}, Null).status_code)\n"
+  "post(r.send(\"x\", 201).status_code)\n"
+  "try { JinkerResponse().json({\"n\": flo(\"nan\")}) } catch (ValueError e) { post(e) }\n",
+  "'str' object cannot be interpreted as an integer (linha 2)\n"
+  "json(): codigo HTTP fora da faixa 100..999: 99999 (linha 3)\n"
+  "send(): codigo HTTP fora da faixa 100..999: 42 (linha 4)\n"
+  "418\n418\n201\n"
+  "Out of range float values are not JSON compliant: nan (linha 9)", NULL, 0 },
 /* manpu.remove amount=\"mei\": sobra a metade FINAL (o comentario e a doc
  * diziam o contrario; o codigo e o entregue). */
 { "manpu.remove mei tira a metade inicial de cada ocorrencia",

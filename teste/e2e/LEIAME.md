@@ -66,15 +66,10 @@ de lá):
 
 Ctrl+C no terminal 1 derruba o servidor.
 
-Cobre HTTP (rotas, status, tupla, 204, upload), **upload multipart**
-(`file()`/`files(campo)`, `PoolFileUpload` inteiro) e **WebSocket**:
-
-- `/sala` (`channel=True`) — dois clientes, um só ouvindo num `sleep`. A
-  mensagem tem que chegar **durante** a espera; era aqui que o cliente fora de
-  fibra não drenava a conexão e só entregava no `close()`.
-- `/ws` (sem canal) — o `return` do handler volta pro remetente daquela
-  mensagem, e só pra ele; é o único jeito de responder fora de um canal.
-- `emit` que não alcança ninguém devolve `Error`, não `Success`.
+Cobre HTTP (rotas, status, tupla, 204, upload) e **upload multipart**
+(`file()`/`files(campo)`, `PoolFileUpload` inteiro). O servidor de WebSocket
+saiu da jinker no 19.0.0; o cliente (`request.ws_connect`) é testado no
+`teste/jinker_roda.pr`, contra o par de eco `teste/ws_par.pr`.
 
 
 ## Bancos

@@ -151,7 +151,9 @@ struct PSNode {
 
     /* literais. MEMBER_ASSIGNMENT: a posição do `.` do membro gravado,
      * `linha << 32 | coluna` — é onde o erro do membro aponta, o mesmo lugar
-     * do MEMBER_ACCESS da leitura (o nó em si fica no começo do comando). */
+     * do MEMBER_ACCESS da leitura (o nó em si fica no começo do comando).
+     * No decorador, do mesmo jeito: o `.` de cada parte do caminho depois da
+     * primeira (o Name), e o `(` da chamada (o DecoratorCall). */
     int64_t     i;
     double      d;
 

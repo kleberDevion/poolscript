@@ -2378,20 +2378,54 @@ static void emite_args_e_chama(C *c, Unidade *u, PSNode *no, PSNodeVec *args)
 
 /* A expressão de um decorador geral (`@obj.metodo(args)`, `@log()`, `@log`):
  * com parênteses é CHAMADA, sem parênteses é o VALOR (o parser marca em
- * `i2`). É a mesma emissão em qualquer posição (funct solta, em cima de
+ * `i2`). Ela vira a árvore de uma expressão comum: o nome, um acesso a membro
+ * por `.` e, com parênteses, a chamada com os argumentos do decorador, cada
+ * nó onde o parser põe o da expressão (o `.` e o `(`, ver PSNode.i). Pelo
+ * `expr`, ela passa pelo checador como `obj.metodo(args)` em qualquer lugar:
+ * o membro que não existe e a quantidade, o nome e o tipo dos argumentos saem
+ * no `--check`, com a frase e a coluna de quando roda. Antes só o primeiro
+ * nome era conferido, e `@app.rota("/x")` passava no `--check` e quebrava
+ * rodando. É a mesma emissão em qualquer posição (funct solta, em cima de
  * classe, dentro de classe). O valor fica no topo da pilha: é o decorador a
  * quem o OP_DECORA entrega a funct. */
-static void tp_confere_nome(C *c, Unidade *u, const char *nome, PSNode *onde);
+static int tp_conta_utf8(const char *s, int32_t n);
 static void emite_decorador_expr(C *c, Unidade *u, PSNode *dec)
 {
-    tp_confere_nome(c, u, dec->lista.itens[0]->texto, dec);
-    carrega_nome(c, u, dec->lista.itens[0]->texto);
-    for (int32_t i = 1; i < dec->lista.n; i++)
-        emite(c, u, OP_GET_MEMBER,
-              idx_const(c, u, K_STR, 0, 0, dec->lista.itens[i]->texto,
-                        (int32_t)strlen(dec->lista.itens[i]->texto)));
-    if (!dec->i2) return;              /* `@log`: o valor, sem chamar */
-    emite_args_e_chama(c, u, dec, &dec->lista2);
+    int32_t n = dec->lista.n;
+    if (n <= 0) return;
+    PSNode *nos = calloc((size_t)n + 1, sizeof(PSNode));
+    if (!nos) { cerro(c, "sem memoria", dec); return; }
+    PSNode *e = NULL;
+    for (int32_t i = 0; i < n; i++) {
+        PSNode *parte = dec->lista.itens[i], *m = &nos[i];
+        const char *nome = parte->texto ? parte->texto : "";
+        m->kind = i ? N_MEMBER_ACCESS : N_NAME;
+        m->line = i && parte->i ? (int32_t)(parte->i >> 32) : parte->line;
+        m->col = i && parte->i ? (int32_t)(uint32_t)parte->i : parte->col;
+        m->texto = nome;
+        m->linha_fim = parte->line;
+        m->col_fim = parte->col + tp_conta_utf8(nome, (int32_t)strlen(nome));
+        m->a = e;
+        e = m;
+    }
+    if (dec->i2) {                     /* `@log`: o valor, sem chamar */
+        PSNode *ch = &nos[n];
+        ch->kind = N_CALL;
+        ch->line = dec->i ? (int32_t)(dec->i >> 32) : dec->line;
+        ch->col = dec->i ? (int32_t)(uint32_t)dec->i : dec->col;
+        ch->linha_fim = dec->linha_fim;
+        ch->col_fim = dec->col_fim;
+        ch->a = e;
+        ch->lista = dec->lista2;
+        e = ch;
+    }
+    expr(c, u, e);
+    /* as marcas da chamada em curso não podem ficar apontando pra estes nós */
+    for (int32_t i = 0; i <= n; i++) {
+        if (c->membro_chamado == &nos[i]) c->membro_chamado = NULL;
+        if (c->alvo_chamado == &nos[i]) c->alvo_chamado = NULL;
+    }
+    free(nos);
 }
 
 /* modo 0: [.., decorador, funct] -> OP_DECORA -> [.., resultado].

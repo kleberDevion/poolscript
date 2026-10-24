@@ -19,6 +19,40 @@ str msg = "oi"
 app.channel(forAll=msg)      # manda `msg` pra TODAS as conexões abertas
 ```
 
+```assinatura
+app.channel(forAll: any = Null) -> ChannelStatus
+```
+
+Um parâmetro só, `forAll`: o que enviar. Texto sai cru; o resto vira JSON.
+Por posição vale igual (`app.channel(msg)`). Devolve o
+[`ChannelStatus`](../../objetos-internos/ChannelStatus.md) do envio.
+
+Argumento a mais e nome que não é `forAll` são erro, antes de rodar e
+rodando, com a frase das funções da linguagem. Pra uma sala, o jeito é o
+`emit` (abaixo):
+
+```ps
+app.channel(msg, "geral")
+# TypeError: channel() takes at most 1 argument (2 given)
+```
+
+```ps
+app.channel(sala=msg)
+# TypeError: 'sala' is an invalid keyword argument for channel()
+```
+
+O que não vira JSON é erro, como no `json.stringify`, e nada é enviado. O
+próprio status, por exemplo, só vai como texto:
+
+```ps
+app.channel(forAll={"status": app.channel.status})
+# TypeError: Object of type ChannelStatus is not JSON serializable
+```
+
+```ps
+app.channel(forAll={"status": str(app.channel.status)})
+```
+
 ## Enviar pra uma sala específica
 
 ```ps
@@ -37,7 +71,15 @@ if (app.channel.status == "Success") {
 
 `Success` significa que a mensagem **chegou a pelo menos uma conexão**. Emit que
 não alcança nenhuma conexão é `Error` — inclusive quando não há nenhuma conexão aberta,
-ou quando as que existem não estão no canal.
+ou quando as que existem não estão no canal. Antes do primeiro envio também é
+`Error`: nada chegou a ninguém.
+
+```ps
+post(app.channel.status)    # nenhum envio ainda
+```
+```saida
+Error
+```
 
 > **A armadilha mais comum:** `@app.socket("/chat")` **sem** `channel=True` não
 > põe a conexão no broadcast. O cliente conecta, o handler roda, e todo `emit`

@@ -22,6 +22,34 @@ funct nome() {
 }
 ```
 
+```assinatura
+app.socket(path: str | Null = Null, channel: bool = False) -> _SocketRegistrar | SocketEmitter
+```
+
+| Parâmetro | Tipo | Padrão | O que é |
+|---|---|---|---|
+| `path` | `str` ou `Null` | `Null` | o caminho do socket; sem ele, `app.socket()` devolve o emissor ([abaixo](#enviando-mensagens-appsocket-emissor)) |
+| `channel` | `bool` | `False` | `True` põe a conexão no canal do broadcast (`emit`, [`app.channel`](../channel/channel.md)) |
+
+Argumento a mais, nome que não é parâmetro e `path` de outro tipo são
+recusados antes de rodar; o `channel` que não é `bool`, rodando. A frase é
+a das funções da linguagem, a mesma nos dois:
+
+```ps
+app.socket(path, True, 3)
+# TypeError: socket() takes at most 2 arguments (3 given)
+```
+
+```ps
+app.socket(5)
+# TypeError: socket() argument 'path' must be str or Null, not int
+```
+
+```ps
+app.socket(path, channel=1)
+# TypeError: socket() argument 'channel' must be bool, not int
+```
+
 O servidor WebSocket sobe automaticamente na porta **HTTP + 1** (se o HTTP é `8080`, o WS é `8081`).
 
 **O handler cede, como a rota.** Cada mensagem é atendida numa fibra própria:
@@ -99,6 +127,17 @@ funct eco() {
 É o único jeito de responder num socket **sem** `channel=True`, porque o `emit`
 só alcança conexão que está no canal. Devolver `Null` (ou não devolver nada)
 não manda coisa alguma.
+
+O que não vira JSON é erro do handler, como o de qualquer handler: nada volta
+pro remetente, e a frase sai no terminal do servidor, com ou sem
+`debug=True`:
+
+```texto
+[jinker-ws] erro no handler /eco: Object of type ChannelStatus is not JSON serializable
+```
+
+O mesmo vale pro `emit` (do emissor ou do `app.channel`): o que não vira JSON
+é `TypeError`, como no `json.stringify`, e nada é enviado.
 
 Cuidado com o eco dobrado: se o handler faz `emit(..., exclude_self=False)`
 **e** devolve algo, o remetente recebe as duas mensagens.

@@ -2725,6 +2725,37 @@ const Caso CASOS_LINGUAGEM[] = {
   "class D {\n    @r.rota(\"/dentro\")\n    static funct h(){ return 1 }\n"
   "    @r.rota(\"/inst\")\n    funct i(self){ return 1 }\n}\npost(r.v)\n",
   "['/funct', '/classe', '/dentro', '/inst']", NULL, 0 },
+/* motor-33: o `--check` so conferia o primeiro nome do decorador. O membro
+ * que nao existe (`@app.rota("/x")`, `@os.naoexiste`) e a chamada sem o
+ * argumento que a funct pede (`@log()`) passavam no `--check` e quebravam
+ * rodando. A expressao do decorador agora e a arvore de qualquer expressao:
+ * a mesma frase antes de rodar e rodando (pelo Object), na mesma linha, e a
+ * coluna e a do `.` e a do `(`, como em `os.naoexiste` e `log()`. */
+{ "motor-33: decorador com membro que nao existe, antes de rodar",
+  "import os\n@os.naoexiste\nfunct r() {\n    return 1\n}\n",
+  "", "AttributeError: module 'os' has no attribute 'naoexiste'", 2 },
+{ "motor-33: o erro do membro do decorador aponta o `.`",
+  "import os\n@os.naoexiste\nfunct r() {\n    return 1\n}\n",
+  "", ", linha 2\n  | @os.naoexiste\n  |    ^^^", 2 },
+{ "motor-33: decorador chamado sem o argumento que a funct pede, antes de rodar",
+  "funct log(f) {\n    return f\n}\n@log()\nfunct r() {\n    return 1\n}\n",
+  "", "TypeError: log() missing 1 required positional argument: 'f'", 2 },
+{ "motor-33: o membro do decorador rodando (pelo Object), no mesmo lugar",
+  "import os\nObject m = os\n@m.naoexiste\nfunct r() {\n    return 1\n}\n",
+  "", "AttributeError: module 'os' has no attribute 'naoexiste'\n  em ", 1 },
+{ "motor-33: o membro do decorador rodando aponta o `.`",
+  "import os\nObject m = os\n@m.naoexiste\nfunct r() {\n    return 1\n}\n",
+  "", ", linha 3\n  | @m.naoexiste\n  |   ^^^", 1 },
+{ "motor-33: a chamada do decorador rodando (pelo Object), com a frase de antes de rodar",
+  "funct log(f) {\n    return f\n}\nObject g = log\n@g()\nfunct r() {\n    return 1\n}\n",
+  "", "TypeError: log() missing 1 required positional argument: 'f'\n  em ", 1 },
+{ "motor-33: a chamada do decorador rodando aponta o `(`",
+  "funct log(f) {\n    return f\n}\nObject g = log\n@g()\nfunct r() {\n    return 1\n}\n",
+  "", ", linha 5\n  | @g()\n  |   ^^^", 1 },
+{ "motor-33: o decorador que existe continua valendo, com e sem parenteses",
+  "funct log(f) {\n    return f\n}\nfunct fab(str p) {\n    return log\n}\n"
+  "@log\nfunct r() {\n    return \"r\"\n}\n@fab(\"a\")\nfunct s() {\n    return \"s\"\n}\npost(r(), s())\n",
+  "r s", NULL, 0 },
 /* O arquivo dele: campo static + decorador no corpo usando o campo. */
 { "decorador no corpo da classe le campo static da propria classe",
   "class Reg {\n    funct __init__(self){ self.v = [] }\n"

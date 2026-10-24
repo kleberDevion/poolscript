@@ -11,8 +11,8 @@
 #    processo. Este arquivo devolve esse alcance sem voltar pro Python.
 #
 # Cobre, do lado do cliente e do protocolo cru: métodos, status, cabeçalho,
-# query, path param, JSON, multipart, middleware, CORS, estático, canal,
-# WebSocket, 404/405 e requisição TORTA (Content-Length inválido, TE+CL,
+# query, path param, JSON, multipart, middleware, CORS, estático, o
+# cliente WebSocket, 404/405 e requisição TORTA (Content-Length inválido, TE+CL,
 # chunked, cabeçalho sem ':').
 #
 #     ./pool teste/jinker_roda.pr
@@ -179,6 +179,23 @@ r = get(RAIZ + "/texto")
 confere("resposta de texto puro", r.text == "texto puro")
 r = get(RAIZ + "/status")
 confere("status customizado chega inteiro", r.status_code == 418)
+
+# O que a rota devolve e não vira resposta (jinker-6, jinker-12) é o caminho
+# da exceção no handler: 500 com a frase do servidor no corpo, e a frase do
+# erro na saída dele (conferida no fim, quando ele para). Saía 200 com o corpo
+# vazio, 200 no lugar do status em texto, e `HTTP/1.1 99999 Server Error`.
+for each rota_ruim in ["/nao_json", "/nao_json_tupla", "/nao_json_lista", "/status_texto", "/status_fora"]
+{
+    str bruto_ruim = cru("GET " + rota_ruim + " HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+    confere("a rota " + rota_ruim + " que não vira resposta dá 500",
+            bruto_ruim.startswith("HTTP/1.1 500") and "Erro interno do servidor" in bruto_ruim)
+}
+for each mw_ruim in ["1", "2"]
+{
+    str bruto_mw = cru("GET /protegida?mw_ruim=" + mw_ruim + " HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+    confere("a tupla do middleware que não vira resposta dá 500 (mw_ruim=" + mw_ruim + ")",
+            bruto_mw.startswith("HTTP/1.1 500") and not ("entrou" in bruto_mw))
+}
 
 # ── query, path param e cabeçalho ───────────────────────────────────────────
 r = get(RAIZ + "/consulta?q=abc")
@@ -545,10 +562,6 @@ confere("If-Range com outro ETag ignora o Range: 200 inteiro", status_cru(b) == 
 b = pede("HEAD", "/estatico/cem.txt", "Range: bytes=0-9\r\n")
 confere("HEAD com Range da o cabecalho do 206 sem corpo", status_cru(b) == "HTTP/1.1 206 Partial Content" and cab_cru(b, "Content-Length") == "10" and corpo_cru(b) == "")
 
-# ── canal ───────────────────────────────────────────────────────────────────
-r = get(RAIZ + "/emitir")
-confere("canal emite sem cliente e diz o status", r.status_code == 200)
-
 # ── rota e método inexistentes ──────────────────────────────────────────────
 r = get(RAIZ + "/rota-que-nao-existe")
 confere("rota inexistente é 404", r.status_code == 404)
@@ -587,18 +600,38 @@ confere("405 diz o motivo no corpo", "método inválido: POST /verbo/9" in bruto
 bruto = cru("PATCH /verbo HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
 confere("Allow junta os verbos de TODAS as rotas do path", "Allow: GET, POST, PUT, DELETE" in bruto)
 
-# ── WebSocket ───────────────────────────────────────────────────────────────
+
+# ── o cliente WebSocket (`request.ws_connect`) ──────────────────────────────
+# O servidor de WebSocket saiu da jinker no 19.0.0, e o cliente ficou: ele
+# conversa com o par de teste (`teste/ws_par.pr`, um servidor de eco em Jinga
+# sobre a lib `sockets`), que anota cada frame que recebe. `on_message`
+# REGISTRA um callback e devolve Null — não é um `recv` que bloqueia. Quem lê
+# a mensagem é o callback, e por isso precisa do `sleep`: a mensagem tem que
+# chegar DURANTE a espera, não no `close`.
+int WS_PAR = 28960
+Object par_ws = os.run([sys.executable, "teste/ws_par.pr", str(WS_PAR)], capture="live")
+par_ws.close()
+bool par_subiu = False
+int k_par = 0
+while k_par < 100 and not par_subiu {
+    Object s_par = sockets.socket()
+    s_par.settimeout(0.2)
+    par_subiu = s_par.connect_ex(("127.0.0.1", WS_PAR)) == 0
+    s_par.close()
+    if not par_subiu {
+        sleep(0.1)
+    }
+    k_par = k_par + 1
+}
+confere("o par de teste do WebSocket subiu", par_subiu)
 eco = ""
 try
 {
-    # o jinker abre o WebSocket na porta SEGUINTE à do HTTP
-    # `on_message` REGISTRA um callback e devolve Null — não é um `recv` que
-    # bloqueia. Quem lê a mensagem é o callback, e por isso precisa do `sleep`:
-    # a mensagem tem que chegar DURANTE a espera, não no `close`.
-    ws = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/ws")
+    ws = ws_connect("ws://127.0.0.1:" + str(WS_PAR) + "/eco")
     vindas = []
     ws.on_message(funct(m) { vindas.append(m) })
     ws.send("alo")
+    ws.send({"n": 1})
     sleep(1)
     eco = str(vindas)
     ws.close()
@@ -607,71 +640,21 @@ catch (e)
 {
     eco = "ERRO: " + str(e)
 }
-confere("WebSocket faz handshake e ecoa a mensagem", "alo" in eco)
+confere("o cliente WebSocket manda texto e JSON e recebe o eco", eco == "['eco: alo', 'eco: {\"n\": 1}']")
 
-# Upgrade num path que NAO existe: a recusa e uma resposta HTTP 404 (RFC 6455
-# §4.2.2). Saia um frame de close WS cru (`88 16 03 f0 …`) numa conexao que
-# nunca foi promovida, e o cliente lia lixo sem linha de status.
-bruto_ws = cru_em(PORTA + 1, "GET /nope HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n")
-confere("WebSocket em path inexistente recebe HTTP 404 com a frase do HTTP",
+# Upgrade na porta HTTP: sem servidor de WebSocket, o pedido é atendido como
+# um GET comum (a RFC 9110, 7.8, deixa o servidor ignorar o Upgrade). Antes o
+# servidor fechava a conexão sem resposta nenhuma.
+str bruto_ws = cru("GET /nope HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nConnection: close\r\n\r\n")
+confere("Upgrade: websocket na porta HTTP é atendido como GET comum",
         bruto_ws.startswith("HTTP/1.1 404") and "rota não encontrada: GET /nope" in bruto_ws)
+Object s_ws = sockets.socket()
+s_ws.settimeout(0.5)
+confere("nada escuta na porta HTTP + 1 (o servidor de WebSocket saiu)", s_ws.connect_ex(("127.0.0.1", PORTA + 1)) != 0)
+s_ws.close()
 
-# ── origem no handshake do WebSocket ────────────────────────────────────────
-# A lista de `cors(app, origins=[...])` so valia nas rotas: qualquer site abria
-# o WebSocket. Agora o handshake confere o `Origin` com a MESMA regra do HTTP.
-# No 101 o servidor deixa a conexao aberta (o `cru_em` esperaria o timeout
-# inteiro), entao a leitura para na linha de status; na recusa (403/404) o
-# servidor fecha, e a leitura vai ate o fim — o corpo chega num segundo pacote.
-funct handshake_em(porta, extra)
-{
-    s = sockets.socket()
-    s.settimeout(5.0)
-    s.connect(("127.0.0.1", porta))
-    s.sendall(("GET /ws HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-               + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n"
-               + extra + "\r\n").encode())
-    resposta = ""
-    try
-    {
-        while True
-        {
-            pedaco = s.recv(4096)
-            if len(pedaco) == 0
-            {
-                break
-            }
-            resposta = resposta + pedaco.decode()
-            if resposta.startswith("HTTP/1.1 101")
-            {
-                break
-            }
-        }
-    }
-    catch (e)
-    {
-        post("      (handshake) erro lendo a resposta:", str(e))
-    }
-    s.close()
-    return resposta
-}
-hs = handshake_em(PORTA + 1, "Origin: http://permitido.test\r\n")
-confere("WebSocket: Origin da lista faz o handshake (101)", hs.startswith("HTTP/1.1 101"))
-hs = handshake_em(PORTA + 1, "Origin: http://evil.test\r\n")
-confere("WebSocket: Origin fora da lista e HTTP 403 com a frase do HTTP",
-        hs.startswith("HTTP/1.1 403") and "Origem não autorizada: http://evil.test" in hs)
-confere("WebSocket: o 403 de origem NAO libera origem (sem Access-Control-Allow-Origin)",
-        not "Access-Control-Allow-Origin" in hs)
-hs = handshake_em(PORTA + 1, "")
-confere("WebSocket: sem Origin passa no modo padrao (cliente que nao e navegador)", hs.startswith("HTTP/1.1 101"))
-hs = handshake_em(PORTA + 1, "Origin: http://localhost:9999\r\n")
-confere("WebSocket: origem local passa no modo padrao", hs.startswith("HTTP/1.1 101"))
-hs = handshake_em(PORTA + 1, "Origin: http://[::1]:9999\r\n")
-confere("WebSocket: [::1] com porta e local", hs.startswith("HTTP/1.1 101"))
-hs = handshake_em(PORTA + 1, "Origin: http://127.evil.com\r\n")
-confere("WebSocket: 127.evil.com NAO e local (403)", hs.startswith("HTTP/1.1 403"))
-
-# O mesmo no HTTP: a recusa de origem saia com `Access-Control-Allow-Origin: *`
-# — uma recusa que liberava tudo.
+# A recusa de origem saia com `Access-Control-Allow-Origin: *` — uma recusa
+# que liberava tudo.
 bruto = cru("GET /ok HTTP/1.1\r\nHost: x\r\nOrigin: http://evil.test\r\nConnection: close\r\n\r\n")
 confere("HTTP: origem fora da lista e 403", bruto.startswith("HTTP/1.1 403"))
 confere("HTTP: o 403 de origem NAO traz Access-Control-Allow-Origin", not "Access-Control-Allow-Origin" in bruto)
@@ -718,14 +701,6 @@ if estrito_subiu
     confere("estrito: a resposta ecoa a origem da lista", "Access-Control-Allow-Origin: http://permitido.test" in bruto)
     bruto = cru_em(ESTRITO, "GET /ok HTTP/1.1\r\nHost: x\r\nOrigin: null\r\nConnection: close\r\n\r\n")
     confere("estrito: Origin null passa SO porque esta na lista", bruto.startswith("HTTP/1.1 200"))
-    hs = handshake_em(ESTRITO + 1, "")
-    confere("estrito: WebSocket sem Origin e 403", hs.startswith("HTTP/1.1 403") and "(sem origin)" in hs)
-    hs = handshake_em(ESTRITO + 1, "Origin: http://localhost:9999\r\n")
-    confere("estrito: WebSocket de localhost fora da lista e 403", hs.startswith("HTTP/1.1 403"))
-    hs = handshake_em(ESTRITO + 1, "Origin: http://permitido.test\r\n")
-    confere("estrito: WebSocket com Origin da lista faz o handshake", hs.startswith("HTTP/1.1 101"))
-    hs = handshake_em(ESTRITO + 1, "Origin: null\r\n")
-    confere("estrito: WebSocket com Origin null listado faz o handshake", hs.startswith("HTTP/1.1 101"))
 
     # para o alvo estrito (o /__parar tambem exige a origem)
     cru_em(ESTRITO, "GET /__parar HTTP/1.1\r\nHost: x\r\nOrigin: http://permitido.test\r\nConnection: close\r\n\r\n")
@@ -757,30 +732,9 @@ else
     post(saida_de(srv_estrito))
 }
 
-# Socket LONGO declarado antes do curto com o mesmo parametro (`/chat/<sala>/admin`
-# e `/chat/<sala>`): a conexao em `/chat/geral` tem que entrar na sala `geral`
-# — o mesmo reset de params das rotas HTTP deixava `count` em 0 e a conexao
-# ficava sem sala; o emit pra sala nunca chegava.
-sala_msgs = ""
-try
-{
-    ws4 = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/chat/geral")
-    sala_vindas = []
-    ws4.on_message(funct(m) { sala_vindas.append(str(m)) })
-    ws4.send("oi")
-    sleep(1)
-    sala_msgs = str(sala_vindas)
-    ws4.close()
-}
-catch (e)
-{
-    sala_msgs = "ERRO: " + str(e)
-}
-confere("socket curto depois do longo entra na sala automatica: o emit pra sala chega",
-        "emit" in sala_msgs and "ret:geral" in sala_msgs)
 
-# `on_message` com `async funct`: a drenagem ESPERA o callback, como o jinker
-# espera o handler — o corpo roda, na ordem das mensagens.
+# `on_message` com `async funct`: a drenagem ESPERA o callback — o corpo
+# roda, na ordem das mensagens.
 vindas_async = []
 async funct guarda_async(m)
 {
@@ -789,7 +743,7 @@ async funct guarda_async(m)
 eco_async = ""
 try
 {
-    ws3 = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/ws")
+    ws3 = ws_connect("ws://127.0.0.1:" + str(WS_PAR) + "/ws")
     ws3.on_message(guarda_async)
     ws3.send("alo")
     sleep(1)
@@ -820,7 +774,7 @@ eco_medio = ""
 eco_grande = ""
 try
 {
-    ws2 = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/ws")
+    ws2 = ws_connect("ws://127.0.0.1:" + str(WS_PAR) + "/ws")
     recebidas = []
     ws2.on_message(funct(m) { recebidas.append(m) })
     ws2.send(medio)
@@ -1150,48 +1104,6 @@ confere("Content-Length duplicado e diferente vira 400", "400" in bruto)
 bruto = cru("GET /ok HTTP/1.1\r\nHost: x\r\n\r\nGET /texto HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
 confere("pipelining responde as DUAS requisições", bruto.count("HTTP/1.1") >= 2)
 
-# ── o handler de socket não pode congelar o servidor ────────────────────────
-#
-# O handler de `@app.socket` era chamado DIRETO do laço do worker, sem fibra:
-# o `sleep(3)` dele caía no caminho cego e parava tudo. Medido antes: `/ok`
-# levava 3,4 s e a segunda conexão WebSocket só entrava quando a primeira
-# terminava. Em ROTA o mesmo cenário já respondia em 0,7 ms.
-travou = ""
-try
-{
-    ws_l = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/lentows")
-    lento_vindas = []
-    ws_l.on_message(funct(m) { lento_vindas.append(str(m)) })
-    ws_l.send("vai")
-    sleep(0.5)                      # o handler está dormindo agora
-
-    t0 = date.timestamp()
-    r = get(RAIZ + "/ok")
-    t1 = date.timestamp()
-    confere("rota HTTP responde enquanto o handler de socket dorme",
-            r.status == 200 and (t1 - t0) <= 1)
-
-    # e outra conexão WebSocket entra na hora, sem esperar o handler
-    t2 = date.timestamp()
-    ws_l2 = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/ws")
-    segundas = []
-    ws_l2.on_message(funct(m) { segundas.append(str(m)) })
-    ws_l2.send("oi")
-    sleep(0.5)
-    t3 = date.timestamp()
-    confere("segunda conexão WebSocket entra e é atendida durante o handler lento",
-            (t3 - t2) <= 1 and "eco: oi" in str(segundas))
-
-    sleep(3.2)                      # deixa o handler lento terminar
-    travou = str(lento_vindas)
-    ws_l.close()
-    ws_l2.close()
-}
-catch (e)
-{
-    travou = "ERRO: " + str(e)
-}
-confere("o handler lento termina e responde a quem mandou", "lento-fim" in travou)
 
 # ── o comando externo na rota não segura as outras requisições ──────────────
 #
@@ -1234,69 +1146,6 @@ r = get(RAIZ + "/tarefa_antes")
 confere("tarefa criada antes do servidor termina a I/O dela",
         r.status == 200 and r.get_json("estado") == "terminou")
 
-# ── várias conexões morrendo na MESMA volta do laço ─────────────────────────
-#
-# `epoll_wait` devolve um LOTE de eventos. Tirar o fd do epoll não apaga os
-# eventos desse lote que já estão na mão do servidor: enquanto ele percorria o
-# lote, fechar uma conexão liberava NA HORA o objeto que o `data.ptr` do evento
-# seguinte aponta, e o servidor lia memória liberada — SIGSEGV no meio do
-# atendimento, e o cliente via só "sem resposta".
-#
-# Era intermitente de propósito: precisa de duas coisas no mesmo lote. O frame
-# grande garante a primeira (a leitura do servidor vai pro offload e a fibra
-# cede, então quem fecha é o evento de volta do offload); dez conexões caindo
-# juntas garantem a segunda. Medido contra o motor com o defeito: o alvo morre
-# em 3 de 3 rodadas; com a correção, 3 de 3 de pé.
-#
-# Fica por ÚLTIMO de propósito: são 60 conexões de WebSocket abertas e fechadas,
-# e esse tanto no meio da suíte atrapalha as medições de tempo que vêm depois.
-lote_ok = True
-rodada = 0
-while rodada < 6
-{
-    lote = []
-    i = 0
-    while i < 10
-    {
-        try
-        {
-            w = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/ws")
-            w.send("g" * 70000)
-            lote.append(w)
-        }
-        catch (e)
-        {
-            lote_ok = False
-        }
-        i = i + 1
-    }
-    for each w in lote
-    {
-        try
-        {
-            w.close()
-        }
-        catch (e)
-        {
-            pass
-        }
-    }
-    sleep(0.2)
-    try
-    {
-        rl = get(RAIZ + "/ok", timeout=5)
-        if rl.status_code != 200
-        {
-            lote_ok = False
-        }
-    }
-    catch (e)
-    {
-        lote_ok = False
-    }
-    rodada = rodada + 1
-}
-confere("dez conexoes WS caindo juntas nao derrubam o servidor", lote_ok)
 
 # ── estático: arquivo grande sai em blocos (17.0.20) ────────────────────────
 # Antes o arquivo inteiro ia pra memoria do servidor (um `malloc` do tamanho
@@ -1344,17 +1193,19 @@ while i < 50
 }
 confere("o servidor para limpo quando pedido (sem isso o gcov dele não existe)", parou)
 srv_alvo.kill()
+# A saida do alvo, lida agora que ele parou. Se ele nao saiu pelo `/__parar`,
+# o `kill(9)` garante o fim do canal; se saiu, nada de `kill(9)`: ele termina
+# sozinho, gravando o `.gcda`.
+if not parou
+{
+    srv_alvo.kill(9)
+}
+str saida_alvo = saida_de(srv_alvo)
 # Vetor que PULOU: o motivo que o alvo deu pra cada link que nao criou (o erro
-# do `mklink`, por exemplo) esta na saida dele, lida agora que ele parou. Se
-# ele nao saiu pelo `/__parar`, o `kill(9)` garante o fim do canal; se saiu,
-# nada de `kill(9)`: ele termina sozinho, gravando o `.gcda`.
+# do `mklink`, por exemplo).
 if len(sem_destino) > 0
 {
-    if not parou
-    {
-        srv_alvo.kill(9)
-    }
-    for each linha in saida_de(srv_alvo).split("\n")
+    for each linha in saida_alvo.split("\n")
     {
         if linha.startswith("servidor-alvo: sem ")
         {
@@ -1362,6 +1213,26 @@ if len(sem_destino) > 0
         }
     }
 }
+# O erro do que não virou resposta saiu na saída do servidor, com a frase
+# (jinker-6 e jinker-12).
+for each esperada in ["[jinker] erro no handler /nao_json: Object of type Jinker is not JSON serializable",
+                      "[jinker] erro no handler /nao_json_tupla: Object of type Jinker is not JSON serializable",
+                      "[jinker] erro no handler /nao_json_lista: Object of type Jinker is not JSON serializable",
+                      "[jinker] erro no handler /status_texto: 'str' object cannot be interpreted as an integer",
+                      "[jinker] erro no handler /status_fora: (corpo, status): codigo HTTP fora da faixa 100..999: 99999",
+                      "[jinker] erro no middleware /protegida: Object of type Jinker is not JSON serializable",
+                      "[jinker] erro no middleware /protegida: 'str' object cannot be interpreted as an integer"]
+{
+    confere("a saída do servidor diz: " + esperada, esperada in saida_alvo)
+}
+
+# O par de teste do WebSocket para, e a saída dele diz cada frame que o
+# cliente mandou: todos mascarados, o close também (RFC 6455, 5.1). O close
+# do cliente saía sem máscara (jinker-16).
+par_ws.kill()
+str saida_par = saida_de(par_ws)
+confere("o cliente WebSocket manda todo frame mascarado", not ("SEM MASCARA" in saida_par) and "frame 1 mascarado" in saida_par)
+confere("o close do cliente WebSocket sai mascarado", "frame 8 mascarado" in saida_par)
 
 
 # ── TLS: o mesmo servidor, agora em HTTPS ───────────────────────────────────

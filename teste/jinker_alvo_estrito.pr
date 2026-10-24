@@ -1,11 +1,11 @@
 # Servidor-alvo do `teste/jinker_roda.pr` em MODO ESTRITO de origem — loopback.
 #
 # POR QUE E UM ARQUIVO A PARTE do `jinker_alvo.pr`: `cors(app, ..., local=False)`
-# e uma config do servidor inteiro (rotas e WebSocket), e um processo sobe um
+# e uma config do servidor inteiro, e um processo sobe um
 # servidor. O alvo principal fica no modo padrao (origem local passa, cliente
 # sem `Origin` passa); este sobe com `local=False`, onde SO a lista vale:
 #
-#   - pedido sem `Origin` -> 403, no HTTP e no handshake do WebSocket;
+#   - pedido sem `Origin` -> 403;
 #   - `Origin: http://localhost:9999` -> 403 (local nao passa por fora da lista);
 #   - `Origin: null` passa SO porque esta na lista, explicitamente.
 #
@@ -23,12 +23,6 @@ cors(app, origins=["http://permitido.test", "null"], local=False)
 funct ok()
 {
     return {"ok": True, "local": cors.local()}
-}
-
-@app.socket("/ws")
-funct ws_eco(msg)
-{
-    return "eco:" + msg
 }
 
 @app.route("/__parar")

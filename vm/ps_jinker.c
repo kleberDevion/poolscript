@@ -139,6 +139,13 @@ static int jk_resolve_ipv4(const char *host, struct in_addr *out, char *erro, si
 
 int ps_jk_listen(const char *host, int porta, char *erro, size_t ecap)
 {
+    /* a porta tem 16 bits: o `(unsigned short)` abaixo punha 70000 na 4464, e
+     * a do WebSocket (HTTP + 1) de um servidor na 65535 numa porta sorteada
+     * pelo sistema (jinker-14) */
+    if (porta < 0 || porta > 65535) {
+        snprintf(erro, ecap, "porta fora da faixa 0..65535: %d", porta);
+        return -1;
+    }
     int fd = (int)socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) { snprintf(erro, ecap, "socket: %s", strerror(ps_sock_errno())); return -1; }
     ps_sock_reusa_endereco(fd);
@@ -420,8 +427,6 @@ int ps_jk_le_request(PSJkConn *c, PSJkReq *r)
     r->keep_alive = 1;
     const char *con = ps_jk_header(r, "Connection");
     if (con && strcasecmp(con, "close") == 0) r->keep_alive = 0;
-    const char *upg = ps_jk_header(r, "Upgrade");
-    if (upg && strcasecmp(upg, "websocket") == 0) r->eh_ws = 1;
 
     /* Transfer-Encoding não é implementado, e "não implementado" tem que ser
      * DITO. Antes, um POST `chunked` era servido com 200 e corpo VAZIO: o
@@ -555,30 +560,7 @@ int ps_jk_responde(PSJkConn *c, int status, const char *ctype,
     return 0;
 }
 
-/* ── WebSocket ──────────────────────────────────────────────────────────── */
-
-int ps_jk_ws_handshake(PSJkConn *c, const PSJkReq *r)
-{
-    const char *chave = ps_jk_header(r, "Sec-WebSocket-Key");
-    if (!chave) return -1;
-
-    /* accept = base64(SHA1(chave + GUID)) — RFC 6455 §4.2.2 */
-    char cat[128];
-    snprintf(cat, sizeof(cat), "%s258EAFA5-E914-47DA-95CA-C5AB0DC85B11", chave);
-    unsigned char dig[SHA_DIGEST_LENGTH];
-    SHA1((const unsigned char *)cat, strlen(cat), dig);
-    char b64[64];
-    size_t nb = ps_base64_encode(dig, sizeof(dig), b64);
-    b64[nb] = '\0';
-
-    char resp[256];
-    int n = snprintf(resp, sizeof(resp),
-                     "HTTP/1.1 101 Switching Protocols\r\n"
-                     "Upgrade: websocket\r\n"
-                     "Connection: Upgrade\r\n"
-                     "Sec-WebSocket-Accept: %s\r\n\r\n", b64);
-    return conn_escreve(c, resp, (size_t)n);
-}
+/* ── WebSocket (o cliente: o `ws_connect` do módulo request) ────────────── */
 
 /* precisa de `n` bytes prontos no buffer da conexão */
 static int ws_precisa(PSJkConn *c, size_t n)
@@ -588,27 +570,45 @@ static int ws_precisa(PSJkConn *c, size_t n)
     return 0;
 }
 
+/* Um frame do cliente, MASCARADO: todo frame que o cliente manda leva
+ * máscara, os de controle também (o close, o pong) — RFC 6455 §5.1. Eles
+ * saíam sem máscara, do tempo em que esta função era do servidor da jinker.
+ *
+ * A chave de máscara TEM que ser imprevisível — RFC 6455 §5.3. Ela é a
+ * defesa contra envenenamento de cache num intermediário que não entende
+ * WebSocket: sem entropia, o atacante escolhe os bytes que o proxy vê. O
+ * fallback aqui era `rand()` sem `srand()` em lugar nenhum do projeto, ou
+ * seja, a MESMA sequência em todo processo. Falhar abrindo, com chave
+ * previsível, é pior que falhar: agora a operação falha. */
 static int ws_manda_frame(PSJkConn *c, int opcode, const char *dados, size_t n)
 {
-    unsigned char cab[10];
+    unsigned char cab[14];
     size_t nc;
-    cab[0] = (unsigned char)(0x80 | opcode);   /* FIN + opcode; servidor não mascara */
-    if (n < 126) { cab[1] = (unsigned char)n; nc = 2; }
+    cab[0] = (unsigned char)(0x80 | opcode);   /* FIN + opcode */
+    unsigned char masc[4];
+    if (ps_random_bytes(masc, 4) != 0) return -1;
+    if (n < 126) { cab[1] = (unsigned char)(0x80 | n); nc = 2; }
     else if (n < 65536) {
-        cab[1] = 126;
+        cab[1] = 0x80 | 126;
         cab[2] = (unsigned char)(n >> 8); cab[3] = (unsigned char)n;
         nc = 4;
     } else {
-        cab[1] = 127;
+        cab[1] = 0x80 | 127;
         for (int i = 0; i < 8; i++) cab[2 + i] = (unsigned char)(n >> (8 * (7 - i)));
         nc = 10;
     }
+    memcpy(cab + nc, masc, 4); nc += 4;
     if (conn_escreve(c, (const char *)cab, nc) != 0) return -1;
-    return n ? conn_escreve(c, dados, n) : 0;
+    if (n == 0) return 0;
+    /* aplica a máscara num buffer próprio pra não alterar o do chamador */
+    char pilha[1024];
+    char *tmp = n <= sizeof(pilha) ? pilha : malloc(n);
+    if (!tmp) return -1;
+    for (size_t i = 0; i < n; i++) tmp[i] = (char)(dados[i] ^ masc[i % 4]);
+    int rc = conn_escreve(c, tmp, n);
+    if (tmp != pilha) free(tmp);
+    return rc;
 }
-
-int ps_jk_ws_envia_texto(PSJkConn *c, const char *msg, size_t n)
-{ return ws_manda_frame(c, 0x1, msg, n); }
 
 int ps_jk_ws_envia_close(PSJkConn *c, int codigo, const char *motivo)
 {
@@ -643,18 +643,14 @@ int ps_jk_ws_le_frame(PSJkConn *c, char **msg, size_t *n)
             off = 10;
         }
         if (np > JK_CORPO_MAX) { free(acc); return -1; }
-        unsigned char masc[4] = {0};
-        if (mascarado) {
-            if (ws_precisa(c, off + 4) != 0) { free(acc); return -1; }
-            memcpy(masc, c->buf + off, 4);
-            off += 4;
-        }
+        /* o servidor não mascara; frame mascarado vindo dele é erro de
+         * protocolo, e o cliente fecha — RFC 6455 §5.1 */
+        if (mascarado) { free(acc); return -1; }
         if (ws_precisa(c, off + np) != 0) { free(acc); return -1; }
 
         char *dados = malloc(np + 1);
         if (!dados) { free(acc); return -1; }
-        for (size_t i = 0; i < np; i++)
-            dados[i] = (char)(c->buf[off + i] ^ (mascarado ? masc[i % 4] : 0));
+        memcpy(dados, c->buf + off, np);
         dados[np] = '\0';
         conn_consome(c, off + np);
 
@@ -770,40 +766,7 @@ PSJkConn *ps_jk_ws_conecta(const char *host, int porta, const char *path,
 }
 
 int ps_jk_ws_envia_texto_cli(PSJkConn *c, const char *msg, size_t n)
-{
-    unsigned char cab[14];
-    size_t nc;
-    cab[0] = 0x81;   /* FIN + texto */
-    /* A chave de máscara TEM que ser imprevisível — RFC 6455 §5.3. Ela é a
-     * defesa contra envenenamento de cache num intermediário que não entende
-     * WebSocket: sem entropia, o atacante escolhe os bytes que o proxy vê.
-     *
-     * O fallback aqui era `rand()` sem `srand()` em lugar nenhum do projeto,
-     * ou seja, a MESMA sequência em todo processo. Falhar abrindo, com chave
-     * previsível, é pior que falhar: agora a operação falha. */
-    unsigned char masc[4];
-    if (ps_random_bytes(masc, 4) != 0) return -1;
-    if (n < 126) { cab[1] = (unsigned char)(0x80 | n); nc = 2; }
-    else if (n < 65536) {
-        cab[1] = 0x80 | 126;
-        cab[2] = (unsigned char)(n >> 8); cab[3] = (unsigned char)n;
-        nc = 4;
-    } else {
-        cab[1] = 0x80 | 127;
-        for (int i = 0; i < 8; i++) cab[2 + i] = (unsigned char)(n >> (8 * (7 - i)));
-        nc = 10;
-    }
-    memcpy(cab + nc, masc, 4); nc += 4;
-    if (conn_escreve(c, (const char *)cab, nc) != 0) return -1;
-    /* aplica a máscara num buffer próprio pra não alterar o do chamador */
-    char pilha[1024];
-    char *tmp = n <= sizeof(pilha) ? pilha : malloc(n);
-    if (!tmp) return -1;
-    for (size_t i = 0; i < n; i++) tmp[i] = (char)(msg[i] ^ masc[i % 4]);
-    int rc = conn_escreve(c, tmp, n);
-    if (tmp != pilha) free(tmp);
-    return rc;
-}
+{ return ws_manda_frame(c, 0x1, msg, n); }
 
 /* 1 = ainda há bytes NO BUFFER, já lidos do socket e não consumidos.
  *

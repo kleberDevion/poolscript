@@ -1,0 +1,227 @@
+# O par de teste do cliente WebSocket (`request.ws_connect`): um servidor de
+# eco em Jinga, sobre a lib `sockets`. O servidor de WebSocket saiu da jinker
+# no 19.0.0, e o cliente ficou; os testes do cliente precisam de um par.
+#
+#     jinga teste/ws_par.pr <porta>
+#
+# Atende uma conexão por vez. A cada mensagem de texto responde
+# "eco: <mensagem>", ao ping responde pong e ao close responde close. Confere
+# a regra do cliente (RFC 6455 §5.1: todo frame que o cliente manda vem
+# mascarado, os de controle também): cada frame sai numa linha da saída
+# (`frame <opcode> mascarado` ou `frame <opcode> SEM MASCARA`), que o driver
+# lê no fim. O SHA-1 do aperto de mão (RFC 6455 §4.2.2) é escrito aqui,
+# porque a lib `hash` não tem SHA-1.
+import sockets
+import sys
+import bytes
+
+str GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+
+# Uma linha na saída, já escrita: o driver mata o par no fim, e o que
+# ficasse no buffer se perdia.
+Null funct anota(str s) {
+    post(s)
+    sys.stdout.flush()
+}
+
+
+int funct rotl(int x, int n) {
+    return ((x << n) | (x >> (32 - n))) & 0xFFFFFFFF
+}
+
+
+# SHA-1 (FIPS 180-4), sobre a lista dos bytes
+byte funct sha1(byte dados) {
+    list m = bytes.tolist(dados)
+    int bits = len(m) * 8
+    addEnd(m, 0x80)
+    while len(m) % 64 != 56 {
+        addEnd(m, 0)
+    }
+    for each i in range(8) {
+        addEnd(m, (bits >> ((7 - i) * 8)) & 0xFF)
+    }
+    list h = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0]
+    for each ini in range(0, len(m), 64) {
+        list w = []
+        for each i in range(16) {
+            int p = ini + 4 * i
+            addEnd(w, (m[p] << 24) | (m[p + 1] << 16) | (m[p + 2] << 8) | m[p + 3])
+        }
+        for each i in range(16, 80) {
+            addEnd(w, rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1))
+        }
+        int a = h[0]
+        int b = h[1]
+        int c = h[2]
+        int d = h[3]
+        int e = h[4]
+        for each i in range(80) {
+            int f = 0
+            int k = 0
+            if i < 20 {
+                f = (b & c) | ((b ^ 0xFFFFFFFF) & d)
+                k = 0x5A827999
+            } elif i < 40 {
+                f = b ^ c ^ d
+                k = 0x6ED9EBA1
+            } elif i < 60 {
+                f = (b & c) | (b & d) | (c & d)
+                k = 0x8F1BBCDC
+            } else {
+                f = b ^ c ^ d
+                k = 0xCA62C1D6
+            }
+            int t = (rotl(a, 5) + f + e + k + w[i]) & 0xFFFFFFFF
+            e = d
+            d = c
+            c = rotl(b, 30)
+            b = a
+            a = t
+        }
+        h[0] = (h[0] + a) & 0xFFFFFFFF
+        h[1] = (h[1] + b) & 0xFFFFFFFF
+        h[2] = (h[2] + c) & 0xFFFFFFFF
+        h[3] = (h[3] + d) & 0xFFFFFFFF
+        h[4] = (h[4] + e) & 0xFFFFFFFF
+    }
+    list partes = []
+    for each x in h {
+        addEnd(partes, bytes.fromint(x, 4))
+    }
+    return bytes.concat(partes)
+}
+
+
+# Garante `n` bytes no buffer (`buf[0]`); False quando a conexão acabou.
+bool funct precisa(Object c, list buf, int n) {
+    while len(buf[0]) < n {
+        byte parte = c.recv(4096)
+        if len(parte) == 0 {
+            return False
+        }
+        buf[0] = bytes.concat([buf[0], parte])
+    }
+    return True
+}
+
+
+# Um frame do servidor: sem máscara.
+Null funct manda(Object c, int opcode, byte dados) {
+    int n = len(dados)
+    list cab = [0x80 | opcode]
+    if n < 126 {
+        addEnd(cab, n)
+    } elif n < 65536 {
+        cab = cab + [126, (n >> 8) & 0xFF, n & 0xFF]
+    } else {
+        addEnd(cab, 127)
+        for each i in range(8) {
+            addEnd(cab, (n >> ((7 - i) * 8)) & 0xFF)
+        }
+    }
+    c.sendall(bytes.concat([bytes.new(cab), dados]))
+}
+
+
+# O aperto de mão; False quando o pedido não é de WebSocket.
+bool funct aperta_mao(Object c, list buf) {
+    while not ("\r\n\r\n" in buf[0].decode()) {
+        if not precisa(c, buf, len(buf[0]) + 1) {
+            return False
+        }
+    }
+    str txt = buf[0].decode()
+    int fim = txt.find("\r\n\r\n") + 4
+    buf[0] = bytes.slice(buf[0], len(txt[0:fim].encode()))
+    str chave = ""
+    for each linha in txt[0:fim].split("\r\n") {
+        if linha.lower().startswith("sec-websocket-key:") {
+            chave = linha[18:len(linha)].strip()
+        }
+    }
+    if chave == "" {
+        c.sendall("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n")
+        return False
+    }
+    str aceite = bytes.base64(sha1((chave + GUID).encode()))
+    c.sendall("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+              + "Sec-WebSocket-Accept: " + aceite + "\r\n\r\n")
+    return True
+}
+
+
+# Atende uma conexão até o close ou o fim.
+Null funct atende(Object c) {
+    list buf = [bytes.new(0)]
+    if not aperta_mao(c, buf) {
+        return
+    }
+    while precisa(c, buf, 2) {
+        int b0 = bytes.get(buf[0], 0)
+        int b1 = bytes.get(buf[0], 1)
+        int opcode = b0 & 0x0F
+        bool mascarado = (b1 & 0x80) != 0
+        int n = b1 & 0x7F
+        int ini = 2
+        if n == 126 {
+            if not precisa(c, buf, 4) {
+                return
+            }
+            n = bytes.toint(bytes.slice(buf[0], 2, 4))
+            ini = 4
+        } elif n == 127 {
+            if not precisa(c, buf, 10) {
+                return
+            }
+            n = bytes.toint(bytes.slice(buf[0], 2, 10))
+            ini = 10
+        }
+        byte masc = bytes.new(0)
+        if mascarado {
+            if not precisa(c, buf, ini + 4) {
+                return
+            }
+            masc = bytes.slice(buf[0], ini, ini + 4)
+            ini = ini + 4
+        }
+        if not precisa(c, buf, ini + n) {
+            return
+        }
+        byte dados = bytes.slice(buf[0], ini, ini + n)
+        buf[0] = bytes.slice(buf[0], ini + n)
+        if mascarado and n > 0 {
+            dados = bytes.xor(dados, masc)
+        }
+        anota("frame " + str(opcode) + (" mascarado" if mascarado else " SEM MASCARA"))
+        if opcode == 1 {
+            manda(c, 1, ("eco: " + dados.decode()).encode())
+        } elif opcode == 9 {
+            manda(c, 10, dados)
+        } elif opcode == 8 {
+            manda(c, 8, bytes.new([3, 232]))
+            return
+        }
+    }
+}
+
+
+if __name__ == "main" {
+    int porta = int(sys.argv[1])
+    Object s = sockets.socket()
+    s.setsockopt(sockets.SOL_SOCKET, sockets.SO_REUSEADDR, 1)
+    s.bind(("127.0.0.1", porta))
+    s.listen(8)
+    anota("ws_par escutando em " + str(porta))
+    while True {
+        tup par = s.accept()
+        Object c = par[0]
+        try {
+            atende(c)
+        } catch (Exception e) {
+            anota("erro na conexao: " + e)
+        }
+        c.close()
+    }
+}

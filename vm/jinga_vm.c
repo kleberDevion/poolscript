@@ -151,10 +151,6 @@ typedef enum {
     OBJ_JREQ,      /* a requisição corrente (interno — o proxy lê daqui) */
     OBJ_JPROXY,    /* `request` — proxy da requisição corrente (singleton) */
     OBJ_JUPLOAD,   /* PoolFileUpload — arquivo de multipart em memória */
-    OBJ_JSOCKNS,   /* app.socket — decorator + emissor */
-    OBJ_JEMIT,     /* SocketEmitter — `app.socket()` sem args */
-    OBJ_JCHAN,     /* app.channel — conexões WS e salas */
-    OBJ_JCHST,     /* ChannelStatus — == "Success"/"Error", bool = sucesso */
     OBJ_WSCONN,    /* request.ws_connect — cliente WebSocket */
     OBJ_QRBUILD,   /* qrcode.QRCode — builder com add_data/make/make_image */
     OBJ_QRIMAGE,   /* retorno do make/make_image — save/resize/to_file */
@@ -371,7 +367,7 @@ enum { T_MET_STR = 0, T_MET_LIST, T_MET_DICT, T_MET_ARQ,
        T_MET_MAILSRV, T_MET_MAILMSG, T_MET_MAILRD, T_MET_RESP, T_MET_QRFILE,
        T_MET_DBCONN, T_MET_DBCUR, T_MET_MONGOCONN, T_MET_MONGOCOL,
        T_MET_JINKER, T_MET_JCORS, T_MET_JREG, T_MET_JRESP, T_MET_JPROXY,
-       T_MET_JUPLOAD, T_MET_JSOCKNS, T_MET_JEMIT, T_MET_JCHAN, T_MET_WSCONN,
+       T_MET_JUPLOAD, T_MET_WSCONN,
        T_MET_QRBUILD, T_MET_QRIMAGE, T_MET_MPFILE,
        T_MET_SOCKET, T_MET_PROCESSO, T_MET_REGEX, T_MET_TUPLA };
 
@@ -613,7 +609,7 @@ typedef struct {
     int64_t tamanho;
 } PSQRFile;
 
-/* ── jinker — servidor HTTP/WS ──────────────────────────────────────────── */
+/* ── jinker — servidor HTTP ─────────────────────────────────────────────── */
 /* Os campos Value (handlers, dicts) são marcados pelo GC via o objeto dono —
  * regra da casa: nada de Value vivo só em variável C durante o loop. */
 
@@ -626,36 +622,12 @@ typedef struct {
     Value  model;                   /* valida o corpo antes do handler; V_NULL = não valida */
 } JkRota;
 
-typedef struct {
-    char *path;
-    int   channel;
-    Value handler;
-} JkSock;
-
 struct PSJkConn;   /* transporte (ps_jinker.h) — opaco aqui */
 
-/* conexão WebSocket viva */
-typedef struct {
-    struct PSJkConn *conn;
-    char  *sala;      /* NULL = sem sala */
-    int    idx_sock;  /* qual JkSock atende esse path */
-    int    canal;     /* entra no broadcast (socket com channel=True) */
-    Value  params;    /* dict dos path params */
-    void  *epw;       /* watcher do epoll (EpWs*) — identifica o fd no epoll_wait */
-    /* A fibra que está atendendo uma mensagem DESTA conexão agora, e a marca
-     * de remoção adiada. O handler cede (sleep, banco, request); se a conexão
-     * morresse nesse meio-tempo, a fibra acordaria com o `PSJkConn` já
-     * liberado. Enquanto `fib` não é NULL, `jk_ws_del` só marca `morrendo` e
-     * quem fecha de verdade é o fim da fibra. */
-    void  *fib;
-    int    morrendo;
-} JkWsAtiva;
-
 /* watchers do epoll: o data.ptr de cada fd registrado aponta pra algo cujo
- * PRIMEIRO campo é `int tipo`, pra dispatch. Aqui os do WS e listen; o do HTTP
- * (HttpConn) fica junto do loop. g_jk_epfd é o epoll do worker — jk_ws_add/del
- * registram/desregistram as conexões WS nele. */
-enum { EPW_HTTP = 1, EPW_WS, EPW_LHTTP, EPW_LWS, EPW_FIBWAIT,
+ * PRIMEIRO campo é `int tipo`, pra dispatch. O do HTTP (HttpConn) fica junto
+ * do loop. g_jk_epfd é o epoll do worker. */
+enum { EPW_HTTP = 1, EPW_LHTTP, EPW_FIBWAIT,
        /* conexão que morreu no MEIO da volta: o objeto ainda existe, mas
         * ninguém mais o atende. Ver `ep_morre` abaixo. Por último, pra não
         * mexer no valor numérico de nenhum outro. */
@@ -664,7 +636,6 @@ enum { EPW_HTTP = 1, EPW_WS, EPW_LHTTP, EPW_LWS, EPW_FIBWAIT,
         * `sched_roda`): ele esperava por ela dirigindo as tarefas */
        EPW_PRINCIPAL };
 static int g_jk_epfd = -1;
-typedef struct { int tipo; struct PSJkConn *conn; } EpWs;
 typedef struct { int tipo; struct Fiber *f; } EpFibW;   /* fibra esperando um fd (offload) */
 
 /* ENTERRO ADIADO do que o epoll aponta.
@@ -672,16 +643,15 @@ typedef struct { int tipo; struct Fiber *f; } EpFibW;   /* fibra esperando um fd
  * `epoll_wait` devolve um LOTE de eventos. Tirar um fd do epoll (EPOLL_CTL_DEL)
  * não apaga os eventos desse lote que já estão na mão: se o objeto apontado por
  * `data.ptr` for liberado enquanto o laço ainda percorre o lote, o próximo
- * evento da MESMA volta lê memória liberada. Medido com ASan: uma conexão de
- * WebSocket fechada dentro do `ws_serve` de um evento derrubava o servidor
- * inteiro no evento seguinte, com `heap-use-after-free` na leitura do `tipo`
+ * evento da MESMA volta lê memória liberada. Medido com ASan: uma conexão
+ * fechada dentro do atendimento de um evento derrubava o servidor inteiro no
+ * evento seguinte, com `heap-use-after-free` na leitura do `tipo`
  * (`jk_app_run`) — falha intermitente, porque só acontece quando duas coisas
  * caem no mesmo lote.
  *
  * Então quem morre é MARCADO (`tipo = EPW_MORTO`, e o laço pula) e só é
  * liberado no fim da volta, quando nenhum evento daquele lote pode mais
- * alcançá-lo. Vale pro WebSocket (`EpWs`) e pro HTTP (`HttpConn`): os dois são
- * `data.ptr` e os dois eram liberados na hora. */
+ * alcançá-lo. Vale pro `HttpConn`, que é `data.ptr` e era liberado na hora. */
 static void **g_ep_mortos = NULL;
 static int    g_n_ep_mortos = 0, g_cap_ep_mortos = 0;
 
@@ -715,7 +685,6 @@ typedef struct {
     Obj    obj;
     char  *nome;
     JkRota *rotas; int nrotas, cap_rotas;
-    JkSock *socks; int nsocks, cap_socks;
     Value  mw_handler;              /* @app.middleware(): o handler guardado. A
                                      * rota com `middleware=app.middleware` resolve
                                      * pra ele (jk_chama_handler roda e a resposta
@@ -730,9 +699,6 @@ typedef struct {
     int    poolip_on; int64_t ip_rate, ip_bloq;   /* int64: o `long` do Windows tem 32 bits */
     int    usa_tls; char *cert; char *key;   /* key= separado (Let's Encrypt: privkey.pem) */
     /* runtime */
-    JkWsAtiva *ws; int nws, cap_ws;
-    Value  ch_status;               /* ChannelStatus do último envio */
-    struct PSJkConn *ws_atual;      /* remetente corrente (exclude_self) */
     JkIpHit *hits; int nhits, cap_hits;
     JkIpBan *bans; int nbans, cap_bans;
 } PSJinker;
@@ -744,17 +710,16 @@ typedef struct {
     char **origens; int norigens;
     int    local;    /* 1 = origem local passa por fora da lista e pedido sem
                       * Origin passa (padrão); 0 = `cors(app, ..., local=False)`,
-                      * modo estrito: SÓ a lista vale, no HTTP e no WebSocket */
+                      * modo estrito: SÓ a lista vale */
 } PSJCors;
 
 /* registrar descartável do decorador */
-enum { JREG_ROUTE = 0, JREG_SOCKET, JREG_MIDDLEWARE };
+enum { JREG_ROUTE = 0, JREG_MIDDLEWARE };
 typedef struct {
     Obj    obj;
     Value  app;
     int    kind;
     char  *path;
-    int    channel;
     char **metodos; int nmetodos;
     char **auth;    int nauth;
     Value  middleware;
@@ -779,21 +744,15 @@ typedef struct {
 /* a requisição corrente — interna; o proxy (`request`) lê daqui */
 typedef struct {
     Obj    obj;
-    char   metodo[16];  /* "GET"... ou "WS" */
+    char   metodo[16];  /* "GET"... */
     char  *path;
     Value  headers;     /* dict */
     Value  corpo;       /* OBJ_BYTES */
     Value  query;       /* dict str -> str|lista */
     Value  params;      /* dict dos path params */
-    Value  ws_msg;      /* mensagem WS parseada; V_UNSET fora de socket */
-    int    eh_ws;
 } PSJReq;
 
 typedef struct { Obj obj; } PSJProxy;
-typedef struct { Obj obj; Value app; } PSJSockNs;
-typedef struct { Obj obj; Value app; } PSJEmit;
-typedef struct { Obj obj; Value app; } PSJChan;
-typedef struct { Obj obj; int sucesso; } PSJChSt;
 
 typedef struct {
     Obj    obj;
@@ -1024,14 +983,6 @@ static int model_campo_aceita(int32_t tipo, const Value *v);
 #define EH_JPROXY(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_JPROXY)
 #define EH_JUPLOAD(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_JUPLOAD)
 #define COMO_JUPLOAD(v) ((PSJUpload*)(v).as.obj)
-#define EH_JSOCKNS(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_JSOCKNS)
-#define COMO_JSOCKNS(v) ((PSJSockNs*)(v).as.obj)
-#define EH_JEMIT(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_JEMIT)
-#define COMO_JEMIT(v)  ((PSJEmit*)(v).as.obj)
-#define EH_JCHAN(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_JCHAN)
-#define COMO_JCHAN(v)  ((PSJChan*)(v).as.obj)
-#define EH_JCHST(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_JCHST)
-#define COMO_JCHST(v)  ((PSJChSt*)(v).as.obj)
 #define EH_WSCONN(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_WSCONN)
 #define COMO_WSCONN(v) ((PSWsConn*)(v).as.obj)
 #define EH_QRBUILD(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_QRBUILD)
@@ -2144,10 +2095,7 @@ static void gct_jinker(VM *vm, Obj *o) {
         marca_valor(vm, &j->rotas[i].middleware);
         marca_valor(vm, &j->rotas[i].model);
     }
-    for (int i = 0; i < j->nsocks; i++) marca_valor(vm, &j->socks[i].handler);
-    for (int i = 0; i < j->nws; i++)    marca_valor(vm, &j->ws[i].params);
     marca_valor(vm, &j->mw_handler);
-    marca_valor(vm, &j->ch_status);
     marca_valor(vm, &j->cors);
 }
 static void gct_jreg(VM *vm, Obj *o) {
@@ -2161,7 +2109,7 @@ static void gct_jresp(VM *vm, Obj *o) {
 static void gct_jreq(VM *vm, Obj *o) {
     PSJReq *r = (PSJReq *)o;
     marca_valor(vm, &r->headers); marca_valor(vm, &r->corpo); marca_valor(vm, &r->query);
-    marca_valor(vm, &r->params);  marca_valor(vm, &r->ws_msg);
+    marca_valor(vm, &r->params);
 }
 
 /* ── finalizers (Fase 1: migração do `if/else` de libera_obj pra tabela) ────
@@ -2308,8 +2256,6 @@ static void fin_mailmsg(VM *, Obj *);   static void fin_jinker(VM *, Obj *);
 static void fin_jcors(VM *, Obj *);     static void fin_jreg(VM *, Obj *);
 static void fin_jresp(VM *, Obj *);     static void fin_jreq(VM *, Obj *);
 static void fin_jproxy(VM *, Obj *);    static void fin_jupload(VM *, Obj *);
-static void fin_jsockns(VM *, Obj *);   static void fin_jemit(VM *, Obj *);
-static void fin_jchan(VM *, Obj *);     static void fin_jchst(VM *, Obj *);
 static void fin_wsconn(VM *, Obj *);    static void fin_qrbuild(VM *, Obj *);
 static void fin_qrimage(VM *, Obj *);   static void fin_manpu_file(VM *, Obj *);
 
@@ -2357,10 +2303,6 @@ static const GcInfo GC_INFO[OBJ__COUNT] = {
     [OBJ_JREQ]       = { GC_FN,   0, gct_jreq, 0, fin_jreq },
     [OBJ_JPROXY]     = { GC_LEAF, 0, NULL, 0, fin_jproxy },
     [OBJ_JUPLOAD]    = { GC_ONE,  offsetof(PSJUpload, dados), NULL, 0, fin_jupload },
-    [OBJ_JSOCKNS]    = { GC_ONE,  offsetof(PSJSockNs, app), NULL, 0, fin_jsockns },
-    [OBJ_JEMIT]      = { GC_ONE,  offsetof(PSJEmit, app), NULL, 0, fin_jemit },
-    [OBJ_JCHAN]      = { GC_ONE,  offsetof(PSJChan, app), NULL, 0, fin_jchan },
-    [OBJ_JCHST]      = { GC_LEAF, 0, NULL, 0, fin_jchst },
     [OBJ_WSCONN]     = { GC_ONE,  offsetof(PSWsConn, on_msg), NULL, 0, fin_wsconn },
     [OBJ_QRBUILD]    = { GC_LEAF, 0, NULL, 0, fin_qrbuild },
     [OBJ_QRIMAGE]    = { GC_LEAF, 0, NULL, 0, fin_qrimage },
@@ -2491,10 +2433,6 @@ static void fin_jinker(VM *vm, Obj *o) {
         free(j->rotas[i].auth);
     }
     free(j->rotas);
-    for (int i = 0; i < j->nsocks; i++) free(j->socks[i].path);
-    free(j->socks);
-    for (int i = 0; i < j->nws; i++) free(j->ws[i].sala);
-    free(j->ws);
     for (int i = 0; i < j->nhits; i++) free(j->hits[i].ts);
     free(j->hits);
     free(j->bans);
@@ -2529,10 +2467,6 @@ static void fin_jupload(VM *vm, Obj *o) {
     free(u->nome); free(u->ctype); free(u->ext);
     vm->alocado -= sizeof(PSJUpload);
 }
-static void fin_jsockns(VM *vm, Obj *o) { (void)o; vm->alocado -= sizeof(PSJSockNs); }
-static void fin_jemit(VM *vm, Obj *o) { (void)o; vm->alocado -= sizeof(PSJEmit); }
-static void fin_jchan(VM *vm, Obj *o) { (void)o; vm->alocado -= sizeof(PSJChan); }
-static void fin_jchst(VM *vm, Obj *o) { (void)o; vm->alocado -= sizeof(PSJChSt); }
 static void fin_wsconn(VM *vm, Obj *o) {
     PSWsConn *w = (PSWsConn *)o;
     if (w->conn) ps_jk_close(w->conn);
@@ -3015,8 +2949,6 @@ static int val_truthy(const Value *v)
                 return ((PSList *)v->as.obj)->len != 0;
             if (v->as.obj->type == OBJ_DICT)   return ((PSDict *)v->as.obj)->count != 0;
             if (v->as.obj->type == OBJ_MANPU_RES) return ((PSManpuRes *)v->as.obj)->sucesso;
-            /* ChannelStatus: `if send.status_send()` responde o sucesso */
-            if (v->as.obj->type == OBJ_JCHST) return ((PSJChSt *)v->as.obj)->sucesso;
             return 1;   /* todo outro objeto (Entity, instância, método…) é verdadeiro */
     }
     return 0;
@@ -3368,19 +3300,6 @@ static int val_iguais(const Value *a, const Value *b)
         if (EH_STRING(*o)) return strcmp(r->status, COMO_STRING(*o)->chars) == 0;
         return 0;
     }
-    /* ChannelStatus do jinker: `== "Success"` / `== "Error"` — só esses dois
-     * textos respondem algo; o resto é False, como o __eq__ do wrapper. */
-    if (EH_JCHST(*a) || EH_JCHST(*b)) {
-        const Value *cs = EH_JCHST(*a) ? a : b, *o = EH_JCHST(*a) ? b : a;
-        PSJChSt *st = COMO_JCHST(*cs);
-        if (EH_STRING(*o)) {
-            if (strcmp(COMO_STRING(*o)->chars, "Success") == 0) return st->sucesso;
-            if (strcmp(COMO_STRING(*o)->chars, "Error") == 0)   return !st->sucesso;
-            return 0;
-        }
-        if (EH_JCHST(*o)) return st->sucesso == COMO_JCHST(*o)->sucesso;
-        return 0;
-    }
     /* `data == Usuario` valida o dict contra o model, dos dois lados */
     if (EH_MODEL(*b)) return model_valida(COMO_MODEL(*b), a);
     if (EH_MODEL(*a)) return model_valida(COMO_MODEL(*a), b);
@@ -3724,7 +3643,6 @@ static int descreve_obj(const Value *v, char *buf, size_t cap)
         case OBJ_JREG: {
             PSJReg *rg = (PSJReg *)o;
             if (rg->kind == JREG_MIDDLEWARE) snprintf(buf, cap, "<MiddlewareRegistrar>");
-            else if (rg->kind == JREG_SOCKET) snprintf(buf, cap, "<SocketRegistrar %.200s>", rg->path);
             else {
                 /* mesmo formato do repr do wrapper: lista de métodos */
                 size_t n = (size_t)snprintf(buf, cap, "<RouteRegistrar [");
@@ -3740,29 +3658,6 @@ static int descreve_obj(const Value *v, char *buf, size_t cap)
             PSJUpload *up = (PSJUpload *)o;
             snprintf(buf, cap, "<PoolFileUpload '%.200s' (%d bytes)>", up->nome,
                      EH_BYTES(up->dados) ? COMO_BYTES(up->dados)->len : 0);
-            return 1;
-        }
-        case OBJ_JEMIT: {
-            PSJEmit *em = (PSJEmit *)o;
-            snprintf(buf, cap, "<SocketEmitter %s>",
-                     EH_JINKER(em->app) ? COMO_JINKER(em->app)->nome : "?");
-            return 1;
-        }
-        case OBJ_JCHAN: {
-            PSJChan *ch = (PSJChan *)o;
-            int conexoes = 0, salas = 0;
-            if (EH_JINKER(ch->app)) {
-                PSJinker *jk = COMO_JINKER(ch->app);
-                conexoes = jk->nws;
-                for (int i = 0; i < jk->nws; i++) {
-                    if (!jk->ws[i].sala) continue;
-                    int visto = 0;
-                    for (int q = 0; q < i; q++)
-                        if (jk->ws[q].sala && strcmp(jk->ws[q].sala, jk->ws[i].sala) == 0) { visto = 1; break; }
-                    if (!visto) salas++;
-                }
-            }
-            snprintf(buf, cap, "<Channel connections=%d rooms=%d>", conexoes, salas);
             return 1;
         }
         case OBJ_WSCONN: {
@@ -3810,9 +3705,6 @@ static int descreve_obj(const Value *v, char *buf, size_t cap)
         case OBJ_MANPU_RES:
             snprintf(buf, cap, "%s", ((PSManpuRes *)v->as.obj)->status);
             return 1;
-        case OBJ_JCHST:
-            snprintf(buf, cap, "%s", ((PSJChSt *)v->as.obj)->sucesso ? "Success" : "Error");
-            return 1;
         case OBJ_JINKER:
             snprintf(buf, cap, "<Jinker '%s'>", ((PSJinker *)v->as.obj)->nome);
             return 1;
@@ -3840,12 +3732,6 @@ static int descreve_obj(const Value *v, char *buf, size_t cap)
             PSProcesso *p = (PSProcesso *)v->as.obj;
             if (p->terminou) snprintf(buf, cap, "<Process pid=%d returncode=%d>", p->pid, p->codigo);
             else snprintf(buf, cap, "<Process pid=%d rodando%s>", p->pid, p->eh_pty ? " pty" : "");
-            return 1;
-        }
-        case OBJ_JSOCKNS: {
-            PSJSockNs *ns = (PSJSockNs *)v->as.obj;
-            snprintf(buf, cap, "<SocketNamespace %s>",
-                     EH_JINKER(ns->app) ? COMO_JINKER(ns->app)->nome : "?");
             return 1;
         }
         default:
@@ -4922,10 +4808,6 @@ static const char *const NOME_DE_OBJ[OBJ__COUNT] = {
     [OBJ_JREQ]       = "JinkerRequest",
     [OBJ_JPROXY]     = "RequestProxy",
     [OBJ_JUPLOAD]    = "PoolFileUpload",
-    [OBJ_JSOCKNS]    = "SocketNamespace",
-    [OBJ_JEMIT]      = "SocketEmitter",
-    [OBJ_JCHAN]      = "ChannelManager",
-    [OBJ_JCHST]      = "ChannelStatus",
     [OBJ_WSCONN]     = "WsConnection",
     [OBJ_QRBUILD]    = "PoolQRCode",
     [OBJ_QRIMAGE]    = "QRImage",
@@ -4934,9 +4816,9 @@ static const char *const NOME_DE_OBJ[OBJ__COUNT] = {
     [OBJ_PROCESSO]   = "Process",
     [OBJ_REGEX]      = "Pattern",
 };
-/* O registrador do jinker: um nome por kind, na ordem de JREG_MIDDLEWARE,
- * JREG_SOCKET e o de rota. Tabela pra o `tipos_valor` citar os três. */
-static const char *const NOMES_JREG[] = { "MiddlewareRegistrar", "_SocketRegistrar", "_RouteRegistrar" };
+/* O registrador do jinker: um nome por kind, na ordem de JREG_MIDDLEWARE e o
+ * de rota. Tabela pra o `tipos_valor` citar os dois. */
+static const char *const NOMES_JREG[] = { "MiddlewareRegistrar", "_RouteRegistrar" };
 
 static const char *nome_do_tipo_valor(Value v)
 {
@@ -4945,8 +4827,7 @@ static const char *nome_do_tipo_valor(Value v)
         if (ot == OBJ_INSTANCE) return COMO_INST(v)->classe->nome;
         if (ot == OBJ_JREG) {
             PSJReg *rg = (PSJReg *)v.as.obj;
-            return rg->kind == JREG_MIDDLEWARE ? NOMES_JREG[0]
-                 : rg->kind == JREG_SOCKET    ? NOMES_JREG[1] : NOMES_JREG[2];
+            return rg->kind == JREG_MIDDLEWARE ? NOMES_JREG[0] : NOMES_JREG[1];
         }
         if ((int)ot >= 0 && (int)ot < (int)OBJ__COUNT && NOME_DE_OBJ[ot]) return NOME_DE_OBJ[ot];
         return "object";
@@ -6087,10 +5968,13 @@ static int chama_valor_kw(VM *vm, Value fn, Value *args, int n,
 static int chama_valor_modo(VM *vm, Value fn, Value *args, int n,
                             const Value *kw_nomes, const Value *kw_vals, int nkw,
                             int async_no_lugar, Value *out);
-/* objetos jinker chamáveis (app(), cors(), app.socket(), app.channel()): dá o
- * params (pra chamada nomeada) e a fn de despacho. 1 se é chamável, 0 senão. */
+/* objetos jinker chamáveis (app(), cors()): a linha de cada um na tabela
+ * `JK_CHAMAVEIS`, junto da jinker */
 typedef int (*FnMetodoChamavel)(VM *, Value, Value *, int, Value *);
-static int jk_obj_callable(Value alvo, const char **params, FnMetodoChamavel *fn);
+typedef struct JkChamavel JkChamavel;
+static const JkChamavel *jk_chamavel_de(Value alvo);
+static int jk_chama_obj(VM *vm, const JkChamavel *jc, Value alvo, const Value *posv, int npos,
+                        const Value *nomes, const Value *vals, int nkw, Value *out);
 static Value jk_str_val(VM *vm, const char *s);
 
 
@@ -10047,9 +9931,6 @@ static int met_jpx_file(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jpx_files(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jup_save(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jup_bytes(VM *vm, Value alvo, Value *args, int n, Value *out);
-static int met_jsock_emit(VM *vm, Value alvo, Value *args, int n, Value *out);
-static int met_jsock_status_send(VM *vm, Value alvo, Value *args, int n, Value *out);
-static int met_jchan_emit(VM *vm, Value alvo, Value *args, int n, Value *out);
 
 /* Os atalhos NÃO têm `methods`: o método é o nome do membro. */
 static const MetodoNat METODOS_JINKER[] = {
@@ -10093,17 +9974,6 @@ static const MetodoNat METODOS_JUPLOAD[] = {
     { "save", met_jup_save, "destino" },
     { "move", met_jup_save, "destino" },      /* alias de save */
     { "bytes", met_jup_bytes, NULL },
-};
-static const MetodoNat METODOS_JSOCKNS[] = {
-    { "emit", met_jsock_emit, "payload=Null,room_id=Null,exclude_self=True" },
-    { "status_send", met_jsock_status_send, NULL },
-};
-static const MetodoNat METODOS_JEMIT[] = {
-    { "emit", met_jsock_emit, "payload=Null,room_id=Null,exclude_self=True" },
-    { "status_send", met_jsock_status_send, NULL },
-};
-static const MetodoNat METODOS_JCHAN[] = {
-    { "emit", met_jchan_emit, "payload=Null,room_id=Null" },
 };
 
 static int met_ws_send(VM *vm, Value alvo, Value *args, int n, Value *out);
@@ -10240,7 +10110,6 @@ static const MetodoNat *TABELAS[] = { METODOS_STR, METODOS_LIST, METODOS_DICT,
                                       METODOS_MONGOCONN, METODOS_MONGOCOL,
                                       METODOS_JINKER, METODOS_JCORS, METODOS_JREG,
                                       METODOS_JRESP, METODOS_JPROXY, METODOS_JUPLOAD,
-                                      METODOS_JSOCKNS, METODOS_JEMIT, METODOS_JCHAN,
                                       METODOS_WSCONN, METODOS_QRBUILD, METODOS_QRIMAGE,
                                       METODOS_MPFILE,
                                       METODOS_SOCKET, METODOS_PROCESSO,
@@ -10269,9 +10138,6 @@ static const int TAM_TABELA[] = {
     (int)(sizeof(METODOS_JRESP) / sizeof(METODOS_JRESP[0])),
     (int)(sizeof(METODOS_JPROXY) / sizeof(METODOS_JPROXY[0])),
     (int)(sizeof(METODOS_JUPLOAD) / sizeof(METODOS_JUPLOAD[0])),
-    (int)(sizeof(METODOS_JSOCKNS) / sizeof(METODOS_JSOCKNS[0])),
-    (int)(sizeof(METODOS_JEMIT) / sizeof(METODOS_JEMIT[0])),
-    (int)(sizeof(METODOS_JCHAN) / sizeof(METODOS_JCHAN[0])),
     (int)(sizeof(METODOS_WSCONN) / sizeof(METODOS_WSCONN[0])),
     (int)(sizeof(METODOS_QRBUILD) / sizeof(METODOS_QRBUILD[0])),
     (int)(sizeof(METODOS_QRIMAGE) / sizeof(METODOS_QRIMAGE[0])),
@@ -10315,9 +10181,6 @@ static int acha_metodo_valor(Value alvo, const char *nome, int *tab, int *idx)
     else if (EH_JRESP(alvo))   qual = T_MET_JRESP;
     else if (EH_JPROXY(alvo))  qual = T_MET_JPROXY;
     else if (EH_JUPLOAD(alvo)) qual = T_MET_JUPLOAD;
-    else if (EH_JSOCKNS(alvo)) qual = T_MET_JSOCKNS;
-    else if (EH_JEMIT(alvo))   qual = T_MET_JEMIT;
-    else if (EH_JCHAN(alvo))   qual = T_MET_JCHAN;
     else if (EH_WSCONN(alvo))  qual = T_MET_WSCONN;
     else if (EH_QRBUILD(alvo)) qual = T_MET_QRBUILD;
     else if (EH_QRIMAGE(alvo)) qual = T_MET_QRIMAGE;
@@ -10453,19 +10316,32 @@ static int json_escreve(VM *vm, SBuf *b, const Value *v, int prof, int compacto)
     return -1;
 }
 
+/* O `json_escreve` com o erro sempre escolhido: ele mesmo escolhe o
+ * ValueError do nan e o RecursionError da profundidade; o valor que não
+ * serializa é TypeError, e o buffer que não cresceu (sem frase) é
+ * MemoryError. O `json.stringify` e a resposta da jinker usam esta: a
+ * jinker dizia TypeError pro nan. */
+static int json_escreve_ou_erro(VM *vm, SBuf *b, const Value *v, int compacto)
+{
+    vm->erro[0] = '\0';
+    vm->erro_tipo[0] = '\0';
+    if (json_escreve(vm, b, v, 0, compacto) == 0) return 0;
+    if (!vm->erro[0]) {
+        snprintf(vm->erro, sizeof(vm->erro), "sem memoria");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+    } else if (!vm->erro_tipo[0]) {
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+    }
+    return -1;
+}
+
 static int mod_json_stringify(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "stringify", 1, 2, n);
     /* 2º argumento liga o modo compacto: `json.stringify(x, True)` */
     int compacto = (n == 2) && val_truthy(&args[1]);
     SBUF_AUTO b = {0};
-    if (json_escreve(vm, &b, &args[0], 0, compacto) != 0) {
-        /* O json_escreve ja escolhe o tipo (TypeError no valor que nao serializa,
-         * RecursionError na profundidade); o TypeError aqui e so a rede pra quem
-         * falhou sem escolher (o sb_bytes sem memoria, por exemplo). */
-        if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
-        return -1;
-    }
+    if (json_escreve_ou_erro(vm, &b, &args[0], compacto) != 0) return -1;
     PSString *r = nova_string(vm, b.b ? b.b : "", b.n);
     if (!r) BERRO(vm, "MemoryError", "sem memoria em stringify()");
     *out = MK_OBJ(r);
@@ -13906,7 +13782,7 @@ static int mod_sys_exit(VM *vm, Value *args, int n, Value *out)
         }
         codigo = (int)c;
     }
-    /* Na fibra de uma rota do jinker (HTTP, WebSocket) ele sai na hora: o
+    /* Na fibra de uma rota do jinker ele sai na hora: o
      * erro da rota vira a resposta 500, e o exit não pode virar resposta. */
     if (fib_e_de_rota(vm)) sai_agora(vm, codigo);
     /* No resto o exit DESENROLA: os `finally` (e os `using`) em volta rodam,
@@ -21683,8 +21559,8 @@ static int mongo_connect(VM *vm, const char *host, int porta, const char *user,
     return 0;
 }
 
-/* ── jinker — servidor HTTP/WebSocket ───────────────────────────────────── */
-/* O transporte (socket/HTTP/WS/TLS/multipart) mora
+/* ── jinker — servidor HTTP ─────────────────────────────────────────────── */
+/* O transporte (socket/HTTP/TLS/multipart, e o cliente WebSocket) mora
  * em ps_jinker.c; aqui ficam os objetos da VM, o roteamento, a ponte com os
  * handlers via chama_valor e a montagem das respostas. Single-thread: o loop
  * roda na thread da VM, então o handler `.pr` reentra sem corrida nem GC
@@ -21812,12 +21688,11 @@ static int mod_jk_request(VM *vm, Value *args, int n, Value *out)
  * ignorado, e configurava nada.
  *
  * `local=False` é o modo estrito: só a lista de `origins` vale — origem local
- * não passa por fora dela e pedido SEM `Origin` é recusado, no HTTP e no
- * WebSocket. O padrão (`local=True`) é o de sempre: local passa, ferramenta
- * sem `Origin` passa.
+ * não passa por fora dela e pedido SEM `Origin` é recusado. O padrão
+ * (`local=True`) é o de sempre: local passa, ferramenta sem `Origin` passa.
  *
  * Cada chamada cria UMA config e a guarda em cada app dado (`j->cors`); é
- * ela que o registro de rota, o preflight e o handshake do WebSocket leem. O
+ * ela que o registro de rota e o preflight leem. O
  * singleton — o objeto que se importa e que tem `.options()`/`.origins()`/
  * `.local()` — espelha a config da última chamada, pra esses helpers
  * seguirem respondendo o configurado. */
@@ -21831,30 +21706,39 @@ static int jcors_call(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (!EH_JINKER(COMO_LIST(apps)->itens[i]))
             MERRO(vm, "TypeError", "cors() argument %d must be Jinker, not %s",
                   i + 1, nome_do_tipo_valor(COMO_LIST(apps)->itens[i]));
-    /* local= (args[4]) é bool; conferido ANTES de criar a config, pra não
-     * deixar raiz fixada ao sair por erro */
-    int local = 1;
-    if (n >= 5 && args[4].t != V_UNSET && args[4].t != V_NULL) {
-        if (args[4].t != V_BOOL)
-            MERRO(vm, "TypeError", "cors(local=) precisa de bool (True/False), veio %s",
-                  nome_do_tipo_valor(args[4]));
-        local = args[4].as.b ? 1 : 0;
+    /* O tipo de cada argumento já vem conferido pela linha do `cors` em
+     * JK_CHAMAVEIS (options e origins: lista, tup ou Null; local: bool). Os
+     * ITENS de options e origins são texto: o que não era saía da lista
+     * calado, e a origem escrita errado deixava o servidor aberto (jinker-14).
+     * Conferido ANTES de criar a config, pra não deixar raiz fixada. */
+    for (int a = 1; a <= 2 && a < n; a++) {
+        if (!EH_SEQ(args[a])) continue;
+        PSList *l = COMO_LIST(args[a]);
+        for (int i = 0; i < l->len; i++)
+            if (!EH_STRING(l->itens[i]))
+                MERRO(vm, "TypeError", "cors() argument '%s' item %d must be str, not %s",
+                      a == 1 ? "options" : "origins", i, nome_do_tipo_valor(l->itens[i]));
     }
+    int local = (n >= 5 && args[4].t == V_BOOL) ? (args[4].as.b ? 1 : 0) : 1;
 
     Value nova = jk_cors_nova(vm);
     if (!EH_JCORS(nova)) MERRO(vm, "MemoryError", "sem memoria");
     if (fixa_raiz(vm, nova) != 0) MERRO(vm, "RuntimeError", "estouro da pilha");
     PSJCors *c = COMO_JCORS(nova);
-    /* args na ordem da lista; UNSET = ausente */
+    /* args na ordem da lista; UNSET = ausente. Lista que não virou vetor
+     * inteiro é falta de memória: tratada como "sem lista", ela liberava
+     * tudo. */
     if (n >= 2 && EH_SEQ(args[1])) {
         for (int i = 0; i < c->nmetodos; i++) free(c->metodos[i]);
         free(c->metodos);
         c->metodos = jk_strvec(args[1], 1, &c->nmetodos);
+        if (c->nmetodos != COMO_LIST(args[1])->len) { vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
     }
     if (n >= 3 && EH_SEQ(args[2])) {
         for (int i = 0; i < c->norigens; i++) free(c->origens[i]);
         free(c->origens);
         c->origens = jk_strvec(args[2], 0, &c->norigens);
+        if (c->norigens != COMO_LIST(args[2])->len) { vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
     }
     /* permiser (args[3]) é legado — ignorado, como no wrapper */
     c->local = local;
@@ -21973,17 +21857,36 @@ static int mod_jk_new_response(VM *vm, Value *args, int n, Value *out)
     *out = MK_OBJ(r);
     return 0;
 }
+/* O código HTTP de `v`: inteiro de 100 a 999, os três dígitos da linha de
+ * status. A regra do `.status()`, do `status_code = N`, do `json(data,
+ * status)`, do `send(texto, status)` e da tupla `(corpo, status)`; `quem`
+ * abre a frase. O `(int)` cortava o número, e o texto ou o número fora da
+ * faixa era ignorado calado no `json`, no `send` e na tupla: 99999 saía em
+ * `HTTP/1.1 99999 Server Error`, que o cliente recusa (jinker-12). */
+static int jk_status_de(VM *vm, Value v, const char *quem, int *code)
+{
+    int64_t st;
+    INTEIRO_OU_ERRO(vm, v, st);
+    if (st < 100 || st > 999)
+        MERRO(vm, "ValueError", "%s: codigo HTTP fora da faixa 100..999: %lld", quem, (long long)st);
+    *code = (int)st;
+    return 0;
+}
 static int met_jresp_send(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "send", 1, 2, n);
     PSJResp *r = COMO_JRESP(alvo);
+    /* Só mexe no status se ele veio no argumento: `status(418).send(x)`
+     * perdia o 418 porque o send() reescrevia 200 por cima. O objeto já
+     * nasce com 200, então não pôr nada aqui mantém o padrão. Conferido
+     * antes de mexer no corpo. */
+    int code = r->status;
+    if (n == 2 && args[1].t != V_NULL && args[1].t != V_UNSET
+        && jk_status_de(vm, args[1], "send()", &code) != 0) return -1;
     TXTBUF_AUTO t = {0};
     if (valor_para_texto(&t, &args[0], 0) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
     r->corpo = jk_str_val(vm, t.b ? t.b : "");
-    /* Só mexe no status se ele veio no argumento: `status(418).send(x)`
-     * perdia o 418 porque o send() reescrevia 200 por cima. O objeto já
-     * nasce com 200, então não pôr nada aqui mantém o padrão. */
-    if (n == 2 && args[1].t == V_INT) r->status = (int)args[1].as.i;
+    r->status = code;
     snprintf(r->ctype, sizeof(r->ctype), "text/plain; charset=utf-8");
     *out = alvo;
     return 0;
@@ -21992,15 +21895,18 @@ static int met_jresp_json(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "json", 1, 2, n);
     PSJResp *r = COMO_JRESP(alvo);
+    /* mesma coisa do send(): não reescrever o status que o status() pôs */
+    int code = r->status;
+    if (n == 2 && args[1].t != V_NULL && args[1].t != V_UNSET
+        && jk_status_de(vm, args[1], "json()", &code) != 0) return -1;
     SBUF_AUTO b = {0};
-    if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { REERRO(vm, "TypeError"); }
+    if (json_escreve_ou_erro(vm, &b, &args[0], 0) != 0) return -1;
     /* SBuf NÃO é NUL-terminado — sempre entregar com o TAMANHO, nunca como
      * C-string (mesma lição do bson do mongo) */
     PSString *cs = nova_string(vm, b.b ? b.b : "null", b.b ? b.n : 4);
     if (!cs) MERRO(vm, "MemoryError", "sem memoria");
     r->corpo = MK_OBJ(cs);
-    /* mesma coisa do send(): não reescrever o status que o status() pôs */
-    if (n == 2 && args[1].t == V_INT) r->status = (int)args[1].as.i;
+    r->status = code;
     snprintf(r->ctype, sizeof(r->ctype), "application/json; charset=utf-8");
     *out = alvo;
     return 0;
@@ -22008,12 +21914,9 @@ static int met_jresp_json(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_jresp_status(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "status", 1);
-    int64_t st;
-    INTEIRO_OU_ERRO(vm, args[0], st);
-    /* o código de status do HTTP tem três dígitos; o `(int)` cortava o
-     * número e a resposta saía com outro status */
-    if (st < 100 || st > 999) MERRO(vm, "ValueError", "status(): codigo HTTP fora da faixa 100..999: %lld", (long long)st);
-    COMO_JRESP(alvo)->status = (int)st;
+    int code;
+    if (jk_status_de(vm, args[0], "status()", &code) != 0) return -1;
+    COMO_JRESP(alvo)->status = code;
     *out = alvo;
     return 0;
 }
@@ -22134,7 +22037,7 @@ static int mod_jk_jsonify(VM *vm, Value *args, int n, Value *out)
     Value rv = MK_OBJ(r);
     if (fixa_raiz(vm, rv) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
     SBUF_AUTO b = {0};
-    if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { vm->sp--; REERRO(vm, "TypeError"); }
+    if (json_escreve_ou_erro(vm, &b, &args[0], 0) != 0) { vm->sp--; return -1; }
     /* SBuf sem NUL: entrega por tamanho */
     PSString *cs = nova_string(vm, b.b ? b.b : "null", b.b ? b.n : 4);
     if (!cs) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
@@ -22225,14 +22128,14 @@ static int mod_jk_render(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
-/* ── registrar do decorador (@app.route / .socket / .middleware) ─────────── */
+/* ── registrar do decorador (@app.route / .middleware) ───────────────────── */
 static PSJReg *jk_novo_reg(VM *vm, Value app, int kind)
 {
     PSJReg *r = calloc(1, sizeof(PSJReg));
     if (!r) return NULL;
     r->obj.type = OBJ_JREG; r->obj.marked = 0;
     r->obj.next = vm->objetos; vm->objetos = (Obj *)r;
-    r->app = app; r->kind = kind; r->path = NULL; r->channel = 0;
+    r->app = app; r->kind = kind; r->path = NULL;
     r->metodos = NULL; r->nmetodos = 0; r->auth = NULL; r->nauth = 0;
     r->middleware = MK_NULL();
     r->model = MK_NULL();
@@ -22338,7 +22241,7 @@ static int met_jk_middleware(VM *vm, Value alvo, Value *args, int n, Value *out)
     return 0;
 }
 
-/* $reg.register(handler) — grava a rota/socket/middleware no app */
+/* $reg.register(handler) — grava a rota/middleware no app */
 static int met_jreg_register(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "register", 1);
@@ -22347,20 +22250,6 @@ static int met_jreg_register(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (!j) MERRO(vm, "RuntimeError", "registrar sem app");
     if (r->kind == JREG_MIDDLEWARE) {
         j->mw_handler = args[0];
-        *out = MK_NULL();
-        return 0;
-    }
-    if (r->kind == JREG_SOCKET) {
-        if (j->nsocks == j->cap_socks) {
-            int nc = j->cap_socks ? j->cap_socks * 2 : 4;
-            JkSock *ns = realloc(j->socks, sizeof(JkSock) * (size_t)nc);
-            if (!ns) MERRO(vm, "MemoryError", "sem memoria");
-            j->socks = ns; j->cap_socks = nc;
-        }
-        j->socks[j->nsocks].path = strdup(r->path ? r->path : "/");
-        j->socks[j->nsocks].channel = r->channel;
-        j->socks[j->nsocks].handler = args[0];
-        j->nsocks++;
         *out = MK_NULL();
         return 0;
     }
@@ -22393,160 +22282,6 @@ static int met_jreg_register(VM *vm, Value alvo, Value *args, int n, Value *out)
     return 0;
 }
 
-/* ── app.socket — decorator + emissor ───────────────────────────────────── */
-static int jsockns_call(VM *vm, Value alvo, Value *args, int n, Value *out)
-{
-    PSJSockNs *ns = COMO_JSOCKNS(alvo);
-    /* com path -> registrador de socket; sem path -> emissor */
-    if (n >= 1 && EH_STRING(args[0])) {
-        PSJReg *r = jk_novo_reg(vm, ns->app, JREG_SOCKET);
-        if (!r) MERRO(vm, "MemoryError", "sem memoria");
-        const char *sp = COMO_STRING(args[0])->chars;
-        PSJinker *jj = EH_JINKER(ns->app) ? COMO_JINKER(ns->app) : NULL;
-        if (jj && jj->route_prefix && strcmp(sp, "/") != 0) {
-            size_t a = strlen(jj->route_prefix), b = strlen(sp);
-            r->path = malloc(a + b + 1);
-            if (r->path) { memcpy(r->path, jj->route_prefix, a); memcpy(r->path + a, sp, b + 1); }
-        } else if (jj && jj->route_prefix) {
-            r->path = strdup(jj->route_prefix);
-        } else {
-            r->path = strdup(sp);
-        }
-        r->channel = (n >= 2 && val_truthy(&args[1]));
-        *out = MK_OBJ(r);
-        return 0;
-    }
-    PSJEmit *e = calloc(1, sizeof(PSJEmit));
-    if (!e) MERRO(vm, "MemoryError", "sem memoria");
-    e->obj.type = OBJ_JEMIT; e->obj.marked = 0;
-    e->obj.next = vm->objetos; vm->objetos = (Obj *)e;
-    e->app = ns->app;
-    vm->alocado += sizeof(PSJEmit);
-    *out = MK_OBJ(e);
-    return 0;
-}
-
-/* ── canal: registro de conexões WS e broadcast ─────────────────────────── */
-static void jk_ch_status(VM *vm, PSJinker *j, int sucesso)
-{
-    if (EH_JCHST(j->ch_status)) { COMO_JCHST(j->ch_status)->sucesso = sucesso; return; }
-    PSJChSt *s = calloc(1, sizeof(PSJChSt));
-    if (!s) return;
-    s->obj.type = OBJ_JCHST; s->obj.marked = 0;
-    s->obj.next = vm->objetos; vm->objetos = (Obj *)s;
-    s->sucesso = sucesso;
-    vm->alocado += sizeof(PSJChSt);
-    j->ch_status = MK_OBJ(s);
-}
-
-/* núcleo do emit: manda `payload` (str ou json) pros alvos da sala */
-static int jk_emit_nucleo(VM *vm, PSJinker *j, Value payload, Value room,
-                          struct PSJkConn *excluir, Value *out)
-{
-    if (payload.t == V_NULL || payload.t == V_UNSET) {
-        jk_ch_status(vm, j, 0);
-        *out = j->ch_status;
-        return 0;
-    }
-    /* mensagem: string sai crua; resto vira JSON */
-    char *msg = NULL; size_t nmsg = 0; char *livre = NULL;
-    if (EH_STRING(payload)) { msg = COMO_STRING(payload)->chars; nmsg = (size_t)COMO_STRING(payload)->len; }
-    else {
-        SBUF_AUTO b = {0};
-        if (json_escreve(vm, &b, &payload, 0, 0) != 0) { jk_ch_status(vm, j, 0); *out = j->ch_status; return 0; }
-        if (b.b) {
-            /* posse TRANSFERIDA pra `livre` (liberado no fim da função):
-             * zera b.b pra o cleanup do escopo não dar double-free. */
-            msg = b.b; nmsg = (size_t)b.n; livre = b.b;
-            b.b = NULL; b.n = 0; b.cap = 0;
-        } else {
-            /* antes: `livre = b.b` (NULL) sobrescrevia o strdup e VAZAVA */
-            livre = strdup("null"); msg = livre; nmsg = 4;
-        }
-    }
-    char sala[128] = "";
-    int tem_sala = 0;
-    if (room.t != V_NULL && room.t != V_UNSET) {
-        TXTBUF_AUTO t = {0};
-        valor_para_texto(&t, &room, 0);
-        snprintf(sala, sizeof(sala), "%s", t.b ? t.b : "");
-        tem_sala = 1;
-    }
-    int enviados = 0, alvos = 0;
-    for (int i = 0; i < j->nws; i++) {
-        if (!j->ws[i].canal) continue;             /* só quem entrou no canal */
-        if (tem_sala) {
-            if (!j->ws[i].sala || strcmp(j->ws[i].sala, sala) != 0) continue;
-        }
-        alvos++;
-        if (excluir && j->ws[i].conn == excluir) continue;
-        if (ps_jk_ws_envia_texto(j->ws[i].conn, msg, nmsg) == 0) enviados++;
-    }
-    free(livre);
-    /* Emit que não alcançou ninguém é `Error`, não `Success`. Antes o caso
-     * "nenhum alvo" contava como sucesso, e a armadilha mais comum do jinker —
-     * esquecer o `channel=True` no @app.socket — respondia Success mandando a
-     * mensagem pra lugar nenhum. Em debug, diz também o porquê. */
-    if (j->debug && enviados == 0) {
-        if (alvos == 0 && j->nws > 0)
-            fprintf(stderr, "[jinker-ws] emit sem alvo: %d conexao(oes) aberta(s), "
-                            "nenhuma no canal - falta channel=True no @app.socket\n", j->nws);
-        else if (alvos == 0)
-            fprintf(stderr, "[jinker-ws] emit sem alvo: nenhuma conexao WS aberta\n");
-        else
-            fprintf(stderr, "[jinker-ws] emit alcancou 0 de %d alvo(s): falha no envio\n", alvos);
-        fflush(stderr);
-    }
-    jk_ch_status(vm, j, enviados > 0);
-    *out = j->ch_status;
-    return 0;
-}
-
-/* emit compartilhado por SocketEmitter e SocketNamespace: exclui o remetente
- * por padrão (exclude_self=True) */
-static int met_jsock_emit(VM *vm, Value alvo, Value *args, int n, Value *out)
-{
-    Value app = EH_JEMIT(alvo) ? COMO_JEMIT(alvo)->app
-              : EH_JSOCKNS(alvo) ? COMO_JSOCKNS(alvo)->app : MK_NULL();
-    if (!EH_JINKER(app)) MERRO(vm, "RuntimeError", "emissor sem app");
-    PSJinker *j = COMO_JINKER(app);
-    Value payload = n >= 1 ? args[0] : MK_NULL();
-    Value room = n >= 2 ? args[1] : MK_NULL();
-    int excluir_self = !(n >= 3 && !val_truthy(&args[2]));   /* default true */
-    struct PSJkConn *ex = excluir_self ? j->ws_atual : NULL;
-    return jk_emit_nucleo(vm, j, payload, room, ex, out);
-}
-static int met_jsock_status_send(VM *vm, Value alvo, Value *args, int n, Value *out)
-{
-    (void)args; (void)n;
-    Value app = EH_JEMIT(alvo) ? COMO_JEMIT(alvo)->app
-              : EH_JSOCKNS(alvo) ? COMO_JSOCKNS(alvo)->app : MK_NULL();
-    if (!EH_JINKER(app)) MERRO(vm, "RuntimeError", "emissor sem app");
-    PSJinker *j = COMO_JINKER(app);
-    if (!EH_JCHST(j->ch_status)) jk_ch_status(vm, j, 1);
-    *out = j->ch_status;
-    return 0;
-}
-/* app.channel.emit(payload, room_id=) — sem exclude_self implícito: fora de
- * handler de WS não há remetente, e não há valor da linguagem que nomeie uma
- * conexão a pular (a tabela anunciava `exclude=` que ninguém lia). */
-static int met_jchan_emit(VM *vm, Value alvo, Value *args, int n, Value *out)
-{
-    Value app = COMO_JCHAN(alvo)->app;
-    if (!EH_JINKER(app)) MERRO(vm, "RuntimeError", "channel sem app");
-    Value payload = n >= 1 ? args[0] : MK_NULL();
-    Value room = n >= 2 ? args[1] : MK_NULL();
-    return jk_emit_nucleo(vm, COMO_JINKER(app), payload, room, NULL, out);
-}
-/* app.channel(forAll=) — broadcast */
-static int jchan_call(VM *vm, Value alvo, Value *args, int n, Value *out)
-{
-    Value app = COMO_JCHAN(alvo)->app;
-    if (!EH_JINKER(app)) MERRO(vm, "RuntimeError", "channel sem app");
-    Value payload = n >= 1 ? args[0] : MK_NULL();
-    return jk_emit_nucleo(vm, COMO_JINKER(app), payload, MK_NULL(), NULL, out);
-}
-
 /* ── request proxy: lê a requisição corrente (vm->jk_req) ────────────────── */
 static PSJReq *jk_req_corrente(VM *vm)
 {
@@ -22557,7 +22292,6 @@ static int met_jpx_get_json(VM *vm, Value alvo, Value *args, int n, Value *out)
     (void)alvo; (void)args; (void)n;
     PSJReq *r = jk_req_corrente(vm);
     if (!r) { *out = MK_NULL(); return 0; }
-    if (r->eh_ws) { *out = (r->ws_msg.t == V_UNSET) ? MK_NULL() : r->ws_msg; return 0; }
     if (!EH_BYTES(r->corpo) || COMO_BYTES(r->corpo)->len == 0) { *out = MK_NULL(); return 0; }
     Value um[1] = { r->corpo };
     /* json.parse aceita bytes? passa como string */
@@ -22571,13 +22305,6 @@ static int met_jpx_text(VM *vm, Value alvo, Value *args, int n, Value *out)
     (void)alvo; (void)args; (void)n;
     PSJReq *r = jk_req_corrente(vm);
     if (!r) { *out = MK_NULL(); return 0; }
-    if (r->eh_ws) {
-        if (r->ws_msg.t == V_UNSET) { *out = jk_str_val(vm, ""); return 0; }
-        TXTBUF_AUTO t = {0};
-        valor_para_texto(&t, &r->ws_msg, 0);
-        *out = jk_str_val(vm, t.b ? t.b : "");
-        return 0;
-    }
     *out = jk_str_val(vm, EH_BYTES(r->corpo) ? COMO_BYTES(r->corpo)->chars : "");
     return 0;
 }
@@ -22866,7 +22593,6 @@ static int mod_jk_Jinker(VM *vm, Value *args, int n, Value *out)
     j->nome = strdup(n >= 1 && EH_STRING(args[0]) ? COMO_STRING(args[0])->chars : "main");
     j->static_url = strdup("/");
     j->mw_handler = MK_NULL();
-    j->ch_status = MK_NULL();
     j->cors = MK_NULL();
     j->ip_rate = 100; j->ip_bloq = 1;
     /* oauth (args[1]) — dict opcional */
@@ -22989,8 +22715,8 @@ static int jk_is_local(const char *origin)
     }
     return 0;
 }
-/* `auth`/`nauth` = a lista de origens (a da rota, ou a do `cors(app, ...)`
- * pro WebSocket); `local` = o modo da config do app: 1 (padrão) deixa origem
+/* `auth`/`nauth` = a lista de origens da rota; `local` = o modo da config
+ * do app: 1 (padrão) deixa origem
  * local passar por fora da lista e aceita cliente sem `Origin` (ferramenta,
  * outro backend); 0 (`local=False`) só aceita o que está na lista, e pedido
  * sem `Origin` é recusado. Lista vazia = sem restrição, nos dois modos. */
@@ -23146,8 +22872,6 @@ static PSJReq *jk_monta_req(VM *vm, const PSJkReq *hr, PSDict *params)
     r->path = strdup(hr->path ? hr->path : "/");
     r->headers = MK_NULL(); r->corpo = MK_NULL(); r->query = MK_NULL();
     r->params = params ? MK_OBJ(params) : MK_NULL();
-    r->ws_msg = MK_UNSET();
-    r->eh_ws = 0;
     vm->alocado += sizeof(PSJReq);
     Value rv = MK_OBJ(r);
     if (fixa_raiz(vm, rv) != 0) return r;
@@ -23168,25 +22892,45 @@ static PSJReq *jk_monta_req(VM *vm, const PSJkReq *hr, PSDict *params)
 }
 
 /* ── conversão do retorno do handler numa resposta ──────────────────────── */
+/* A tupla `(corpo, status)` que uma rota ou um middleware devolve, como
+ * resposta: o corpo que já é resposta ganha o status, e o resto vira JSON,
+ * como no `json(corpo, status)`. Uma função só, pra rota e pro middleware. O
+ * status fora da regra do `.status()` e o corpo que não vira JSON são erro
+ * (-1, com a frase em vm->erro): saía o status com o corpo vazio, ou 200
+ * (jinker-6, jinker-12). */
+static int jk_resposta_da_tupla(VM *vm, Value tupla, Value *out)
+{
+    Value body = COMO_LIST(tupla)->itens[0];
+    int code;
+    if (jk_status_de(vm, COMO_LIST(tupla)->itens[1], "(corpo, status)", &code) != 0) return -1;
+    if (EH_JRESP(body)) { COMO_JRESP(body)->status = code; *out = body; return 0; }
+    PSJResp *r = jk_novo_resp(vm);
+    if (!r) MERRO(vm, "MemoryError", "sem memoria");
+    Value rv = MK_OBJ(r);
+    if (fixa_raiz(vm, rv) != 0) MERRO(vm, "RecursionError", "maximum recursion depth exceeded");
+    Value a[2] = { body, MK_INT(code) };
+    Value ign;
+    int rc = met_jresp_json(vm, rv, a, 2, &ign);
+    vm->sp--;
+    if (rc != 0) return -1;
+    *out = rv;
+    return 0;
+}
+
 /* Preenche status/ctype/corpo(+n). O corpo aponta pra memória viva (string ou
- * bytes do Value) — o chamador escreve antes de qualquer GC. */
-static void jk_converte_retorno(VM *vm, Value res, int *status, const char **ctype,
-                                const char **corpo, size_t *ncorpo, Value *guarda,
-                                Value **extra_headers, Value **cookies)
+ * bytes do Value) — o chamador escreve antes de qualquer GC. Devolve 0, ou -1
+ * com o erro em vm->erro: o retorno que não vira resposta (o dict ou a lista
+ * que não vira JSON, a tupla fora da regra) segue o caminho de uma exceção no
+ * handler, 500 com a frase no terminal, como no Flask. Saía 200 com o corpo
+ * vazio, calado (jinker-6). */
+static int jk_converte_retorno(VM *vm, Value res, int *status, const char **ctype,
+                               const char **corpo, size_t *ncorpo, Value *guarda,
+                               Value **extra_headers, Value **cookies)
 {
     *extra_headers = NULL;
     *cookies = NULL;
-    /* tupla (body, status) */
-    if (EH_TUPLA(res) && COMO_LIST(res)->len == 2) {
-        Value body = COMO_LIST(res)->itens[0];
-        Value st = COMO_LIST(res)->itens[1];
-        int code = st.t == V_INT ? (int)st.as.i : 200;
-        if (EH_JRESP(body)) { COMO_JRESP(body)->status = code; res = body; }
-        else {
-            PSJResp *r = jk_novo_resp(vm);
-            if (r) { Value a[2] = { body, MK_INT(code) }; Value o2; met_jresp_json(vm, MK_OBJ(r), a, 2, &o2); res = MK_OBJ(r); }
-        }
-    }
+    if (EH_TUPLA(res) && COMO_LIST(res)->len == 2 && jk_resposta_da_tupla(vm, res, &res) != 0)
+        return -1;
     if (EH_JRESP(res)) {
         PSJResp *r = COMO_JRESP(res);
         *status = r->status;
@@ -23197,25 +22941,27 @@ static void jk_converte_retorno(VM *vm, Value res, int *status, const char **cty
         else { *corpo = ""; *ncorpo = 0; }
         if (EH_DICT(r->headers)) *extra_headers = &r->headers;
         if (EH_SEQ(r->cookies)) *cookies = &r->cookies;
-        return;
+        return 0;
     }
     if (EH_DICT(res) || EH_SEQ(res)) {
         SBUF_AUTO b = {0};
-        if (json_escreve(vm, &b, &res, 0, 0) == 0) {
-            PSString *s = nova_string(vm, b.b ? b.b : "null", b.b ? b.n : 4);
-            if (s) { *guarda = MK_OBJ(s); *corpo = s->chars; *ncorpo = (size_t)s->len; }
-        }
+        if (json_escreve_ou_erro(vm, &b, &res, 0) != 0) return -1;
+        PSString *s = nova_string(vm, b.b ? b.b : "null", b.b ? b.n : 4);
+        if (!s) MERRO(vm, "MemoryError", "sem memoria");
+        *guarda = MK_OBJ(s); *corpo = s->chars; *ncorpo = (size_t)s->len;
         *status = 200;
         *ctype = "application/json; charset=utf-8";
-        return;
+        return 0;
     }
     /* str / outro -> texto */
     TXTBUF_AUTO t = {0};
-    valor_para_texto(&t, &res, 0);
+    if (valor_para_texto(&t, &res, 0) != 0) MERRO(vm, "MemoryError", "sem memoria");
     PSString *s = nova_string(vm, t.b ? t.b : "", t.b ? t.n : 0);
-    if (s) { *guarda = MK_OBJ(s); *corpo = s->chars; *ncorpo = (size_t)s->len; }
+    if (!s) MERRO(vm, "MemoryError", "sem memoria");
+    *guarda = MK_OBJ(s); *corpo = s->chars; *ncorpo = (size_t)s->len;
     *status = 200;
     *ctype = "text/plain; charset=utf-8";
+    return 0;
 }
 
 /* ── loop do servidor HTTP ──────────────────────────────────────────────── */
@@ -23492,226 +23238,8 @@ static int jk_chama_handler(VM *vm, Value handler, PSJReq *req, Value *ret)
     return rc;
 }
 
-/* ── WebSocket: adiciona/remove conexão do canal ────────────────────────── */
-/* Registra uma conexão WS ativa (canal ou não — todas entram no poll; só as de
- * canal participam do broadcast). Guarda os path params num dict próprio. */
-static void jk_ws_add(VM *vm, PSJinker *j, struct PSJkConn *conn, int idx_sock,
-                      int canal, const char *sala, Value params)
-{
-    if (j->nws == j->cap_ws) {
-        int nc = j->cap_ws ? j->cap_ws * 2 : 8;
-        JkWsAtiva *nw = realloc(j->ws, sizeof(JkWsAtiva) * (size_t)nc);
-        if (!nw) return;
-        j->ws = nw; j->cap_ws = nc;
-    }
-    int k = j->nws;
-    j->ws[k].conn = conn;
-    j->ws[k].sala = sala ? strdup(sala) : NULL;
-    j->ws[k].idx_sock = idx_sock;
-    j->ws[k].canal = canal;
-    j->ws[k].params = params;
-    EpWs *w = malloc(sizeof(EpWs));
-    j->ws[k].epw = w;
-    /* A entrada vem de um vetor realocado, não de calloc: sem zerar estes
-     * dois, o `fib` nascia com lixo, toda mensagem era tomada por "já tem
-     * fibra atendendo" e o handler nunca rodava. */
-    j->ws[k].fib = NULL; j->ws[k].morrendo = 0;
-    if (w) {
-        w->tipo = EPW_WS; w->conn = conn;
-        if (g_jk_epfd >= 0) ps_ev_poe(g_jk_epfd, ps_jk_fd(conn), w, 1);
-    }
-    j->nws++;
-    (void)vm;
-}
-static void jk_ws_del(PSJinker *j, int i)
-{
-    /* Fibra atendendo esta conexão agora: fechar aqui deixaria ela acordar com
-     * o `PSJkConn` liberado. Marca e sai — quem fecha é o fim da fibra. */
-    if (j->ws[i].fib) { j->ws[i].morrendo = 1; return; }
-    if (g_jk_epfd >= 0) ps_ev_tira(g_jk_epfd, ps_jk_fd(j->ws[i].conn));
-    /* marca e adia: o lote de eventos desta volta ainda pode apontar pra cá */
-    if (j->ws[i].epw) { ((EpWs *)j->ws[i].epw)->tipo = EPW_MORTO; ep_morre(j->ws[i].epw); }
-    ps_jk_close(j->ws[i].conn);
-    free(j->ws[i].sala);
-    j->ws[i] = j->ws[--j->nws];
-}
-
-/* Índice da conexão no vetor de ativas. -1 se ela já saiu. Tem que ser
- * procurado DE NOVO depois de cada cedência: o vetor compacta quando outra
- * conexão morre, e o índice de antes passa a apontar pra outra. */
-static int jk_ws_idx(PSJinker *j, struct PSJkConn *c)
-{
-    for (int i = 0; i < j->nws; i++) if (j->ws[i].conn == c) return i;
-    return -1;
-}
-
-/* Liga/desliga o EPOLLIN da conexão WS. Enquanto a fibra atende uma mensagem,
- * o fd fica DESARMADO: senão o próximo frame dispara o epoll de novo e nasce
- * uma segunda fibra na mesma conexão — duas mensagens da mesma conexão
- * rodando ao mesmo tempo, fora de ordem. */
-static void jk_ws_arma(PSJinker *j, int i, int on)
-{
-    if (g_jk_epfd < 0 || i < 0 || i >= j->nws || !j->ws[i].epw) return;
-    ps_ev_arma(g_jk_epfd, ps_jk_fd(j->ws[i].conn), j->ws[i].epw, on);
-}
-
-/* Aceita uma conexão WS: handshake, casa a rota, calcula a sala e registra.
- * Não bloqueia no loop de mensagens — isso é o event loop quem faz. */
-static void jk_ws_aceita(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr)
-{
-    int idx = -1;
-    PSDict *params = novo_dict(vm, 2);
-    Value pv = params ? MK_OBJ(params) : MK_NULL();
-    if (params && fixa_raiz(vm, pv) != 0) { ps_jk_close(c); return; }
-    for (int i = 0; i < j->nsocks; i++) {
-        if (params) dict_limpa(params);
-        if (jk_casa(vm, j->socks[i].path, hr->path, params)) { idx = i; break; }
-    }
-    if (idx < 0) {
-        if (params) vm->sp--;
-        /* Recusa de handshake é resposta HTTP (RFC 6455 §4.2.2), com a mesma
-         * frase do 404 do HTTP. Saía um frame de close WS (`88 16 03 f0 …`)
-         * numa conexão que nunca foi promovida — o cliente lia lixo sem linha
-         * de status. */
-        char m404[700];
-        snprintf(m404, sizeof(m404), "rota não encontrada: %s %s", hr->metodo, hr->path ? hr->path : "");
-        jk_erro_json(c, 404, m404, 0, "*");
-        ps_jk_close(c);
-        return;
-    }
-    /* Origem: a MESMA regra do HTTP, no handshake. A lista é a de
-     * `cors(app, origins=[...])` (o socket não tem `auth=`), lida na hora do
-     * pedido; sem `cors()`, sem restrição. A lista só valia nas rotas —
-     * qualquer site abria o WebSocket. A recusa é HTTP 403 (RFC 6455 §4.2.2),
-     * sem `Access-Control-Allow-Origin`. */
-    {
-        Value cfgv = jk_cors_do_app(vm, MK_OBJ(j));
-        PSJCors *cfg = EH_JCORS(cfgv) ? COMO_JCORS(cfgv) : NULL;
-        const char *origin = ps_jk_header(hr, "Origin");
-        if (!origin) origin = ps_jk_header(hr, "Referer");
-        if (!origin) origin = "";
-        if (cfg && !jk_origem_ok(cfg->origens, cfg->norigens, cfg->local, origin,
-                                 ps_jk_header(hr, "Sec-Fetch-Site"))) {
-            if (params) vm->sp--;
-            char m403[700];
-            snprintf(m403, sizeof(m403), "Origem não autorizada: %s", origin[0] ? origin : "(sem origin)");
-            jk_erro_json(c, 403, m403, 0, NULL);
-            ps_jk_close(c);
-            if (j->debug) { printf("[jinker-ws] origem recusada: %s (%s)\n", hr->path, origin[0] ? origin : "sem origin"); fflush(stdout); }
-            return;
-        }
-    }
-    if (ps_jk_ws_handshake(c, hr) != 0) { if (params) vm->sp--; ps_jk_close(c); return; }
-
-    /* sala automática = valor do parâmetro dinâmico (1 = o valor; N = k=v|...) */
-    char sala[256] = ""; int tem = 0;
-    if (params && params->count == 1) {
-        for (int i = 0; i < params->usados; i++)
-            if (params->entradas[i].estado == 1 && EH_STRING(params->entradas[i].valor)) {
-                snprintf(sala, sizeof(sala), "%s", COMO_STRING(params->entradas[i].valor)->chars);
-                tem = 1; break;
-            }
-    } else if (params && params->count > 1) {
-        int w = 0;
-        for (int i = 0; i < params->usados && w < (int)sizeof(sala)-1; i++) {
-            if (params->entradas[i].estado != 1) continue;
-            if (w) sala[w++] = '|';
-            w += snprintf(sala + w, sizeof(sala) - w, "%s=%s",
-                          EH_STRING(params->entradas[i].chave) ? COMO_STRING(params->entradas[i].chave)->chars : "",
-                          EH_STRING(params->entradas[i].valor) ? COMO_STRING(params->entradas[i].valor)->chars : "");
-        }
-        tem = 1;
-    }
-
-    jk_ws_add(vm, j, c, idx, j->socks[idx].channel, tem ? sala : NULL, pv);
-    if (params) vm->sp--;
-    if (j->debug) { printf("[jinker-ws] cliente conectou: %s (%d total)\n", hr->path, j->nws); fflush(stdout); }
-}
-
-/* Lê o frame numa THREAD (pelo fib_offload): só dados C viajam. Sem isto o
- * cliente que demora a mandar o frame segura a fibra — e, antes das fibras,
- * segurava o worker inteiro. */
-typedef struct { struct PSJkConn *c; char *raw; size_t nraw; int fr; } WsFrameOff;
-static void ws_frame_off(void *v)
-{
-    WsFrameOff *o = (WsFrameOff *)v;
-    o->fr = ps_jk_ws_le_frame(o->c, &o->raw, &o->nraw);
-}
-
-/* O mesmo, pro handshake: ler as linhas da requisição numa thread. */
-typedef struct { struct PSJkConn *c; PSJkReq *hr; int rc; } WsReqOff;
-static void ws_req_off(void *v)
-{
-    WsReqOff *o = (WsReqOff *)v;
-    o->rc = ps_jk_le_request(o->c, o->hr);
-}
-
-/* Processa UMA mensagem da conexão WS de índice `i`. Devolve 0 quando a
- * conexão caiu/fechou (quem remove é o fim da fibra), 1 se seguiu viva.
- *
- * Roda DENTRO de uma fibra (`FIB_WS`): o handler pode dormir, consultar banco
- * ou chamar `request` que o servidor continua atendendo o resto. */
-static int jk_ws_processa(VM *vm, PSJinker *j, int i)
-{
-    struct PSJkConn *c = j->ws[i].conn;
-    int idx = j->ws[i].idx_sock;
-    Value pv = j->ws[i].params;
-    WsFrameOff fo; fo.c = c; fo.raw = NULL; fo.nraw = 0; fo.fr = 0;
-    fib_offload(vm, ws_frame_off, &fo);
-    char *raw = fo.raw; size_t nraw = fo.nraw;
-    (void)nraw;
-    if (fo.fr != 0) {
-        free(raw);
-        if (j->debug) { printf("[jinker-ws] cliente desconectou (%d total)\n", j->nws - 1); fflush(stdout); }
-        return 0;
-    }
-    /* a cedência acima pode ter mexido no vetor: reacha a entrada */
-    i = jk_ws_idx(j, c);
-    if (i < 0) { free(raw); return 0; }
-    pv = j->ws[i].params;
-    PSJReq *req = calloc(1, sizeof(PSJReq));
-    if (!req) { free(raw); return 1; }
-    req->obj.type = OBJ_JREQ; req->obj.marked = 0;
-    req->obj.next = vm->objetos; vm->objetos = (Obj *)req;
-    snprintf(req->metodo, sizeof(req->metodo), "WS");
-    req->path = strdup(j->socks[idx].path);
-    req->headers = MK_NULL(); req->corpo = MK_NULL(); req->query = MK_NULL();
-    req->params = pv; req->eh_ws = 1; req->ws_msg = MK_UNSET();
-    vm->alocado += sizeof(PSJReq);
-    Value rv = MK_OBJ(req);
-    if (fixa_raiz(vm, rv) != 0) { free(raw); return 1; }
-    Value sv = jk_str_val(vm, raw);
-    Value parsed;
-    Value um[1] = { sv };
-    if (mod_json_parse(vm, um, 1, &parsed) == 0) req->ws_msg = parsed;
-    else { vm->erro[0]='\0'; vm->erro_tipo[0]='\0'; req->ws_msg = sv; }
-    free(raw);
-
-    j->ws_atual = c;
-    Value ret;
-    if (jk_chama_handler(vm, j->socks[idx].handler, req, &ret) != 0) {
-        if (j->debug) fprintf(stderr, "[jinker-ws] erro no handler: %s\n", vm->erro);
-        vm->erro[0]='\0'; vm->erro_tipo[0]='\0';
-    } else if (ret.t != V_NULL && ret.t != V_UNSET) {
-        /* o que o handler DEVOLVE volta pro remetente daquela mensagem. Antes
-         * o retorno era descartado, e num socket sem canal não havia jeito
-         * nenhum de responder a quem mandou (o emit só alcança quem tem
-         * channel=True). String sai crua; o resto vira JSON, como no emit. */
-        if (EH_STRING(ret)) {
-            ps_jk_ws_envia_texto(c, COMO_STRING(ret)->chars, (size_t)COMO_STRING(ret)->len);
-        } else {
-            SBUF_AUTO rb = {0};
-            if (json_escreve(vm, &rb, &ret, 0, 0) == 0 && rb.b)
-                ps_jk_ws_envia_texto(c, rb.b, rb.n);
-        }
-    }
-    j->ws_atual = NULL;
-    vm->sp--;
-    return 1;
-}
-
 /* Atende UMA requisição HTTP. Devolve 1 pra manter keep-alive, 0 pra fechar
- * (erro, WS que terminou, ou Connection: close). */
+ * (erro ou Connection: close). */
 static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, const char *ip)
 {
     /* PoolIp */
@@ -23733,10 +23261,6 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
             return hr->keep_alive;
         }
     }
-
-    /* WebSocket só é atendido no socket de port+1 (igual ao wrapper): um
-     * Upgrade chegando na porta HTTP é fechado sem virar WS. */
-    if (hr->eh_ws) return 0;
 
     const char *origin = ps_jk_header(hr, "Origin");
     if (!origin) origin = ps_jk_header(hr, "Referer");
@@ -23997,6 +23521,12 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
          * parâmetro — dava "argumentos demais" e o erro morria aqui, calado. */
         Value mret;
         int chamou = (jk_chama_handler(vm, mw, req, &mret) == 0);
+        /* a doc promete `return jsonify(...), 401`: a tupla (corpo, status)
+         * barra igual à de uma rota, pela mesma função; a que não vira
+         * resposta é erro do middleware (jinker-6) */
+        if (chamou && EH_TUPLA(mret) && COMO_LIST(mret)->len == 2
+            && jk_resposta_da_tupla(vm, mret, &mret) != 0)
+            chamou = 0;
         if (!chamou) {
             /* Middleware que ERRA não deixa a requisição passar: é a checagem
              * de acesso da rota. Antes o erro só aparecia com `debug` e o
@@ -24008,23 +23538,7 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
             jk_erro_json(c, 500, "Erro interno do servidor", hr->keep_alive, "*");
             return hr->keep_alive;
         }
-        /* a doc promete `return jsonify(...), 401`: a tupla (corpo, status)
-         * barra igual à de uma rota. */
-        if (chamou && EH_TUPLA(mret) && COMO_LIST(mret)->len == 2) {
-            Value body = COMO_LIST(mret)->itens[0];
-            Value st   = COMO_LIST(mret)->itens[1];
-            int code = st.t == V_INT ? (int)st.as.i : 200;
-            if (EH_JRESP(body)) { COMO_JRESP(body)->status = code; mret = body; }
-            else {
-                PSJResp *rr = jk_novo_resp(vm);
-                if (rr) {
-                    Value a[2] = { body, MK_INT(code) }; Value o2;
-                    met_jresp_json(vm, MK_OBJ(rr), a, 2, &o2);
-                    mret = MK_OBJ(rr);
-                }
-            }
-        }
-        if (chamou && EH_JRESP(mret)) {
+        if (EH_JRESP(mret)) {
             PSJResp *r = COMO_JRESP(mret);
             const char *corpo = EH_STRING(r->corpo) ? COMO_STRING(r->corpo)->chars
                               : EH_BYTES(r->corpo) ? COMO_BYTES(r->corpo)->chars : "";
@@ -24077,17 +23591,10 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
     /* chama o handler */
     Value ret;
     int rc = jk_chama_handler(vm, rota->handler, req, &ret);
-    if (rc != 0) {
-        fprintf(stderr, "[jinker] erro no handler %s: %s\n", rota->path, vm->erro);
-        vm->erro[0] = '\0'; vm->erro_tipo[0] = '\0';
-        vm->sp--;
-        jk_erro_json(c, 500, "Erro interno do servidor", hr->keep_alive, "*");
-        return hr->keep_alive;
-    }
     /* Handler que devolve Null = sucesso SEM CORPO -> 204, que é o que a doc
      * promete e o que o HTTP quer dizer. Antes saía 400 "Requisição inválida",
      * que culpa o CLIENTE por algo que foi decisão do handler. */
-    if (ret.t == V_NULL || ret.t == V_UNSET) {
+    if (rc == 0 && (ret.t == V_NULL || ret.t == V_UNSET)) {
         vm->sp--;
         char extra204[600];
         snprintf(extra204, sizeof(extra204), "Access-Control-Allow-Origin: %s\r\n", acao);
@@ -24095,10 +23602,18 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
         return hr->keep_alive;
     }
 
+    /* o erro do handler e o retorno que não vira resposta saem do mesmo
+     * jeito: a frase no terminal e 500 */
     int status; const char *ctype = "text/plain; charset=utf-8";
     const char *corpo = ""; size_t ncorpo = 0;
     Value guarda = MK_NULL(); Value *extra_h = NULL; Value *cookies = NULL;
-    jk_converte_retorno(vm, ret, &status, &ctype, &corpo, &ncorpo, &guarda, &extra_h, &cookies);
+    if (rc != 0 || jk_converte_retorno(vm, ret, &status, &ctype, &corpo, &ncorpo, &guarda, &extra_h, &cookies) != 0) {
+        fprintf(stderr, "[jinker] erro no handler %s: %s\n", rota->path, vm->erro);
+        vm->erro[0] = '\0'; vm->erro_tipo[0] = '\0';
+        vm->sp--;
+        jk_erro_json(c, 500, "Erro interno do servidor", hr->keep_alive, "*");
+        return hr->keep_alive;
+    }
     (void)guarda;
 
     /* método join pros headers */
@@ -24212,12 +23727,8 @@ static void fib_pilha_solta(void *p)
 }
 
 typedef enum { FIB_LIVRE = 0, FIB_SUSPENSA, FIB_PRONTA } FibStatus;
-/* O que a fibra roda. `FIB_WS` nasceu porque o handler de socket era chamado
- * DIRETO do laço do worker: sem fibra, `sleep`, banco, `request` e processo
- * caem no caminho que NÃO cede, e o servidor inteiro parava enquanto um
- * handler de WebSocket trabalhava (medido: 3,4 s numa rota que responde em
- * 0,7 ms durante uma rota lenta). */
-enum { FIB_HTTP = 0, FIB_ASYNC = 1, FIB_WS = 2 };
+/* O que a fibra roda: o handler de uma requisição HTTP, ou uma `async funct`. */
+enum { FIB_HTTP = 0, FIB_ASYNC = 1 };
 
 typedef struct Fiber {
     PS_CTX ctx;                   /* contexto do C desta fibra */
@@ -24251,14 +23762,6 @@ typedef struct Fiber {
     /* trabalho: servir uma requisição HTTP nesta conexão */
     PSJinker  *j;
     struct PSJkConn *conn;
-    /* WebSocket: 0 = fazer o handshake desta conexão; 1 = atender uma
-     * mensagem dela. `ws_atual` é o remetente corrente DESTA fibra (o que o
-     * `emit(exclude_self=True)` exclui) e `ws_salvo` guarda o de quem foi
-     * interrompido — era um campo só no Jinker, e com duas fibras intercaladas
-     * o emit excluía a conexão errada. */
-    int        ws_fase;
-    struct PSJkConn *ws_atual;
-    struct PSJkConn *ws_salvo;
     char       ip[64];
     PSJkReq    hr;                /* a requisição é DONA da fibra (vive além do yield) */
     int        leu;              /* 1 = a requisição foi lida com sucesso */
@@ -24519,32 +24022,6 @@ static void fib_trampolim(void)
         ps_ctx_swap(&f->ctx, fib_volta_ctx(vm, f));
         return;
     }
-    if (f->kind == FIB_WS) {
-        if (f->ws_fase == 0) {
-            /* handshake: a leitura vai pra thread. Antes ela acontecia no laço
-             * do worker, e um cliente que abrisse a conexão sem mandar as
-             * linhas segurava o servidor por até 30 s (SO_RCVTIMEO). */
-            WsReqOff ro; ro.c = f->conn; ro.hr = &f->hr; ro.rc = 0;
-            fib_offload(vm, ws_req_off, &ro);
-            if (ro.rc == PSJK_OK) {
-                jk_ws_aceita(vm, f->j, f->conn, &f->hr);
-                ps_jk_req_solta(&f->hr);
-            } else {
-                if (ro.rc == PSJK_MALFORM)
-                    ps_jk_responde(f->conn, 400, "text/plain", "requisicao malformada\n", 22, NULL, 0);
-                else if (ro.rc == PSJK_NAOIMPL)
-                    ps_jk_responde(f->conn, 501, "text/plain", "Transfer-Encoding nao suportado\n", 32, NULL, 0);
-                ps_jk_close(f->conn);
-            }
-            f->rc = 1;
-        } else {
-            int i = jk_ws_idx(f->j, f->conn);
-            f->rc = (i >= 0) ? jk_ws_processa(vm, f->j, i) : 0;
-        }
-        f->status = FIB_PRONTA;
-        ps_ctx_swap(&f->ctx, fib_volta_ctx(vm, f));
-        return;
-    }
     int lido = ps_jk_le_request(f->conn, &f->hr);
     if (lido != PSJK_OK) {
         /* Requisição TORTA tem que ser recusada com resposta, não com silêncio:
@@ -24567,7 +24044,7 @@ static void fib_trampolim(void)
     ps_ctx_swap(&f->ctx, fib_volta_ctx(vm, f));   /* volta pro poll loop; não retorna */
 }
 
-/* A fibra corrente atende uma rota do jinker (HTTP ou WebSocket)? */
+/* A fibra corrente atende uma rota do jinker? */
 static int fib_e_de_rota(VM *vm)
 {
     return vm->fib_atual && vm->fib_atual->kind != FIB_ASYNC;
@@ -24586,20 +24063,8 @@ static Fiber *fib_pega(VM *vm, PSJinker *j, struct PSJkConn *c, const char *ip)
     f->sp = 0; f->locals_top = 0; f->frame_topo = 0; f->jk_req = MK_NULL();
     f->j = j; f->conn = c; snprintf(f->ip, sizeof(f->ip), "%s", ip);
     f->leu = 0; f->rc = 0; f->keep_alive = 0; f->tem_timer = 0; f->wait_fd = -1; f->wait_fut = NULL;
-    f->ws_fase = 0; f->ws_atual = NULL; f->ws_salvo = NULL;
     f->ger.ativo = 0; f->volta = NULL;   /* sem gerador no meio: o resto não vale */
     ps_ctx_make(&f->ctx, f->cstack, FIB_CSTACK, fib_trampolim);
-    return f;
-}
-
-/* Uma fibra pra atender o WebSocket: `fase` 0 = fazer o handshake da conexão
- * recém-aceita, 1 = atender uma mensagem de uma conexão já ativa. */
-static Fiber *fib_pega_ws(VM *vm, PSJinker *j, struct PSJkConn *c, int fase)
-{
-    Fiber *f = fib_pega(vm, j, c, "");
-    if (!f) return NULL;
-    f->kind = FIB_WS;
-    f->ws_fase = fase;
     return f;
 }
 
@@ -24661,7 +24126,7 @@ static PSFuturo *fib_pega_async(VM *vm, const Alvo *a, const Value *pos, int npo
     /* O slot vem do pool e pode ter servido um handler antes: sem zerar, o
      * `j` de outra conexão sobreviveria aqui e a troca de contexto leria
      * ponteiro morto. */
-    f->j = NULL; f->ws_fase = 0; f->ws_atual = NULL; f->ws_salvo = NULL;
+    f->j = NULL;
     f->ger.ativo = 0; f->volta = NULL;   /* sem gerador no meio: o resto não vale */
     f->a_alvo = *a;
     f->a_pos = tpos; f->a_kwn = tkwn; f->a_kwv = tkwv;
@@ -24698,8 +24163,6 @@ static inline __attribute__((always_inline)) void fib_resume_de(VM *vm, Fiber *f
     if (ger_quem) ger_transp_guarda(vm, quem ? &quem->ger : &vm->m_ger);
     fib_poe(vm, f);
     if (f->ger.ativo) ger_transp_poe(vm, &f->ger); else vm->ger_ativo = 0;
-    /* o remetente corrente é POR FIBRA (ver o campo `ws_atual`) */
-    if (f->j) { f->ws_salvo = f->j->ws_atual; f->j->ws_atual = f->ws_atual; }
     f->volta = quem;
     /* A pilha TROCA junto com o contexto, então a referência da medição de
      * folga tem que trocar também. Sem isto, depois que a primeira fibra roda,
@@ -24718,7 +24181,6 @@ static inline __attribute__((always_inline)) void fib_resume_de(VM *vm, Fiber *f
     ps_pilha_repoe(base_fora, tam_fora);
     fib_guarda(vm, f);
     if (vm->ger_ativo) ger_transp_guarda(vm, &f->ger); else f->ger.ativo = 0;
-    if (f->j) { f->ws_atual = f->j->ws_atual; f->j->ws_atual = f->ws_salvo; }
     if (quem) fib_poe(vm, quem); else main_poe(vm);
     if (ger_quem) ger_transp_poe(vm, quem ? &quem->ger : &vm->m_ger); else vm->ger_ativo = 0;
     /* a tarefa terminou num `sys.exit`: o fim do programa, na pilha
@@ -25100,9 +24562,8 @@ static void fib_marca_gc(VM *vm)
  * keep-alive ociosas o throughput despenca (medido: 4300->213 rps com 8k
  * ociosas). O epoll registra o fd UMA vez e só devolve os PRONTOS -> conexão
  * ociosa não custa nada. É a mesma peça que o libuv/Node usa.
- * (os tipos EpWs, EPW_ e g_jk_epfd ficam mais acima, antes de jk_ws_add.) */
+ * (os tipos EPW_ e g_jk_epfd ficam mais acima, junto das estruturas da jinker.) */
 static int g_ep_lhttp = EPW_LHTTP;          /* watcher do listen HTTP (só o tipo importa) */
-static int g_ep_lws   = EPW_LWS;            /* watcher do listen WS */
 
 typedef struct HttpConn {
     int    tipo;             /* EPW_HTTP — PRIMEIRO campo: dispatch por data.ptr */
@@ -25119,7 +24580,7 @@ typedef struct {
     int epfd;
     PSJinker *j;
     void *ssl_ctx;
-    int fd, fd_ws;
+    int fd;
     HttpConn **conns; int nconns, cap_conns;   /* TODAS as conns HTTP (sweep de ocioso) */
     HttpConn **fila;  int nfila,  cap_fila;    /* conns esperando fibra (pool cheio) */
 } SrvLoop;
@@ -25186,69 +24647,6 @@ static void http_pos_fibra(SrvLoop *s, HttpConn *h, Fiber *f)
     http_arma(s, h, 1);
 }
 
-/* depois de rodar/retomar a fibra de um WebSocket: se ela terminou, fecha a
- * conexão (frame de fim, erro, ou remoção adiada) ou re-arma o fd pra próxima
- * mensagem; se cedeu, segue ocupada. */
-static void ws_serve(VM *vm, PSJinker *j, struct PSJkConn *c, int fase);
-
-/* depois de rodar/retomar a fibra de um WebSocket: se ela terminou, fecha a
- * conexão (frame de fim, erro, ou remoção adiada) ou re-arma o fd pra próxima
- * mensagem; se cedeu, segue ocupada. */
-static void ws_pos_fibra(VM *vm, PSJinker *j, Fiber *f)
-{
-    if (f->status != FIB_PRONTA) return;      /* cedeu: segue ocupada */
-    struct PSJkConn *c = f->conn;
-    int i = jk_ws_idx(j, c);
-    if (i >= 0) {
-        j->ws[i].fib = NULL;
-        if (!f->rc || j->ws[i].morrendo) {
-            j->ws[i].morrendo = 0;
-            jk_ws_del(j, i);
-            c = NULL;
-        } else {
-            jk_ws_arma(j, i, 1);
-        }
-    } else {
-        c = NULL;
-    }
-    fib_libera(f);
-    /* O que já está no BUFFER não dispara o epoll de novo (nível): handshake e
-     * primeiro frame chegam no mesmo pacote, o leitor da requisição buferiza o
-     * que passou do cabeçalho, e a mensagem ficaria parada pra sempre —
-     * medido: o cliente conectava, mandava, e o handler nunca rodava. É o
-     * mesmo caso do pipelining do HTTP (`ps_jk_conn_pendente`). */
-    if (c && ps_jk_conn_pendente(c)) ws_serve(vm, j, c, 1);
-}
-
-/* Atende o WebSocket `c` numa fibra: `fase` 0 = handshake da conexão aceita,
- * 1 = uma mensagem de conexão já ativa. Enquanto sobrar dado no buffer, serve
- * de novo — o epoll não avisa do que já saiu do socket. */
-static void ws_serve(VM *vm, PSJinker *j, struct PSJkConn *c, int fase)
-{
-    for (;;) {
-        if (fase == 1) {
-            int i = jk_ws_idx(j, c);
-            if (i < 0 || j->ws[i].fib) return;
-            Fiber *f = fib_pega_ws(vm, j, c, 1);
-            if (!f) return;            /* pool cheio: o fd fica armado, tenta depois */
-            /* desarma enquanto a fibra atende: o próximo frame espera a vez e
-             * a ordem da conexão fica de pé */
-            j->ws[i].fib = f;
-            jk_ws_arma(j, i, 0);
-            fib_resume(vm, f);
-            if (f->status != FIB_PRONTA) return;    /* cedeu: o escalonador segue */
-            ws_pos_fibra(vm, j, f);
-            return;                    /* o pos_fibra já reatende o que sobrou */
-        }
-        Fiber *f = fib_pega_ws(vm, j, c, 0);
-        if (!f) { ps_jk_close(c); return; }
-        fib_resume(vm, f);
-        if (f->status != FIB_PRONTA) return;
-        ws_pos_fibra(vm, j, f);
-        return;
-    }
-}
-
 /* serve UMA requisição de `h` numa fibra. Pool cheio -> enfileira (back-pressure). */
 static void http_serve(VM *vm, SrvLoop *s, HttpConn *h)
 {
@@ -25280,10 +24678,19 @@ static void http_drena_fila(VM *vm, SrvLoop *s)
 static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     PSJinker *j = COMO_JINKER(alvo);
-    /* params: debug, host, port, reload, workers (mesma ordem de jk_obj_callable) */
-    j->debug = (n >= 1 && val_truthy(&args[0]));
+    /* debug, host, port, reload, workers: o tipo de cada um já vem conferido
+     * pela linha do `app` em JK_CHAMAVEIS; aqui, a faixa. A porta tem 16
+     * bits, como no `sockets`: 70000 escutava na 4464 e o terminal dizia
+     * 70000 (jinker-14). `workers` acima de 256 virava 256, calado. */
+    int64_t porta64 = 2000, workers64 = 1;
+    if (n >= 3 && args[2].t != V_UNSET) arg_inteiro(args[2], &porta64);
+    if (porta64 < 0 || porta64 > 65535) MERRO(vm, "OverflowError", "app(): port must be 0-65535");
+    if (n >= 5 && args[4].t != V_UNSET) arg_inteiro(args[4], &workers64);
+    if (workers64 < 1 || workers64 > 256)
+        MERRO(vm, "ValueError", "app(): workers fora da faixa 1..256: %lld", (long long)workers64);
+    j->debug = (n >= 1 && args[0].t == V_BOOL && args[0].as.b);
     const char *host = (n >= 2 && EH_STRING(args[1])) ? COMO_STRING(args[1])->chars : "127.0.0.1";
-    int porta = (n >= 3 && args[2].t == V_INT) ? (int)args[2].as.i : 2000;
+    int porta = (int)porta64;
 
     /* TLS */
     void *ssl_ctx = NULL;
@@ -25344,19 +24751,14 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (fd < 0) { if (ssl_ctx) ps_jk_tls_ctx_solta(ssl_ctx); BERRO(vm, "NetworkError", "%s", erro); }
     /* Multi-processo (prefork): workers>1 forka N processos que dividem o
      * socket HTTP (o kernel balanceia o accept()). Cada worker tem a PRÓPRIA
-     * VM (o fork copia tudo) — sem thread, sem GC concorrente, sem corrida. O
-     * WebSocket roda só no worker 0 (rooms/broadcast num processo só, corretos;
-     * espalhar WS entre processos exigiria backplane, fora de escopo). */
-    int workers = (n >= 5 && args[4].t == V_INT) ? (int)args[4].as.i : 1;
-    if (workers < 1) workers = 1;
-    if (workers > 256) workers = 256;
-    int sirvo_ws = 1;
+     * VM (o fork copia tudo) — sem thread, sem GC concorrente, sem corrida. */
+    int workers = (int)workers64;
 
 #if defined(PS_SO_WINDOWS)
     /* Sem fork: cada worker é o programa rodado de novo, que chega até aqui e
      * recebe o socket (acima). O pai só supervisiona. */
     if (workers > 1 && w_indice >= 0) {
-        sirvo_ws = (w_indice == 0);           /* worker: cai pro laço de servir */
+        /* worker: cai pro laço de servir */
     } else if (workers > 1) {
         printf("[jinker] multi-processo: %d workers em %s://%s:%d\n", workers, proto, host, porta);
         fflush(stdout);
@@ -25384,7 +24786,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
             pid_t pid = fork();
             if (pid < 0) break;
             if (pid == 0) {
-                sirvo_ws = (w == 0); eh_filho = 1;
+                eh_filho = 1;
                 /* fork() só copia a thread que chamou: as threads do pool NÃO
                  * vêm junto. Zera o estado pra cada worker recriar o seu pool
                  * na 1ª query (senão jobs submetidos nunca rodariam). */
@@ -25410,26 +24812,9 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     }
 #endif
 
-    /* WebSocket num socket separado em port+1 — só quem serve WS abre. */
-    int fd_ws = -1;
-    if (sirvo_ws && j->nsocks > 0) {
-        fd_ws = ps_jk_listen(host, porta + 1, erro, sizeof(erro));
-        if (fd_ws >= 0) printf("[jinker] websocket rodando em ws://%s:%d\n", host, porta + 1);
-    }
-
-    /* injeta os proxies request/channel nos slots globais correspondentes */
+    /* injeta o proxy request no slot global correspondente */
     int slot_req = jk_slot_global(vm, "request");
-    int slot_chan = jk_slot_global(vm, "channel");
     if (slot_req >= 0) vm->globals[slot_req] = jk_proxy_singleton(vm);
-    if (slot_chan >= 0) {
-        PSJChan *ch = calloc(1, sizeof(PSJChan));
-        if (ch) {
-            ch->obj.type = OBJ_JCHAN; ch->obj.marked = 0;
-            ch->obj.next = vm->objetos; vm->objetos = (Obj *)ch;
-            ch->app = alvo; vm->alocado += sizeof(PSJChan);
-            vm->globals[slot_chan] = MK_OBJ(ch);
-        }
-    }
     vm->jk_app = alvo;
 
     if (workers == 1) {
@@ -25453,7 +24838,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     /* auto-reload (dev): vigia o mtime do .pr de entrada e RE-EXECUTA o processo
      * quando ele muda. Só single-process (é feature de dev; com workers>1 é prod
      * e não faz sentido). Antes era um param MORTO no binário. */
-    int reload = (n >= 4 && val_truthy(&args[3]) && workers == 1);
+    int reload = (n >= 4 && args[3].t == V_BOOL && args[3].as.b && workers == 1);
     time_t src_mtime = 0;
     if (reload) {
         struct stat st0;
@@ -25473,14 +24858,13 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     int epfd_meu = g_jk_epfd < 0;
     int epfd = epfd_meu ? ps_ev_cria() : g_jk_epfd;
     if (epfd < 0) {
-        ps_sock_fecha(fd); if (fd_ws >= 0) ps_sock_fecha(fd_ws); if (ssl_ctx) ps_jk_tls_ctx_solta(ssl_ctx);
+        ps_sock_fecha(fd); if (ssl_ctx) ps_jk_tls_ctx_solta(ssl_ctx);
         BERRO(vm, "NetworkError", "laco de eventos: %s", strerror(errno));
     }
     g_jk_epfd = epfd;
     SrvLoop S; memset(&S, 0, sizeof(S));
-    S.epfd = epfd; S.j = j; S.ssl_ctx = ssl_ctx; S.fd = fd; S.fd_ws = fd_ws;
+    S.epfd = epfd; S.j = j; S.ssl_ctx = ssl_ctx; S.fd = fd;
     ps_ev_poe(epfd, fd, &g_ep_lhttp, 1);
-    if (fd_ws >= 0) ps_ev_poe(epfd, fd_ws, &g_ep_lws, 1);
 
     PsEvento evs[256];
     time_t ultimo_sweep = time(NULL);
@@ -25508,7 +24892,6 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
                 fib_resume(vm, f);
                 mexeu = 1;
                 if (f->kind == FIB_HTTP) http_pos_fibra(&S, h, f);
-                else if (f->kind == FIB_WS) ws_pos_fibra(vm, j, f);
                 else if (f->status == FIB_PRONTA) fib_libera(f);
             }
         }
@@ -25555,15 +24938,6 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
                     if (ps_ev_poe(epfd, ps_jk_fd(c), h, 1) == 0) h->armado = 1;
                     else http_remove(&S, h);
                 }
-            } else if (tipo == EPW_LWS) {
-                char ip[64] = "";
-                struct PSJkConn *c = ps_jk_accept(fd_ws, NULL, ip, sizeof(ip));
-                /* handshake numa FIBRA: a leitura das linhas cede, então um
-                 * cliente lento não segura o servidor */
-                if (c) ws_serve(vm, j, c, 0);
-            } else if (tipo == EPW_WS) {
-                EpWs *w = (EpWs *)evs[e].ptr;
-                ws_serve(vm, j, w->conn, 1);
             } else if (tipo == EPW_FIBWAIT) {
                 /* uma thread do pool terminou a I/O bloqueante -> retoma a fibra
                  * (pode ser handler HTTP ou fibra async — trata por kind) */
@@ -25571,7 +24945,6 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
                 HttpConn *h = (f->kind == FIB_HTTP) ? (HttpConn *)f->dono : NULL;
                 fib_resume(vm, f);
                 if (f->kind == FIB_HTTP) http_pos_fibra(&S, h, f);
-                else if (f->kind == FIB_WS) ws_pos_fibra(vm, j, f);
                 else if (f->status == FIB_PRONTA) fib_libera(f);
             } else {   /* EPW_HTTP */
                 HttpConn *h = (HttpConn *)evs[e].ptr;
@@ -25600,7 +24973,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
             if (stat(vm->nome_script, &st) == 0 && src_mtime && st.st_mtime != src_mtime) {
                 printf("\n[jinker] %s alterado — recarregando...\n", vm->nome_script); fflush(stdout);
                 for (int i = 0; i < S.nconns; i++) ps_jk_close(S.conns[i]->c);
-                ps_ev_fecha(epfd); if (fd >= 0) ps_sock_fecha(fd); if (fd_ws >= 0) ps_sock_fecha(fd_ws);
+                ps_ev_fecha(epfd); if (fd >= 0) ps_sock_fecha(fd);
 #if defined(PS_SO_WINDOWS)
                 /* Sem `execv`: o filho do supervisor pede o reload e sai; o
                  * primeiro processo (o que o terminal espera) vira o supervisor
@@ -25637,20 +25010,14 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
         ps_jk_close(S.conns[i]->c); free(S.conns[i]);
     }
     free(S.conns); free(S.fila);
-    /* `fib = NULL` antes: com fibra marcada, `jk_ws_del` só anota `morrendo` e
-     * volta sem tirar a entrada — o `while` giraria pra sempre no desligamento
-     * com uma conexão de WebSocket sendo atendida. */
-    while (j->nws > 0) { j->ws[j->nws - 1].fib = NULL; jk_ws_del(j, j->nws - 1); }
     ep_enterra();
     /* Os fds de escuta saem do laço antes do close. O epoll esqueceria
      * sozinho; a tabela do WSAPoll (Windows) guardaria o número, e um socket
      * novo com o mesmo número viraria "escuta do jinker". */
     ps_ev_tira(epfd, fd);
-    if (fd_ws >= 0) ps_ev_tira(epfd, fd_ws);
     if (epfd_meu) { ps_ev_fecha(epfd); g_jk_epfd = -1; }
 
     ps_sock_fecha(fd);
-    if (fd_ws >= 0) ps_sock_fecha(fd_ws);
     if (ssl_ctx) ps_jk_tls_ctx_solta(ssl_ctx);
     vm->jk_app = MK_NULL();
     *out = MK_NULL();
@@ -25667,7 +25034,7 @@ static int mod_jk_new_request(VM *vm, Value *args, int n, Value *out)
     r->obj.next = vm->objetos; vm->objetos = (Obj *)r;
     r->metodo[0] = '\0'; r->path = strdup("");
     r->headers = MK_NULL(); r->corpo = MK_NULL(); r->query = MK_NULL();
-    r->params = MK_NULL(); r->ws_msg = MK_UNSET(); r->eh_ws = 0;
+    r->params = MK_NULL();
     vm->alocado += sizeof(PSJReq);
     *out = MK_OBJ(r);
     return 0;
@@ -25682,14 +25049,183 @@ static const MembroMod MOD_JINKER[] = {
     { "JinkerRequest", mod_jk_new_request, 0, NULL },
 };
 
-/* despacho de chamada em objetos jinker (usado por OP_CALL/OP_CALL_KW) */
-static int jk_obj_callable(Value alvo, const char **params, FnMetodoChamavel *fn)
+/* ── os objetos da jinker que se chamam ──────────────────────────────────────
+ * O `app` (sobe o servidor) e o `cors`. Uma linha por tipo: o nome da chamada
+ * (o das frases de erro), os parâmetros com o padrão que a doc mostra e o
+ * tipo de cada um, na mesma ordem. Quem lê: as três chamadas (o CALL, o
+ * CALL_KW e a indireta, `chama_valor`), todas pelo `jk_chama_obj`, e o
+ * `--metadata` do valor de módulo que se chama (`jinker.cors`), que o editor
+ * usa.
+ *
+ * Antes cada chamada tinha a sua lista, sem padrão nem tipo, e o argumento a
+ * mais ou de outro tipo passava calado: `app(port="8080")` subia na porta
+ * 2000, e o texto no lugar da lista de origens do `cors` deixava o servidor
+ * aberto a toda origem (jinker-14).
+ *
+ * O tipo: `bool`, `int`, `str`, `list`, `tup`, `Null` ou `any`, com `|`
+ * entre as escolhas. O `*` na frente do primeiro parâmetro junta os
+ * posicionais numa tup (o `*apps` do `cors`), conferida por quem atende. */
+struct JkChamavel {
+    int tipo;                 /* OBJ_* */
+    const char *rotulo;       /* o nome do tipo, o do `type()` */
+    const char *nome;         /* o nome da chamada, nas frases */
+    const char *params;       /* "nome=padrão,...", o formato do MetodoNat */
+    const char *tipos;        /* o tipo de cada parâmetro, separados por vírgula */
+    FnMetodoChamavel fn;
+};
+static const JkChamavel JK_CHAMAVEIS[] = {
+    { OBJ_JINKER, "Jinker", "app",
+      "debug=False,host=\"127.0.0.1\",port=2000,reload=False,workers=1",
+      "bool,str,int,bool,int", jk_app_run },
+    { OBJ_JCORS, "CorsConfig", "cors",
+      "*apps,options=Null,origins=Null,permiser=Null,local=True",
+      "any,list|tup|Null,list|tup|Null,any,bool", jcors_call },
+};
+#define N_JK_CHAMAVEIS ((int)(sizeof(JK_CHAMAVEIS) / sizeof(JK_CHAMAVEIS[0])))
+
+static const JkChamavel *jk_chamavel_de(Value alvo)
 {
-    if (EH_JINKER(alvo))  { *params = "debug,host,port,reload,workers"; *fn = jk_app_run;  return 1; }
-    if (EH_JCORS(alvo))   { *params = "*apps,options,origins,permiser,local"; *fn = jcors_call; return 1; }
-    if (EH_JSOCKNS(alvo)) { *params = "path,channel"; *fn = jsockns_call; return 1; }
-    if (EH_JCHAN(alvo))   { *params = "forAll"; *fn = jchan_call; return 1; }
+    if (alvo.t != V_OBJ) return NULL;
+    for (int i = 0; i < N_JK_CHAMAVEIS; i++)
+        if ((int)alvo.as.obj->type == JK_CHAMAVEIS[i].tipo) return &JK_CHAMAVEIS[i];
+    return NULL;
+}
+
+/* A linha do tipo de nome `rotulo` ("CorsConfig"), ou NULL: o `--metadata`
+ * pergunta pelo tipo que o valor de módulo devolve. */
+static const JkChamavel *jk_chamavel_do_tipo(const char *rotulo)
+{
+    for (int i = 0; i < N_JK_CHAMAVEIS; i++)
+        if (strcmp(JK_CHAMAVEIS[i].rotulo, rotulo) == 0) return &JK_CHAMAVEIS[i];
+    return NULL;
+}
+
+/* O valor é de uma das escolhas (`tam` bytes de "str|Null")? */
+static int jk_tipo_aceita(const char *escolhas, size_t tam, Value v)
+{
+    const char *q = escolhas, *fim = escolhas + tam;
+    while (q < fim) {
+        const char *bar = memchr(q, '|', (size_t)(fim - q));
+        size_t n = bar ? (size_t)(bar - q) : (size_t)(fim - q);
+        if ((n == 3 && !memcmp(q, "any", 3))
+            || (n == 4 && !memcmp(q, "bool", 4) && v.t == V_BOOL)
+            || (n == 3 && !memcmp(q, "int", 3) && (v.t == V_INT || EH_BIGINT(v)))
+            || (n == 3 && !memcmp(q, "str", 3) && EH_STRING(v))
+            || (n == 4 && !memcmp(q, "list", 4) && EH_LIST(v))
+            || (n == 3 && !memcmp(q, "tup", 3) && EH_TUPLA(v))
+            || (n == 4 && !memcmp(q, "Null", 4) && v.t == V_NULL))
+            return 1;
+        q = bar ? bar + 1 : fim;
+    }
     return 0;
+}
+
+/* "list|tup|Null" -> "list, tup or Null", pra frase */
+static void jk_tipo_frase(char *buf, size_t cap, const char *escolhas, size_t tam)
+{
+    size_t w = 0;
+    int partes = 1;
+    for (size_t i = 0; i < tam; i++) if (escolhas[i] == '|') partes++;
+    int k = 0;
+    const char *q = escolhas, *fim = escolhas + tam;
+    buf[0] = '\0';
+    while (q < fim && w + 1 < cap) {
+        const char *bar = memchr(q, '|', (size_t)(fim - q));
+        size_t n = bar ? (size_t)(bar - q) : (size_t)(fim - q);
+        const char *sep = k == 0 ? "" : (k == partes - 1 ? " or " : ", ");
+        int e = snprintf(buf + w, cap - w, "%s%.*s", sep, (int)n, q);
+        if (e < 0 || (size_t)e >= cap - w) break;
+        w += (size_t)e;
+        k++;
+        q = bar ? bar + 1 : fim;
+    }
+}
+
+/* Os argumentos de uma chamada a objeto da jinker, pela linha dele: os
+ * posicionais já em `pos` (16 lugares), os nomeados no lugar do parâmetro de
+ * cada um, a quantidade, e o tipo de cada um que veio. O que não veio fica
+ * UNSET, e o padrão é de quem atende. As frases são as dos nativos (as do
+ * `liga_nomeados_nat` e do `erro_aridade`), e por isso as mesmas que o
+ * `--check` dá antes de rodar. Devolve quantas posições valem, ou -1. */
+static int jk_liga_args(VM *vm, const JkChamavel *ch, Value *pos, int npos,
+                        const Value *nomes, const Value *vals, int nkw, Value *raiz)
+{
+    int npar = 1, minimo = 0, obrigatorios = 1;
+    for (const char *q = ch->params; *q; q++) if (*q == ',') npar++;
+    for (const char *q = ch->params; *q && obrigatorios; ) {
+        const char *fim = strchr(q, ',');
+        size_t tam = fim ? (size_t)(fim - q) : strlen(q);
+        if (q[0] == '*' || memchr(q, '=', tam)) obrigatorios = 0; else minimo++;
+        q = fim ? fim + 1 : q + tam;
+    }
+    int estrela = ch->params[0] == '*';
+    if (!estrela && npos > npar) return erro_aridade(vm, ch->nome, minimo, npar, npos);
+    int usados = npos;
+    if (estrela && jk_empacota_estrela(vm, ch->params, pos, npos, &usados, raiz) < 0)
+        MERRO(vm, "MemoryError", "sem memoria");
+    for (int k = 0; k < nkw; k++) {
+        if (!EH_STRING(nomes[k])) MERRO(vm, "TypeError", "nome de argumento invalido");
+        const char *alvo = COMO_STRING(nomes[k])->chars;
+        size_t lalvo = (size_t)COMO_STRING(nomes[k])->len;
+        int idx = 0, achou = -1;
+        for (const char *q = ch->params; *q; idx++) {
+            const char *fim = strchr(q, ',');
+            size_t tam = fim ? (size_t)(fim - q) : strlen(q);
+            if (q[0] != '*' && par_nome_tam(q, tam) == lalvo && !memcmp(q, alvo, lalvo)) { achou = idx; break; }
+            q = fim ? fim + 1 : q + tam;
+        }
+        if (achou < 0)
+            MERRO(vm, "TypeError", "'%s' is an invalid keyword argument for %s()", alvo, ch->nome);
+        if (pos[achou].t != V_UNSET)
+            MERRO(vm, "TypeError", "%s() got multiple values for argument '%s'", ch->nome, alvo);
+        pos[achou] = vals[k];
+        if (achou + 1 > usados) usados = achou + 1;
+    }
+    int idx = 0;
+    const char *t = ch->tipos;
+    for (const char *q = ch->params; *q && idx < usados; idx++) {
+        const char *fim = strchr(q, ',');
+        size_t tam = fim ? (size_t)(fim - q) : strlen(q);
+        const char *tf = strchr(t, ',');
+        size_t ttam = tf ? (size_t)(tf - t) : strlen(t);
+        if (q[0] != '*') {
+            if (pos[idx].t == V_UNSET && idx < minimo)
+                MERRO(vm, "TypeError", "%s() missing required argument '%.*s'", ch->nome, (int)tam, q);
+            if (pos[idx].t != V_UNSET && !jk_tipo_aceita(t, ttam, pos[idx])) {
+                char esc[64];
+                jk_tipo_frase(esc, sizeof(esc), t, ttam);
+                MERRO(vm, "TypeError", "%s() argument '%.*s' must be %s, not %s", ch->nome,
+                      (int)par_nome_tam(q, tam), q, esc, nome_do_tipo_valor(pos[idx]));
+            }
+        }
+        q = fim ? fim + 1 : q + tam;
+        t = tf ? tf + 1 : t + ttam;
+    }
+    return usados;
+}
+
+/* Chama o objeto da jinker `alvo` (a linha dele é `jc`): liga os argumentos
+ * e chama quem atende. Os três caminhos de chamada passam por aqui, e o mesmo
+ * erro sai com a mesma frase em qualquer um. */
+static __attribute__((noinline)) int jk_chama_obj(VM *vm, const JkChamavel *jc, Value alvo,
+                                                 const Value *posv, int npos, const Value *nomes,
+                                                 const Value *vals, int nkw, Value *out)
+{
+    Value pos[16];
+    if (npos > 16 && jc->params[0] == '*')
+        MERRO(vm, "TypeError", "%s() takes at most 16 positional arguments (%d given)", jc->nome, npos);
+    for (int k = 0; k < npos && k < 16; k++) pos[k] = posv[k];
+    for (int k = npos; k < 16; k++) pos[k] = MK_UNSET();
+    Value raiz = MK_UNSET();
+    int usados = jk_liga_args(vm, jc, pos, npos, nomes, vals, nkw, &raiz);
+    if (usados < 0) return -1;
+    /* a tup dos `*apps` não está na pilha: fixa durante a chamada */
+    if (raiz.t != V_UNSET && fixa_raiz(vm, raiz) != 0)
+        MERRO(vm, "RecursionError", "maximum recursion depth exceeded");
+    vm->erro_tipo[0] = '\0';
+    int rc = jc->fn(vm, alvo, pos, usados, out);
+    if (raiz.t != V_UNSET) vm->sp--;
+    return rc;
 }
 
 /* ── libs stub ──────────────────────────────────────────────────────────── */
@@ -26717,8 +26253,8 @@ static inline __attribute__((always_inline)) int resolve_alvo(VM *vm, Value fn, 
  * em `out`, 0 se a chamada é comum (quem chamou abre o frame), -1 com o erro
  * posto.
  *
- * `async_no_lugar`: quem chama é o framework que ESPERA o handler — rota,
- * middleware e socket do jinker, mensagem do WebSocket. O corpo roda ali
+ * `async_no_lugar`: quem chama é o framework que ESPERA o handler — rota e
+ * middleware do jinker. O corpo roda ali
  * mesmo, que é o `await handler()` do framework: na fibra que atende a
  * conexão, vendo a requisição dela. */
 /* O alvo vai POR VALOR de propósito: passar o ponteiro fazia o endereço do
@@ -27210,6 +26746,9 @@ static int chama_valor_modo(VM *vm, Value fn, Value *args, int n,
         int ra = resolve_alvo(vm, fn, &a);
         if (ra < 0) return -1;
         if (ra == 0) {
+            /* objeto da jinker chamado por valor (`map`, `filter`): a chamada do CALL */
+            const JkChamavel *jc = jk_chamavel_de(fn);
+            if (jc) return jk_chama_obj(vm, jc, fn, args, n, kw_nomes, kw_vals, nkw, out);
             snprintf(vm->erro, sizeof(vm->erro), "'%s' object is not callable", nome_do_tipo_valor(fn));
             snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", "TypeError");
             return -1;
@@ -29020,58 +28559,14 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     goto chama_proto;
                 }
             }
-            if (alvo_kw.t == V_OBJ && (EH_JINKER(alvo_kw) || EH_JCORS(alvo_kw)
-                    || EH_JSOCKNS(alvo_kw) || EH_JCHAN(alvo_kw))) {
-                /* objeto jinker chamável por nome: `app(port=...)`, `cors(options=...)` */
-                const char *lista_nomes; FnMetodoChamavel jf;
-                jk_obj_callable(alvo_kw, &lista_nomes, &jf);
-                Value pos[16];
-                if (npos > 16) ERRO(vm, "argumentos demais na chamada");
-                for (int k = 0; k < npos; k++) pos[k] = stack[sp - total + k];
-                for (int k = npos; k < 16; k++) pos[k] = MK_UNSET();
-                int usados = npos;
-                /* `*apps` na frente da lista: os posicionais viram uma tup em
-                 * pos[0] ANTES de mapear os nomeados (options=1, origins=2) */
-                Value raiz_estrela = MK_UNSET();
-                vm->sp = sp; vm->locals_top = locals_top;
-                if (jk_empacota_estrela(vm, lista_nomes, pos, npos, &usados, &raiz_estrela) < 0)
-                    ERRO(vm, "sem memoria");
-                for (int k = 0; k < nkw_tab; k++) {
-                    Value nv = tn->itens[k];
-                    if (!EH_STRING(nv)) ERRO(vm, "nome de argumento invalido");
-                    const char *alvo_nome = COMO_STRING(nv)->chars;
-                    int idx_par = 0, achou = -1;
-                    for (const char *q = lista_nomes; *q; idx_par++) {
-                        const char *fim = strchr(q, ',');
-                        size_t tam = fim ? (size_t)(fim - q) : strlen(q);
-                        size_t tnome = par_nome_tam(q, tam);   /* para no '=' do default */
-                        if (strlen(alvo_nome) == tnome && !strncmp(q, alvo_nome, tnome)) { achou = idx_par; break; }
-                        q = fim ? fim + 1 : q + tam;
-                    }
-                    if (achou < 0 || achou >= 16) {
-                        snprintf(vm->erro, sizeof(vm->erro),
-                                 "%s.__call__() got an unexpected keyword argument '%s'",
-                                 nome_do_tipo_valor(alvo_kw), alvo_nome);
-                        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
-                        goto erro_runtime;
-                    }
-                    if (pos[achou].t != V_UNSET) {
-                        snprintf(vm->erro, sizeof(vm->erro),
-                                 "%s.__call__() got multiple values for argument '%s'",
-                                 nome_do_tipo_valor(alvo_kw), alvo_nome);
-                        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
-                        goto erro_runtime;
-                    }
-                    pos[achou] = stack[sp - nkw_tab + k];
-                    if (achou + 1 > usados) usados = achou + 1;
-                }
+            if (alvo_kw.t == V_OBJ && jk_chamavel_de(alvo_kw)) {
+                /* objeto jinker chamado com nome: `app(port=...)`,
+                 * `cors(app, options=...)` */
                 vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
-                /* a tup dos apps não está na pilha: fixa durante a chamada */
-                if (raiz_estrela.t != V_UNSET && fixa_raiz(vm, raiz_estrela) != 0) ERRO(vm, "estouro da pilha");
-                vm->erro_tipo[0] = '\0';
                 Value rv;
-                int rc_jf; REANCORA(rc_jf = jf(vm, alvo_kw, pos, usados, &rv));
-                if (raiz_estrela.t != V_UNSET) vm->sp--;
+                int rc_jf;
+                REANCORA(rc_jf = jk_chama_obj(vm, jk_chamavel_de(alvo_kw), alvo_kw, &stack[sp - total], npos,
+                                              tn->itens, &stack[sp - nkw_tab], nkw_tab, &rv));
                 if (rc_jf != 0) {
                     if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
                     goto erro_runtime;
@@ -29412,28 +28907,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 sp = sp - n - 1;
                 stack[sp++] = rv;
             } else {
-                const char *jp; FnMetodoChamavel jf;
-                if (jk_obj_callable(alvo, &jp, &jf)) {
+                const JkChamavel *jc = jk_chamavel_de(alvo);
+                if (jc) {
                     vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
-                    /* `*apps` na frente da lista: os posicionais viram UMA tup
-                     * (como no CALL_KW), fixa na pilha durante a chamada */
-                    Value pos_e[16];
-                    Value *pargs = &stack[sp - n];
-                    int nargs_j = n;
-                    Value raiz_estrela = MK_UNSET();
-                    if (jp && jp[0] == '*') {
-                        if (n > 16) ERRO(vm, "argumentos demais na chamada");
-                        for (int k = 0; k < n; k++) pos_e[k] = stack[sp - n + k];
-                        for (int k = n; k < 16; k++) pos_e[k] = MK_UNSET();
-                        if (jk_empacota_estrela(vm, jp, pos_e, n, &nargs_j, &raiz_estrela) < 0)
-                            ERRO(vm, "sem memoria");
-                        if (fixa_raiz(vm, raiz_estrela) != 0) ERRO(vm, "estouro da pilha");
-                        pargs = pos_e;
-                    }
-                    vm->erro_tipo[0] = '\0';
                     Value rv;
-                    int rc_j2; REANCORA(rc_j2 = jf(vm, alvo, pargs, nargs_j, &rv));
-                    if (raiz_estrela.t != V_UNSET) vm->sp--;
+                    int rc_j2;
+                    REANCORA(rc_j2 = jk_chama_obj(vm, jc, alvo, &stack[sp - n], n, NULL, NULL, 0, &rv));
                     if (rc_j2 != 0) {
                         if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
                         goto erro_runtime;
@@ -30916,26 +30395,6 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             }
             if (EH_JINKER(alvo)) {
                 PSJinker *jj = COMO_JINKER(alvo);
-                if (strcmp(nome, "socket") == 0) {
-                    vm->sp = sp; vm->locals_top = locals_top;
-                    PSJSockNs *ns = calloc(1, sizeof(PSJSockNs));
-                    if (!ns) ERRO(vm, "sem memoria");
-                    ns->obj.type = OBJ_JSOCKNS; ns->obj.marked = 0;
-                    ns->obj.next = vm->objetos; vm->objetos = (Obj *)ns;
-                    ns->app = alvo; vm->alocado += sizeof(PSJSockNs);
-                    stack[sp - 1] = MK_OBJ(ns);
-                    break;
-                }
-                if (strcmp(nome, "channel") == 0) {
-                    vm->sp = sp; vm->locals_top = locals_top;
-                    PSJChan *ch = calloc(1, sizeof(PSJChan));
-                    if (!ch) ERRO(vm, "sem memoria");
-                    ch->obj.type = OBJ_JCHAN; ch->obj.marked = 0;
-                    ch->obj.next = vm->objetos; vm->objetos = (Obj *)ch;
-                    ch->app = alvo; vm->alocado += sizeof(PSJChan);
-                    stack[sp - 1] = MK_OBJ(ch);
-                    break;
-                }
                 if (strcmp(nome, "name") == 0) {
                     vm->sp = sp; vm->locals_top = locals_top;
                     PSString *s2 = nova_string(vm, jj->nome, (int)strlen(jj->nome));
@@ -30958,20 +30417,6 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     stack[sp - 1] = MK_OBJ(s2); break;
                 }
                 /* route/middleware caem no METNAT genérico abaixo */
-            }
-            if (EH_JCHAN(alvo)) {
-                if (strcmp(nome, "status") == 0) {
-                    PSJChan *ch = COMO_JCHAN(alvo);
-                    if (EH_JINKER(ch->app)) {
-                        PSJinker *jj = COMO_JINKER(ch->app);
-                        if (!EH_JCHST(jj->ch_status)) { vm->sp = sp; vm->locals_top = locals_top; jk_ch_status(vm, jj, 1); }
-                        stack[sp - 1] = jj->ch_status;
-                        break;
-                    }
-                    stack[sp - 1] = MK_NULL();
-                    break;
-                }
-                /* emit cai no METNAT genérico */
             }
             if (EH_JUPLOAD(alvo)) {
                 PSJUpload *u = COMO_JUPLOAD(alvo);
@@ -33547,11 +32992,8 @@ void ps_set_argv(int argc, char **argv)
  * `teste/confere_metadata.pr` acessa cada um de verdade; entrada fantasma
  * derruba a checagem. O tipo do campo também é o medido. */
 static const struct { const char *dono; const char *campo; } CAMPOS[] = {
-    { "ChannelManager", "status" },
     { "DbCursor", "rowcount" },
-    { "Jinker", "channel" },
     { "Jinker", "name" },
-    { "Jinker", "socket" },
     { "Jinker", "static_folder" },
     { "Jinker", "static_url" },
     { "JinkerResponse", "status_code" },
@@ -33680,9 +33122,6 @@ static const char *jm_rotulo_tabela(int t)
         case T_MET_JRESP:     return "JinkerResponse";
         case T_MET_JPROXY:    return "RequestProxy";
         case T_MET_JUPLOAD:   return "PoolFileUpload";
-        case T_MET_JSOCKNS:   return "SocketNamespace";
-        case T_MET_JEMIT:     return "SocketEmitter";
-        case T_MET_JCHAN:     return "ChannelManager";
         case T_MET_WSCONN:    return "WsConnection";
         case T_MET_QRBUILD:   return "PoolQRCode";
         case T_MET_QRIMAGE:   return "QRImage";
@@ -33853,8 +33292,11 @@ void ps_metadata_json(FILE *saida)
             jm_txt(f, m->nome);
             fprintf(f, ", \"kind\": \"%s\", \"params\": ",
                     m->eh_valor ? "value" : "function");
-            jm_params(f, m->params);
             const char *ret = ps_retorno_de(nome_vis, m->nome);
+            /* o valor que se chama (`cors(app, origins=[...])`) publica os
+             * parâmetros da chamada, como a propriedade (JK_CHAMAVEIS) */
+            const JkChamavel *jc = (m->eh_valor && ret) ? jk_chamavel_do_tipo(ret) : NULL;
+            jm_params(f, jc ? jc->params : m->params);
             fprintf(f, ", \"retorna\": ");
             if (ret) jm_txt(f, ret); else fprintf(f, "null");
             fputc('}', f);
@@ -33927,13 +33369,12 @@ void ps_metadata_json(FILE *saida)
         fprintf(f, "\n  ]");
     }
     /* Tipos que EXISTEM em runtime (o `type()` devolve estes nomes) mas não têm
-     * tabela de método: são valores que se comparam (`== "Success"`) ou se
-     * testam como bool. Publicados VAZIOS de propósito — assim o editor resolve
-     * `retorna: "ChannelStatus"` e mostra corretamente que não há membro, em
-     * vez de não achar o tipo e ficar mudo. */
+     * tabela de método. Publicados VAZIOS de propósito — assim o editor resolve
+     * `retorna: "ManpuResult"` e mostra corretamente que não há membro, em vez
+     * de não achar o tipo e ficar mudo. */
     {
-        const char *sem_membro[] = { "ChannelStatus", "ManpuResult", "JinkerRequest" };
-        for (int q = 0; q < 3; q++) {
+        const char *sem_membro[] = { "ManpuResult", "JinkerRequest" };
+        for (int q = 0; q < 2; q++) {
             fprintf(f, ",\n  ");
             jm_txt(f, sem_membro[q]);
             fprintf(f, ": []");

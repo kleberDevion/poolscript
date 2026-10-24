@@ -2911,6 +2911,9 @@ static int caminho_modulo(P *p, PSNodeVec *v, int decorador)
         PSNode *no = ps_node_novo(p->arena, N_NAME, t->line, t->col);
         if (!no) return -1;
         no->texto = n;
+        /* o `.` que pediu esta parte: no decorador, é onde o erro do membro
+         * aponta, como no acesso a membro da expressão (ver PSNode.i) */
+        if (ponto) no->i = ((int64_t)ponto->line << 32) | (uint32_t)ponto->col;
         if (ps_vec_push(p->arena, v, no) != 0) return -1;
         ponto = atual(p);
         if (!aceita(p, T_DOT)) break;
@@ -3623,6 +3626,7 @@ static PSNode *statement(P *p)
  * decora) ainda vazio — quem decide o `b` é o laço do statement. */
 static PSNode *decorador_cabeca(P *p)
 {
+    int32_t ini = p->pos;
     PSToken *ta = atual(p);
     p->pos++;
     PSNode *n = ps_node_novo(p->arena, N_DECORATOR_STMT, ta->line, ta->col);
@@ -3637,8 +3641,11 @@ static PSNode *decorador_cabeca(P *p)
         return NULL;
     }
     if (caminho_modulo(p, &dc->lista, 1) != 0) return NULL;
+    PSToken *abre = atual(p);
     if (aceita(p, T_LPAREN)) {
         dc->i2 = 1;   /* teve parênteses: é chamada (mesmo sem args) */
+        /* o `(`, onde a chamada começa na expressão (ver PSNode.i) */
+        dc->i = ((int64_t)abre->line << 32) | (uint32_t)abre->col;
         pula_separadores(p);
         if (!checa(p, T_RPAREN)) {
             for (;;) {
@@ -3670,6 +3677,7 @@ static PSNode *decorador_cabeca(P *p)
         pula_separadores(p);
         if (!exige(p, T_RPAREN, "faltou ')' no decorador")) return NULL;
     }
+    fecha_no(p, dc, ini);
     n->a = dc;
     pula_separadores(p);
     return n;

@@ -63,6 +63,15 @@ funct proibido() {
 }
 ```
 
+O status segue a regra do [`.status()`](../status/status.md), inteiro de 100
+a 999: o texto é `TypeError`, e o número fora da faixa é `ValueError`.
+`Null`, ou o segundo argumento ausente, não mexe no status que já estava.
+
+```ps
+JinkerResponse().send("acesso negado", 4030)
+# ValueError: send(): codigo HTTP fora da faixa 100..999: 4030
+```
+
 ---
 
 ## `.send()` manda o TEXTO que você passa — não lê arquivo

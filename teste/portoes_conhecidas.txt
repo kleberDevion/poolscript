@@ -59,9 +59,6 @@ check	docs/request/get_json/get_json.md	e3e521e53e4e	doc-16	todos	linha 5: impor
 check	docs/request/text/text.md	057c53fb1083	doc-16	todos	linha 5: import request
 check	docs/qrcode.md	3f8ea5bebb96	doc-17	todos	linha 68: qr = qrcode.QRCode(...)
 check	docs/regex.md	12e0c09b89e5	motor-2	todos	linha 17: match("\d+", "abc123")   # False — tem letras
-check	docs/jinker/channel/channel.md	bf409c08a970	jinker-7	todos	linha 18: app.channel(forAll=msg)
-check	docs/jinker.md	247ebb623b66	jinker-7	todos	linha 497: @app.socket("/chat", channel=True)
-check	docs/jinker.md	dc4d4c856043	jinker-7	todos	linha 719: import psodbc
 roda	docs/sockets/recv/recv.md	7e1625bc5090	doc-1	todos	linha 45: import sockets
 roda	docs/sockets/recvfrom/recvfrom.md	70162e1c0f7f	doc-1	todos	linha 47: import sockets
 roda	docs/sockets/getsockopt/getsockopt.md	eae40c20b1f9	doc-1, doc-6	todos	linha 46: import sockets
@@ -253,12 +250,7 @@ p2	membro:DbCursor.close	ea2df42b226b	motor-11	todos	linha 9: psodbc.connect(dri
 p2	membro:DbCursor.close	352657c2ac47	motor-11	todos	linha 10: psodbc.connect(driver="sqlite", base="p2.db").cursor().close
 p2	membro:DbCursor.close	ff30d49ff984	motor-11	todos	linha 11: psodbc.connect(driver="sqlite", base="p2.db").cursor().close
 p2	membro:DbCursor.rowcount	9b548b68c6e3	motor-11	todos	linha 3: psodbc.connect(driver="sqlite", base="p2.db").cursor().rowco
-p2	membro:Jinker.channel	20c0571107a6	jinker-7	todos	linha 11: jinker.Jinker().channel(forAll=Null)
-p2	membro:Jinker.channel	e898fdcd480b	jinker-7	todos	linha 12: jinker.Jinker().channel(p2_nao_existe=1)
 p2	membro:Jinker.name	90f9e5c608b0	motor-12	todos	linha 11: jinker.Jinker().name(p2_nao_existe=1)
-p2	membro:Jinker.socket	a033611de95e	jinker-7	todos	linha 11: jinker.Jinker().socket(channel=Null)
-p2	membro:Jinker.socket	6d8ba5dc85f1	jinker-7	todos	linha 12: jinker.Jinker().socket(path=Null)
-p2	membro:Jinker.socket	ca0996d61f18	jinker-7	todos	linha 13: jinker.Jinker().socket(p2_nao_existe=1)
 p2	membro:Jinker.static_url	a4c07b14ce0b	motor-12	todos	linha 11: jinker.Jinker().static_url(p2_nao_existe=1)
 p2	membro:RouteRegistrar.register	d9f219643a6d	motor-11	todos	linha 1: jinker.Jinker().route("/p2").register()
 p2	membro:RouteRegistrar.register	537d59dcf16b	motor-11	todos	linha 3: jinker.Jinker().route("/p2").register(Null, Null)

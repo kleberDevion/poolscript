@@ -1,8 +1,8 @@
 # O portão P3 (notas/PORTOES.md): o editor e o motor concordam, bloco por
 # bloco da doc.
 #
-# POR QUE ELE EXISTE. O hover sobre o `forAll` de `app.channel(forAll=msg)`
-# dizia "nome não definido" (editor-1, relato do Kleber): o editor e o motor
+# POR QUE ELE EXISTE. O hover sobre o nome de um argumento nomeado dizia
+# "nome não definido" (editor-1, relato do Kleber): o editor e o motor
 # contavam histórias diferentes do mesmo programa, e nada conferia os dois.
 # Em cada bloco ```ps da doc, com os ```ps contexto anteriores da página na
 # frente (os blocos do portão `check` do P1), o portão conversa com o servidor

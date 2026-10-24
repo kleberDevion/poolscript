@@ -131,7 +131,8 @@ funct blocos_ps(txt) {
 # (2026-10-17) toda cerca diz o que é (```ps, ```ps contexto, ```saida,
 # ```erro, ```assinatura, ```texto, ```bash, ```json...), como no rustdoc do
 # Rust: bloco sem marca não é conferido por nada, e foi num bloco assim que
-# o `app.channel(forAll=msg)` recusado pelo --check passou. Cerca sem marca
+# o exemplo do jinker-7 (a forma que a doc ensinava, recusada pelo --check)
+# passou. Cerca sem marca
 # reprova; o `scripts/marca_cercas.pr` propõe a marca.
 funct cercas_sem_marca(txt) {
     c_linhas = []

@@ -49,6 +49,21 @@ funct rota() {
 
 Equivale a `jsonify({"erro": "não encontrado"}), 404`.
 
+O status segue a regra do [`.status()`](../status/status.md), inteiro de 100
+a 999: o texto é `TypeError`, e o número fora da faixa é `ValueError`.
+`Null`, ou o segundo argumento ausente, não mexe no status que já estava (o
+`.status(418).json(...)` continua 418).
+
+```ps
+JinkerResponse().json({"erro": "não encontrado"}, "404")
+# TypeError: 'str' object cannot be interpreted as an integer
+```
+
+```ps
+JinkerResponse().json({"ok": True}, 2000)
+# ValueError: json(): codigo HTTP fora da faixa 100..999: 2000
+```
+
 ---
 
 ## O que pode ir em `data`
@@ -63,6 +78,14 @@ JinkerResponse()
 
 Acentos são preservados (`ensure_ascii=False` internamente) — `"ção"` sai como
 `"ção"`, não escapado.
+
+O que não vira JSON é erro, como no `json.stringify`: `TypeError` pro valor
+que não serializa, `ValueError` pro `nan` e o infinito.
+
+```ps
+JinkerResponse().json({"media": flo("nan")})
+# ValueError: Out of range float values are not JSON compliant: nan
+```
 
 ---
 

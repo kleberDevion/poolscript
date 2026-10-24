@@ -39,6 +39,11 @@ automaticamente:
 Ou seja: pra JSON simples, `return {"ok": True}` basta. `JinkerResponse` entra
 quando você quer **encadear** ajustes.
 
+O que não vira resposta é erro do handler, `500` com a frase no terminal do
+servidor: o dict ou a lista que não vira JSON, e a tupla cujo status não é
+inteiro de 100 a 999 (a regra do [`.status()`](status/status.md)). Ver a
+[rota](../route/route.md#o-que-a-funct-pode-retornar).
+
 ---
 
 ## Métodos (todos devolvem o próprio objeto — encadeáveis)

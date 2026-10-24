@@ -36,16 +36,14 @@ TEMPO = 120        # segundos por script
 
 # [servidor, [clientes...], porta que o servidor abre]
 # Vários clientes contra o MESMO servidor: subir e derrubar o jinker uma vez
-# por cliente seria desperdício, e o estado que um deixa (upload gravado, canal
-# aberto) é justamente o que o próximo pode precisar.
+# por cliente seria desperdício, e o estado que um deixa (o upload gravado) é
+# justamente o que o próximo pode precisar.
 PARES = [
     ["jinker_srv.pr", ["jinker_cli.pr", "jinker_bruto.pr"], 28840]
 ]
 
 # Servidor sem cliente: rodar seria travar até o timeout.
-SEM_PAR = {
-    "ws.pr": "servidor de WebSocket sem cliente — bloqueia pra sempre; o par coberto e jinker_srv+jinker_cli"
-}
+SEM_PAR = {}
 
 
 # Espera a porta ACEITAR conexão. Devolve 1 se abriu, 0 se estourou o prazo.
