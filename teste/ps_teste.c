@@ -142,6 +142,7 @@ static const Grupo GRUPOS[] = {
     { "robustez",  CASOS_ROBUSTEZ,  0 },
     { "libs",      CASOS_LIBS,      0 },
     { "regex_re",  CASOS_REGEX_RE,  0 },
+    { "python",    CASOS_PYTHON,    0 },
 };
 
 /* preenchido em tempo de execução (os `extern int` vivem nos casos_*.c) */
@@ -159,6 +160,7 @@ static int tamanho_do_grupo(const char *g)
     if (!strcmp(g, "robustez"))  return NC_ROBUSTEZ;
     if (!strcmp(g, "libs"))      return NC_LIBS;
     if (!strcmp(g, "regex_re"))  return NC_REGEX_RE;
+    if (!strcmp(g, "python"))    return NC_PYTHON;
     return 0;
 }
 
@@ -634,8 +636,9 @@ int main(int argc, char **argv)
                     passou++;
                     if (verboso) printf("  pendente (falha esperada)  %s\n", c->nome);
                 } else {
-                    printf("  JA FUNCIONA  %s\n     tire de casos_pendentes.c e "
-                           "mova pro grupo de regressao a que pertence\n", c->nome);
+                    printf("  JA FUNCIONA  %s\n     tire a marca de pendente: de casos_pendentes.c, "
+                           "mova pro grupo de regressao a que pertence; de arquivo gerado, "
+                           "rode o gerador de novo\n", c->nome);
                     falhou++;
                 }
                 solta(&r);

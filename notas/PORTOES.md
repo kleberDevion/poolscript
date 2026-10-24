@@ -468,10 +468,12 @@ O `--check` tem que recusar com essa classe e nessa linha. Onde o valor pode
 passar por um `Object`, a variante gêmea tem que dar, rodando, a mesma frase.
 
 **O achado.** O programa que falha perde bloco por bloco, do fim pro começo,
-enquanto a mesma falha continuar. O menor vai pra
-`teste/p4_achados/<impressão>.pr`, com o oráculo no cabeçalho. Os achados
-rodam antes dos sorteados, a cada rodada. Na catraca, o portão é `p4` e a
-página é o achado.
+enquanto a mesma falha continuar. O menor roda de novo e, se a falha se
+repete, vai pra `teste/p4_achados/<impressão>.pr`, com o oráculo no
+cabeçalho. A falha que não se repete não grava nada, e a rodada reprova
+dizendo isso (teste-11: o prazo é de relógio, e a máquina que dorme no meio
+da rodada fazia um achado falso). Os achados rodam antes dos sorteados, a cada
+rodada. Na catraca, o portão é `p4` e a página é o achado.
 
 **A cobertura.** Os programas da rodada (os de base e as variantes) têm que
 usar toda regra da gramática, medida pelo reconhecedor do portão `gramatica`
@@ -499,9 +501,63 @@ Medido na entrada (2026-10-24, no Mac, 18.0.0), em 51 s:
 - os 47 gêmeos dão a mesma frase;
 - as 114 regras da gramática são usadas.
 
-### O lote 3 (a fazer)
+### O Python onde a doc cita o Python (lote 3)
 
-O Python onde a doc cita o Python, congelado em `teste/casos_python.c`.
+`teste/geradores/python_doc.pr` gera o `teste/casos_python.c` (o grupo
+`python` da suíte) e o `teste/jinker_tipos.txt`. Ele confere contra o CPython
+os lugares da doc que citam o Python e ainda não tinham oráculo:
+- o `upper` e o `lower` de todo caractere do Unicode, plano por plano;
+- o `Parsing.string` contra o `" ".join(s.split())`;
+- o `os.run` com string contra o `shlex.split`;
+- o `os.loadFile` de `.csv` contra o `csv.DictReader`;
+- o `os.readFile` e o `UnicodeDecodeError` contra o `open().read()`;
+- o `os.mkdir` contra o `os.makedirs`;
+- o `sys.argv` contra o do Python;
+- a tabela de tipos da jinker contra a do `mimetypes`.
+
+As entradas são sorteadas com a semente fixa, com o texto das leis (espaço,
+aspas, acento, CJK, fora do plano básico e controle). A saída do Python fica
+congelada como a esperada, porque a versão do Python muda a tabela do Unicode.
+O gerador roda com o Python que a doc cita (o 3.15) e para com outro.
+
+**Como cada caso entra.** O gerador roda cada programa no motor, com JIT e
+sem, do jeito do runner, e todo programa passa no `--check`. O que diverge do
+Python fica **pendente** e aponta o item da causa. O item sai da causa medida
+de cada um (`item_de`), não do lugar. O caso pendente tem que falhar; quando o
+motor acertar, o runner diz `JA FUNCIONA` e o gerador roda de novo. Para o
+gerador, sem gravar nada:
+- divergência de causa que ainda não tem item;
+- o JIT e o interpretador dando coisas diferentes;
+- programa que não termina como programa (prazo, sinal, erro antes de rodar).
+
+**A tabela de tipos** fica fora da suíte: o tipo só aparece pelo HTTP, e caso
+da suíte não sobe servidor. O alvo da jinker (`teste/jinker_alvo.pr`) cria um
+arquivo por linha da tabela congelada, e o `teste/jinker_roda.pr` confere o
+`Content-Type` de cada um.
+
+**A prova.**
+- Os pendentes: os 43 falham, cada um com o item no nome (`./testar -v
+  python`).
+- A tabela de tipos: com o `.wasm` trocado de propósito na tabela, o roteiro
+  reprova dizendo `.wasm sai application/wasm (o Python dá
+  application/x-prova)`.
+- A geração repete igual, byte a byte.
+
+Medido na entrada (2026-10-24, no Mac, 18.0.0, Python 3.15.0):
+- 228 casos, 43 pendentes:
+  - motor-26, a caixa: 1 caso com os 110 caracteres;
+  - motor-27, o `Parsing.string`: 32;
+  - motor-28, o `-o`: 1;
+  - os-2, o `UnicodeDecodeError`: 4;
+  - os-3, o caminho do erro do `mkdir`: 1;
+  - os-4, o campo vazio do CSV: 2;
+  - os-5, o `/.` do `mkdir`: 2;
+- o `os.run` e o `sys.argv` (fora o `-o`) batem com o Python em todos os
+  casos;
+- a tabela de tipos bate nas 217 linhas.
+
+Dois achados são de doc: o doc-32 (o `İ` do capítulo 12) e o doc-33 (o
+`http.server` na tabela de tipos).
 
 ## A sonda com agentes
 

@@ -40,6 +40,15 @@ os.writeFile(PASTA + "/estatico/foto.avif", "avif")
 os.writeFile(PASTA + "/estatico/coisa.extensaoinventada", "x")
 os.writeFile(PASTA + "/estatico/cem.txt", "0123456789" * 10)
 os.writeFile(PASTA + "/estatico/grande.txt", "abcdefghij" * 2097152)
+# Um arquivo por linha da tabela do `mimetypes` do Python (teste/jinker_tipos.txt,
+# gerada pelo teste/geradores/python_doc.pr): o jinker_roda.pr confere o tipo de
+# cada um.
+os.mkdir(PASTA + "/estatico/tipos", exist_ok=True)
+for each linha in os.readFile("teste/jinker_tipos.txt").splitlines() {
+    if linha != "" and not linha.startswith("#") {
+        os.writeFile(PASTA + "/estatico/tipos/f" + linha.split(" ")[0], "x")
+    }
+}
 os.mkdir("teste/static/sub", exist_ok=True)
 os.writeFile("teste/static/sub/index.html", "index de sub")
 os.mkdir("teste/static/semindex", exist_ok=True)

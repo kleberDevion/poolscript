@@ -715,10 +715,13 @@ list funct encolhe(dict p, list blocos, list cauda, str tipo, str oraculo, dict 
 
 # Guarda o achado em `teste/p4_achados/<impressão>.pr`, com o oráculo e a
 # assinatura no cabeçalho. Devolve o caminho.
-str funct guarda_achado(str raiz, str oraculo, str assinatura, str texto) {
-    str cab = ("# p4: " + oraculo + "\n# assinatura: " + assinatura
-               + "\n# achado pelo teste/geradores/programas.pr, encolhido; a falha sai rodando o portão\n")
-    str corpo = cab + texto
+str funct corpo_do_achado(str oraculo, str assinatura, str texto) {
+    return ("# p4: " + oraculo + "\n# assinatura: " + assinatura
+            + "\n# achado pelo teste/geradores/programas.pr, encolhido; a falha sai rodando o portão\n" + texto)
+}
+
+
+str funct guarda_achado(str raiz, str corpo) {
     str id = hash.sha256(corpo)[0:12]
     str rel = ACHADOS + "/" + id + ".pr"
     if not os.isdir(raiz + "/" + ACHADOS) {
@@ -763,7 +766,7 @@ dict funct cobertura(dict gram, list arqs, str trab) {
         }
         list todos = tk["tokens"]
         list toks = []
-        for each t in todos {
+        for each t in todos { 
             if t["t"] != "COMMENT" and not ("em" in t) {
                 addEnd(toks, t)
             }
@@ -800,6 +803,7 @@ if __name__ == "main" {
     list paginas = []
     dict conta = {"programas": 0, "variantes": 0, "gemeos": 0, "achados": 0, "repetidas": 0}
     dict vistas = {}
+    list instaveis = []
     dict gram = {"ordem": []}
     dict cob = {}
     str parou = ""
@@ -890,12 +894,20 @@ if __name__ == "main" {
                 } elif f[0] == "gemeo" {
                     oraculo = "gemeo:" + f[4]["frase"]
                 }
-                str rel = guarda_achado(raiz, oraculo, f[1], texto)
+                # O achado já encolhido tem que dar a falha de novo antes de
+                # virar arquivo: a falha que não se repete (a máquina parou no
+                # meio do prazo, por exemplo) não vira achado, e a rodada
+                # reprova dizendo isso.
+                str candidato = corpo_do_achado(oraculo, f[1], texto)
+                grava("candidato.pr", candidato)
+                str ff = confere_achado("candidato.pr")
+                if ff == "" {
+                    addEnd(instaveis, f[2])
+                    continue
+                }
+                str rel = guarda_achado(raiz, candidato)
                 addEnd(paginas, rel)
-                # a falha do achado já encolhido, com as linhas dele
-                str ff = confere_achado(raiz + "/" + rel)
-                addEnd(achados, {"pagina": rel, "codigo": os.readFile(raiz + "/" + rel),
-                                 "onde": rel + ": " + (ff if ff != "" else f[2]), "linha": 1})
+                addEnd(achados, {"pagina": rel, "codigo": candidato, "onde": rel + ": " + ff, "linha": 1})
             }
         }
     } catch (Exception e) {
@@ -926,7 +938,14 @@ if __name__ == "main" {
         post("REGRAS DA GRAMÁTICA QUE NENHUM PROGRAMA DA RODADA USA (" + GRAMATICA + "): falta a forma no gerador")
         post("  " + ", ".join(sem_uso))
     }
-    if novos.len() == 0 and not catraca["reprova"] and sem_uso.len() == 0 {
+    if instaveis.len() > 0 {
+        post("")
+        post("FALHAS QUE NÃO SE REPETIRAM no programa encolhido (nenhum achado gravado):", instaveis.len())
+        for each x in instaveis {
+            post("  " + x)
+        }
+    }
+    if novos.len() == 0 and not catraca["reprova"] and sem_uso.len() == 0 and instaveis.len() == 0 {
         post("  os programas gerados passam nos oráculos (ou são itens abertos) e usam toda a gramática")
         sys.exit(0)
     }

@@ -1,0 +1,1016 @@
+# Gera `teste/casos_python.c` e `teste/jinker_tipos.txt`: os lugares da doc
+# que citam o Python e ainda não tinham oráculo (notas/PORTOES.md, P4, lote 3),
+# conferidos contra o CPython. O gerador roda com o Python que a doc cita (o
+# 3.15); com outro, ele para. O resultado fica congelado, com a saída do Python
+# como a esperada: a versão do Python muda a tabela do Unicode, e o portão não
+# pode depender do Python de cada máquina.
+#
+# Os lugares, com a frase da doc:
+#   caixa           `upper` e `lower` de todo caractere do Unicode, "a mesma do
+#                   `upper`/`lower` do Python" (docs/linguagem/12-metodos-string-list-dict.md);
+#   Parsing.string  "o `" ".join(s.split())` do Python" (docs/Parsing/string/string.md);
+#   os.run          a forma com string, "a do `shlex.split` do Python" (docs/os/run/run.md);
+#   loadFile        o `.csv`, "como o `csv.DictReader` do Python" (docs/os/loadFile/loadFile.md);
+#   readFile        "lido como UTF-8, como o `open().read()` do Python", com o
+#                   `UnicodeDecodeError` dele (docs/os/readFile/readFile.md);
+#   mkdir           "as pastas do caminho que faltarem, como o `os.makedirs` do
+#                   Python" (docs/os/mkdir/mkdir.md);
+#   sys.argv        "a mesma convenção de C, Python e JS" (docs/sys/argv/argv.md);
+#   mimetypes       o tipo de cada extensão na jinker, "pela tabela padrão do
+#                   `mimetypes` do Python 3.15" (docs/jinker/static_folder/static_folder.md).
+#                   Vai pra `teste/jinker_tipos.txt`, e quem confere é o
+#                   `teste/jinker_roda.pr`: o tipo só aparece pelo HTTP, e caso
+#                   da suíte não sobe servidor.
+#
+# Cada entrada sorteada (semente fixa; o texto é o das leis: espaço, aspas,
+# acento, CJK, fora do plano básico e controle) vira um caso, rodado aqui no
+# motor com JIT e sem, como o runner roda. O caso que diverge do Python fica
+# PENDENTE e aponta o item aberto da causa dele (`item_de`, pela causa medida
+# de cada item): ele tem que falhar, e quando o motor acertar o runner diz JA
+# FUNCIONA e o gerador roda de novo. Divergência de causa sem item, ou entre o
+# JIT e o interpretador, para o gerador: o item entra na lista antes.
+#
+#     ./pool teste/geradores/python_doc.pr
+import os
+import sys
+import json
+import date
+from '../../scripts/portoes_isola.pr' import executa, prova_do_kill
+from './programas.pr' import checa_todos, primeiro_erro
+
+str SAIDA = "teste/casos_python.c"
+str TIPOS = "teste/jinker_tipos.txt"
+str TMP = "ps_python_doc_tmp_" + str(date.timestamp_ms())
+str VERSAO = "Python 3.15"
+int SEMENTE = 20261024
+flo PRAZO = 60.0
+# os brancos que o `split()` do Python junta, além do espaço, tab, `\n` e `\r`
+list BRANCOS_SO_PYTHON = [11, 12, 28, 29, 30, 31, 133, 160, 5760, 8192, 8193, 8194, 8195, 8196, 8197, 8198,
+                          8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288]
+
+# As peças dos textos sorteados: as das leis, mais o que cada lugar pede.
+list LETRAS = ["a", "b", "Z", "ç", "é", "日", "本", "\U00020BB7", "1", "_", "-", "=", "'", "\"", "\\",
+               "#", "$", "|", ";", ">", "*"]
+list BRANCOS = [" ", " ", " ", "\t", "\n", "\r", "\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x1f", "\x85",
+                "\xa0", "\U00001680", "\U00002000", "\U0000200a", "\U00002028", "\U00002029", "\U0000202f",
+                "\U0000205f", "\U00003000"]
+# os que parecem branco e não são, nem pro Python
+list QUASE = ["\U0000200b", "\U0000feff", "\x01", "\x7f", "\U00000301"]
+list CAMPOS = ["1", "", "x,y", "q\"q", "l1\nl2", "ç", "日本", " ", "a b", "\U00020BB7", "r\rs"]
+list NOMES = ["a", "b", "nome", "ç", "日", "x y", "q\"q", "c,d", "a"]
+list VALIDOS = [[97], [90], [49], [32], [10], [1], [127], [195, 167], [230, 151, 165], [240, 160, 174, 183]]
+list INVALIDOS = [[128], [191], [192, 128], [193, 191], [224, 128, 128], [237, 160, 128],
+                  [244, 144, 128, 128], [245], [254], [255], [195], [226, 130], [240, 159, 152],
+                  [226, 40, 161], [240, 40, 140, 40]]
+list COMPS = ["a", "b", "c", "f", "ç", "日", ".", ".."]
+list ARGS = ["--sem-jit", "-e", "--check", "--utf16", "-o", "--", "-", "x", "", " ", " a ", "a b", "ç", "日本",
+             "\U00020BB7", "'", "\"", "\\", "a\\", "\\\"", "=", "$HOME", "*", "a\nb", "\t"]
+list CLASSES = ["FileExistsError", "NotADirectoryError", "FileNotFoundError", "IsADirectoryError",
+                "PermissionError", "OSError", "ValueError", "Exception"]
+
+
+# ── o sorteio ──────────────────────────────────────────────────────────────
+
+# Congruente linear, com o resto dos bits altos (o motivo está no teste/leis.pr).
+int funct sorteia(dict g, int n) {
+    g["v"] = (g["v"] * 1103515245 + 12345) % 2147483648
+    if n <= 0 {
+        return 0
+    }
+    return (g["v"] // 65536) % n
+}
+
+
+str funct um_de(dict g, list l) {
+    return l[sorteia(g, l.len())]
+}
+
+
+str funct texto(dict g, list pecas, int ate) {
+    int n = sorteia(g, ate + 1)
+    str s = ""
+    int i = 0
+    while i < n {
+        s = s + um_de(g, pecas)
+        i = i + 1
+    }
+    return s
+}
+
+
+# ── os literais ────────────────────────────────────────────────────────────
+
+# O que não se vê no texto: os brancos fora do ASCII, os de largura zero e as
+# marcas combinantes.
+bool funct invisivel(int c) {
+    if c == 160 or c == 5760 or c == 8232 or c == 8233 or c == 8239 or c == 8287 or c == 12288 or c == 65279 {
+        return True
+    }
+    return (c >= 8192 and c <= 8207) or (c >= 768 and c <= 879)
+}
+
+
+# O texto como literal da Jinga: o que não se vê sai como escape, e o programa
+# (e o `.c`) não leva caractere de controle nem branco invisível.
+str funct lit(str s) {
+    str r = "\""
+    for each ch in s {
+        int c = ord(ch)
+        if ch == "\\" {
+            r = r + "\\\\"
+        } elif ch == "\"" {
+            r = r + "\\\""
+        } elif ch == "\n" {
+            r = r + "\\n"
+        } elif ch == "\t" {
+            r = r + "\\t"
+        } elif ch == "\r" {
+            r = r + "\\r"
+        } elif c < 32 or (c >= 127 and c < 160) {
+            r = r + "\\x" + "{:02x}".format(c)
+        } elif invisivel(c) {
+            r = r + "\\U" + "{:08x}".format(c)
+        } else {
+            r = r + ch
+        }
+    }
+    return r + "\""
+}
+
+
+str funct lit_bytes(list bs) {
+    str r = "b\""
+    for each b in bs {
+        r = r + "\\x" + "{:02x}".format(b)
+    }
+    return r + "\""
+}
+
+
+str funct oct3(int b) {
+    return str(b // 64) + str((b // 8) % 8) + str(b % 8)
+}
+
+
+# O texto como literal do C: barra, aspas, `?` (trígrafo) e todo byte do que
+# não se vê saem como escape (octal, que não engole o dígito seguinte).
+str funct cstr(str s) {
+    str r = "\""
+    for each ch in s {
+        int c = ord(ch)
+        if ch == "\\" {
+            r = r + "\\\\"
+        } elif ch == "\"" {
+            r = r + "\\\""
+        } elif ch == "\n" {
+            r = r + "\\n"
+        } elif ch == "\t" {
+            r = r + "\\t"
+        } elif ch == "?" {
+            r = r + "\\?"
+        } elif c < 32 or c == 127 or (c >= 128 and c < 160) or invisivel(c) {
+            for each b in ch.encode() {
+                r = r + "\\" + oct3(b)
+            }
+        } else {
+            r = r + ch
+        }
+    }
+    return r + "\""
+}
+
+
+# O texto longo em pedaços, um por linha do `.c`, que o compilador junta.
+str funct cstr_linhas(str s) {
+    if s == "" {
+        return "\"\""
+    }
+    list partes = s.split("\n")
+    list r = []
+    int i = 0
+    while i < partes.len() {
+        str p = partes[i]
+        if i < partes.len() - 1 {
+            p = p + "\n"
+        }
+        if p != "" {
+            addEnd(r, cstr(p))
+        }
+        i = i + 1
+    }
+    return "\n  ".join(r)
+}
+
+
+str funct caso_c(dict c) {
+    str s = "{ " + cstr(c["nome"]) + ",\n  " + cstr_linhas(c["fonte"]) + ",\n  " + cstr_linhas(c["saida"])
+    s = s + ",\n  " + (cstr(c["erro"]) if c["erro"] != "" else "NULL") + ", " + str(c["rc"])
+    if c["pendente"] or c["so"] != "" {
+        s = s + ", NULL, " + ("1" if c["pendente"] else "0")
+        if c["so"] != "" {
+            s = s + ", " + cstr(c["so"])
+        }
+    }
+    return s + " },"
+}
+
+
+# ── os programas de cada lugar ─────────────────────────────────────────────
+
+str FONTE_LINHA = ("str funct linha(int c, str u, str l) {\n"
+                   + "    list us = []\n"
+                   + "    for each ch in u {\n"
+                   + "        addEnd(us, str(ord(ch)))\n"
+                   + "    }\n"
+                   + "    list ls = []\n"
+                   + "    for each ch in l {\n"
+                   + "        addEnd(ls, str(ord(ch)))\n"
+                   + "    }\n"
+                   + "    return str(c) + \" \" + \",\".join(us) + \" \" + \",\".join(ls)\n"
+                   + "}\n")
+
+# Os caracteres de `ini` a `fim` (fora os substitutos, que não são caractere, e
+# os de `fora`) cuja caixa muda: o código, o `upper` e o `lower`, em números.
+str funct fonte_plano(int ini, int fim, list fora) {
+    list itens = []
+    for each c in fora {
+        addEnd(itens, "\"" + str(c) + "\": True")
+    }
+    return (FONTE_LINHA
+            + "dict fora = {" + ", ".join(itens) + "}\n"
+            + "int c = " + str(ini) + "\n"
+            + "while c < " + str(fim) + " {\n"
+            + "    if c < 55296 or c > 57343 {\n"
+            + "        str s = chr(c)\n"
+            + "        str u = s.upper()\n"
+            + "        str l = s.lower()\n"
+            + "        if (u != s or l != s) and not (str(c) in fora) {\n"
+            + "            post(linha(c, u, l))\n"
+            + "        }\n"
+            + "    }\n"
+            + "    c = c + 1\n"
+            + "}\n")
+}
+
+
+str funct fonte_lista(list cps) {
+    list itens = []
+    for each c in cps {
+        addEnd(itens, str(c))
+    }
+    return (FONTE_LINHA
+            + "for each c in [" + ", ".join(itens) + "] {\n"
+            + "    str s = chr(c)\n"
+            + "    str u = s.upper()\n"
+            + "    str l = s.lower()\n"
+            + "    if u != s or l != s {\n"
+            + "        post(linha(c, u, l))\n"
+            + "    }\n"
+            + "}\n")
+}
+
+
+# O caso entra se o programa ainda não apareceu: o programa repetido é a mesma
+# pergunta duas vezes (teste/confere_duplicados.pr). Devolve se entrou.
+bool funct guarda(list casos, dict vistos, dict c) {
+    if c["fonte"] in vistos {
+        return False
+    }
+    vistos[c["fonte"]] = True
+    addEnd(casos, c)
+    return True
+}
+
+
+Null funct de_parsing(dict g, list casos, dict vistos, int n) {
+    list pecas = LETRAS + BRANCOS + BRANCOS + QUASE
+    int i = 0
+    while i < n {
+        str s = texto(g, pecas, 10)
+        if guarda(casos, vistos, {"secao": "Parsing.string", "so": "", "tarefa": {"t": "string", "s": s},
+                                  "fonte": "import Parsing\npost(\"[\" + Parsing.string(" + lit(s) + ") + \"]\")\n"}) {
+            i = i + 1
+        }
+    }
+}
+
+
+# O `printf` mostra cada argumento entre colchetes: é o exemplo da página. Só
+# no Linux e no macOS, onde o `printf` existe como programa.
+Null funct de_run(dict g, list casos, dict vistos, int n) {
+    list pecas = ["a", "b", "ç", "日", "\U00020BB7", "1", "-", "=", "$", "|", ";", ">", "*", "#", "~",
+                  " ", " ", " ", "\t", "\n", "'", "'", "\"", "\"", "\\", "\\"]
+    int i = 0
+    while i < n {
+        str s = texto(g, pecas, 12)
+        if guarda(casos, vistos, {"secao": "os.run", "so": "unix", "tarefa": {"t": "run", "s": s},
+                                  "fonte": "import os\npost(os.run(\"printf [%s] \" + " + lit(s) + ", capture=True))\n"}) {
+            i = i + 1
+        }
+    }
+}
+
+
+str funct campo_csv(dict g, str v) {
+    bool precisa = v.find(",") >= 0 or v.find("\"") >= 0 or v.find("\n") >= 0 or v.find("\r") >= 0
+    if precisa or sorteia(g, 4) == 0 {
+        return "\"" + v.replace("\"", "\"\"") + "\""
+    }
+    return v
+}
+
+
+str FONTE_CSV = ("import os\n"
+                 + "os.writeFile(\"d.csv\", <<TEXTO>>)\n"
+                 + "list rs = os.loadFile(\"d.csv\")\n"
+                 + "post(rs.len())\n"
+                 + "for each r in rs {\n"
+                 + "    post(\"--\")\n"
+                 + "    for each k in r.keys() {\n"
+                 + "        str ks = \"<Null>\" if k == Null else \"[\" + k + \"]\"\n"
+                 + "        str vs = \"<Null>\"\n"
+                 + "        if r[k] != Null {\n"
+                 + "            if type(r[k]) == \"list\" {\n"
+                 + "                vs = \"L\"\n"
+                 + "                for each x in r[k] {\n"
+                 + "                    vs = vs + \"[\" + x + \"]\"\n"
+                 + "                }\n"
+                 + "            } else {\n"
+                 + "                vs = \"[\" + r[k] + \"]\"\n"
+                 + "            }\n"
+                 + "        }\n"
+                 + "        post(ks, \"=\", vs)\n"
+                 + "    }\n"
+                 + "}\n")
+
+# Cabeçalho e linhas com aspas, vírgula e quebra dentro do campo, linha vazia,
+# linha com campo a mais ou a menos, nome repetido, e o fim `\n` ou `\r\n`.
+Null funct de_csv(dict g, list casos, dict vistos, int n) {
+    int i = 0
+    while i < n {
+        str fim = "\r\n" if sorteia(g, 2) == 0 else "\n"
+        int nc = 1 + sorteia(g, 4)
+        list cab = []
+        int j = 0
+        while j < nc {
+            addEnd(cab, campo_csv(g, um_de(g, NOMES)))
+            j = j + 1
+        }
+        str s = ",".join(cab) + fim
+        int nl = sorteia(g, 6)
+        j = 0
+        while j < nl {
+            if sorteia(g, 5) == 0 {
+                s = s + fim
+            }
+            int nf = nc
+            int torto = sorteia(g, 6)
+            if torto == 0 {
+                nf = nc + 1
+            } elif torto == 1 and nc > 1 {
+                nf = nc - 1
+            }
+            list fs = []
+            int k = 0
+            while k < nf {
+                addEnd(fs, campo_csv(g, um_de(g, CAMPOS)))
+                k = k + 1
+            }
+            s = s + ",".join(fs)
+            if j < nl - 1 or sorteia(g, 3) != 0 {
+                s = s + fim
+            }
+            j = j + 1
+        }
+        if guarda(casos, vistos, {"secao": "loadFile", "so": "", "tarefa": {"t": "csv", "s": s},
+                                  "fonte": FONTE_CSV.replace("<<TEXTO>>", lit(s))}) {
+            i = i + 1
+        }
+    }
+}
+
+
+Null funct poe_validos(dict g, list bs, int ate) {
+    int n = sorteia(g, ate + 1)
+    int i = 0
+    while i < n {
+        for each b in VALIDOS[sorteia(g, VALIDOS.len())] {
+            addEnd(bs, b)
+        }
+        i = i + 1
+    }
+}
+
+
+# UTF-8 bom com, três vezes em quatro, um trecho que não é UTF-8: byte de
+# continuação solto, sequência longa demais, substituto, acima do U+10FFFF,
+# byte que nunca aparece e sequência cortada no fim ou no meio.
+Null funct de_utf8(dict g, list casos, dict vistos, int n) {
+    int i = 0
+    while i < n {
+        list bs = []
+        poe_validos(g, bs, 4)
+        if sorteia(g, 4) != 0 {
+            for each b in INVALIDOS[sorteia(g, INVALIDOS.len())] {
+                addEnd(bs, b)
+            }
+        }
+        poe_validos(g, bs, 3)
+        if guarda(casos, vistos, {"secao": "readFile", "so": "", "tarefa": {"t": "utf8", "b": bs},
+                                  "fonte": ("import os\nos.writeFile(\"u.txt\", " + lit_bytes(bs) + ")\n"
+                                            + "str t = os.readFile(\"u.txt\")\npost(\"[\" + t + \"]\")\n")}) {
+            i = i + 1
+        }
+    }
+}
+
+
+# Um caminho de 1 a 4 partes, com `.`, `..`, o arquivo `f` no meio ou no fim,
+# a barra no fim, a barra dobrada e, de vez em quando, o vazio. O `..` nunca
+# sobe acima da pasta do caso.
+str funct caminho(dict g) {
+    int n = 1 + sorteia(g, 4)
+    list partes = []
+    int fundo = 0
+    int i = 0
+    while i < n {
+        str p = um_de(g, COMPS)
+        if p == ".." and fundo == 0 {
+            p = "a"
+        }
+        if p == ".." {
+            fundo = fundo - 1
+        } elif p != "." {
+            fundo = fundo + 1
+        }
+        addEnd(partes, p)
+        i = i + 1
+    }
+    str s = "/".join(partes)
+    int fim = sorteia(g, 12)
+    if fim == 0 {
+        s = s + "/"
+    } elif fim == 1 {
+        s = s.replace("/", "//")
+    } elif fim == 2 {
+        s = ""
+    }
+    return s
+}
+
+
+str FONTE_MKDIR = ("import os\n"
+                   + "str funct sem_linha(str e) {\n"
+                   + "    int i = e.rfind(\" (linha \")\n"
+                   + "    if i >= 0 and e.endswith(\")\") {\n"
+                   + "        return e[0:i]\n"
+                   + "    }\n"
+                   + "    return e\n"
+                   + "}\n"
+                   + "Null funct arvore(str p, str pre) {\n"
+                   + "    list nomes = []\n"
+                   + "    dict tipos = {}\n"
+                   + "    for each it in os.ls(p) {\n"
+                   + "        addEnd(nomes, it[\"name\"])\n"
+                   + "        tipos[it[\"name\"]] = it[\"type\"]\n"
+                   + "    }\n"
+                   + "    for each n in sorted(nomes) {\n"
+                   + "        if tipos[n] == \"dir\" {\n"
+                   + "            post(pre + n + \"/\")\n"
+                   + "            arvore(p + \"/\" + n, pre + \"  \")\n"
+                   + "        } else {\n"
+                   + "            post(pre + n)\n"
+                   + "        }\n"
+                   + "    }\n"
+                   + "}\n"
+                   + "os.mkdir(\"m\")\n"
+                   + "os.chdir(\"m\")\n"
+                   + "os.writeFile(\"f\", \"x\")\n"
+                   + "os.mkdir(\"a/b\")\n")
+
+str funct fonte_mkdir(list ops) {
+    str s = FONTE_MKDIR
+    for each o in ops {
+        s = s + "try {\n    os.mkdir(" + lit(o[0]) + ", exist_ok=" + ("True" if o[1] else "False") + ")\n"
+        s = s + "    post(\"ok\")\n"
+        for each c in CLASSES {
+            s = s + "} catch (" + c + " e) {\n    post(\"" + c + ": \" + sem_linha(e))\n"
+        }
+        s = s + "}\n"
+    }
+    return s + "arvore(\".\", \"\")\n"
+}
+
+
+# Uma criação por caso, sobre a mesma pasta (o arquivo `f` e as pastas `a/b`):
+# a divergência de cada caso tem uma causa só. Só no Linux e no macOS: as
+# frases de erro são as do POSIX (`[Errno 17] File exists`), e no Windows o
+# próprio Python dá outras.
+Null funct de_mkdir(dict g, list casos, dict vistos, int n) {
+    int i = 0
+    while i < n {
+        list ops = [[caminho(g), sorteia(g, 2) == 0]]
+        if guarda(casos, vistos, {"secao": "mkdir", "so": "unix", "tarefa": {"t": "mkdir", "ops": ops},
+                                  "fonte": fonte_mkdir(ops)}) {
+            i = i + 1
+        }
+    }
+}
+
+
+str FONTE_ARGV = ("import os\nimport sys\n"
+                  + "os.writeFile(\"filho.pr\", \"import sys\\nfor each a in sys.argv {\\n"
+                  + "    post(\\\"[\\\" + a + \\\"]\\\")\\n}\\n\")\n"
+                  + "post(os.run(<<LISTA>>, capture=True))\n")
+
+# O programa filho mostra o `sys.argv` dele, um por linha, entre colchetes.
+Null funct de_argv(dict g, list casos, dict vistos, int n) {
+    int i = 0
+    while i < n {
+        int na = sorteia(g, 7)
+        list args = []
+        str lista = "[sys.executable, \"filho.pr\""
+        int j = 0
+        while j < na {
+            str a = um_de(g, ARGS)
+            addEnd(args, a)
+            lista = lista + ", " + lit(a)
+            j = j + 1
+        }
+        if guarda(casos, vistos, {"secao": "sys.argv", "so": "", "tarefa": {"t": "argv", "args": args},
+                                  "fonte": FONTE_ARGV.replace("<<LISTA>>", lista + "]")}) {
+            i = i + 1
+        }
+    }
+}
+
+
+# ── o Python ───────────────────────────────────────────────────────────────
+
+# O que o Python dá em cada tarefa, na mesma forma que o programa da Jinga
+# imprime. Escrito na pasta da rodada e apagado com ela.
+list DRIVER = [
+    "import sys, json, shlex, csv, io, os, shutil, subprocess, tempfile, mimetypes",
+    "NL = chr(10)",
+    "def sem_fim(s):",
+    "    return s.rstrip(NL + chr(13))",
+    "def arv(p, pre, ls):",
+    "    for n in sorted(os.listdir(p)):",
+    "        q = os.path.join(p, n)",
+    "        if os.path.isdir(q):",
+    "            ls.append(pre + n + '/')",
+    "            arv(q, pre + '  ', ls)",
+    "        else:",
+    "            ls.append(pre + n)",
+    "res = []",
+    "for t in json.load(open(sys.argv[1], encoding='utf-8')):",
+    "    k = t['t']",
+    "    r = {'saida': '', 'erro': '', 'rc': 0}",
+    "    if k == 'caixa':",
+    "        ls = []",
+    "        for c in range(0x110000):",
+    "            if 0xD800 <= c <= 0xDFFF:",
+    "                continue",
+    "            s = chr(c)",
+    "            u = s.upper()",
+    "            l = s.lower()",
+    "            if u != s or l != s:",
+    "                ls.append(str(c) + ' ' + ','.join(str(ord(x)) for x in u) + ' ' + ','.join(str(ord(x)) for x in l))",
+    "        r['saida'] = NL.join(ls)",
+    "    elif k == 'tipos':",
+    "        m = mimetypes.MimeTypes(filenames=())",
+    "        d = mimetypes._types_map_default",
+    "        ls = [e + ' ' + d[e] for e in sorted(d)]",
+    "        for e in ['.HTML', '.Wasm', '.JS', '.extensaoinventada']:",
+    "            ls.append(e + ' ' + (m.guess_type('f' + e)[0] or 'application/octet-stream'))",
+    "        r['saida'] = NL.join(ls)",
+    "    elif k == 'string':",
+    "        r['saida'] = '[' + ' '.join(t['s'].split()) + ']'",
+    "    elif k == 'run':",
+    "        try:",
+    "            a = shlex.split(t['s'])",
+    "            r['saida'] = ''.join('[' + x + ']' for x in a) if a else '[]'",
+    "        except ValueError as e:",
+    "            r = {'saida': '', 'erro': 'ValueError: ' + str(e), 'rc': 1}",
+    "    elif k == 'csv':",
+    "        rows = list(csv.DictReader(io.StringIO(t['s'], newline='')))",
+    "        ls = [str(len(rows))]",
+    "        for row in rows:",
+    "            ls.append('--')",
+    "            for kk, v in row.items():",
+    "                ks = '<Null>' if kk is None else '[' + kk + ']'",
+    "                if v is None:",
+    "                    vs = '<Null>'",
+    "                elif isinstance(v, list):",
+    "                    vs = 'L' + ''.join('[' + x + ']' for x in v)",
+    "                else:",
+    "                    vs = '[' + v + ']'",
+    "                ls.append(ks + ' = ' + vs)",
+    "        r['saida'] = NL.join(ls)",
+    "    elif k == 'utf8':",
+    "        try:",
+    "            r['saida'] = '[' + bytes(t['b']).decode('utf-8') + ']'",
+    "        except UnicodeDecodeError as e:",
+    "            r = {'saida': '', 'erro': 'UnicodeDecodeError: ' + str(e), 'rc': 1}",
+    "    elif k == 'mkdir':",
+    "        d = tempfile.mkdtemp()",
+    "        volta = os.getcwd()",
+    "        os.chdir(d)",
+    "        os.mkdir('m')",
+    "        os.chdir('m')",
+    "        open('f', 'w').write('x')",
+    "        os.makedirs('a/b')",
+    "        ls = []",
+    "        for p, ok in t['ops']:",
+    "            try:",
+    "                os.makedirs(p, exist_ok=ok)",
+    "                ls.append('ok')",
+    "            except OSError as e:",
+    "                ls.append(type(e).__name__ + ': ' + str(e))",
+    "        arv('.', '', ls)",
+    "        os.chdir(volta)",
+    "        shutil.rmtree(d)",
+    "        r['saida'] = NL.join(ls)",
+    "    elif k == 'argv':",
+    "        d = tempfile.mkdtemp()",
+    "        open(os.path.join(d, 'filho.py'), 'w').write('import sys' + NL + 'for a in sys.argv:' + NL + '    print(chr(91) + a + chr(93))' + NL)",
+    "        p = subprocess.run([sys.executable, '-I', 'filho.py'] + t['args'], cwd=d, capture_output=True, text=True)",
+    "        shutil.rmtree(d)",
+    "        # o argv[0] é o nome do script como foi dado: aqui filho.py, no caso filho.pr",
+    "        r['saida'] = p.stdout.replace('[filho.py]', '[filho.pr]', 1)",
+    "    r['saida'] = sem_fim(r['saida'])",
+    "    res.append(r)",
+    "json.dump(res, open(sys.argv[2], 'w', encoding='utf-8'), ensure_ascii=False)"]
+
+
+# ── rodar no motor ─────────────────────────────────────────────────────────
+
+Null funct grava(str caminho, str texto) {
+    os.writeFile(caminho, texto)
+}
+
+
+# Roda o programa como o runner roda (a pasta só dele, a entrada vazia), numa
+# pasta nova a cada vez: o `executa` espera o arquivo do código, e o de uma
+# rodada anterior seria lido no lugar.
+dict funct roda(str fonte, bool jit) {
+    str volta = os.cwd()
+    str pasta = volta + "/ex"
+    if os.isdir(pasta) {
+        os.rmdir(pasta, force=True)
+    }
+    os.mkdir(pasta)
+    grava(pasta + "/caso.pr", fonte)
+    grava(pasta + "/entrada.txt", "")
+    os.chdir(pasta)
+    dict r = {}
+    executa(pasta, [], "o", "caso.pr", jit, PRAZO, r)
+    os.chdir(volta)
+    return r
+}
+
+
+str funct sem_fim(str s) {
+    str r = s
+    while r.endswith("\n") or r.endswith("\r") {
+        r = r[0:r.len() - 1]
+    }
+    return r
+}
+
+
+# A conferência do runner (`confere`, teste/ps_teste.c): a saída inteira, sem
+# os fins de linha do fim, o trecho do erro e o código de saída. "" = bate.
+str funct confere(dict c, dict r) {
+    if sem_fim(r["saida"]) != c["saida"] {
+        return ("saída " + json.stringify(sem_fim(r["saida"])[0:200]) + ", o Python dá "
+                + json.stringify(c["saida"][0:200]))
+    }
+    if c["erro"] != "" {
+        if not (c["erro"] in r["erro"]) {
+            return ("erro " + json.stringify(sem_fim(r["erro"])[0:200]) + ", o Python dá "
+                    + json.stringify(c["erro"]))
+        }
+    } elif r["rc"] != 0 {
+        return "rc " + str(r["rc"]) + ": " + json.stringify(sem_fim(r["erro"])[0:300])
+    }
+    if r["rc"] != c["rc"] {
+        return "rc " + str(r["rc"])
+    }
+    return ""
+}
+
+
+# O programa que não terminou como programa (prazo, sinal, erro antes de
+# rodar) é defeito do gerador ou queda do motor: nunca vira caso pendente.
+str funct parada(dict r) {
+    if r["estourou"] {
+        return "passou do prazo"
+    }
+    if r["rc"] != 0 and r["rc"] != 1 {
+        return "saiu com " + str(r["rc"]) + ": " + sem_fim(r["erro"])[0:300]
+    }
+    return ""
+}
+
+
+# Os pares (código, linha) do mapa de caixa.
+dict funct mapa(str saida) {
+    dict m = {}
+    for each l in saida.split("\n") {
+        if l != "" {
+            m[l.split(" ")[0]] = l
+        }
+    }
+    return m
+}
+
+
+# O item aberto de notas/CORRECAO-BASE.md da divergência, pela causa que o
+# item mediu; "" = causa sem item. `r` é o que o motor deu.
+str funct item_de(dict c, dict r) {
+    str s = c["secao"]
+    if s == "caixa" {
+        return "motor-26"
+    }
+    dict t = c["tarefa"]
+    if s == "Parsing.string" {
+        for each ch in t["s"] {
+            if ord(ch) in BRANCOS_SO_PYTHON {
+                return "motor-27"
+            }
+        }
+        return ""
+    }
+    if s == "sys.argv" {
+        if t["args"].len() > 0 and t["args"][0] == "-o" {
+            return "motor-28"
+        }
+        return ""
+    }
+    if s == "readFile" {
+        if c["erro"].find("bytes in position") >= 0 {
+            return "os-2"
+        }
+        return ""
+    }
+    if s == "loadFile" {
+        if t["s"].endswith(",") {
+            return "os-4"
+        }
+        return ""
+    }
+    if s == "mkdir" {
+        str p = t["ops"][0][0]
+        while p.endswith("/") {
+            p = p[0:p.len() - 1]
+        }
+        str py = c["saida"].split("\n")[0]
+        str ps = sem_fim(r["saida"]).split("\n")[0]
+        if p.endswith("/.") and py == "ok" and ps.startswith("FileExistsError: ") {
+            return "os-5"
+        }
+        if py.startswith("NotADirectoryError: ") and ps.startswith("NotADirectoryError: ") {
+            return "os-3"
+        }
+        return ""
+    }
+    return ""
+}
+
+
+if __name__ == "main" {
+    str prova = prova_do_kill()
+    if prova != "" {
+        post("python_doc: o kill desta máquina não acerta o grupo de processos (" + prova + "): nada roda")
+        sys.exit(1)
+    }
+    str versao = os.run(["python3", "--version"], capture=True).strip()
+    if not versao.startswith(VERSAO) {
+        post("python_doc: o gerador roda com o " + VERSAO + ", o que a doc cita; aqui o python3 é o " + versao)
+        sys.exit(1)
+    }
+    str raiz = os.cwd()
+    str trab = raiz + "/" + TMP
+    os.mkdir(trab)
+    list casos = []
+    list tipos = []
+    list paradas = []
+    list sem_item = []
+    list jit_difere = []
+    str parou = ""
+    try {
+        dict g = {"v": SEMENTE}
+        dict vistos = {}
+        de_parsing(g, casos, vistos, 40)
+        de_run(g, casos, vistos, 40)
+        de_csv(g, casos, vistos, 30)
+        de_utf8(g, casos, vistos, 40)
+        de_mkdir(g, casos, vistos, 40)
+        de_argv(g, casos, vistos, 20)
+        list tarefas = [{"t": "caixa"}, {"t": "tipos"}]
+        for each c in casos {
+            addEnd(tarefas, c["tarefa"])
+        }
+        grava(trab + "/tarefas.json", json.stringify(tarefas))
+        grava(trab + "/driver.py", "\n".join(DRIVER) + "\n")
+        str py_out = os.run(["python3", "-I", trab + "/driver.py", trab + "/tarefas.json", trab + "/respostas.json"],
+                            capture=True)
+        list resp = json.parse(os.readFile(trab + "/respostas.json"))
+        tipos = resp[1]["saida"].split("\n")
+        int i = 0
+        for each c in casos {
+            dict r = resp[i + 2]
+            c["saida"] = r["saida"]
+            c["erro"] = r["erro"]
+            c["rc"] = r["rc"]
+            i = i + 1
+        }
+        os.chdir(trab)
+
+        # A caixa: o mapa inteiro do motor, com JIT e sem, contra o do Python.
+        dict py = mapa(resp[0]["saida"])
+        dict m1 = mapa(roda(fonte_plano(0, 1114112, []), True)["saida"])
+        dict m0 = mapa(roda(fonte_plano(0, 1114112, []), False)["saida"])
+        list fora = []
+        dict todos = {}
+        for each k in py.keys() {
+            todos[k] = True
+        }
+        for each k in m1.keys() {
+            todos[k] = True
+        }
+        for each k in m0.keys() {
+            todos[k] = True
+        }
+        for each k in todos.keys() {
+            if m1.get(k, "") != m0.get(k, "") {
+                addEnd(jit_difere, "caixa de " + k + ": com JIT " + m1.get(k, "(igual)") + ", sem JIT "
+                       + m0.get(k, "(igual)"))
+            } elif m1.get(k, "") != py.get(k, "") {
+                addEnd(fora, int(k))
+            }
+        }
+        fora = sorted(fora)
+        list caixa = []
+        int p = 0
+        while p < 17 {
+            int ini = p * 65536
+            int fim = ini + 65536
+            list fora_aqui = []
+            for each c in fora {
+                if c >= ini and c < fim {
+                    addEnd(fora_aqui, c)
+                }
+            }
+            list esperado = []
+            for each k in py.keys() {
+                int c = int(k)
+                if c >= ini and c < fim and not (c in fora_aqui) {
+                    addEnd(esperado, c)
+                }
+            }
+            list linhas = []
+            for each c in sorted(esperado) {
+                addEnd(linhas, py[str(c)])
+            }
+            addEnd(caixa, {"secao": "caixa", "so": "", "nome": "caixa do plano " + str(p),
+                           "fonte": fonte_plano(ini, fim, fora_aqui), "saida": "\n".join(linhas), "erro": "", "rc": 0})
+            p = p + 1
+        }
+        if fora.len() > 0 {
+            list linhas = []
+            for each c in fora {
+                if str(c) in py {
+                    addEnd(linhas, py[str(c)])
+                }
+            }
+            addEnd(caixa, {"secao": "caixa", "so": "", "nome": "caixa dos " + str(fora.len()) + " caracteres que divergem",
+                           "fonte": fonte_lista(fora), "saida": "\n".join(linhas), "erro": "", "rc": 0})
+        }
+        casos = caixa + casos
+
+        # Todo programa gerado passa no --check: o portão da suíte
+        # (scripts/confere_suite.pr) confere isso a cada commit.
+        os.mkdir(trab + "/progs")
+        list arqs = []
+        int a = 0
+        for each c in casos {
+            str arq = trab + "/progs/p" + str(a) + ".pr"
+            grava(arq, c["fonte"])
+            addEnd(arqs, arq)
+            a = a + 1
+        }
+        dict chk = checa_todos(arqs)
+        a = 0
+        for each c in casos {
+            dict d = chk.get(arqs[a], {})
+            if not d.get("ok", False) {
+                dict e = primeiro_erro(d)
+                addEnd(paradas, c["secao"] + " (programa " + str(a) + "): o --check recusa: " + e.get("tipo", "?")
+                       + ": " + e.get("msg", "sem resposta"))
+            }
+            a = a + 1
+        }
+
+        # Cada caso, com JIT e sem.
+        int n = 0
+        for each c in casos {
+            if not ("nome" in c) {
+                c["nome"] = c["secao"]
+            }
+            c["nome"] = "python #" + str(n) + " " + c["nome"]
+            n = n + 1
+            dict r1 = roda(c["fonte"], True)
+            dict r0 = roda(c["fonte"], False)
+            str q = parada(r1)
+            if q == "" {
+                q = parada(r0)
+            }
+            if q != "" {
+                addEnd(paradas, c["nome"] + ": " + q)
+                continue
+            }
+            str f1 = confere(c, r1)
+            str f0 = confere(c, r0)
+            c["pendente"] = False
+            c["difere"] = ""
+            if f1 == "" and f0 == "" {
+                continue
+            }
+            if r1["saida"] != r0["saida"] or r1["erro"] != r0["erro"] or r1["rc"] != r0["rc"] {
+                addEnd(jit_difere, c["nome"] + ": com JIT " + (f1 if f1 != "" else "bate") + "; sem JIT "
+                       + (f0 if f0 != "" else "bate"))
+                continue
+            }
+            str item = item_de(c, r1)
+            if item == "" {
+                addEnd(sem_item, c["nome"] + ": " + f1)
+                continue
+            }
+            c["pendente"] = True
+            c["item"] = item
+            c["difere"] = f1
+            c["nome"] = c["nome"] + " (PENDENTE " + item + ")"
+        }
+    } catch (Exception e) {
+        parou = str(e)
+    }
+    os.chdir(raiz)
+    os.rmdir(trab, force=True)
+    if parou != "" {
+        post("python_doc: " + parou + ": a geração parou")
+        sys.exit(1)
+    }
+    if paradas.len() > 0 or sem_item.len() > 0 or jit_difere.len() > 0 {
+        for each x in paradas {
+            post("  NÃO TERMINOU  " + x)
+        }
+        for each x in jit_difere {
+            post("  O JIT E O INTERPRETADOR DIVERGEM  " + x)
+        }
+        for each x in sem_item {
+            post("  DIVERGE, SEM ITEM NA LISTA  " + x)
+        }
+        post("python_doc: nada foi gravado (o item entra em notas/CORRECAO-BASE.md e em ITENS antes)")
+        sys.exit(1)
+    }
+
+    dict por_item = {}
+    int pendentes = 0
+    for each c in casos {
+        if c["pendente"] {
+            pendentes = pendentes + 1
+            str it = c["item"]
+            por_item[it] = por_item.get(it, 0) + 1
+            post("  pendente  " + c["nome"] + ": " + c["difere"][0:200])
+        }
+    }
+    list resumo = []
+    for each it in sorted(por_item.keys()) {
+        addEnd(resumo, it + ": " + str(por_item[it]))
+    }
+    list out = ["/*", " * GERADO por teste/geradores/python_doc.pr — nao edite na mao.", " *",
+                " * Os lugares da doc que citam o Python, conferidos contra o " + versao + ":",
+                " * a saida esperada de cada caso e a do Python (notas/PORTOES.md, P4, lote 3).",
+                " * Caso PENDENTE diverge do Python hoje e aponta o item aberto de",
+                " * notas/CORRECAO-BASE.md: ele tem que falhar, e quando o motor acertar o",
+                " * runner diz JA FUNCIONA e o gerador roda de novo.", " *",
+                " * casos: " + str(casos.len()) + "  |  pendentes: " + str(pendentes)
+                + (" (" + ", ".join(resumo) + ")" if resumo.len() > 0 else "") + "  |  semente: " + str(SEMENTE),
+                " */", "#include \"ps_teste.h\"", "", "const Caso CASOS_PYTHON[] = {"]
+    for each c in casos {
+        addEnd(out, caso_c(c))
+    }
+    addEnd(out, "};")
+    addEnd(out, "const int NC_PYTHON = N_CASOS(CASOS_PYTHON);")
+    grava(SAIDA, "\n".join(out) + "\n")
+    list tt = ["# GERADO por teste/geradores/python_doc.pr — nao edite na mao.",
+               "# A tabela de tipos do `mimetypes` do " + versao + " (a `_types_map_default`), e o",
+               "# que o `guess_type` dela dá com outra caixa e com extensão desconhecida. Quem",
+               "# confere é o teste/jinker_roda.pr: o `Content-Type` de cada arquivo da pasta",
+               "# estática (o alvo cria um arquivo por linha)."]
+    grava(TIPOS, "\n".join(tt + tipos) + "\n")
+    post("casos:", casos.len(), "| pendentes:", pendentes, "(" + ", ".join(resumo) + ")",
+         "| tipos:", tipos.len(), "| " + versao)
+}

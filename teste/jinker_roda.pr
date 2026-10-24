@@ -482,6 +482,23 @@ confere("o .wasm sai application/wasm", cab_cru(pede("GET", "/estatico/modulo.wa
 confere("o .avif sai image/avif", cab_cru(pede("GET", "/estatico/foto.avif", ""), "Content-Type") == "image/avif")
 confere("extensao desconhecida sai application/octet-stream", cab_cru(pede("GET", "/estatico/coisa.extensaoinventada", ""), "Content-Type") == "application/octet-stream")
 confere("o .txt continua text/plain", cab_cru(pede("GET", "/estatico/pagina.txt", ""), "Content-Type") == "text/plain")
+# A tabela inteira do `mimetypes` do Python 3.15 (teste/jinker_tipos.txt, gerada
+# pelo teste/geradores/python_doc.pr): o tipo de cada extensão, e o que o
+# `guess_type` dá com outra caixa e com extensão desconhecida.
+list tipos_errados = []
+int tipos_vistos = 0
+for each linha in os.readFile("teste/jinker_tipos.txt").splitlines() {
+    if linha != "" and not linha.startswith("#") {
+        list par = linha.split(" ")
+        str obtido = cab_cru(pede("GET", "/estatico/tipos/f" + par[0], ""), "Content-Type")
+        tipos_vistos = tipos_vistos + 1
+        if obtido != par[1] {
+            addEnd(tipos_errados, par[0] + " sai " + obtido + " (o Python dá " + par[1] + ")")
+        }
+    }
+}
+confere("as " + str(tipos_vistos) + " linhas da tabela do Python saem com o tipo delas: " + ", ".join(tipos_errados[0:10]),
+        tipos_vistos > 200 and tipos_errados.len() == 0)
 
 b = pede("GET", "/estatico/cem.txt", "")
 str etag = cab_cru(b, "ETag")

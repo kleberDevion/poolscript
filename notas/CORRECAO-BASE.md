@@ -510,6 +510,49 @@ em cada item):
   A doc (1.6.3) diz que o campo dentro do formato vale ("`{x:{w}.2f}` usa a
   largura guardada em `w`"), e o `docs/lsp.md` diz que cada item de `erros`
   traz onde o erro começa e onde termina. `motor`.
+- **motor-26** (achado pelo gerador do P4, lote 3, 2026-10-24,
+  `teste/casos_python.c`) A tabela de caixa do motor é a do Unicode 15.1, e o
+  Python 3.15, que a doc cita, usa a do Unicode 17.0: em 110 caracteres o
+  `upper` ou o `lower` do Python muda o caractere e o do motor não. São os
+  pares novos do Unicode 16.0 e 17.0. Exemplos:
+  - o `upper` do U+019B: o Python dá o U+A7DC (a maiúscula, que entrou no
+    Unicode 16.0), e o motor devolve o próprio U+019B;
+  - as letras do Garay, de U+10D50 em diante.
+
+  A doc diz as duas coisas no mesmo capítulo
+  (`docs/linguagem/12-metodos-string-list-dict.md`): "a mesma do
+  `upper`/`lower` do Python" (linha 36) e "a tabela do Unicode inteira (UCD
+  15.1)" (linha 89). Quem decide é ele: as tabelas do motor passam pro Unicode
+  17.0 (o `scripts/gera_unicode.pr` com o UCD 17.0), ou a doc diz que a
+  referência é o UCD 15.1. O caso pendente lista os 110. `motor` (tabelas do
+  Unicode).
+- **motor-27** (achado pelo gerador do P4, lote 3) O `Parsing.string` junta
+  só quatro brancos: o espaço, o tab, o `\n` e o `\r`. O
+  `" ".join(s.split())` do Python, que a doc cita, junta também estes:
+  - os controles `\x0b`, `\x0c`, `\x1c` a `\x1f` e `\x85`;
+  - os espaços do Unicode: `\xa0`, U+1680, U+2000 a U+200A, U+202F, U+205F e
+    U+3000;
+  - os separadores de linha e de parágrafo, U+2028 e U+2029.
+
+  Programa: `Parsing.string("a\U00003000b")` dá `"a\U00003000b"`, e o Python dá
+  `"a b"`. Promessa: `docs/Parsing/string/string.md` ("cada corrida de
+  espaço, tab e quebra de linha vira um espaço só, e os das pontas saem (o
+  `" ".join(s.split())` do Python)"). Dos 40 casos sorteados do lugar, 32
+  estão pendentes. `motor`.
+- **motor-28** (achado pelo gerador do P4, lote 3) O `-o` logo depois do
+  arquivo não chega ao programa. `jinga filho.pr -o saida` não roda o
+  `filho.pr`: gera um executável chamado `saida` (e diz `gerado: saida`).
+  Depois do primeiro argumento, o `-o` chega: `jinga filho.pr x -o y` dá
+  `['filho.pr', 'x', '-o', 'y']`. O Python passa pro `sys.argv` tudo o que
+  vem depois do script.
+  - A promessa do `sys.argv`: `docs/sys/argv/argv.md` ("os seus argumentos
+    vêm a partir de `argv[1]` — a mesma convenção de C, Python e JS").
+  - A forma de gerar o executável, `jinga arquivo.pr -o nome`, está em
+    `docs/LANGUAGE.md` (linhas 46 e 55) e no `jinga --help`.
+
+  Quem decide é ele: a doc do `sys.argv` diz que o `-o` logo depois do
+  arquivo é o pedido de gerar o executável, ou o executável sai só por outro
+  comando e o `-o` vai pro programa. `motor` (linha de comando).
 
 ## os
 
@@ -522,6 +565,38 @@ em cada item):
   enquanto roda; depois, o código de saída"). Sem isso não há como saber se o
   filho acabou sem ficar preso: o `Process` não tem `poll()` (o Python tem, e
   é ele que atualiza o `returncode` de lá). `motor`.
+- **os-2** (achado pelo gerador do P4, lote 3, 2026-10-24,
+  `teste/casos_python.c`) Quando o trecho que não é UTF-8 tem mais de um byte,
+  o `UnicodeDecodeError` do `os.readFile` diz só o primeiro, e o do Python diz
+  a faixa inteira. Programa: o arquivo com os bytes `e2 82` (um caractere de
+  três bytes cortado no fim). O motor dá `'utf-8' codec can't decode byte 0xe2
+  in position 0: unexpected end of data`, e o Python dá `'utf-8' codec can't
+  decode bytes in position 0-1: unexpected end of data`. O mesmo com `e2 82
+  28` (`invalid continuation byte`) e com `f0 9f 98`. Promessa:
+  `docs/os/readFile/readFile.md` ("lido como UTF-8, como o `open().read()` do
+  Python: o que não é UTF-8 é `UnicodeDecodeError`, com a posição do byte").
+  `motor`.
+- **os-3** (achado pelo gerador do P4, lote 3) Com um arquivo no meio do
+  caminho, o `NotADirectoryError` do `os.mkdir` diz o caminho inteiro, e o do
+  `os.makedirs` diz a pasta que ele tentou criar. Programa: com `f` arquivo,
+  `os.mkdir("f/g/h", exist_ok=True)` dá `[Errno 20] Not a directory:
+  'f/g/h'`, e o Python dá `[Errno 20] Not a directory: 'f/g'`. Promessa:
+  `docs/os/mkdir/mkdir.md` ("cria uma pasta (diretório), e as pastas do
+  caminho que faltarem, como o `os.makedirs` do Python"). `motor`.
+- **os-4** (achado pelo gerador do P4, lote 3) O `os.loadFile` de `.csv`
+  perde o campo vazio do fim quando a última linha acaba em vírgula e o
+  arquivo não termina em quebra de linha. Programa: o arquivo `a,b\n1,` dá
+  `[{'a': '1', 'b': Null}]`, e o `csv.DictReader` dá `[{'a': '1', 'b': ''}]`.
+  Com um campo a mais, o Python guarda o vazio na chave `None`, e o motor
+  perde. Com `\n` ou `\r\n` depois da vírgula, os dois dão o mesmo. Promessa:
+  `docs/os/loadFile/loadFile.md` ("lista de dicts (cabeçalho = chaves), como
+  o `csv.DictReader` do Python"). `motor`.
+- **os-5** (achado pelo gerador do P4, lote 3) O `os.mkdir` de um caminho que
+  acaba em `/.`, com `exist_ok=False`, cria as pastas e depois dá
+  `FileExistsError`. O `os.makedirs` não dá erro: ele para quando a última
+  parte é `.`. Programa: `os.mkdir("b/f/.")` cria `b/f` e dá `[Errno 17] File
+  exists: 'b/f/.'`, e o Python cria `b/f` e não dá erro. Com `exist_ok=True`,
+  os dois dão o mesmo. Promessa: a mesma do os-3. `motor`.
 
 ## teste
 
@@ -604,6 +679,15 @@ em cada item):
   (medido com `grep`). `teste`.~~ Corrigido no lote 2 do P4: a pasta sai no
   fim, e o cabeçalho diz o que o script faz (a divergência fica marcada pra
   ser julgada).
+- ~~**teste-11** (achado no `make check` do lote 3 do P4, 2026-10-24) O
+  gerador de programas (`teste/geradores/programas.pr`) gravava o achado
+  encolhido sem conferir que a falha se repete. O Mac entrou em sono de
+  manutenção no meio da rodada, um programa passou do prazo de 20 s de
+  relógio, e virou o achado `teste/p4_achados/891e4223b69f.pr`, que roda em
+  0,08 s com JIT e sem. O portão levou 1.214 s, contra 49 s. `teste`.~~
+  Corrigido no lote 3 do P4: o achado encolhido roda de novo antes de virar
+  arquivo; a falha que não se repete não grava nada, e a rodada reprova
+  dizendo isso. O achado falso foi apagado.
 
 ## doc
 
@@ -893,3 +977,23 @@ e sem, e dá o mesmo erro.
   --confere` nem os portões P1 (`confere_saida_doc.pr`), P2 e P3.~~
   Corrigido no commit do P4 (lote 1): a lista segue o `Makefile`, com o
   portão `gramatica`.
+- **doc-32** (achado pelo gerador do P4, lote 3, 2026-10-24) O exemplo do
+  capítulo 12 diz que `"İ".lower()` dá `i`. O resultado é o `i` seguido do
+  ponto combinante U+0307, dois caracteres, no motor e no Python. A página do
+  `lower` diz certo (`docs/str/lower/lower.md`: "`len("İ".lower())` é 2").
+  Lugar: `docs/linguagem/12-metodos-string-list-dict.md`, linha 45 (`# i —
+  o I turco com pingo`). `doc`.
+- **doc-33** (achado pelo gerador do P4, lote 3) A página do `static_folder`
+  diz que o tipo sai "pela tabela padrão do `mimetypes` do Python 3.15 (a
+  mesma do `http.server`, 213 extensões)". A da jinker é a
+  `_types_map_default` do `mimetypes`, igual nas 213 (conferido no
+  `teste/jinker_roda.pr`). O `http.server` soma quatro de compressão:
+  - `.gz`, `application/gzip`;
+  - `.bz2`, `application/x-bzip2`;
+  - `.xz`, `application/x-xz`;
+  - `.Z`, `application/octet-stream`.
+
+  As três primeiras a jinker serve como `application/octet-stream`. Quem
+  decide é ele: a doc tira o "a mesma do `http.server`", ou a jinker soma as
+  quatro. Lugar: `docs/jinker/static_folder/static_folder.md`, linha 84.
+  `doc`.

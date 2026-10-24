@@ -32,7 +32,7 @@ PASTA = "teste"
 ORDEM = ["casos_linguagem.c", "casos_erros.c",
          "casos_inteiros.c", "casos_crash.c", "casos_oraculo.c",
          "casos_equivalencia.c", "casos_libs.c", "casos_robustez.c",
-         "casos_pendentes.c", "casos_cobertura.c", "casos_regex_re.c"]
+         "casos_pendentes.c", "casos_cobertura.c", "casos_regex_re.c", "casos_python.c"]
 GERADOS_DE_OUTROS = ["casos_diferencial.c"]
 
 
