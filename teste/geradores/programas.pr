@@ -1,0 +1,942 @@
+# Os programas gerados (notas/PORTOES.md, P4, portão `p4`): programas tipados
+# sorteados por construção, como o Csmith (Yang, Chen, Eide e Regehr, PLDI
+# 2011) e o YARPGen (Livinskii, Babokin e Regehr, OOPSLA 2020). O gerador
+# guarda o tipo de cada nome declarado e pede a expressão do tipo que o lugar
+# exige; os laços têm teto e as contas não crescem sem limite; cada programa
+# imprime o que calcula.
+#
+# Os oráculos, em cada programa:
+#   1. o `--check` aprova (o programa é bem tipado por construção);
+#   2. com JIT e sem JIT, a mesma saída, o mesmo erro e o mesmo código;
+#   3. rodando, termina com 0 e sem erro (o erro que ele levanta, ele pega);
+#   4. nada cai por sinal nem passa do prazo.
+# E de cada programa sai uma variante com um erro só, da lista do que a doc
+# promete pegar antes de rodar (docs/linguagem/10-excecoes.md, 10.x): o
+# `--check` tem que recusar, com essa classe e nessa linha. Onde o valor pode
+# passar por um `Object` (o jeito do P2), a variante gêmea tem que dar, rodando,
+# a mesma frase.
+#
+# O programa que falha perde comando por comando enquanto a mesma falha
+# continuar, e o menor vai pra `teste/p4_achados/` (versionado), com o oráculo
+# no cabeçalho. Os achados rodam antes de tudo, a cada rodada. A falha que já é
+# item aberto de notas/CORRECAO-BASE.md fica na catraca (portão `p4`, a página
+# é o achado).
+#
+# Os programas da rodada (os de base e as variantes) têm que usar toda regra da
+# gramática (docs/linguagem/gramatica.md), medida pelo reconhecedor do portão
+# `gramatica`. Regra sem uso deixa o portão vermelho: falta a forma no gerador.
+#
+#     ./pool teste/geradores/programas.pr               # a semente fixa (make check)
+#     ./pool teste/geradores/programas.pr 2000 4242     # quantos e a semente (o noturno)
+import os
+import sys
+import json
+import date
+import hash
+from '../../scripts/portoes_isola.pr' import executa, prova_do_kill
+from '../../scripts/portoes_catraca.pr' import aplica, relata
+from '../../scripts/gramatica_peg.pr' import le_gramatica, reconhece, campos_de_fstring, faixas, chama_motor
+
+str ACHADOS = "teste/p4_achados"
+str GRAMATICA = "docs/linguagem/gramatica.md"
+str TMP = "ps_programas_tmp_" + str(date.timestamp_ms())
+int QUANTOS = 150
+int SEMENTE = 20261024
+flo PRAZO = 20.0
+int LOTE = 150
+
+
+# ── o sorteio ──────────────────────────────────────────────────────────────
+
+# O gerador congruente das leis (teste/leis.pr): os bits altos.
+int funct sorteia(dict g, int n) {
+    g["v"] = (g["v"] * 1103515245 + 12345) % 2147483648
+    return (g["v"] // 65536) % n if n > 0 else 0
+}
+
+
+str funct escolhe(dict g, list l) {
+    return l[sorteia(g, l.len())]
+}
+
+
+str funct novo(dict g, str prefixo) {
+    g["n"] = g["n"] + 1
+    return prefixo + str(g["n"])
+}
+
+
+# ── o escopo: os nomes declarados, com o tipo ──────────────────────────────
+
+Null funct entra(dict e) {
+    addEnd(e["pilha"], {})
+}
+
+
+Null funct sai(dict e) {
+    e["pilha"].pop()
+}
+
+
+Null funct declara(dict e, str nome, str tipo) {
+    e["pilha"][e["pilha"].len() - 1][nome] = tipo
+}
+
+
+# Os nomes de um tipo; sem os fixos (o contador de um laço não se reescreve).
+list funct nomes_de(dict e, str tipo, bool escrita) {
+    list r = []
+    for each nivel in e["pilha"] {
+        for each n in nivel.keys() {
+            if nivel[n] == tipo and not (escrita and n in e["fixos"]) {
+                addEnd(r, n)
+            }
+        }
+    }
+    return r
+}
+
+
+# ── as expressões, pelo tipo ───────────────────────────────────────────────
+
+list TEXTOS = ["\"abc\"", "\"Jinga\"", "\"x y\"", "\"ção\"", "\"\"", "\"a1\""]
+
+
+str funct folha(dict g, dict e, str t) {
+    list ns = nomes_de(e, t, False)
+    if ns.len() > 0 and sorteia(g, 3) > 0 {
+        return escolhe(g, ns)
+    }
+    if t == "int" {
+        return str(sorteia(g, 21))
+    }
+    if t == "flo" {
+        return str(sorteia(g, 9)) + ".5"
+    }
+    if t == "str" {
+        return escolhe(g, TEXTOS)
+    }
+    if t == "bool" {
+        return escolhe(g, ["True", "False"])
+    }
+    if t == "list" {
+        return "[" + str(sorteia(g, 9)) + ", " + str(sorteia(g, 9)) + ", " + str(sorteia(g, 9)) + "]"
+    }
+    if t == "dict" {
+        return "{\"a\": " + str(sorteia(g, 9)) + ", \"b\": " + str(sorteia(g, 9)) + "}"
+    }
+    return "(" + str(sorteia(g, 9)) + ", " + str(sorteia(g, 9)) + ")"
+}
+
+
+# Uma expressão do tipo `t`, com profundidade até `d`. Toda conta é segura: o
+# divisor nunca é zero, o índice cai dentro, o produto não passa de 64 bits e
+# o texto e a lista crescem só por literal.
+str funct expr(dict g, dict e, str t, int d) {
+    if d <= 0 or sorteia(g, 4) == 0 {
+        return folha(g, e, t)
+    }
+    int k = d - 1
+    if t == "int" {
+        int op = sorteia(g, 18)
+        if op == 0 {
+            return "(" + expr(g, e, "int", k) + " + " + expr(g, e, "int", k) + ")"
+        } elif op == 1 {
+            return "(" + expr(g, e, "int", k) + " - " + expr(g, e, "int", k) + ")"
+        } elif op == 2 {
+            return "((" + expr(g, e, "int", k) + " % 1000) * (" + expr(g, e, "int", k) + " % 1000))"
+        } elif op == 3 {
+            return "(" + expr(g, e, "int", k) + " // (abs(" + expr(g, e, "int", k) + ") % 5 + 1))"
+        } elif op == 4 {
+            return "(" + expr(g, e, "int", k) + " % (abs(" + expr(g, e, "int", k) + ") % 5 + 1))"
+        } elif op == 5 {
+            return "len(" + expr(g, e, "str", k) + ")"
+        } elif op == 6 {
+            str l = expr(g, e, "list", k)
+            return "(" + l + "[" + expr(g, e, "int", k) + " % " + l + ".len()] if " + l + ".len() > 0 else 0)"
+        } elif op == 7 {
+            return expr(g, e, "dict", k) + ".get(\"a\", 0)"
+        } elif op == 8 {
+            return "abs(" + expr(g, e, "int", k) + ")"
+        } elif op == 9 {
+            return "(" + expr(g, e, "int", k) + " if " + expr(g, e, "bool", k) + " else " + expr(g, e, "int", k) + ")"
+        } elif op == 10 {
+            return "(" + expr(g, e, "int", k) + " & " + expr(g, e, "int", k) + ")"
+        } elif op == 11 {
+            return "(" + expr(g, e, "int", k) + " ^ " + expr(g, e, "int", k) + ")"
+        } elif op == 12 {
+            return "((" + expr(g, e, "int", k) + " % 1000) << (abs(" + expr(g, e, "int", k) + ") % 4))"
+        } elif op == 13 {
+            return "(2 ** (abs(" + expr(g, e, "int", k) + ") % 6))"
+        } elif op == 14 {
+            return "(int(1) count in " + expr(g, e, "list", k) + ")"
+        } elif op == 15 {
+            return expr(g, e, "str", k) + ".find(\"a\")"
+        } elif op == 16 {
+            return expr(g, e, "tup", k) + "[0]"
+        }
+        return "int(" + expr(g, e, "flo", k) + " * 0)"
+    }
+    if t == "flo" {
+        int op = sorteia(g, 5)
+        if op == 0 {
+            return "(" + expr(g, e, "flo", k) + " + " + expr(g, e, "flo", k) + ")"
+        } elif op == 1 {
+            return "(" + expr(g, e, "flo", k) + " * 0.5)"
+        } elif op == 2 {
+            return "(" + expr(g, e, "int", k) + " / (abs(" + expr(g, e, "int", k) + ") % 5 + 1))"
+        } elif op == 3 {
+            return "flo(" + expr(g, e, "int", k) + ")"
+        }
+        return "abs(" + expr(g, e, "flo", k) + ")"
+    }
+    if t == "str" {
+        int op = sorteia(g, 10)
+        if op == 0 {
+            return "(" + expr(g, e, "str", k) + " + " + escolhe(g, TEXTOS) + ")"
+        } elif op == 1 {
+            return "str(" + expr(g, e, "int", k) + ")"
+        } elif op == 2 {
+            return expr(g, e, "str", k) + ".upper()"
+        } elif op == 3 {
+            return expr(g, e, "str", k) + ".replace(\"a\", \"o\")"
+        } elif op == 4 {
+            return expr(g, e, "str", k) + "[1:3]"
+        } elif op == 5 {
+            return "(\"ab\" * (abs(" + expr(g, e, "int", k) + ") % 3))"
+        } elif op == 6 {
+            # o campo é um nome ou um literal: aspa de texto dentro do campo
+            # fecharia a f-string
+            return "f\"v{" + folha(g, e, "int") + "}w\""
+        } elif op == 7 {
+            return "f\"{" + folha(g, e, "flo") + ":.2f}\""
+        } elif op == 8 {
+            return "str(" + expr(g, e, "list", k) + ")"
+        }
+        return "(" + expr(g, e, "str", k) + " if " + expr(g, e, "bool", k) + " else " + escolhe(g, TEXTOS) + ")"
+    }
+    if t == "bool" {
+        int op = sorteia(g, 8)
+        if op == 0 {
+            return "(" + expr(g, e, "int", k) + " < " + expr(g, e, "int", k) + ")"
+        } elif op == 1 {
+            return "(" + expr(g, e, "str", k) + " == " + expr(g, e, "str", k) + ")"
+        } elif op == 2 {
+            return "(" + expr(g, e, "bool", k) + " and " + expr(g, e, "bool", k) + ")"
+        } elif op == 3 {
+            return "(" + expr(g, e, "bool", k) + " || " + expr(g, e, "bool", k) + ")"
+        } elif op == 4 {
+            return "(not " + expr(g, e, "bool", k) + ")"
+        } elif op == 5 {
+            return "(" + expr(g, e, "int", k) + " in " + expr(g, e, "list", k) + ")"
+        } elif op == 6 {
+            return expr(g, e, "str", k) + ".startswith(\"a\")"
+        }
+        return "(" + expr(g, e, "int", k) + " is int)"
+    }
+    if t == "list" {
+        int op = sorteia(g, 5)
+        str x = novo(g, "x")
+        if op == 0 {
+            return "(" + expr(g, e, "list", k) + " + [" + expr(g, e, "int", k) + "])"
+        } elif op == 1 {
+            return expr(g, e, "list", k) + "[1:]"
+        } elif op == 2 {
+            return "sorted(" + expr(g, e, "list", k) + ")"
+        } elif op == 3 {
+            return "[" + x + " * 2 for each " + x + " in " + expr(g, e, "list", k) + "]"
+        }
+        return "list(range(abs(" + expr(g, e, "int", k) + ") % 5))"
+    }
+    if t == "dict" {
+        return "{\"a\": " + expr(g, e, "int", k) + ", \"b\": " + expr(g, e, "int", k) + "}"
+    }
+    return "(" + expr(g, e, "int", k) + ", " + expr(g, e, "int", k) + ")"
+}
+
+
+# ── os comandos ────────────────────────────────────────────────────────────
+
+list TIPOS = ["int", "flo", "str", "bool", "list", "dict", "tup"]
+
+
+list funct recua(list linhas) {
+    list r = []
+    for each l in linhas {
+        addEnd(r, "    " + l)
+    }
+    return r
+}
+
+
+# Um bloco de `n` comandos num escopo novo.
+list funct corpo(dict g, dict e, int d, int n) {
+    entra(e)
+    list r = []
+    int i = 0
+    while i < n {
+        for each l in comando(g, e, d) {
+            addEnd(r, l)
+        }
+        i = i + 1
+    }
+    if r.len() == 0 {
+        addEnd(r, "pass")
+    }
+    sai(e)
+    return recua(r)
+}
+
+
+# Um comando, como linhas (o recuo de dentro já posto).
+list funct comando(dict g, dict e, int d) {
+    int op = sorteia(g, 14 if d > 0 else 6)
+    if op == 0 or op == 1 {
+        str t = escolhe(g, TIPOS)
+        str n = novo(g, "v")
+        str v = expr(g, e, t, 2)
+        declara(e, n, t)
+        return [t + " " + n + " = " + v]
+    }
+    if op == 2 {
+        # o valor juntado sem vírgula (`post("r:" x)`), menos quando ele começa
+        # com `(` ou `[` (ali é erro) ou `{` (nunca junta), docs/linguagem/03, 3.11
+        str t = escolhe(g, TIPOS)
+        str v = expr(g, e, t, 2)
+        str sep = ", " if v.startswith("(") or v.startswith("[") or v.startswith("{") else " "
+        return ["post(\"" + novo(g, "r") + ":\"" + sep + v + ")"]
+    }
+    if op == 3 {
+        str t = escolhe(g, ["int", "str", "bool", "list"])
+        list ns = nomes_de(e, t, True)
+        if ns.len() > 0 {
+            return [escolhe(g, ns) + " = " + expr(g, e, t, 2)]
+        }
+        return ["post(" + expr(g, e, t, 1) + ")"]
+    }
+    if op == 4 {
+        list ns = nomes_de(e, "int", True)
+        if ns.len() > 0 {
+            str n = escolhe(g, ns)
+            return [escolhe(g, [n + " += (" + expr(g, e, "int", 1) + " % 100)", n + "++", n + "--"])]
+        }
+        return ["post(" + expr(g, e, "int", 1) + ")"]
+    }
+    if op == 5 {
+        list ns = nomes_de(e, "int", True)
+        if ns.len() >= 2 {
+            str a = ns[0]
+            str b = ns[ns.len() - 1]
+            return [a + ", " + b + " = " + b + ", " + a, "post(" + a + ", " + b + ")"]
+        }
+        return ["post(" + expr(g, e, "str", 1) + ")"]
+    }
+    int k = d - 1
+    if op == 6 {
+        list r = ["if " + expr(g, e, "bool", 2) + " {"]
+        r = r + corpo(g, e, k, 2)
+        if sorteia(g, 2) == 0 {
+            r = r + ["} elif " + expr(g, e, "bool", 1) + " {"] + corpo(g, e, k, 1)
+        }
+        return r + ["} else {"] + corpo(g, e, k, 1) + ["}"]
+    }
+    if op == 7 {
+        str i = novo(g, "i")
+        e["fixos"][i] = True
+        list r = ["int " + i + " = 0", "while " + i + " < 3 {"]
+        entra(e)
+        declara(e, i, "int")
+        r = r + corpo(g, e, k, 2) + ["    " + i + " += 1", "}"]
+        sai(e)
+        return r
+    }
+    if op == 8 {
+        str x = novo(g, "x")
+        str l = expr(g, e, "list", 1)
+        entra(e)
+        declara(e, x, "int")
+        e["fixos"][x] = True
+        list r = ["for each " + x + " in " + l + " {"] + corpo(g, e, k, 2) + ["}"]
+        sai(e)
+        return r
+    }
+    if op == 9 {
+        return ["count each int in " + expr(g, e, "list", 1) + " {", "    post(_match)", "}"]
+    }
+    if op == 10 {
+        str c = novo(g, "c")
+        list r = ["match " + expr(g, e, "int", 1) + " {",
+                  "    case 0 {", "        post(\"zero\")", "    }",
+                  "    case 1 | 2 {", "        post(\"um ou dois\")", "    }",
+                  "    case -3 {", "        post(\"menos tres\")", "    }",
+                  "    case " + c + " if " + c + " > 5 {", "        post(\"grande\", " + c + ")", "    }",
+                  "    case _ {", "        post(\"outro\")", "    }", "}"]
+        return r
+    }
+    if op == 11 {
+        str ex = novo(g, "e")
+        return ["try {", "    raise ValueError(\"falhou \" + " + expr(g, e, "str", 1) + ")",
+                "} catch (ValueError " + ex + ") {", "    post(\"pegou:\", " + ex + ")",
+                "} finally {", "    post(\"fim\")", "}"]
+    }
+    if op == 12 {
+        list ns = nomes_de(e, "list", True)
+        if ns.len() > 0 {
+            str l = escolhe(g, ns)
+            return ["if " + l + ".len() > 0 {", "    " + l + "[0] = " + expr(g, e, "int", 1), "}",
+                    "post(" + l + ")"]
+        }
+        return ["post(" + expr(g, e, "list", 1) + ")"]
+    }
+    list ns = nomes_de(e, "dict", True)
+    if ns.len() > 0 {
+        str dd = escolhe(g, ns)
+        return [dd + "[\"c\"] = " + expr(g, e, "int", 1), "post(" + dd + ")"]
+    }
+    return ["post(" + expr(g, e, "dict", 1) + ")"]
+}
+
+
+# ── as declarações de topo ─────────────────────────────────────────────────
+
+# As functs, a classe, o enum, o gerador e a `async funct` de topo, e o que
+# cada uma deixa usar: `g["funcs"]` (nome, retorno e os tipos dos parâmetros).
+list funct topo(dict g, dict e) {
+    list r = []
+    # os imports, o model, a classe com as formas de campo, as functs
+    # decoradas e o recurso do `using`: blocos fixos, um por declaração
+    addEnd(r, ["import json", "import Parsing", "from json import stringify"])
+    str mo = novo(g, "Usuario")
+    addEnd(r, ["model " + mo + "() {", "    nome: str(length=5)", "    idade: int(min=0)", "}"])
+    g["model"] = mo
+    str co = novo(g, "Conta")
+    addEnd(r, ["class " + co + " {", "    private int saldo = 0", "    public static int total = 0",
+               "    static private int n = 0", "    int static public m = 1", "    static int private w = 2",
+               "    nome: str = \"a\"",
+               "    apelido = \"b\"", "    int funct deposita(self, int v) {", "        self.saldo += v",
+               "        return self.saldo", "    }", "}"])
+    g["conta"] = co
+    str sa = novo(g, "saudar")
+    addEnd(r, ["@NonNull", "str funct " + sa + "(str nome) {", "    return \"olá, \" + nome", "}"])
+    g["saudar"] = sa
+    str rg = novo(g, "registra")
+    addEnd(r, ["funct " + rg + "(str rotulo) {", "    return funct(f) {", "        return f", "    }", "}"])
+    str db = novo(g, "dobro")
+    addEnd(r, ["@" + rg + "(\"x\")", "int funct " + db + "(int v) {", "    return v * 2", "}"])
+    g["dobro"] = db
+    str re = novo(g, "Recurso")
+    addEnd(r, ["class " + re + " {", "    int usos = 0", "}"])
+    g["recurso"] = re
+    str pv = novo(g, "escondido")
+    str pw = novo(g, "outro")
+    addEnd(r, ["private int " + pv + " = " + str(sorteia(g, 9)), "str private " + pw + " = \"y\""])
+    addEnd(r, ["private enum " + novo(g, "Nivel") + " {", "    BAIXO, ALTO", "}"])
+    declara(e, pv, "int")
+    declara(e, pw, "str")
+    # uma funct de int, outra de texto
+    str f = novo(g, "f")
+    entra(e)
+    declara(e, "a", "int")
+    declara(e, "b", "int")
+    addEnd(r, ["int funct " + f + "(int a, int b) {", "    return " + expr(g, e, "int", 2), "}"])
+    sai(e)
+    addEnd(g["funcs"], {"nome": f, "ret": "int", "params": ["int", "int"]})
+    str h = novo(g, "h")
+    entra(e)
+    declara(e, "s", "str")
+    addEnd(r, ["str funct " + h + "(str s) {", "    return s + " + escolhe(g, TEXTOS), "}"])
+    sai(e)
+    addEnd(g["funcs"], {"nome": h, "ret": "str", "params": ["str"]})
+    # a classe, com um campo e um método
+    str cl = novo(g, "Ponto")
+    addEnd(r, ["class " + cl + " {", "    int x = 0", "    int funct soma(self, int k) {",
+               "        return self.x + k", "    }", "}"])
+    g["classe"] = cl
+    # o enum
+    str en = novo(g, "Cor")
+    addEnd(r, ["enum " + en + " {", "    R, G, B", "}"])
+    g["enum"] = en
+    # o gerador e a async funct
+    str gen = novo(g, "gera")
+    addEnd(r, ["funct " + gen + "() {", "    yield 1", "    yield 2", "}"])
+    g["gerador"] = gen
+    str asy = novo(g, "tarefa")
+    addEnd(r, ["int async funct " + asy + "() {", "    return 3", "}"])
+    g["async"] = asy
+    return r
+}
+
+
+# Os comandos que usam o topo, um bloco cada: a funct, a classe, o enum, o
+# gerador e o await.
+list funct usa_topo(dict g, dict e) {
+    str p = novo(g, "p")
+    list fs = g["funcs"]
+    list r = [["post(" + fs[0]["nome"] + "(" + expr(g, e, "int", 1) + ", " + expr(g, e, "int", 1) + "))"],
+              ["post(" + fs[1]["nome"] + "(" + expr(g, e, "str", 1) + "))"],
+              [g["classe"] + " " + p + " = " + g["classe"] + "()", p + ".x = " + expr(g, e, "int", 1),
+               "post(" + p + ".soma(" + expr(g, e, "int", 1) + "))"],
+              ["post(" + g["enum"] + ".G)"],
+              ["for each " + novo(g, "y") + " in " + g["gerador"] + "() {", "    post(\"gerou\")", "}"],
+              ["post(await " + g["async"] + "())"]]
+    str c = novo(g, "c")
+    str k = novo(g, "k")
+    str w = novo(g, "w")
+    str rr = novo(g, "r")
+    str x = novo(g, "x")
+    r = r + [[g["conta"] + " " + c + " = " + g["conta"] + "()",
+              "post(" + c + ".deposita(" + expr(g, e, "int", 1) + "), " + g["saudar"] + "(" + expr(g, e, "str", 1)
+              + "), " + g["dobro"] + "(" + expr(g, e, "int", 1) + "))"],
+             ["post({\"nome\": " + expr(g, e, "str", 1) + ", \"idade\": " + expr(g, e, "int", 1) + "} == " + g["model"] + ")"],
+             ["for each " + k + ", " + w + " in " + expr(g, e, "dict", 1) + ".items() {", "    post(" + k + ", " + w + ")", "}"],
+             ["using " + g["recurso"] + "() as " + rr + " {", "    post(\"dentro\")", "}"],
+             ["post(map(" + expr(g, e, "list", 1) + ", funct(int " + x + ") { return " + x + " * 3 }))"],
+             ["post(Parsing.integer(\"127\", to int), stringify(" + expr(g, e, "dict", 1) + "), json.stringify("
+              + expr(g, e, "list", 1) + "))"],
+             ["post(\"n:\" not " + expr(g, e, "bool", 1) + ")"],
+             ["if __name__ == \"main\" {", "    post(\"principal\")", "}"]]
+    declara(e, p, g["classe"])
+    return r
+}
+
+
+# Um programa: as declarações de topo, os comandos que as usam e os sorteados,
+# um bloco por declaração ou comando (o encolhimento tira bloco por bloco).
+dict funct programa(dict g) {
+    dict e = {"pilha": [{}], "fixos": {}}
+    g["funcs"] = []
+    list blocos = topo(g, e) + usa_topo(g, e)
+    int n = 4 + sorteia(g, 8)
+    int i = 0
+    while i < n {
+        addEnd(blocos, comando(g, e, 2))
+        i = i + 1
+    }
+    return {"topo": [], "blocos": blocos}
+}
+
+
+str funct texto_de(dict p, list blocos) {
+    list linhas = p["topo"]
+    for each b in blocos {
+        linhas = linhas + b
+    }
+    return "\n".join(linhas) + "\n"
+}
+
+
+# As variantes com um erro só, da lista da doc, no fim do programa (a linha é a
+# primeira da variante). Cada uma: {"classe", "linhas", "gemeo"} (o gêmeo é a
+# mesma conta com o valor passando por um `Object`, ou [] quando não há).
+list funct variantes(dict g, dict p) {
+    str f = g["funcs"][0]["nome"]
+    str n = novo(g, "nao_ligado")
+    str m = novo(g, "m")
+    str o = novo(g, "o")
+    str s = novo(g, "s")
+    return [
+        {"classe": "NameError", "linhas": ["post(" + n + ")"], "gemeo": []},
+        {"classe": "AttributedValueError", "linhas": ["int " + m + " = \"texto\""],
+         "gemeo": ["Object " + o + " = \"texto\"", "int " + m + " = " + o]},
+        {"classe": "TypeError", "linhas": ["post(" + f + "(1, 2, 3))"],
+         "gemeo": ["Object " + o + " = " + f, "post(" + o + "(1, 2, 3))"]},
+        {"classe": "AttributeError", "linhas": ["post(\"abc\".naoexiste())"],
+         "gemeo": ["Object " + o + " = \"abc\"", "post(" + o + ".naoexiste())"]},
+        {"classe": "ImportError", "linhas": ["from json import naoexiste"], "gemeo": []},
+        {"classe": "AttributedValueError", "linhas": ["str " + s + " = " + g["gerador"] + "()"], "gemeo": []},
+        {"classe": "AttributedValueError", "linhas": ["str " + s + " = " + g["async"] + "()"], "gemeo": []},
+        # as formas que só existem em programa errado, que o parser recusa
+        {"classe": "SyntaxError", "linhas": ["def " + novo(g, "fd") + "(x) {", "}"], "gemeo": []},
+        {"classe": "SyntaxError", "linhas": ["else {", "}"], "gemeo": []}]
+}
+
+
+# ── os oráculos ────────────────────────────────────────────────────────────
+
+# Grava o arquivo. É `Null funct` porque, numa funct tipada, o valor que o
+# `os.writeFile` devolve contaria como saída dela.
+Null funct grava(str arq, str texto) {
+    os.writeFile(arq, texto)
+}
+
+
+# O `--check` de um arquivo.
+dict funct checa(str arq) {
+    return json.parse(os.run([sys.executable, "--check", arq], capture=True).strip())
+}
+
+
+# O `--check` de vários arquivos, em lotes. Devolve caminho -> resposta.
+dict funct checa_todos(list arqs) {
+    dict r = {}
+    int i = 0
+    while i < arqs.len() {
+        list cmd = [sys.executable, "--check"]
+        int j = i
+        while j < arqs.len() and j < i + LOTE {
+            addEnd(cmd, arqs[j])
+            j = j + 1
+        }
+        for each l in os.run(cmd, capture=True).splitlines() {
+            if l.startswith("{") {
+                dict d = json.parse(l)
+                r[d.get("arquivo", "")] = d
+            }
+        }
+        i = j
+    }
+    return r
+}
+
+
+dict funct primeiro_erro(dict chk) {
+    list es = chk.get("erros", [chk])
+    return es[0] if es.len() > 0 else chk
+}
+
+
+# Roda `arq` com JIT ou sem, numa pasta nova e vazia, como o P1 e o P2 (o
+# `executa` espera o arquivo do código de saída aparecer: numa pasta reusada,
+# o arquivo da rodada anterior já está lá, e ele lê o que não é desta). O
+# prazo derruba o grupo inteiro.
+dict funct roda(str arq, bool jit) {
+    str volta = os.cwd()
+    str pasta = volta + "/ex"
+    if os.isdir(pasta) {
+        os.rmdir(pasta, force=True)
+    }
+    os.mkdir(pasta)
+    grava(pasta + "/o.pr", os.readFile(arq))
+    grava(pasta + "/entrada.txt", "")
+    os.chdir(pasta)
+    dict r = {}
+    executa(pasta, [], "o", "o.pr", jit, PRAZO, r)
+    os.chdir(volta)
+    return r
+}
+
+
+str funct primeira_linha(str texto) {
+    return texto.strip().split("\n")[0].strip() if texto.strip() != "" else ""
+}
+
+
+# Os oráculos 1 a 4 num programa: "" quando passa, ou "<oráculo>: frase".
+str funct falha_base(str arq, dict chk) {
+    if not chk.get("ok", False) {
+        dict e = primeiro_erro(chk)
+        return ("check: o --check recusa o programa bem tipado: `" + e.get("tipo", "") + ": " + e.get("msg", "")
+                + "` na linha " + str(e.get("linha", 0)))
+    }
+    dict a = roda(arq, True)
+    dict b = roda(arq, False)
+    if a["estourou"] or b["estourou"] {
+        return "prazo: passou de " + str(int(PRAZO)) + " s (com JIT: " + str(a["estourou"]) + ")"
+    }
+    if a["rc"] != b["rc"] or a["saida"] != b["saida"] or a["erro"] != b["erro"] {
+        return ("jit: com JIT e sem JIT diferem (código " + str(a["rc"]) + " e " + str(b["rc"]) + "; erro `"
+                + primeira_linha(a["erro"]) + "` e `" + primeira_linha(b["erro"]) + "`)")
+    }
+    if a["rc"] != 0 or a["erro"] != "" {
+        return "roda: termina com " + str(a["rc"]) + ": `" + primeira_linha(a["erro"]) + "`"
+    }
+    return ""
+}
+
+
+# A variante tem que ser recusada pelo `--check`, com a classe dela e na linha
+# dela.
+str funct falha_variante(dict chk, str classe, int linha) {
+    if chk.get("ok", True) {
+        return "variante: o --check aprova a variante com " + classe + " na linha " + str(linha)
+    }
+    dict e = primeiro_erro(chk)
+    if e.get("tipo", "") != classe or e.get("linha", 0) != linha {
+        return ("variante: o --check dá `" + e.get("tipo", "") + ": " + e.get("msg", "") + "` na linha "
+                + str(e.get("linha", 0)) + ", e a variante tem " + classe + " na linha " + str(linha))
+    }
+    return ""
+}
+
+
+# O gêmeo (o mesmo erro com o valor passando por um `Object`) dá, rodando, a
+# frase que o `--check` dá na variante.
+str funct falha_gemeo(str arq, str frase) {
+    dict a = roda(arq, True)
+    str p = primeira_linha(a["erro"])
+    if p != frase {
+        return "gemeo: rodando dá `" + p + "`, e o --check dá `" + frase + "` na variante"
+    }
+    return ""
+}
+
+
+# ── o encolhimento e os achados ────────────────────────────────────────────
+
+# O tipo da falha (o oráculo e, na variante, a classe): o encolhimento só
+# aceita tirar um comando se a falha continuar do mesmo tipo.
+str funct tipo_da_falha(str f) {
+    # o oráculo, a quarta palavra (aprova / dá / recusa...) e a classe do erro
+    # citado entre crases, quando há
+    list ps = f.split(" ")
+    str t = f.split(":")[0] + "|" + (ps[3] if ps.len() > 3 else "")
+    if f.find("`") >= 0 {
+        t = t + "|" + f.split("`")[1].split(":")[0]
+    }
+    return t
+}
+
+
+# Encolhe: tira um bloco por vez, do fim pro começo, enquanto `avalia` (o
+# texto -> a falha) der falha do mesmo tipo. Devolve os blocos que sobram.
+list funct encolhe(dict p, list blocos, list cauda, str tipo, str oraculo, dict extra) {
+    list atual = blocos
+    int i = atual.len() - 1
+    while i >= 0 {
+        list tenta = atual[0:i] + atual[i + 1:atual.len()]
+        str t = texto_de(p, tenta) + ("\n".join(cauda) + "\n" if cauda.len() > 0 else "")
+        grava("encolhe.pr", t)
+        str f = ""
+        if oraculo == "base" {
+            f = falha_base("encolhe.pr", checa("encolhe.pr"))
+        } elif oraculo == "variante" {
+            f = falha_variante(checa("encolhe.pr"), extra["classe"], t.count("\n") - cauda.len() + 1)
+        } else {
+            f = falha_gemeo("encolhe.pr", extra["frase"])
+        }
+        if f != "" and tipo_da_falha(f) == tipo {
+            atual = tenta
+        }
+        i = i - 1
+    }
+    return atual
+}
+
+
+# Guarda o achado em `teste/p4_achados/<impressão>.pr`, com o oráculo e a
+# assinatura no cabeçalho. Devolve o caminho.
+str funct guarda_achado(str raiz, str oraculo, str assinatura, str texto) {
+    str cab = ("# p4: " + oraculo + "\n# assinatura: " + assinatura
+               + "\n# achado pelo teste/geradores/programas.pr, encolhido; a falha sai rodando o portão\n")
+    str corpo = cab + texto
+    str id = hash.sha256(corpo)[0:12]
+    str rel = ACHADOS + "/" + id + ".pr"
+    if not os.isdir(raiz + "/" + ACHADOS) {
+        os.mkdir(raiz + "/" + ACHADOS)
+    }
+    grava(raiz + "/" + rel, corpo)
+    return rel
+}
+
+
+# Confere um achado de novo pelo oráculo do cabeçalho: "" quando passa.
+str funct confere_achado(str arq) {
+    list linhas = os.readFile(arq).split("\n")
+    str oraculo = linhas[0][6:linhas[0].len()]
+    grava("achado.pr", os.readFile(arq))
+    if oraculo == "base" {
+        return falha_base("achado.pr", checa("achado.pr"))
+    }
+    if oraculo.startswith("variante:") {
+        list partes = oraculo.split(":")
+        return falha_variante(checa("achado.pr"), partes[1], int(partes[2]))
+    }
+    if oraculo.startswith("gemeo:") {
+        return falha_gemeo("achado.pr", oraculo[6:oraculo.len()])
+    }
+    return "o cabeçalho do achado não diz um oráculo: " + linhas[0]
+}
+
+
+# A cobertura da gramática (docs/linguagem/gramatica.md) nos programas: as
+# regras que o reconhecedor usou nos tokens de cada um, com os campos de
+# f-string (scripts/gramatica_peg.pr). O programa com erro do lexer fica de
+# fora, como no portão `gramatica`.
+dict funct cobertura(dict gram, list arqs, str trab) {
+    chama_motor(arqs, trab, faixas(), ["--tokens"])
+    dict cob = {}
+    dict conta = {"campos": 0}
+    for each arq in arqs {
+        dict tk = json.parse(os.readFile(arq + ".tok"))
+        if tk.get("erros", []).len() > 0 {
+            continue
+        }
+        list todos = tk["tokens"]
+        list toks = []
+        for each t in todos {
+            if t["t"] != "COMMENT" and not ("em" in t) {
+                addEnd(toks, t)
+            }
+        }
+        addEnd(toks, {"t": "EOF", "v": "", "l": 0, "c": 0, "l2": 0, "c2": 0})
+        dict r = reconhece(gram, toks, "arquivo")
+        for each n in r["cob"].keys() {
+            cob[n] = cob.get(n, 0) + 1
+        }
+        list campos = campos_de_fstring(gram, os.readFile(arq).split("\n"), todos, cob, conta)
+    }
+    return cob
+}
+
+
+# ── a rodada ───────────────────────────────────────────────────────────────
+
+if __name__ == "main" {
+    int quantos = int(sys.argv[1]) if sys.argv.len() > 1 else QUANTOS
+    int semente = int(sys.argv[2]) if sys.argv.len() > 2 else SEMENTE
+    flo inicio = date.monotonic()
+    # O prazo e o fim de cada programa mandam KILL pro grupo dele: antes, a
+    # prova de que o `kill` desta máquina acerta o grupo (scripts/portoes_isola.pr).
+    str prova = prova_do_kill()
+    if prova != "" {
+        post("portão p4 (programas gerados): o kill desta máquina não acerta o grupo de processos ("
+             + prova + "): nada roda (notas/PORTOES.md)")
+        sys.exit(1)
+    }
+    str raiz = os.cwd()
+    str trab = raiz + "/" + TMP
+    os.mkdir(trab)
+    list achados = []
+    list paginas = []
+    dict conta = {"programas": 0, "variantes": 0, "gemeos": 0, "achados": 0, "repetidas": 0}
+    dict vistas = {}
+    dict gram = {"ordem": []}
+    dict cob = {}
+    str parou = ""
+    try {
+        # os achados de antes, primeiro
+        list velhos = []
+        if os.isdir(raiz + "/" + ACHADOS) {
+            for each item in os.ls(raiz + "/" + ACHADOS) {
+                if item["name"].endswith(".pr") {
+                    addEnd(velhos, item["name"])
+                }
+            }
+        }
+        os.chdir(trab)
+        os.writeFile("entrada.txt", "")
+        for each nome in velhos {
+            str rel = ACHADOS + "/" + nome
+            str txt = os.readFile(raiz + "/" + rel)
+            addEnd(paginas, rel)
+            conta["achados"] = conta["achados"] + 1
+            str ass = txt.split("\n")[1]
+            vistas[ass[14:ass.len()]] = True
+            str f = confere_achado(raiz + "/" + rel)
+            if f != "" {
+                addEnd(achados, {"pagina": rel, "codigo": txt, "onde": rel + ": " + f, "linha": 1})
+            }
+        }
+        # os programas sorteados
+        dict g = {"v": semente, "n": 0, "funcs": []}
+        list progs = []
+        list arqs = []
+        int i = 0
+        while i < quantos {
+            i = i + 1
+            dict p = programa(g)
+            list vs = variantes(g, p)
+            int qual = sorteia(g, vs.len())
+            dict v = vs[qual]
+            str fonte = texto_de(p, p["blocos"])
+            str b = "p" + str(i) + ".pr"
+            str m = "v" + str(i) + ".pr"
+            os.writeFile(b, fonte)
+            os.writeFile(m, fonte + "\n".join(v["linhas"]) + "\n")
+            addEnd(arqs, b)
+            addEnd(arqs, m)
+            addEnd(progs, {"p": p, "v": v, "qual": qual, "fonte": fonte, "b": b, "m": m,
+                           "linha": fonte.count("\n") + 1})
+        }
+        dict checks = checa_todos(arqs)
+        gram = le_gramatica(os.readFile(raiz + "/" + GRAMATICA))
+        cob = cobertura(gram, arqs, trab)
+        for each x in progs {
+            conta["programas"] = conta["programas"] + 1
+            dict p = x["p"]
+            dict v = x["v"]
+            list falhas = []
+            str fb = falha_base(x["b"], checks.get(x["b"], {}))
+            if fb != "" {
+                addEnd(falhas, ["base", "base-" + tipo_da_falha(fb) + "-" + fb.split("`")[1].split(":")[0] if fb.find("`") >= 0 else "base-" + tipo_da_falha(fb), fb, [], {}])
+            } else {
+                conta["variantes"] = conta["variantes"] + 1
+                dict cv = checks.get(x["m"], {})
+                str fv = falha_variante(cv, v["classe"], x["linha"])
+                if fv != "" {
+                    addEnd(falhas, ["variante", "variante-" + str(x["qual"]), fv, v["linhas"], {"classe": v["classe"]}])
+                } elif v["gemeo"].len() > 0 {
+                    conta["gemeos"] = conta["gemeos"] + 1
+                    dict e = primeiro_erro(cv)
+                    str frase = e.get("tipo", "") + ": " + e.get("msg", "")
+                    os.writeFile("w.pr", x["fonte"] + "\n".join(v["gemeo"]) + "\n")
+                    str fg = falha_gemeo("w.pr", frase)
+                    if fg != "" {
+                        addEnd(falhas, ["gemeo", "gemeo-" + str(x["qual"]), fg, v["gemeo"], {"frase": frase}])
+                    }
+                }
+            }
+            for each f in falhas {
+                if f[1] in vistas {
+                    conta["repetidas"] = conta["repetidas"] + 1
+                    continue
+                }
+                vistas[f[1]] = True
+                list menores = encolhe(p, p["blocos"], f[3], tipo_da_falha(f[2]), f[0], f[4])
+                str texto = texto_de(p, menores) + ("\n".join(f[3]) + "\n" if f[3].len() > 0 else "")
+                str oraculo = f[0]
+                if f[0] == "variante" {
+                    oraculo = "variante:" + f[4]["classe"] + ":" + str(texto.count("\n") - f[3].len() + 1 + 3)
+                } elif f[0] == "gemeo" {
+                    oraculo = "gemeo:" + f[4]["frase"]
+                }
+                str rel = guarda_achado(raiz, oraculo, f[1], texto)
+                addEnd(paginas, rel)
+                # a falha do achado já encolhido, com as linhas dele
+                str ff = confere_achado(raiz + "/" + rel)
+                addEnd(achados, {"pagina": rel, "codigo": os.readFile(raiz + "/" + rel),
+                                 "onde": rel + ": " + (ff if ff != "" else f[2]), "linha": 1})
+            }
+        }
+    } catch (Exception e) {
+        parou = str(e)
+    }
+    os.chdir(raiz)
+    os.rmdir(trab, force=True)
+    if parou != "" {
+        post("portão p4 (programas gerados): " + parou + ": a rodada parou (notas/PORTOES.md)")
+        sys.exit(1)
+    }
+    list sem_uso = []
+    for each nome in gram["ordem"] {
+        if not (nome in cob) {
+            addEnd(sem_uso, nome)
+        }
+    }
+    dict catraca = {}
+    aplica("p4", achados, paginas, catraca)
+    list novos = catraca["novos"]
+    post("programas:", conta["programas"], "| variantes conferidas:", conta["variantes"], "| gêmeos:", conta["gemeos"],
+         "| achados de antes:", conta["achados"], "| falhas repetidas (já guardadas):", conta["repetidas"])
+    post("regras da gramática usadas:", gram["ordem"].len() - sem_uso.len(), "de", gram["ordem"].len(),
+         "| semente:", semente, "| tempo:", str(int(date.monotonic() - inicio)) + " s")
+    relata(catraca)
+    if sem_uso.len() > 0 {
+        post("")
+        post("REGRAS DA GRAMÁTICA QUE NENHUM PROGRAMA DA RODADA USA (" + GRAMATICA + "): falta a forma no gerador")
+        post("  " + ", ".join(sem_uso))
+    }
+    if novos.len() == 0 and not catraca["reprova"] and sem_uso.len() == 0 {
+        post("  os programas gerados passam nos oráculos (ou são itens abertos) e usam toda a gramática")
+        sys.exit(0)
+    }
+    if novos.len() == 0 {
+        sys.exit(1)
+    }
+    post("")
+    post("ACHADOS NOVOS (encolhidos em " + ACHADOS + "/):", novos.len())
+    for each a in novos {
+        post("  " + a["onde"])
+    }
+    sys.exit(1)
+}

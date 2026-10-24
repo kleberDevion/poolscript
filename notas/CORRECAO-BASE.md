@@ -404,7 +404,10 @@ em cada item):
 
   Por isso o membro neles também passa (`len.foo()`, `gen().foo()`). A
   chamada de membro que não existe do P2 acha o do builtin
-  (`len.p2_nao_existe()`, na catraca). `motor` (checador).
+  (`len.p2_nao_existe()`, na catraca). O gerador de programas do P4 achou
+  sozinho o do gerador e o da `async funct` (2026-10-24), encolhidos em
+  `teste/p4_achados/960cdd53559c.pr` e `teste/p4_achados/46ee528fae3e.pr`, na
+  catraca. `motor` (checador).
 - **motor-19** (achado pelo portão P3, 2026-10-23,
   `docs/linguagem/01-estrutura-lexica.md:333`) O `--tokens` lê como código o
   formato da f-string, o trecho depois do `:`. Em

@@ -9,10 +9,13 @@
 # titulo (a assinatura do título de uma página de método contra o motor:
 # scripts/audita_doc.pr), p3 (o servidor do editor em cada bloco:
 # scripts/confere_editor.pr; a impressão é a do lugar conferido junto do
-# bloco) ou gramatica (a gramática escrita contra o parser:
+# bloco), gramatica (a gramática escrita contra o parser:
 # scripts/confere_gramatica.pr; a página é também o caso da suíte,
 # `suite:casos_<grupo>.c:<caso>`, ou o sorteio, `gerado:<n>`, e a impressão é
-# a do que se conferiu junto do programa); impressão: os 12 primeiros dígitos
+# a do que se conferiu junto do programa) ou p4 (a suíte no --check,
+# scripts/confere_suite.pr, com a página `suite:...`, e os programas gerados,
+# teste/geradores/programas.pr, com a página do achado encolhido,
+# `teste/p4_achados/<impressão>.pr`); impressão: os 12 primeiros dígitos
 # do SHA-256 do texto do bloco; item: o item aberto de
 # notas/CORRECAO-BASE.md; sistema: todos, linux, darwin ou windows; onde: só
 # pra quem lê. Falha que não está
@@ -1810,3 +1813,5 @@ gramatica	docs/linguagem/06-funcoes.md	1ff017a6147f	motor-23	todos	linha 179: fu
 gramatica	docs/linguagem/06-funcoes.md	c714303fef9f	motor-23	todos	linha 205: funct f(*args, x) { } (o --ast põe primeiro o erro do lexer da linha 207)
 gramatica	docs/linguagem/14-decoradores.md	d4b9f98dc5ba	motor-23	todos	linha 386: SyntaxError: 'mapp' e campo de instancia ... (o --ast põe primeiro o erro do lexer da linha 387)
 gramatica	suite:casos_linguagem.c:rodando sai o primeiro erro da lista do --check	25b61422f612	motor-23	todos	linha 1: post(1) (o --ast põe primeiro o erro do lexer da linha 5)
+p4	teste/p4_achados/46ee528fae3e.pr	46ee528fae3e	motor-17	todos	linha 7: str s144 = tarefa130() (o --check não sabe o tipo da chamada de uma async funct)
+p4	teste/p4_achados/960cdd53559c.pr	960cdd53559c	motor-17	todos	linha 8: str s17 = gera5() (o --check não sabe o tipo da chamada de um gerador)

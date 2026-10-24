@@ -1,0 +1,7 @@
+# p4: variante:AttributedValueError:7
+# assinatura: variante-6
+# achado pelo teste/geradores/programas.pr, encolhido; a falha sai rodando o portão
+int async funct tarefa130() {
+    return 3
+}
+str s144 = tarefa130()

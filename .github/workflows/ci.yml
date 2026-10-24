@@ -89,7 +89,7 @@ jobs:
 
   # ── só de madrugada: o que é caro demais pra cada push ─────────────────────
   robustez:
-    name: ASan/UBSan, falha de alocação e fuzz
+    name: ASan/UBSan, falha de alocação, programas gerados e fuzz
     if: github.event_name == 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -109,6 +109,11 @@ jobs:
       # Falha de alocação ponto a ponto. O contrato é: ou termina, ou levanta
       # erro — segfault, liberação dupla e trava reprovam.
       - run: make oom
+      # Os programas gerados (portão p4), fundo e com a semente do DIA, como as
+      # leis: 2000 programas, onde o make check sorteia 150 com a semente fixa.
+      # A semente sai no log; o achado novo vai encolhido pra teste/p4_achados/
+      # e sobe no fim, junto do que o fuzzer achou.
+      - run: ./pool teste/geradores/programas.pr 2000 $(date +%j)
       # O analisador roda TAMBÉM no arquivo grande, que fica de fora no portão.
       # O teto cabe no runner: o de repositório privado tem 2 núcleos e 7,9 GB
       # (medido em 2026-10-01). Com 12000 MB o gcc passava da RAM e o runner
@@ -136,6 +141,13 @@ jobs:
         with:
           name: fuzz-achados
           path: teste/fuzz_achados/
+          if-no-files-found: ignore
+      - name: guardar o que o gerador de programas achou
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p4-achados
+          path: teste/p4_achados/
           if-no-files-found: ignore
 
   # ── cobertura: CATRACA, em todo push ───────────────────────────────────────

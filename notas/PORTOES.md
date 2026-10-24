@@ -430,15 +430,78 @@ rodando), em 11 s. Fora: 28 de outro sistema, 37 sem código conferido e 2
 144 têm um erro de uma classe da lista; o `--check` aprova 128, e nenhum
 desses está na lista pela árvore: todos usam o que a doc deixa pra rodar.
 
-### O lote 2, o gerador, e o lote 3 (a fazer)
+### Os programas gerados (portão `p4`, lote 2)
 
-- **Portão `p4`, o gerador:** programas tipados a partir da gramática
-  (`teste/geradores/programas.pr`, como o Csmith e o YARPGen), com os
-  oráculos: com JIT e sem JIT, a mesma saída; o `--check` aprova o que é bem
-  tipado por construção, e recusa a variante com um erro da lista que a doc
-  promete pegar antes de rodar; nada cai nem passa do prazo.
-- **Lote 3:** o Python onde a doc cita o Python, congelado em
-  `teste/casos_python.c`.
+`teste/geradores/programas.pr`, no `make check` depois da suíte no
+`--check`. Os programas são tipados por construção, como no Csmith (Yang,
+Chen, Eide e Regehr, PLDI 2011) e no YARPGen (Livinskii, Babokin e Regehr,
+OOPSLA 2020): o gerador guarda o tipo de cada nome declarado e pede a
+expressão do tipo que o lugar exige. Os laços têm teto, as contas não crescem
+sem limite, e cada programa imprime o que calcula. Entram as formas da
+gramática:
+- as declarações e a atribuição, com operador, `++`, `--` e desempacotamento;
+- `if`/`elif`/`else`, `while`, `for each`, `count each`, `match` com os
+  padrões, `try`/`catch`/`finally` e `raise`;
+- funct tipada, lambda, closure, decorador, gerador e `async`/`await`;
+- classe com campo, método, `static` e visibilidade, `model`, `enum` e
+  `using`;
+- f-string com formato, `import` e `from`.
+
+Os oráculos, em cada programa:
+
+1. o `--check` aprova;
+2. com JIT e sem JIT, a mesma saída, o mesmo erro e o mesmo código;
+3. rodando, termina com 0 e sem erro;
+4. nada cai por sinal nem passa do prazo (20 s).
+
+De cada programa sai uma variante com um erro só, sorteada da lista que a doc
+promete pegar antes de rodar (10.x):
+- o nome que o arquivo nunca liga;
+- o valor de outro tipo no lugar tipado, inclusive a chamada de um gerador e
+  a de uma `async funct`;
+- a aridade numa chamada a funct do arquivo;
+- o membro que o tipo não tem;
+- o nome que o módulo não exporta;
+- e duas formas que a gramática recusa: o `def` e o `else` solto.
+
+O `--check` tem que recusar com essa classe e nessa linha. Onde o valor pode
+passar por um `Object`, a variante gêmea tem que dar, rodando, a mesma frase.
+
+**O achado.** O programa que falha perde bloco por bloco, do fim pro começo,
+enquanto a mesma falha continuar. O menor vai pra
+`teste/p4_achados/<impressão>.pr`, com o oráculo no cabeçalho. Os achados
+rodam antes dos sorteados, a cada rodada. Na catraca, o portão é `p4` e a
+página é o achado.
+
+**A cobertura.** Os programas da rodada (os de base e as variantes) têm que
+usar toda regra da gramática, medida pelo reconhecedor do portão `gramatica`
+(`scripts/gramatica_peg.pr`, com os campos de f-string). Regra sem uso deixa o
+portão vermelho, e a frase diz qual.
+
+**Como roda.** Os programas rodam pelo `executa` do P1
+(`scripts/portoes_isola.pr`), sem isolador: o programa gerado só imprime, e
+não abre arquivo, processo nem rede. O prazo e o fim mandam KILL pro grupo do
+programa, e por isso a prova do `kill` vem antes do primeiro, como nos portões
+`roda` e `p2`. O `make check` sorteia 150 programas com a semente fixa. O job
+noturno `robustez` sorteia 2000 com a semente do dia
+(`./pool teste/geradores/programas.pr 2000 $(date +%j)`) e guarda os achados
+novos.
+
+**A prova.** Rodando contra o 18.0.0, o gerador achou sozinho o motor-17: o
+`--check` aprova `str s = gera()` e `str s = tarefa()`, que quebram rodando.
+Os dois achados encolhidos estão na catraca. Com 3 programas, a cobertura
+reprova citando as regras sem uso.
+
+Medido na entrada (2026-10-24, no Mac, 18.0.0), em 51 s:
+- os 150 programas de base passam nos quatro oráculos;
+- das 150 variantes, 119 são recusadas com a classe e a linha. As outras 31
+  são as duas formas do motor-17 guardadas nos achados;
+- os 47 gêmeos dão a mesma frase;
+- as 114 regras da gramática são usadas.
+
+### O lote 3 (a fazer)
+
+O Python onde a doc cita o Python, congelado em `teste/casos_python.c`.
 
 ## A sonda com agentes
 

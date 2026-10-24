@@ -745,6 +745,15 @@ check: pool testar
 	@./pool scripts/confere_suite.pr --prova
 	@./pool scripts/confere_suite.pr
 	@echo
+	# P4 dos portoes, os programas gerados: programas tipados sorteados com a
+	# semente fixa, cada um com o --check aprovando, a mesma saida com JIT e
+	# sem, rc 0 e dentro do prazo; e uma variante com um erro que a doc
+	# promete pegar antes de rodar (a classe e a linha no --check). Os achados
+	# encolhidos (teste/p4_achados/) rodam antes; toda regra da gramatica tem
+	# que ser usada. Achado que ja e item aberto fica em
+	# teste/portoes_conhecidas.txt (portao `p4`).
+	@./pool teste/geradores/programas.pr
+	@echo
 	@./pool teste/fuzz_replay.pr
 	@echo
 	# DEPURADOR: fala DAP com o motor igual o editor faz — breakpoint na linha

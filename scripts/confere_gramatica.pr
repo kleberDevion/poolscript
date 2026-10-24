@@ -52,7 +52,7 @@ import date
 import regex
 from './portoes_catraca.pr' import aplica, relata, linha_nova
 from './portoes_doc.pr' import lista_md, blocos_de
-from './gramatica_peg.pr' import le_gramatica, reconhece, formas_lexicas, profundidades, sorteia_frase, texto_da_frase
+from './gramatica_peg.pr' import le_gramatica, reconhece, formas_lexicas, profundidades, sorteia_frase, texto_da_frase, trecho, campos_de_fstring, faixas, chama_motor
 
 str PAGINA = "docs/linguagem/gramatica.md"
 str TMP = "ps_confere_gramatica_tmp_" + str(date.timestamp_ms())
@@ -172,68 +172,6 @@ int funct sorteados(list progs, list paginas, str trab, dict g) {
 
 # ── o motor ────────────────────────────────────────────────────────────────
 
-# Quantos laços do shell em paralelo: a metade dos processadores, de 1 a 8.
-int funct faixas() {
-    int n = 1
-    try {
-        if sys.platform() == "windows" {
-            n = int(os.getenv("NUMBER_OF_PROCESSORS", "1"))
-        } else {
-            n = int(os.run(["getconf", "_NPROCESSORS_ONLN"], capture=True).strip())
-        }
-    } catch (Exception e) {
-        n = 1
-    }
-    n = n // 2
-    if n < 1 {
-        n = 1
-    }
-    if n > 8 {
-        n = 8
-    }
-    return n
-}
-
-
-# O `--tokens` e o `--ast` de cada programa, gravados ao lado dele
-# (`p1.pr.tok`, `p1.pr.ast`), em `n` laços do shell em paralelo.
-Null funct chama_motor(list progs, str trab, int n) {
-    list listas = []
-    int j = 0
-    while j < n {
-        addEnd(listas, [])
-        j = j + 1
-    }
-    int k = 0
-    for each p in progs {
-        addEnd(listas[k % n], p["arq"])
-        k = k + 1
-    }
-    j = 0
-    while j < n {
-        str corpo = ""
-        if listas[j].len() > 0 {
-            corpo = "\n".join(listas[j]) + "\n"
-        }
-        os.writeFile(trab + "/lista" + str(j + 1) + ".txt", corpo)
-        j = j + 1
-    }
-    str script = ("POOL=\"$1\"; D=\"$2\"; N=\"$3\"\n"
-                  + "j=1\n"
-                  + "while [ \"$j\" -le \"$N\" ]; do\n"
-                  + "  while IFS= read -r f; do\n"
-                  + "    [ -n \"$f\" ] || continue\n"
-                  + "    \"$POOL\" --tokens \"$f\" > \"$f.tok\" 2>/dev/null\n"
-                  + "    \"$POOL\" --ast \"$f\" > \"$f.ast\" 2>/dev/null\n"
-                  + "  done < \"$D/lista$j.txt\" &\n"
-                  + "  j=$((j + 1))\n"
-                  + "done\n"
-                  + "wait\n")
-    os.writeFile(trab + "/motor.sh", script)
-    os.run(["sh", trab + "/motor.sh", sys.executable, trab, str(n)], capture=True)
-}
-
-
 # O `--check` de todos os programas, em lotes: um processo confere vários
 # arquivos e responde uma linha por arquivo, com o caminho. Devolve caminho ->
 # resposta.
@@ -336,88 +274,6 @@ dict funct veredito_da_arvore(str txt) {
 }
 
 
-# ── o texto do fonte ───────────────────────────────────────────────────────
-
-# O trecho do fonte de (l, c) até (l2, c2), com c2 de fora (posições em
-# caractere, desde 1).
-str funct trecho(list linhas, int l, int c, int l2, int c2) {
-    if l < 1 or l > linhas.len() or l2 > linhas.len() {
-        return ""
-    }
-    if l == l2 {
-        return linhas[l - 1][c - 1:c2 - 1]
-    }
-    str t = linhas[l - 1][c - 1:linhas[l - 1].len()]
-    int i = l + 1
-    while i < l2 {
-        t = t + "\n" + linhas[i - 1]
-        i = i + 1
-    }
-    return t + "\n" + linhas[l2 - 1][0:c2 - 1]
-}
-
-
-# A posição (linha, coluna) do caractere `idx` de um trecho que começa em (l, c).
-list funct posicao(int l, int c, str txt, int idx) {
-    str antes = txt[0:idx]
-    int nl = antes.count("\n")
-    if nl == 0 {
-        return [l, c + idx]
-    }
-    return [l + nl, idx - antes.rfind("\n")]
-}
-
-
-bool funct antes_de(int l1, int c1, int l2, int c2) {
-    return l1 < l2 or (l1 == l2 and c1 < c2)
-}
-
-
-# Onde acaba a expressão de um `{...}` da f-string e começa o formato: o
-# primeiro `:` fora de parêntese, colchete, chave e texto entre aspas. -1
-# quando não há. É o `ps_fstring_formato` do parser (vm/ps_parser.c).
-int funct formato(str t) {
-    int prof = 0
-    int n = t.len()
-    int i = 0
-    while i < n {
-        str ch = t[i]
-        if ch == "\"" or ch == "'" {
-            bool tripla = i + 2 < n and t[i + 1] == ch and t[i + 2] == ch
-            int j = i + (3 if tripla else 1)
-            bool fechou = False
-            while j < n and not fechou {
-                if t[j] == "\\" {
-                    j = j + 2
-                } elif t[j] != ch {
-                    j = j + 1
-                } elif not tripla {
-                    fechou = True
-                } elif j + 2 < n and t[j + 1] == ch and t[j + 2] == ch {
-                    j = j + 2
-                    fechou = True
-                } else {
-                    j = j + 1
-                }
-            }
-            i = j + 1
-            continue
-        }
-        if ch == "(" or ch == "[" or ch == "{" {
-            prof = prof + 1
-        } elif ch == ")" or ch == "]" or ch == "}" {
-            if prof > 0 {
-                prof = prof - 1
-            }
-        } elif ch == ":" and prof == 0 {
-            return i
-        }
-        i = i + 1
-    }
-    return -1
-}
-
-
 # ── a conferência de um programa ───────────────────────────────────────────
 
 # Cada token casa com a forma da classe dele (o token inteiro), e o nome não é
@@ -442,82 +298,6 @@ list funct confere_lexico(dict formas, list linhas, list todos) {
         }
     }
     return r
-}
-
-
-# Os tokens de um campo de f-string: os marcados `"em": "fstring"` de [ini, fim).
-# Devolve "" quando a gramática reconhece o campo, ou a frase do que não.
-str funct confere_campo(dict g, list todos, int l, int c, int l2, int c2, dict cob) {
-    list toks = []
-    for each t in todos {
-        if "em" in t and not antes_de(t["l"], t["c"], l, c) and antes_de(t["l"], t["c"], l2, c2) {
-            if t["t"] == "ERRO" {
-                return "o campo da f-string em " + str(l) + ":" + str(c) + " tem erro do lexer (`" + t["v"] + "`)"
-            }
-            addEnd(toks, t)
-        }
-    }
-    addEnd(toks, {"t": "EOF", "v": "", "l": 0, "c": 0, "l2": 0, "c2": 0})
-    dict r = reconhece(g, toks, "campo_de_fstring")
-    for each nome in r["cob"].keys() {
-        cob[nome] = cob.get(nome, 0) + 1
-    }
-    if r["casou"] {
-        return ""
-    }
-    return "a gramática recusa o campo da f-string em " + str(l) + ":" + str(c)
-}
-
-
-# Os campos `{...}` das f-strings do programa, cada um sozinho, até o `:` do
-# formato; e os campos dentro do formato (`{x:>{w}}`). Devolve [frase do campo
-# de fora que a gramática recusa, frase do campo de dentro do formato], ""
-# quando reconhece; e soma os campos em `conta`.
-list funct campos_de_fstring(dict g, list linhas, list todos, dict cob, dict conta) {
-    str fora = ""
-    str dentro = ""
-    for each t in todos {
-        if t["t"] == "FSTRING" and "interp" in t {
-            for each sp in t["interp"] {
-                str txt = trecho(linhas, sp["l"], sp["c"], sp["l2"], sp["c2"])
-                int dp = formato(txt)
-                list fim = [sp["l2"], sp["c2"]]
-                if dp >= 0 {
-                    fim = posicao(sp["l"], sp["c"], txt, dp)
-                }
-                conta["campos"] = conta["campos"] + 1
-                str r = confere_campo(g, todos, sp["l"], sp["c"], fim[0], fim[1], cob)
-                if r != "" and fora == "" {
-                    fora = r
-                }
-                # os campos dentro do formato: cada `{...}` de fora a fora
-                int prof = 0
-                int ini = -1
-                int i = dp + 1 if dp >= 0 else txt.len()
-                while i < txt.len() {
-                    if txt[i] == "{" {
-                        if prof == 0 {
-                            ini = i + 1
-                        }
-                        prof = prof + 1
-                    } elif txt[i] == "}" and prof > 0 {
-                        prof = prof - 1
-                        if prof == 0 {
-                            list a = posicao(sp["l"], sp["c"], txt, ini)
-                            list b = posicao(sp["l"], sp["c"], txt, i)
-                            conta["campos"] = conta["campos"] + 1
-                            str r2 = confere_campo(g, todos, a[0], a[1], b[0], b[1], cob)
-                            if r2 != "" and dentro == "" {
-                                dentro = r2
-                            }
-                        }
-                    }
-                    i = i + 1
-                }
-            }
-        }
-    }
-    return [fora, dentro]
 }
 
 
@@ -682,7 +462,11 @@ if parou == "" {
         casos = da_suite(progs, paginas, trab)
         fundos = sorteados(progs, paginas, trab, g)
         nf = faixas()
-        chama_motor(progs, trab, nf)
+        list arqs = []
+        for each p in progs {
+            addEnd(arqs, p["arq"])
+        }
+        chama_motor(arqs, trab, nf, ["--tokens", "--ast"])
         dict checks = checa_todos(progs)
         for each p in progs {
             por_origem[p["origem"]] = por_origem[p["origem"]] + 1

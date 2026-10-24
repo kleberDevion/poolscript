@@ -1,0 +1,8 @@
+# p4: variante:AttributedValueError:8
+# assinatura: variante-5
+# achado pelo teste/geradores/programas.pr, encolhido; a falha sai rodando o portão
+funct gera5() {
+    yield 1
+    yield 2
+}
+str s17 = gera5()
