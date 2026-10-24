@@ -204,7 +204,7 @@
       "settings": { "foreground": "#B5CEA8" }
     },
     {
-      "name": "true / false / null",
+      "name": "True / False / Null",
       "scope": [
         "constant.language",
         "constant.language.boolean.jinga",

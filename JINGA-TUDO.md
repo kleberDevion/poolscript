@@ -2037,8 +2037,8 @@ Extensão **Jinga**:
 | item | valor |
 |---|---|
 | fonte | `editor/vscode/` |
-| id instalado | `klebersantanadeoliveira.jinga-8.6.12` (em `~/.vscode/extensions/`, depois do `make instala-vsix`) <!-- bump ext --> |
-| manifesto | `name` `jinga`, `publisher` `KleberSantanadeOliveira`, `version` 8.6.12 <!-- bump ext --> |
+| id instalado | `klebersantanadeoliveira.jinga-8.6.13` (em `~/.vscode/extensions/`, depois do `make instala-vsix`) <!-- bump ext --> |
+| manifesto | `name` `jinga`, `publisher` `KleberSantanadeOliveira`, `version` 8.6.13 <!-- bump ext --> |
 | versão | própria, separada da linguagem (4.3 e 5.15) |
 | linguagem | id `jinga`, extensão `.pr`, gramática `source.jinga` |
 | ativação | `onLanguage:jinga`, `onDebugResolve:jinga` |
@@ -2076,7 +2076,7 @@ make instala-vsix    # gera e roda: code --install-extension <vsix> --force
 - A vsix só precisa ser refeita quando muda o cliente (`extension.js`), a gramática ou os temas. O servidor vem do `make install`.
 - Depois de trocar a extensão: `Ctrl+Shift+P` (no Mac `Cmd+Shift+P`) -> *Developer: Reload Window*.
 - O `make instala-vsix` usa o comando `code`. No Mac ele entra no PATH pela paleta do VS Code, em *Shell Command: Install 'code' command in PATH*.
-- Hoje não existe nenhum `.vsix` gerado no repositório. Pra levar a extensão pro Mac sem Node 22, copiar a pasta instalada `~/.vscode/extensions/klebersantanadeoliveira.jinga-8.6.12` pra mesma pasta no Mac funciona. <!-- bump ext --> O cliente é JavaScript puro.
+- Hoje não existe nenhum `.vsix` gerado no repositório. Pra levar a extensão pro Mac sem Node 22, copiar a pasta instalada `~/.vscode/extensions/klebersantanadeoliveira.jinga-8.6.13` pra mesma pasta no Mac funciona. <!-- bump ext --> O cliente é JavaScript puro.
 
 Coisas da máquina atual que não estão no repositório:
 - A extensão **JinkerTls** (`klebersantanadeoliveira.jinkertls-1.0.1`, "JinkerTls Language Support") não tem fonte neste repositório. A cópia instalada está em `~/.vscode/extensions/klebersantanadeoliveira.jinkertls-1.0.1`.
@@ -2199,7 +2199,7 @@ language-servers = ["jinga"]
 |---|---|
 | versão da linguagem | **17.0.20** (fonte: `vm/ps_versao.h`) <!-- bump --> |
 | `./pool --version` | `Jinga 17.0.20 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
-| versão da extensão do VS Code | 8.6.12 <!-- bump ext --> |
+| versão da extensão do VS Code | 8.6.13 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
 | `gh` desta máquina | 2.101.0, logado como `kleberDevion` (token válido em 2026-10-06). Falta o escopo `user`: ler a cobrança do Actions pede `gh auth refresh -h github.com -s user`; no Mac é preciso `gh auth login` |
@@ -2834,7 +2834,7 @@ jinga scripts/bump.pr ext patch       # só a extensão (patch|minor|major|X.Y.Z
 
 - Arquivos da linguagem que o bump troca: `vm/ps_versao.h`, `jinga.md`, `docs/Jinga.md`, `docs/os/cmd/cmd.md` e `docs/os/run/run.md`.
 - **Neste arquivo**, a versão aparece como a de hoje (5.1, aqui, o editor, a máquina, o Mac) e como história (a tabela de commits, "desde o 17.0.0", as medições datadas). O bump troca só a linha marcada no fim com `<!-- bump -->` (versão da linguagem) ou `<!-- bump ext -->` (extensão); a história fica como foi escrita. Linha nova que diz a versão de hoje leva a marca; a marcada que não tem a versão de hoje sai na saída do `jinga scripts/bump.pr` como "marcadas sem a X.Y.Z, conferir: linha N". A marca não aparece no texto renderizado; dentro de bloco de código ela não vai (lá a versão sai do binário: `$(./pool --version | cut -d' ' -f2)`).
-- A extensão tem versão própria em `editor/vscode/package.json` e `package-lock.json`, hoje 8.6.12 <!-- bump ext -->. Ela só sobe quando gramática, tema ou servidor da vsix mudam. Depois: `make vsix && make instala-vsix`.
+- A extensão tem versão própria em `editor/vscode/package.json` e `package-lock.json`, hoje 8.6.13 <!-- bump ext -->. Ela só sobe quando gramática, tema ou servidor da vsix mudam. Depois: `make vsix && make instala-vsix`.
 - **Regra dele: toda alteração leva bump, no mesmo commit.** Ele usa o `--version` pra saber se o binário do PATH tem a mudança. Sem bump, roda o velho e conclui que não foi feito.
 - **Qual casa subir**, decidido pelo conteúdo e nunca pra agradar:
   - `patch`: correção sem mudar comportamento válido;
@@ -2904,7 +2904,7 @@ O que o código e o CI já mostram do macOS:
 - **17.0.20 (2026-10-17), o primeiro lote da correção da base: jinker-1 a 5 e teste-1** de `notas/CORRECAO-BASE.md`, pelo que o `FileServer` do Go, o `http.server` do Python e a RFC 9110 fazem. Nos dois servidores de arquivo (`/static/` e `static_folder`): a pasta pedida serve o `index.html` dela, e sem a barra no fim recebe `301` relativo; o tipo do arquivo sai da tabela padrão do `mimetypes` do Python 3.15 (213 extensões, `.wasm` = `application/wasm`); `Range` (206/416), `ETag`, `Last-Modified`, 304 e `If-Range`; o arquivo sai em blocos de 64 KB (servindo 20 MB, o pico de memória do servidor caiu de 23,6 MB pra 3,6 MB). A doc do jinker parou de dizer que o `static_url` é ignorado e que a `/static/` é a do diretório de quem chamou. Nenhum nome importado novo (Linux 310 = 310, Mac 318 = 318) e 60 relocações a menos que no 17.0.19 (25.307 contra 25.367): a tabela de tipos guarda o texto na entrada, sem ponteiro (com ponteiro eram 366 a mais e a partida subia 0,58%), e a data do `If-Modified-Since` é lida à mão (o `sscanf` trazia o `__isoc23_sscanf` no Linux). As quatro conferências `sobra_temp` do `teste/jinker_roda.pr` dependiam do coletor ter passado: passaram a contar o que a operação deixou. No Mac, seis casos de aninhamento fundo falham dentro do `make check` (o make da Apple dá 64 MB de pilha aos filhos) no 17.0.19 e no 17.0.20: é o defeito motor-1 da lista.
 - **2026-10-17 e 18, os portões (decisão sua, depois do `forAll`): a linguagem inteira conferida a cada commit, sem agente e sem limite de uso.** Plano aprovado em 2026-10-17: P1 (a doc inteira é teste), P2 (o checador e o motor de acordo em todo o `--metadata`), P3 (o editor e o motor de acordo), P4 (a gramática em EBNF e um gerador de programas), cada um no `make check`, com as falhas conhecidas guardadas e cada uma apontando um item da lista. **O P1 está pela metade, sem commit**; a obra está num patch na pasta de estado do assistente (`pausa-2026-10-05/obra-p1-portoes.patch`, que aplica limpo sobre o `11aefc6`). Medido até aqui: toda cerca da doc ganhou marca (836 estavam sem); com o contexto de cada página escrito (```ps contexto), o `--check` passa em 1.335 blocos e recusa 41, todos itens abertos da lista; rodando cada bloco com JIT e sem, isolado (o `sandbox-exec` no macOS, o `bwrap` no Linux), 1.185 blocos rodam, 298 com a saída conferida letra por letra, e 183 falhas estão em classificação (serviço de fora, estado que a página pressupõe, defeito). Os achados viraram itens de `notas/CORRECAO-BASE.md`: doc-1 a doc-20, motor-2 a motor-6 e os-1. O mais grave é o motor-4: o `psodbc.query` corta o SQL em 4.096 bytes calado, e um `DELETE` comprido perdeu o `WHERE` e apagou a tabela inteira. O motor-6 é da classe do `forAll`: o `--check` aprova o `request` da jinker fora de uma rota, e rodando dá `NameError`. Depois do P1 vêm o P2, o P3, o P4 e os consertos, por gravidade.
 - Versão da linguagem **17.0.20** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 17.0.20 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
-- Extensão do editor: **8.6.12** (`editor/vscode/package.json`) <!-- bump ext -->
+- Extensão do editor: **8.6.13** (`editor/vscode/package.json`) <!-- bump ext -->
 - Último commit de código no `main`: a logo nova (`aca400d`, extensão 8.6.12), sobre o 17.0.19 (`58ae207`, Plano 6, lote 8, 2026-10-15), que levou o ramo `obra/lote8` num commit só, sobre o 17.0.18 (`with`, 2026-10-14, subido do Linux). No `2a668b9` (17.0.11) entrou, por engano meu (`git add -A`), o seu rename `examples/action.pr` → `examples/funct.pr` que estava na árvore (100% igual); desde então o commit leva só a lista de arquivos do lote. No `0262aac` (estado, 2026-10-18) entrou, por engano meu, a versão velha do `scripts/confere_saida_doc.pr`, que estava no índice desde a sessão anterior (eu não olhei o índice antes do commit); saiu no commit seguinte, e ele entra com o P1. Fora do controle de versão ficam só arquivos seus (`examples/s.pr`), que nunca entram em commit. A sua mudança em `vm/ps_lexer.c` (de 2026-10-12: `with` sai das palavras reservadas) entrou no 17.0.18, por ordem sua de 2026-10-14.
 - **Lote 8 fechado no 17.0.19** (`58ae207`, 2026-10-15):
   - regex com a sintaxe e as frases de erro do `re` do Python, andando por caractere (3.14). O oráculo `teste/geradores/regex_re.pr` roda 357 chamadas, e 352 batem com o Python 3.15 (as 5 que divergem estão explicadas no arquivo gerado). A doc do regex é a do `re`, traduzida;
@@ -3479,7 +3479,7 @@ jpkg list
 ### 7.10 Editores
 
 **VS Code 1.137.0**
-- Extensões dele: `klebersantanadeoliveira.jinga-8.6.12` (fonte em `editor/vscode`, `name: jinga`, `version: 8.6.12`) e `klebersantanadeoliveira.jinkertls-1.0.1` ("JinkerTls Language Support"). <!-- bump ext -->
+- Extensões dele: `klebersantanadeoliveira.jinga-8.6.13` (fonte em `editor/vscode`, `name: jinga`, `version: 8.6.13`) e `klebersantanadeoliveira.jinkertls-1.0.1` ("JinkerTls Language Support"). <!-- bump ext -->
 - A extensão é cliente LSP e sobe o `jinga-lsp` instalado. Depois de reinstalar a Jinga, é preciso reiniciar o processo do servidor (item 7 da trilha).
 - `~/.config/Code/User/settings.json`, trechos da linguagem:
   ```json
@@ -3931,7 +3931,7 @@ O Makefile tem ramo Darwin:
    ```bash
    grep -v '^klebersantanadeoliveira\.' ~/extensoes-vscode.txt | xargs -n1 code --install-extension
    ```
-5. A extensão Jinga sai do repo. O `make instala-vsix` gera `editor/vscode/jinga-<versao>.vsix` (versão 8.6.12 da extensão <!-- bump ext -->) e instala; precisa do Node 22 ou mais. Depois, Cmd+Shift+P > "Developer: Reload Window".
+5. A extensão Jinga sai do repo. O `make instala-vsix` gera `editor/vscode/jinga-<versao>.vsix` (versão 8.6.13 da extensão <!-- bump ext -->) e instala; precisa do Node 22 ou mais. Depois, Cmd+Shift+P > "Developer: Reload Window".
    ```bash
    cd ~/poolscript-lang && make instala-vsix
    ```

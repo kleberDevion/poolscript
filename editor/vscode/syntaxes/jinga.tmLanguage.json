@@ -275,7 +275,7 @@
     "keywords": {
       "patterns": [
         {
-          "comment": "`self` e o `this` do C#",
+          "comment": "`self`",
           "match": "\\bself\\b",
           "name": "variable.language.self.jinga"
         },
@@ -321,9 +321,9 @@
           "match": "\\b(PUSH|GET|POST|PUT|DELETE|JSON)\\b"
         },
         {
-          "comment": "builtins de verdade, e so quando CHAMADOS: `route` e `listen` sairam daqui porque sao metodos, e pintados soltos manchavam a variavel de quem escreve `route = 1`",
+          "comment": "builtins",
           "name": "support.function.builtin.jinga",
-          "match": "\\b(assert|post|len|str|int|long|flo|bool|type|abs|pow|round|hex|bin|oct|ord|chr|range|list|tup|dict|sum|min|max|sorted|reversed|enumerate|zip|addEnd|addStart|removeEnd|removeStart|map|filter|open|sleep|gather|input|id|load)\\s*(?=\\()"
+          "match": "\\b(assert|post|len|str|int|long|flo|bool|type|abs|pow|round|hex|bin|oct|ord|chr|range|list|tup|dict|sum|min|max|sorted|reversed|enumerate|zip|addEnd|addStart|removeEnd|removeStart|map|filter|open|sleep|gather|input|id)\\s*(?=\\()"
         },
         {
           "comment": "operadores de simbolo e pontuacao: sem escopo, o tema nao tinha como pinta-los, e ficavam na cor do texto comum",
