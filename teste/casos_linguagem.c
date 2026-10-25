@@ -1881,8 +1881,9 @@ const Caso CASOS_LINGUAGEM[] = {
  * A suíte roda com stdin em /dev/null (NUL no Windows: não é terminal, embora
  * o `_isatty` do CRT diga que é), então aqui `raw` só
  * pode ser CONFERIDO no caminho não-tty: devolve false e não estoura, e a
- * leitura segue devolvendo Null no fim (o polling em tty tem prova própria em
- * examples/cobrinha.pr, que precisa de pty). */
+ * leitura segue devolvendo Null no fim. O caminho do terminal não tem teste:
+ * a prova era o examples/cobrinha.pr, que precisava de pty e saiu no
+ * bea30df2 (teste-12 da lista). */
 /* ── sys.argv na convencao C/Python, 2026-09-09 ────────────────────────────
  * `argv[0]` e o NOME DO SCRIPT; os argumentos do usuario vem de `argv[1]`. O
  * runner roda `pool <arquivo>` sem argumentos extras, entao argv tem SO o [0]

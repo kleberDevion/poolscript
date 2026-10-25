@@ -862,6 +862,15 @@ em cada item):
   Corrigido no lote 3 do P4: o achado encolhido roda de novo antes de virar
   arquivo; a falha que não se repete não grava nada, e a rodada reprova
   dizendo isso. O achado falso foi apagado.
+- **teste-12** (achado juntando o commit dele `bea30df2`, 2026-10-24) O
+  caminho do terminal do `sys.stdin.raw()` não tem teste. A suíte roda com a
+  entrada em `/dev/null` e confere só o caminho sem terminal (`raw(True)`
+  devolve `False`, e a leitura segue devolvendo `Null`,
+  `teste/casos_linguagem.c`). A prova do terminal era o
+  `examples/cobrinha.pr`, um jogo que lia tecla por tecla e precisava de pty,
+  e ele saiu no `bea30df2`. O que o `docs/sys/sys.md` promete do `raw()`
+  ("tecla na hora, sem travar") fica sem conferência, no Linux e no macOS.
+  `teste`.
 
 ## doc
 

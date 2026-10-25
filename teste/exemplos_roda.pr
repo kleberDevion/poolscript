@@ -26,8 +26,9 @@ TEMPO = 20
 # Exemplos que BLOQUEIAM de propósito (sobem servidor e esperam conexão, ou
 # leem o teclado num laço). Rodar significaria esperar o timeout, e o timeout
 # viraria "falha" — então eles são só CONFERIDOS na sintaxe, e isso é dito em
-# voz alta no resumo. `cobrinha.pr` fica aqui: é um jogo que só sai com 'q'.
-SERVIDOR = ["cobrinha.pr"]
+# voz alta no resumo. Hoje nenhum: o `socket_demo.pr` saiu com o WebSocket da
+# jinker (19.0.0) e o `cobrinha.pr`, o jogo que só saía com 'q', no bea30df2.
+SERVIDOR = []
 
 # Exemplos que precisam de coisa que a máquina pode não ter (rede, credencial).
 # Eles rodam; se falharem por ausência do serviço, contam como PULOU, nunca
