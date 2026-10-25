@@ -748,12 +748,6 @@ str funct item_de(dict c, dict r) {
         }
         return ""
     }
-    if s == "readFile" {
-        if c["erro"].find("bytes in position") >= 0 {
-            return "os-2"
-        }
-        return ""
-    }
     if s == "mkdir" {
         str p = t["ops"][0][0]
         while p.endswith("/") {

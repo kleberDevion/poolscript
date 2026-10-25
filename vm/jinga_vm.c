@@ -8208,10 +8208,18 @@ static const char *nome_do_codec(int c)
 
 /* POR QUE o UTF-8 falhou, na frase padrao de cada motivo. O `utf8_le_estrito` so devolve
  * -1; sem esta classificacao a mensagem teria que chutar um dos tres motivos,
- * e chutar errado e trocar um portugues honesto por um ingles mentiroso. */
-static const char *utf8_porque(const unsigned char *b, int len, int i)
+ * e chutar errado e trocar um portugues honesto por um ingles mentiroso.
+ * Diz também onde acaba o trecho inválido MÁXIMO que começa em `i`
+ * (em `*fim`, o primeiro byte depois dele), como o decodificador do CPython:
+ * o byte de começo inválido é um trecho de 1 byte; a continuação inválida
+ * fecha o trecho antes dela; o fim dos dados no meio do caractere fecha no
+ * fim. É a "U+FFFD Substitution of Maximal Subparts" do Unicode (3.9): o
+ * `replace` põe um U+FFFD por trecho, e a frase do erro cita a faixa
+ * (motor-35, os-2). */
+static const char *utf8_porque(const unsigned char *b, int len, int i, int *fim)
 {
     unsigned char c = b[i];
+    *fim = i + 1;
     if (c < 0xC2 || c > 0xF4) return "invalid start byte";
     int n = c < 0xE0 ? 2 : (c < 0xF0 ? 3 : 4);
     for (int j = 1; j < n; j++) {
@@ -8222,10 +8230,26 @@ static const char *utf8_porque(const unsigned char *b, int len, int i)
             else if (c == 0xF0) lo = 0x90;   /* overlong */
             else if (c == 0xF4) hi = 0x8F;   /* acima de U+10FFFF */
         }
-        if (i + j >= len) return "unexpected end of data";
-        if (b[i + j] < lo || b[i + j] > hi) return "invalid continuation byte";
+        if (i + j >= len) { *fim = len; return "unexpected end of data"; }
+        if (b[i + j] < lo || b[i + j] > hi) { *fim = i + j; return "invalid continuation byte"; }
     }
     return "invalid start byte";
+}
+
+/* A frase do `UnicodeDecodeError` do UTF-8, a do Python: o byte, quando o
+ * trecho inválido tem um, ou a faixa dele. Uma só, pro `readFile` e pro
+ * `decode`. */
+static void frase_utf8(char *buf, size_t cap, const char *codec,
+                       const unsigned char *b, int len, int i)
+{
+    int fim;
+    const char *porque = utf8_porque(b, len, i, &fim);
+    if (fim - i == 1)
+        snprintf(buf, cap, "'%s' codec can't decode byte 0x%02x in position %d: %s",
+                 codec, b[i], i, porque);
+    else
+        snprintf(buf, cap, "'%s' codec can't decode bytes in position %d-%d: %s",
+                 codec, i, fim - 1, porque);
 }
 
 /* O texto lido de arquivo é UTF-8? Se não é, `UnicodeDecodeError` com a frase
@@ -8237,10 +8261,11 @@ static int confere_utf8(VM *vm, const char *s, int n)
         if (p[i] < 0x80) { i++; continue; }
         uint32_t cp;
         int k = utf8_le_estrito(p, n, i, &cp);
-        if (k < 0)
-            BERRO(vm, "UnicodeDecodeError",
-                  "'utf-8' codec can't decode byte 0x%02x in position %d: %s",
-                  p[i], i, utf8_porque(p, n, i));
+        if (k < 0) {
+            char fr[160];
+            frase_utf8(fr, sizeof(fr), "utf-8", p, n, i);
+            BERRO(vm, "UnicodeDecodeError", "%s", fr);
+        }
         i += k;
     }
     return 0;
@@ -8335,13 +8360,18 @@ static int met_b_decode(VM *vm, Value alvo, Value *args, int n, Value *out)
             uint32_t cp;
             int k = utf8_le_estrito(p, b->len, i, &cp);
             if (k < 0) {
-                if (pol == ERRO_STRICT)
-                    MERRO(vm, "UnicodeDecodeError",
-                          "'%s' codec can't decode byte 0x%02x in position %d: %s",
-                          nome_do_codec(codec), p[i], i, utf8_porque(p, b->len, i));
+                if (pol == ERRO_STRICT) {
+                    char fr[160];
+                    frase_utf8(fr, sizeof(fr), nome_do_codec(codec), p, b->len, i);
+                    MERRO(vm, "UnicodeDecodeError", "%s", fr);
+                }
+                /* um U+FFFD pelo trecho inválido inteiro, e não por byte:
+                 * `e2 82 28` dava dois antes do `(` (motor-35) */
+                int fim;
+                utf8_porque(p, b->len, i, &fim);
                 if (pol == ERRO_REPLACE && sb_cp(&sb, 0xFFFD) != 0)
                     MERRO(vm, "MemoryError", "sem memoria em decode()");
-                i++;
+                i = fim;
                 continue;
             }
             if (sb_bytes(&sb, (const char *)p + i, k) != 0) { MERRO(vm, "MemoryError", "sem memoria em decode()"); }

@@ -7,7 +7,7 @@
  * notas/CORRECAO-BASE.md: ele tem que falhar, e quando o motor acertar o
  * runner diz JA FUNCIONA e o gerador roda de novo.
  *
- * casos: 228  |  pendentes: 41 (motor-26: 1, motor-27: 32, motor-28: 1, os-2: 4, os-3: 1, os-5: 2)  |  semente: 20261024
+ * casos: 228  |  pendentes: 37 (motor-26: 1, motor-27: 32, motor-28: 1, os-3: 1, os-5: 2)  |  semente: 20261024
  */
 #include "ps_teste.h"
 
@@ -4972,20 +4972,20 @@ const Caso CASOS_PYTHON[] = {
   "post(\"[\" + t + \"]\")\n",
   "",
   "UnicodeDecodeError: 'utf-8' codec can't decode byte 0xf0 in position 2: invalid continuation byte", 1 },
-{ "python #134 readFile (PENDENTE os-2)",
+{ "python #134 readFile",
   "import os\n"
   "os.writeFile(\"u.txt\", b\"\\x61\\xf0\\xa0\\xae\\xb7\\xe2\\x82\\x61\")\n"
   "str t = os.readFile(\"u.txt\")\n"
   "post(\"[\" + t + \"]\")\n",
   "",
-  "UnicodeDecodeError: 'utf-8' codec can't decode bytes in position 5-6: invalid continuation byte", 1, NULL, 1 },
-{ "python #135 readFile (PENDENTE os-2)",
+  "UnicodeDecodeError: 'utf-8' codec can't decode bytes in position 5-6: invalid continuation byte", 1 },
+{ "python #135 readFile",
   "import os\n"
   "os.writeFile(\"u.txt\", b\"\\x01\\x31\\x31\\x0a\\xe2\\x82\\xe6\\x97\\xa5\")\n"
   "str t = os.readFile(\"u.txt\")\n"
   "post(\"[\" + t + \"]\")\n",
   "",
-  "UnicodeDecodeError: 'utf-8' codec can't decode bytes in position 4-5: invalid continuation byte", 1, NULL, 1 },
+  "UnicodeDecodeError: 'utf-8' codec can't decode bytes in position 4-5: invalid continuation byte", 1 },
 { "python #136 readFile",
   "import os\n"
   "os.writeFile(\"u.txt\", b\"\\x01\\x01\\x0a\")\n"
@@ -4994,13 +4994,13 @@ const Caso CASOS_PYTHON[] = {
   "[\001\001\n"
   "]",
   NULL, 0 },
-{ "python #137 readFile (PENDENTE os-2)",
+{ "python #137 readFile",
   "import os\n"
   "os.writeFile(\"u.txt\", b\"\\x0a\\x61\\x5a\\xf0\\xa0\\xae\\xb7\\xf0\\x9f\\x98\\x0a\\x01\\x5a\")\n"
   "str t = os.readFile(\"u.txt\")\n"
   "post(\"[\" + t + \"]\")\n",
   "",
-  "UnicodeDecodeError: 'utf-8' codec can't decode bytes in position 7-9: invalid continuation byte", 1, NULL, 1 },
+  "UnicodeDecodeError: 'utf-8' codec can't decode bytes in position 7-9: invalid continuation byte", 1 },
 { "python #138 readFile",
   "import os\n"
   "os.writeFile(\"u.txt\", b\"\\x5a\\xc3\\xa7\\x61\")\n"
@@ -5166,13 +5166,13 @@ const Caso CASOS_PYTHON[] = {
   "𠮷\177\177\001\n"
   " ]",
   NULL, 0 },
-{ "python #161 readFile (PENDENTE os-2)",
+{ "python #161 readFile",
   "import os\n"
   "os.writeFile(\"u.txt\", b\"\\xc3\\xa7\\xf0\\xa0\\xae\\xb7\\x01\\x20\\xf0\\x9f\\x98\")\n"
   "str t = os.readFile(\"u.txt\")\n"
   "post(\"[\" + t + \"]\")\n",
   "",
-  "UnicodeDecodeError: 'utf-8' codec can't decode bytes in position 8-10: unexpected end of data", 1, NULL, 1 },
+  "UnicodeDecodeError: 'utf-8' codec can't decode bytes in position 8-10: unexpected end of data", 1 },
 { "python #162 readFile",
   "import os\n"
   "os.writeFile(\"u.txt\", b\"\\x61\\x0a\\xbf\\x01\\x7f\")\n"

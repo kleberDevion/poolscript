@@ -152,6 +152,23 @@ pra `str`. Encodings aceitos (o nome ignora caixa, `-`, `_` e espaço):
 `errors` diz o que fazer com o que não cabe: `strict` (padrão, **levanta erro**),
 `ignore` (some) ou `replace` (`?` no encode, `\ufffd` no decode).
 
+No decode do UTF-8, o que não decodifica vai por **trecho**, como no Python: o
+trecho inválido (o byte que não começa caractere, ou o começo de um caractere
+com o resto faltando ou errado) vira **um** `\ufffd` no `replace`, some inteiro
+no `ignore`, e a frase do `strict` cita a faixa dele (`bytes in position 0-1`).
+
+```ps
+import bytes
+b = bytes.fromhex("e28228")              # o começo do € (e2 82) e um `(`
+post(len(b.decode("utf-8", "replace")))  # 2: um \ufffd pelo trecho, e o (
+post(b.decode("utf-8", "ignore"))        # (
+```
+
+```saida
+2
+(
+```
+
 ```ps
 post("café".encode("latin-1"))            # b'caf\xe9'
 post("café".encode())                     # b'caf\xc3\xa9'

@@ -1031,6 +1031,8 @@ p3	docs/jinker.md	1343dd4c664b	editor-3	todos	linha 406: #p3 hover jinker 1:6
 p3	docs/jinker.md	36629211a887	editor-3	todos	linha 447: #p3 hover __name__ 1:14
 p3	docs/jinker.md	d949dd62be83	editor-3	todos	linha 593: #p3 hover __name__ 1:4
 p3	docs/jinker.md	eed646f787fd	editor-2	todos	linha 665: #p3 hover request 3:36
+p3	docs/byte/decode/decode.md	42d3ffa1de4f	editor-3	todos	linha 45: #p3 hover e 6:29
+p3	docs/byte/decode/decode.md	8134e1ac5173	editor-3	todos	linha 46: #p3 hover e 7:10
 p3	docs/byte/index/index.md	6690380a0273	editor-3	todos	linha 23: #p3 hover e 4:38
 p3	docs/byte/index/index.md	15a39d122351	editor-3	todos	linha 23: #p3 hover e 4:48
 p3	docs/request/Response/Response.md	427577e1475d	editor-3	todos	linha 61: #p3 hover e 10:8

@@ -1799,6 +1799,29 @@ const Caso CASOS_LIBS[] = {
 { "lote 8: os.readFile sem encoding confere o UTF-8",
   "import os\nos.writeFile(\"l1.txt\", \"café\", encoding=\"latin-1\")\ntry {\n    str x = os.readFile(\"l1.txt\")\n} catch (UnicodeDecodeError e) {\n    post(e)\n}\npost(os.readFile(\"l1.txt\", encoding=\"latin-1\"))\n",
   "'utf-8' codec can't decode byte 0xe9 in position 3: unexpected end of data (linha 4)\ncafé", NULL, 0 },
+/* os-2 e motor-35: o trecho invalido MAXIMO, como o decodificador do Python
+ * (a "U+FFFD Substitution of Maximal Subparts" do Unicode, 3.9). A frase
+ * cita a faixa quando o trecho tem mais de um byte (citava so o primeiro), e
+ * o `replace` poe um U+FFFD por trecho (punha um por byte). */
+{ "os-2: o readFile cita a faixa do trecho invalido",
+  "import os\nimport bytes\nos.writeFile(\"u1.txt\", bytes.fromhex(\"e28228\"))\n"
+  "os.writeFile(\"u2.txt\", bytes.fromhex(\"41f09f98\"))\n"
+  "for each n in [\"u1.txt\", \"u2.txt\"] {\n    try {\n        str t = os.readFile(n)\n"
+  "    } catch (UnicodeDecodeError e) {\n        post(e)\n    }\n}\n",
+  "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte (linha 7)\n"
+  "'utf-8' codec can't decode bytes in position 1-3: unexpected end of data (linha 7)", NULL, 0 },
+{ "os-2: o decode estrito cita a faixa, e o trecho de um byte continua o byte",
+  "import bytes\nfor each h in [\"e28228\", \"41e282\", \"f09f9841\", \"ff\"] {\n    try {\n"
+  "        bytes.fromhex(h).decode(\"utf-8\")\n    } catch (UnicodeDecodeError e) {\n        post(e)\n    }\n}\n",
+  "'utf-8' codec can't decode bytes in position 0-1: invalid continuation byte (linha 4)\n"
+  "'utf-8' codec can't decode bytes in position 1-2: unexpected end of data (linha 4)\n"
+  "'utf-8' codec can't decode bytes in position 0-2: invalid continuation byte (linha 4)\n"
+  "'utf-8' codec can't decode byte 0xff in position 0: invalid start byte (linha 4)", NULL, 0 },
+{ "motor-35: o replace poe um U+FFFD por trecho invalido, e o ignore tira o trecho",
+  "import bytes\nfor each h in [\"e28228\", \"f09f98\", \"8080\", \"e282e282ac\", \"80\"] {\n"
+  "    post(h, bytes.fromhex(h).decode(\"utf-8\", \"replace\").encode(\"utf-8\").hex())\n}\n"
+  "post(bytes.fromhex(\"e28228\").decode(\"utf-8\", \"ignore\"), bytes.fromhex(\"f09f9841\").decode(\"utf-8\", \"ignore\"))\n",
+  "e28228 efbfbd28\nf09f98 efbfbd\n8080 efbfbdefbfbd\ne282e282ac efbfbde282ac\n80 efbfbd\n( A", NULL, 0 },
 /* o `mkfifo` com `capture=True`, que espera: sem capture o `run` dispara e
  * volta com o PID (a doc do run), e o `readFile` corria contra o `mkfifo` —
  * na VPS perdia 2 de 3 vezes */

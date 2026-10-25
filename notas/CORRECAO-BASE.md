@@ -750,6 +750,19 @@ em cada item):
   leituras, e cada erro aponta o trecho que causa: a estrela, o nome ou o
   segundo valor. Casos: os "motor-34: ..." de `teste/casos_linguagem.c`, com
   a frase e o `^^^`.
+- ~~**motor-35** (achado planejando o os-2, 2026-10-25) O
+  `bytes.decode("utf-8", "replace")` punha um U+FFFD por byte do trecho
+  inválido, e o Python põe um por trecho: `e2 82 28` dava dois antes do `(`,
+  e `f0 9f 98` dava três. O texto saía diferente, calado. O Python segue a
+  prática recomendada do Unicode ("U+FFFD Substitution of Maximal
+  Subparts", seção 3.9 do padrão); o capítulo 12 dizia só que o `replace`
+  dá o U+FFFD. Medido no 19.0.3: em 72 combinações (24 sequências e as três
+  políticas), 18 diferiam do Python, todas com o trecho de mais de um byte
+  (o `replace` e a frase do os-2). `motor` (resultado errado calado).~~
+  Corrigido no 19.0.4: o `replace` põe um U+FFFD pelo trecho inteiro e
+  salta pro fim dele (o `ignore` salta igual); as 72 combinações saem
+  iguais ao Python, com JIT e sem. Casos: o "motor-35: ..." de
+  `teste/casos_libs.c`; a regra no capítulo 12 e na página do `decode`.
 
 ## os
 
@@ -769,7 +782,7 @@ em cada item):
   encontra o filho já recolhido por essa leitura devolve o código guardado.
   Casos: os quatro "os-1: ..." de `teste/casos_libs.c`, e o exemplo da
   página do `Process`.
-- **os-2** (achado pelo gerador do P4, lote 3, 2026-10-24,
+- ~~**os-2** (achado pelo gerador do P4, lote 3, 2026-10-24,
   `teste/casos_python.c`) Quando o trecho que não é UTF-8 tem mais de um byte,
   o `UnicodeDecodeError` do `os.readFile` diz só o primeiro, e o do Python diz
   a faixa inteira. Programa: o arquivo com os bytes `e2 82` (um caractere de
@@ -779,7 +792,13 @@ em cada item):
   28` (`invalid continuation byte`) e com `f0 9f 98`. Promessa:
   `docs/os/readFile/readFile.md` ("lido como UTF-8, como o `open().read()` do
   Python: o que não é UTF-8 é `UnicodeDecodeError`, com a posição do byte").
-  `motor`.
+  `motor`.~~
+  Corrigido no 19.0.4: o `utf8_porque` (`vm/jinga_vm.c`) diz também onde
+  acaba o trecho inválido máximo, como o decodificador do CPython, e a
+  frase sai num lugar só (`frase_utf8`), pro `readFile` e pro `decode`: o
+  byte, quando o trecho tem um, ou a faixa dele. Casos: os "os-2: ..." de
+  `teste/casos_libs.c`, e os quatro do `teste/casos_python.c` que estavam
+  pendentes, regerado.
 - **os-3** (achado pelo gerador do P4, lote 3) Com um arquivo no meio do
   caminho, o `NotADirectoryError` do `os.mkdir` diz o caminho inteiro, e o do
   `os.makedirs` diz a pasta que ele tentou criar. Programa: com `f` arquivo,
