@@ -213,7 +213,7 @@ mostra o **gráfico de execução** com a linha que quebrou em vermelho — ver
 
 O binário **PSVM** (`jinga`) já traz **embutido** (não precisa instalar nada):
 
-> **sqlite, libpq (postgres), mysqlclient, odbc, openssl (TLS), png, expat, z.**
+> **sqlite, libpq (postgres), mysqlclient, odbc, openssl (TLS), png, z.**
 > Ou seja: Todas as libs que são padrão da linguagem ja estão com suas dependencias embutidas no ELF, so existem
 > algumas que são estaticas e e necessario o ``.so`` dela para o ELF chamar em Runtime
 
@@ -275,5 +275,5 @@ minhalib`, onde quer que as libs estejam (`JINGA_HOME` incluso).
 
 ## Versionamento
 
-Versão mais recente — **18.0.2** (a fonte é `vm/ps_versao.h`; `jinga --version`
+Versão mais recente — **19.0.0** (a fonte é `vm/ps_versao.h`; `jinga --version`
 mostra a do binário).

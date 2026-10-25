@@ -36,7 +36,6 @@
 #include "ps_regex.h"
 #include "ps_ast.h"
 #include "ps_pilha.h"
-#include "ps_xlsx.h"
 
 static int falhas = 0;
 static int total = 0;
@@ -704,124 +703,6 @@ static void teste_regex_fundo(void)
     CONF(casa("(a*)*b", "b", "b"), "estrela sobre estrela travou ou nao casou");
 }
 
-/* ── xlsx: o leitor de ZIP contra arquivo hostil ────────────────────────────
- *
- * `zip_extrai` confiava em todo tamanho e deslocamento gravado no arquivo. Um
- * `.xlsx` corrompido (ou montado à mão) com `orig` maior que o buffer fazia o
- * `memcpy` do STORED ler 16 MB a partir de um buffer de 60 bytes — SIGSEGV
- * quando passava do fim do heap, e leitura de memória alheia quando não.
- * Não existe programa Jinga que produza esse arquivo, por isso o caso
- * vive aqui: monta o ZIP byte a byte e chama a API pública. */
-static void le16w(unsigned char *p, unsigned v) { p[0] = v & 0xFF; p[1] = (v >> 8) & 0xFF; }
-static void le32w(unsigned char *p, unsigned long v)
-{
-    p[0] = v & 0xFF; p[1] = (v >> 8) & 0xFF; p[2] = (v >> 16) & 0xFF; p[3] = (v >> 24) & 0xFF;
-}
-
-/* ZIP com UMA entrada STORED chamada `nome`, com os campos `comp`/`orig`/`lho`
- * que o chamador mandar (pra mentir de propósito). Devolve o tamanho. */
-static size_t monta_zip(unsigned char *z, const char *nome, unsigned long comp,
-                        unsigned long orig, unsigned long lho, const char *dados, size_t ndados)
-{
-    size_t nlen = strlen(nome), p = 0;
-    /* local file header */
-    le32w(z + p, 0x04034b50UL); p += 4;
-    le16w(z + p, 20); p += 2;  le16w(z + p, 0); p += 2;  le16w(z + p, 0); p += 2;   /* ver, flags, STORED */
-    le16w(z + p, 0); p += 2;   le16w(z + p, 0); p += 2;                          /* time, date */
-    le32w(z + p, 0); p += 4;                                                     /* crc */
-    le32w(z + p, comp); p += 4;  le32w(z + p, orig); p += 4;
-    le16w(z + p, (unsigned)nlen); p += 2;  le16w(z + p, 0); p += 2;
-    memcpy(z + p, nome, nlen); p += nlen;
-    memcpy(z + p, dados, ndados); p += ndados;
-    /* central directory */
-    size_t cd = p;
-    le32w(z + p, 0x02014b50UL); p += 4;
-    le16w(z + p, 20); p += 2;  le16w(z + p, 20); p += 2;  le16w(z + p, 0); p += 2;  le16w(z + p, 0); p += 2;
-    le16w(z + p, 0); p += 2;   le16w(z + p, 0); p += 2;
-    le32w(z + p, 0); p += 4;
-    le32w(z + p, comp); p += 4;  le32w(z + p, orig); p += 4;
-    le16w(z + p, (unsigned)nlen); p += 2;  le16w(z + p, 0); p += 2;  le16w(z + p, 0); p += 2;
-    le16w(z + p, 0); p += 2;   le16w(z + p, 0); p += 2;  le32w(z + p, 0); p += 4;
-    le32w(z + p, lho); p += 4;
-    memcpy(z + p, nome, nlen); p += nlen;
-    size_t cdlen = p - cd;
-    /* end of central directory */
-    le32w(z + p, 0x06054b50UL); p += 4;
-    le16w(z + p, 0); p += 2;  le16w(z + p, 0); p += 2;  le16w(z + p, 1); p += 2;  le16w(z + p, 1); p += 2;
-    le32w(z + p, cdlen); p += 4;  le32w(z + p, cd); p += 4;  le16w(z + p, 0); p += 2;
-    return p;
-}
-
-/* Grava o ZIP num arquivo e passa pelo leitor de verdade.
- *
- * O arquivo é RELATIVO à pasta corrente (a raiz do repositório, pelo `make`) e
- * é apagado logo depois. Era "/tmp/ps_unidade_zip.xlsx": no Windows o programa
- * é nativo e "/tmp/x" é "\tmp\x" na raiz do disco corrente (não o /tmp do
- * MSYS2) — sem essa pasta o fopen falha e os quatro casos reprovam com a
- * mensagem do caso, sem o leitor ter rodado. Um nome por caso porque no
- * Windows o arquivo apagado só some quando o último processo que o segura (o
- * antivírus, que lê todo arquivo novo) o solta, e até lá recriar o MESMO nome
- * dá acesso negado.
- *
- * -99 = o arquivo não ficou gravado inteiro, ou o leitor não o abriu, e a
- * causa sai aqui. Nenhum dos dois pode chegar ao `CONF` como -1: ZIP truncado
- * também dá -1, arquivo que o leitor não abriu também, e o caso passaria sem
- * ter testado nada. O `fclose` entra na conta porque é ele que descarrega o
- * buffer: disco cheio aparece nele, não no `fwrite`. */
-static int roda_xlsx(const unsigned char *z, size_t n)
-{
-    static int seq = 0;
-    char cam[64];
-    snprintf(cam, sizeof cam, "ps_unidade_zip_%d.xlsx", ++seq);
-    FILE *f = fopen(cam, "wb");
-    if (!f) {
-        printf("  [%s] nao consegui criar '%s' na pasta corrente: %s\n",
-               grupo_atual, cam, strerror(errno));
-        return -99;
-    }
-    size_t gravados = fwrite(z, 1, n, f);
-    if (fclose(f) != 0 || gravados != n) {
-        printf("  [%s] nao consegui gravar '%s' inteiro: %s\n",
-               grupo_atual, cam, strerror(errno));
-        remove(cam);
-        return -99;
-    }
-    PSGrade g; char erro[256] = "";
-    int rc = ps_xlsx_le(cam, &g, erro, sizeof erro);
-    int causa = errno;
-    ps_grade_libera(&g);
-    remove(cam);
-    /* O outro lado da gravação curta: o leitor que nem abriu o arquivo também
-     * devolve -1, e o caso passaria sem o ZIP ter sido lido. Reconhece pela
-     * mensagem do próprio `ps_xlsx_le`. */
-    static const char nao_abriu[] = "nao consegui abrir";
-    if (rc == -1 && strncmp(erro, nao_abriu, sizeof nao_abriu - 1) == 0) {
-        printf("  [%s] o leitor nao abriu '%s', gravado inteiro: %s\n",
-               grupo_atual, cam, strerror(causa));
-        return -99;
-    }
-    return rc;
-}
-
-static void teste_xlsx(void)
-{
-    grupo("xlsx/zip");
-    unsigned char z[512];
-    size_t n;
-    /* `orig` de 16 MB numa entrada de 4 bytes: o memcpy antigo lia fora */
-    n = monta_zip(z, "xl/sharedStrings.xml", 4, 0x00FFFFFFUL, 0, "abcd", 4);
-    CONF(roda_xlsx(z, n) == -1, "orig maior que o buffer nao foi recusado");
-    /* `lho` = 0xFFFFFFFF: `lho + 30` em 32 bits dava a volta e passava */
-    n = monta_zip(z, "xl/sharedStrings.xml", 4, 4, 0xFFFFFFFFUL, "abcd", 4);
-    CONF(roda_xlsx(z, n) == -1, "lho que da a volta nao foi recusado");
-    /* `comp` maior que o que sobra do arquivo */
-    n = monta_zip(z, "xl/sharedStrings.xml", 4000, 4000, 0, "abcd", 4);
-    CONF(roda_xlsx(z, n) == -1, "comp alem do fim nao foi recusado");
-    /* controle: entrada honesta, e o erro e so 'nao tem sheet1' */
-    n = monta_zip(z, "xl/sharedStrings.xml", 4, 4, 0, "abcd", 4);
-    CONF(roda_xlsx(z, n) == -1, "zip honesto sem sheet1 devia devolver -1 sem quebrar");
-}
-
 int main(int argc, char **argv)
 {
     if (argc > 1) filtro = argv[1];
@@ -835,7 +716,6 @@ int main(int argc, char **argv)
     teste_regex_fundo();
     teste_ast();
     teste_pilha();
-    teste_xlsx();
 
     printf("\nunidade: %d checagens, %d falharam\n", total, falhas);
     /* Filtro que não casa nada = 0 checagens = "passou"? Não: é erro de quem

@@ -8,7 +8,7 @@ Esta página listava `.file`, `.files`, `.get`, `.json`, `.path_param`, `.text`,
 `.body_raw`, `.headers`, `.method`, `.path` e `.query` — **os onze dão
 `AttributeError`**.
 
-Dentro da rota e do socket, o `request` **não é** um `JinkerRequest`:
+Dentro da rota, o `request` **não é** um `JinkerRequest`:
 
 ```ps
 import jinker

@@ -80,18 +80,15 @@ cors(app, origins=["https://meusite.com"])
 | `["https://meusite.com"]` | só esse domínio |
 | `["https://a.com", "https://b.com"]` | vários domínios |
 
-A lista vale nas **rotas** (é o `auth=` padrão de cada uma) e no **handshake
-do WebSocket** de todo `@app.socket` do servidor — um site fora da lista não
-abre o socket. A comparação é exata (esquema, host e porta; barra final é
-ignorada). A recusa é `403`:
+A lista vale nas **rotas** (é o `auth=` padrão de cada uma). A comparação é
+exata (esquema, host e porta; barra final é ignorada). A recusa é `403`:
 
 ```json
 {"error": true, "code": 403, "message": "Origem não autorizada: https://outro.com"}
 ```
 
 sem `Access-Control-Allow-Origin` — uma recusa de origem não libera origem
-nenhuma. No WebSocket a recusa é essa mesma resposta HTTP, antes do
-handshake (RFC 6455 §4.2.2).
+nenhuma.
 
 Regras do modo padrão (`local=True`):
 
@@ -111,7 +108,7 @@ Ver [`cors.origins()`](origins/origins.md) para usar no `auth=` de uma rota.
 cors(app, origins=["https://meusite.com"], local=False)
 ```
 
-Com `local=False` **só a lista vale**, no HTTP e no WebSocket:
+Com `local=False` **só a lista vale**:
 
 | Pedido | `local=True` (padrão) | `local=False` |
 |---|---|---|

@@ -32,7 +32,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends gcc libsqlite3-dev libpq-dev \
             libmariadb-dev libmariadb-dev-compat unixodbc-dev libssl-dev libpng-dev \
-            libexpat1-dev zlib1g-dev libgmp-dev libmongoc-dev libbson-dev \
+            zlib1g-dev libgmp-dev libmongoc-dev libbson-dev \
             libpq5 libmariadb3 unixodbc libmongoc-1.0-0 bubblewrap
       - name: compila
         run: make pool testar
@@ -100,7 +100,7 @@ jobs:
           # python: os servidores falsos de SMTP/IMAP do teste/e2e/mail_local.pr
           # (sem ele o teste diz PULOU e o módulo mail fica sem teste no Windows)
           pacboy: >-
-            gcc:p openssl:p libpng:p gmp:p sqlite3:p expat:p zlib:p
+            gcc:p openssl:p libpng:p gmp:p sqlite3:p zlib:p
             postgresql:p libmariadbclient:p mongo-c-driver:p nodejs:p python:p
       - name: compila
         run: scripts/ci_anota.sh make pool testar

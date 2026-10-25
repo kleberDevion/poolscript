@@ -15,7 +15,7 @@ Os exemplos desta página pressupõem:
 
 ```ps contexto
 import request
-WsConnection conn = request.ws_connect("ws://localhost:8081/chat/sala")
+WsConnection conn = request.ws_connect("ws://chat.example.com/chat/sala")
 ```
 
 ---
@@ -27,8 +27,8 @@ thread em segundo plano. Se você **não** registrou um `on_message`, essas
 mensagens chegam e são **descartadas em silêncio** — nenhum erro, nada
 impresso. É o motivo nº 1 de "conectei mas não recebo nada".
 
-```ps
-conn = request.ws_connect("ws://localhost:8081/chat/sala")
+```ps sem-rodar: conecta num servidor WebSocket de fora
+conn = request.ws_connect("ws://chat.example.com/chat/sala")
 
 # SEM esta linha, as mensagens somem sem aviso:
 conn.on_message(funct(msg) { post(msg) })
@@ -41,7 +41,7 @@ conn.on_message(funct(msg) { post(msg) })
 A função recebe **um** argumento: a mensagem. Se o servidor mandou JSON, ela
 já chega como dict; senão, chega como string.
 
-```ps
+```ps sem-rodar: conecta num servidor WebSocket de fora
 conn.on_message(funct(msg) {
     autor = msg["author"]
     corpo = msg["body"]
@@ -51,7 +51,7 @@ conn.on_message(funct(msg) {
 
 Você também pode passar uma `funct` nomeada:
 
-```ps
+```ps sem-rodar: conecta num servidor WebSocket de fora
 funct aoReceber(msg) {
     post(f"chegou: {msg}")
 }

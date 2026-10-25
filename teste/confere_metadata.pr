@@ -181,7 +181,6 @@ import mail
 import regex
 import jinker
 import qrcode
-import manpu
 import sockets
 
 # Pasta de trabalho RELATIVA à corrente, criada aqui e apagada no fim da
@@ -208,7 +207,6 @@ amostras_fonte["Pattern"] = "regex.compile(\"a\")"
 amostras_fonte["Jinker"] = "jinker.Jinker(name=\"conf\")"
 amostras_fonte["JinkerResponse"] = "jinker.JinkerResponse()"
 amostras_fonte["QRImage"] = "qrcode.make(\"x\")"
-amostras_fonte["ManpuFile"] = "manpu.open(target=\"" + TMP + "/ps_cm.txt\")"
 amostras_fonte["PoolQRCode"] = "qrcode.QRCode()"
 # PoolFile só nasce de arquivo com extensão binária (`ext_binaria` no motor),
 # e o próprio qrcode da linguagem gera um PNG de verdade — sem isso as 3
@@ -219,11 +217,11 @@ amostras_fonte["socket"] = "sockets.socket()"
 amostras_fonte["Process"] = "os.run([sys.executable, \"-e\", \"input()\"], capture=\"live\")"
 
 # Os módulos que essas expressões usam. O filho é outro programa e não herda
-# os `import` daqui: faltavam `os` e `manpu`, e as amostras de PoolFile e
-# Process morriam em NameError no filho — que não diz "has no attribute", e os
-# campos delas passavam sem nunca terem sido lidos.
+# os `import` daqui: faltava o `os`, e as amostras de PoolFile e Process
+# morriam em NameError no filho — que não diz "has no attribute", e os campos
+# delas passavam sem nunca terem sido lidos.
 CABECA_FILHO = ("import os\nimport sys\nimport mail\nimport regex\nimport jinker\n"
-                + "import qrcode\nimport manpu\nimport sockets\n")
+                + "import qrcode\nimport sockets\n")
 
 amostras_campo = {}
 amostras_campo["MailMessage"] = mail.MailMessage()
@@ -233,7 +231,6 @@ amostras_campo["Pattern"] = regex.compile("a")
 amostras_campo["Jinker"] = jinker.Jinker(name="conf")
 amostras_campo["JinkerResponse"] = jinker.JinkerResponse()
 amostras_campo["QRImage"] = qrcode.make("x")
-amostras_campo["ManpuFile"] = manpu.open(target=TMP + "/ps_cm.txt")
 amostras_campo["PoolQRCode"] = qrcode.QRCode()
 amostras_campo["PoolFile"] = os.loadFile(PNG, "rb")
 amostras_campo["QRPoolFile"] = qrcode.gen("x")
@@ -256,7 +253,6 @@ SEM_AMOSTRA["PoolCursor"] = "precisa de conexão de banco viva"
 SEM_AMOSTRA["DbCursor"] = "precisa de conexão de banco viva"
 SEM_AMOSTRA["RequestProxy"] = "só existe dentro de um handler do jinker atendendo"
 SEM_AMOSTRA["PoolFileUpload"] = "só existe dentro de um handler recebendo multipart"
-SEM_AMOSTRA["ChannelManager"] = "só existe com o servidor do jinker de pé"
 
 nao_conferidos = []
 fantasmas = []

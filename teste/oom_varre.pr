@@ -54,7 +54,6 @@ PROGRAMAS = [
     ["split",       "s = (\",\").join([str(i) for each i in range(100)])\npost(len(s.split(\",\")))\n"],
     ["gerador",     "funct g() {\n    for each i in range(100) {\n        yield i * i\n    }\n}\npost(sum(list(g())))\n"],
     ["import",      "import os\nimport sys\nimport json\npost(type(os), type(sys), type(json))\n"],
-    ["xlsx",        "import manpu as mp\nusing mp.open(target=\"p.xlsx\") as a {\n    a.write(column=\"full\", cell=\"full\", content=\"a,b\", sep=\",\")\n}\npost(len(mp.read(\"p.xlsx\")))\n"],
     ["traceback",   "funct f() {\n    raise ValueError(\"x\")\n}\ntry {\n    f()\n} catch (e) {\n    post(\"peguei\")\n}\n"],
     # ── variadicos e espalhamento (commit 236eba8): cada familia passa por um
     # caminho de alocacao novo — a tup do `*args` e o dict do `**kwarg` no
@@ -92,7 +91,7 @@ PROGRAMAS = [
 # Devolve [rc, saida, erro].
 funct roda(caminho, falha_em, contando) {
     # Cada execução parte do MESMO estado. Sem isto, um programa que grava
-    # arquivo (o de xlsx grava `p.xlsx`) deixa o resto pra próxima rodada: uma
+    # arquivo (o de arquivo grava `a.txt`) deixa o resto pra próxima rodada: uma
     # falha no meio da escrita produz um arquivo truncado, e a rodada seguinte
     # morre LENDO ele. Foram 3 "achados" que eram sujeira do harness — e um
     # harness que inventa defeito é tão ruim quanto um que esconde.

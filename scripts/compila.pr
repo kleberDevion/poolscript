@@ -26,9 +26,9 @@ ARTEFATO = {"linux": "jinga-linux-x86_64", "mac": "jinga-macos-x86_64", "windows
 # pelos cabeçalhos: o motor abre a biblioteca no primeiro `connect`).
 BREW = ["openssl@3", "libpng", "gmp", "libpq", "mariadb-connector-c", "unixodbc",
         "mongo-c-driver@1", "coreutils"]
-APT = "sudo apt-get install -y gcc make libsqlite3-dev libpq-dev libmariadb-dev unixodbc-dev libssl-dev libpng-dev libexpat1-dev zlib1g-dev libgmp-dev libmongoc-dev libbson-dev"
+APT = "sudo apt-get install -y gcc make libsqlite3-dev libpq-dev libmariadb-dev unixodbc-dev libssl-dev libpng-dev zlib1g-dev libgmp-dev libmongoc-dev libbson-dev"
 PACMAN = ["mingw-w64-ucrt-x86_64-gcc", "mingw-w64-ucrt-x86_64-openssl", "mingw-w64-ucrt-x86_64-sqlite3",
-          "mingw-w64-ucrt-x86_64-libpng", "mingw-w64-ucrt-x86_64-expat", "mingw-w64-ucrt-x86_64-zlib",
+          "mingw-w64-ucrt-x86_64-libpng", "mingw-w64-ucrt-x86_64-zlib",
           "mingw-w64-ucrt-x86_64-gmp", "mingw-w64-ucrt-x86_64-postgresql", "mingw-w64-ucrt-x86_64-libmariadbclient",
           "mingw-w64-ucrt-x86_64-mongo-c-driver", "make"]
 

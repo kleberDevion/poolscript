@@ -580,8 +580,7 @@ typedef struct {
      * que não envolve a funct: a frase do NameError diz isso. */
     int      nome_oculto;
     int      nomes_incertos;
-    /* o arquivo importa o jinker: `request` e `channel` são injetados quando
-     * o app sobe */
+    /* o arquivo importa o jinker: o `request` é injetado quando o app sobe */
     int      usa_jinker;
     int32_t  ntopo, cap_topo;
     IdxNomes ix_topo;          /* nome -> posição em `topo` */
@@ -3335,7 +3334,7 @@ static int tp_nome_inexistente(C *c, Unidade *u, const char *nome)
      * `String.upper`, `char(1)` davam NameError rodando e passavam aqui,
      * porque a pergunta era "está na tabela de tipos?"). */
     if (ps_nome_pre_ligado(nome)) return 0;
-    if (c->usa_jinker && (!strcmp(nome, "request") || !strcmp(nome, "channel"))) return 0;
+    if (c->usa_jinker && !strcmp(nome, "request")) return 0;
     return 1;
 }
 

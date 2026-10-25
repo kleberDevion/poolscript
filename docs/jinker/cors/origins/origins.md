@@ -34,9 +34,6 @@ sem `Access-Control-Allow-Origin`. No modo padrão origens locais e clientes
 sem `Origin` passam; com `cors(app, ..., local=False)` só a lista vale — ver
 [`cors`](../cors.md) e [`cors.local()`](../local/local.md).
 
-A lista vale sozinha no **handshake do WebSocket** (`@app.socket` não tem
-`auth=`): a mesma checagem, a mesma recusa.
-
 ---
 
 ## Sem restrição

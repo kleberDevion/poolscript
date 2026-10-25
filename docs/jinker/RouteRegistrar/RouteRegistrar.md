@@ -79,7 +79,7 @@ app.get("/manual").register(trata)       # idêntico a @app.get("/manual")
 
 | membro | devolve | o que faz |
 |---|---|---|
-| [`.register(handler)`](register/register.md) | `Null` | grava a rota (ou o socket, ou o middleware) no app |
+| [`.register(handler)`](register/register.md) | `Null` | grava a rota (ou o middleware) no app |
 
 É **um só**. O registrador não é uma rota inspecionável: `reg.path`, `reg.methods`
 e `reg.handler` não existem —
@@ -89,15 +89,14 @@ rotas depois: `app.routes` também não existe (ver
 
 ---
 
-## Os três registradores
+## Os dois registradores
 
-O motor tem **um tipo** de registrador, com três feitios, e os três aceitam
+O motor tem **um tipo** de registrador, com dois feitios, e os dois aceitam
 `.register(handler)`. O que muda é onde o handler é gravado:
 
 | de onde vem | `type()` | como aparece impresso | o handler vira |
 |---|---|---|---|
 | `app.route(...)`, `app.get/post/put/patch/delete(...)` | `_RouteRegistrar` | `<RouteRegistrar ['GET'] /x>` | uma rota |
-| `app.socket("/ws")` | `_SocketRegistrar` | `<SocketRegistrar /ws>` | o handler daquele WebSocket |
 | `app.middleware()` | `MiddlewareRegistrar` | `<MiddlewareRegistrar>` | o middleware do app |
 
 ---

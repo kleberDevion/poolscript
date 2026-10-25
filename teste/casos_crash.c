@@ -383,7 +383,8 @@ const Caso CASOS_CRASH[] = {
 /* ── gravacao que falha NAO pode virar sucesso ──────────────────────────────
  * Sete sitios do motor faziam `fwrite(...); fclose(f);` sem olhar nenhum dos
  * dois retornos. `os.writeFile("/dev/full", ...)` devolvia o caminho com rc=0;
- * `PoolFile.save`, `Response.save`, `qrcode.save`, `manpu.write` e
+ * `PoolFile.save`, `Response.save`, `qrcode.save`, `manpu.write` (a lib saiu
+ * no 19.0.0) e
  * `upload.save` faziam o mesmo. /dev/full sempre aceita o `fopen` e sempre
  * recusa a escrita, entao ele e o caso.
  *

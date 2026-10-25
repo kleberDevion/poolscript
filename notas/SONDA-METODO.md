@@ -17,7 +17,7 @@ Um módulo por vez, nesta lista (a pasta é a doc dele em `docs/`):
 `linguagem` (os 14 capítulos, um por agente), `builtins`, `exceptions`, `str`,
 `list`, `dict`, `tup`, `byte`, `bytes`, `objetos-internos`, `json`, `date`,
 `regex`, `Parsing`, `os`, `sys`, `dotenv`, `jwt`, `hash`, `sqlite3`, `mail`,
-`request`, `qrcode`, `manpu`, `psodbc`, `jinker`, `sockets`, `datasentity`,
+`request`, `qrcode`, `psodbc`, `jinker`, `sockets`, `datasentity`,
 `swagger`.
 
 ## Os cinco olhares

@@ -27,7 +27,7 @@ TEMPO = 20
 # leem o teclado num laço). Rodar significaria esperar o timeout, e o timeout
 # viraria "falha" — então eles são só CONFERIDOS na sintaxe, e isso é dito em
 # voz alta no resumo. `cobrinha.pr` fica aqui: é um jogo que só sai com 'q'.
-SERVIDOR = ["socket_demo.pr", "cobrinha.pr"]
+SERVIDOR = ["cobrinha.pr"]
 
 # Exemplos que precisam de coisa que a máquina pode não ter (rede, credencial).
 # Eles rodam; se falharem por ausência do serviço, contam como PULOU, nunca

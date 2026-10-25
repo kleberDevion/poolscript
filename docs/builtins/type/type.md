@@ -73,26 +73,18 @@ CamelCase**.
 | aplicação | `jinker` | `"Jinker"` |
 | configuração de CORS | `jinker` | `"CorsConfig"` |
 | registrador de rota | `jinker` | `"_RouteRegistrar"` |
-| registrador de socket | `jinker` | `"_SocketRegistrar"` |
 | registrador de middleware | `jinker` | `"MiddlewareRegistrar"` |
 | resposta da rota | `jinker` | `"JinkerResponse"` |
 | requisição | `jinker` | `"JinkerRequest"` |
 | proxy da requisição | `jinker` | `"RequestProxy"` |
 | arquivo recebido no upload | `jinker` | `"PoolFileUpload"` |
-| namespace de socket | `jinker` | `"SocketNamespace"` |
-| emissor de socket | `jinker` | `"SocketEmitter"` |
-| gerenciador de canais | `jinker` | `"ChannelManager"` |
-| estado de um canal | `jinker` | `"ChannelStatus"` |
-| conexão WebSocket do servidor | `jinker` | `"WsConnection"` |
 | construtor de QR | `qrcode` | `"PoolQRCode"` |
 | imagem de QR | `qrcode` | `"QRImage"` |
 | arquivo de QR | `qrcode` | `"QRPoolFile"` |
-| arquivo de mangá | `manpu` | `"ManpuFile"` |
-| resultado da leitura | `manpu` | `"ManpuResult"` |
 
-Os três registradores do `jinker` são os únicos nomes com **underscore na
-frente** (`_RouteRegistrar`, `_SocketRegistrar`): o sublinhado marca que o
-objeto é interno ao decorador e não se guarda numa variável.
+O registrador de rota do `jinker` é o único nome com **underscore na frente**
+(`_RouteRegistrar`): o sublinhado marca que o objeto é interno ao decorador e
+não se guarda numa variável.
 
 Um valor que não caia em nenhum caso responderia `"object"`. Não há tipo do
 motor sem entrada própria na tabela, então `"object"` é sentinela — se aparecer,

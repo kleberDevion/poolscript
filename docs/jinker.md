@@ -1,7 +1,7 @@
 # jinker — Servidor HTTP
 
-Lib de servidor HTTP da Jinga. **Zero dependências externas** — HTTP e
-WebSocket são do próprio motor.
+Lib de servidor HTTP da Jinga. **Zero dependências externas** — o HTTP é do
+próprio motor. O servidor de WebSocket saiu no 19.0.0 (ver [WebSocket](#websocket)).
 
 ## O que é e como funciona (leia isto primeiro)
 
@@ -125,8 +125,7 @@ argumento`). Servidor sem `cors(app, ...)` libera tudo.
 `cors.options([...])`.
 
 **origins** — lista de origens (domínios) permitidas a acessar a API.
-São checadas contra o header `Origin`/`Referer` da requisição, **nas rotas e
-no handshake do WebSocket** (um site fora da lista não abre o socket):
+São checadas contra o header `Origin`/`Referer` da requisição, em toda rota:
 
 | `origins=` | Efeito |
 |---|---|
@@ -147,8 +146,8 @@ Regras do modo padrão (`local=True`, não precisa configurar):
   a checagem de origem é uma proteção de *browser*, não bloqueia ferramenta.
 
 **local** — `local=False` é o **modo estrito**: só a lista vale. Origem local
-fora da lista é `403`, e pedido **sem `Origin`** também é `403` (no HTTP e no
-WebSocket). `Origin: null` (arquivo aberto do disco, sandbox) só passa se
+fora da lista é `403`, e pedido **sem `Origin`** também é `403`. `Origin:
+null` (arquivo aberto do disco, sandbox) só passa se
 `"null"` estiver na lista. `cors.local()` devolve o modo. Ver
 [`cors.local()`](jinker/cors/local/local.md).
 
@@ -492,98 +491,20 @@ meu_projeto/
 
 ## WebSocket
 
-O WebSocket sobe automaticamente na porta `HTTP + 1`. Se o servidor HTTP for na porta `7700`, o WebSocket fica na `7701`.
+O servidor de WebSocket da jinker (`@app.socket`, `app.channel`, as salas e
+o emissor) **saiu no 19.0.0**. `app.socket` e `app.channel` são membros que
+não existem, com o erro de qualquer outro, antes de rodar e rodando:
 
 ```ps
-@app.socket("/chat", channel=True)
-funct bora_msg() {
-    msg = request.get_json()
-    app.channel(forAll=msg)
-
-    if (app.channel.status == "Success") {
-        post("Mensagem enviada!")
-    } else {
-        post("Erro no envio")
-    }
-}
+from jinker import Jinker
+Jinker app = Jinker(__name__)
+app.channel(forAll="oi")    # AttributeError: 'Jinker' object has no method 'channel'
 ```
 
-**channel=True** — canal aberto, todos os conectados recebem as mensagens.
-
-Conectando no frontend:
-
-```javascript
-const ws = new WebSocket("ws://localhost:7701/chat")
-
-ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data)
-    console.log(msg)
-}
-
-ws.send(JSON.stringify({
-    user_name: "joao",
-    body_msg: "Olá pessoal!"
-}))
-```
-
-### Salas (rooms)
-
-Quando o path do socket tem parâmetro dinâmico, cada conexão entra
-automaticamente numa "sala" = valor do parâmetro. Um `emit(room_id=...)`
-alcança só quem está conectado naquela sala — as outras salas não recebem:
-
-```ps
-@app.socket("/sala:id", channel=True)
-funct mensagem() {
-    msg = request.get_json()
-    id  = request.path_param("id")
-
-    send = app.socket()             # emissor em runtime — com instância
-    send.emit(payload=msg, room_id=id)
-    post("status: " {send.status_send()})
-}
-```
-
-Os trechos a seguir usam, fora do handler, o `msg`, o `id` e o emissor `send`
-do exemplo acima; pressupõem:
-
-```ps contexto
-dict msg = {"user_name": "joao", "body_msg": "Olá pessoal!"}
-str id = "geral"
-SocketEmitter send = app.socket()
-```
-
-`app.socket.emit(...)` faz a mesma coisa sem precisar instanciar:
-
-```ps
-app.socket.emit(payload=msg, room_id=id)
-```
-
-`app.socket()` chamado **com** `path` continua funcionando como decorator
-de registro (`@app.socket("/chat", channel=True)`); chamado **sem** args,
-em runtime, devolve um emissor.
-
-**Quem enviou a mensagem não recebe o próprio broadcast de volta por
-padrão** — evita a mensagem aparecer duplicada em UIs de chat. Pra ecoar
-de volta também pro remetente, passe `exclude_self=False`:
-
-```ps
-send.emit(payload=msg, room_id=id, exclude_self=False)
-```
-
-Sem `room_id`, `emit()`/`app.socket.emit()` faz broadcast pra todo mundo
-conectado no socket (equivalente a `app.channel(forAll=...)`, também
-sujeito ao `exclude_self`).
-
-| Membro | Uso |
-|---|---|
-| `app.socket(path, channel=True)` | decorator — registra o handler do socket |
-| `app.socket()` | instancia um emissor (`SocketEmitter`) pra usar em runtime |
-| `app.socket.emit(payload, room_id=Null, exclude_self=True)` | emite direto, sem instanciar |
-| `send = app.socket(); send.emit(...)` | emite via instância |
-| `send.status_send()` | status do último envio do app, por qualquer emissor ou pelo `app.channel` (o mesmo valor do `app.channel.status`) |
-| `app.channel(forAll=msg)` | broadcast geral (todas as salas), API antiga |
-| `app.channel.status` | status do último envio do app; antes do primeiro, `Error` |
+O WebSocket continua como **cliente**: `request.ws_connect(url)` conversa com
+um servidor WebSocket de fora (ver [`ws_connect`](request/ws_connect/ws_connect.md)).
+Pra um servidor de rede próprio, a lib [`sockets`](sockets/sockets.md) dá o
+socket cru, como o `socket` do Python.
 
 ---
 
@@ -644,8 +565,8 @@ automático pros drivers de rede (postgres/mysql/sqlserver). SQLite roda direto
 Abrir a conexão (`connect()`) também é async pelos mesmos motivos — o handshake
 de rede vai pra thread e a fibra cede.
 
-**Handler escrito com `async` também vale.** Uma rota, um middleware, um socket
-ou um `on_message` declarado `async funct` roda o corpo ali mesmo — o servidor
+**Handler escrito com `async` também vale.** Uma rota, um middleware ou um
+`on_message` declarado `async funct` roda o corpo ali mesmo — o servidor
 **espera** a resposta —, na fibra que atende a conexão e vendo a requisição
 dela. Um helper `async` aguardado de dentro do handler (`v = await carrega()`)
 roda noutra fibra, que nasce com a **mesma** requisição: o `request` lá dentro é
@@ -705,7 +626,7 @@ app(host="0.0.0.0", port=2000, workers=4)   # 4 processos dividem a porta
 Cada worker é um processo próprio (o kernel balanceia as conexões entre eles),
 com a sua VM e as suas fibras — sem corrida, sem estado compartilhado. Regra
 prática: `workers` ≈ número de núcleos; cada worker soma a sua concorrência de
-fibras. (WebSocket com salas/broadcast roda só no worker 0.)
+fibras.
 
 No Windows não existe `fork`: cada worker é o programa rodado de novo, que ao
 chegar no `run()` recebe do pai o socket da porta já aberto
@@ -714,7 +635,7 @@ abrir um banco) roda uma vez em cada worker, e não uma só como no Linux.
 
 ---
 
-## Exemplo completo com WebSocket e rotas
+## Exemplo completo com rotas
 
 ```ps sem-rodar: sobe o servidor na porta 7700 e lê DB_PATH e SECRET_KEY do ambiente de quem roda
 import psodbc
@@ -776,27 +697,6 @@ funct login() {
     } else {
         return jsonify({"msg": "credenciais inválidas"}), 401
     }
-}
-
-# Chat em tempo real
-@app.socket("/chat", channel=True)
-funct mensagem() {
-    msg = request.get_json()
-    author = msg.get("user_name")
-    content = msg.get("body_msg")
-
-    try {
-        psodbc.query(
-            base=DB_PATH,
-            cmd=("INSERT INTO @t (author, corpo, data) VALUES (?, ?, ?)",
-                 (author, content, date.datahora())),
-            table="chat"
-        )
-    } catch (e) {
-        post(f"Erro ao salvar msg: {e}")
-    }
-
-    app.channel(forAll=msg)
 }
 
 if __name__ == "main" {

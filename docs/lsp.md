@@ -121,18 +121,16 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   mostra a assinatura e a página `docs/builtins/`; o nome de tipo mostra o
   tipo; `json.` sem `import json` diz que falta o import. Nenhum nome que a
   linguagem liga sozinha cai no "rodando dá NameError";
-- **hover do nome de um argumento nomeado** — `forAll` em
-  `app.channel(forAll=msg)` é o parâmetro do chamado, não uma variável:
-  `forAll = Null`, "parâmetro de `app.channel`", com a assinatura. Vale no
-  decorador (`@app.socket("/chat", channel=True)`), na chamada de várias
+- **hover do nome de um argumento nomeado** — `origins` em
+  `cors(app, origins=lista)` é o parâmetro do chamado, não uma variável:
+  `origins = Null`, "parâmetro de `cors`", com a assinatura. Vale no
+  decorador (`@app.route("/chat", methods=["GET"])`), na chamada de várias
   linhas, no builtin, na funct e no construtor do arquivo. O nome que não é
   parâmetro diz isso e lista os parâmetros; o que um `**opcoes` recebe diz
   onde cai; o parâmetro de validação do campo de `model` (`length` em
   `nome: str(length=60)`) mostra o que ele confere. A ajuda de assinatura em
-  `app.channel(` mostra `forAll = Null`. A propriedade do motor sai sem
-  parênteses (`app.channel -> ChannelManager`), e a que se chama mostra a
-  chamada à parte (`chamada: channel(forAll = Null)`), porque a chamada
-  devolve outro tipo;
+  `cors(` mostra `origins = Null`. A propriedade do motor sai sem
+  parênteses (`r.status_code -> int`);
 - **hover** — a assinatura real do método e o tipo que ele devolve, com a
   prosa da página `docs/…` achada pelo **caminho** (`jinker/request/get`;
   método de tipo em `docs/<tipo>/`, como `docs/str/upper/`, `docs/byte/decode/`).

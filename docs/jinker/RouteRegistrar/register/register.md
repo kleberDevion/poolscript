@@ -26,7 +26,7 @@ requisição chegar.
 
 ## Retorno
 
-**`Null`** — sempre, nos três feitios de registrador. Ele grava e não devolve
+**`Null`** — sempre, nos dois feitios de registrador. Ele grava e não devolve
 nada: nem o app, nem a rota, nem o próprio registrador.
 
 Os exemplos desta página pressupõem:
@@ -55,7 +55,6 @@ dois registradores.
 | registrador | o que `register` faz |
 |---|---|
 | rota (`route`, `get`, `post`, `put`, `patch`, `delete`) | acrescenta a rota à lista do app, com o path, os métodos, o `auth`, o `middleware` e o `model` que estavam no registrador |
-| socket (`app.socket("/ws")`) | acrescenta o handler daquele WebSocket |
 | middleware (`app.middleware()`) | grava o middleware do app — é **um campo único**, então um segundo `register` substitui o anterior |
 
 O `route_prefix` do [`Jinker(...)`](../../Jinker/Jinker.md) é aplicado **aqui**,
@@ -87,7 +86,7 @@ for each rota in [["/a", trata_a], ["/b", trata_b]] {
 
 ## Relacionados
 
-- [`RouteRegistrar`](../RouteRegistrar.md) — o objeto e os três feitios
+- [`RouteRegistrar`](../RouteRegistrar.md) — o objeto e os dois feitios
 - [`@app.route(...)`](../../route/route.md) — o que devolve o registrador
 - [decoradores](../../../linguagem/14-decoradores.md) — o protocolo
   `@objeto.metodo(...)` nas três posições

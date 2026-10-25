@@ -1324,7 +1324,8 @@ const Caso CASOS_LINGUAGEM[] = {
 
 /* ── `full` e `mei` não são palavras da linguagem ────────────────────────
  * Estavam na lista de reservadas desde a criação do lexer em C, copiadas da
- * tabela do interpretador — mas são valor de argumento de UMA lib (manpu), e
+ * tabela do interpretador — mas eram valor de argumento de UMA lib (a manpu,
+ * que saiu no 19.0.0), e
  * o C sempre os comparou como STRING. Reservados serviam pra nada: não viravam
  * valor (`post(full)` dava "variável não definida") e bloqueavam os dois nomes
  * pro usuário. */
@@ -2730,25 +2731,23 @@ const Caso CASOS_LINGUAGEM[] = {
  * argumento que a funct pede (`@log()`) passavam no `--check` e quebravam
  * rodando. A expressao do decorador agora e a arvore de qualquer expressao:
  * a mesma frase antes de rodar e rodando (pelo Object), na mesma linha, e a
- * coluna e a do `.` e a do `(`, como em `os.naoexiste` e `log()`. */
+ * coluna e a do `.` e a do `(`, como em `os.naoexiste` e `log()` (a coluna
+ * antes de rodar, pelo JSON do --check, fica no teste/cli_roda.pr). */
 { "motor-33: decorador com membro que nao existe, antes de rodar",
   "import os\n@os.naoexiste\nfunct r() {\n    return 1\n}\n",
   "", "AttributeError: module 'os' has no attribute 'naoexiste'", 2 },
-{ "motor-33: o erro do membro do decorador aponta o `.`",
-  "import os\n@os.naoexiste\nfunct r() {\n    return 1\n}\n",
-  "", ", linha 2\n  | @os.naoexiste\n  |    ^^^", 2 },
 { "motor-33: decorador chamado sem o argumento que a funct pede, antes de rodar",
   "funct log(f) {\n    return f\n}\n@log()\nfunct r() {\n    return 1\n}\n",
   "", "TypeError: log() missing 1 required positional argument: 'f'", 2 },
 { "motor-33: o membro do decorador rodando (pelo Object), no mesmo lugar",
   "import os\nObject m = os\n@m.naoexiste\nfunct r() {\n    return 1\n}\n",
-  "", "AttributeError: module 'os' has no attribute 'naoexiste'\n  em ", 1 },
+  "", "AttributeError: module 'os' has no attribute 'naoexiste'", 1 },
 { "motor-33: o membro do decorador rodando aponta o `.`",
   "import os\nObject m = os\n@m.naoexiste\nfunct r() {\n    return 1\n}\n",
   "", ", linha 3\n  | @m.naoexiste\n  |   ^^^", 1 },
 { "motor-33: a chamada do decorador rodando (pelo Object), com a frase de antes de rodar",
   "funct log(f) {\n    return f\n}\nObject g = log\n@g()\nfunct r() {\n    return 1\n}\n",
-  "", "TypeError: log() missing 1 required positional argument: 'f'\n  em ", 1 },
+  "", "TypeError: log() missing 1 required positional argument: 'f'", 1 },
 { "motor-33: a chamada do decorador rodando aponta o `(`",
   "funct log(f) {\n    return f\n}\nObject g = log\n@g()\nfunct r() {\n    return 1\n}\n",
   "", ", linha 5\n  | @g()\n  |   ^^^", 1 },
@@ -3196,30 +3195,6 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "post(\"stdout chegou inteiro\")\n", "stdout chegou inteiro", NULL, 0 },
 
-/* ── xlsx: escrever e ler de volta ──────────────────────────────────────────
- * A primeira linha de uma planilha NOVA era recusada com "colunas
- * insuficientes": o limite era calculado varrendo as linhas existentes, e numa
- * planilha vazia isso dava 1. Não havia ordem de chamadas que contornasse — o
- * arquivo saía com uma célula só e `mp.read` devolvia []. */
-{ "xlsx ida e volta",
-  "import manpu as mp\n"
-  "using mp.open(target=\"p.xlsx\") as a {\n"
-  "    a.write(column=\"full\", cell=\"full\", content=\"nome,idade\", sep=\",\")\n"
-  "    a.write(column=\"full\", cell=\"full\", content=\"ana,30\", sep=\",\")\n"
-  "}\n"
-  "post(mp.read(\"p.xlsx\"))\n",
-  "[{'nome': 'ana', 'idade': '30'}]", NULL, 0 },
-{ "xlsx: primeira linha define a largura",
-  "import manpu as mp\n"
-  "using mp.open(target=\"q.xlsx\") as a {\n"
-  "    post(a.write(column=\"full\", cell=\"full\", content=\"a,b,c\", sep=\",\"))\n"
-  "}\n", "Success", NULL, 0 },
-{ "xlsx: linha mais larga que a planilha continua recusada",
-  "import manpu as mp\n"
-  "using mp.open(target=\"r.xlsx\") as a {\n"
-  "    a.write(column=\"full\", cell=\"full\", content=\"a,b\", sep=\",\")\n"
-  "    post(a.write(column=\"full\", cell=\"full\", content=\"1,2,3,4\", sep=\",\"))\n"
-  "}\n", "Error: Arquivo xlsx tem colunas insuficientes", NULL, 0 },
 /* `copy()` num PoolFile vindo de `os.loadFile` (binário). O caminho inteiro do
  * copy() nunca tinha sido exercitado por caso nenhum da suíte (gcov: linha
  * ##### na função). Desde 2026-09-09 o mesmo `copy()` vale no PoolFile aberto

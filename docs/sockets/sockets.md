@@ -9,7 +9,7 @@ protocolo, do zero, sem framework no meio.
 import sockets
 ```
 
-Não confundir com o **jinker** (framework web HTTP/WebSocket) — o jinker é um
+Não confundir com o **jinker** (framework web HTTP) — o jinker é um
 SERVIDOR pronto; a `sockets` é o metal cru por baixo, pra quando você quer
 controlar cada byte da conexão.
 
@@ -23,8 +23,8 @@ Os formatos são os do sistema operacional —
   `(dados, endereco)`.
 
 No VM em C, a I/O bloqueante (connect/accept/recv/send) roda no pool de
-threads e **cede a fibra** — dentro de um handler do jinker (rota HTTP **ou**
-`@app.socket`) um socket lento NÃO trava as outras requisições, o mesmo async
+threads e **cede a fibra** — dentro de um handler do jinker (uma rota HTTP)
+um socket lento NÃO trava as outras requisições, o mesmo async
 uniforme de banco/HTTP/mail.
 
 ---

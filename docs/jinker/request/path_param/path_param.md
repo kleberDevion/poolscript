@@ -61,13 +61,6 @@ funct item() {
 
 ---
 
-## Também funciona em sockets
-
-Handlers de WebSocket com path dinâmico (`/chat/<sala>`) usam o mesmo método —
-ver [`socket`](../../socket/socket.md).
-
----
-
 ## Relacionados
 
 - [`route`](../../route/route.md) — onde os parâmetros dinâmicos são definidos

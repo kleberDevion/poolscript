@@ -306,8 +306,9 @@ funct confere_motor_na_doc() {
 #
 # O método que não tem página com a assinatura no título conta numa catraca de
 # número, que só pode descer: é o item doc-23 da lista (a reavaliação da doc).
-# Desceu de 73 pra 72 no 18.0.0, com a saída do `.type()`.
-int TETO_SEM_PAGINA = 72
+# Desceu de 73 pra 72 no 18.0.0, com a saída do `.type()`, e pra 67 no
+# 19.0.0, com a do WebSocket da jinker e a da manpu.
+int TETO_SEM_PAGINA = 67
 
 str funct tipo_da_pagina(str caminho, str receptor, dict tipos) {
     if receptor in tipos {

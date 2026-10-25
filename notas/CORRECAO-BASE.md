@@ -54,13 +54,19 @@ bloco "arquivo grande sai em blocos".
   3,6 MB. Testes: "arquivo de 20 MB sai inteiro e igual (em blocos)" e "pedaco
   de 1 MB do arquivo de 20 MB sai certo".
 
-Achados em 2026-10-17, no conserto acima e no relato dele; consertados no
-**18.0.2** (2026-10-24), com os achados no caminho (jinker-12 a 15). Os
-objetos da jinker que se chamam (o `app`, o `cors`, o `app.socket` e o
-`app.channel`) leem uma tabela só (`JK_CHAMAVEIS`, `vm/jinga_vm.c`): o nome
-da chamada, os parâmetros com o padrão e o tipo de cada um. Quem lê: as três
-chamadas (com nome, sem nome e a indireta, do `map`) e o `--metadata` da
-propriedade cujo valor se chama.
+Achados em 2026-10-17, no conserto acima e no relato dele; consertados ou
+fechados no **19.0.0** (2026-10-24), com os achados no caminho (jinker-12 a
+16). No mesmo commit saiu o servidor de WebSocket da jinker (decisão dele,
+2026-10-24: "REMOVA ISSO DE SOCKET DA JINGA, NÃO FAZ SENTIDO POIS TEM A LIB
+SOCKETS"): `@app.socket`, o emissor (`app.socket()`, `.emit`,
+`.status_send`), o `app.channel`, os tipos `ChannelManager`,
+`ChannelStatus`, `SocketNamespace` e `SocketEmitter` e o servidor da porta
+HTTP+1. O cliente (`request.ws_connect`) ficou, testado contra um par de eco
+em Jinga (`teste/ws_par.pr`, sobre a lib `sockets`). Os objetos da jinker que
+se chamam (o `app` e o `cors`) leem uma tabela só (`JK_CHAMAVEIS`,
+`vm/jinga_vm.c`): o nome da chamada, os parâmetros com o padrão e o tipo de
+cada um. Quem lê: as três chamadas (com nome, sem nome e a indireta, do
+`map`) e o `--metadata` do valor de módulo que se chama (`jinker.cors`).
 
 - ~~**jinker-6** Rota que devolve um `dict` que não vira JSON responde 200 com o
   corpo vazio, calada (nem com `debug=True` sai erro). Programa: rota com
@@ -69,16 +75,18 @@ propriedade cujo valor se chama.
   serializable"). Saída no 17.0.19 e no 17.0.20: `HTTP/1.1 200 OK`,
   `Content-Length: 0`. Promessa: `docs/jinker/route/route.md` ("dict/lista →
   JSON 200"); o que não vira JSON tem que dar erro visível (500 com a frase),
-  como no Flask. `motor`.~~ Corrigido no 18.0.2: o retorno que não vira
+  como no Flask. `motor`.~~ Corrigido no 19.0.0: o retorno que não vira
   resposta (o dict, a lista, a tupla `(corpo, status)` e a tupla do
   middleware) segue o caminho de uma exceção no handler, `500` e
-  `[jinker] erro no handler /rota: Object of type ChannelStatus is not JSON
-  serializable` no terminal; a tupla é decidida por uma função só
-  (`jk_resposta_da_tupla`), que a rota e o middleware usam. Medido no 18.0.1:
-  a tupla com 201 também dava 200 com o corpo vazio, e a do middleware barrava
-  com 200 vazio. Testes (`teste/jinker_roda.pr`): "a rota /nao_json... dá
-  500" (cinco rotas), "a tupla do middleware que não vira resposta dá 500" e
-  "a saída do servidor diz: ..." (nove frases).
+  `[jinker] erro no handler /rota: Object of type Jinker is not JSON
+  serializable` no terminal (o `ChannelStatus` saiu com o WebSocket; as rotas
+  do teste devolvem o próprio `app`, que também não vira JSON); a tupla é
+  decidida por uma função só (`jk_resposta_da_tupla`), que a rota e o
+  middleware usam. Medido no 18.0.1: a tupla com 201 também dava 200 com o
+  corpo vazio, e a do middleware barrava com 200 vazio. Testes
+  (`teste/jinker_roda.pr`): "a rota /nao_json... dá 500" (cinco rotas), "a
+  tupla do middleware que não vira resposta dá 500" e "a saída do servidor
+  diz: ..." (as frases).
 - ~~**jinker-7** (relato dele) `app.channel(forAll=msg)`, a forma que
   `channel.md`, `jinker.md` e `ChannelManager.md` ensinam, é recusada antes de
   rodar com `TypeError: Jinker.channel() takes no keyword arguments` quando o
@@ -87,38 +95,26 @@ propriedade cujo valor se chama.
   causa: o `--metadata` publica a propriedade (`channel`, `socket`) com
   `params: []`, sem os parâmetros da chamada do valor dela (`forAll`; `path`,
   `channel`), e o medidor de aridades gravou "não aceita nome". `motor`
-  (checador). O portão P2 achou sozinho, em 2026-10-23: `app.channel(forAll=)`,
-  `app.socket(path=)` e `app.socket(channel=)`, o `--check` recusa e o motor
-  aceita; com um nome que não existe, os dois recusam com frases diferentes
-  (`Jinker.channel() takes no keyword arguments` e `ChannelManager.__call__()
-  got an unexpected keyword argument`). 5 chamadas na catraca do P2.~~
-  Corrigido no 18.0.2: o `--metadata` publica `forAll=Null` e
-  `path=Null, channel=False` (e os parâmetros do `cors(...)`, o valor de
-  módulo que se chama), o `scripts/mede_aridades.pr` gravou os dois, e o
-  nome desconhecido dá rodando a frase do checador (`'x' is an invalid keyword
-  argument for channel()`). Teste: "jinker-7: app.channel(forAll=) e
-  app.socket(path=, channel=) com o app tipado" (`teste/casos_libs.c`); as 8
-  linhas saíram da catraca. O exemplo completo da `jinker.md` (o do
-  WebSocket com rotas), que não compilava por isso, passou no `--check`, e
-  rodando ele sobe o servidor na 7700 e lê o `DB_PATH` do ambiente: leva
-  `sem-rodar`, como o do `getenv.md`.
+  (checador). O portão P2 achou sozinho, em 2026-10-23. 5 chamadas na catraca
+  do P2.~~ Fechado no 19.0.0: saiu com o WebSocket da jinker (decisão dele).
+  `app.channel` e `app.socket` são membros que não existem, com o erro de
+  qualquer membro, no `--check` e rodando, na mesma linha
+  (`AttributeError: 'Jinker' object has no method 'channel'`). Testes: os
+  quatro "WebSocket da jinker saiu: ..." de `teste/casos_libs.c`. A tabela
+  única dos objetos que se chamam, feita pra este item, ficou pro `app` e o
+  `cors`, e o `--metadata` publica os parâmetros do `jinker.cors`.
 - ~~**jinker-8** Argumento a mais passa calado: `app.channel("a", "b")` e
   `app.socket("/x", True, 3)` rodam sem erro. Promessa: `channel.md` (um
-  parâmetro, `forAll`) e `socket.md` (`path`, `channel`). `motor`.~~
-  Corrigido no 18.0.2, junto com o argumento de outro tipo, que também passava
-  calado (medido no 18.0.1: `app.socket(5)` devolvia o emissor e
-  `app.socket("/x", 5)` valia `channel=True`), e com o `map`, que dizia
-  "'ChannelManager' object is not callable". As frases são as dos nativos,
-  iguais no `--check` e rodando, na mesma linha: `channel() takes at most 1
-  argument (2 given)`, `socket() argument 'path' must be str or Null, not
-  int`. Testes: os cinco "jinker-8: ..." de `teste/casos_libs.c`.
+  parâmetro, `forAll`) e `socket.md` (`path`, `channel`). `motor`.~~ Fechado
+  no 19.0.0: saiu com o WebSocket da jinker (decisão dele). O mesmo defeito no
+  `app(...)` e no `cors(...)` é o jinker-14, consertado.
 - ~~**jinker-12** (achado no jinker-6) O status da resposta não seguia a regra do
   `.status()` (inteiro de 100 a 999) na tupla `(corpo, status)` da rota e do
   middleware, nem no `json(data, status)` e no `send(texto, status)`. Medido
   no 18.0.1: `return {"a": 1}, "201"` respondia 200; `return "x", 99999` e
   `JinkerResponse().json({"a": 1}, 99999)` saíam em `HTTP/1.1 99999 Server
   Error`, linha de status que o `curl` recusa; no `json`/`send` o texto era
-  ignorado calado. `motor`.~~ Corrigido no 18.0.2: uma função só
+  ignorado calado. `motor`.~~ Corrigido no 19.0.0: uma função só
   (`jk_status_de`) pros cinco lugares, com a frase do `.status()`; na tupla, o
   erro é 500 com a frase no terminal. Junto: o `jsonify` e o `.json()` davam
   `TypeError` pro `nan` (o `json.stringify` dá `ValueError`); a jinker passa a
@@ -129,14 +125,8 @@ propriedade cujo valor se chama.
   saía no terminal com `debug=True` (o da rota HTTP sai sempre); o retorno do
   handler que não vira JSON era descartado; e o `emit` (`app.channel(forAll=x)`,
   `.emit(x)`) com o que não vira JSON devolvia `Error` sem exceção, como se a
-  rede tivesse falhado. Medido no 18.0.1 o do `emit`; os do handler, lidos no
-  código. No Python, o `json.dumps` e o `emit` do Flask-SocketIO dão
-  `TypeError`, e o python-socketio escreve o erro do handler por padrão.
-  `motor`.~~ Corrigido no 18.0.2: `[jinker-ws] erro no handler /caminho:
-  frase` sempre, e o `emit` dá o erro do `json.stringify`. Testes:
-  "jinker-13: emit do que nao vira JSON e erro, com a classe do
-  json.stringify" e os sockets `/ws_erro` e `/ws_nao_json` do
-  `teste/jinker_roda.pr`.
+  rede tivesse falhado. `motor`.~~ Fechado no 19.0.0: saiu com o WebSocket da
+  jinker (decisão dele).
 - ~~**jinker-14** (achado na tabela do jinker-7) Os argumentos do `app(...)` e
   do `cors(...)` passavam calados. Medido no 18.0.1: `app(port=70000)`
   escutava na porta 4464 e o terminal dizia 70000; `app(port="18740")` subia
@@ -147,21 +137,32 @@ propriedade cujo valor se chama.
   saía da lista calado. Na doc, o `Jinker.md` dizia que o host padrão é
   `0.0.0.0` (o motor usa `127.0.0.1`, como o Flask) e que o `static_url` não
   era usado (sobra do jinker-4). `os dois` (a doc estava errada no host e no
-  `static_url`; o motor, no resto).~~ Corrigido no 18.0.2: o tipo de cada
+  `static_url`; o motor, no resto).~~ Corrigido no 19.0.0: o tipo de cada
   argumento pela tabela, a porta de 0 a 65535 (`OverflowError: app(): port
   must be 0-65535`, a frase do `sockets`), o `workers` de 1 a 256, os itens
   de `options`/`origins` texto, e o `ps_jk_listen` recusa a porta fora da
-  faixa (a do WebSocket de um servidor na 65535 ia pra uma porta sorteada).
-  Testes: "jinker-14: os argumentos do app(...) fora do tipo ou da faixa" e
-  "jinker-14: os argumentos do cors(...) e os itens das listas".
+  faixa. Testes: "jinker-14: os argumentos do app(...) fora do tipo ou da
+  faixa" e "jinker-14: os argumentos do cors(...) e os itens das listas".
 - ~~**jinker-15** (achado escrevendo a doc do jinker-6) Antes do primeiro
   envio, `app.channel.status` e `app.socket().status_send()` diziam `Success`,
-  e a regra do `ChannelStatus` é "chegou a pelo menos uma conexão". Na doc, o
-  `jinker.md` dizia que o `status_send()` é o do último envio "feito por essa
-  instância", e o status é um só por app. `os dois` (o motor estava errado no
-  primeiro; a doc, no segundo).~~ Corrigido no 18.0.2: antes do primeiro
-  envio é `Error`, e o `jinker.md` diz que o status é o do último envio do
-  app. Teste: "jinker-15: o status antes do primeiro envio e Error".
+  e a regra do `ChannelStatus` é "chegou a pelo menos uma conexão". `os dois`
+  (o motor estava errado no primeiro; a doc, no segundo).~~ Fechado no
+  19.0.0: saiu com o WebSocket da jinker (decisão dele).
+- ~~**jinker-16** (achado tirando o WebSocket da jinker, 2026-10-24) O close do
+  cliente (`request.ws_connect`) saía SEM máscara, e o frame mascarado vindo
+  do servidor era aceito. A RFC 6455 §5.1 manda o cliente mascarar todo
+  frame, os de controle também (o close e o pong), e o servidor fechar a
+  conexão com o cliente que não mascara; o cliente tem que recusar frame
+  mascarado vindo do servidor. Medido no 18.0.1 contra o par de eco em Jinga,
+  que anota cada frame: `frame 1 mascarado` (o texto) e `frame 8 SEM
+  MASCARA` (o close); o frame mascarado do servidor, lido no código. `motor`.~~
+  Corrigido no 19.0.0: um escritor só (`ws_manda_frame`, `vm/ps_jinker.c`)
+  pra todo frame do cliente, que mascara com 4 bytes do `ps_random_bytes`, e
+  o `ps_jk_ws_le_frame` recusa o frame mascarado do servidor. Medido no 19.0.0
+  com o mesmo programa: `frame 8 mascarado`. Testes (`teste/jinker_roda.pr`,
+  contra o `teste/ws_par.pr`): "o cliente WebSocket manda texto e JSON e
+  recebe o eco", "o cliente WebSocket manda todo frame mascarado" e "o close
+  do cliente WebSocket sai mascarado".
 
 Medidos em 2026-10-22 (relato dele: "o `.get()` do `jinker.request.get()` e o
 do `request` não diz se obtém string também"), num servidor da jinker no
@@ -216,18 +217,20 @@ em cada item):
   em `docs/qrcode.md:29`). A causa está no `editor/vscode/server.js`. O
   `chamadaEm`, que acha a chamada e os argumentos nomeados em volta do
   cursor, é usado só pelo completion e pela ajuda de assinatura; o `onHover`
-  não pergunta a ele.~~ Corrigido no 18.0.2 (extensão 8.6.15): o hover acha
+  não pergunta a ele.~~ Corrigido no 19.0.0 (extensão 8.6.15): o hover acha
   o argumento pela árvore (o `CallArg` com o nome, que começa no token; no
   decorador, o `DecoratorCall`), antes da palavra-chave (o `count=2` não é o
-  `count each`), e mostra o parâmetro do chamado (`forAll = Null`,
-  "parâmetro de `app.channel`", com a assinatura); o nome que não é parâmetro
-  diz isso e lista os parâmetros; o que um `**opcoes` recebe diz onde cai; o
+  `count each`), e mostra o parâmetro do chamado (`origins = Null`,
+  "parâmetro de `cors`", com a assinatura); o nome que não é parâmetro diz
+  isso e lista os parâmetros; o que um `**opcoes` recebe diz onde cai; o
   parâmetro de validação do campo de `model` mostra o que confere, pelos
   tokens (vale em várias linhas). Os parâmetros do builtin (`open(...,
-  mode=)`) entram na busca, e com eles a ajuda de assinatura do builtin.
-  Testes (`editor/vscode/teste_servidor.js`): os sete "hover no ..." e
-  "signatureHelp em `app.channel(` mostra `forAll = Null`", e as linhas do
-  editor-1 saíram da catraca do P3.
+  mode=)`) entram na busca, e com eles a ajuda de assinatura do builtin. O
+  `app.channel` do relato saiu com o WebSocket da jinker, no mesmo commit; os
+  testes usam o `cors(...)` e o decorador `@app.route(..., methods=...)`.
+  Testes (`editor/vscode/teste_servidor.js`): os "hover no ..." e
+  "signatureHelp em `cors(` mostra `origins = Null`", e as linhas do editor-1
+  saíram da catraca do P3.
 - **editor-2** (relato dele, 2026-10-21: "a lib sockets não tem as constantes
   em sua doc") Medido no servidor do editor instalado (17.0.20), com pedidos
   de hover:
@@ -253,7 +256,7 @@ em cada item):
   lugares. Pelo papel que o portão dá ao nome:
   - **o módulo na linha do import** (96): o `X` de `from X import ...`
     (`from jinker import Jinker`, `from os import getenv`) e o de
-    `import X as Y` (`import manpu as mp`). O `import X` sozinho responde
+    `import X as Y` (`import request as web`). O `import X` sozinho responde
     certo. No `from json import parse`, o `json` sai como o apelido de tipo
     (`json = dict`);
   - **o nome que o motor põe à disposição** (102): `__name__`, os `_index`,
@@ -362,13 +365,14 @@ em cada item):
   de mais de 20 KB e o SQL de 100 KB (`teste/casos_libs.c`); no
   `teste/e2e/db.pr`, o SQL de mais de 20 KB com parâmetro no postgres, no
   MySQL e no SQL Server.
-- **motor-5** (achado pelo portão `roda`, `docs/manpu/read/read.md:27`) O
+- ~~**motor-5** (achado pelo portão `roda`, `docs/manpu/read/read.md:27`) O
   `manpu.read` de um arquivo que não existe não levanta erro: devolve o texto
   `Error: arquivo não encontrado: nao_existe.csv` como se fosse o conteúdo,
   rc 0. O exemplo da página quebra depois, no índice
   (`TypeError: string indices must be integers, not 'str'`), longe da causa.
   O `os.readFile` e o `open` da Jinga levantam `FileNotFoundError` no mesmo
-  caso, como o `open` do Python. `motor`.
+  caso, como o `open` do Python. `motor`.~~ Fechado no 19.0.0: a lib `manpu`
+  saiu inteira (decisão dele, 2026-10-24: "muito limitada e sem uso real").
 - **motor-6** (achado pelo portão `roda`, 2026-10-18) O `request` da jinker
   fora de uma rota. A doc diz que ele "está disponível automaticamente dentro
   de qualquer rota" (`docs/jinker/request/request.md`), e a VM só cria o nome
@@ -396,7 +400,7 @@ em cada item):
   `ValueError` sem criar arquivo nenhum, e o `open` do Python confere o modo
   antes de tocar no disco (`ValueError: invalid mode`). Com JIT e sem.
   `motor`.
-- **motor-9** (achado pelo portão `roda`, 2026-10-22, `docs/manpu.md:58`) O
+- ~~**motor-9** (achado pelo portão `roda`, 2026-10-22, `docs/manpu.md:58`) O
   `mp.write(...)` devolve um `ManpuResult` que se imprime `Success` ou
   `Error` e que é `== True` quando deu certo. As páginas (`docs/manpu.md:58`
   e `docs/manpu/write/write.md:36`) leem o motivo do erro em `nm.status`, e o
@@ -405,7 +409,8 @@ em cada item):
   a escrita falha (destino numa pasta que não existe) volta `Error` sem
   motivo nenhum e sem exceção, com JIT e sem: o erro some. O `open` e o
   `os.writeFile` levantam a exceção com o caminho. `os dois`: o motor dá o
-  motivo (o `.status` que a doc promete, ou a exceção), e a doc diz qual.
+  motivo (o `.status` que a doc promete, ou a exceção), e a doc diz qual.~~
+  Fechado no 19.0.0: a lib `manpu` saiu inteira (decisão dele, 2026-10-24).
 - **motor-10** (achado no `make check` do Mac, 2026-10-23, pelo caso "import
   de caminho com extensao velha ensina a nova" do `teste/cli_roda.pr`) O
   `ImportError` do `import './x.ps'` manda rodar o migrador e corta o caminho
@@ -422,9 +427,10 @@ em cada item):
   aceita qualquer quantidade, qualquer nome de parâmetro e qualquer tipo, e o
   motor recusa rodando. Os tipos são os que a tabela medida
   (`vm/aridades_medidas.inc`, do `scripts/mede_aridades.pr`) deixa de fora:
-  - os da jinker que nascem sem servidor: `ChannelManager`, `SocketNamespace`,
-    `SocketEmitter`, `RouteRegistrar`;
-  - os do `psodbc`, `DbConnection` e `DbCursor`, e o `ManpuFile`;
+  - o da jinker que nasce sem servidor: `RouteRegistrar` (os do WebSocket da
+    jinker, `ChannelManager`, `SocketNamespace` e `SocketEmitter`, saíram no
+    19.0.0, e o `ManpuFile` saiu com a manpu);
+  - os do `psodbc`, `DbConnection` e `DbCursor`;
   - os que só existem com a jinker no ar: `RequestProxy` (o `request` da
     rota), `PoolFileUpload`, `Response` e `WsConnection`;
   - e os valores que se chamam: `jinker.cors(...)` e `os.PoolFile(...)`.
@@ -701,6 +707,26 @@ em cada item):
   cresce; o nome de coluna pede o tamanho inteiro; o erro de leitura é erro; os
   indicadores vivem até o fim da execução. Teste: no `db.pr`, o valor de 10
   KB lido de volta inteiro do SQL Server.
+- ~~**motor-33** (achado tirando o WebSocket da jinker, 2026-10-24) O `--check`
+  conferia só o primeiro nome do decorador. O membro que não existe e a
+  chamada com argumento errado passavam e quebravam rodando: `@app.rota("/x")`
+  e `@os.naoexiste` davam `{"ok":true}` no `--check` e `AttributeError`
+  rodando; `@log()` com a `funct log(f)` passava e dava `TypeError: log()
+  missing 1 required positional argument: 'f'` rodando. Medido no 18.0.1, com
+  JIT e sem. A doc promete que o checador pega o membro que o tipo não tem e a
+  aridade numa chamada a funct conhecida (`docs/linguagem/10-excecoes.md`,
+  10.x). A causa: o `emite_decorador_expr` (`vm/ps_compiler.c`) emitia o
+  `GET_MEMBER` e a chamada sem passar pelo checador. `motor` (checador).~~
+  Corrigido no 19.0.0: a expressão do decorador vira a árvore de uma
+  expressão comum (o nome, um acesso a membro por `.` e a chamada), compilada
+  pelo `expr`, e passa pelo checador como `obj.metodo(args)` em qualquer
+  lugar. O parser guarda a posição do `.` e do `(` do decorador (`PSNode.i`),
+  e o erro sai na mesma linha e coluna no `--check` e rodando. Testes: os
+  "motor-33: ..." de `teste/casos_linguagem.c` (o membro e a chamada, antes de
+  rodar e rodando pelo `Object`, com a coluna rodando), os dois "--check: ...
+  do decorador" de `teste/cli_roda.pr` (a coluna e o fim no JSON do
+  `--check`) e o "WebSocket da jinker saiu: @app.socket(...) antes de rodar"
+  de `teste/casos_libs.c`.
 
 ## os
 
@@ -930,14 +956,16 @@ e sem, e dá o mesmo erro.
   `enum Mix { A, B = 10, C, D = "x", E }`. A doc da linguagem (8.2) e o motor
   dizem o contrário: `TypeError: enum Mix: o membro E nao tem valor e o
   anterior (D) nao e inteiro`. `doc`.
-- **doc-11** `full` e `mei` sem aspas nos exemplos do `manpu`: `cell=full` e
+- ~~**doc-11** `full` e `mei` sem aspas nos exemplos do `manpu`: `cell=full` e
   `amount=full` dão `NameError: name 'full' is not defined`. A assinatura
   (`docs/manpu/remove/remove.md`: `amount="full"`) e o motor (que compara os
   textos `"full"` e `"mei"`) pedem texto. Blocos: `docs/manpu.md:90`, `:124`,
   `:138`, `:161`, `:183` e `:226`; `docs/manpu/open/open.md:30` e `:43`;
   `docs/manpu/remove/remove.md:28` e `:41`;
   `docs/manpu/ManpuFile/ManpuFile.md:36`; `docs/manpu/manpu.md:44` e `:55`;
-  `docs/manpu/ManpuFile/write/write.md:24`. `doc`.
+  `docs/manpu/ManpuFile/write/write.md:24`. `doc`.~~
+  Fechado no 19.0.0: as páginas saíram com a lib `manpu` (decisão dele,
+  2026-10-24).
 - **doc-12** Três páginas do `mail` importam com `from mail import X` e chamam
   `mail.X()`: `docs/mail/MailServer/MailServer.md:5`,
   `docs/mail/MailReader/MailReader.md:5` e
@@ -949,16 +977,19 @@ e sem, e dá o mesmo erro.
   prometem `login(user, password) -> Null`; o motor tem
   `login(usuario, senha) -> bool` (`--metadata`) e recusa o nome da doc:
   `TypeError: 'user' is an invalid keyword argument for login()`, nos blocos
-  `docs/libs_utilitarias.md:54`, `:85`, `:141` e `:167` e
-  `docs/manpu.md:226`. `os dois`: os nomes são decisão sua; os da doc são os
+  `docs/libs_utilitarias.md:54`, `:85`, `:141` e `:167` (e o
+  `docs/manpu.md:226`, que saiu com a manpu no 19.0.0). `os dois`: os nomes
+  são decisão sua; os da doc são os
   do `smtplib` e do `imaplib` do Python (`login(user, password)`).
 - **doc-14** O `body` do `MailMessage` com `byte`: a página dele
   (`docs/mail/MailMessage/body/body.md:12`) diz que o corpo aceita "texto,
-  HTML, ou bytes de um arquivo", e `docs/manpu/load/load.md` ensina passar o
+  HTML, ou bytes de um arquivo", e `docs/manpu/load/load.md` ensinava passar o
   `byte` do `manpu.load`. O motor só aceita `str`:
   `TypeError: body() argument 1 must be str, not byte`, nos blocos
   `docs/manpu/load/load.md:15`, `docs/manpu.md:42` e `docs/manpu.md:226`. A
-  própria `MailMessage.md` diz "texto ou HTML". `os dois`.
+  própria `MailMessage.md` diz "texto ou HTML". `os dois`. Os três blocos
+  saíram com a manpu no 19.0.0; fica a promessa da `body.md:12`, sem bloco
+  que a rode.
 - **doc-15** `docs/jinker/Jinker/Jinker.md:59`, `:75`, `:98` e `:118` escrevem
   o `oauth` com chave sem aspas (`{poolip: True, rate: 60}`): pela doc da
   linguagem (2, a chave do dict é uma expressão), é `NameError`, e

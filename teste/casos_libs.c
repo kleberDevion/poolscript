@@ -1043,8 +1043,8 @@ const Caso CASOS_LIBS[] = {
   "'sqlite:///u\\x00.db' (linha 9)\n"
   "query o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'q\\x00.db' (linha 10)\n"
   "False False False False False", NULL, 0 },
-{ "byte NUL no arquivo do QR e da planilha",
-  "import qrcode\nimport manpu\n"
+{ "byte NUL no arquivo do QR",
+  "import qrcode\n"
   "try { Object q = qrcode.gen(\"x\", save=\"q\\x00.png\") } catch (ValueError e) { post(\"gen save\", e) }\n"
   "try { Object q2 = qrcode.gen(\"x\", name=\"n\\x00.png\") } catch (ValueError e) { post(\"gen name\", e) }\n"
   "try { Object q3 = qrcode.make(\"x\", name=\"k\\x00.png\") } catch (ValueError e) { post(\"make name\", e) }\n"
@@ -1053,31 +1053,17 @@ const Caso CASOS_LIBS[] = {
   "Object q5 = qrcode.make(\"x\")\n"
   "try { q5.save(\"i\\x00.png\") } catch (ValueError e) { post(\"QRImage.save\", e) }\n"
   "Object qb = qrcode.QRCode()\nqb.add_data(\"x\")\n"
-  "try { Object im = qb.make_image(name=\"z\\x00.png\") } catch (ValueError e) { post(\"make_image\", e) }\n"
-  "try { post(manpu.read(\"p\\x00.csv\")) } catch (ValueError e) { post(\"read\", e) }\n"
-  "try { post(manpu.load(\"l\\x00.csv\")) } catch (ValueError e) { post(\"load\", e) }\n"
-  "try { post(manpu.src(\"s\\x00.csv\")) } catch (ValueError e) { post(\"src\", e) }\n"
-  "try { Object mo = manpu.open(\"o\\x00.csv\") } catch (ValueError e) { post(\"open\", e) }\n"
-  "try { post(manpu.write(\"x\", target=\"t\\x00.csv\")) } catch (ValueError e) { post(\"write\", e) }\n"
-  "try { post(manpu.remove(value=\"x\", target=\"r\\x00.csv\")) } catch (ValueError e) { post(\"remove\", e) }\n",
+  "try { Object im = qb.make_image(name=\"z\\x00.png\") } catch (ValueError e) { post(\"make_image\", e) }\n",
   "gen save o caminho do save= tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
-  "'q\\x00.png' (linha 3)\n"
-  "gen name o nome tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'n\\x00.png' (linha 4)\n"
-  "make name o nome tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'k\\x00.png' (linha 5)\n"
+  "'q\\x00.png' (linha 2)\n"
+  "gen name o nome tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'n\\x00.png' (linha 3)\n"
+  "make name o nome tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'k\\x00.png' (linha 4)\n"
   "QRPoolFile.save o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
-  "'w\\x00.png' (linha 7)\n"
+  "'w\\x00.png' (linha 6)\n"
   "QRImage.save o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
-  "'i\\x00.png' (linha 9)\n"
+  "'i\\x00.png' (linha 8)\n"
   "make_image o nome tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
-  "'z\\x00.png' (linha 12)\n"
-  "read o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'p\\x00.csv' (linha 13)\n"
-  "load o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'l\\x00.csv' (linha 14)\n"
-  "src o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 's\\x00.csv' (linha 15)\n"
-  "open o caminho tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — 'o\\x00.csv' (linha 16)\n"
-  "write o caminho do target= tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
-  "'t\\x00.csv' (linha 17)\n"
-  "remove o caminho do target= tem o byte nulo \\x00 na posicao 1: nenhum nome de arquivo tem esse caractere — "
-  "'r\\x00.csv' (linha 18)", NULL, 0 },
+  "'z\\x00.png' (linha 11)", NULL, 0 },
 { "byte NUL no anexo, no render, no request e na configuracao do Jinker",
   "import mail\nimport request\nfrom jinker import Jinker, render\n"
   "try { Object m = mail.MailMessage(); m.attach(\"nul_a\\x00\") } catch (ValueError e) { post(\"attach\", e) }\n"
@@ -1336,20 +1322,21 @@ const Caso CASOS_LIBS[] = {
   "import naoexiste_zz_kd\n",
   "", "No module named 'naoexiste_zz_kd'", 1 },
 
-/* I19: os apelidos sairam. Canonicos: request, qrcode, manpu, psodbc, sqlite3.
+/* I19: os apelidos sairam. Canonicos: request, qrcode, psodbc, sqlite3.
  * Modulo que nao existe responde como qualquer outro que nao existe — nao ha
- * caso especial pra apelido morto. */
-{ "os cinco apelidos sairam",
+ * caso especial pra apelido morto. A manpu (e o apelido `mp`) saiu inteira
+ * no 19.0.0 (decisao dele): `import manpu` tambem e modulo que nao existe. */
+{ "os apelidos sairam, e a manpu tambem",
   "import os\n"
   "import sys\n"
   "n = 0\n"
-  "for each m in [\"db\", \"qr\", \"mp\", \"requests\", \"sqlite\"] {\n"
+  "for each m in [\"db\", \"qr\", \"mp\", \"requests\", \"sqlite\", \"manpu\"] {\n"
   "    r = os.run([sys.executable, \"-e\", \"import \" + m], True)\n"
   "    if \"No module named\" in r { n = n + 1 }\n"
   "}\n"
-  "post(n)\n", "5", NULL, 0 },
-{ "os cinco canonicos continuam",
-  "import request\nimport qrcode\nimport manpu\nimport psodbc\nimport sqlite3\n"
+  "post(n)\n", "6", NULL, 0 },
+{ "os quatro canonicos continuam",
+  "import request\nimport qrcode\nimport psodbc\nimport sqlite3\n"
   "post(\"ok\")\n", "ok", NULL, 0 },
 
 { "o nome do tipo na mensagem e o que o type() devolve",
@@ -1386,12 +1373,8 @@ const Caso CASOS_LIBS[] = {
   "import request\nrequest.get()\n", "", "TypeError: get() takes at least 1 argument (0 given)", 2 },
 { "request.head assina head()",
   "import request\nrequest.head(123)\n", "", "TypeError: head() argument 1 must be str, not int", 2 },
-/* Sem argumento nao existe args[0]: manpu.open() e app.route() liam lixo do
- * slot e saiam "argument 1 must be str, not str". */
-{ "manpu.open sem argumento e erro de aridade, nao 'not str'",
-  "import manpu\nmanpu.open()\n", "", "TypeError: open() takes at least 1 argument (0 given)", 2 },
-{ "manpu.open recusa argumento sobrando",
-  "import manpu\nmanpu.open(\"nao_existe.mp\", \"r\", \"SOBRA\", 1)\n", "", "TypeError: open() takes at most 2 arguments (4 given)", 2 },
+/* Sem argumento nao existe args[0]: app.route() lia lixo do slot e saia
+ * "argument 1 must be str, not str". */
 { "route() sem argumento e erro de aridade, nao 'not str'",
   "import jinker\napp = jinker.Jinker()\napp.route()\n", "", "TypeError: route() takes at least 1 argument (0 given)", 2 },
 { "get() sem argumento assina get",
@@ -1714,12 +1697,6 @@ const Caso CASOS_LIBS[] = {
   "send(): codigo HTTP fora da faixa 100..999: 42 (linha 4)\n"
   "418\n418\n201\n"
   "Out of range float values are not JSON compliant: nan (linha 9)", NULL, 0 },
-/* manpu.remove amount=\"mei\": sobra a metade FINAL (o comentario e a doc
- * diziam o contrario; o codigo e o entregue). */
-{ "manpu.remove mei tira a metade inicial de cada ocorrencia",
-  "import os\nimport manpu\nos.writeFile(\"mp.txt\", \"xx abcd yy abcd zz\")\nmanpu.remove(value=\"abcd\", amount=\"mei\", target=\"mp.txt\")\npost(os.readFile(\"mp.txt\"))\n",
-  "xx cd yy cd zz", NULL, 0 },
-
 /* ── L5 DO PLANO DAS CONTRADICOES: qrcode (2026-09-12) ─────────────────────
  * A frase citava sempre 2953 (o teto de L) em qualquer nivel; em H o corte
  * real e menos da metade. Agora diz o teto do nivel pedido. Strings medidas. */

@@ -139,9 +139,8 @@ static int jk_resolve_ipv4(const char *host, struct in_addr *out, char *erro, si
 
 int ps_jk_listen(const char *host, int porta, char *erro, size_t ecap)
 {
-    /* a porta tem 16 bits: o `(unsigned short)` abaixo punha 70000 na 4464, e
-     * a do WebSocket (HTTP + 1) de um servidor na 65535 numa porta sorteada
-     * pelo sistema (jinker-14) */
+    /* a porta tem 16 bits: o `(unsigned short)` abaixo punha 70000 na 4464
+     * (jinker-14) */
     if (porta < 0 || porta > 65535) {
         snprintf(erro, ecap, "porta fora da faixa 0..65535: %d", porta);
         return -1;

@@ -4,8 +4,12 @@
 #
 #     jinga teste/ws_par.pr <porta>
 #
-# Atende uma conexão por vez. A cada mensagem de texto responde
-# "eco: <mensagem>", ao ping responde pong e ao close responde close. Confere
+# Atende várias conexões ao mesmo tempo, uma tarefa (`async`) por conexão: o
+# P2 e o medidor de retornos abrem uma conexão nova a cada chamada e não
+# fecham nenhuma, e um par que atendesse uma por vez ficava preso na primeira
+# (a segunda esperava o aperto de mão até o prazo). A cada mensagem de texto
+# responde "eco: <mensagem>", ao ping responde pong e ao close responde
+# close. Confere
 # a regra do cliente (RFC 6455 §5.1: todo frame que o cliente manda vem
 # mascarado, os de controle também): cada frame sai numa linha da saída
 # (`frame <opcode> mascarado` ou `frame <opcode> SEM MASCARA`), que o driver
@@ -207,6 +211,18 @@ Null funct atende(Object c) {
 }
 
 
+# Uma conexão numa tarefa: começa na chamada e cede no primeiro `recv` (a I/O
+# de socket cede a tarefa), e o laço principal volta pro `accept`.
+async funct atende_tarefa(Object c) {
+    try {
+        atende(c)
+    } catch (Exception e) {
+        anota("erro na conexao: " + e)
+    }
+    c.close()
+}
+
+
 if __name__ == "main" {
     int porta = int(sys.argv[1])
     Object s = sockets.socket()
@@ -215,13 +231,8 @@ if __name__ == "main" {
     s.listen(8)
     anota("ws_par escutando em " + str(porta))
     while True {
+        # enquanto o `accept` espera, as tarefas das conexões abertas andam
         tup par = s.accept()
-        Object c = par[0]
-        try {
-            atende(c)
-        } catch (Exception e) {
-            anota("erro na conexao: " + e)
-        }
-        c.close()
+        atende_tarefa(par[0])
     }
 }

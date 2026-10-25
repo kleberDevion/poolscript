@@ -1,7 +1,9 @@
-# jinker — Servidor HTTP + WebSocket
+# jinker — Servidor HTTP
 
-Lib de servidor HTTP da Jinga. **Zero dependências externas** — HTTP e
-WebSocket são do próprio motor.
+Lib de servidor HTTP da Jinga. **Zero dependências externas** — o HTTP é do
+próprio motor. O servidor de WebSocket (`@app.socket`, `app.channel`) saiu no
+19.0.0: o WebSocket fica como cliente, no `request.ws_connect` (ver
+[`docs/jinker.md`](../jinker.md#websocket)).
 
 Esta é a **página de referência** da lib. Cada membro tem sua própria página
 detalhada (links na tabela abaixo). Se é sua primeira vez, leia primeiro as
@@ -92,8 +94,6 @@ Importe de `jinker`: `from jinker import Jinker, cors, jsonify, render, request,
 | `@app.patch(...)` | rota só de PATCH | [patch/patch.md](patch/patch.md) |
 | `@app.delete(...)` | rota só de DELETE | [delete/delete.md](delete/delete.md) |
 | `RouteRegistrar` | o objeto que `route` e os cinco verbos devolvem | [RouteRegistrar/RouteRegistrar.md](RouteRegistrar/RouteRegistrar.md) |
-| `@app.socket(...)` | registra um handler de WebSocket | [socket/socket.md](socket/socket.md) |
-| `app.channel` | envia mensagens pros WebSockets conectados | [channel/channel.md](channel/channel.md) |
 | `@app.middleware()` | verificação que roda antes de rotas | [middleware/middleware.md](middleware/middleware.md) |
 | `cors(app, ...)` | métodos + origens aceitos por um servidor (ou vários) | [cors/cors.md](cors/cors.md) |
 | `request` | o que chegou na requisição | [request/request.md](request/request.md) |

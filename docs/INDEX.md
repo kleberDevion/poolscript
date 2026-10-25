@@ -38,13 +38,12 @@ Neovim…) com completion type-aware e diagnóstico do parser real, veja
 ## Bibliotecas (com `import`)
 
 ### Web e rede
-- **[jinker](jinker/jinker.md)** — servidor HTTP + WebSocket
+- **[jinker](jinker/jinker.md)** — servidor HTTP
 - **[request](request/request.md)** — cliente HTTP + WebSocket
 - **[sockets](sockets/sockets.md)** — sockets de rede crus: TCP/UDP/UNIX, cliente e servidor
 
 ### Dados e arquivos
 - **[os](os/os.md)** — sistema de arquivos, ambiente, terminal
-- **[manpu](manpu/manpu.md)** — arquivos CSV/XLSX/texto
 - **[json](json/json.md)** — texto JSON ↔ dados
 - **[bytes](bytes/bytes.md)** — criar/converter dados binários (hex, base64, inteiros)
 - **[psodbc](psodbc/psodbc.md)** — banco de dados (SQLite/Postgres/MySQL/SQL Server/Mongo)
@@ -72,7 +71,8 @@ Neovim…) com completion type-aware e diagnóstico do parser real, veja
 
 ## Um nome de import por lib
 
-Cada lib tem um nome só. Os apelidos antigos (`db` pro `psodbc`, `mp` pro
-`manpu`, `qr` pro `qrcode`, `requests` pro `request`, `JSON` pro `json`,
-`dataentity` pro `datasentity`) saíram: `import db` é `ImportError: No module
-named 'db'`, e `JSON.parse(...)` é `NameError` antes de rodar.
+Cada lib tem um nome só. Os apelidos antigos (`db` pro `psodbc`, `qr` pro
+`qrcode`, `requests` pro `request`, `JSON` pro `json`, `dataentity` pro
+`datasentity`) saíram: `import db` é `ImportError: No module named 'db'`, e
+`JSON.parse(...)` é `NameError` antes de rodar. A lib `manpu` (e o apelido
+`mp`) saiu inteira no 19.0.0.

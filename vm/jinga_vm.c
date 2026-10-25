@@ -53,8 +53,6 @@
 #include "ps_mail.h"
 #include "ps_http.h"
 #include "ps_qr.h"
-#include <expat.h>
-#include "ps_xlsx.h"
 #include "ps_db.h"
 #include "ps_mongo.h"
 #include "ps_jinker.h"
@@ -138,7 +136,6 @@ typedef enum {
     OBJ_MAILRD,    /* mail.MailReader — conexão IMAP */
     OBJ_RESPONSE,  /* request.Response — status + headers + corpo */
     OBJ_QRFILE,    /* qrcode.gen em memória (QRPoolFile) */
-    OBJ_MANPU_RES, /* manpu.ManpuResult — sucesso + status */
     OBJ_DBCONN,    /* psodbc DbConnection */
     OBJ_DBCUR,     /* psodbc DbCursor */
     OBJ_MONGOCONN, /* psodbc MongoConnection */
@@ -146,7 +143,7 @@ typedef enum {
     OBJ_POOLFILE,  /* arquivo binário já carregado (`os.loadFile`) */
     OBJ_JINKER,    /* jinker.Jinker — o app HTTP */
     OBJ_JCORS,     /* jinker.cors — config global (singleton) */
-    OBJ_JREG,      /* registrar descartável de @app.route/.socket/.middleware */
+    OBJ_JREG,      /* registrar descartável de @app.route/.middleware */
     OBJ_JRESP,     /* JinkerResponse */
     OBJ_JREQ,      /* a requisição corrente (interno — o proxy lê daqui) */
     OBJ_JPROXY,    /* `request` — proxy da requisição corrente (singleton) */
@@ -154,7 +151,6 @@ typedef enum {
     OBJ_WSCONN,    /* request.ws_connect — cliente WebSocket */
     OBJ_QRBUILD,   /* qrcode.QRCode — builder com add_data/make/make_image */
     OBJ_QRIMAGE,   /* retorno do make/make_image — save/resize/to_file */
-    OBJ_MANPU_FILE,/* mp.open() — arquivo aberto com write/read/save + using */
     OBJ_BIGINT,    /* inteiro de precisão arbitrária (GMP mpz) — promovido no overflow */
     OBJ_FUTURO,    /* `async funct` — resultado pendente de uma fibra */
     OBJ_SOCKET,    /* lib sockets — socket cru (TCP/UDP/UNIX) */
@@ -368,7 +364,7 @@ enum { T_MET_STR = 0, T_MET_LIST, T_MET_DICT, T_MET_ARQ,
        T_MET_DBCONN, T_MET_DBCUR, T_MET_MONGOCONN, T_MET_MONGOCOL,
        T_MET_JINKER, T_MET_JCORS, T_MET_JREG, T_MET_JRESP, T_MET_JPROXY,
        T_MET_JUPLOAD, T_MET_WSCONN,
-       T_MET_QRBUILD, T_MET_QRIMAGE, T_MET_MPFILE,
+       T_MET_QRBUILD, T_MET_QRIMAGE,
        T_MET_SOCKET, T_MET_PROCESSO, T_MET_REGEX, T_MET_TUPLA };
 
 /* Módulo nativo: um nome e uma tabela de membros. Não tem estado, então o
@@ -576,14 +572,6 @@ typedef struct {
     pid_t  dono;
 } PSResponse;
 
-/* manpu.ManpuResult — `== true/false` e `bool()` olham `sucesso`; `post`
- * imprime o `status`. */
-typedef struct {
-    Obj   obj;
-    int   sucesso;
-    char *status;
-} PSManpuRes;
-
 /* psodbc: conexão e cursor unificados (sqlite/postgres/mysql/mssql). O cursor
  * bufferiza o result de um SELECT e os fetch* leem dele com `pos`. */
 /* `ocupada`: uma consulta por conexão por vez. O handle do driver (`conn`)
@@ -789,17 +777,6 @@ typedef struct {
     int   tw, th;          /* 0 = tamanho natural */
 } PSQRImage;
 
-/* mp.open() — arquivo carregado em memória, editado por write() e persistido
- * no save() (que o `using` chama ao sair, como o __exit__ do wrapper).
- * csv e xlsx compartilham a PSGrade; texto puro fica numa string só. */
-typedef struct {
-    Obj     obj;
-    char   *caminho;
-    int     modo;          /* 0 = texto, 1 = csv, 2 = xlsx */
-    PSGrade grade;
-    char   *texto; size_t ntexto;
-} PSManpuFile;
-
 /* Handle de arquivo. `fechado` em vez de zerar o FILE*: `f.close()` chamado
  * duas vezes (usuário e `using`) não pode fechar o mesmo descritor de novo. */
 typedef struct {
@@ -960,8 +937,6 @@ static int model_campo_aceita(int32_t tipo, const Value *v);
 #define COMO_RESP(v)   ((PSResponse*)(v).as.obj)
 #define EH_QRFILE(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_QRFILE)
 #define COMO_QRFILE(v) ((PSQRFile*)(v).as.obj)
-#define EH_MANPURES(v) ((v).t == V_OBJ && (v).as.obj->type == OBJ_MANPU_RES)
-#define COMO_MANPURES(v) ((PSManpuRes*)(v).as.obj)
 #define EH_DBCONN(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_DBCONN)
 #define COMO_DBCONN(v) ((PSDbConexao*)(v).as.obj)
 #define EH_DBCUR(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_DBCUR)
@@ -990,8 +965,6 @@ static int model_campo_aceita(int32_t tipo, const Value *v);
 
 #define EH_QRIMAGE(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_QRIMAGE)
 #define COMO_QRIMAGE(v) ((PSQRImage*)(v).as.obj)
-#define EH_MPFILE(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_MANPU_FILE)
-#define COMO_MPFILE(v) ((PSManpuFile*)(v).as.obj)
 #define COMO_METNAT(v) ((PSMetodoNat*)(v).as.obj)
 #define COMO_STRING(v) ((PSString*)(v).as.obj)
 #define COMO_LIST(v)   ((PSList*)(v).as.obj)
@@ -1391,12 +1364,11 @@ struct VM_ {
     /* ── jinker ─────────────────────────────────────────────────────────
      * Singletons e a requisição corrente são RAÍZES do GC: vivem aqui (e não
      * em estático C) porque o coletor não varre a pilha do C. `nomes_globais`
-     * é a tabela de nomes do programa — o Jinker() usa pra achar os slots
-     * `request`/`channel` e pré-ligá-los no escopo do handler. */
+     * é a tabela de nomes do programa — o Jinker() usa pra achar o slot do
+     * `request` e pré-ligá-lo no escopo do handler. */
     Value    jk_cors;      /* singleton de cors — V_UNSET até o 1º uso */
     Value    jk_proxy;     /* singleton do `request` */
     Value    jk_req;       /* requisição corrente (V_NULL fora de handler) */
-    Value    jk_app;       /* o app servindo agora (pra emit/socket) */
     char   **nomes_globais;
     int      n_nomes_globais;   /* só as do script principal — nglobals cresce
                                  * com import de .pr, esta tabela não */
@@ -2249,7 +2221,7 @@ static void fin_regex(VM *vm, Obj *o) {
 static void fin_arquivo(VM *, Obj *);   static void fin_sqlcur(VM *, Obj *);
 static void fin_sqlconn(VM *, Obj *);   static void fin_mailsrv(VM *, Obj *);
 static void fin_mailrd(VM *, Obj *);    static void fin_response(VM *, Obj *);
-static void fin_qrfile(VM *, Obj *);    static void fin_manpu_res(VM *, Obj *);
+static void fin_qrfile(VM *, Obj *);
 static void fin_dbconn(VM *, Obj *);    static void fin_dbcur(VM *, Obj *);
 static void fin_mongoconn(VM *, Obj *); static void fin_mongocol(VM *, Obj *);
 static void fin_mailmsg(VM *, Obj *);   static void fin_jinker(VM *, Obj *);
@@ -2257,7 +2229,7 @@ static void fin_jcors(VM *, Obj *);     static void fin_jreg(VM *, Obj *);
 static void fin_jresp(VM *, Obj *);     static void fin_jreq(VM *, Obj *);
 static void fin_jproxy(VM *, Obj *);    static void fin_jupload(VM *, Obj *);
 static void fin_wsconn(VM *, Obj *);    static void fin_qrbuild(VM *, Obj *);
-static void fin_qrimage(VM *, Obj *);   static void fin_manpu_file(VM *, Obj *);
+static void fin_qrimage(VM *, Obj *);
 
 /* A tabela: TODO tipo aparece aqui. Esquecer um => GC_UNSET => aborta no boot. */
 static const GcInfo GC_INFO[OBJ__COUNT] = {
@@ -2290,7 +2262,6 @@ static const GcInfo GC_INFO[OBJ__COUNT] = {
     [OBJ_MAILRD]     = { GC_LEAF, 0, NULL, 0, fin_mailrd },
     [OBJ_RESPONSE]   = { GC_FN,   0, gct_response, 0, fin_response },
     [OBJ_QRFILE]     = { GC_ONE,  offsetof(PSQRFile, conteudo), NULL, 0, fin_qrfile },
-    [OBJ_MANPU_RES]  = { GC_LEAF, 0, NULL, 0, fin_manpu_res },
     [OBJ_DBCONN]     = { GC_LEAF, 0, NULL, 0, fin_dbconn },
     [OBJ_DBCUR]      = { GC_ONE,  offsetof(PSDbCursor, conexao), NULL, 0, fin_dbcur },
     [OBJ_MONGOCONN]  = { GC_LEAF, 0, NULL, 0, fin_mongoconn },
@@ -2306,7 +2277,6 @@ static const GcInfo GC_INFO[OBJ__COUNT] = {
     [OBJ_WSCONN]     = { GC_ONE,  offsetof(PSWsConn, on_msg), NULL, 0, fin_wsconn },
     [OBJ_QRBUILD]    = { GC_LEAF, 0, NULL, 0, fin_qrbuild },
     [OBJ_QRIMAGE]    = { GC_LEAF, 0, NULL, 0, fin_qrimage },
-    [OBJ_MANPU_FILE] = { GC_LEAF, 0, NULL, 0, fin_manpu_file },
     [OBJ_BIGINT]     = { GC_LEAF, 0, NULL, sizeof(PSBigInt), fin_bigint },
 };
 
@@ -2391,10 +2361,6 @@ static void fin_qrfile(VM *vm, Obj *o) {
     PSQRFile *q = (PSQRFile *)o;
     free(q->nome); free(q->ext);
     vm->alocado -= sizeof(PSQRFile);
-}
-static void fin_manpu_res(VM *vm, Obj *o) {
-    free(((PSManpuRes *)o)->status);
-    vm->alocado -= sizeof(PSManpuRes);
 }
 static void fin_dbconn(VM *vm, Obj *o) {
     PSDbConexao *cn = (PSDbConexao *)o;
@@ -2490,12 +2456,6 @@ static void fin_qrimage(VM *vm, Obj *o) {
     free(q->dados); free(q->cor); free(q->fundo); free(q->nome);
     vm->alocado -= sizeof(PSQRImage);
 }
-static void fin_manpu_file(VM *vm, Obj *o) {
-    PSManpuFile *m = (PSManpuFile *)o;
-    free(m->caminho); free(m->texto);
-    ps_grade_libera(&m->grade);
-    vm->alocado -= sizeof(PSManpuFile);
-}
 
 /* Sweep 100%% table-driven: `tam` desconta o tamanho fixo (0 quando variável) e
  * `fin` libera os buffers internos (e faz a conta do variável). O antigo
@@ -2532,7 +2492,6 @@ static void gc_coleta(VM *vm)
     marca_valor(vm, &vm->jk_cors);
     marca_valor(vm, &vm->jk_proxy);
     marca_valor(vm, &vm->jk_req);
-    marca_valor(vm, &vm->jk_app);
     /* módulos `.pr` importados vivem no cache mods_ps pro programa inteiro
      * — são RAÍZES, senão o GC coleta um módulo
      * ainda em uso e depois libera de novo -> double free -> segfault. */
@@ -2948,7 +2907,6 @@ static int val_truthy(const Value *v)
             if (v->as.obj->type == OBJ_LIST || v->as.obj->type == OBJ_TUPLE)
                 return ((PSList *)v->as.obj)->len != 0;
             if (v->as.obj->type == OBJ_DICT)   return ((PSDict *)v->as.obj)->count != 0;
-            if (v->as.obj->type == OBJ_MANPU_RES) return ((PSManpuRes *)v->as.obj)->sucesso;
             return 1;   /* todo outro objeto (Entity, instância, método…) é verdadeiro */
     }
     return 0;
@@ -3291,14 +3249,6 @@ static int val_iguais(const Value *a, const Value *b)
         if (a->t == V_FLOAT || b->t == V_FLOAT)   /* inteiro grande vs flo: exato */
             return cmp_num_misto(a, b) == 0;
         return 0;   /* bignum vs int64/bool: nunca igual (fora do alcance do int64) */
-    }
-    /* ManpuResult == true/false compara o sucesso; == "texto" compara status */
-    if (EH_MANPURES(*a) || EH_MANPURES(*b)) {
-        const Value *mr = EH_MANPURES(*a) ? a : b, *o = EH_MANPURES(*a) ? b : a;
-        PSManpuRes *r = COMO_MANPURES(*mr);
-        if (o->t == V_BOOL) return r->sucesso == o->as.b;
-        if (EH_STRING(*o)) return strcmp(r->status, COMO_STRING(*o)->chars) == 0;
-        return 0;
     }
     /* `data == Usuario` valida o dict contra o model, dos dois lados */
     if (EH_MODEL(*b)) return model_valida(COMO_MODEL(*b), a);
@@ -3667,12 +3617,6 @@ static int descreve_obj(const Value *v, char *buf, size_t cap)
             return 1;
         }
         case OBJ_QRBUILD: snprintf(buf, cap, "<PoolQRCode>"); return 1;
-        case OBJ_MANPU_FILE: {
-            const char *cam = ((PSManpuFile *)o)->caminho;
-            const char *barra = ps_ultimo_sep(cam);
-            snprintf(buf, cap, "<ManpuFile %.200s>", barra ? barra + 1 : cam);
-            return 1;
-        }
         case OBJ_DBCUR: {
             static const char *DN[] = { "sqlite", "postgres", "mysql", "mssql" };
             snprintf(buf, cap, "<db.cursor [%s]>", DN[((PSDbCursor *)o)->drv]);
@@ -3702,9 +3646,6 @@ static int descreve_obj(const Value *v, char *buf, size_t cap)
         case OBJ_JPROXY:    snprintf(buf, cap, "<jinker.request>");     return 1;
         case OBJ_NATIVA:    snprintf(buf, cap, "<builtin>");            return 1;
         case OBJ_MONGOCONN: snprintf(buf, cap, "<db.connection [mongo]>"); return 1;
-        case OBJ_MANPU_RES:
-            snprintf(buf, cap, "%s", ((PSManpuRes *)v->as.obj)->status);
-            return 1;
         case OBJ_JINKER:
             snprintf(buf, cap, "<Jinker '%s'>", ((PSJinker *)v->as.obj)->nome);
             return 1;
@@ -4796,7 +4737,6 @@ static const char *const NOME_DE_OBJ[OBJ__COUNT] = {
     [OBJ_MAILRD]     = "MailReader",
     [OBJ_RESPONSE]   = "Response",
     [OBJ_QRFILE]     = "QRPoolFile",
-    [OBJ_MANPU_RES]  = "ManpuResult",
     [OBJ_DBCONN]     = "DbConnection",
     [OBJ_DBCUR]      = "DbCursor",
     [OBJ_MONGOCONN]  = "MongoConnection",
@@ -4811,7 +4751,6 @@ static const char *const NOME_DE_OBJ[OBJ__COUNT] = {
     [OBJ_WSCONN]     = "WsConnection",
     [OBJ_QRBUILD]    = "PoolQRCode",
     [OBJ_QRIMAGE]    = "QRImage",
-    [OBJ_MANPU_FILE] = "ManpuFile",
     [OBJ_SOCKET]     = "socket",
     [OBJ_PROCESSO]   = "Process",
     [OBJ_REGEX]      = "Pattern",
@@ -10074,14 +10013,6 @@ static const MetodoNat METODOS_QRIMAGE[] = {
     { "resize", met_qri_resize, "width,height" },
     { "to_file", met_qri_to_file, NULL },
 };
-static int met_mpf_write(VM *vm, Value alvo, Value *args, int n, Value *out);
-static int met_mpf_read(VM *vm, Value alvo, Value *args, int n, Value *out);
-static int met_mpf_save(VM *vm, Value alvo, Value *args, int n, Value *out);
-static const MetodoNat METODOS_MPFILE[] = {
-    { "write", met_mpf_write, "content=Null,column=Null,cell=Null,celula=Null,init=Null,sep=Null,size=Null" },
-    { "read", met_mpf_read, NULL },
-    { "save", met_mpf_save, NULL },
-};
 
 
 /* Pattern (regex.compile) — os métodos vivem lá embaixo, junto do módulo
@@ -10111,7 +10042,6 @@ static const MetodoNat *TABELAS[] = { METODOS_STR, METODOS_LIST, METODOS_DICT,
                                       METODOS_JINKER, METODOS_JCORS, METODOS_JREG,
                                       METODOS_JRESP, METODOS_JPROXY, METODOS_JUPLOAD,
                                       METODOS_WSCONN, METODOS_QRBUILD, METODOS_QRIMAGE,
-                                      METODOS_MPFILE,
                                       METODOS_SOCKET, METODOS_PROCESSO,
                                       METODOS_REGEX, METODOS_TUPLA };
 static const int TAM_TABELA[] = {
@@ -10141,7 +10071,6 @@ static const int TAM_TABELA[] = {
     (int)(sizeof(METODOS_WSCONN) / sizeof(METODOS_WSCONN[0])),
     (int)(sizeof(METODOS_QRBUILD) / sizeof(METODOS_QRBUILD[0])),
     (int)(sizeof(METODOS_QRIMAGE) / sizeof(METODOS_QRIMAGE[0])),
-    (int)(sizeof(METODOS_MPFILE) / sizeof(METODOS_MPFILE[0])),
     (int)(sizeof(METODOS_SOCKET) / sizeof(METODOS_SOCKET[0])),
     (int)(sizeof(METODOS_PROCESSO) / sizeof(METODOS_PROCESSO[0])),
     (int)(sizeof(METODOS_REGEX) / sizeof(METODOS_REGEX[0])),
@@ -10184,7 +10113,6 @@ static int acha_metodo_valor(Value alvo, const char *nome, int *tab, int *idx)
     else if (EH_WSCONN(alvo))  qual = T_MET_WSCONN;
     else if (EH_QRBUILD(alvo)) qual = T_MET_QRBUILD;
     else if (EH_QRIMAGE(alvo)) qual = T_MET_QRIMAGE;
-    else if (EH_MPFILE(alvo))  qual = T_MET_MPFILE;
     else if (EH_SOCKET(alvo))  qual = T_MET_SOCKET;
     else if (EH_PROCESSO(alvo)) qual = T_MET_PROCESSO;
     else if (EH_REGEX(alvo))   qual = T_MET_REGEX;
@@ -19969,816 +19897,6 @@ static const MembroMod MOD_QRCODE[] = {
 };
 
 
-/* ── módulo manpu (mp) ──────────────────────────────────────────────────── */
-/* Leitura/escrita de csv, txt, json, xml, html e xlsx. O xlsx é o ps_xlsx.c
- * (ZIP+OOXML à mão); o resto reusa o que a VM já tem. */
-
-/* extensão minúscula sem o ponto */
-static void mp_ext(const char *caminho, char *out, size_t cap)
-{
-    const char *p = strrchr(caminho, '.');
-    if (!p) { out[0] = '\0'; return; }
-    size_t j = 0;
-    for (p++; *p && j < cap - 1; p++) out[j++] = (*p >= 'A' && *p <= 'Z') ? (char)(*p + 32) : *p;
-    out[j] = '\0';
-}
-
-/* ── ManpuResult ────────────────────────────────────────────────────────── */
-static PSManpuRes *novo_manpures(VM *vm, int sucesso, const char *status)
-{
-    PSManpuRes *r = calloc(1, sizeof(PSManpuRes));
-    if (!r) return NULL;
-    r->obj.type = OBJ_MANPU_RES; r->obj.marked = 0;
-    r->obj.next = vm->objetos; vm->objetos = (Obj *)r;
-    r->sucesso = sucesso;
-    r->status = strdup(status ? status : (sucesso ? "Success" : "Error"));
-    vm->alocado += sizeof(PSManpuRes);
-    return r;
-}
-
-/* célula xlsx tipada -> Value (int/float/string/null) */
-static int mp_celula_valor(VM *vm, const PSGrade *g, int r, int c, Value *out)
-{
-    char t = ps_grade_tipo(g, r, c);
-    const char *s = ps_grade_get(g, r, c);
-    if (t == 'n') {
-        /* int se não tem ponto/expoente; senão float. Pelo leitor do int(): o
-         * inteiro que não cabe no int64 vira inteiro grande (antes, Null). */
-        int rc;
-        if (strpbrk(s, ".eE")) {
-            double d;
-            rc = texto_para_flo(s, (int)strlen(s), 1, &d);
-            if (rc == 0) *out = MK_FLOAT(d);
-        } else {
-            rc = texto_para_int(vm, s, (int)strlen(s), 1, out);
-        }
-        if (rc < 0) return -1;
-        if (rc > 0) *out = MK_NULL();   /* célula numérica com texto que não é número */
-        return 0;
-    }
-    if (t == 's') {
-        PSString *ps = nova_string(vm, s, (int)strlen(s));
-        if (!ps) return -1;
-        *out = MK_OBJ(ps);
-        return 0;
-    }
-    *out = MK_NULL();     /* célula vazia */
-    return 0;
-}
-
-/* grade xlsx -> lista de dicts (row0 = cabeçalho), como o manpu.read */
-static int mp_grade_para_lista(VM *vm, const PSGrade *g, Value *out)
-{
-    PSList *lista = lista_com_cap(vm, 4, OBJ_LIST);
-    if (!lista) MERRO(vm, "MemoryError", "sem memoria");
-    *out = MK_OBJ(lista);
-    if (fixa_raiz(vm, *out) != 0) MERRO(vm, "RuntimeError", "estouro");
-    if (g->nlin == 0) { vm->sp--; return 0; }
-
-    int ncab = g->ncols[0];
-    for (int r = 1; r < g->nlin; r++) {
-        PSDict *d = novo_dict(vm, ncab + 1);
-        if (!d) { vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
-        Value dv = MK_OBJ(d);
-        if (fixa_raiz(vm, dv) != 0) { vm->sp--; MERRO(vm, "RuntimeError", "estouro"); }
-        for (int c = 0; c < ncab; c++) {
-            const char *h = ps_grade_get(g, 0, c);
-            char chave[64];
-            PSString *k;
-            if (h[0]) k = nova_string(vm, h, (int)strlen(h));
-            else { snprintf(chave, sizeof(chave), "col%d", c); k = nova_string(vm, chave, (int)strlen(chave)); }
-            Value vv;
-            if (!k || mp_celula_valor(vm, g, r, c, &vv) != 0) { vm->sp -= 2; MERRO(vm, "MemoryError", "sem memoria"); }
-            Value kv = MK_OBJ(k);
-            if (dict_set(vm, d, &kv, &vv) != 0) { vm->sp -= 2; MERRO(vm, "MemoryError", "sem memoria"); }
-        }
-        vm->sp--;
-        if (lista->len >= lista->cap && cresce_lista(vm, lista) != 0) { vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
-        lista->itens[lista->len++] = dv;
-    }
-    vm->sp--;
-    return 0;
-}
-
-/* ── XML -> dict aninhado (expat pra uma árvore C, depois pra Value) ─────── */
-typedef struct MpXmlNo {
-    char *tag, *texto;
-    char **at_k, **at_v; int nat;
-    struct MpXmlNo **filhos; int nf, cap;
-} MpXmlNo;
-
-typedef struct { MpXmlNo *raiz; MpXmlNo *pilha[64]; int prof; int erro; } MpXmlCtx;
-
-static void XMLCALL mp_xml_ini(void *u, const XML_Char *nome, const XML_Char **at)
-{
-    MpXmlCtx *c = u;
-    if (c->prof >= 63) { c->erro = 1; return; }
-    MpXmlNo *no = calloc(1, sizeof(MpXmlNo));
-    if (!no) { c->erro = 1; return; }
-    no->tag = strdup(nome);
-    no->texto = strdup("");
-    int n = 0; while (at[n]) n += 2;
-    n /= 2;
-    if (n > 0) {
-        no->at_k = calloc((size_t)n, sizeof(char *));
-        no->at_v = calloc((size_t)n, sizeof(char *));
-        for (int i = 0; i < n; i++) { no->at_k[i] = strdup(at[2*i]); no->at_v[i] = strdup(at[2*i+1]); }
-        no->nat = n;
-    }
-    if (c->prof == 0) c->raiz = no;
-    else {
-        MpXmlNo *pai = c->pilha[c->prof - 1];
-        if (pai->nf >= pai->cap) {
-            int nc = pai->cap < 4 ? 4 : pai->cap * 2;
-            MpXmlNo **nf = realloc(pai->filhos, sizeof(MpXmlNo*) * (size_t)nc);
-            /* Callback do parser: não há a quem levantar. Sem a temporária,
-             * `pai->filhos = NULL` soltava a subárvore inteira e o índice
-             * seguinte escrevia em NULL. Falhando, o nó não ganha o filho. */
-            if (!nf) return;
-            pai->filhos = nf; pai->cap = nc;
-        }
-        pai->filhos[pai->nf++] = no;
-    }
-    c->pilha[c->prof++] = no;
-}
-static void XMLCALL mp_xml_txt(void *u, const XML_Char *s, int len)
-{
-    MpXmlCtx *c = u;
-    if (c->prof == 0) return;
-    MpXmlNo *no = c->pilha[c->prof - 1];
-    size_t old = strlen(no->texto);
-    char *nt = realloc(no->texto, old + (size_t)len + 1);
-    if (!nt) { c->erro = 1; return; }
-    memcpy(nt + old, s, (size_t)len); nt[old + len] = '\0';
-    no->texto = nt;
-}
-static void XMLCALL mp_xml_fim(void *u, const XML_Char *nome)
-{
-    (void)nome; MpXmlCtx *c = u;
-    if (c->prof > 0) c->prof--;
-}
-static void mp_xml_libera(MpXmlNo *no)
-{
-    if (!no) return;
-    free(no->tag); free(no->texto);
-    for (int i = 0; i < no->nat; i++) { free(no->at_k[i]); free(no->at_v[i]); }
-    free(no->at_k); free(no->at_v);
-    for (int i = 0; i < no->nf; i++) mp_xml_libera(no->filhos[i]);
-    free(no->filhos);
-    free(no);
-}
-
-/* apara espaço das pontas (o interpretador faz text.strip()) */
-static void mp_strip(char *s)
-{
-    size_t n = strlen(s), i = 0;
-    while (i < n && (s[i]==' '||s[i]=='\t'||s[i]=='\n'||s[i]=='\r')) i++;
-    size_t f = n;
-    while (f > i && (s[f-1]==' '||s[f-1]=='\t'||s[f-1]=='\n'||s[f-1]=='\r')) f--;
-    memmove(s, s + i, f - i); s[f - i] = '\0';
-}
-
-static int mp_no_para_dict(VM *vm, MpXmlNo *no, Value *out)
-{
-    PSDict *d = novo_dict(vm, 4);
-    if (!d) return -1;
-    *out = MK_OBJ(d);
-    if (fixa_raiz(vm, *out) != 0) return -1;
-    /* tag */
-    { PSString *k = nova_string(vm,"tag",3), *v = nova_string(vm, no->tag, (int)strlen(no->tag));
-      if (!k||!v){vm->sp--;return -1;} Value kv=MK_OBJ(k),vv=MK_OBJ(v); if(dict_set(vm,d,&kv,&vv)!=0){vm->sp--;return -1;} }
-    /* attrs */
-    { PSDict *ad = novo_dict(vm, no->nat + 1);
-      if(!ad){vm->sp--;return -1;} Value av=MK_OBJ(ad);
-      if (fixa_raiz(vm, av)!=0){vm->sp--;return -1;}
-      for (int i=0;i<no->nat;i++){ PSString *k=nova_string(vm,no->at_k[i],(int)strlen(no->at_k[i])),*v=nova_string(vm,no->at_v[i],(int)strlen(no->at_v[i]));
-        if(!k||!v){vm->sp-=2;return -1;} Value kv=MK_OBJ(k),vv=MK_OBJ(v); if(dict_set(vm,ad,&kv,&vv)!=0){vm->sp-=2;return -1;} }
-      PSString *k=nova_string(vm,"attrs",5); if(!k){vm->sp-=2;return -1;} Value kv=MK_OBJ(k);
-      if(dict_set(vm,d,&kv,&av)!=0){vm->sp-=2;return -1;} vm->sp--; }
-    /* text (strip) */
-    { char *t = strdup(no->texto); if(t) mp_strip(t);
-      PSString *k=nova_string(vm,"text",4),*v=nova_string(vm,t?t:"",(int)strlen(t?t:"")); free(t);
-      if(!k||!v){vm->sp--;return -1;} Value kv=MK_OBJ(k),vv=MK_OBJ(v); if(dict_set(vm,d,&kv,&vv)!=0){vm->sp--;return -1;} }
-    /* children */
-    { PSList *ch = lista_com_cap(vm, no->nf + 1, OBJ_LIST);
-      if(!ch){vm->sp--;return -1;} Value cv=MK_OBJ(ch);
-      if(fixa_raiz(vm,cv)!=0){vm->sp--;return -1;}
-      for (int i=0;i<no->nf;i++){ Value f; if (mp_no_para_dict(vm,no->filhos[i],&f)!=0){vm->sp-=2;return -1;}
-        if(ch->len>=ch->cap && cresce_lista(vm,ch)!=0){vm->sp-=2;return -1;} ch->itens[ch->len++]=f; }
-      PSString *k=nova_string(vm,"children",8); if(!k){vm->sp-=2;return -1;} Value kv=MK_OBJ(k);
-      if(dict_set(vm,d,&kv,&cv)!=0){vm->sp-=2;return -1;} vm->sp--; }
-    vm->sp--;
-    return 0;
-}
-
-/* html -> texto limpo: tira <...> e colapsa 3+ quebras em 2 */
-static int mp_html_limpo(VM *vm, const char *html, int n, Value *out)
-{
-    char *buf = malloc((size_t)n + 1);
-    if (!buf) MERRO(vm, "MemoryError", "sem memoria");
-    int j = 0, dentro = 0;
-    for (int i = 0; i < n; i++) {
-        if (html[i] == '<') dentro = 1;
-        else if (html[i] == '>') dentro = 0;
-        else if (!dentro) buf[j++] = html[i];
-    }
-    buf[j] = '\0';
-    /* colapsa 3+ \n em 2 e apara pontas */
-    char *saida = malloc((size_t)j + 1);
-    if (!saida) { free(buf); MERRO(vm, "MemoryError", "sem memoria"); }
-    int k = 0, nl = 0;
-    for (int i = 0; i < j; i++) {
-        if (buf[i] == '\n') { nl++; if (nl <= 2) saida[k++] = '\n'; }
-        else { nl = 0; saida[k++] = buf[i]; }
-    }
-    saida[k] = '\0';
-    free(buf);
-    char *ini = saida; while (*ini==' '||*ini=='\n'||*ini=='\t'||*ini=='\r') ini++;
-    int fim = (int)strlen(ini); while (fim>0 && (ini[fim-1]==' '||ini[fim-1]=='\n'||ini[fim-1]=='\t'||ini[fim-1]=='\r')) fim--;
-    int rc = devolve_texto(vm, out, ini, fim);
-    free(saida);
-    return rc;
-}
-
-/* ── read ───────────────────────────────────────────────────────────────── */
-static int mp_le_arquivo(const char *caminho, char **buf, int *n)
-{
-    FILE *f = fopen(caminho, "rb");
-    if (!f) return -1;
-    fseek(f, 0, SEEK_END); long t = ftell(f); rewind(f);
-    if (t < 0) { fclose(f); return -1; }
-    *buf = malloc((size_t)t + 1);
-    if (!*buf) { fclose(f); return -1; }
-    size_t lidos = fread(*buf, 1, (size_t)t, f);
-    fclose(f);
-    (*buf)[lidos] = '\0';
-    *n = (int)lidos;
-    return 0;
-}
-
-static int existe_arquivo(const char *caminho)
-{
-    struct stat st;
-    return stat(caminho, &st) == 0 && S_ISREG(st.st_mode);
-}
-
-static int mod_mp_read(VM *vm, Value *args, int n, Value *out)
-{
-    EXIGE_ARGS(vm, "read", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "read() argument 1 must be str, not %s",
-                                  nome_do_tipo_valor(args[0]));
-    if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
-    const char *caminho = COMO_STRING(args[0])->chars;
-    if (!existe_arquivo(caminho)) {
-        char msg[600]; snprintf(msg, sizeof(msg), "Error: arquivo não encontrado: %.400s", caminho);
-        return devolve_texto(vm, out, msg, (int)strlen(msg));   /* string, não erro */
-    }
-    char ext[32]; mp_ext(caminho, ext, sizeof(ext));
-
-    if (!strcmp(ext, "csv")) {
-        char *b; int nb;
-        if (mp_le_arquivo(caminho, &b, &nb) != 0) return erro_sistema(vm, errno, caminho, NULL);
-        int rc = csv_para_lista(vm, b, nb, out);
-        free(b);
-        return rc;
-    }
-    if (!strcmp(ext, "xlsx") || !strcmp(ext, "xls")) {
-        PSGrade g; char erro[256];
-        if (ps_xlsx_le(caminho, &g, erro, sizeof(erro)) != 0) BERRO(vm, "TypeError", "%s", erro);
-        int rc = mp_grade_para_lista(vm, &g, out);
-        ps_grade_libera(&g);
-        return rc;
-    }
-    if (!strcmp(ext, "json")) {
-        char *b; int nb;
-        if (mp_le_arquivo(caminho, &b, &nb) != 0) return erro_sistema(vm, errno, caminho, NULL);
-        PSString *s = nova_string(vm, b, nb); free(b);
-        if (!s) BERRO(vm, "MemoryError", "sem memoria");
-        Value um[1] = { MK_OBJ(s) };
-        return mod_json_parse(vm, um, 1, out);
-    }
-    if (!strcmp(ext, "xml")) {
-        char *b; int nb;
-        if (mp_le_arquivo(caminho, &b, &nb) != 0) return erro_sistema(vm, errno, caminho, NULL);
-        MpXmlCtx ctx; memset(&ctx, 0, sizeof(ctx));
-        XML_Parser p = XML_ParserCreate(NULL);
-        XML_SetUserData(p, &ctx);
-        XML_SetElementHandler(p, mp_xml_ini, mp_xml_fim);
-        XML_SetCharacterDataHandler(p, mp_xml_txt);
-        int ok = XML_Parse(p, b, nb, 1);
-        XML_ParserFree(p); free(b);
-        if (ok == XML_STATUS_ERROR || ctx.erro || !ctx.raiz) {
-            mp_xml_libera(ctx.raiz);
-            char msg[128]; snprintf(msg, sizeof(msg), "Error: xml invalido");
-            return devolve_texto(vm, out, msg, (int)strlen(msg));
-        }
-        int rc = mp_no_para_dict(vm, ctx.raiz, out);
-        mp_xml_libera(ctx.raiz);
-        return rc;
-    }
-    if (!strcmp(ext, "html") || !strcmp(ext, "htm")) {
-        char *b; int nb;
-        if (mp_le_arquivo(caminho, &b, &nb) != 0) return erro_sistema(vm, errno, caminho, NULL);
-        int rc = mp_html_limpo(vm, b, nb, out);
-        free(b);
-        return rc;
-    }
-    /* texto puro */
-    char *b; int nb;
-    if (mp_le_arquivo(caminho, &b, &nb) != 0) return erro_sistema(vm, errno, caminho, NULL);
-    int rc = devolve_texto(vm, out, b, nb);
-    free(b);
-    return rc;
-}
-
-static int mod_mp_load(VM *vm, Value *args, int n, Value *out)
-{
-    EXIGE_ARGS(vm, "load", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "load() argument 1 must be str, not %s",
-                                  nome_do_tipo_valor(args[0]));
-    if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
-    const char *caminho = COMO_STRING(args[0])->chars;
-    if (!existe_arquivo(caminho)) {
-        char msg[600]; snprintf(msg, sizeof(msg), "Error: arquivo não encontrado: %.400s", caminho);
-        return devolve_texto(vm, out, msg, (int)strlen(msg));
-    }
-    char *b; int nb;
-    if (mp_le_arquivo(caminho, &b, &nb) != 0) return erro_sistema(vm, errno, caminho, NULL);
-    PSString *by = novo_bytes(vm, b, nb); free(b);
-    if (!by) BERRO(vm, "MemoryError", "sem memoria");
-    *out = MK_OBJ(by);
-    return 0;
-}
-
-static int mod_mp_src(VM *vm, Value *args, int n, Value *out)
-{
-    EXIGE_ARGS(vm, "src", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "src() argument 1 must be str, not %s",
-                                  nome_do_tipo_valor(args[0]));
-    if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
-    char abs[PS_CAMINHO_MAX];
-    if (caminho_abs(COMO_STRING(args[0])->chars, abs, sizeof(abs)) != 0 && !abs[0])
-        return erro_sistema(vm, ENAMETOOLONG, COMO_STRING(args[0])->chars, NULL);
-    return devolve_texto(vm, out, abs, (int)strlen(abs));
-}
-
-/* valor -> texto pra escrever numa célula/arquivo */
-static int mp_valor_txt(VM *vm, Value v, char *out, size_t cap)
-{
-    TXTBUF_AUTO t = {0};
-    if (valor_para_texto(&t, &v, 0) != 0) { return -1; }
-    snprintf(out, cap, "%.*s", t.n, t.b ? t.b : "");
-    return 0;
-}
-
-/* content é número? (pra escrever célula xlsx como número) */
-static int mp_eh_num(Value v) { return v.t == V_INT || v.t == V_FLOAT; }
-
-static int mod_mp_write(VM *vm, Value *args, int n, Value *out)
-{
-    /* write(content, column, celula, target) — nomeado no uso real */
-    Value content = n > 0 ? args[0] : MK_NULL();
-    int column = (n > 1 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
-    int celula = (n > 2 && args[2].t == V_INT) ? (int)args[2].as.i : 0;
-    const char *target = (n > 3 && EH_STRING(args[3])) ? COMO_STRING(args[3])->chars : "";
-    if (n > 3 && EH_STRING(args[3]) && CAMINHO_SEM_NUL(vm, COMO_STRING(args[3]), "o caminho do target=") != 0)
-        return -1;
-    if (!target[0]) { PSManpuRes *r = novo_manpures(vm, 0, "Error: target vazio"); *out = MK_OBJ(r); return 0; }
-    char ext[32]; mp_ext(target, ext, sizeof(ext));
-    char valtxt[4096];
-    if (mp_valor_txt(vm, content, valtxt, sizeof(valtxt)) != 0) BERRO(vm, "MemoryError", "sem memoria");
-
-    if (!strcmp(ext, "xlsx") || !strcmp(ext, "xls")) {
-        PSGrade g; char erro[256];
-        if (existe_arquivo(target)) { if (ps_xlsx_le(target, &g, erro, sizeof(erro)) != 0) ps_grade_init(&g); }
-        else ps_grade_init(&g);
-        ps_grade_set(&g, celula, column, valtxt, mp_eh_num(content) ? 'n' : 's');
-        int ok = ps_xlsx_escreve(target, &g, erro, sizeof(erro));
-        ps_grade_libera(&g);
-        PSManpuRes *r = novo_manpures(vm, ok == 0, ok == 0 ? "Success" : "Error");
-        *out = MK_OBJ(r);
-        return 0;
-    }
-    if (!strcmp(ext, "csv")) {
-        PSGrade g; char erro[256];
-        if (existe_arquivo(target)) {
-            /* recarrega via csv simples pra grade */
-            char *b; int nb; ps_grade_init(&g);
-            if (mp_le_arquivo(target, &b, &nb) == 0) {
-                int r0 = 0, c0 = 0, i = 0, ini = 0;
-                for (; i <= nb; i++) {
-                    if (i == nb || b[i] == '\n' || b[i] == ',') {
-                        char tmp[1024]; int ln = i - ini; if (ln > 1023) ln = 1023;
-                        memcpy(tmp, b + ini, ln); tmp[ln] = 0;
-                        if (ln > 0 && tmp[ln-1]=='\r') tmp[ln-1]=0;
-                        ps_grade_set(&g, r0, c0, tmp, 's');
-                        if (i < nb && b[i] == ',') c0++;
-                        else { r0++; c0 = 0; }
-                        ini = i + 1;
-                    }
-                }
-                free(b);
-            }
-        } else ps_grade_init(&g);
-        ps_grade_set(&g, celula, column, valtxt, 's');
-        /* escreve csv simples */
-        FILE *f = fopen(target, "wb");
-        if (f) {
-            for (int r0 = 0; r0 < g.nlin; r0++) {
-                for (int c0 = 0; c0 < g.ncols[r0]; c0++) { if (c0) fputc(',', f); fputs(ps_grade_get(&g, r0, c0), f); }
-                fputc('\n', f);
-            }
-            fclose(f);
-        }
-        ps_grade_libera(&g);
-        (void)erro;
-        PSManpuRes *r = novo_manpures(vm, f != NULL, f != NULL ? "Success" : "Error");
-        *out = MK_OBJ(r);
-        return 0;
-    }
-    /* texto: adiciona ao final */
-    FILE *f = fopen(target, "a");
-    if (!f) { PSManpuRes *r = novo_manpures(vm, 0, "Error"); *out = MK_OBJ(r); return 0; }
-    fputs(valtxt, f); fclose(f);
-    PSManpuRes *r = novo_manpures(vm, 1, "Success");
-    *out = MK_OBJ(r);
-    return 0;
-}
-
-static int mod_mp_remove(VM *vm, Value *args, int n, Value *out)
-{
-    /* remove(value, content, column, celula, amount, target) */
-    const char *value = (n > 0 && EH_STRING(args[0])) ? COMO_STRING(args[0])->chars : "";
-    const char *content = (n > 1 && EH_STRING(args[1])) ? COMO_STRING(args[1])->chars : "";
-    const char *amount = (n > 4 && EH_STRING(args[4])) ? COMO_STRING(args[4])->chars : "full";
-    const char *target = (n > 5 && EH_STRING(args[5])) ? COMO_STRING(args[5])->chars : "";
-    if (n > 5 && EH_STRING(args[5]) && CAMINHO_SEM_NUL(vm, COMO_STRING(args[5]), "o caminho do target=") != 0)
-        return -1;
-    const char *alvo = value[0] ? value : content;
-    if (!target[0] || !existe_arquivo(target)) {
-        PSManpuRes *r = novo_manpures(vm, 0, "Error: arquivo não encontrado");
-        *out = MK_OBJ(r); return 0;
-    }
-    if (!alvo[0]) { PSManpuRes *r = novo_manpures(vm, 0, "Error: forneça value para remover"); *out = MK_OBJ(r); return 0; }
-    char *b; int nb;
-    if (mp_le_arquivo(target, &b, &nb) != 0) { PSManpuRes *r = novo_manpures(vm, 0, "Error"); *out = MK_OBJ(r); return 0; }
-    /* substitui: full = tira tudo; mei = tira a metade INICIAL de cada
-     * ocorrência (sobra a metade final: `alvo + meio`) */
-    SBUF_AUTO saida = {0};
-    int la = (int)strlen(alvo);
-    int meio = la / 2;
-    for (int i = 0; i < nb; ) {
-        if (la > 0 && i + la <= nb && memcmp(b + i, alvo, (size_t)la) == 0) {
-            if (strcmp(amount, "mei") == 0) sb_bytes(&saida, alvo + meio, la - meio);
-            i += la;
-        } else { sb_bytes(&saida, b + i, 1); i++; }
-    }
-    free(b);
-    /* `ok` so olhava o fopen: gravacao que falhava virava "Success". */
-    FILE *f = fopen(target, "wb");
-    int ok = (f != NULL) && grava_e_fecha(f, saida.b ? saida.b : "", (size_t)saida.n) == 0;
-    PSManpuRes *r = novo_manpures(vm, ok, ok ? "Success" : "Error");
-    *out = MK_OBJ(r);
-    return 0;
-}
-
-/* ── mp.open() / ManpuFile ──────────────────────────────────────────────── */
-/* Arquivo carregado em memória; `write` edita, `save` persiste, e o `using`
- * salva ao sair (o __exit__ do wrapper). csv/xlsx viram PSGrade; o resto é
- * texto puro. O `encoding` do wrapper é aceito e ignorado (utf-8 sempre). */
-
-/* CSV cru -> PSGrade (strings; o read() zipa com o header) */
-static int mp_csv_para_grade(const char *texto, int tam, PSGrade *g)
-{
-    ps_grade_init(g);
-    CsvLeitor c = { texto, tam, 0 };
-    SBUF_AUTO campo = {0};
-    int lin = 0, col = 0;
-    while (c.i < c.n) {
-        /* linha vazia = ZERO células (o csv.reader dá `[]`, não `['']`) —
-         * consome a quebra e pula a linha sem criar célula */
-        if (col == 0 && (c.s[c.i] == '\n' || c.s[c.i] == '\r')) {
-            if (c.s[c.i] == '\r' && c.i + 1 < c.n && c.s[c.i + 1] == '\n') c.i++;
-            c.i++;
-            /* registra a linha vazia na grade (nlin conta, ncols = 0) */
-            if (lin >= g->nlin) { ps_grade_set(g, lin, 0, "", 0); if (lin < g->nlin) g->ncols[lin] = 0; }
-            lin++;
-            continue;
-        }
-        int fim_linha = 0;
-        if (csv_campo(&c, &campo, &fim_linha) != 0) { return -1; }
-        char *val = malloc((size_t)campo.n + 1);
-        if (!val) { return -1; }
-        memcpy(val, campo.b ? campo.b : "", (size_t)campo.n);
-        val[campo.n] = '\0';
-        int rc = ps_grade_set(g, lin, col, val, 's');
-        free(val);
-        if (rc != 0) { return -1; }
-        if (fim_linha) { lin++; col = 0; }
-        else col++;
-    }
-    return 0;
-}
-
-/* PSGrade -> CSV com o quoting da RFC 4180 (aspas quando tem , " \r \n;
- * aspas internas dobradas; linhas terminam \r\n) */
-static int mp_grade_para_csv(const PSGrade *g, SBuf *saida)
-{
-    for (int r = 0; r < g->nlin; r++) {
-        for (int c = 0; c < g->ncols[r]; c++) {
-            if (c && sb_bytes(saida, ",", 1) != 0) return -1;
-            const char *v = ps_grade_get(g, r, c);
-            int precisa = strpbrk(v, ",\"\r\n") != NULL;
-            if (precisa) {
-                if (sb_bytes(saida, "\"", 1) != 0) return -1;
-                for (const char *p = v; *p; p++) {
-                    if (*p == '"' && sb_bytes(saida, "\"", 1) != 0) return -1;
-                    if (sb_bytes(saida, p, 1) != 0) return -1;
-                }
-                if (sb_bytes(saida, "\"", 1) != 0) return -1;
-            } else if (sb_bytes(saida, v, (int)strlen(v)) != 0) return -1;
-        }
-        if (sb_bytes(saida, "\r\n", 2) != 0) return -1;
-    }
-    return 0;
-}
-
-static int mod_mp_open(VM *vm, Value *args, int n, Value *out)
-{
-    if (n < 1 || n > 2) return erro_aridade(vm, "open", 1, 2, n);
-    if (!EH_STRING(args[0]))
-        BERRO(vm, "TypeError", "open() argument 1 must be str, not %s",
-                      nome_do_tipo_valor(args[0]));
-    if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
-    const char *caminho = COMO_STRING(args[0])->chars;
-    char ext[32]; mp_ext(caminho, ext, sizeof(ext));
-
-    PSManpuFile *m = calloc(1, sizeof(PSManpuFile));
-    if (!m) BERRO(vm, "MemoryError", "sem memoria");
-    m->obj.type = OBJ_MANPU_FILE; m->obj.marked = 0;
-    m->obj.next = vm->objetos; vm->objetos = (Obj *)m;
-    m->caminho = strdup(caminho);
-    m->texto = NULL; m->ntexto = 0;
-    ps_grade_init(&m->grade);
-    vm->alocado += sizeof(PSManpuFile);
-
-    if (!strcmp(ext, "csv")) {
-        m->modo = 1;
-        if (existe_arquivo(caminho)) {
-            char *b; int nb;
-            if (mp_le_arquivo(caminho, &b, &nb) == 0) {
-                mp_csv_para_grade(b, nb, &m->grade);
-                free(b);
-            }
-        }
-    } else if (!strcmp(ext, "xlsx") || !strcmp(ext, "xls")) {
-        m->modo = 2;
-        if (existe_arquivo(caminho)) {
-            char erro[256];
-            if (ps_xlsx_le(caminho, &m->grade, erro, sizeof(erro)) != 0)
-                ps_grade_init(&m->grade);   /* arquivo ruim = workbook vazio */
-        }
-    } else {
-        m->modo = 0;
-        if (existe_arquivo(caminho)) {
-            char *b; int nb;
-            if (mp_le_arquivo(caminho, &b, &nb) == 0) { m->texto = b; m->ntexto = (size_t)nb; }
-        }
-        if (!m->texto) { m->texto = strdup(""); m->ntexto = 0; }
-    }
-    *out = MK_OBJ(m);
-    return 0;
-}
-
-/* write(content, column, cell, celula, init, sep, size) — porta fiel do
- * ManpuFile.write; devolve ManpuResult, nunca levanta erro. */
-static int met_mpf_write(VM *vm, Value alvo, Value *args, int n, Value *out)
-{
-    PSManpuFile *m = COMO_MPFILE(alvo);
-    Value content = n > 0 ? args[0] : jk_str_val(vm, "");
-    /* column: int ou "full" */
-    int col = 0, col_full = 0;
-    if (n > 1) {
-        if (args[1].t == V_INT) col = (int)args[1].as.i;
-        else if (EH_STRING(args[1]) && !strcmp(COMO_STRING(args[1])->chars, "full")) col_full = 1;
-    }
-    /* cell/celula: int ou "full" (cell ganha) */
-    Value cel = MK_UNSET();
-    if (n > 2 && args[2].t != V_UNSET && args[2].t != V_NULL) cel = args[2];
-    else if (n > 3 && args[3].t != V_UNSET && args[3].t != V_NULL) cel = args[3];
-    int cel_full = EH_STRING(cel) && !strcmp(COMO_STRING(cel)->chars, "full");
-    long cel_idx = cel.t == V_INT ? cel.as.i : 0;
-    long init = (n > 4 && args[4].t == V_INT) ? args[4].as.i : 0;
-    const char *sep = (n > 5 && EH_STRING(args[5])) ? COMO_STRING(args[5])->chars : "\n";
-    long size = (n > 6 && args[6].t == V_INT) ? args[6].as.i : 0;
-
-    /* texto do conteúdo (bytes decodifica; resto é str()) */
-    TXTBUF_AUTO t = {0};
-    char *texto; int ntexto;
-    if (EH_BYTES(content)) { texto = COMO_BYTES(content)->chars; ntexto = COMO_BYTES(content)->len; }
-    else {
-        if (valor_para_texto(&t, &content, 0) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
-        texto = t.b ? t.b : ""; ntexto = t.n;
-    }
-
-    /* divide em partes: por tamanho fixo ou pelo separador */
-    char **partes = NULL; int nprt = 0, cap = 8;
-    partes = malloc(sizeof(char *) * (size_t)cap);
-    if (!partes) { MERRO(vm, "MemoryError", "sem memoria"); }
-    if (size > 0) {
-        for (int i = 0; i < ntexto; i += (int)size) {
-            int fim = i + (int)size > ntexto ? ntexto : i + (int)size;
-            if (nprt == cap) {
-                cap *= 2;
-                /* Por temporária: sem ela o realloc que falha zerava `partes`
-                 * e o `partes[nprt] = malloc(...)` abaixo escrevia em NULL,
-                 * levando junto todos os pedaços já separados. */
-                char **np2 = realloc(partes, sizeof(char *) * (size_t)cap);
-                if (!np2) {
-                    for (int k = 0; k < nprt; k++) free(partes[k]);
-                    free(partes);
-                    MERRO(vm, "MemoryError", "sem memoria");
-                }
-                partes = np2;
-            }
-            partes[nprt] = malloc((size_t)(fim - i) + 1);
-            /* Sem esta checagem o `memcpy` abaixo escreve em NULL — segfault
-             * achado pela varredura (`make oom`, xlsx, alocação 132). */
-            if (!partes[nprt]) {
-                for (int k = 0; k < nprt; k++) free(partes[k]);
-                free(partes);
-                MERRO(vm, "MemoryError", "sem memoria");
-            }
-            memcpy(partes[nprt], texto + i, (size_t)(fim - i));
-            partes[nprt][fim - i] = '\0';
-            nprt++;
-        }
-        if (nprt == 0) { partes[0] = strdup(""); nprt = 1; }
-    } else {
-        size_t nsep = strlen(sep);
-        const char *p = texto, *fim_t = texto + ntexto;
-        for (;;) {
-            const char *ache = nsep ? memmem(p, (size_t)(fim_t - p), sep, nsep) : NULL;
-            const char *fimp = ache ? ache : fim_t;
-            if (nprt == cap) {
-                cap *= 2;
-                /* Por temporária: sem ela o realloc que falha zerava `partes`
-                 * e o `partes[nprt] = malloc(...)` abaixo escrevia em NULL,
-                 * levando junto todos os pedaços já separados. */
-                char **np2 = realloc(partes, sizeof(char *) * (size_t)cap);
-                if (!np2) {
-                    for (int k = 0; k < nprt; k++) free(partes[k]);
-                    free(partes);
-                    MERRO(vm, "MemoryError", "sem memoria");
-                }
-                partes = np2;
-            }
-            partes[nprt] = malloc((size_t)(fimp - p) + 1);
-            if (!partes[nprt]) {
-                for (int k = 0; k < nprt; k++) free(partes[k]);
-                free(partes);
-                MERRO(vm, "MemoryError", "sem memoria");
-            }
-            memcpy(partes[nprt], p, (size_t)(fimp - p));
-            partes[nprt][fimp - p] = '\0';
-            nprt++;
-            if (!ache) break;
-            p = ache + nsep;
-        }
-    }
-    /* parts = parts[init:] */
-    int desloc = init < 0 ? 0 : (init > nprt ? nprt : (int)init);
-    char **prt = partes + desloc;
-    int np = nprt - desloc;
-
-    const char *status = NULL;   /* NULL = sucesso */
-    if (m->modo == 1) {
-        /* csv: garante linhas, depois grava */
-        long alvo_l = init + np;
-        for (long r = m->grade.nlin; r <= alvo_l; r++) ps_grade_set(&m->grade, (int)r, 0, "", 0);
-        if (cel_full) {
-            for (int i = 0; i < np; i++) ps_grade_set(&m->grade, i, col, prt[i], 's');
-        } else {
-            ps_grade_set(&m->grade, (int)cel_idx, col, texto, 's');
-        }
-    } else if (m->modo == 2) {
-        int max_row = m->grade.nlin;
-        if (cel_full && col_full) {
-            /* O limite é a largura que a planilha JÁ tem. Numa planilha vazia
-             * não existe largura pra estourar — é a primeira linha que a
-             * define. Antes, `max_col` começava em 1 e era comparado mesmo com
-             * `nlin == 0`: qualquer primeira linha de duas colunas num .xlsx
-             * novo era recusada com "colunas insuficientes", e não havia
-             * ordem de chamadas que contornasse. */
-            int max_col = 0;
-            for (int r = 0; r < m->grade.nlin; r++)
-                if (m->grade.ncols[r] > max_col) max_col = m->grade.ncols[r];
-            if (m->grade.nlin > 0 && np > max_col)
-                status = "Error: Arquivo xlsx tem colunas insuficientes";
-            else for (int i = 0; i < np; i++) ps_grade_set(&m->grade, max_row, i, prt[i], 's');
-        } else if (cel_full) {
-            for (int i = 0; i < np; i++) ps_grade_set(&m->grade, max_row + i, col, prt[i], 's');
-        } else {
-            ps_grade_set(&m->grade, (int)cel_idx, col, texto, 's');
-        }
-    } else {
-        /* texto puro: full junta as partes com o sep; senão anexa o texto */
-        SBuf b = {0};
-        sb_bytes(&b, m->texto ? m->texto : "", (int)m->ntexto);
-        if (cel_full) {
-            for (int i = 0; i < np; i++) {
-                if (i) sb_bytes(&b, sep, (int)strlen(sep));
-                sb_bytes(&b, prt[i], (int)strlen(prt[i]));
-            }
-        } else sb_bytes(&b, texto, ntexto);
-        free(m->texto);
-        m->ntexto = (size_t)b.n;
-        m->texto = b.b ? b.b : strdup("");
-        if (b.b) { char *nt = realloc(b.b, (size_t)b.n + 1); if (nt) { nt[b.n] = '\0'; m->texto = nt; } }
-    }
-
-    for (int i = 0; i < nprt; i++) free(partes[i]);
-    free(partes);
-    PSManpuRes *r = novo_manpures(vm, status == NULL, status ? status : "Success");
-    if (!r) MERRO(vm, "MemoryError", "sem memoria");
-    *out = MK_OBJ(r);
-    return 0;
-}
-
-static int met_mpf_read(VM *vm, Value alvo, Value *args, int n, Value *out)
-{
-    (void)args;
-    if (n != 0) return erro_aridade(vm, "read", 0, 0, n);
-    PSManpuFile *m = COMO_MPFILE(alvo);
-    if (m->modo == 1) {
-        /* csv: zip(header, row) com valores CRUS (strings), truncando no
-         * menor — é o dict(zip(...)) literal do wrapper */
-        PSList *lista = lista_com_cap(vm, 4, OBJ_LIST);
-        if (!lista) MERRO(vm, "MemoryError", "sem memoria");
-        *out = MK_OBJ(lista);
-        if (fixa_raiz(vm, *out) != 0) MERRO(vm, "RuntimeError", "estouro");
-        if (m->grade.nlin == 0) { vm->sp--; return 0; }
-        int ncab = m->grade.ncols[0];
-        for (int r = 1; r < m->grade.nlin; r++) {
-            PSDict *d = novo_dict(vm, ncab + 1);
-            if (!d) { vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
-            Value dv = MK_OBJ(d);
-            if (fixa_raiz(vm, dv) != 0) { vm->sp--; MERRO(vm, "RuntimeError", "estouro"); }
-            int lim = m->grade.ncols[r] < ncab ? m->grade.ncols[r] : ncab;
-            for (int c = 0; c < lim; c++) {
-                Value k = jk_str_val(vm, ps_grade_get(&m->grade, 0, c));
-                Value v = jk_str_val(vm, ps_grade_get(&m->grade, r, c));
-                if (dict_set(vm, d, &k, &v) != 0) { vm->sp -= 2; MERRO(vm, "MemoryError", "sem memoria"); }
-            }
-            vm->sp--;
-            if (lista_push(vm, lista, dv) != 0) { vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
-        }
-        vm->sp--;
-        return 0;
-    }
-    if (m->modo == 2)
-        return mp_grade_para_lista(vm, &m->grade, out);
-    return devolve_texto(vm, out, m->texto ? m->texto : "", (int)m->ntexto);
-}
-
-/* persiste no disco; usado pelo save() e pelo `using` ao sair */
-static int mpf_salva(PSManpuFile *m)
-{
-    if (m->modo == 1) {
-        SBUF_AUTO b = {0};
-        if (mp_grade_para_csv(&m->grade, &b) != 0) { return -1; }
-        FILE *f = fopen(m->caminho, "wb");
-        if (!f) { return -1; }
-        return grava_e_fecha(f, b.b, (size_t)b.n);
-    }
-    if (m->modo == 2) {
-        char erro[256];
-        return ps_xlsx_escreve(m->caminho, &m->grade, erro, sizeof(erro));
-    }
-    FILE *f = fopen(m->caminho, "wb");
-    if (!f) return -1;
-    if (grava_e_fecha(f, m->texto, (size_t)m->ntexto) != 0) return -1;
-    return 0;
-}
-static int met_mpf_save(VM *vm, Value alvo, Value *args, int n, Value *out)
-{
-    (void)args; (void)n;
-    int ok = mpf_salva(COMO_MPFILE(alvo)) == 0;
-    PSManpuRes *r = novo_manpures(vm, ok, ok ? "Success" : "Error");
-    if (!r) MERRO(vm, "MemoryError", "sem memoria");
-    *out = MK_OBJ(r);
-    return 0;
-}
-
-static const MembroMod MOD_MANPU[] = {
-    { "read", mod_mp_read, 0, "filepath" },
-    { "load", mod_mp_load, 0, "filepath" },
-    { "write", mod_mp_write, 0, "content=Null,column=Null,celula=Null,target=Null" },
-    { "remove", mod_mp_remove, 0, "value=Null,content=Null,column=Null,celula=Null,amount=Null,target=Null" },
-    { "src", mod_mp_src, 0, "filepath" },
-    { "open", mod_mp_open, 0, "target,encoding=Null" },
-};
-
 /* ── módulo psodbc (db) ─────────────────────────────────────────────────── */
 /* Fachada única sobre sqlite/postgres/mysql/mssql (ps_db.c). DbConnection dá
  * cursor(); DbCursor executa e bufferiza; fetch* devolvem lista de dicts com
@@ -22969,7 +22087,7 @@ static int jk_converte_retorno(VM *vm, Value res, int *status, const char **ctyp
 static volatile sig_atomic_t g_jk_parar = 0;
 static void jk_sigint(int s) { (void)s; g_jk_parar = 1; }
 
-/* acha o slot global de um nome (pra injetar request/channel) ou -1 */
+/* acha o slot global de um nome (pra injetar o request) ou -1 */
 static int jk_slot_global(VM *vm, const char *nome)
 {
     if (!vm->nomes_globais) return -1;
@@ -24815,7 +23933,6 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     /* injeta o proxy request no slot global correspondente */
     int slot_req = jk_slot_global(vm, "request");
     if (slot_req >= 0) vm->globals[slot_req] = jk_proxy_singleton(vm);
-    vm->jk_app = alvo;
 
     if (workers == 1) {
         printf("[jinker] servidor rodando em %s://%s:%d\n", proto, host, porta);
@@ -25019,7 +24136,6 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
 
     ps_sock_fecha(fd);
     if (ssl_ctx) ps_jk_tls_ctx_solta(ssl_ctx);
-    vm->jk_app = MK_NULL();
     *out = MK_NULL();
     return 0;
 }
@@ -25253,12 +24369,11 @@ static const ModuloNat MODULOS[] = {
     { "mail", MOD_MAIL, (int)(sizeof(MOD_MAIL) / sizeof(MOD_MAIL[0])) },
     { "request", MOD_REQUEST, (int)(sizeof(MOD_REQUEST) / sizeof(MOD_REQUEST[0])) },
     { "qrcode", MOD_QRCODE, (int)(sizeof(MOD_QRCODE) / sizeof(MOD_QRCODE[0])) },
-    { "manpu", MOD_MANPU, (int)(sizeof(MOD_MANPU) / sizeof(MOD_MANPU[0])) },
     { "psodbc", MOD_PSODBC, (int)(sizeof(MOD_PSODBC) / sizeof(MOD_PSODBC[0])) },
-    /* I19: os apelidos SAIRAM. Eram `requests`, `qr`, `mp`, `db` e `sqlite`,
-     * cada um um segundo nome pro mesmo modulo — e dois nomes pra mesma coisa
+    /* I19: os apelidos SAIRAM. Eram `requests`, `qr`, `db` e `sqlite`, cada
+     * um um segundo nome pro mesmo modulo — e dois nomes pra mesma coisa
      * multiplicam doc, teste e completion sem dar nada em troca. Os canonicos
-     * sao `request`, `qrcode`, `manpu`, `psodbc` e `sqlite3`.
+     * sao `request`, `qrcode`, `psodbc` e `sqlite3`.
      * Quem importar o nome antigo recebe ImportError dizendo qual usar. */
     { "jinker", MOD_JINKER, (int)(sizeof(MOD_JINKER) / sizeof(MOD_JINKER[0])) },
     { "sockets", MOD_SOCKETS, (int)(sizeof(MOD_SOCKETS) / sizeof(MOD_SOCKETS[0])) },
@@ -30612,11 +29727,6 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     cn->fechado = 1;
                 }
             }
-            if (EH_MPFILE(v)) {
-                /* `using mp.open(...)` SALVA ao sair — é o __exit__ do
-                 * ManpuFile no wrapper (save + close do workbook) */
-                mpf_salva(COMO_MPFILE(v));
-            }
             /* valor sem `close` passa batido: `using` sobre coisa comum não
              * é erro, só não tem o que fechar */
             break;
@@ -33125,7 +32235,6 @@ static const char *jm_rotulo_tabela(int t)
         case T_MET_WSCONN:    return "WsConnection";
         case T_MET_QRBUILD:   return "PoolQRCode";
         case T_MET_QRIMAGE:   return "QRImage";
-        case T_MET_MPFILE:    return "ManpuFile";
         case T_MET_SOCKET:    return "socket";
         case T_MET_PROCESSO:  return "Process";
         case T_MET_REGEX:     return "Pattern";
@@ -33370,11 +32479,11 @@ void ps_metadata_json(FILE *saida)
     }
     /* Tipos que EXISTEM em runtime (o `type()` devolve estes nomes) mas não têm
      * tabela de método. Publicados VAZIOS de propósito — assim o editor resolve
-     * `retorna: "ManpuResult"` e mostra corretamente que não há membro, em vez
-     * de não achar o tipo e ficar mudo. */
+     * `retorna: "JinkerRequest"` e mostra corretamente que não há membro, em
+     * vez de não achar o tipo e ficar mudo. */
     {
-        const char *sem_membro[] = { "ManpuResult", "JinkerRequest" };
-        for (int q = 0; q < 2; q++) {
+        const char *sem_membro[] = { "JinkerRequest" };
+        for (int q = 0; q < (int)(sizeof(sem_membro) / sizeof(sem_membro[0])); q++) {
             fprintf(f, ",\n  ");
             jm_txt(f, sem_membro[q]);
             fprintf(f, ": []");
@@ -33961,9 +33070,9 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
             if (k >= 0) { vm.globals[i] = MK_TIPO(TIPO_EXC_BASE + k); ligou = 1; }
         }
     }
-    /* Nomes das globais sobrevivem ao prog: o jinker usa pra achar os slots
-     * `request`/`channel` e pré-ligar os proxies na construção do app — o
-     * análogo do interpretador injetar esses nomes no escopo do handler. */
+    /* Nomes das globais sobrevivem ao prog: o jinker usa pra achar o slot do
+     * `request` e pré-ligar o proxy na construção do app — o análogo do
+     * interpretador injetar esse nome no escopo do handler. */
     vm.nomes_globais = calloc((size_t)vm.nglobals, sizeof(char *));
     if (vm.nomes_globais) {
         vm.n_nomes_globais = prog->nglobais;

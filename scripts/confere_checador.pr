@@ -66,18 +66,16 @@ flo PRAZO_UM = 4.0
 # de uma propriedade ou de um método de outro dono, ou de uma função de
 # módulo que cria arquivo (na pasta da rodada).
 dict DONOS_A_MAIS = {
-    "ChannelManager": ["import jinker", "jinker.Jinker().channel"],
-    "SocketNamespace": ["import jinker", "jinker.Jinker().socket"],
-    "SocketEmitter": ["import jinker", "jinker.Jinker().socket()"],
     "RouteRegistrar": ["import jinker", "jinker.Jinker().route(\"/p2\")"],
     "DbConnection": ["import psodbc", "psodbc.connect(driver=\"sqlite\", base=\"p2.db\")"],
-    "DbCursor": ["import psodbc", "psodbc.connect(driver=\"sqlite\", base=\"p2.db\").cursor()"],
-    "ManpuFile": ["import manpu", "manpu.open(\"p2.csv\")"]
+    "DbCursor": ["import psodbc", "psodbc.connect(driver=\"sqlite\", base=\"p2.db\").cursor()"]
 }
 
-# Os donos que só existem com a jinker no ar: onde a chamada roda (dentro da
-# rota, ou no cliente que fala com ela) e a expressão que cria o receptor.
-# `@P@` é a porta HTTP da rodada e `@W@` a do WebSocket (a seguinte).
+# Os donos que só existem com um servidor no ar: onde a chamada roda (dentro
+# da rota, ou no cliente que fala com ela) e a expressão que cria o receptor.
+# `@P@` é a porta HTTP da rodada e `@W@` a seguinte, a do par de eco do
+# WebSocket (`teste/ws_par.pr`: o servidor de WebSocket saiu da jinker no
+# 19.0.0, e o cliente ficou).
 dict DONOS_SERVIDOS = {
     "RequestProxy": ["rota", "request"],
     "PoolFileUpload": ["rota", "request.file(\"arquivo\")"],
@@ -696,7 +694,7 @@ dict funct com_portas(dict mb, int porta) {
 
 
 # A jinker da rodada: a rota /p2 (POST) com as chamadas vigiadas do membro de
-# rota, a /p2r que o cliente lê e o WebSocket /ws.
+# rota e a /p2r que o cliente lê.
 str funct servidor(dict mb, list cs, list indices, str pasta, int porta) {
     str s = ("import jinker\nfrom jinker import request\n" + anota_def(pasta)
              + "Jinker app = jinker.Jinker(name=\"p2\")\n"
@@ -709,7 +707,7 @@ str funct servidor(dict mb, list cs, list indices, str pasta, int porta) {
         }
     }
     return (s + "    return \"ok\"\n}\n@app.route(\"/p2r\")\nfunct p2_resposta() {\n"
-            + "    return {\"a\": 1}\n}\n@app.socket(\"/ws\")\nfunct p2_ws() {\n    return \"eco\"\n}\n"
+            + "    return {\"a\": 1}\n}\n"
             + "if __name__ == \"main\" {\n    app(debug=False, host=\"127.0.0.1\", port=" + str(porta)
             + ")\n}\n")
 }
@@ -717,10 +715,11 @@ str funct servidor(dict mb, list cs, list indices, str pasta, int porta) {
 
 # O cliente da rodada: sobe a jinker (no mesmo grupo de processos, que o
 # `kill` leva no fim), espera a porta, manda o POST com um arquivo (as
-# chamadas de rota rodam dentro dele) e roda as chamadas de cliente.
+# chamadas de rota rodam dentro dele) e roda as chamadas de cliente. Pro
+# WebSocket, sobe também o par de eco na porta seguinte e espera por ela.
 str funct cliente(dict mb, list cs, list indices, str pasta, int porta) {
     str url = "http://127.0.0.1:" + str(porta)
-    str s = ("import os\nimport sys\nimport request\n" + anota_def(pasta)
+    str s = ("import os\nimport sys\nimport request\nimport sockets\n" + anota_def(pasta)
              + "Null funct p2_grava(str c, str t) {\n    os.writeFile(c, t)\n}\n"
              + "p2_grava(\"up.txt\", \"conteudo do upload\")\n"
              + "Process p2_srv = os.run([sys.executable, \"srv.pr\"], capture=\"live\")\n"
@@ -730,6 +729,18 @@ str funct cliente(dict mb, list cs, list indices, str pasta, int porta) {
              + "        p2_pronto = True\n    } catch (Exception p2_e) {\n        sleep(0.05)\n    }\n"
              + "    p2_n = p2_n + 1\n}\n"
              + "if not p2_pronto {\n    p2_anota(\"SEM_SERVIDOR\")\n}\n")
+    if mb["dono"] == "WsConnection" {
+        str pw = str(porta + 1)
+        s = s + ("Process p2_par = os.run([sys.executable, \"par.pr\", \"" + pw + "\"], capture=\"live\")\n"
+                 + "p2_n = 0\np2_pronto = False\n"
+                 + "while p2_n < 100 and not p2_pronto {\n"
+                 + "    Object p2_s = sockets.socket(sockets.AF_INET, sockets.SOCK_STREAM)\n"
+                 + "    p2_pronto = p2_s.connect_ex((\"127.0.0.1\", " + pw + ")) == 0\n"
+                 + "    p2_s.close()\n"
+                 + "    if not p2_pronto {\n        sleep(0.05)\n    }\n"
+                 + "    p2_n = p2_n + 1\n}\n"
+                 + "if not p2_pronto {\n    p2_anota(\"SEM_SERVIDOR\")\n}\n")
+    }
     if mb["lado"] == "rota" {
         s = s + ("try {\n    Object p2_post = request.post(\"" + url + "/p2?a=1&b=2\", "
                  + "fields={\"campo\": \"valor\"}, file={\"arquivo\": {\"name\": \"up.txt\"}}, timeout=20)\n"
@@ -756,6 +767,9 @@ list funct roda_par(str trab, list prefixo, dict mb, list cs, list indices, bool
     os.mkdir(pasta)
     grava(pasta + "/srv.pr", servidor(mb, cs, indices, pasta, porta))
     grava(pasta + "/o.pr", cliente(mb, cs, indices, pasta, porta))
+    if mb["dono"] == "WsConnection" {
+        grava(pasta + "/par.pr", os.readFile("teste/ws_par.pr"))
+    }
     grava(pasta + "/entrada.txt", "")
     str volta = os.cwd()
     os.chdir(pasta)

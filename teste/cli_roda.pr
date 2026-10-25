@@ -354,6 +354,16 @@ r = roda([POOL, "--check"], entrada="int funct k(a = funct(int x) { return x + b
 confere("--check: lambda no padrão capturando o parâmetro de depois é NameError na lambda",
         "\"tipo\":\"NameError\"" in r["saida"] and "a lambda no padrão de 'a' captura 'b'" in r["saida"]
         and "\"linha\":1,\"coluna\":17" in r["saida"])
+# motor-33: o membro e a chamada do decorador passam pelo checador, no `.` e
+# no `(` (onde o acesso e a chamada da expressão apontam), com o fim do nome
+r = roda([POOL, "--check"], entrada="import os\n@os.naoexiste\nfunct r() {\n    return 1\n}\n")
+confere("--check: o membro do decorador que não existe, no `.`, até o fim do nome",
+        "module 'os' has no attribute 'naoexiste'" in r["saida"]
+        and "\"linha\":2,\"coluna\":4,\"l2\":2,\"c2\":14" in r["saida"])
+r = roda([POOL, "--check"], entrada="funct log(f) {\n    return f\n}\n@log()\nfunct r() {\n    return 1\n}\n")
+confere("--check: a chamada do decorador sem o argumento, no `(`, até o `)`",
+        "log() missing 1 required positional argument: 'f'" in r["saida"]
+        and "\"linha\":4,\"coluna\":5,\"l2\":4,\"c2\":7" in r["saida"])
 # Lote 6c: o gather e o `await` de lista sem catch levantam a primeira com a
 # outra na frase, e nenhuma das duas sobra pro aviso de tarefa sem `await`
 str TAREFAS_6C = "async str funct t(int n) {\n    sleep(0.01 * n)\n    raise Quebrou(\"tarefa \" + str(n))\n}\n"

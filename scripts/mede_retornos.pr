@@ -580,10 +580,9 @@ os.writeFile("@TMP@/pf.txt", "a\\nb\\n")
 })
 
 addEnd(GRUPOS, {
-    "nome": "qrcode/manpu/datasentity/mail offline",
+    "nome": "qrcode/datasentity/mail offline",
     "prep": '''import os
 import qrcode
-import manpu
 import mail
 import datasentity
 from datasentity import dataentity, asdict, astuple, aslist, asjson
@@ -601,7 +600,6 @@ mr_ent = MrP(nome="a")
 mr_q = qrcode.gen("a")
 mr_c = qrcode.QRCode()
 mr_im = qrcode.make("a")
-os.cmd("rm -f '@TMP@/mp.txt' '@TMP@/mp.xlsx'")
 os.writeFile("@TMP@/anexo.txt", "anexo")
 ''',
     "chamadas": [
@@ -621,17 +619,6 @@ os.writeFile("@TMP@/anexo.txt", "anexo")
         ["QRImage", "resize", 'mr_im.resize(10, 10)'],
         ["QRImage", "to_file", 'mr_im.to_file()'],
         ["QRImage", "name", 'mr_im.name'],
-        ["manpu", "write", 'manpu.write(content="ana", column=0, celula=0, target="@TMP@/mp.txt")',
-         'manpu.write(content="cabecalho", column=0, celula=0, target="@TMP@/mp.xlsx")'],
-        ["manpu", "read", 'manpu.read("@TMP@/mp.txt")', 'manpu.read("@TMP@/mp.xlsx")'],
-        ["manpu", "load", 'manpu.load("@TMP@/mp.txt")', 'manpu.load("@TMP@/mp.xlsx")'],
-        ["manpu", "src", 'manpu.src("@TMP@/mp.txt")'],
-        ["manpu", "open", 'manpu.open(target="@TMP@/mp.txt")'],
-        ["!", 'mr_mf = manpu.open(target="@TMP@/mp.txt")'],
-        ["ManpuFile", "read", 'mr_mf.read()'],
-        ["ManpuFile", "write", 'mr_mf.write(content="so isso", column=0, celula=0)'],
-        ["ManpuFile", "save", 'mr_mf.save()'],
-        ["manpu", "remove", 'manpu.remove(target="@TMP@/mp.txt", value="so isso")'],
         ["datasentity", "dataentity", 'datasentity.dataentity(MrQ)'],
         ["datasentity", "asdict", 'asdict(mr_ent)'],
         ["datasentity", "astuple", 'astuple(mr_ent)'],
@@ -842,8 +829,6 @@ mr_app2 = jinker.Jinker(name="mede2")
         ["Jinker", "patch", 'mr_app.patch("/e")'],
         ["Jinker", "delete", 'mr_app.delete("/f")'],
         ["Jinker", "middleware", 'mr_app.middleware()'],
-        ["Jinker", "channel", 'mr_app.channel'],
-        ["Jinker", "socket", 'mr_app.socket'],
         ["Jinker", "name", 'mr_app.name'],
         ["Jinker", "static_folder", 'mr_app.static_folder', 'mr_app2.static_folder'],
         ["Jinker", "static_url", 'mr_app.static_url', 'mr_app2.static_url'],
@@ -890,16 +875,6 @@ SRV_BLOCOS = {
         ["PoolFileUpload", "size", 'mr_f.size'],
         ["PoolFileUpload", "save", 'mr_f.save("@TMP@/up1.txt")'],
         ["PoolFileUpload", "move", 'mr_f.move("@TMP@/up2.txt")']
-    ],
-    "@CANAL@": [
-        ["ChannelManager", "emit", 'app.channel.emit("aviso", {"n": 1})'],
-        ["ChannelManager", "status", 'app.channel.status']
-    ],
-    "@SALA@": [
-        ["SocketEmitter", "emit", 'mr_envia.emit(jinker.request.text(), exclude_self=False)'],
-        ["SocketEmitter", "status_send", 'mr_envia.status_send()'],
-        ["SocketNamespace", "emit", 'app.socket.emit("y", exclude_self=False)'],
-        ["SocketNamespace", "status_send", 'app.socket.status_send()']
     ]
 }
 
@@ -953,25 +928,17 @@ funct mr_up() {
     return "ok"
 }
 
-@app.route("/canal")
-funct mr_canal() {
-@CANAL@
-    return "ok"
-}
-
-@app.socket("/sala", channel=True)
-funct mr_sala() {
-    mr_envia = app.socket()
-@SALA@
-}
-
 if __name__ == "main" {
     app(debug=False, host="127.0.0.1", port=@PORTA@)
 }
 '''
 
+# `W` é o par de eco do WebSocket (`teste/ws_par.pr`), que o `mede_jinker`
+# sobe junto: o servidor de WebSocket saiu da jinker no 19.0.0, e o cliente
+# (`request.ws_connect`) ficou.
 CLIENTE_PREP = '''import request
 import os
+import sockets
 U = "http://127.0.0.1:@PORTA@"
 W = "ws://127.0.0.1:@PORTA_WS@"
 mr_pronto = False
@@ -981,6 +948,17 @@ while mr_i < 100 and not mr_pronto {
         request.get(U + "/pronto")
         mr_pronto = True
     } catch (mr_e) {
+        sleep(0.1)
+    }
+    mr_i = mr_i + 1
+}
+mr_pronto = False
+mr_i = 0
+while mr_i < 100 and not mr_pronto {
+    mr_s = sockets.socket(sockets.AF_INET, sockets.SOCK_STREAM)
+    mr_pronto = mr_s.connect_ex(("127.0.0.1", @PORTA_WS@)) == 0
+    mr_s.close()
+    if not mr_pronto {
         sleep(0.1)
     }
     mr_i = mr_i + 1
@@ -998,7 +976,6 @@ CLIENTE = [
     ["request", "post", 'request.post(U + "/req/ana?q=1", body={"x": 1}, headers={"X-A": "v", "Cookie": "c=1"})'],
     ["request", "post", 'request.post(U + "/req2", body=[1, 2])'],
     ["request", "post", 'request.post(U + "/up", file={"arq": "@TMP@/envio.txt"})'],
-    ["request", "get", 'request.get(U + "/canal")'],
     ["!", 'mr_r = request.get(U + "/json")'],
     ["Response", "decode", 'mr_r.decode("utf-8")'],
     ["Response", "content_type", 'mr_r.content_type("application/json")'],
@@ -1015,8 +992,8 @@ CLIENTE = [
     ["Response", "size", 'mr_r.size'],
     ["Response", "status_code", 'mr_r.status_code'],
     ["Response", "text", 'mr_r.text'],
-    ["request", "ws_connect", 'request.ws_connect(W + "/sala")'],
-    ["!", 'mr_ws = request.ws_connect(W + "/sala")'],
+    ["request", "ws_connect", 'request.ws_connect(W + "/eco")'],
+    ["!", 'mr_ws = request.ws_connect(W + "/eco")'],
     ["WsConnection", "on_message", 'mr_ws.on_message(funct(m) { pass })'],
     ["WsConnection", "send", 'mr_ws.send("oi")'],
     ["!", 'sleep(1)'],
@@ -1034,8 +1011,11 @@ funct mede_jinker() {
     }
     os.writeFile(TMP + "/srv.pr", troca(ANOTA) + troca(fonte))
     os.cmd("cd '" + TMP + "' && setsid timeout 120 '" + POOL + "' '" + TMP + "/srv.pr' > '" + TMP + "/srv.out' 2>&1 &")
+    os.cmd("cd '" + TMP + "' && setsid timeout 120 '" + POOL + "' '" + REPO + "/teste/ws_par.pr' "
+           + str(PORTA_WEB + 1) + " > '" + TMP + "/par.out' 2>&1 &")
     saida = roda_programa("cliente", troca(ANOTA) + troca(CLIENTE_PREP) + "\n" + bloco(CLIENTE) + "\n", "", "/dev/null")
     os.cmd("pkill -f '" + TMP + "/srv.pr'")
+    os.cmd("pkill -f '" + REPO + "/teste/ws_par.pr'")
     conta = esperadas(CLIENTE, conta)
     srv_saida = ""
     if os.exists(TMP + "/srv.out") {
@@ -1272,13 +1252,18 @@ if __name__ == "main" {
     # e o contrario: o que a tabela gravada tem e este sistema nao publica
     # (`sockets.AF_PACKET`, `TCP_KEEPIDLE`, que o macOS nao tem) continua nela,
     # quando o dono existe aqui. Dono que nenhum sistema publica sai (o
-    # `__universal__` do `.type()`, que saiu no 18.0.0).
+    # `__universal__` do `.type()`, que saiu no 18.0.0). No Linux, onde a
+    # tabela e gerada, o membro que o motor nao publica saiu da linguagem (o
+    # `Jinker.channel`, com o WebSocket da jinker, no 19.0.0): sai da tabela
+    # tambem, mesmo com o dono ainda aqui.
+    bool no_linux = sys.platform() == "linux"
     dict donos_aqui = {}
     for each chave in publicados.keys() {
         donos_aqui[chave.split("|")[0]] = True
     }
     for each chave in gravada.keys() {
-        if not (chave in publicados) and not (chave in RES) and chave.split("|")[0] in donos_aqui {
+        bool do_outro = not (chave in publicados) and not (chave in RES) and chave.split("|")[0] in donos_aqui
+        if do_outro and not no_linux {
             finais[chave] = gravada[chave]
         }
     }

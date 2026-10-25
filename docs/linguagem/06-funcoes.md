@@ -868,8 +868,8 @@ f(b=1)   # TypeError: f() got an unexpected keyword argument 'b'
 Um `__init__` não pode ser `async` nem gerador — a instanciação vale o objeto,
 e não teria onde pôr o future: `TypeError: __init__() should return Null, not 'future'`.
 
-**Handler de framework roda o corpo no lugar.** A rota, o middleware e o
-socket do `jinker`, e o `on_message` de um WebSocket de saída, **esperam** o
+**Handler de framework roda o corpo no lugar.** A rota e o middleware do
+`jinker`, e o `on_message` de um WebSocket de saída, **esperam** o
 handler: uma `async funct` ali roda na fibra que atende a conexão, e vê a
 requisição dela. Um helper `async` aguardado de dentro do handler
 (`v = await ler_corpo()`) roda noutra fibra, que nasce com a mesma requisição —

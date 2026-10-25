@@ -31,7 +31,7 @@ cors(app, origins=["https://meusite.com"], local=False)   # cors.local() == fals
 | sem `Origin` (`curl`, Postman, outro backend) | passa | `403` |
 | `Origin: null` | `403` | passa só se `"null"` está na lista |
 
-A regra é a mesma nas rotas e no handshake do WebSocket. A recusa é sempre
+A regra vale em toda rota. A recusa é sempre
 `403` com `{"error": true, "code": 403, "message": "Origem não autorizada:
 ..."}` e **sem** `Access-Control-Allow-Origin`. Sem `origins` configurado o
 modo não tem efeito: lista vazia libera tudo.
@@ -58,4 +58,3 @@ funct estado() {
 
 - [`cors`](../cors.md) — configuração global (onde `local=` é definido)
 - [`cors.origins()`](../origins/origins.md) — as origens configuradas
-- [`socket`](../../socket/socket.md) — a origem vale no handshake

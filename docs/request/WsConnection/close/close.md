@@ -16,10 +16,10 @@ import request
 
 ## Uso
 
-```ps
+```ps sem-rodar: conecta num servidor WebSocket de fora
 import request
 
-conn = request.ws_connect("ws://localhost:8081/chat/geral")
+conn = request.ws_connect("ws://chat.example.com/chat/geral")
 conn.on_message(funct(msg) { post(msg) })
 
 # ... usa a conexão ...
@@ -32,7 +32,7 @@ conn.close()          # encerra quando terminar
 ## Exemplo: loop de chat até "sair"
 
 ```ps sem-rodar: conecta num servidor WebSocket de fora
-conn = request.ws_connect("ws://localhost:8081/chat/geral")
+conn = request.ws_connect("ws://chat.example.com/chat/geral")
 conn.on_message(funct(msg) { post(f"\n{msg}") })
 
 while (True) {

@@ -1,7 +1,7 @@
 # `Jinker(name="main", oauth=Null, static_folder=Null, static_url="/", route_prefix="")`
 
-O construtor da aplicação. Cria o objeto `app` onde tudo se pendura — rotas,
-sockets, middleware — e onde você configura segurança (rate limit, HTTPS) e
+O construtor da aplicação. Cria o objeto `app` onde tudo se pendura — rotas
+e middleware — e onde você configura segurança (rate limit, HTTPS) e
 arquivos estáticos.
 
 ```ps
@@ -16,7 +16,7 @@ app = Jinker(__name__)
 | `oauth` | dict | `Null` | segurança: rate limit (`poolip`) e HTTPS (`tls`) — ver abaixo |
 | `static_folder` | `str` | `Null` | pasta com build de front a servir (SPA) — ver [static_folder](../static_folder/static_folder.md) |
 | `static_url` | `str` | `"/"` | prefixo da URL sob o qual o `static_folder` é servido — ver [static_url](../static_url/static_url.md) |
-| `route_prefix` | `str` | `""` | prefixo aplicado a **todas** as rotas e sockets: `"api"` ou `"/api/"` viram `/api`, e `@app.route("/users")` responde em `/api/users` (a raiz `"/"` vira só `/api`) |
+| `route_prefix` | `str` | `""` | prefixo aplicado a **todas** as rotas: `"api"` ou `"/api/"` viram `/api`, e `@app.route("/users")` responde em `/api/users` (a raiz `"/"` vira só `/api`) |
 
 Os exemplos desta página pressupõem:
 
@@ -65,10 +65,6 @@ app(port=70000)
 app(workers=0)
 # ValueError: app(): workers fora da faixa 1..256: 0
 ```
-
-Se houver algum `@app.socket(...)`, o servidor WebSocket sobe automaticamente
-na porta **HTTP + 1**. Com `workers>1`, o WebSocket roda **só no worker 0**
-(salas/broadcast num processo só, corretas) — o HTTP é que espalha nos N.
 
 ---
 

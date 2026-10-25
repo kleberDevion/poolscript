@@ -129,13 +129,16 @@ lados:
 
 Quem é chamado: os builtins, as funções e os valores de módulo (o
 `jinker.cors` é valor e se chama), os métodos e as propriedades dos tipos (a
-propriedade é lida, e chamada: o `app.channel` se chama). Os receptores saem
-de `scripts/portoes_donos.pr`, a mesma tabela do `scripts/mede_aridades.pr`,
-e dos que nascem de outro dono (`app.channel`, `app.route(...)`, o `psodbc`
-no sqlite). Os tipos que só existem com a jinker no ar (`request` da rota,
-`PoolFileUpload`, `Response`, `WsConnection`) rodam com uma jinker de verdade
-no loopback da rodada isolada, numa porta nova a cada rodada. O Mongo fica de
-fora (precisa de um `mongod`), e o relatório diz quantos membros e por quê.
+propriedade é lida, e chamada quando o valor dela se chama). Os receptores
+saem de `scripts/portoes_donos.pr`, a mesma tabela do
+`scripts/mede_aridades.pr`, e dos que nascem de outro dono (`app.route(...)`,
+o `psodbc` no sqlite). Os tipos que só existem com um servidor no ar
+(`request` da rota, `PoolFileUpload`, `Response`) rodam com uma jinker de
+verdade no loopback da rodada isolada, numa porta nova a cada rodada; o
+`WsConnection` roda contra o par de eco do WebSocket (`teste/ws_par.pr`, na
+porta seguinte), porque o servidor de WebSocket saiu da jinker no 19.0.0. O
+Mongo fica de fora (precisa de um `mongod`), e o relatório diz quantos
+membros e por quê.
 
 As chamadas de cada membro: de 0 a um argumento a mais que os parâmetros, por
 posição; o 1º argumento com cada tipo básico; cada parâmetro por nome (os do

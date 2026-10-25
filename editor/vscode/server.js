@@ -1155,9 +1155,9 @@ function construidoPor(idx, nome, linha) {
 }
 
 /* A tabela de membros que um nome de tipo MEDIDO designa. O motor publica
- * alguns nomes internos com sublinhado na frente (`_RouteRegistrar`,
- * `_SocketRegistrar`: o `type()` diz assim de propósito, ver
- * docs/builtins/type), e a tabela é a do nome sem ele. */
+ * nome interno com sublinhado na frente (`_RouteRegistrar`: o `type()` diz
+ * assim de propósito, ver docs/builtins/type), e a tabela é a do nome sem
+ * ele. */
 function tabelaDe(t) {
   if (!t || !META.tipos) return null;
   if (META.tipos[t]) return t;

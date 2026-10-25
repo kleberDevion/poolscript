@@ -76,5 +76,5 @@ r.close()
 
 ## Relacionados
 
-- lib `manpu` / `os` — carregar arquivos pra anexar
+- lib `os` — carregar arquivos pra anexar
 - `.env` + `os.getenv` — guardar usuário e senha fora do código

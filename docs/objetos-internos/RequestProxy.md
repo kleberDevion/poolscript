@@ -4,7 +4,7 @@
 > é o TIPO de um objeto que a lib `jinker` te entrega pronto.
 > Confira com `type(obj)`, que mostra exatamente este nome.
 
-É o que o nome `request` vale **dentro de uma rota ou de um socket**:
+É o que o nome `request` vale **dentro de uma rota**:
 `type(request)` ali devolve `RequestProxy`. O motor põe a requisição corrente
 no lugar antes de chamar a sua `funct`.
 
@@ -27,7 +27,7 @@ mesmo servidor não embaralha as duas.
 | `.json()` | Alias de get_json() — o corpo do POST como dict. O JinkerRequest usa |
 | `.method` |  |
 | `.path` |  |
-| `.path_param(key)` | request.path_param('id') → valor do parâmetro dinâmico da rota/socket. |
+| `.path_param(key)` | request.path_param('id') → valor do parâmetro dinâmico da rota. |
 | `.text()` |  |
 
 ### `.header(...)`
@@ -43,7 +43,7 @@ Alias de `get_json()` — o corpo do POST como dict. Os dois nomes valem
 
 ### `.path_param(...)`
 
-request.path_param('id') → valor do parâmetro dinâmico da rota/socket.
+request.path_param('id') → valor do parâmetro dinâmico da rota.
 Ex: /sala:id ou /user/<id>
 
 [← índice](objetos-internos.md)

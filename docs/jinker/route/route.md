@@ -285,26 +285,25 @@ funct rota() {
 O que não vira resposta é erro do handler e sai como o erro de qualquer
 handler, como no Flask: `500` (`{"error": true, "code": 500, "message":
 "Erro interno do servidor"}`), e a frase no terminal do servidor, com ou sem
-`debug=True`. É o dict ou a lista que não vira JSON (o
-[`ChannelStatus`](../../objetos-internos/ChannelStatus.md), por exemplo, não
-vira) e a tupla cujo status não segue a regra do
+`debug=True`. É o dict ou a lista que não vira JSON (o próprio `app`, por
+exemplo, não vira) e a tupla cujo status não segue a regra do
 [`.status()`](../JinkerResponse/status/status.md): inteiro de 100 a 999.
 
 ```ps
 @app.route("/estado")
 funct estado() {
-    return {"status": app.channel.status}
+    return {"app": app}
 }
 ```
 
 Ao pedir `/estado`, o cliente recebe o `500`, e o terminal mostra:
 
 ```texto
-[jinker] erro no handler /estado: Object of type ChannelStatus is not JSON serializable
+[jinker] erro no handler /estado: Object of type Jinker is not JSON serializable
 ```
 
-O status vai como texto: `return {"status": str(app.channel.status)}`. A
-tupla com o status fora da regra sai igual, com a frase dela:
+O nome vai como texto: `return {"app": app.name}`. A tupla com o status fora
+da regra sai igual, com a frase dela:
 
 ```texto
 [jinker] erro no handler /criar: (corpo, status): codigo HTTP fora da faixa 100..999: 2010
@@ -317,4 +316,3 @@ tupla com o status fora da regra sai igual, com a frase dela:
 - [`request`](../request/request.md) — o que chegou na requisição
 - [`JinkerResponse`](../JinkerResponse/JinkerResponse.md) — o que você devolve
 - [`middleware`](../middleware/middleware.md) — verificação antes da rota
-- [`socket`](../socket/socket.md) — o equivalente pra WebSocket

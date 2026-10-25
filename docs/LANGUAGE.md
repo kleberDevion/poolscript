@@ -1141,11 +1141,12 @@ Libs embutidas (lazy-loaded, só carregam quando importadas) — a lista sai de
 `jinga --metadata` (campo `modulos`):
 
 `os, sys, json, date, regex, dotenv, jwt, hash, bytes, sqlite3, mail,
-request, qrcode, manpu, psodbc, jinker, sockets, datasentity`.
+request, qrcode, psodbc, jinker, sockets, datasentity`.
 
-Os apelidos **não existem**: `import db`, `import requests`, `import mp`,
-`import qr` e `import dataentity` são `ImportError` — os nomes são `psodbc`,
-`request`, `manpu`, `qrcode` e `datasentity`.
+Os apelidos **não existem**: `import db`, `import requests`, `import qr` e
+`import dataentity` são `ImportError` — os nomes são `psodbc`, `request`,
+`qrcode` e `datasentity`. A `manpu` (e o apelido `mp`) saiu no 19.0.0:
+`import manpu` também é `ImportError`.
 
 ### `private` no módulo — o que não sai pelo import
 
@@ -1178,10 +1179,9 @@ Referência completa de cada lib
 | Lib | Doc |
 |---|---|
 | `os`, `dotenv`, `mail`, `date`, `request` (+ lambda/map/filter) | [`docs/libs_utilitarias.md`](libs_utilitarias.md) |
-| `jinker` (HTTP + WebSocket com salas) | [`docs/jinker.md`](jinker.md) |
+| `jinker` (servidor HTTP) | [`docs/jinker.md`](jinker.md) |
 | `psodbc` (SQLite/Postgres/MySQL/Mongo) + `sqlite3` (acesso direto) | [`docs/psodbc.md`](psodbc.md) |
 | `hash`, `jwt` | [`docs/hash_jwt.md`](hash_jwt.md) |
-| `manpu` | [`docs/manpu.md`](manpu.md) |
 | `json` | [`docs/json.md`](json.md) |
 | `regex` | [`docs/regex.md`](regex.md) |
 | `qrcode` | [`docs/qrcode.md`](qrcode.md) |

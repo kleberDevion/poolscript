@@ -8,15 +8,13 @@ Cinco nomes desta lista **não são tipo da VM**, e a página de cada um explica
 que existe no lugar: `DataEntityMeta`, `MiddlewareRegistrar`, `PoolIp`,
 `QRCode` e `Route`. A lista viva de tipos sai de `jinga --metadata`.
 
-Onde uma página mostra **valor padrão** de parâmetro (`.emit(payload=Null, …)`,
-`.options(subset=Null)`, `.make(fit=True)`), o padrão é o que está escrito
+Onde uma página mostra **valor padrão** de parâmetro (`.options(subset=Null)`,
+`.make(fit=True)`), o padrão é o que está escrito
 aqui: o `--metadata` publica os nomes dos parâmetros, mas **não** os defaults
 de função de módulo. Omitir esses argumentos funciona.
 
 | Objeto | Vem da lib |
 |---|---|
-| [`ChannelManager`](ChannelManager.md) | `jinker` |
-| [`ChannelStatus`](ChannelStatus.md) | `jinker` |
 | [`CorsConfig`](CorsConfig.md) | `jinker` |
 | [`DataEntityMeta`](DataEntityMeta.md) | `datasentity` |
 | [`DbConnection`](../psodbc/DbConnection/DbConnection.md) | `psodbc` |
@@ -27,8 +25,6 @@ de função de módulo. Omitir esses argumentos funciona.
 | [`MailMessage`](../mail/MailMessage/MailMessage.md) | `mail` |
 | [`MailReader`](../mail/MailReader/MailReader.md) | `mail` |
 | [`MailServer`](../mail/MailServer/MailServer.md) | `mail` |
-| [`ManpuFile`](../manpu/ManpuFile/ManpuFile.md) | `manpu` |
-| [`ManpuResult`](ManpuResult.md) | `manpu` |
 | [`MiddlewareRegistrar`](MiddlewareRegistrar.md) | `jinker` |
 | [`MongoCollection`](../psodbc/MongoCollection/MongoCollection.md) | `psodbc` |
 | [`MongoConnection`](../psodbc/MongoConnection/MongoConnection.md) | `psodbc` |
@@ -44,6 +40,4 @@ de função de módulo. Omitir esses argumentos funciona.
 | [`RequestProxy`](RequestProxy.md) | `jinker` |
 | [`Response`](../request/Response/Response.md) | `request` |
 | [`Route`](Route.md) | `jinker` |
-| [`SocketEmitter`](SocketEmitter.md) | `jinker` |
-| [`SocketNamespace`](SocketNamespace.md) | `jinker` |
 | [`WsConnection`](../request/WsConnection/WsConnection.md) | `request` |

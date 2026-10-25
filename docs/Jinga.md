@@ -1,4 +1,4 @@
-# Jinga v18.0.2
+# Jinga v19.0.0
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 jinga --version
-# Jinga 18.0.2 [PSVM] (2026-09-24) Runtime standalone
+# Jinga 19.0.0 [PSVM] (2026-09-24) Runtime standalone
 #                       ^ a data da compilação DESTE binário: duas
 #                         cópias da mesma versão se distinguem por ela
 ```
@@ -673,41 +673,6 @@ using open("log.txt", "a", encoding="utf-8") as f {
 as variantes binárias (`"rb"`, `"wb"`, `"ab"`); `encoding` é ignorado em modo
 binário (`"b"` no mode).
 
-E `manpu.open()` (lib separada, pensada pra CSV/XLSX estruturado — ver
-[manpu.md](manpu.md)):
-
-```ps
-import manpu as mp
-
-lista = mp.load("compras.txt")
-
-using mp.open(target="planilha.xlsx") as arq {
-    arq.write(column=0, celula="A1", content=lista)
-}
-# arquivo salvo e fechado automaticamente
-```
-
-O nome do parâmetro é `celula`, não `cell`, e o módulo importado `as mp` se
-chama `mp` — usar `manpu.` depois do apelido é `NameError`.
-
-O exemplo abaixo pressupõe o `mp` e a `lista` de cima (`manpu.load` devolve
-os bytes do arquivo):
-
-```ps contexto
-import manpu as mp
-byte lista = mp.load("compras.txt")
-```
-
-```ps
-using mp.open(target="planilha.xlsx", encoding="latin-1") as arq {
-    arq.write(column=0, celula="A1", content=lista)
-}
-# arquivo salvo e fechado automaticamente
-```
-
-`manpu.open()` aceita `encoding=` (default `"utf-8"`) pra CSV/texto puro —
-veja [manpu.md](manpu.md).
-
 ---
 
 ## Ponto de entrada
@@ -733,7 +698,6 @@ import hash
 import jwt
 import date
 import mail
-import manpu as mp
 from dotenv import load
 from jinker import Jinker, cors, jsonify, render
 ```
@@ -849,7 +813,6 @@ regra: `x is Object`, `x is String` (o apelido de `str`), e o nome de um enum
 | `hash` | `import hash` | Hash de senhas |
 | `jwt` | `import jwt` | Tokens JWT |
 | `jinker` | `from jinker import Jinker, cors, jsonify` | Servidor HTTP |
-| `manpu` | `import manpu as mp` | Manipulação de arquivos |
 
 ---
 

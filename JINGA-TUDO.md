@@ -148,7 +148,7 @@ Cada linha traz a regra e o porquê.
 | Matar todo processo que o assistente criou (servidor LSP, jinker, xvfb). | Processo órfão segura a máquina. |
 | `ulimit -v` em toda ferramenta de análise. | `gcc -fanalyzer` no arquivo grande da VM passa de 6 GB, e o OOM derrubou a sessão duas vezes. |
 | E2E com editor real só na validação final. | É o job mais pesado. |
-| Build, suíte inteira, ASan, OOM e e2e rodam na **VPS `tecsol-vps`** (desde 2026-09-20), inclusive o `make pool` de cada iteração: o binário vem pra cá por `scp` (os dois têm glibc 2.39 e gcc 13.3; o `pool` liga estático sqlite, ssl, png, expat e zlib, e daqui só pede a `libgmp.so.10`) e aqui só se instala. Detalhes logo abaixo da tabela. | "Tá impossível essa máquina, faça build e rode a suíte lá"; "não deixe resquício nenhum"; "o certo seria na vps" (2026-10-07, depois de um `make pool` aqui com 833 MB livres e o swap cheio). |
+| Build, suíte inteira, ASan, OOM e e2e rodam na **VPS `tecsol-vps`** (desde 2026-09-20), inclusive o `make pool` de cada iteração: o binário vem pra cá por `scp` (os dois têm glibc 2.39 e gcc 13.3; o `pool` liga estático sqlite, ssl, png e zlib, e daqui só pede a `libgmp.so.10`) e aqui só se instala. Detalhes logo abaixo da tabela. | "Tá impossível essa máquina, faça build e rode a suíte lá"; "não deixe resquício nenhum"; "o certo seria na vps" (2026-10-07, depois de um `make pool` aqui com 833 MB livres e o swap cheio). |
 | Na VPS, o Postgres 16 da porta 5432 é **seu**. O banco `ps_teste` é criado antes e apagado depois de cada rodada. | Dado seu não se destrói. |
 | As regras de carga foram escritas pra este laptop (i3-1115G4, 7,7 GB). O Mac (i9-9880H, 16 GB) ainda não foi medido: medir lá antes de relaxar qualquer uma. | Número só medido. |
 
@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `18.0.2`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `19.0.0`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -917,7 +917,7 @@ A regra de uso: `TypeError` quando o tipo está errado e `ValueError` quando o t
 
 Erro de arquivo com caminho que tem quebra de linha (o conteúdo de um arquivo no lugar do caminho, `open(os.readFile(p))`, ou um nome lido com o `\n`): a frase é a causa, `o caminho tem 2 linhas (19 caracteres): e texto, nao nome de arquivo — comeca com 'linha um\nlinha dois'` (cortada em 40 caracteres, quebra visível), no tipo que o errno daria. Pedido seu de 2026-10-07: antes saía `[Errno 36] File name too long` com o texto inteiro. Um lugar só, `frase_caminho_texto` (jinga_vm.c), usada pelo `erro_sistema` (todo erro de arquivo do motor; `o destino tem ...` no segundo caminho do `os.rename`), pelo anexo do mail e pelo salvar do QR. Só entra quando a operação já falhou: caminho com quebra que existe abre normalmente.
 
-Texto com o byte nulo (`\x00`) não chega ao sistema (17.0.9, Plano 9): o texto da Jinga guarda o byte e o C corta nele, então `os.writeFile("nul\x00.txt", t)` gravava em `nul`, `os.run(["rm", "a\x00b"])` apagava `a` e `os.getenv("PATH\x00X")` devolvia o `PATH`, todos calados (medido no 17.0.8). Agora é `ValueError` ANTES da chamada: `o caminho tem o byte nulo \x00 na posicao 4: nenhum nome de arquivo tem esse caractere — 'nota\x00.txt'` (posição em caractere; byte longe do começo = trecho a partir de 20 caracteres antes dele, com `...`). Vale em toda entrada de texto que vira nome de arquivo (51 pontos: `open`, `os.*`, PoolFile, `sqlite3`, `psodbc` com SQLite, `dotenv`, `save=`/`file=` do `request`, QR, `manpu`, anexo do `mail`, `render`, `Jinker(static_folder=, oauth cert/key)`, soquete AF_UNIX, `sys.RelativePath`), no comando e nos argumentos do `os.run`/`os.cmd` (`nenhum argumento de programa`) e no nome do `os.getenv`/`os.environ`. No `import "..."` é `SyntaxError` antes de rodar, na linha e coluna do texto. Um lugar só: `ps_frase_byte_nulo` (`vm/ps_caminho.h`), usada pelo `sem_byte_nulo`/`CAMINHO_SEM_NUL` do motor e pelo parser. O banco em rede (conninfo do Postgres, MySQL, Mongo) e o texto SQL não são do sistema operacional e ficam de fora.
+Texto com o byte nulo (`\x00`) não chega ao sistema (17.0.9, Plano 9): o texto da Jinga guarda o byte e o C corta nele, então `os.writeFile("nul\x00.txt", t)` gravava em `nul`, `os.run(["rm", "a\x00b"])` apagava `a` e `os.getenv("PATH\x00X")` devolvia o `PATH`, todos calados (medido no 17.0.8). Agora é `ValueError` ANTES da chamada: `o caminho tem o byte nulo \x00 na posicao 4: nenhum nome de arquivo tem esse caractere — 'nota\x00.txt'` (posição em caractere; byte longe do começo = trecho a partir de 20 caracteres antes dele, com `...`). Vale em toda entrada de texto que vira nome de arquivo (51 pontos: `open`, `os.*`, PoolFile, `sqlite3`, `psodbc` com SQLite, `dotenv`, `save=`/`file=` do `request`, QR, anexo do `mail`, `render`, `Jinker(static_folder=, oauth cert/key)`, soquete AF_UNIX, `sys.RelativePath`), no comando e nos argumentos do `os.run`/`os.cmd` (`nenhum argumento de programa`) e no nome do `os.getenv`/`os.environ`. No `import "..."` é `SyntaxError` antes de rodar, na linha e coluna do texto. Um lugar só: `ps_frase_byte_nulo` (`vm/ps_caminho.h`), usada pelo `sem_byte_nulo`/`CAMINHO_SEM_NUL` do motor e pelo parser. O banco em rede (conninfo do Postgres, MySQL, Mongo) e o texto SQL não são do sistema operacional e ficam de fora.
 
 Caminho comprido passa inteiro até o limite do sistema (17.0.10, Plano 10): buffers fixos (o campo de 512 do arquivo aberto, 1.024/2.048 no `save`, `mkdir`, `rmdir` com force, `ls`, `dotenv`, QR, `render`, `static_folder`, TLS, `getcwd`) cortavam calados e o sistema agia noutro arquivo (medido no 17.0.9: `open()` de 592 bytes guardava 511 e o `delete()` dizia True sem apagar; `os.mkdir` de 2.100 bytes respondia ok sem criar). Agora são `PS_CAMINHO_MAX` (4.096), o que não cabe é `erro_sistema(ENAMETOOLONG)` (`[Errno 36] File name too long`, o erro do próprio sistema) e nada é criado com um pedaço do caminho. Um lugar só: `junta_caminho` (jinga_vm.c). O `caminho_abs` usa `realpath(rel, NULL)`: com destino de 2.048 bytes, um caminho resolvido maior escrevia fora dele. Nas funções recursivas (busca do `pathFile`/`render`/`RelativePath`, `rmdir` com force) o buffer é do heap: 4 KB por nível estourariam a pilha de 256 KB da fibra. Soquete `AF_UNIX`: acima de 107 bytes, o mesmo erro. Junto: `render(pasta, arquivo)` deixava sair pra pasta irmã de mesmo prefixo (`render("pub", "../pub_x/x")` respondia 200 com o arquivo de fora); a trava agora é a mesma do `static_folder` (`dentro_da_raiz`, borda com separador). E o `save` do upload dava `TypeError: save: nao criou` em vez do erro do sistema e respondia sucesso com o disco cheio.
 
@@ -932,7 +932,7 @@ using open("saida.txt", "a") as f {
 post(os.readFile("saida.txt"))
 ```
 
-- `using` fecha o recurso na saída, mesmo com erro: arquivo, conexão de banco (faz commit antes de fechar) e planilha do `manpu` (salva). Também no `return`, `break` e `continue` de dentro do bloco (17.0.14: antes saíam sem fechar, e o arquivo escrito ficava vazio): o fechamento é um `finally` pendente (`FinPend.fecha`). O erro que atravessa o `using` segue com o tipo dele (o caminho de erro relança com PUSH_ERR_TYPE + RERAISE; o RAISE de antes fazia de todo erro um `RuntimeError`, e o `sys.exit` de dentro saía com código 1).
+- `using` fecha o recurso na saída, mesmo com erro: arquivo e conexão de banco (faz commit antes de fechar). Também no `return`, `break` e `continue` de dentro do bloco (17.0.14: antes saíam sem fechar, e o arquivo escrito ficava vazio): o fechamento é um `finally` pendente (`FinPend.fecha`). O erro que atravessa o `using` segue com o tipo dele (o caminho de erro relança com PUSH_ERR_TYPE + RERAISE; o RAISE de antes fazia de todo erro um `RuntimeError`, e o `sys.exit` de dentro saía com código 1).
 - Para ler ou gravar um arquivo inteiro, o idioma do projeto é `os.readFile(path)` e `os.writeFile(path, conteudo)`. O dono proíbe `open(x).read()`.
 - `open(path, mode="r", encoding="utf-8")` devolve um `PoolFile` com os métodos `read readline readlines write writelines close save path move copy delete bytes` e os campos `name ext size`.
 - Remover arquivo é `PoolFile.delete()`. `os.remove` não existe.
@@ -1047,10 +1047,9 @@ A lista viva está em `jinga --help` e em `jinga --metadata` (`modulos`). Todos 
 | `psodbc` | `connect(driver=...)` único para SQLite, PostgreSQL, MySQL, SQL Server e MongoDB. `query` é o atalho de SQLite |
 | `mail` | `MailServer` (SMTP, porta 587 por padrão), `MailMessage`, `MailReader` (IMAP, 993) |
 | `request` | Cliente HTTP (`get post put patch delete head`, com `fields=` e `file=` para multipart) e WebSocket de saída `ws_connect`. Devolve `Response` |
-| `jinker` | Servidor HTTP e WebSocket: `Jinker cors jsonify render request JinkerResponse JinkerRequest`. Rotas por decorador, `model=` que responde 422, `route_prefix`, fibras e epoll |
+| `jinker` | Servidor HTTP: `Jinker cors jsonify render request JinkerResponse JinkerRequest`. Rotas por decorador, `model=` que responde 422, `route_prefix`, fibras e epoll |
 | `sockets` | 91 membros: TCP, UDP e UNIX crus (cliente e servidor), resolução de nomes, byte-order, constantes `AF_*`, `SOCK_*` e `SO_*` |
 | `qrcode` | `gen`, `make` (PNG), `QRCode`, `ERROR_CORRECT_L/M/Q/H` |
-| `manpu` | CSV, XLSX, XML, HTML, JSON e texto: `read load write remove src open` (use `open` com `using`) |
 | `datasentity` | `dataentity asdict astuple aslist asjson` |
 | `Parsing` | Conversão tolerante: `string integer floating boolean TransientValue JSONformatt Arrayformatt Tuplasformatt`, com `to <tipo>`. Lib desde o 17.0.0; antes nascia ligado, sem import |
 
@@ -1159,7 +1158,7 @@ O motor da Jinga (o `--version` o chama de **PSVM**) é um programa em C que vir
 
 ```
 FONTES := vm/ps_lexer.c vm/ps_ast.c vm/ps_parser.c vm/ps_compiler.c vm/ps_pilha.c
-          vm/ps_hash.c vm/ps_regex.c vm/ps_mail.c vm/ps_http.c vm/ps_qr.c vm/ps_xlsx.c
+          vm/ps_hash.c vm/ps_regex.c vm/ps_mail.c vm/ps_http.c vm/ps_qr.c
           vm/ps_db.c vm/ps_mongo.c vm/ps_jinker.c vm/ps_pkg.c vm/ps_debug.c
           vm/ps_retornos.c vm/ps_so.c vm/ps_unicode.c vm/jinga_vm.c vm/main.c
 ```
@@ -1171,8 +1170,8 @@ Números do binário medidos neste laptop em 2026-09-28:
 | `./pool --version` | `Jinga 16.1.9 [PSVM] (2026-09-28) Runtime standalone` |
 | Arquivo | `./pool`, na raiz do repo, com 9.066.080 bytes (igual byte a byte ao `/usr/local/bin/jinga`) |
 | Dependências dinâmicas (`ldd ./pool`) | só `libm.so.6`, `libgmp.so.10` e `libc.so.6`, além do `linux-vdso` e do `ld-linux` |
-| Bibliotecas estáticas (Linux, via `-Wl,-Bstatic`) | sqlite, OpenSSL (libssl/libcrypto), libpng, expat, zlib |
-| Bibliotecas estáticas (macOS) | os `.a` do Homebrew para OpenSSL e libpng; sqlite, expat e zlib vêm do próprio macOS; gmp vem do Homebrew (`-lgmp`); desde `3c245e7` também os frameworks Security e CoreFoundation (raízes TLS do Keychain) |
+| Bibliotecas estáticas (Linux, via `-Wl,-Bstatic`) | sqlite, OpenSSL (libssl/libcrypto), libpng, zlib |
+| Bibliotecas estáticas (macOS) | os `.a` do Homebrew para OpenSSL e libpng; sqlite e zlib vêm do próprio macOS; gmp vem do Homebrew (`-lgmp`); desde `3c245e7` também os frameworks Security e CoreFoundation (raízes TLS do Keychain) |
 | Carregadas só no primeiro `connect` (dlopen) | clientes do Postgres, do MariaDB/MySQL, do unixODBC e do Mongo (ver 3.13) |
 | Versão | constante `PS_VERSAO` em `vm/ps_versao.h` (a de hoje está na 5.1) |
 | Data de build | `vm/ps_build.h`, gerado pelo Makefile |
@@ -1401,7 +1400,7 @@ Saída real de `jinga --bytecode` (2026-09-28) para `int n = 0` / `while n < 3 {
 **Objetos**: são 51 tipos (`ObjType`, de `OBJ_STRING` a `OBJ_CLOSURE`, com sentinela `OBJ__COUNT`):
 
 - linguagem: string, list, tuple, dict, class, instance, bound, método nativo, módulo, nativa, model, enum, gerador, arquivo, módulo `.pr`, bytes, célula, closure, future, bigint (GMP), regex compilado;
-- bibliotecas: conexão e cursor sqlite; mail; response HTTP; QR; manpu; DB; Mongo; PoolFile; os 11 objetos do jinker (`JINKER`, `JCORS`, `JREG`, `JRESP`, `JREQ`, `JPROXY`, `JUPLOAD`, `JSOCKNS`, `JEMIT`, `JCHAN`, `JCHST`); conexão WS cliente; socket; processo.
+- bibliotecas: conexão e cursor sqlite; mail; response HTTP; QR; DB; Mongo; PoolFile; os 7 objetos do jinker (`JINKER`, `JCORS`, `JREG`, `JRESP`, `JREQ`, `JPROXY`, `JUPLOAD`); conexão WS cliente; socket; processo.
 
 **Limites** (constantes no fonte):
 
@@ -1503,7 +1502,7 @@ Ainda não feito: builtin chamado a partir do nativo continua sendo ilha, float 
 - **Tipo**: mark-and-sweep que para o mundo, com lista ligada de todos os objetos (`vm->objetos`).
 - **Pontos seguros**: o GC só dispara em `PONTO_SEGURO()`. Alocar nunca coleta, só soma em `vm->alocado`. Os pontos seguros são o `JUMP` de recuo (a volta de todo `while`/`for each`) e a entrada de cada `CALL`. Neles a pilha está consistente, e o frame corrente publica `gc_fp` e `gc_cl` para o closure em execução ser raiz.
 - **Limiar**: depois de cada coleta, `proximo_gc = alocado * 2`, com mínimo `GC_INICIAL` (1 MB).
-- **Raízes**, em `gc_coleta` e só ali: globais; pilha viva `[0, sp)`; locais `[0, locals_top)`; singletons e requisição corrente do jinker (`jk_cors`, `jk_proxy`, `jk_req`, `jk_app`); módulos `.pr` importados (`mods_ps`); conexões WebSocket abertas (`ws_vivos`); closures dos frames em execução; fibras suspensas (`fib_marca_gc`); constantes dos protótipos.
+- **Raízes**, em `gc_coleta` e só ali: globais; pilha viva `[0, sp)`; locais `[0, locals_top)`; singletons e requisição corrente do jinker (`jk_cors`, `jk_proxy`, `jk_req`); módulos `.pr` importados (`mods_ps`); conexões WebSocket abertas (`ws_vivos`); closures dos frames em execução; fibras suspensas (`fib_marca_gc`); constantes dos protótipos.
 - **Marcação sem recursão em C**: pilha cinza (`empilha_cinza` / `percorre_cinzas`).
 - **Tabela por tipo** (`GC_INFO[OBJ__COUNT]`): cada `ObjType` declara:
   - o tracer: `GC_LEAF` (sem filhos), `GC_ONE` (um `Value` num offset) ou `GC_FN` (tracer próprio);
@@ -1521,7 +1520,7 @@ Ainda não feito: builtin chamado a partir do nativo continua sendo ilha, float 
 
 **Fibras** (green-threads, em `jinga_vm.c`):
 
-- Cada requisição HTTP, cada handler de WebSocket e cada `async funct` roda numa fibra: `FIB_HTTP`, `FIB_WS` e `FIB_ASYNC`.
+- Cada requisição HTTP e cada `async funct` roda numa fibra: `FIB_HTTP` e `FIB_ASYNC`.
 - Uma fibra tem pilha do C própria e vetores próprios de valores, locais e frames.
 - **Troca de contexto em assembly** (`ps_fctx_swap`): no x86-64, salva só `rbp`, `rbx`, `r12` a `r15` e `rsp`, sem nenhuma syscall. As instruções são as mesmas no Linux e no macOS (mesma ABI System V); muda só a forma do objeto (o Mach-O põe `_` na frente do nome e não tem `.type`/`.size`). Em outras arquiteturas, o fallback é `ucontext`.
 
@@ -1605,28 +1604,28 @@ Existe desde o commit `529c518`. O motor não chama mais `epoll`, `eventfd` nem 
 
 ---
 
-### 3.12 jinker: servidor HTTP/1.1 e WebSocket
+### 3.12 jinker: servidor HTTP/1.1
 
 O jinker tem duas camadas:
 
 - **`vm/ps_jinker.c` / `.h`**: o transporte. Socket cru mais OpenSSL, protocolo escrito à mão, **sem conhecer a VM**. Lê e escreve bytes e estrutura requisições.
-- **Camada jinker em `jinga_vm.c`**: rotas, handlers, CORS, salas e o laço. Os objetos são `OBJ_JINKER`, `JCORS`, `JREG`, `JRESP`, `JREQ`, `JPROXY`, `JUPLOAD`, `JSOCKNS`, `JEMIT`, `JCHAN` e `JCHST`.
+- **Camada jinker em `jinga_vm.c`**: rotas, handlers, CORS e o laço. Os objetos são `OBJ_JINKER`, `JCORS`, `JREG`, `JRESP`, `JREQ`, `JPROXY` e `JUPLOAD`.
 
 Comportamento gravado no código:
 
 - **Subida**: `app(debug=, host=, port=, reload=, workers=)` (os parâmetros de `jk_obj_callable`).
 - **Multi-processo (prefork)**: com `workers > 1` (limitado a 256), o processo faz `fork` de N filhos que dividem o socket HTTP, e o kernel balanceia o `accept`. Cada worker tem a própria VM. O pai só supervisiona e derruba os filhos no Ctrl+C/TERM. Cada filho recria o próprio pool de threads, porque o `fork` copia só a thread que chamou.
-- **WebSocket** num socket separado, na **porta + 1**, aberto só pelo worker 0. Salas e broadcast ficam num processo só.
-- **Globais injetadas**: `request` e `channel` são postos direto no slot global na subida do servidor.
+- **WebSocket**: o servidor saiu no 19.0.0 (decisão dele); fica o cliente, `request.ws_connect` (abaixo).
+- **Global injetada**: o `request` é posto direto no slot global na subida do servidor.
 - **Keep-alive**: a leitura é bufferizada por conexão, porque um `recv` pode trazer o fim de uma requisição e o começo da outra.
 - **Corpo** de no máximo 64 MB (`JK_CORPO_MAX`).
 - **Requisição torta**: uma requisição malformada recebe **400** e uma com `Transfer-Encoding` recebe **501**, nunca "fechar calado" (RFC 9112, contra *request smuggling*).
 - **HEAD**: uma rota de GET responde HEAD sozinha, com os mesmos headers (inclusive `Content-Length`) e sem corpo. O mecanismo é `PSJkConn.sem_corpo`.
 - **Resposta**: sempre com `Content-Length`, `Server: Jinker` e `Date`.
-- **WebSocket (RFC 6455)**: handshake com `Sec-WebSocket-Accept` (SHA-1 da OpenSSL mais base64), ping respondido com pong, e um cliente (`ps_jk_ws_conecta`) com frames mascarados.
+- **WebSocket (RFC 6455), só o cliente** (`ps_jk_ws_conecta`): confere o `Sec-WebSocket-Accept` (SHA-1 da OpenSSL mais base64), responde ping com pong, mascara todo frame que manda (o close e o pong também) e recusa o frame mascarado do servidor.
 - **Multipart** (`ps_jk_multipart`), tabela de MIME por extensão e decodificação de URL (no path, `+` não vira espaço; na query, vira).
 - **TLS**: `ps_jk_tls_ctx` com cert e chave. `ps_jk_tls_autogera` gera um certificado autoassinado (CN=localhost, RSA 2048, 365 dias).
-- **CORS**: `cors(app, ..., local=False)` é o modo estrito. Só a lista `origins` vale, localhost fora da lista recebe 403, e pedido **sem** `Origin` recebe 403, tanto no HTTP quanto no handshake do WebSocket. A lista de `origins` vale no handshake do WS. Sem `cors()`, fica como sempre foi: HTTP com `*` e WS aceitando qualquer origem. O 403 de origem sai **sem** `Access-Control-Allow-Origin`. `jk_is_local` só aceita `127.` seguido de dígito ou ponto (`127.evil.com` não é local), e `[::1]:porta` é local.
+- **CORS**: `cors(app, ..., local=False)` é o modo estrito. Só a lista `origins` vale, localhost fora da lista recebe 403, e pedido **sem** `Origin` recebe 403. Sem `cors()`, fica como sempre foi: HTTP com `*`. O 403 de origem sai **sem** `Access-Control-Allow-Origin`. `jk_is_local` só aceita `127.` seguido de dígito ou ponto (`127.evil.com` não é local), e `[::1]:porta` é local.
 - **PoolIp**: rate limit por IP numa janela de 60 s, mais ban em dias.
 - **Auto-reload** (desenvolvimento, só com 1 worker): vigia o mtime do `.pr` de entrada e re-executa o processo quando ele muda.
 
@@ -1671,7 +1670,6 @@ Nomes procurados, na ordem:
 | hash | `ps_hash.c/.h` | SHA-256/384/512 (RFC 6234), HMAC (RFC 2104), PBKDF2-HMAC-SHA256 (RFC 8018), base64 e base64 urlsafe (RFC 4648), sem OpenSSL; no Windows o sorteio vem de `BCryptGenRandom` |
 | regex | `ps_regex.c/.h` | a sintaxe do módulo `re` do Python, e as frases de erro dele, com a posição em caractere (17.0.19, lote 8). Backtracking por caractere (não byte), com continuações explícitas e sem teto fixo de tamanho (o padrão linear longo casa): classes (com `\d \w \s` e as negadas dentro de `[...]`), quantificadores gulosos, preguiçosos e possessivos, grupos (com nome, atômico `(?>...)`), retrorreferência por número e por nome, condicional `(?(n)sim\|não)`, comentário `(?#...)`, âncoras `^ $ \A \Z \z \b \B`, lookahead e lookbehind (este de largura fixa), os escapes do `re` (`\xHH \uHHHH \UHHHHHHHH` e octal) e as flags `(?aimsux)` e `(?ims-ims:...)`; `\d \w \s \b` pelo Unicode (com `(?a)`, só ASCII). O `re` é o oráculo: `teste/geradores/regex_re.pr` roda 357 chamadas nos dois e grava `teste/casos_regex_re.c` (352 iguais ao Python 3.15; as 5 que divergem estão explicadas no arquivo). Fora: `\N{nome}` (Plano 12) e a flag `L` (é de padrão em bytes) |
 | QR Code | `ps_qr.c/.h`, `ps_qr_tables.h` | ISO/IEC 18004 em modo byte, versões 1 a 40, níveis L/M/Q/H, Reed-Solomon, escolha de máscara pelas 4 regras de penalidade; o PNG sai pela libpng |
-| xlsx | `ps_xlsx.c/.h` | ZIP escrito à mão sobre a zlib mais XML com expat |
 | pacotes | `ps_pkg.c/.h` | `jpkg`: `~/.jinga` (ou `$JINGA_HOME`, ou `$POOLSCRIPT_HOME`) com `commands/`, `libs/` e `bin/` (shims; no Windows, `.cmd` e PATH por `setx`); `installed.json` é reescrito a partir do disco; `config.json` guarda o `registry_url`; download por HTTPS com sha256 opcional. Uma `~/.poolscript` antiga é movida para `~/.jinga` com aviso |
 | inteiro grande | `ps_gmp_min.h` | a interface `mpz` da GMP declarada à mão (símbolos `__gmpz_*`), ligada a `libgmp.so.10` no Linux e a `-lgmp` do Homebrew no macOS |
 | Unicode | `ps_unicode.c/.h`, `ps_unicode_tab.inc` | caixa e classes de caractere dos métodos de texto (`upper`, `lower`, `title`, `capitalize`, `swapcase`, `casefold`, `isalpha`, `isdigit`, `isdecimal`, `isnumeric`, `isalnum`, `isspace`, `isprintable`, `isupper`, `islower`, `istitle`, o branco do `split`/`strip`) pela tabela do Unicode inteira. Nome no código não passa por aqui (a regra do lexer, doc 1.4) |
@@ -1750,8 +1748,9 @@ Pacotes (lib e comando .pr):
 
 `pool` e `psl` sao os nomes antigos dos mesmos comandos e continuam valendo.
 
-Libs internas: json, date, regex, os, sys, dotenv, jwt, hash, bytes, sqlite3, mail,
-  request, qrcode, manpu, psodbc, jinker, sockets, datasentity
+Libs internas: json, date, regex, Parsing, os, sys, dotenv, jwt, hash, bytes,
+  sqlite3, mail, request, qrcode, psodbc, jinker, sockets,
+  datasentity
 
 Docs: https://github.com/kleberDevion/poolscript
 ```
@@ -1875,7 +1874,7 @@ O `-o` embute **fonte**, e o executável compila e roda na partida. O JIT atua d
 | `make pool-asan` / `make check-asan` | ASan, UBSan e LeakSanitizer na suíte inteira (`detect_leaks=1`) |
 | `make pool-oom` / `make oom` | `--wrap=malloc,calloc,realloc,strdup` no ligador; falha a i-ésima alocação de cada programa de `teste/oom_varre.pr`. Passar significa morrer limpo. **Roda na VPS**: neste laptop o alvo morre por falta de memória |
 | `make pool-fuzz` / `make fuzz` | fuzzer do clang (`-fsanitize=fuzzer`) só no front-end (`--check`); os achados ficam em `teste/fuzz_achados/`, e o `make check` os re-executa |
-| `make unidade` | teste de unidade em C dos módulos puros (pilha, hash, regex, ast, xlsx) |
+| `make unidade` | teste de unidade em C dos módulos puros (pilha, hash, regex, ast) |
 | `./rebuild_vm.sh [--check] [--install]` | `make limpa` mais `make pool` (rebuild limpo, contra timestamp de granularidade de segundo), mais a suíte e a instalação opcionais |
 
 ---
@@ -1885,7 +1884,7 @@ O `-o` embute **fonte**, e o executável compila e roda na partida. O JIT atua d
 | Arquivo | Linhas | Papel |
 |---|---:|---|
 | `main.c` | 1742 | o executável `jinga`: CLI, `--check`/`--tokens`/`--ast`/`--contexto`/`--bytecode`/`--metadata`/`--debug`, `-e`, `build`, `-o` (payload, `ps_payload`, `emb_carrega`, `cmd_compila`), `reporta` (traceback e códigos de saída), subcomandos de pacote |
-| `jinga_vm.c` | 31085 | a VM: valores, objetos, GC, laço de despacho, chamadas, exceções, geradores, closures, fibras, escalonador async, pool de threads, stdlib inteira (builtins, métodos de str/list/dict/bytes/PoolFile, módulos json, date, regex, os, sys, dotenv, jwt, hash, bytes, sqlite3, mail, request, qrcode, manpu, psodbc, jinker, sockets, datasentity), camada jinker, depurador (cola DAP), import e embutidos, `--metadata`, `ps_roda_fonte` |
+| `jinga_vm.c` | 31085 | a VM: valores, objetos, GC, laço de despacho, chamadas, exceções, geradores, closures, fibras, escalonador async, pool de threads, stdlib inteira (builtins, métodos de str/list/dict/bytes/PoolFile, módulos json, date, regex, os, sys, dotenv, jwt, hash, bytes, sqlite3, mail, request, qrcode, psodbc, jinker, sockets, datasentity), camada jinker, depurador (cola DAP), import e embutidos, `--metadata`, `ps_roda_fonte` |
 | `ps_jit_x64.h` | 705 | JIT x86-64: codificador de instruções, gabaritos, `jit_chama`, heurística dos 15%, `JINGA_JIT*` |
 | `ps_lexer.c` | 1597 | lexer: modos normal, editor, recuperação, fluxo e sonda; segunda passada; avisos; interpolações de f-string |
 | `ps_lexer.h` | 222 | tipos de token, `PSToken`, `PSTokenList`, API do lexer |
@@ -1912,7 +1911,7 @@ O `-o` embute **fonte**, e o executável compila e roda na partida. O JIT atua d
 | `ps_pgerr.h` | 268 | SQLSTATE -> nome da exceção do Postgres (252 entradas, filhas de `DatabaseError`) |
 | `ps_mongo.c` | 288 | Mongo via libmongoc/libbson (por `dlopen`), com ponte JSON |
 | `ps_mongo.h` | 39 | API do Mongo (find, insert, update, remove, count) |
-| `ps_jinker.c` | 1053 | transporte do jinker: HTTP/1.1, WebSocket (servidor e cliente), multipart, MIME, TLS, arena por requisição |
+| `ps_jinker.c` | 1053 | transporte do jinker: HTTP/1.1, WebSocket (cliente), multipart, MIME, TLS, arena por requisição |
 | `ps_jinker.h` | 144 | API do transporte (`PSJkConn`, `PSJkReq`, códigos `PSJK_*`) |
 | `ps_http.c` | 489 | cliente HTTP/HTTPS sem libcurl |
 | `ps_http.h` | 60 | `PSHttpResp` e `ps_http_request` |
@@ -1925,8 +1924,6 @@ O `-o` embute **fonte**, e o executável compila e roda na partida. O JIT atua d
 | `ps_qr.c` | 589 | gerador de QR Code e PNG |
 | `ps_qr.h` | 32 | API do QR |
 | `ps_qr_tables.h` | 3620 | tabelas do padrão QR, geradas por script |
-| `ps_xlsx.c` | 533 | leitura e escrita de xlsx (ZIP sobre zlib, mais expat) |
-| `ps_xlsx.h` | 42 | `PSGrade` e API do xlsx |
 | `ps_pkg.c` | 652 | gerenciador de pacotes (`jpkg`) |
 | `ps_pkg.h` | 26 | API do `jpkg` (`PS_PKG_AUTO`/`CMD`/`LIB`) |
 | `ps_debug.c` | 97 | enquadramento do DAP (leitura byte a byte, escrita com retomada) |
@@ -2198,8 +2195,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **18.0.2** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 18.0.2 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **19.0.0** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 19.0.0 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.15 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2217,7 +2214,7 @@ O Makefile, os fontes e o binário ficam todos na raiz do repositório: `make <a
 ```bash
 sudo apt-get install -y build-essential git pkg-config nodejs npm \
   libsqlite3-dev libpq-dev unixodbc-dev libssl-dev libpng-dev \
-  libexpat1-dev zlib1g-dev libmariadb-dev libmongoc-dev libbson-dev libgmp-dev
+  zlib1g-dev libmariadb-dev libmongoc-dev libbson-dev libgmp-dev
 ```
 
 Pra `make check` completo também entram: `clang` (fuzz), `lcov` (cobertura), `valgrind` (memcheck), `nvim` e `node`.
@@ -2240,8 +2237,8 @@ brew install lcov gh neovim node
   ```
 
 Como o Makefile muda por sistema (`SO := $(shell uname -s)`):
-- **Linux:** gcc, com `-Wduplicated-branches` e `--param=max-goto-duplication-insns=64` (sem esse parâmetro o laço da VM fica 16% mais lento em instruções, medido com perf stat). Sqlite, TLS, PNG, expat e zlib entram estáticos (`-Wl,-Bstatic`).
-- **Darwin:** clang da Apple, sem os dois parâmetros acima. TLS e PNG entram pelos `.a` do Homebrew; sqlite, expat e zlib vêm do macOS; desde `3c245e7` liga também os frameworks Security e CoreFoundation.
+- **Linux:** gcc, com `-Wduplicated-branches` e `--param=max-goto-duplication-insns=64` (sem esse parâmetro o laço da VM fica 16% mais lento em instruções, medido com perf stat). Sqlite, TLS, PNG e zlib entram estáticos (`-Wl,-Bstatic`).
+- **Darwin:** clang da Apple, sem os dois parâmetros acima. TLS e PNG entram pelos `.a` do Homebrew; sqlite e zlib vêm do macOS; desde `3c245e7` liga também os frameworks Security e CoreFoundation.
 - **Os dois:** os clientes de banco (Postgres, MySQL, ODBC, Mongo) não são ligados. Cada driver abre a biblioteca no primeiro `connect` (`vm/ps_dl.h`), e os cabeçalhos entram só pra compilar.
 
 ### 5.3 Compilar
@@ -2281,13 +2278,13 @@ make pool                 # o binário ./pool (o alvo continua se chamando pool)
 | `limpa` | apaga `./pool` |
 | `testar` | compila o runner `./testar` (`teste/ps_teste.c` + `teste/casos_*.c`) |
 | `pool-asan` | binário com `-fsanitize=address,undefined` |
-| `analisa` | `gcc -fanalyzer` arquivo por arquivo, com `ulimit -v` de `ANALISA_MB` (padrão 2000); `vm/jinga_vm.c` fica fora salvo com `ANALISA_TUDO=1`; os falsos positivos conferidos ficam em `ANALISA_ACEITOS` (o `nb` de `ps_xlsx.c`, o `strdup` de `ps_db.c` e, no Windows, o descritor do `ps_w_socket` em `ps_win.h`); onde o sistema recusa o teto (o macOS recusa o `ulimit -v`) a saída diz e mostra o limite que vale |
+| `analisa` | `gcc -fanalyzer` arquivo por arquivo, com `ulimit -v` de `ANALISA_MB` (padrão 2000); `vm/jinga_vm.c` fica fora salvo com `ANALISA_TUDO=1`; os falsos positivos conferidos ficam em `ANALISA_ACEITOS` (o `strdup` de `ps_db.c`, o `nv` de `ps_lexer.c` com o gcc 16 e, no Windows, o descritor do `ps_w_socket` em `ps_win.h`); onde o sistema recusa o teto (o macOS recusa o `ulimit -v`) a saída diz e mostra o limite que vale |
 | `memcheck` | `valgrind --leak-check=full ... ./pool $(PS)` num script só (`make memcheck PS=teste/e2e/ws.pr`) |
 | `bench` | `nice -n 19 ./pool teste/bench.pr $(BENCH)`; `BENCH=--grava` adota a referência, `BENCH=--portao` reprova se piorou |
 | `avisos` | recompila com `-Wlogical-op -Wshadow -Wformat-truncation=$(AVISOS_NIVEL)` (padrão 1) e reprova se houver aviso — e também se algum fonte não compilar com o gcc usado (`NAO COMPILOU`), que antes passava como "nenhum aviso" |
 | `check` | o portão inteiro (5.6) |
 | `check-e2e` | `./pool teste/e2e_roda.pr $(E2E)`: todos os e2e, inclusive os que precisam de serviço |
-| `check-e2e-local` | os e2e sem serviço externo (`arquivo sqlite socket pkg mail_local jinker manpu qrcode c.pr d.pr f.pr` — o driver filtra por pedaço do nome, e `c` sozinho pegava também o par jinker, o socket e o qrcode), cada um com `E2E_TIMEOUT` (padrão 300 s, acima do pior caso do par jinker dentro do driver), dizendo quais caíram; filtro que não casa nenhum script sai 2 (um script renomeado não vira "e2e: ok" calado) |
+| `check-e2e-local` | os e2e sem serviço externo (`arquivo sqlite socket pkg mail_local jinker qrcode c.pr d.pr f.pr` — o driver filtra por pedaço do nome, e `c` sozinho pegava também o par jinker, o socket e o qrcode), cada um com `E2E_TIMEOUT` (padrão 300 s, acima do pior caso do par jinker dentro do driver), dizendo quais caíram; filtro que não casa nenhum script sai 2 (um script renomeado não vira "e2e: ok" calado) |
 | `unidade` | compila e roda `teste/unidade.c` (os módulos puros chamados direto em C) a CADA chamada (`.PHONY`): o binário que sobrava de uma rodada que falhou dava "is up to date" e o `make check` passava sem rodar nada; no Windows liga também `-lbcrypt` e sai `unidade.exe` |
 | `pool-oom` | binário com `--wrap=malloc,calloc,realloc,strdup` (`teste/ps_oom.c`) |
 | `oom` | `./pool teste/oom_varre.pr`: falha a i-ésima alocação de cada programa |
@@ -2400,7 +2397,7 @@ timeout 900 env JINGA_JIT=0 nice -n 19 ./testar
 timeout 600 nice -n 19 ./pool teste/confere_metadata.pr
 # ... um .pr do portão por comando ...
 for a in arquivo sqlite socket pkg mail_local jinker; do timeout 300 nice -n 19 ./pool teste/e2e_roda.pr $a; done
-for a in manpu qrcode c.pr d.pr f.pr;                 do timeout 300 nice -n 19 ./pool teste/e2e_roda.pr $a; done
+for a in qrcode c.pr d.pr f.pr;                       do timeout 300 nice -n 19 ./pool teste/e2e_roda.pr $a; done
 ```
 
 O `make check` inteiro, o `check-asan`, o `oom` e o e2e completo rodam na VPS (5.11).
@@ -2467,8 +2464,8 @@ Regra dele pra ferramenta de teste: faltou banco, binário ou pacote pra testar,
 | `oom_varre.pr` | varredura de falha de alocação (usa `pool-oom`) |
 | `propriedade.pr` | teste metamórfico com entrada sorteada |
 | `sockets_roda.pr` | lib de sockets inteira em loopback |
-| `e2e/*.pr` | `arquivo`, `sqlite`, `socket`, `pkg`, `mail_local`, `jinker_srv` + `jinker_cli` + `jinker_bruto`, `manpu`, `qrcode`, `c`, `d`, `f`, `db`, `mongo`, `mail`, `ws` (servidor sem par, é relatado e não rodado) |
-| `unidade.c` | unidade em C dos módulos puros (pilha, hash, regex, ast, xlsx) |
+| `e2e/*.pr` | `arquivo`, `sqlite`, `socket`, `pkg`, `mail_local`, `jinker_srv` + `jinker_cli` + `jinker_bruto`, `qrcode`, `c`, `d`, `f`, `db`, `mongo`, `mail` |
+| `unidade.c` | unidade em C dos módulos puros (pilha, hash, regex, ast) |
 | `ps_oom.c`, `ps_fuzz.c` | ganchos do `pool-oom` e do `pool-fuzz` |
 
 A lib `swagger` do usuário mora em `~/.jinga/libs/swagger.pr`, não no repositório. Sem ela no Mac, o `exemplos_roda.pr` dá PULOU no `swagger.pr` e o `audita_exemplos_doc.pr` lista o bloco de `docs/swagger` como módulo de exemplo. Nenhum dos dois reprova.
@@ -2839,7 +2836,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "18.0.2"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "19.0.0"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2936,16 +2933,19 @@ O que o código e o CI já mostram do macOS:
 
   Testes novos em `teste/casos_libs.c` (com JIT e sem) e no `teste/e2e/db.pr` (o postgres, o MySQL e o SQL Server, com a porta pelo ambiente).
 - **Extensão 8.6.14 (2026-10-24): a gramática de cores volta a ser a gerada.** O commit dele (`58b445b`, junto ao `main` em `13d3091`) tinha tirado o `load` da lista de builtins da gramática do VS Code, que é gerada pelo `scripts/gera_realce.pr` a partir do `--metadata`, e o portão do realce reprovava. Decisão dele: volta o gerado (o `load`, que é builtin, volta a ter a cor de builtin); os comentários e o nome do tema que ele mudou ficam. A vsix 8.6.14 está instalada no VS Code do Mac.
-- **18.0.2 (2026-10-24): o `app.channel(forAll=msg)` da doc passa, e a jinker não engole erro** (jinker-6 a 8 e editor-1, os seus dois relatos, e jinker-12 a 15, achados no caminho). Os objetos da jinker que se chamam (o `app`, o `cors`, o `app.socket` e o `app.channel`) leem uma tabela só, com o nome da chamada, os parâmetros, o padrão e o tipo de cada um:
-  - o `--metadata` publica os parâmetros da propriedade cujo valor se chama (e do `cors`, o valor de módulo que se chama), e o `--check` e o editor aceitam o `app.channel(forAll=msg)` e o `app.socket(path=, channel=)`;
-  - argumento a mais, nome que não é parâmetro e argumento de outro tipo são erro, com a frase dos nativos, a mesma no `--check` e rodando; o `map` chama o `app.channel` como a chamada direta;
-  - no `app(...)`, a porta fora de 0..65535 (a 70000 escutava na 4464), a porta em texto (subia na 2000) e o `workers` fora de 1..256 são erro; no `cors(...)`, o texto no lugar da lista de origens (que deixava o servidor aberto) e o item que não é texto;
-  - a rota, a tupla `(corpo, status)` e o middleware que devolvem o que não vira resposta dão `500`, com a frase no terminal (era 200 com o corpo vazio); o status da tupla, do `json()` e do `send()` segue a regra do `.status()` (99999 saía numa linha de status que o cliente recusa);
-  - no WebSocket, o erro do handler sai no terminal sem `debug=True`, e o `emit` do que não vira JSON é o erro do `json.stringify` (era `Error` calado); o status antes do primeiro envio é `Error` (era `Success`);
-  - o hover do nome de um argumento nomeado mostra o parâmetro do chamado (era "nome não definido"), na chamada, no decorador, em várias linhas, no builtin e no campo de `model`.
+- **19.0.0 (2026-10-24): o WebSocket da jinker e a `manpu` saem (decisões dele), e a jinker não engole erro** (jinker-6, 12, 14 e editor-1 consertados; jinker-7, 8, 13 e 15 fechados com o WebSocket; jinker-16 e motor-33, achados no caminho). Major, porque quebra quem usa `app.socket`, `app.channel` ou `import manpu`:
+  - sai o servidor de WebSocket da jinker (`@app.socket`, o emissor, o `app.channel`, os tipos `ChannelManager`, `ChannelStatus`, `SocketNamespace` e `SocketEmitter` e o servidor da porta HTTP+1): `app.socket` e `app.channel` dão o erro de membro que não existe, no `--check` e rodando. Fica o cliente `request.ws_connect`, testado contra um par de eco em Jinga (`teste/ws_par.pr`, sobre a lib `sockets`);
+  - sai a lib `manpu` inteira (o `ManpuFile`, o `ManpuResult` e o leitor e escritor de xlsx, `ps_xlsx.c`): `import manpu` é `ImportError`. A expat, que só ela usava, sai das dependências (o `Makefile`, o CI, o instalador e o `jinga.md`);
+  - o cliente WebSocket mascara todo frame, o close também (no 18.0.1 o close saía sem máscara, contra a RFC 6455 §5.1), e recusa o frame mascarado do servidor (jinker-16);
+  - o `--check` confere a expressão do decorador como qualquer `obj.metodo(args)`: `@app.rota("/x")`, `@os.naoexiste` e o `@log()` sem o argumento eram aprovados e quebravam rodando (motor-33);
+  - os objetos da jinker que se chamam (o `app` e o `cors`) leem uma tabela só, com o nome da chamada, os parâmetros, o padrão e o tipo de cada um: argumento a mais, nome que não é parâmetro e argumento de outro tipo são erro, com a frase dos nativos; no `app(...)`, a porta fora de 0..65535 (a 70000 escutava na 4464), a porta em texto (subia na 2000) e o `workers` fora de 1..256; no `cors(...)`, o texto no lugar da lista de origens (que deixava o servidor aberto) e o item que não é texto (jinker-14);
+  - a rota, a tupla `(corpo, status)` e o middleware que devolvem o que não vira resposta dão `500`, com a frase no terminal (era 200 com o corpo vazio); o status da tupla, do `json()` e do `send()` segue a regra do `.status()` (jinker-6 e 12);
+  - o hover do nome de um argumento nomeado mostra o parâmetro do chamado (era "nome não definido"), na chamada, no decorador, em várias linhas, no builtin e no campo de `model` (editor-1).
 
-  Doc no mesmo commit: `channel`, `socket`, `route`, `Jinker` (o host padrão é `127.0.0.1`, como o Flask; a página dizia `0.0.0.0`), `cors`, `JinkerResponse` (`json`, `send`, `status`), os objetos internos do canal e o `docs/lsp.md`. Testes novos em `teste/casos_libs.c`, `teste/jinker_roda.pr` e `editor/vscode/teste_servidor.js`; as linhas do jinker-7 e do editor-1 saíram da catraca dos portões.
-- Versão da linguagem **18.0.2** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 18.0.2 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+  Doc no mesmo commit: saem as páginas do `socket`, do `channel`, dos quatro objetos internos do WebSocket e da `manpu`, e o exemplo `examples/socket_demo.pr` (as salas); a `jinker.md` diz que o WebSocket saiu e fica como cliente; os exemplos do `ws_connect` apontam um servidor de fora (`sem-rodar`: rodando na VPS, conectavam na porta 8081 dela); `route`, `Jinker` (o host padrão é `127.0.0.1`, como o Flask), `cors`, `JinkerResponse`, `RouteRegistrar`, `type`, `sockets`, `LANGUAGE.md`, `Jinga.md`, `INDEX.md` e `docs/lsp.md`. Testes novos em `teste/casos_libs.c`, `teste/casos_linguagem.c`, `teste/cli_roda.pr`, `teste/jinker_roda.pr` (contra o par de eco novo, `teste/ws_par.pr`, que atende várias conexões ao mesmo tempo, uma tarefa por conexão) e `editor/vscode/teste_servidor.js`; as linhas do editor-1 e as do que saiu saem da catraca dos portões.
+
+  Bench em instruções contra o 18.0.1 (os 13 casos, com JIT e sem). No Linux (gcc, `perf stat`, onde a regra de ±0,5% sem JIT é medida; os casos acima de 0,4% medidos de novo com o ambiente acolchoado de 16 em 16 bytes): sem JIT, o `fib` +0,58%, o `metodo` +0,52%, o `closure` +0,50% e o `fib_int` +0,48%, iguais com qualquer acolchoamento; o `chamada` vai de +0,35% a +1,77% conforme o acolchoamento; o resto fica entre −0,95% e +0,01%. O cachegrind do `fib` põe a diferença inteira no laço: 3 instruções a mais por chamada, todas recarga de registrador (duas na abertura do quadro, o `chama_proto`, e uma no `fp == fp0` do `RETURN`), sem nenhuma linha desses tratadores mudada; é o resíduo do lote 5, noutra forma. A `partida` sem JIT mediu +1,59% na rodada, mas vai de −1,6% a +1,6% só com o tamanho do ambiente, nos dois binários (média −0,05%): é a posição da pilha, e não o código. No Mac (clang, `/usr/bin/time -l`): com JIT de −1,8% a +2,2%; sem JIT, o `aritmetica` +8,3%, o `laco_tipado` +6,1%, o `closure` +3,9%, o `lista_indice` +3,6% e o `fib` +2,1%. A causa é o modo de registradores do laço: sem os blocos frios do `app.socket` e do `app.channel` no `GET_MEMBER`, o clang tira o `vm` do registrador, e todo tratador que lê a VM recarrega o ponteiro da pilha (tirar só esses blocos do 18.0.1 dá a mesma piora). Quatro variantes de forma não devolveram o modo bom (sem ponteiro de quadro, blocos parecidos de volta, as propriedades da jinker numa função à parte, o `vm` fixado por `asm`).
+- Versão da linguagem **19.0.0** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 19.0.0 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.15** (`editor/vscode/package.json`) <!-- bump ext -->
 - **O P3 e o lote 1 do P4 entraram juntos no `main` (2026-10-23, à noite)**, depois da rodada na VPS sobre o ramo, dentro do `unshare --pid`: a suíte com 10.062 casos com JIT, sem JIT e no `check-debug`; os portões só com as falhas conhecidas (`check` 41, `roda` 63, P2 492, P3 1.207 em 1.369 blocos, a gramática 10 em 61 s); LSP, depurador, Neovim (fora do `unshare`), `analisa`, `avisos` e o e2e local ok. A VPS tinha voltado a um estado sem o `bubblewrap`, e o portão `roda` parou vermelho dizendo isso, como deve; ele foi instalado de novo. No Mac, o `make check` roda com `sh -c 'ulimit -Hs 8192; ulimit -s 8192; make check'` (sem o teto duro, o `make` da Apple sobe a pilha dos filhos pra 64 MB, e a suíte para nos 6 casos do motor-1); ele para no `cli_roda` (motor-10).
 - Último commit de código no `main`: o 18.0.0 (`ef90f6c`, 2026-10-23, o `.type()` sai), sobre o 17.0.20 (`11aefc6`, 2026-10-17, a jinker serve arquivo); entre os dois, os portões e o estado (o P1 em `b09ff6b` e `ec7f562`, o P2 em `0d107a9`). Antes deles, a logo nova (`aca400d`, extensão 8.6.12), sobre o 17.0.19 (`58ae207`, Plano 6, lote 8, 2026-10-15), que levou o ramo `obra/lote8` num commit só, sobre o 17.0.18 (`with`, 2026-10-14, subido do Linux). No `2a668b9` (17.0.11) entrou, por engano meu (`git add -A`), o seu rename `examples/action.pr` → `examples/funct.pr` que estava na árvore (100% igual); desde então o commit leva só a lista de arquivos do lote. No `0262aac` (estado, 2026-10-18) entrou, por engano meu, a versão velha do `scripts/confere_saida_doc.pr`, que estava no índice desde a sessão anterior (eu não olhei o índice antes do commit); saiu no commit seguinte, e ele entra com o P1. Fora do controle de versão ficam só arquivos seus (`examples/s.pr`), que nunca entram em commit. A sua mudança em `vm/ps_lexer.c` (de 2026-10-12: `with` sai das palavras reservadas) entrou no 17.0.18, por ordem sua de 2026-10-14.
@@ -3898,7 +3898,7 @@ O Makefile tem ramo Darwin:
 - Compila com o clang da Apple.
 - Pega cabeçalhos e bibliotecas por `brew --prefix`.
 - Liga o OpenSSL e o libpng estáticos (os `.a` do Homebrew).
-- Usa o sqlite, o expat e o zlib do próprio macOS, mais os frameworks Security e CoreFoundation.
+- Usa o sqlite e o zlib do próprio macOS, mais os frameworks Security e CoreFoundation.
 - Os clientes de banco não são ligados: o motor abre o `.dylib` no primeiro `connect`.
 
 1. **Dependências de compilação.** É a mesma lista do `scripts/compila.pr` e do `build.yml`.
@@ -4112,7 +4112,7 @@ Os timers da Tecsol (`~/.config/systemd/user`) não sobem no Mac, porque o macOS
    ```bash
    sudo apt-get update
    sudo apt-get install -y git gcc make libsqlite3-dev libpq-dev libmariadb-dev unixodbc-dev \
-       libssl-dev libpng-dev libexpat1-dev zlib1g-dev libgmp-dev libmongoc-dev libbson-dev nodejs npm
+       libssl-dev libpng-dev zlib1g-dev libgmp-dev libmongoc-dev libbson-dev nodejs npm
    git clone https://github.com/kleberDevion/poolscript.git ~/poolscript-lang
    cd ~/poolscript-lang
    (cd editor/vscode && npm install --omit=dev --no-audit --no-fund)

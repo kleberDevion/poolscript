@@ -141,7 +141,7 @@ os.writeFile("nota\x00.txt", "texto")
 
 Vale em todo lugar em que texto vira nome de arquivo: `open`, o módulo `os`,
 os métodos do `PoolFile`, `sqlite3`, `psodbc` com SQLite, `dotenv`, o `save=`
-e o `file=` do `request`, o QR, a planilha (`manpu`), o anexo do `mail`, o
+e o `file=` do `request`, o QR, o anexo do `mail`, o
 `render` e a configuração do `Jinker`. A frase nomeia o argumento: `o
 destino`, `o caminho do save=`, `o nome`. Vale também no que vai pro sistema
 do mesmo jeito: o comando e os argumentos do `os.run` e do `os.cmd` (`o item 1

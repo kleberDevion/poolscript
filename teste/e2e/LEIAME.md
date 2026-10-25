@@ -11,7 +11,7 @@ virava `$1` no PostgreSQL.
 | `arquivo.pr` | nada (no Linux e no macOS usa `/tmp/ps_e2e`; no Windows a pasta `ps_e2e_arquivo` na pasta corrente) | `./pool teste/e2e/arquivo.pr` |
 | `sqlite.pr` | nada (sqlite é embutido) | `./pool teste/e2e/sqlite.pr` |
 | `socket.pr` | nada (loopback) | `./pool teste/e2e/socket.pr` |
-| `pkg.pr`, `manpu.pr`, `qrcode.pr`, `c.pr`, `d.pr`, `f.pr` | nada | `./pool teste/e2e/<script>` |
+| `pkg.pr`, `qrcode.pr`, `c.pr`, `d.pr`, `f.pr` | nada | `./pool teste/e2e/<script>` |
 | `mail_local.pr` | `python3` e `openssl` (os servidores falsos de SMTP/IMAP) | `./pool teste/e2e/mail_local.pr` |
 | `jinker_srv.pr` + `jinker_cli.pr` + `jinker_bruto.pr` | nada (loopback) | ver abaixo |
 | `db.pr` | PostgreSQL e/ou MySQL | ver abaixo |
