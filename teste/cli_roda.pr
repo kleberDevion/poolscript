@@ -2064,6 +2064,18 @@ r = roda([POOL, "semvalor_mod.pr"], pasta=CLS)
 confere("campo sem valor com modulo .pr importado: rodando, a frase com a causa",
         r["rc"] == 1 and "'Filha' object has no attribute 'x': o campo x de Pai foi declarado sem valor" in r["saida"])
 
+# `make install-doc` (o `make install` chama): a doc instalada é a da árvore.
+# Copiar por cima deixava as páginas que saíram do repositório: no 19.0.0, as
+# da `manpu` e as do WebSocket da jinker continuavam em `share/jinga/docs`.
+str INST = PASTA + "/instala_doc"
+os.mkdir(INST + "/share/jinga/docs/velha")
+os.writeFile(INST + "/share/jinga/docs/velha/velha.md", "# velha\n")
+r = roda(["make", "-s", "-C", os.cwd().replace("\\", "/"), "install-doc", "PREFIXO=" + INST])
+confere("make install-doc: a pagina que saiu do repositorio sai da doc instalada",
+        r["rc"] == 0 and not os.exists(INST + "/share/jinga/docs/velha/velha.md"))
+confere("make install-doc: as paginas da arvore estao la",
+        os.exists(INST + "/share/jinga/docs/jinker/jinker.md") and os.exists(INST + "/share/jinga/docs/jinker/route/route.md"))
+
 # ── relatório ───────────────────────────────────────────────────────────────
 post("")
 post("cli/jpkg:", ok, "checagens passaram")

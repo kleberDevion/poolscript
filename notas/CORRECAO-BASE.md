@@ -1187,3 +1187,15 @@ e sem, e dá o mesmo erro.
   Decisão dele (2026-10-24): a jinker soma as quatro do `http.server`, e a
   doc passa a contar 217 extensões. Com isso o conserto é do motor (a tabela
   da jinker), com a doc junto. `jinker` (e `doc`).
+- ~~**doc-34** (achado instalando o 19.0.0 no Mac, 2026-10-24) O `make
+  install` copiava as páginas por cima da doc instalada e nunca apagava a
+  que saiu do repositório. Depois do 19.0.0, `/usr/local/share/jinga/docs`
+  continuava com a `manpu.md`, a `manpu/`, a `jinker/socket/`, a
+  `jinker/channel/` e os objetos internos do WebSocket. O servidor do editor
+  só pede página de nome que o `--metadata` publica, mas a busca dele pega a
+  primeira página que existe entre os caminhos candidatos, e o que lê a pasta
+  direto via documentação do que a Jinga não tem mais.~~ Corrigido logo
+  depois do 19.0.0: a cópia da doc virou o alvo `install-doc`, que o
+  `install` chama e que apaga a pasta instalada antes de copiar. Teste:
+  `teste/cli_roda.pr` instala numa pasta com uma página que não existe no
+  repositório, e ela sai. `doc`.

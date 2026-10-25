@@ -357,10 +357,7 @@ install: pool
 	# `docs/<escopo>/<nome>/<nome>.md`. Sem ela instalada, o servidor funciona
 	# mas responde sem explicação nenhuma — que é justamente o que o completion
 	# não pode voltar a ser. Só as páginas, não o resto do repositório.
-	@cd docs && find . -name '*.md' | while read -r f; do \
-	    mkdir -p "$(PREFIXO)/share/jinga/docs/$$(dirname "$$f")"; \
-	    install -m644 "$$f" "$(PREFIXO)/share/jinga/docs/$$f"; \
-	  done
+	@$(MAKE) --no-print-directory install-doc PREFIXO=$(PREFIXO)
 	# O migrador de extensão vai junto: a frase do arquivo `.ps` manda rodá-lo
 	# (`jinga <prefixo>/share/jinga/scripts/migra_pr.pr <pasta> --aplica`), e o
 	# `scripts/` do repositório não existe na máquina de quem instalou.
@@ -386,6 +383,18 @@ ifneq ($(SO),Darwin)
 	       echo "  (o TIPO MIME em $(DADOS)/mime pede root: sudo make install-mime)"; }
 endif
 	@echo "instalado em $(PREFIXO): jinga, jpkg, jinga-lsp (e os nomes antigos pool, psl, poolscript-lsp)"
+
+# A doc instalada é a da árvore, e só ela: a pasta sai inteira antes da
+# cópia. Copiar por cima deixava as páginas que saíram do repositório (no
+# 19.0.0, as da `manpu` e as do WebSocket da jinker continuavam em
+# `share/jinga/docs`), e o hover acha a primeira página que existe entre os
+# caminhos candidatos. O `install` chama este alvo.
+install-doc:
+	rm -rf "$(PREFIXO)/share/jinga/docs"
+	@cd docs && find . -name '*.md' | while read -r f; do \
+	    mkdir -p "$(PREFIXO)/share/jinga/docs/$$(dirname "$$f")"; \
+	    install -m644 "$$f" "$(PREFIXO)/share/jinga/docs/$$f"; \
+	  done
 
 # Tipo MIME + ícone do `.pr` pro desktop (GNOME/KDE/XFCE/…). Fica separado
 # porque num servidor sem ambiente gráfico ele não faz falta e as ferramentas
@@ -418,7 +427,7 @@ install-icone:
 	@./dados/espalha_icone.sh "$(DADOS_USUARIO)" instalar
 	@echo "  logo do .pr atualizada em $(DADOS_USUARIO)/icons (sem root)"
 
-.PHONY: install install-mime install-icone desinstala
+.PHONY: install install-doc install-mime install-icone desinstala
 
 desinstala:
 	rm -f $(PREFIXO)/bin/jinga $(PREFIXO)/bin/jpkg $(PREFIXO)/bin/jinga-lsp \
