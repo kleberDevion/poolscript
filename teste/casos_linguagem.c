@@ -3573,6 +3573,55 @@ const Caso CASOS_LINGUAGEM[] = {
 { "yield em funct continua fazendo gerador",
   "funct g() {\n    yield 1\n    yield 2\n}\nfor each v in g() {\n    post(v)\n}\n", "1\n2", NULL, 0 },
 
+/* ── count: motor-22, motor-24 e motor-34 (19.0.1) ───────────────────────────
+ * motor-22: no `count each <tipo> in "texto" {`, o `{` depois do texto era a
+ * interpolacao antiga, e o bloco virava parte do texto: o corpo rodava uma
+ * vez, calado. O conteiner e lido no modo cabeca, como o iteravel do
+ * `for each`. motor-24: o `*` e o `**` no valor do `count` sumiam, e
+ * `int(*l) count in xs` contava a lista `l`. motor-34: as quatro formas
+ * (`int(7) count in l`, `int(7) in l count`, `count int(7) in l` e
+ * `count each int(7) in l`) recusam o nome, o segundo valor e a estrela com a
+ * mesma frase, no trecho que causa (o lugar e o fim, pelo JSON do `--check`,
+ * ficam no teste/cli_roda.pr). */
+{ "motor-22: count each sobre texto escrito roda o bloco em cada letra",
+  "count each str in \"abca\" { post(\"dentro\") }\npost(\"fim\")\n", "dentro\ndentro\ndentro\ndentro\nfim", NULL, 0 },
+{ "motor-22: _index e _match no count each sobre texto escrito",
+  "count each str in \"oba\" { post(_index, _match) }\n", "0 o\n1 b\n2 a", NULL, 0 },
+{ "motor-22: return; no count each sobre texto escrito devolve o total",
+  "int funct n() {\n    count each str in \"abca\" {\n        return;\n    }\n}\npost(n())\n", "4", NULL, 0 },
+{ "motor-22: a forma de expressao sobre texto escrito continua",
+  "post(count each str in \"abca\")\n", "4", NULL, 0 },
+{ "motor-24: o * no valor do count infixo e erro",
+  "list xs = [7, 7, 1]\nlist l = [7]\npost(int(*l) count in xs)\n",
+  "", "SyntaxError: 'count' nao aceita '*' no valor: o valor entre parenteses e um so", 2 },
+{ "motor-24: o ** no valor do count infixo e erro",
+  "list xs = [7, 7, 1]\ndict d = {\"a\": 7}\npost(int(**d) count in xs)\n",
+  "", "SyntaxError: 'count' nao aceita '**' no valor: o valor entre parenteses e um so", 2 },
+{ "motor-24: o * no valor do count sufixo e erro",
+  "list xs = [7, 7, 1]\nlist l = [7]\npost(int(*l) in xs count)\n",
+  "", "SyntaxError: 'count' nao aceita '*' no valor: o valor entre parenteses e um so", 2 },
+{ "motor-34: o * no valor do count prefixo e a frase das outras formas",
+  "list xs = [7, 7, 1]\nlist l = [7]\npost(count int(*l) in xs)\n",
+  "", "SyntaxError: 'count' nao aceita '*' no valor: o valor entre parenteses e um so", 2 },
+{ "motor-34: o * no valor do count each e a frase das outras formas",
+  "list xs = [7, 7, 1]\nlist l = [7]\ncount each int(*l) in xs { post(_match) }\n",
+  "", "SyntaxError: 'count' nao aceita '*' no valor: o valor entre parenteses e um so", 2 },
+{ "motor-34: o nome no valor do count prefixo e a frase das outras formas",
+  "list xs = [7]\npost(count int(v=7) in xs)\n",
+  "", "SyntaxError: 'count' nao aceita argumentos nomeados no valor", 2 },
+{ "motor-34: o segundo valor no count prefixo e a frase das outras formas",
+  "list xs = [7]\npost(count int(7, 8) in xs)\n",
+  "", "SyntaxError: 'count' aceita no maximo um valor entre parenteses", 2 },
+{ "motor-34: o nome no valor do count infixo e erro",
+  "list xs = [7]\npost(int(v=7) count in xs)\n",
+  "", "SyntaxError: 'count' nao aceita argumentos nomeados no valor", 2 },
+{ "motor-34: o segundo valor no count infixo e erro",
+  "list xs = [7]\npost(int(7, 8) count in xs)\n",
+  "", "SyntaxError: 'count' aceita no maximo um valor entre parenteses", 2 },
+{ "motor-34: o valor unico continua nas quatro formas",
+  "list xs = [7, 7, 1]\npost(int(7) count in xs, count int(7) in xs, int in xs count, int(7,) count in xs)\n"
+  "count each int(7) in xs { post(_match) }\n", "2 2 3 2\n7\n7", NULL, 0 },
+
 /* ── literais: so `True`, `False` e `Null` (2026-10-05) ──────────────────────
  * A grafia e a que o motor imprime, com a inicial maiuscula. `true`, `false`,
  * `null`, `None` e `none` sao nomes comuns: sem definicao, o NameError sai

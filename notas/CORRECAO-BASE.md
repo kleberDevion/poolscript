@@ -563,7 +563,7 @@ em cada item):
   usada como nome de variavel`). A gramática descreve o parser (o `KW` no
   `corpo_primario` e no `tipo_de_campo`), com a nota no fim da página.
   `motor` (a frase).
-- **motor-22** (achado escrevendo a gramática, 2026-10-23) No `count each
+- ~~**motor-22** (achado escrevendo a gramática, 2026-10-23) No `count each
   <tipo> in <texto literal> { ... }`, o `{` depois do texto é lido como a
   interpolação (`"texto" {expr}`), e não como o bloco: o comando vira a
   expressão `count` sem bloco, e o corpo roda uma vez, como parte do texto.
@@ -577,7 +577,12 @@ em cada item):
   qualquer. A causa: a cabeça do `if`, do `while` e do `for each` é lida no
   modo em que o `{` depois de texto abre o bloco (`chave_abre_bloco`), e o
   container do `count each` não (o `soma` da regra `contagem_com_bloco`, na
-  gramática). `motor` (resultado errado calado).
+  gramática). `motor` (resultado errado calado).~~
+  Corrigido no 19.0.1: o contêiner do `count each` com bloco é lido no modo
+  cabeça, como o iterável do `for each`, e o `{` depois do texto abre o
+  bloco; a gramática lê o contêiner pela regra nova `soma_de_cabeca`. Casos:
+  os "motor-22: ..." de `teste/casos_linguagem.c` (o bloco em cada letra,
+  `_index` e `_match`, o `return;` e a forma de expressão), e o exemplo da 5.6.
 - **motor-23** (achado pelo portão `gramatica`, 2026-10-23) O `--ast` põe os
   erros do lexer na frente dos do parser, e o primeiro erro dele (o `msg`, a
   `linha` e a `coluna` de cima, e o primeiro de `erros`) não é o do `--check`
@@ -592,14 +597,19 @@ em cada item):
   que mostram um erro com a frase escrita como linha do bloco (a crase e o
   travessão da frase são erro do lexer, depois do erro de verdade) e o caso
   da suíte. `motor` (o `--ast`).
-- **motor-24** (achado escrevendo a gramática, 2026-10-23) O valor do `count`
+- ~~**motor-24** (achado escrevendo a gramática, 2026-10-23) O valor do `count`
   (`int(7) count in xs`) aceita `*` e `**` e joga a estrela fora. Com `list
   xs = [7, 7, 1]` e `list l = [7]`, `post(int(*l) count in xs, int(7) count
   in xs)` passa no `--check` e imprime `0 2`, com JIT e sem: o `int(*l)` conta
   os itens iguais à lista `l`, e não ao `7`. O mesmo com `int(**d)`. O
   `count_esquerda` (`vm/ps_parser.c`) recusa o argumento com nome e mais de um
   valor, e não olha a estrela. A doc (3.10) promete o valor entre parênteses
-  (`Tipo(valor) count in contêiner`). `motor` (resultado errado calado).
+  (`Tipo(valor) count in contêiner`). `motor` (resultado errado calado).~~
+  Corrigido no 19.0.1: o `*` e o `**` no valor são `SyntaxError: 'count' nao
+  aceita '*' no valor: o valor entre parenteses e um so` (ou `'**'`), nas
+  quatro formas, no trecho da estrela; a gramática tirou a alternativa da
+  estrela do `valor_de_count`. Casos: os "motor-24: ..." e os "motor-34: ..."
+  de `teste/casos_linguagem.c`, e o exemplo da 3.10.
 - **motor-25** (achado montando o portão `gramatica`, 2026-10-23) O campo
   dentro do formato da f-string (`f"{x:>{w}}"`) não passa pelo parser: quem
   lê é o compilador, com outra frase e no lugar do campo de fora. No
@@ -727,6 +737,19 @@ em cada item):
   do decorador" de `teste/cli_roda.pr` (a coluna e o fim no JSON do
   `--check`) e o "WebSocket da jinker saiu: @app.socket(...) antes de rodar"
   de `teste/casos_libs.c`.
+- ~~**motor-34** (achado no plano do motor-24, 2026-10-24) As quatro formas do
+  `count` não diziam o mesmo do mesmo erro no valor. Na forma prefixa e no
+  `count each` (`count int(...) in xs`, lidos pelo `count_tipo_valor`), o
+  nome dava `'=' e atribuicao; pra comparar use '=='`, o segundo valor
+  `faltou ')' no valor de 'count'` e a estrela `expressao invalida`, frases
+  que não apontam a causa. Na infixa e na sufixa, as frases certas apontavam
+  a palavra `count`, e não o argumento. Nenhuma frase do `count` tinha caso.
+  Medido no 19.0.0, com JIT e sem. `motor` (a frase e o lugar).~~ Corrigido
+  no 19.0.1: as três frases ficam num lugar só (`COUNT_NOMEADO`,
+  `COUNT_UM_SO` e `COUNT_ESTRELA`, em `vm/ps_parser.c`), usadas pelas duas
+  leituras, e cada erro aponta o trecho que causa: a estrela, o nome ou o
+  segundo valor. Casos: os "motor-34: ..." de `teste/casos_linguagem.c`, com
+  a frase e o `^^^`.
 
 ## os
 

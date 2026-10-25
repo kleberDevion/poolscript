@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `19.0.0`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `19.0.1`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -2195,8 +2195,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **19.0.0** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 19.0.0 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **19.0.1** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 19.0.1 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.15 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2837,7 +2837,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "19.0.0"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "19.0.1"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2949,7 +2949,15 @@ O que o código e o CI já mostram do macOS:
 
   Verde no Mac e na VPS, e no `main` em `fb22b26` (com a junção do commit dele em `32a9664`). Na VPS (dentro do `unshare --pid`, com o Neovim fora): a suíte com 10.306 casos com JIT, sem JIT, no `check-debug` e no `check-asan`; os portões só com as falhas conhecidas; `cli_roda` (344), `jinker_roda` (202), `sockets_roda` (29), Mongo (28), LSP (259, os 4 pulados de antes), realce, leis, depurador, e2e local, `analisa` e `avisos`. No Mac: a suíte com 10.278 com JIT e sem, `confere_suite`, `confere_duplicados`, `confere_assercoes`, `cli_roda` (343, só a falha conhecida do motor-10) e o programa de cada item com JIT e sem.
 - **Depois do 19.0.0 (2026-10-24, no mesmo dia):** o `make install` apaga a doc instalada antes de copiar (o alvo `install-doc`, doc-34), como o `instalar.sh` já fazia; as páginas da `manpu` e do WebSocket da jinker ficavam em `/usr/local/share/jinga/docs`. A junção com o commit dele (`bea30df2`: quatro exemplos apagados e o `types.pr` em `examples/`, vermelho no `teste/exemplos_roda.pr` até a sintaxe dele existir) deixou o caminho do terminal do `sys.stdin.raw()` sem prova: teste-12, aberto.
-- Versão da linguagem **19.0.0** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 19.0.0 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- **19.0.1 (2026-10-24): o `count` lê o que a doc escreve** (motor-22 e motor-24, os dois de resultado errado calado; motor-34, achado no caminho):
+  - `count each str in "abca" { ... }` roda o bloco em cada letra: o contêiner é lido no modo cabeça, como o iterável do `for each`, e o `{` depois do texto abre o bloco (o corpo rodava uma vez, dentro do texto, calado);
+  - o `*` e o `**` no valor do `count` são `SyntaxError` (o `int(*l) count in xs` contava a lista `l`);
+  - as quatro formas (`int(7) count in l`, `int(7) in l count`, `count int(7) in l` e `count each int(7) in l`) recusam o nome, o segundo valor e a estrela com a mesma frase, no trecho que causa.
+
+  Doc no mesmo commit: a gramática (a regra `soma_de_cabeca`, o `valor_de_count` sem a estrela e sem a nota dos dois defeitos), a 3.10 e a 5.6. Casos novos em `teste/casos_linguagem.c`, e as posições pelo JSON do `--check` em `teste/cli_roda.pr`.
+
+  Verde no Mac e na VPS. Na VPS (dentro do `unshare --pid`, com o Neovim fora): a suíte com 10.320 casos com JIT, sem JIT, no `check-debug` e no `check-asan`; os portões só com as falhas conhecidas (o P3 com as duas linhas novas do exemplo da 5.6, o hover do `_index` e do `_match`, editor-3); `cli_roda`, `jinker_roda`, `sockets_roda`, Mongo, LSP, realce, leis, depurador, e2e local, `analisa` e `avisos` (o `analisa` não termina o `ps_parser.c` nem o `ps_compiler.c` no teto de 2.000 MB, como no 19.0.0). No Mac: a suíte com 10.292 com JIT e sem, `confere_suite`, `confere_assercoes`, `confere_duplicados`, `cli_roda` (350, só a falha conhecida do motor-10), os portões `gramatica`, P1 e P3, e o programa de cada item com JIT e sem. Bench contra o 19.0.0 (`perf stat`): os 13 casos dentro de ±0,07%, menos a `partida`, que mediu −1,32% com JIT e −0,58% sem (a posição da pilha).
+- Versão da linguagem **19.0.1** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 19.0.1 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.15** (`editor/vscode/package.json`) <!-- bump ext -->
 - **O P3 e o lote 1 do P4 entraram juntos no `main` (2026-10-23, à noite)**, depois da rodada na VPS sobre o ramo, dentro do `unshare --pid`: a suíte com 10.062 casos com JIT, sem JIT e no `check-debug`; os portões só com as falhas conhecidas (`check` 41, `roda` 63, P2 492, P3 1.207 em 1.369 blocos, a gramática 10 em 61 s); LSP, depurador, Neovim (fora do `unshare`), `analisa`, `avisos` e o e2e local ok. A VPS tinha voltado a um estado sem o `bubblewrap`, e o portão `roda` parou vermelho dizendo isso, como deve; ele foi instalado de novo. No Mac, o `make check` roda com `sh -c 'ulimit -Hs 8192; ulimit -s 8192; make check'` (sem o teto duro, o `make` da Apple sobe a pilha dos filhos pra 64 MB, e a suíte para nos 6 casos do motor-1); ele para no `cli_roda` (motor-10).
 - Último commit de código no `main`: o 18.0.0 (`ef90f6c`, 2026-10-23, o `.type()` sai), sobre o 17.0.20 (`11aefc6`, 2026-10-17, a jinker serve arquivo); entre os dois, os portões e o estado (o P1 em `b09ff6b` e `ec7f562`, o P2 em `0d107a9`). Antes deles, a logo nova (`aca400d`, extensão 8.6.12), sobre o 17.0.19 (`58ae207`, Plano 6, lote 8, 2026-10-15), que levou o ramo `obra/lote8` num commit só, sobre o 17.0.18 (`with`, 2026-10-14, subido do Linux). No `2a668b9` (17.0.11) entrou, por engano meu (`git add -A`), o seu rename `examples/action.pr` → `examples/funct.pr` que estava na árvore (100% igual); desde então o commit leva só a lista de arquivos do lote. No `0262aac` (estado, 2026-10-18) entrou, por engano meu, a versão velha do `scripts/confere_saida_doc.pr`, que estava no índice desde a sessão anterior (eu não olhei o índice antes do commit); saiu no commit seguinte, e ele entra com o P1. Fora do controle de versão ficam só arquivos seus (`examples/s.pr`), que nunca entram em commit. A sua mudança em `vm/ps_lexer.c` (de 2026-10-12: `with` sai das palavras reservadas) entrou no 17.0.18, por ordem sua de 2026-10-14.

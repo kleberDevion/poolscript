@@ -2785,6 +2785,24 @@ static PSNode *padrao(P *p)
 }
 
 /* ── operador count ─────────────────────────────────────────────────────── */
+/* O valor do `count` é um só, sem nome e sem estrela, nas quatro formas:
+ * `int(7) count in l`, `int(7) in l count`, `count int(7) in l` e
+ * `count each int(7) in l`. As frases ficam aqui, e as duas leituras (o
+ * `count_tipo_valor` e o `count_esquerda`) usam as mesmas (motor-34). */
+#define COUNT_NOMEADO "'count' nao aceita argumentos nomeados no valor"
+#define COUNT_UM_SO   "'count' aceita no maximo um valor entre parenteses"
+#define COUNT_ESTRELA "'count' nao aceita '%s' no valor: o valor entre parenteses e um so"
+
+/* Um token só com a posição de um nó, pro erro apontar o trecho dele (o
+ * argumento do `count`), como o erro de dentro da f-string já faz. */
+static PSToken token_do_no(const PSNode *n)
+{
+    PSToken tk = {0};
+    tk.line = n->line; tk.col = n->col;
+    tk.linha_fim = n->linha_fim; tk.col_fim = n->col_fim;
+    return tk;
+}
+
 /* Lê `<tipo>` ou `<tipo>(<valor>)`. O conjunto é o de `eh_tipo_count`. */
 static int count_tipo_valor(P *p, const char **tipo, PSNode **valor)
 {
@@ -2798,8 +2816,37 @@ static int count_tipo_valor(P *p, const char **tipo, PSNode **valor)
     *valor = NULL;
     if (aceita(p, T_LPAREN)) {
         if (!checa(p, T_RPAREN)) {
+            /* as recusas das outras formas, no token que causa: aqui a
+             * estrela dava "expressao invalida", o nome "'=' e atribuicao" e
+             * o segundo valor "faltou ')'" (motor-34) */
+            PSToken *v = atual(p);
+            if (checa_op(p, "*") || checa_op(p, "**")) {
+                perro_f(p, v, COUNT_ESTRELA, v->texto);
+                return -1;
+            }
+            if ((v->type == T_IDENT || v->type == T_IDENT_UPPER || v->type == T_KW)
+                    && espia(p, 1)->type == T_OP && espia(p, 1)->texto
+                    && strcmp(espia(p, 1)->texto, "=") == 0) {
+                perro(p, COUNT_NOMEADO, v);
+                return -1;
+            }
             *valor = expressao(p);
             if (FALHOU(p)) return -1;
+            if (checa(p, T_COMMA) && espia(p, 1)->type != T_RPAREN) {
+                /* o trecho é o segundo valor inteiro, como na forma infixa */
+                p->pos++;
+                int32_t ini2 = p->pos;
+                PSToken onde = *atual(p);
+                PSNode *e2 = expressao(p);
+                if (FALHOU(p)) return -1;
+                if (e2) {
+                    fecha_no(p, e2, ini2);
+                    onde.linha_fim = e2->linha_fim;
+                    onde.col_fim = e2->col_fim;
+                }
+                perro(p, COUNT_UM_SO, &onde);
+                return -1;
+            }
         }
         if (!exige(p, T_RPAREN, "faltou ')' no valor de 'count'")) return -1;
     }
@@ -2813,14 +2860,27 @@ static int count_esquerda(P *p, PSNode *no, PSToken *tok,
 {
     if (no && no->kind == N_CALL && no->a && no->a->kind == N_NAME
             && eh_tipo_count(no->a->texto)) {
+        /* cada recusa aponta o que causa (a estrela, o nome ou o segundo
+         * valor inteiro), e não o `count`: o trecho é o das formas prefixas */
         for (int32_t i = 0; i < no->lista.n; i++) {
-            if (no->lista.itens[i]->texto) {
-                perro(p, "'count' nao aceita argumentos nomeados no valor", tok);
+            PSNode *arg = no->lista.itens[i];
+            PSToken onde = token_do_no(arg);
+            onde.linha_fim = onde.line;
+            /* a estrela sumia, e o `int(*l)` contava a lista `l` (motor-24) */
+            if (arg->i2) {
+                onde.col_fim = onde.col + (int32_t)arg->i2;
+                perro_f(p, &onde, COUNT_ESTRELA, arg->i2 == 2 ? "**" : "*");
+                return -1;
+            }
+            if (arg->texto) {
+                onde.col_fim = onde.col + (int32_t)strlen(arg->texto);
+                perro(p, COUNT_NOMEADO, &onde);
                 return -1;
             }
         }
         if (no->lista.n > 1) {
-            perro(p, "'count' aceita no maximo um valor entre parenteses", tok);
+            PSToken onde = token_do_no(no->lista.itens[1]);
+            perro(p, COUNT_UM_SO, &onde);
             return -1;
         }
         *tipo = no->a->texto;
@@ -4486,7 +4546,14 @@ static PSNode *statement_no(P *p)
         if (!aceita_kw(p, "in")) {
             perro(p, "esperado 'in' apos o tipo de 'count each'", atual(p)); return NULL;
         }
+        /* `count each str in "abca" {` — o `{` abre o bloco, não interpola o
+         * texto: o contêiner é lido no modo cabeça, como a condição do `if`
+         * e o iterável do `for each`. Sem isso, o bloco virava parte do
+         * texto e o corpo rodava uma vez, calado (motor-22). */
+        int salvo_cab = p->chave_abre_bloco;
+        p->chave_abre_bloco = 1;
         PSNode *cont = soma(p);
+        p->chave_abre_bloco = salvo_cab;
         if (FALHOU(p)) return NULL;
         if (checa(p, T_LBRACE) || checa(p, T_COLON)) {
             PSNode *n = ps_node_novo(p->arena, N_COUNT_EACH_STMT, t->line, t->col);

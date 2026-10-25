@@ -360,6 +360,21 @@ count each int in [10, "x", 20, 30] {
 Os elementos que não são do tipo (o `"x"` acima) são pulados. `self`, `_count`,
 `_index` e `_match` são do escopo do laço — não existem depois dele.
 
+O contêiner pode ser um texto escrito no próprio comando. Como na condição do
+`if` (`if "texto" {`), o `{` depois do texto abre o bloco:
+
+```ps
+count each str in "oba" {
+    post(_index, _match)
+}
+```
+
+```saida
+0 o
+1 b
+2 a
+```
+
 Dentro de uma funct, `return;` (vazio) no bloco devolve o total contado, e
 `return valor` interrompe e devolve `valor`. No topo do arquivo o `return` é
 erro de sintaxe (6.3), também dentro do `count each`:

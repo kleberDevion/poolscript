@@ -137,8 +137,8 @@ gramática escreve cada uma como uma regra com nome em MAIÚSCULA:
   acima), e é por esta regra que os comandos do corpo de uma lambda passada
   como argumento ficam separados.
 - **`MODO_CABECA`** — a condição do `if`, do `elif` e do `while`, o iterável
-  do `for each`, o sujeito do `match` e a guarda do `case` são lidos neste
-  modo. Nele, o `{` depois de um texto (`if x == "a" {`) abre o bloco, e não
+  do `for each`, o contêiner do `count each`, o sujeito do `match` e a guarda
+  do `case` são lidos neste modo. Nele, o `{` depois de um texto (`if x == "a" {`) abre o bloco, e não
   interpola o texto, até o primeiro parêntese, colchete de lista ou chave de
   dicionário (`chave_abre_bloco`).
 - **`MODO_GRUPO`** — dentro de `( )`, de `[ ]` de lista, de `{ }` de
@@ -286,8 +286,9 @@ retorno: 'return' ~ (&(NEWLINE | ';' | '}' | DEDENT | EOF) | expressao [',' expr
 # a guarda do programa principal: só com o texto "main"
 guarda: 'if' ('(' '__name__' '==' TEXTO_MAIN ')' | '__name__' '==' TEXTO_MAIN) (NEWLINE* &'{' | &':') ~ bloco_da_guarda
 
-# `count each <tipo> in <container> { ... }`; sem o bloco é expressão
-contagem_com_bloco: 'count' 'each' tipo_de_count ['(' [expressao] ')'] 'in' soma &('{' | ':') ~ bloco
+# `count each <tipo> in <container> { ... }`; sem o bloco é expressão. O
+# contêiner é lido no modo cabeça: `count each str in "abc" {` abre o bloco
+contagem_com_bloco: 'count' 'each' tipo_de_count ['(' [expressao] ')'] 'in' soma_de_cabeca &('{' | ':') ~ bloco
 
 # try / catch / finally: pelo menos um catch ou o finally
 tentativa: 'try' ~ bloco ((separador* clausula_catch)+ [separador* 'finally' bloco] | separador* 'finally' bloco)
@@ -303,6 +304,7 @@ caso: 'case' padrao ['if' cabeca] separador_largo* bloco
 
 # as expressões de cabeça
 cabeca: MODO_CABECA expressao
+soma_de_cabeca: MODO_CABECA soma
 ```
 
 ---
@@ -431,9 +433,9 @@ lado_de_count:
     | nome_da_tabela_de_tipos '(' MODO_GRUPO MODO_ARGUMENTOS separador_largo* [valor_de_count [separador_largo* ','] separador_largo*] ')' &('count' | 'in')
     | tipo_de_expressao !('(' | '.')
     | nome_da_tabela_de_tipos !'('
-# o valor entre parênteses é um só e sem nome (count_esquerda); o `*` e o `**`
-# passam e somem (motor-24 da lista de correção)
-valor_de_count: expressao compreensao | ('**' | '*') expressao | !(nome_livre '=') expressao
+# o valor entre parênteses é um só, sem nome e sem `*` nem `**`
+# (count_esquerda e count_tipo_valor, a mesma regra nas quatro formas)
+valor_de_count: expressao compreensao | !(nome_livre '=') expressao
 
 bit_ou: bit_xou ('|' bit_xou)*
 bit_xou: bit_e ('^' bit_e)*
@@ -580,12 +582,3 @@ recusa, com a frase que ainda não aponta a causa:
   existe, os dois comandos na mesma linha ou a causa que ele acha (o `//`
   que não é comentário, em `int x = 1 // um comentario`). O portão conta essa
   marca como recusa do parser.
-
-E duas formas que o parser lê diferente do que a doc mostra:
-
-- no `count each str in "abc" { ... }`, o `{` depois do texto interpola, em
-  vez de abrir o bloco como no `for each`: o comando vira a expressão `count`
-  sem bloco, e o corpo roda uma vez, dentro do texto (motor-22). Com o
-  container numa variável (`count each str in s { ... }`), o bloco vale;
-- no valor do `count` (`int(*l) count in xs`), o `*` e o `**` passam e somem
-  (motor-24).

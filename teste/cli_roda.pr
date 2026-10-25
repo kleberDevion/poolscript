@@ -364,6 +364,30 @@ r = roda([POOL, "--check"], entrada="funct log(f) {\n    return f\n}\n@log()\nfu
 confere("--check: a chamada do decorador sem o argumento, no `(`, até o `)`",
         "log() missing 1 required positional argument: 'f'" in r["saida"]
         and "\"linha\":4,\"coluna\":5,\"l2\":4,\"c2\":7" in r["saida"])
+# motor-24 e motor-34: o erro no valor do `count` aponta o que causa (a
+# estrela, o nome, o segundo valor inteiro), o mesmo trecho nas formas
+# infixa, sufixa e prefixa
+r = roda([POOL, "--check"], entrada="list xs = [7]\nlist l = [7]\npost(int(*l) count in xs)\n")
+confere("--check: o * no valor do count infixo, só na estrela",
+        "'count' nao aceita '*' no valor" in r["saida"] and "\"linha\":3,\"coluna\":10,\"l2\":3,\"c2\":11" in r["saida"])
+r = roda([POOL, "--check"], entrada="list xs = [7]\nlist l = [7]\npost(count int(*l) in xs)\n")
+confere("--check: o * no valor do count prefixo, só na estrela",
+        "'count' nao aceita '*' no valor" in r["saida"] and "\"linha\":3,\"coluna\":16,\"l2\":3,\"c2\":17" in r["saida"])
+r = roda([POOL, "--check"], entrada="list xs = [7]\ndict d = {\"a\": 7}\npost(int(**d) in xs count)\n")
+confere("--check: o ** no valor do count sufixo, nas duas estrelas",
+        "'count' nao aceita '**' no valor" in r["saida"] and "\"linha\":3,\"coluna\":10,\"l2\":3,\"c2\":12" in r["saida"])
+r = roda([POOL, "--check"], entrada="list xs = [7]\npost(int(v=7) count in xs)\n")
+confere("--check: o nome no valor do count infixo, só no nome",
+        "'count' nao aceita argumentos nomeados no valor" in r["saida"] and "\"linha\":2,\"coluna\":10,\"l2\":2,\"c2\":11" in r["saida"])
+r = roda([POOL, "--check"], entrada="list xs = [7]\npost(count int(v=7) in xs)\n")
+confere("--check: o nome no valor do count prefixo, só no nome",
+        "'count' nao aceita argumentos nomeados no valor" in r["saida"] and "\"linha\":2,\"coluna\":16,\"l2\":2,\"c2\":17" in r["saida"])
+r = roda([POOL, "--check"], entrada="list xs = [7]\npost(int(7, 1 + 2) count in xs)\n")
+confere("--check: o segundo valor do count infixo, inteiro",
+        "'count' aceita no maximo um valor entre parenteses" in r["saida"] and "\"linha\":2,\"coluna\":13,\"l2\":2,\"c2\":18" in r["saida"])
+r = roda([POOL, "--check"], entrada="list xs = [7]\npost(count int(7, 1 + 2) in xs)\n")
+confere("--check: o segundo valor do count prefixo, inteiro",
+        "'count' aceita no maximo um valor entre parenteses" in r["saida"] and "\"linha\":2,\"coluna\":19,\"l2\":2,\"c2\":24" in r["saida"])
 # Lote 6c: o gather e o `await` de lista sem catch levantam a primeira com a
 # outra na frase, e nenhuma das duas sobra pro aviso de tarefa sem `await`
 str TAREFAS_6C = "async str funct t(int n) {\n    sleep(0.01 * n)\n    raise Quebrou(\"tarefa \" + str(n))\n}\n"

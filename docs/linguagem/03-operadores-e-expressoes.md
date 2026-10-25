@@ -601,6 +601,24 @@ vale como lado esquerdo — `byte`, `long`, `Object` e `PoolFile` também:
 `byte in [1, b"x", "s"] count` é 1, e `long in [1, 2 ** 70] count` é 2 (o
 `long` aceita os dois, como na declaração).
 
+O valor entre parênteses é **um só**, sem nome e sem `*` ou `**`, em toda forma
+do `count` (também na `count int(7) in l` e no `count each int(7) in l`). O
+resto é `SyntaxError` antes de rodar, no trecho que causa:
+
+```ps
+list xs = [7, 7, 1]
+list l = [7]
+post(int(*l) count in xs)   # SyntaxError: 'count' nao aceita '*' no valor: o valor entre parenteses e um so
+```
+
+```erro
+SyntaxError: 'count' nao aceita '*' no valor: o valor entre parenteses e um so
+```
+
+Com nome (`int(v=7)`), a frase é `'count' nao aceita argumentos nomeados no
+valor`; com dois valores (`int(7, 8)`), `'count' aceita no maximo um valor
+entre parenteses`.
+
 ---
 
 ## 3.11. Operadores pós-fixados
