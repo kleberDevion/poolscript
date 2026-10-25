@@ -643,7 +643,7 @@ em cada item):
   referência é o UCD 15.1. O caso pendente lista os 110. Decisão dele
   (2026-10-24): as tabelas do motor passam pro Unicode 17.0, o do Python 3.15
   que a doc cita, e a doc deixa de dizer 15.1. `motor` (tabelas do Unicode).
-- **motor-27** (achado pelo gerador do P4, lote 3) O `Parsing.string` junta
+- ~~**motor-27** (achado pelo gerador do P4, lote 3) O `Parsing.string` junta
   só quatro brancos: o espaço, o tab, o `\n` e o `\r`. O
   `" ".join(s.split())` do Python, que a doc cita, junta também estes:
   - os controles `\x0b`, `\x0c`, `\x1c` a `\x1f` e `\x85`;
@@ -655,7 +655,15 @@ em cada item):
   `"a b"`. Promessa: `docs/Parsing/string/string.md` ("cada corrida de
   espaço, tab e quebra de linha vira um espaço só, e os das pontas saem (o
   `" ".join(s.split())` do Python)"). Dos 40 casos sorteados do lugar, 32
-  estão pendentes. `motor`.
+  estão pendentes. `motor`.~~
+  Corrigido no 20.0.1: o `par_string` (`vm/jinga_vm.c`) anda por caractere
+  e usa a régua de branco da linguagem, a do `split()` e do `isspace`
+  (`cp_eh_branco`). Os separadores U+001C a U+001F ficam no texto, como no
+  `split()`: a doc do `Parsing.string` passou a dizer a régua da linguagem
+  (o `" ".join(s.split())` do Python, menos esses quatro), e o oráculo do
+  `teste/geradores/python_doc.pr` também. Casos: os quatro "motor-27: ..."
+  de `teste/casos_libs.c`, e os 32 do `teste/casos_python.c` que estavam
+  pendentes, regerado; o exemplo na página do `Parsing.string`.
 - **motor-28** (achado pelo gerador do P4, lote 3) O `-o` logo depois do
   arquivo não chega ao programa. `jinga filho.pr -o saida` não roda o
   `filho.pr`: gera um executável chamado `saida` (e diz `gerado: saida`).

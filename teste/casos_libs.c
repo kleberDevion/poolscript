@@ -1866,6 +1866,27 @@ const Caso CASOS_LIBS[] = {
 { "lote 8: Parsing com sinal, regra BR de milhar, inteiro grande, expoente, sem teto e o boolean do nao",
   "import Parsing\npost(Parsing.integer(\"-5\"), Parsing.integer(\"R$ 19,90\"), Parsing.integer(\"12.7\"), Parsing.integer(\"R$ 1.234\"), Parsing.integer(\"127.abc\"))\npost(Parsing.integer(\"99999999999999999999\"), Parsing.integer(True), Parsing.integer(flo(\"inf\")), Parsing.integer(\"1e5\"))\npost(Parsing.floating(\"-19,90\"), Parsing.floating(\"1e5\"), Parsing.floating(\"1.299,90\"), Parsing.floating(\"1.234\"), Parsing.floating(\"3.14\"))\nstr longo = \"palavra \" * 300\npost(len(Parsing.string(longo)), Parsing.integer(\" \" * 300 + \"42\"), Parsing.floating(\"R$\" + \" \" * 300 + \"19,90\"))\npost(Parsing.string(\"R$ 1.299,90\", to flo), Parsing.boolean(\"não\"), Parsing.boolean(\"NÃO\"), Parsing.boolean(\" off \"), Parsing.boolean(\"sim\"))\npost(type(Parsing.TransientValue([1, 2], to list)), Parsing.JSONformatt(\"123\"), Parsing.JSONformatt(\"[1]\"))\n",
   "-5 19 12 1234 127\n99999999999999999999 1 0 100000\n-19.9 100000.0 1299.9 1234.0 3.14\n2399 42 19.9\n1299.9 False False False True\nstr {} [1]", NULL, 0 },
+/* motor-27: o Parsing.string junta os brancos pela regua da linguagem, a do
+ * split() e do isspace (cp_eh_branco), andando por caractere; so via o
+ * espaco, o tab, o \n e o \r. Os separadores U+001C a U+001F ficam no
+ * texto, como no split() (o Python os conta como branco; a linguagem, nao). */
+{ "motor-27: o Parsing.string junta cada branco da linguagem, como o split()",
+  "import Parsing\nlist r = []\n"
+  "for each c in [12288, 133, 11, 12, 160, 8232, 8233, 5760, 8192, 8239, 8287] {\n"
+  "    str s = \" a\" + chr(c) + chr(c) + \"b \" + chr(c)\n"
+  "    r.append(Parsing.string(s) == \"a b\" and Parsing.string(s) == \" \".join(s.split()))\n"
+  "}\npost(r)\n",
+  "[True, True, True, True, True, True, True, True, True, True, True]", NULL, 0 },
+{ "motor-27: corridas misturadas de branco viram um espaco so",
+  "import Parsing\npost(\"[\" + Parsing.string(\" \\t\\U00003000a\\x85\\xa0\\x0b b\\U00002028\\U00002028c\\r\\n\") + \"]\")\n",
+  "[a b c]", NULL, 0 },
+{ "motor-27: os separadores U+001C a U+001F ficam no texto, como no split()",
+  "import Parsing\nstr s = \"a\\x1cb  \\x1dc\\x1e\\x1f\"\n"
+  "post(Parsing.string(s) == \"a\\x1cb \\x1dc\\x1e\\x1f\", Parsing.string(s) == \" \".join(s.split()))\n",
+  "True True", NULL, 0 },
+{ "motor-27: de controle, o espaco, o tab e as quebras de linha",
+  "import Parsing\npost(\"[\" + Parsing.string(\" a\\tb\\nc\\r\\nd  \") + \"]\", \"[\" + Parsing.string(\"\") + \"]\")\n",
+  "[a b c d] []", NULL, 0 },
 { "lote 8: apelido JSON usado como modulo e NameError antes de rodar",
   "import json\nlist l = JSON.parse(\"[1]\")\npost(l)\n",
   "", "NameError: name 'JSON' is not defined", 2 },

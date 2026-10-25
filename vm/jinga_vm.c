@@ -14398,7 +14398,9 @@ static int par_string(VM *vm, Value *args, int n, Value *out)
     if (!strcmp(para, "flo") || !strcmp(para, "float")) return par_floating(vm, args, 1, out);
 
     /* `" ".join(s.split())`: colapsa qualquer corrida de branco em um espaço,
-     * sem teto (cortava em 1024) */
+     * sem teto (cortava em 1024). O branco é a régua da linguagem, a do
+     * `split()` e do `isspace` (`cp_eh_branco`), andando por caractere; só
+     * via o espaço, o tab, o `\n` e o `\r` (motor-27). */
     TXTBUF_AUTO t = {0};
     if (texto_do_valor(args[0], &t) != 0) BERRO(vm, "MemoryError", "sem memoria");
     const char *txt = t.b ? t.b : "";
@@ -14406,10 +14408,18 @@ static int par_string(VM *vm, Value *args, int n, Value *out)
     SBUF_AUTO b = {0};
     int i = 0, primeiro = 1;
     while (i < len) {
-        while (i < len && (txt[i]==' '||txt[i]=='\t'||txt[i]=='\n'||txt[i]=='\r')) i++;
+        while (i < len) {                              /* pula o branco */
+            uint32_t cp; int k = utf8_le(txt, len, i, &cp);
+            if (!k || !cp_eh_branco(cp)) break;
+            i += k;
+        }
         if (i >= len) break;
         int ini = i;
-        while (i < len && !(txt[i]==' '||txt[i]=='\t'||txt[i]=='\n'||txt[i]=='\r')) i++;
+        while (i < len) {                              /* a palavra */
+            uint32_t cp; int k = utf8_le(txt, len, i, &cp);
+            if (k && cp_eh_branco(cp)) break;
+            i += k ? k : 1;
+        }
         if (!primeiro && sb_bytes(&b, " ", 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
         if (sb_bytes(&b, txt + ini, i - ini) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
         primeiro = 0;

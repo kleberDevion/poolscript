@@ -8,7 +8,8 @@
 # Os lugares, com a frase da doc:
 #   caixa           `upper` e `lower` de todo caractere do Unicode, "a mesma do
 #                   `upper`/`lower` do Python" (docs/linguagem/12-metodos-string-list-dict.md);
-#   Parsing.string  "o `" ".join(s.split())` do Python" (docs/Parsing/string/string.md);
+#   Parsing.string  "o `" ".join(s.split())` do Python, menos os separadores
+#                   U+001C a U+001F" (docs/Parsing/string/string.md);
 #   os.run          a forma com string, "a do `shlex.split` do Python" (docs/os/run/run.md);
 #   loadFile        o `.csv`, "como o `csv.DictReader` do Python" (docs/os/loadFile/loadFile.md);
 #   readFile        "lido como UTF-8, como o `open().read()` do Python", com o
@@ -44,9 +45,6 @@ str TMP = "ps_python_doc_tmp_" + str(date.timestamp_ms())
 str VERSAO = "Python 3.15"
 int SEMENTE = 20261024
 flo PRAZO = 60.0
-# os brancos que o `split()` do Python junta, além do espaço, tab, `\n` e `\r`
-list BRANCOS_SO_PYTHON = [11, 12, 28, 29, 30, 31, 133, 160, 5760, 8192, 8193, 8194, 8195, 8196, 8197, 8198,
-                          8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288]
 
 # As peças dos textos sorteados: as das leis, mais o que cada lugar pede.
 list LETRAS = ["a", "b", "Z", "ç", "é", "日", "本", "\U00020BB7", "1", "_", "-", "=", "'", "\"", "\\",
@@ -585,7 +583,18 @@ list DRIVER = [
     "            ls.append(e + ' ' + (m.guess_type('f' + e)[0] or 'application/octet-stream'))",
     "        r['saida'] = NL.join(ls)",
     "    elif k == 'string':",
-    "        r['saida'] = '[' + ' '.join(t['s'].split()) + ']'",
+    "        # o split() do Python, menos os separadores U+001C a U+001F (a doc)",
+    "        ps, cur = [], ''",
+    "        for ch in t['s']:",
+    "            if ch.isspace() and not 0x1c <= ord(ch) <= 0x1f:",
+    "                if cur:",
+    "                    ps.append(cur)",
+    "                cur = ''",
+    "            else:",
+    "                cur += ch",
+    "        if cur:",
+    "            ps.append(cur)",
+    "        r['saida'] = '[' + ' '.join(ps) + ']'",
     "    elif k == 'run':",
     "        try:",
     "            a = shlex.split(t['s'])",
@@ -734,14 +743,6 @@ str funct item_de(dict c, dict r) {
         return "motor-26"
     }
     dict t = c["tarefa"]
-    if s == "Parsing.string" {
-        for each ch in t["s"] {
-            if ord(ch) in BRANCOS_SO_PYTHON {
-                return "motor-27"
-            }
-        }
-        return ""
-    }
     if s == "sys.argv" {
         if t["args"].len() > 0 and t["args"][0] == "-o" {
             return "motor-28"
