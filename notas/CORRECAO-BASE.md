@@ -753,7 +753,7 @@ em cada item):
 
 ## os
 
-- **os-1** (achado montando o prazo do portão P1, 2026-10-18) O
+- ~~**os-1** (achado montando o prazo do portão P1, 2026-10-18) O
   `p.returncode` do `Process` fica `Null` depois que o filho acabou, até
   alguém chamar `p.wait()`. Programa:
   `Object p = os.run(["true"], capture="live")`, `sleep(0.5)`,
@@ -761,7 +761,14 @@ em cada item):
   `0`. Promessa: `docs/os/Process/Process.md`, tabela dos membros ("`Null`
   enquanto roda; depois, o código de saída"). Sem isso não há como saber se o
   filho acabou sem ficar preso: o `Process` não tem `poll()` (o Python tem, e
-  é ele que atualiza o `returncode` de lá). `motor`.
+  é ele que atualiza o `returncode` de lá). `motor`.~~
+  Corrigido no 19.0.3: a leitura do `returncode` e o `str()` do objeto
+  conferem o filho sem esperar (`proc_confere`, `vm/jinga_vm.c`: o
+  `waitpid` com `WNOHANG`; no Windows, o `ps_w_proc_terminou` e o
+  `ps_w_proc_espera`), e guardam o código como o `wait()`. O `wait()` que
+  encontra o filho já recolhido por essa leitura devolve o código guardado.
+  Casos: os quatro "os-1: ..." de `teste/casos_libs.c`, e o exemplo da
+  página do `Process`.
 - **os-2** (achado pelo gerador do P4, lote 3, 2026-10-24,
   `teste/casos_python.c`) Quando o trecho que não é UTF-8 tem mais de um byte,
   o `UnicodeDecodeError` do `os.readFile` diz só o primeiro, e o do Python diz

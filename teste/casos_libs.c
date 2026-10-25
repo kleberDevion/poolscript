@@ -1469,10 +1469,11 @@ const Caso CASOS_LIBS[] = {
   "p.wait()\n", "out\nerr", NULL, 0 },
 { "run live: codigo de saida no wait e no returncode",
   "import os\n"
-  "p = os.run([\"sh\", \"-c\", \"exit 3\"], capture=\"live\")\n"
+  "p = os.run([\"cat\"], capture=\"live\")\n"
   "post(p.returncode)\n"
+  "p.close()\n"
   "post(p.wait())\n"
-  "post(p.returncode)\n", "Null\n3\n3", NULL, 0 },
+  "post(p.returncode)\n", "Null\n0\n0", NULL, 0 },
 { "run live: kill mata e o codigo diz o sinal",
   "import os\n"
   "p = os.run([\"sleep\", \"30\"], capture=\"live\")\n"
@@ -1483,6 +1484,49 @@ const Caso CASOS_LIBS[] = {
   "p = os.run([\"sleep\", \"0.2\"], capture=\"live\")\n"
   "post(p.pid > 0)\n"
   "post(p.wait())\n", "True\n0", NULL, 0 },
+/* os-1: o `returncode` confere o filho na hora em que e lido, sem esperar o
+ * `wait()`: ficava Null depois que o filho acabava, e o `str()` dizia
+ * `rodando`. Cada laco tem teto de 5 s, pra o caso nao prender a suite se o
+ * defeito voltar. */
+{ "os-1: o returncode diz o codigo sem o wait, e o wait depois da o mesmo",
+  "import os\n"
+  "Object p = os.run([\"sh\", \"-c\", \"exit 3\"], capture=\"live\")\n"
+  "int i = 0\n"
+  "while p.returncode == Null and i < 5000 {\n"
+  "    sleep(0.001)\n"
+  "    i++\n"
+  "}\n"
+  "post(p.returncode, p.wait(), p.returncode)\n"
+  "post(str(p).endswith(\"returncode=3>\"))\n", "3 3 3\nTrue", NULL, 0 },
+{ "os-1: enquanto o filho roda, o returncode e Null e o str diz rodando",
+  "import os\n"
+  "Object p = os.run([\"cat\"], capture=\"live\")\n"
+  "post(p.returncode, str(p).endswith(\" rodando>\"))\n"
+  "p.close()\n"
+  "post(p.wait())\n", "Null True\n0", NULL, 0 },
+{ "os-1: morto pelo kill, o returncode da -15 sem o wait",
+  "import os\n"
+  "Object p = os.run([\"sleep\", \"30\"], capture=\"live\")\n"
+  "p.kill()\n"
+  "int i = 0\n"
+  "while p.returncode == Null and i < 5000 {\n"
+  "    sleep(0.001)\n"
+  "    i++\n"
+  "}\n"
+  "post(p.returncode, p.kill(0))\n", "-15 False", NULL, 0 },
+{ "os-1: o wait de uma tarefa e o returncode lido ao mesmo tempo dao o mesmo codigo",
+  "import os\n"
+  "Object p = os.run([\"sleep\", \"0.2\"], capture=\"live\")\n"
+  "async int funct espera(Object x) {\n"
+  "    return x.wait()\n"
+  "}\n"
+  "Object t = espera(p)\n"
+  "int i = 0\n"
+  "while p.returncode == Null and i < 5000 {\n"
+  "    sleep(0.001)\n"
+  "    i++\n"
+  "}\n"
+  "post(p.returncode, await t)\n", "0 0", NULL, 0 },
 /* Com `pty=True` o filho acha que esta num terminal: `input()`, cor e
  * programa interativo passam a funcionar — e o que o terminal integrado pede.
  * O canal do terminal nao e so o texto do filho: no Windows o pseudoconsole

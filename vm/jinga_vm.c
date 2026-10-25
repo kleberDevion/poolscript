@@ -337,6 +337,9 @@ typedef struct {
     PsWProc w;
 #endif
 } PSProcesso;
+/* Confere, sem esperar, se o filho acabou (definida junto do `wait()`, mais
+ * abaixo): o `returncode` e o `str()` do objeto leem por ela. */
+static void proc_confere(PSProcesso *p);
 /* `regex.compile(padrao)`: o padrao COMPILADO uma vez e reusado — o mesmo
  * PSRegex que as funcoes do modulo compilam e jogam fora a cada chamada. */
 typedef struct {
@@ -3671,6 +3674,7 @@ static int descreve_obj(const Value *v, char *buf, size_t cap)
         }
         case OBJ_PROCESSO: {
             PSProcesso *p = (PSProcesso *)v->as.obj;
+            proc_confere(p);
             if (p->terminou) snprintf(buf, cap, "<Process pid=%d returncode=%d>", p->pid, p->codigo);
             else snprintf(buf, cap, "<Process pid=%d rodando%s>", p->pid, p->eh_pty ? " pty" : "");
             return 1;
@@ -15788,6 +15792,23 @@ static void proc_espera_off(void *v)
 #define PROC_CODIGO(st)      (WIFEXITED(st) ? WEXITSTATUS(st) : WIFSIGNALED(st) ? -WTERMSIG(st) : 0)
 #endif
 
+/* Confere, sem esperar, se o filho já acabou; acabou, guarda o código como o
+ * `wait()` faz. É o que o `returncode` e o `str()` leem: os dois ficavam em
+ * `Null` e `rodando` até alguém chamar o `wait()`, e quem esperava o fim
+ * olhando o `returncode` ficava preso (os-1). */
+static void proc_confere(PSProcesso *p)
+{
+    if (p->terminou) return;
+    int st = 0;
+#if defined(PS_SO_WINDOWS)
+    if (!ps_w_proc_terminou(&p->w) || ps_w_proc_espera(&p->w, &st) != 0) return;
+#else
+    if (waitpid((pid_t)p->pid, &st, WNOHANG) != (pid_t)p->pid) return;
+#endif
+    p->terminou = 1;
+    p->codigo = PROC_CODIGO(st);
+}
+
 static PSProcesso *novo_processo(VM *vm, int pid, int fd_in, int fd_out, int fd_err, int eh_pty)
 {
     PSProcesso *p = calloc(1, sizeof(PSProcesso));
@@ -16062,6 +16083,10 @@ static int met_pr_wait(VM *vm, Value alvo, Value *args, int n, Value *out)
     ProcEsperaOff o;
     PROC_ESPERA_DE(o, p);
     fib_offload(vm, proc_espera_off, &o);
+    /* Outra tarefa leu o `returncode` enquanto este `wait()` esperava e
+     * recolheu o filho (`proc_confere`): o `waitpid` daqui dá ECHILD, e o
+     * código já está guardado. */
+    if (o.rc < 0 && p->terminou) { *out = MK_INT(p->codigo); return 0; }
     /* o errno é o da thread que esperou, não o desta */
     if (o.rc < 0) MERRO(vm, "IOError", "wait(): %s", strerror(o.err));
     p->terminou = 1;
@@ -29399,11 +29424,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (strcmp(nome, "proto") == 0)  { stack[sp - 1] = MK_INT(sk->proto); break; }
             }
             if (EH_PROCESSO(alvo)) {
-                /* `pid` e `returncode` são CAMPOS (sem parêntese): não fazem
-                 * nada, só respondem. `returncode` é Null enquanto roda. */
+                /* `pid` e `returncode` são CAMPOS (sem parêntese): só
+                 * respondem. `returncode` é Null enquanto roda, e confere o
+                 * filho sem esperar (`proc_confere`). */
                 PSProcesso *pr = COMO_PROCESSO(alvo);
                 if (strcmp(nome, "pid") == 0) { stack[sp - 1] = MK_INT(pr->pid); break; }
                 if (strcmp(nome, "returncode") == 0) {
+                    proc_confere(pr);
                     stack[sp - 1] = pr->terminou ? MK_INT(pr->codigo) : MK_NULL();
                     break;
                 }

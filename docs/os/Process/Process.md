@@ -26,7 +26,7 @@ import os
 | Membro | Devolve | O que faz |
 |---|---|---|
 | `p.pid` | `int` | o PID do filho (campo, sem parênteses) |
-| `p.returncode` | `Null` \| `int` | `Null` enquanto roda; depois, o código de saída |
+| `p.returncode` | `Null` \| `int` | `Null` enquanto roda; depois, o código de saída (conferido na hora, sem esperar) |
 | `p.write(texto)` | `int` | escreve no stdin do filho; devolve quantos bytes foram |
 | `p.close()` | `bool` | fecha a entrada: o filho vê fim de arquivo |
 | `p.read(n=4096)` | `str` | até `n` bytes do que o filho já imprimiu |
@@ -92,6 +92,24 @@ pergunta se ele ainda existe.
 
 `wait()` cede enquanto espera: numa rota do jinker, as outras requisições
 continuam sendo atendidas.
+
+O `returncode` confere o filho na hora em que é lido, sem esperar: dá pra
+acompanhar o fim sem travar no `wait()`, e o `wait()` depois devolve o mesmo
+código.
+
+```ps
+import os
+
+Object p = os.run(["sh", "-c", "exit 3"], capture="live")
+while p.returncode == Null {
+    sleep(0.01)
+}
+post(p.returncode, p.wait())
+```
+
+```saida
+3 3
+```
 
 ## Terminal (`pty=True`)
 

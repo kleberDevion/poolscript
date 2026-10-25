@@ -179,8 +179,8 @@ str funct prepara_isolamento(str trab, str portao, dict iso) {
 # levam o `nome` na frente. A saída vai pra arquivo, não pra cano: o processo
 # que o programa dispara e deixa vivo não prende a leitura. O `sh` de fora
 # espera o programa e grava o código; o prazo é contado aqui, olhando esse
-# arquivo (o `returncode` do `Process` não serve: fica `Null` até o `wait()`,
-# o item os-1 da lista).
+# arquivo. O disparo sem `capture` devolve o número do grupo (abaixo), e não
+# um `Process`: o código vem desse arquivo.
 #
 # O ambiente é limpo (`env -i`), com o PATH de quem roda e o HOME e o TMPDIR
 # na pasta: o exemplo do `os.environ` não mostra o ambiente de quem confere, e

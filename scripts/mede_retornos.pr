@@ -469,7 +469,7 @@ os.writeFile("@TMP@/os.csv", "a,b\\n1,2\\n")
         ["os", "chdir", 'os.chdir("@TMP@")'],
         ["os", "environ", 'os.environ()', 'os.environ("HOME")', 'os.environ("MR_NAO_EXISTE")'],
         # O processo VIVO (`capture="live"`). A ordem importa: `returncode` e
-        # Null enquanto roda e int depois do `wait`, entao um ainda rodando e
+        # Null enquanto roda e int depois que acaba, entao um ainda rodando e
         # outro ja terminado sao medidos juntos.
         ["!", 'mr_p = os.run(["cat"], capture="live")'],
         ["!", 'mr_p2 = os.run(["true"], capture="live")'],
