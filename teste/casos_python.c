@@ -7,7 +7,7 @@
  * notas/CORRECAO-BASE.md: ele tem que falhar, e quando o motor acertar o
  * runner diz JA FUNCIONA e o gerador roda de novo.
  *
- * casos: 228  |  pendentes: 37 (motor-26: 1, motor-27: 32, motor-28: 1, os-3: 1, os-5: 2)  |  semente: 20261024
+ * casos: 228  |  pendentes: 34 (motor-26: 1, motor-27: 32, motor-28: 1)  |  semente: 20261024
  */
 #include "ps_teste.h"
 
@@ -6064,7 +6064,7 @@ const Caso CASOS_PYTHON[] = {
   "      b/\n"
   "f",
   NULL, 0, NULL, 0, "unix" },
-{ "python #183 mkdir (PENDENTE os-5)",
+{ "python #183 mkdir",
   "import os\n"
   "str funct sem_linha(str e) {\n"
   "    int i = e.rfind(\" (linha \")\n"
@@ -6120,7 +6120,7 @@ const Caso CASOS_PYTHON[] = {
   "b/\n"
   "  f/\n"
   "f",
-  NULL, 0, NULL, 1, "unix" },
+  NULL, 0, NULL, 0, "unix" },
 { "python #184 mkdir",
   "import os\n"
   "str funct sem_linha(str e) {\n"
@@ -6571,7 +6571,7 @@ const Caso CASOS_PYTHON[] = {
   "b/\n"
   "f",
   NULL, 0, NULL, 0, "unix" },
-{ "python #192 mkdir (PENDENTE os-5)",
+{ "python #192 mkdir",
   "import os\n"
   "str funct sem_linha(str e) {\n"
   "    int i = e.rfind(\" (linha \")\n"
@@ -6628,7 +6628,7 @@ const Caso CASOS_PYTHON[] = {
   "  f/\n"
   "    a/\n"
   "f",
-  NULL, 0, NULL, 1, "unix" },
+  NULL, 0, NULL, 0, "unix" },
 { "python #193 mkdir",
   "import os\n"
   "str funct sem_linha(str e) {\n"
@@ -6907,7 +6907,7 @@ const Caso CASOS_PYTHON[] = {
   "b/\n"
   "f",
   NULL, 0, NULL, 0, "unix" },
-{ "python #198 mkdir (PENDENTE os-3)",
+{ "python #198 mkdir",
   "import os\n"
   "str funct sem_linha(str e) {\n"
   "    int i = e.rfind(\" (linha \")\n"
@@ -6961,7 +6961,7 @@ const Caso CASOS_PYTHON[] = {
   "a/\n"
   "  b/\n"
   "f",
-  NULL, 0, NULL, 1, "unix" },
+  NULL, 0, NULL, 0, "unix" },
 { "python #199 mkdir",
   "import os\n"
   "str funct sem_linha(str e) {\n"

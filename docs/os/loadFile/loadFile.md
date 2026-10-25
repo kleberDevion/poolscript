@@ -44,7 +44,7 @@ import os
 
 a = os.loadFile("planilha.xlsm", mode="rb")   # PoolFile
 b = os.loadFile("dump", mode="rb")            # sem extensão: PoolFile
-c = os.loadFile("logo.png", mode="r")         # o texto dos bytes
+c = os.loadFile("logo.png", mode="r")         # UnicodeDecodeError: o PNG não é UTF-8
 ```
 
 > **Isto mudou na versão 15.90.14.** Havia uma lista fixa de doze extensões

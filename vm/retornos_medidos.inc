@@ -324,7 +324,6 @@
     { "os", "PoolFile", "type" },
     { "os", "chdir", "Null" },
     { "os", "cmd", "Null|str" },
-    { "os", "code", "str" },
     { "os", "copy", "Null" },
     { "os", "cwd", "str" },
     { "os", "environ", "dict|str|Null" },

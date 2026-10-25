@@ -1831,6 +1831,32 @@ const Caso CASOS_LIBS[] = {
 { "lote 8: os.mkdir com barra no fim, exist_ok sobre arquivo e erro, rmdir force sem teto de 32",
   "import os\nos.mkdir(\"d/m1/\")\npost(os.isdir(\"d/m1\"))\nos.mkdir(\"d/m1/\", exist_ok=True)\nos.writeFile(\"d/nota.txt\", \"x\")\ntry {\n    os.mkdir(\"d/nota.txt\", exist_ok=True)\n} catch (FileExistsError e) {\n    post(e)\n}\nstr c = \"arv\"\nint i = 0\nwhile (i < 40) {\n    c = c + \"/n\" + str(i)\n    i++\n}\nos.mkdir(c)\nos.writeFile(c + \"/folha.txt\", \"x\")\nos.writeFile(\"arv/n0/outra.txt\", \"y\")\nos.rmdir(\"arv\", True)\npost(os.exists(\"arv\"))\n",
   "True\n[Errno 17] File exists: 'd/nota.txt' (linha 7)\nFalse", NULL, 0 },
+/* os-5 e os-3: o os.mkdir faz o que o os.makedirs do Python faz. O `.` no
+ * fim volta sem erro quando a pasta de cima acabou de ser criada (dava
+ * File exists depois de criar), e a pasta do meio que nao da pra criar e o
+ * erro, com o caminho ate ela (citava o caminho inteiro). */
+{ "os-5: o mkdir de `b/f/.` cria b/f sem erro, e com b/f existindo e File exists",
+  "import os\nos.mkdir(\"b/f/.\")\nos.mkdir(\"c/d/./.\")\npost(os.isdir(\"b/f\"), os.isdir(\"c/d\"))\n"
+  "try {\n    os.mkdir(\"b/f/.\")\n} catch (FileExistsError e) {\n    post(e)\n}\n"
+  "os.mkdir(\"b/f/.\", exist_ok=True)\nos.mkdir(\"e/./g\")\npost(os.isdir(\"e/g\"))\n",
+  "True True\n[Errno 17] File exists: 'b/f/.' (linha 6)\nTrue", NULL, 0 },
+{ "os-3: a pasta do meio que nao da pra criar e o erro, com o caminho ate ela",
+  "import os\nos.writeFile(\"f\", \"x\")\nfor each c in [\"f/g/h\", \"f/./a\", \"f/g\"] {\n    try {\n"
+  "        os.mkdir(c, exist_ok=True)\n    } catch (NotADirectoryError e) {\n        post(e)\n    }\n}\n"
+  "post(os.exists(\"f/g\"))\n",
+  "[Errno 20] Not a directory: 'f/g' (linha 5)\n[Errno 20] Not a directory: 'f/.' (linha 5)\n"
+  "[Errno 20] Not a directory: 'f/g' (linha 5)\nFalse", NULL, 0 },
+/* O os.code saiu no 20.0.0 (decisao dele): abria o primeiro editor do PATH
+ * (code, cursor, zed, nano ou vim) e deixava ele rodando solto. Agora e um
+ * membro que nao existe, com a frase de qualquer membro que nao existe, antes
+ * de rodar e rodando, na mesma linha. */
+{ "os.code saiu: antes de rodar",
+  "import os\nos.code()\n",
+  "", "AttributeError: module 'os' has no attribute 'code'", 2 },
+{ "os.code saiu: rodando (pelo Object), a mesma frase na mesma linha",
+  "import os\nObject m = os\ntry { m.code(\".\") } catch (AttributeError e) { post(e) }\n"
+  "try { post(m.code) } catch (AttributeError e) { post(e) }\n",
+  "module 'os' has no attribute 'code' (linha 3)\nmodule 'os' has no attribute 'code' (linha 4)", NULL, 0 },
 { "lote 8: os.run com texto divide pela regra do shlex",
   "import os\nimport sys\nstr eu = \"'\" + sys.executable + \"'\"\npost(os.run(eu + \" -e \\\"import sys; post(sys.argv[1:])\\\" --titulo=\\\"dois nomes\\\" a\\\"b c\\\"d \\\"\\\" x\\\\ y 'a\\\\b'\", capture=True).strip())\nfor each cmd in [\"printf \\\"aberta\", \"printf x\\\\\"] {\n    try {\n        os.run(cmd, capture=True)\n    } catch (ValueError e) {\n        post(e)\n    }\n}\n",
   "['--titulo=dois nomes', 'ab cd', '', 'x y', 'a\\\\b']\nNo closing quotation (linha 7)\nNo escaped character (linha 7)", NULL, 0, NULL, 0, "unix" },

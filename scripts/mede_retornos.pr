@@ -429,7 +429,6 @@ mr_pat = regex.compile("a(b)")
 
 addEnd(GRUPOS, {
     "nome": "os",
-    "env": "PATH='@TMP@/bin':\"$PATH\"",
     "prep": '''import os
 os.writeFile("@TMP@/os.txt", "a")
 os.writeFile("@TMP@/os.json", "{\\"a\\": 1}")
@@ -442,10 +441,12 @@ os.writeFile("@TMP@/os.csv", "a,b\\n1,2\\n")
         ["os", "pathFolder", 'os.pathFolder("bin")'],
         # o tipo e o do ARQUIVO (a doc: str | dict | list | PoolFile): uma
         # amostra de cada. Com uma so (o PNG), o `--check` recusava
-        # `str t = os.loadFile("nota.txt")`, que roda e devolve str.
+        # `str t = os.loadFile("nota.txt")`, que roda e devolve str. O
+        # `mode="r"` vai num texto: o PNG nao e UTF-8 e da `UnicodeDecodeError`,
+        # como o `open().read()` do Python.
         ["os", "loadFile", 'os.loadFile("@TMP@/os.txt")', 'os.loadFile("@TMP@/os.json")',
          'os.loadFile("@TMP@/os2.json")', 'os.loadFile("@TMP@/os.csv")', 'os.loadFile("@PNG@", "rb")',
-         'os.loadFile("@PNG@", mode="r")'],
+         'os.loadFile("@TMP@/os.json", mode="r")'],
         ["os", "getenv", 'os.getenv("HOME")', 'os.getenv("MR_NAO_EXISTE")'],
         ["os", "readFile", 'os.readFile("@TMP@/os.txt")'],
         ["os", "writeFile", 'os.writeFile("@TMP@/os2.txt", "b")'],
@@ -457,7 +458,6 @@ os.writeFile("@TMP@/os.csv", "a,b\\n1,2\\n")
         ["os", "cmd", 'os.cmd("true")', 'os.cmd("echo a", capture=True)'],
         ["os", "run", 'os.run(["true"])', 'os.run(["echo", "a"], capture=True)',
                       'os.run(["true"], capture="live")'],
-        ["os", "code", 'os.code("@TMP@")'],
         ["os", "exists", 'os.exists("@TMP@")'],
         ["os", "isfile", 'os.isfile("@TMP@")'],
         ["os", "isdir", 'os.isdir("@TMP@")'],
@@ -1150,14 +1150,11 @@ if __name__ == "main" {
         ia += 1
     }
     os.mkdir(TMP, exist_ok=True)
+    # a pasta `bin` e a que o `os.pathFolder("bin")` do grupo os acha
     os.mkdir(TMP + "/bin", exist_ok=True)
     POOL = os.run(["readlink", "-f", sys.executable], capture=True).strip()
     os.cmd("'" + POOL + "' --metadata > " + META)
     meta = json.parse(os.readFile(META))
-    # `os.code` abre o editor do sistema: aqui ele acha um `code` de mentira
-    # no PATH do grupo, e a medicao nao abre janela nenhuma.
-    os.writeFile(TMP + "/bin/code", "#!/bin/sh\nexit 0\n")
-    os.run(["chmod", "+x", TMP + "/bin/code"], capture=True)
     qrcode.make("x").save(PNG)
 
     feitos = {}

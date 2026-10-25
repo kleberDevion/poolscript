@@ -14945,11 +14945,32 @@ static int mod_os_mkdir(VM *vm, Value *args, int n, Value *out)
      * laço e o último `mkdir` dava "File exists" */
     size_t nt = strlen(tmp);
     while (nt > 1 && ps_eh_sep(tmp[nt - 1])) tmp[--nt] = '\0';
+    /* `b/f/.`: com `b/f` ainda não existindo, o `.` é a pasta que o laço vai
+     * criar, e o `os.makedirs` do Python volta sem erro (`tail == curdir`);
+     * com ela já existindo, é o `File exists` de sempre (os-5). A pasta de
+     * cima do `/.` é a raiz, que existe. */
+    int ponto_fim = nt >= 2 && tmp[nt - 1] == '.' && ps_eh_sep(tmp[nt - 2]);
+    int cabeca_existia = 1;
+    if (ponto_fim && nt > 2) {
+        char s = tmp[nt - 2];
+        struct stat sc;
+        tmp[nt - 2] = '\0';
+        cabeca_existia = stat(tmp, &sc) == 0;
+        tmp[nt - 2] = s;
+    }
     for (char *q = tmp + 1; *q; q++) {
         if (!ps_eh_sep(*q)) continue;
         char s = *q;
-        *q = '\0'; mkdir(tmp, 0755); *q = s;
+        *q = '\0';
+        /* a pasta do meio que não dá pra criar é o erro, com o caminho até
+         * ela, e nada mais é criado, como no `os.makedirs` (os-3: `f/g/h`
+         * com `f` arquivo citava `f/g/h`, e não `f/g`); o `EEXIST` segue em
+         * frente: a pasta (ou o arquivo) já está lá */
+        if (mkdir(tmp, 0755) != 0 && errno != EEXIST)
+            return erro_sistema(vm, errno, tmp, NULL);
+        *q = s;
     }
+    if (ponto_fim && !cabeca_existia) { *out = MK_NULL(); return 0; }
     if (mkdir(tmp, 0755) != 0) {
         /* com `exist_ok`, o que já existe só vale se for PASTA, como no
          * `os.makedirs` do Python: sobre um arquivo é "File exists" (antes
@@ -16325,91 +16346,6 @@ static int mod_os_run(VM *vm, Value *args, int n, Value *out)
     return rc;
 }
 
-static int mod_os_code(VM *vm, Value *args, int n, Value *out)
-{
-    if (n > 1) return erro_aridade(vm, "code", 0, 1, n);
-    const char *alvo = ".";
-    if (n == 1) {
-        PSString *p;
-        if (os_caminho(vm, args[0], "code", "o caminho", &p) != 0) return -1;
-        alvo = p->chars;
-    }
-    static const char *EDITORES[] = {"code","cursor","zed","nano","vim"};
-    const char *caminho_env = getenv("PATH");
-#if defined(PS_SO_WINDOWS)
-    /* No Windows o PATH separa com `;`, o programa tem extensão (o `code` é
-     * `code.cmd`) e um `.cmd` só roda pelo cmd.exe. Sai solto, como o fork
-     * duplo do Linux. */
-    static const char *EXTS[] = {".exe", ".cmd", ".bat"};
-    for (size_t i = 0; i < sizeof(EDITORES)/sizeof(EDITORES[0]); i++) {
-        if (!caminho_env) break;
-        /* o PATH inteiro: cortado em 4095 bytes, a última pasta saía pela
-         * metade, e outra pasta */
-        char *copia = strdup(caminho_env);
-        if (!copia) BERRO(vm, "MemoryError", "sem memoria");
-        for (char *dir = strtok(copia, ";"); dir; dir = strtok(NULL, ";")) {
-            for (size_t e = 0; e < sizeof(EXTS)/sizeof(EXTS[0]); e++) {
-                char bin[PS_CAMINHO_MAX];
-                int nb = snprintf(bin, sizeof(bin), "%s\\%s%s", dir, EDITORES[i], EXTS[e]);
-                if (nb < 0 || (size_t)nb >= sizeof(bin) || _access(bin, 0) != 0) continue;
-                free(copia);
-                PsWProc w;
-                int rc;
-                if (e == 0) {
-                    char *vetor[] = { bin, (char *)alvo, NULL };
-                    rc = ps_w_proc_cria(NULL, vetor, -1, -1, -1, 1, &w);
-                } else {
-                    /* cortada, a linha abriria o editor noutro arquivo */
-                    char linha[2 * PS_CAMINHO_MAX + 8];
-                    int nl = snprintf(linha, sizeof(linha), "\"%s\" \"%s\"", bin, alvo);
-                    if (nl < 0 || (size_t)nl >= sizeof(linha))
-                        return erro_sistema(vm, ENAMETOOLONG, alvo, NULL);
-                    rc = ps_w_proc_cria(linha, NULL, -1, -1, -1, 1, &w);
-                }
-                if (rc == 0) ps_w_proc_solta(&w);
-                char msg[64];
-                int k = snprintf(msg, sizeof(msg), "Abrindo %s...", EDITORES[i]);
-                return devolve_texto(vm, out, msg, k);
-            }
-        }
-        free(copia);
-    }
-#else
-    for (size_t i = 0; i < sizeof(EDITORES)/sizeof(EDITORES[0]); i++) {
-        if (!caminho_env) break;
-        /* o PATH inteiro: cortado em 4095 bytes, a última pasta saía pela
-         * metade, e outra pasta */
-        char *copia = strdup(caminho_env);
-        if (!copia) BERRO(vm, "MemoryError", "sem memoria");
-        for (char *dir = strtok(copia, ":"); dir; dir = strtok(NULL, ":")) {
-            char bin[PS_CAMINHO_MAX];
-            if (junta_caminho(bin, sizeof(bin), dir, EDITORES[i]) != 0 || access(bin, X_OK) != 0) continue;
-            free(copia);
-            /* Fork DUPLO, como o `run` em segundo plano: o filho do meio sai
-             * na hora e o editor é adotado pelo init. Com um fork só, o editor
-             * ficava ZUMBI na tabela de processos até o programa terminar —
-             * ninguém chamava `waitpid` por ele. */
-            pid_t meio = fork();
-            if (meio == 0) {
-                if (fork() == 0) {
-                    setsid();
-                    proc_filho_limpa(2);   /* sem cano de erro: o 3 nasce fechado */
-                    execl(bin, EDITORES[i], alvo, (char *)NULL);
-                    _exit(127);
-                }
-                _exit(0);
-            }
-            if (meio > 0) waitpid(meio, NULL, 0);
-            char msg[64];
-            int k = snprintf(msg, sizeof(msg), "Abrindo %s...", EDITORES[i]);
-            return devolve_texto(vm, out, msg, k);
-        }
-        free(copia);
-    }
-#endif
-    return devolve_texto(vm, out, "Nenhum editor encontrado", 24);
-}
-
 /* `PoolFile` como VALOR: serve pra `x is PoolFile`. Sem construtor — quem
  * cria é o `loadFile`. */
 static int mod_os_poolfile_tipo(VM *vm, Value *args, int n, Value *out)
@@ -16430,7 +16366,6 @@ static const MembroMod MOD_OS[] = {
     { "mkdir", mod_os_mkdir, 0, "path,exist_ok=Null" }, { "rmdir", mod_os_rmdir, 0, "path,force=Null" }, { "ls", mod_os_ls, 0, "path=Null" },
     { "cmd", mod_os_cmd, 0, "command,capture=False" },
     { "run", mod_os_run, 0, "args,capture=False,pty=False" },
-    { "code", mod_os_code, 0, "path=Null" },
     { "exists", mod_os_exists, 0, "path" }, { "isfile", mod_os_isfile, 0, "path" }, { "isdir", mod_os_isdir, 0, "path" },
     { "rename", mod_os_rename, 0, "src,dst" }, { "copy", mod_os_copy, 0, "src,dst" }, { "move", mod_os_move, 0, "src,dst" },
     { "size", mod_os_size, 0, "path" }, { "cwd", mod_os_cwd, 0, NULL }, { "chdir", mod_os_chdir, 0, "path" },

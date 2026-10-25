@@ -284,7 +284,6 @@ salva na pasta do script em execução com o próprio nome.
 | Função | O que faz | Exemplo |
 |---|---|---|
 | `os.cmd(comando, capture=False)` | Roda comando no shell; `capture=True` devolve a saída como `str` em vez de imprimir | `os.cmd("jinga --version", capture=True)` |
-| `os.code(caminho=".")` | Abre o editor de código instalado (VS Code, Cursor, Zed, nano, vim, nessa ordem) no caminho | `os.code("./meu_projeto")` |
 | `os.warn(texto="", color="yellow")` | Mensagem colorida no terminal (`red/green/yellow/blue/magenta/cyan/white`) | `os.warn("Pasta criada", color="blue")` |
 | `os.ipmach()` | Descobre e imprime o IP da máquina, devolve como `str` | `ip = os.ipmach()` |
 

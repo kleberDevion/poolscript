@@ -56,7 +56,7 @@ aí é shell, e vale a advertência de injeção lá embaixo.
 
 ```ps
 versao = os.run(["jinga", "--version"], capture=True)
-post(versao)                        # "Jinga 19.0.4 [PSVM] (2026-09-24) Runtime standalone"
+post(versao)                        # "Jinga 20.0.0 [PSVM] (2026-09-24) Runtime standalone"
 ```
 
 Com `capture=True` o `run` **espera** o processo terminar: colher a saída exige
@@ -232,5 +232,4 @@ na posicao 1: nenhum argumento de programa tem esse caractere — 'a\x00b'`
 ## Relacionados
 
 - [`os.cmd()`](../cmd/cmd.md) — roda COM shell (interpreta `;` `|` `$`); use só com comando confiável
-- [`os.code()`](../code/code.md) — abrir o editor de código
 - [`os.mkdir()`](../mkdir/mkdir.md) — criar pasta direto, sem processo externo

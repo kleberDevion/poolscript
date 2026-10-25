@@ -65,7 +65,6 @@ roda	docs/psodbc/DbCursor/execute/execute.md	d4f46ce872ca	doc-20	todos	linha 54:
 roda	docs/json.md	0b9eb362e96c	doc-20	todos	linha 43: import json
 roda	docs/json/json.md	5b9f656e856c	doc-20	todos	linha 43: import json
 roda	docs/qrcode/QRImage/to_file/to_file.md	8842476ee3cf	doc-21	todos	linha 21: import qrcode
-roda	docs/os/loadFile/loadFile.md	6256e0fdc14b	doc-24	todos	linha 42: import os
 roda	docs/os/loadFile/loadFile.md	592d8ea5b84f	motor-8	todos	linha 98: os.loadFile("legado.csv", mode="latin-1")
 roda	docs/os/loadFile/loadFile.md	fa94a719f6ae	motor-8	todos	linha 108: os.loadFile("x.txt", mode="xyz")
 p2	membro:os.PoolFile	ca3e17945694	motor-11	todos	linha 11: os.PoolFile(p2_nao_existe=1)
@@ -1050,6 +1049,8 @@ p3	docs/request/WsConnection/on_message/on_message.md	ff60eb6aa78e	editor-3	todo
 p3	docs/request/WsConnection/on_message/on_message.md	891b614cb065	editor-3	todos	linha 47: #p3 hover msg 3:13
 p3	docs/os/mkdir/mkdir.md	97d8ea2fbec2	editor-3	todos	linha 48: #p3 hover e 5:26
 p3	docs/os/mkdir/mkdir.md	364287b87494	editor-3	todos	linha 49: #p3 hover e 6:10
+p3	docs/os/mkdir/mkdir.md	335d24c22139	editor-3	todos	linha 66: #p3 hover e 5:29
+p3	docs/os/mkdir/mkdir.md	d4b1ac31d265	editor-3	todos	linha 67: #p3 hover e 6:10
 p3	docs/os/os.md	87b02ed0a6cc	editor-3	todos	linha 87: #p3 hover dotenv 2:6
 p3	docs/os/ls/ls.md	80207a15ad00	editor-3	todos	linha 74: #p3 hover i 1:41
 p3	docs/os/ls/ls.md	be3fbe3bfbf3	editor-3	todos	linha 74: #p3 hover i 1:53

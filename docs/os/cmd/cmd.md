@@ -38,7 +38,7 @@ os.cmd("git status")              # a saída vai direto pro terminal
 
 ```ps
 versao = os.cmd("jinga --version", capture=True)
-post(versao)                      # "Jinga 19.0.4 [PSVM] (2026-09-24) Runtime standalone"
+post(versao)                      # "Jinga 20.0.0 [PSVM] (2026-09-24) Runtime standalone"
 ```
 
 Com `capture=True`, devolve o **stdout** (sem espaços nas pontas). Se o comando
@@ -86,5 +86,4 @@ posicao N: nenhum argumento de programa tem esse caractere — '...'`).
 ## Relacionados
 
 - [`os.run()`](../run/run.md) — roda SEM shell (à prova de injeção); prefira para dado de usuário
-- [`os.code()`](../code/code.md) — abrir o editor de código
 - [`os.mkdir()`](../mkdir/mkdir.md) — criar pasta sem shell (mais seguro que `cmd("mkdir")`)

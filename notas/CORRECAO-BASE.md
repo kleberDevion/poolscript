@@ -799,13 +799,18 @@ em cada item):
   byte, quando o trecho tem um, ou a faixa dele. Casos: os "os-2: ..." de
   `teste/casos_libs.c`, e os quatro do `teste/casos_python.c` que estavam
   pendentes, regerado.
-- **os-3** (achado pelo gerador do P4, lote 3) Com um arquivo no meio do
+- ~~**os-3** (achado pelo gerador do P4, lote 3) Com um arquivo no meio do
   caminho, o `NotADirectoryError` do `os.mkdir` diz o caminho inteiro, e o do
   `os.makedirs` diz a pasta que ele tentou criar. Programa: com `f` arquivo,
   `os.mkdir("f/g/h", exist_ok=True)` dá `[Errno 20] Not a directory:
   'f/g/h'`, e o Python dá `[Errno 20] Not a directory: 'f/g'`. Promessa:
   `docs/os/mkdir/mkdir.md` ("cria uma pasta (diretório), e as pastas do
-  caminho que faltarem, como o `os.makedirs` do Python"). `motor`.
+  caminho que faltarem, como o `os.makedirs` do Python"). `motor`.~~
+  Corrigido no 20.0.0: no `mod_os_mkdir` (`vm/jinga_vm.c`), a pasta do
+  meio que falha com outro erro que não `EEXIST` vira o erro, com o caminho
+  até ela, e nada depois dela é criado. Casos: o "os-3: ..." de
+  `teste/casos_libs.c`, e o do `teste/casos_python.c` que estava pendente,
+  regerado; o exemplo da página do `mkdir`.
 - ~~**os-4** (achado pelo gerador do P4, lote 3) O `os.loadFile` de `.csv`
   perde o campo vazio do fim quando a última linha acaba em vírgula e o
   arquivo não termina em quebra de linha. Programa: o arquivo `a,b\n1,` dá
@@ -819,12 +824,26 @@ em cada item):
   vírgula no fim do arquivo é lido, vazio. Casos: os dois "os-4: ..." de
   `teste/casos_libs.c` (sem e com a quebra de linha no fim), e os dois
   casos do `teste/casos_python.c` que estavam pendentes, regerado.
-- **os-5** (achado pelo gerador do P4, lote 3) O `os.mkdir` de um caminho que
+- ~~**os-5** (achado pelo gerador do P4, lote 3) O `os.mkdir` de um caminho que
   acaba em `/.`, com `exist_ok=False`, cria as pastas e depois dá
   `FileExistsError`. O `os.makedirs` não dá erro: ele para quando a última
   parte é `.`. Programa: `os.mkdir("b/f/.")` cria `b/f` e dá `[Errno 17] File
   exists: 'b/f/.'`, e o Python cria `b/f` e não dá erro. Com `exist_ok=True`,
-  os dois dão o mesmo. Promessa: a mesma do os-3. `motor`.
+  os dois dão o mesmo. Promessa: a mesma do os-3. `motor`.~~
+  Corrigido no 20.0.0: antes de criar, o `mod_os_mkdir` guarda se a pasta
+  de cima do `.` já existia; não existindo, volta sem erro depois de criar
+  (o `tail == curdir` do `os.makedirs`), e existindo, é o `File exists` de
+  sempre. Casos: o "os-5: ..." de `teste/casos_libs.c`, e os dois do
+  `teste/casos_python.c` que estavam pendentes, regerado.
+
+O `os.code` saiu no **20.0.0** (decisão dele, 2026-10-25: "tira esse .code,
+nem faz sentido"). Ele abria o primeiro editor que achava no `PATH` (`code`,
+`cursor`, `zed`, `nano` ou `vim`) e deixava o editor rodando solto. Na rodada
+da VPS do conserto do os-3 e do os-5, o exemplo da página abriu o `nano`, e a
+tela dele caiu na saída do portão P1. Não era item da lista. Agora o
+`os.code()` dá `AttributeError: module 'os' has no attribute 'code'`, no
+`--check` e rodando (pelo `Object`), na mesma linha. Casos: os dois "os.code
+saiu: ..." de `teste/casos_libs.c`.
 
 ## teste
 
@@ -925,6 +944,14 @@ em cada item):
   e ele saiu no `bea30df2`. O que o `docs/sys/sys.md` promete do `raw()`
   ("tecla na hora, sem travar") fica sem conferência, no Linux e no macOS.
   `teste`.
+- ~~**teste-13** (achado regerando a tabela de retornos do 20.0.0,
+  2026-10-25) O grupo `os` do `scripts/mede_retornos.pr` não grava: ele
+  chama `os.loadFile(PNG, mode="r")`, que levanta `UnicodeDecodeError` (o
+  texto do `loadFile` é UTF-8, e o PNG não é), e o medidor para com `NAO
+  GRAVADO`. Medido no 19.0.4 e no 20.0.0, com JIT e sem. A chamada e a
+  conferência do UTF-8 no `loadFile` entraram no mesmo commit, o 17.0.19
+  (`58ae207`). `teste`.~~ Corrigido no 20.0.0: o `mode="r"` é medido num
+  texto (o `os.json`), e a tabela do `os` foi regerada na VPS.
 
 ## doc
 
@@ -1140,12 +1167,16 @@ e sem, e dá o mesmo erro.
   Python dá o tipo exato do que volta ("um objeto bytes"; "bytes vazio indica
   que o cliente desconectou"). A reavaliação é um plano próprio, pra
   aprovação dele. `doc`.
-- **doc-24** (achado pelo portão `roda`, `docs/os/loadFile/loadFile.md:42`)
+- ~~**doc-24** (achado pelo portão `roda`, `docs/os/loadFile/loadFile.md:42`)
   `c = os.loadFile("logo.png", mode="r")   # o texto dos bytes`: num PNG de
   verdade (começa com o byte `0x89`) sai `UnicodeDecodeError: 'utf-8' codec
   can't decode byte 0x89 in position 0`, com JIT e sem. O `mode="r"` lê como
   texto UTF-8, e a própria página diz que o que não é UTF-8 dá esse erro; o
-  comentário do exemplo promete outra coisa. `doc`.
+  comentário do exemplo promete outra coisa. `doc`.~~
+  Corrigido no 20.0.0 (decisão dele, 2026-10-25: "muda só o comentário"): o
+  comentário do exemplo diz `UnicodeDecodeError: o PNG não é UTF-8`, e o
+  motor fica. O portão `roda` lê o tipo do erro no comentário como erro
+  anunciado, e a linha da catraca saiu.
 - **doc-25** `docs/os/PoolFile/PoolFile.md:31` comenta
   `os.loadFile("logo.png")   # PoolFile (extensão binária)`. Quem decide é o
   conteúdo, não a extensão: medido, um `.png` com texto dentro volta `str`, e

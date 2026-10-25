@@ -54,6 +54,24 @@ try {
 [Errno 17] File exists: 'nota.txt' (linha 4)
 ```
 
+Uma pasta do caminho que não pode ser criada (um arquivo no meio dele) é o
+erro, com o caminho **até ela**, e nada depois dela é criado, como no
+`os.makedirs`:
+
+```ps
+import os
+os.writeFile("relatorio", "x")
+try {
+    os.mkdir("relatorio/2026/out", exist_ok=True)
+} catch (NotADirectoryError e) {
+    post(e)
+}
+```
+
+```saida
+[Errno 20] Not a directory: 'relatorio/2026' (linha 4)
+```
+
 ---
 
 ## Padrão comum: criar só se não existe

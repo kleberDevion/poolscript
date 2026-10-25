@@ -748,21 +748,6 @@ str funct item_de(dict c, dict r) {
         }
         return ""
     }
-    if s == "mkdir" {
-        str p = t["ops"][0][0]
-        while p.endswith("/") {
-            p = p[0:p.len() - 1]
-        }
-        str py = c["saida"].split("\n")[0]
-        str ps = sem_fim(r["saida"]).split("\n")[0]
-        if p.endswith("/.") and py == "ok" and ps.startswith("FileExistsError: ") {
-            return "os-5"
-        }
-        if py.startswith("NotADirectoryError: ") and ps.startswith("NotADirectoryError: ") {
-            return "os-3"
-        }
-        return ""
-    }
     return ""
 }
 

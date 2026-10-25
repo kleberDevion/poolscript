@@ -7,7 +7,7 @@
 #     sys.platform  sys.RelativePath  sys.stdin.read/readline
 #     sys.stdout.flush  sys.stderr.flush/writeln
 #     os.pathFile  os.pathFolder  os.rename  os.cwd  os.environ  os.warn
-#     os.ipmach  os.code
+#     os.ipmach
 #     date.time  date.now
 #     load()  id()  tup()  dict()      .replace() com lista
 #     63 constantes de socket, uma função cada
@@ -540,9 +540,6 @@ confere("os.environ de variável inexistente é Null",
 
 ip = os.ipmach()
 confere("os.ipmach devolve um IP com três pontos", len(ip.split(".")) == 4)
-
-# `os.code` NÃO entra aqui: ele ABRE o arquivo no editor (`code <path>`).
-# Chamar num teste levantaria uma janela do VS Code a cada rodada da suíte.
 
 # `os.warn` escreve em stderr colorido — não devolve nada; o que se afirma é
 # que ele aceita a cor e não levanta.
