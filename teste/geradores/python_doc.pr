@@ -754,12 +754,6 @@ str funct item_de(dict c, dict r) {
         }
         return ""
     }
-    if s == "loadFile" {
-        if t["s"].endswith(",") {
-            return "os-4"
-        }
-        return ""
-    }
     if s == "mkdir" {
         str p = t["ops"][0][0]
         while p.endswith("/") {

@@ -14516,7 +14516,9 @@ static const MembroMod MOD_PARSING[] = {
 
 /* CSV -> lista de dict, igual ao `csv.DictReader`: primeira linha é o
  * cabeçalho, aspas duplas protegem vírgula e quebra de linha, `""` é uma aspa
- * literal. Linha curta preenche com null; sobra vai pra chave null. */
+ * literal. Linha curta preenche com null; sobra vai pra chave null. A vírgula
+ * no fim da linha abre um campo, vazio, também no fim do texto (os-4: sem a
+ * quebra de linha no fim, `1,` perdia o campo e dava null). */
 typedef struct { const char *s; int n, i; } CsvLeitor;
 
 /* Lê um campo. `fim_linha` sai 1 se o campo terminou a linha (ou o texto). */
@@ -14571,7 +14573,10 @@ static int csv_para_lista(VM *vm, const char *texto, int tam, Value *out)
     if (fixa_raiz(vm, MK_OBJ(cab)) != 0) { vm->sp--; BERRO(vm, "RuntimeError", "estouro"); }
     SBUF_AUTO campo = {0};
     int fim = 0;
-    while (c.i < c.n && !fim) {
+    /* `!fim` e não `c.i < c.n`: o campo depois da vírgula no fim do texto
+     * existe, vazio, e o `csv_campo` no fim do texto o devolve e marca o fim
+     * da linha */
+    while (!fim) {
         if (csv_campo(&c, &campo, &fim) != 0) goto sem_memoria;
         PSString *k = nova_string(vm, campo.b ? campo.b : "", campo.n);
         if (!k) goto sem_memoria;
@@ -14594,7 +14599,7 @@ static int csv_para_lista(VM *vm, const char *texto, int tam, Value *out)
         PSList *sobra = NULL;
         int col = 0;
         fim = 0;
-        while (c.i < c.n && !fim) {
+        while (!fim) {
             if (csv_campo(&c, &campo, &fim) != 0) { vm->sp--; goto sem_memoria; }
             PSString *v = nova_string(vm, campo.b ? campo.b : "", campo.n);
             if (!v) { vm->sp--; goto sem_memoria; }

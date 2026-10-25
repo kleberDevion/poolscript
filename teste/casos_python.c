@@ -7,7 +7,7 @@
  * notas/CORRECAO-BASE.md: ele tem que falhar, e quando o motor acertar o
  * runner diz JA FUNCIONA e o gerador roda de novo.
  *
- * casos: 228  |  pendentes: 43 (motor-26: 1, motor-27: 32, motor-28: 1, os-2: 4, os-3: 1, os-4: 2, os-5: 2)  |  semente: 20261024
+ * casos: 228  |  pendentes: 41 (motor-26: 1, motor-27: 32, motor-28: 1, os-2: 4, os-3: 1, os-5: 2)  |  semente: 20261024
  */
 #include "ps_teste.h"
 
@@ -4031,7 +4031,7 @@ const Caso CASOS_PYTHON[] = {
   "l2]\n"
   "[a] = [ ]",
   NULL, 0 },
-{ "python #101 loadFile (PENDENTE os-4)",
+{ "python #101 loadFile",
   "import os\n"
   "os.writeFile(\"d.csv\", \"a,x y,\\\"c,d\\\",\\\"日\\\"\\r\\nç,\\\" \\\",\\\"𠮷\\\",𠮷\\r\\n\\\"l1\\nl2\\\",日本,ç,\")\n"
   "list rs = os.loadFile(\"d.csv\")\n"
@@ -4066,7 +4066,7 @@ const Caso CASOS_PYTHON[] = {
   "[x y] = [日本]\n"
   "[c,d] = [ç]\n"
   "[日] = []",
-  NULL, 0, NULL, 1 },
+  NULL, 0 },
 { "python #102 loadFile",
   "import os\n"
   "os.writeFile(\"d.csv\", \"\\\"x y\\\",\\\"q\\\"\\\"q\\\"\\r\\n\\r\\na b,\\\"l1\\nl2\\\"\\r\\n日本\\r\\n\")\n"
@@ -4383,7 +4383,7 @@ const Caso CASOS_PYTHON[] = {
   "}\n",
   "0",
   NULL, 0 },
-{ "python #112 loadFile (PENDENTE os-4)",
+{ "python #112 loadFile",
   "import os\n"
   "os.writeFile(\"d.csv\", \"a,\\\"c,d\\\",\\\"c,d\\\",\\\"q\\\"\\\"q\\\"\\r\\n1,\\\"日本\\\",𠮷,𠮷\\r\\n\\\"x,y\\\",\\\"q\\\"\\\"q\\\",\\\"x,y\\\"\\r\\n,\\\"r\\rs\\\",\")\n"
   "list rs = os.loadFile(\"d.csv\")\n"
@@ -4419,7 +4419,7 @@ const Caso CASOS_PYTHON[] = {
   "[a] = []\n"
   "[c,d] = []\n"
   "[q\"q] = <Null>",
-  NULL, 0, NULL, 1 },
+  NULL, 0 },
 { "python #113 loadFile",
   "import os\n"
   "os.writeFile(\"d.csv\", \"nome,nome\\r\\n\\\"q\\\"\\\"q\\\",\\\"\\\"\\r\\n\\\"l1\\nl2\\\"\\r\\na b\\r\\n\")\n"

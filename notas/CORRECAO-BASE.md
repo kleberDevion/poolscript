@@ -780,14 +780,19 @@ em cada item):
   'f/g/h'`, e o Python dá `[Errno 20] Not a directory: 'f/g'`. Promessa:
   `docs/os/mkdir/mkdir.md` ("cria uma pasta (diretório), e as pastas do
   caminho que faltarem, como o `os.makedirs` do Python"). `motor`.
-- **os-4** (achado pelo gerador do P4, lote 3) O `os.loadFile` de `.csv`
+- ~~**os-4** (achado pelo gerador do P4, lote 3) O `os.loadFile` de `.csv`
   perde o campo vazio do fim quando a última linha acaba em vírgula e o
   arquivo não termina em quebra de linha. Programa: o arquivo `a,b\n1,` dá
   `[{'a': '1', 'b': Null}]`, e o `csv.DictReader` dá `[{'a': '1', 'b': ''}]`.
   Com um campo a mais, o Python guarda o vazio na chave `None`, e o motor
   perde. Com `\n` ou `\r\n` depois da vírgula, os dois dão o mesmo. Promessa:
   `docs/os/loadFile/loadFile.md` ("lista de dicts (cabeçalho = chaves), como
-  o `csv.DictReader` do Python"). `motor`.
+  o `csv.DictReader` do Python"). `motor`.~~
+  Corrigido no 19.0.2: no `csv_para_lista` (`vm/jinga_vm.c`), os laços dos
+  campos param no fim da linha, e não no fim do texto: o campo depois da
+  vírgula no fim do arquivo é lido, vazio. Casos: os dois "os-4: ..." de
+  `teste/casos_libs.c` (sem e com a quebra de linha no fim), e os dois
+  casos do `teste/casos_python.c` que estavam pendentes, regerado.
 - **os-5** (achado pelo gerador do P4, lote 3) O `os.mkdir` de um caminho que
   acaba em `/.`, com `exist_ok=False`, cria as pastas e depois dá
   `FileExistsError`. O `os.makedirs` não dá erro: ele para quando a última

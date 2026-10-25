@@ -1738,6 +1738,20 @@ const Caso CASOS_LIBS[] = {
 { "lote 8: os.loadFile tipa pelo arquivo, mode r devolve o texto, linha vazia do CSV nao e registro",
   "import os\nos.writeFile(\"nota.txt\", \"nota\")\nos.writeFile(\"v.csv\", \"a,b\\n1,2\\n\\n3,4\\n\\n\")\nos.writeFile(\"config.json\", \"{\\\"versao\\\": 3}\")\nstr t = os.loadFile(\"nota.txt\")\nlist l = os.loadFile(\"v.csv\")\nstr a = os.loadFile(\"config.json\", mode=\"r\")\ndict c = os.loadFile(\"config.json\")\npost(t, len(l), l)\npost(a, c)\ntry {\n    PoolFile p = os.loadFile(\"nota.txt\")\n} catch (Exception e) {\n    post(e)\n}\n",
   "nota 2 [{'a': '1', 'b': '2'}, {'a': '3', 'b': '4'}]\n{\"versao\": 3} {'versao': 3}\nvariável p esperava PoolFile, recebeu str (linha 12)", NULL, 0 },
+/* os-4: a virgula no fim da ultima linha abre um campo, vazio, tambem sem a
+ * quebra de linha no fim do arquivo (o csv.DictReader do Python 3.15 da o
+ * mesmo). Sem a quebra, o campo sumia: `1,` dava null, e o vazio a mais nao
+ * ia pra chave null. */
+{ "os-4: o campo vazio do fim do CSV sem a quebra de linha no fim",
+  "import os\nos.writeFile(\"f1.csv\", \"a,b\\n1,\")\nos.writeFile(\"f2.csv\", \"a,b\\n1,2,\")\n"
+  "os.writeFile(\"f3.csv\", \"a\\n,\")\nos.writeFile(\"f4.csv\", \"a,b\\r\\n1,\")\n"
+  "for each n in [\"f1.csv\", \"f2.csv\", \"f3.csv\", \"f4.csv\"] {\n    post(os.loadFile(n))\n}\n",
+  "[{'a': '1', 'b': ''}]\n[{'a': '1', 'b': '2', Null: ['']}]\n[{'a': '', Null: ['']}]\n[{'a': '1', 'b': ''}]", NULL, 0 },
+{ "os-4: com a quebra de linha no fim, o CSV da o mesmo",
+  "import os\nos.writeFile(\"f1.csv\", \"a,b\\n1,\\n\")\nos.writeFile(\"f2.csv\", \"a,b\\n1,2,\\n\")\n"
+  "os.writeFile(\"f3.csv\", \"a\\n,\\n\")\nos.writeFile(\"f4.csv\", \"a,b\\r\\n1,\\r\\n\")\n"
+  "for each n in [\"f1.csv\", \"f2.csv\", \"f3.csv\", \"f4.csv\"] {\n    post(os.loadFile(n))\n}\n",
+  "[{'a': '1', 'b': ''}]\n[{'a': '1', 'b': '2', Null: ['']}]\n[{'a': '', Null: ['']}]\n[{'a': '1', 'b': ''}]", NULL, 0 },
 { "lote 8: os.readFile sem encoding confere o UTF-8",
   "import os\nos.writeFile(\"l1.txt\", \"café\", encoding=\"latin-1\")\ntry {\n    str x = os.readFile(\"l1.txt\")\n} catch (UnicodeDecodeError e) {\n    post(e)\n}\npost(os.readFile(\"l1.txt\", encoding=\"latin-1\"))\n",
   "'utf-8' codec can't decode byte 0xe9 in position 3: unexpected end of data (linha 4)\ncafé", NULL, 0 },
