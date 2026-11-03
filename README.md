@@ -25,7 +25,8 @@ macOS (Intel) e Windows (x64) têm pacote próprio, com `instalar.sh` e
 `instalar.ps1`; os três se compilam com `./pool scripts/compila.pr
 linux|mac|windows|todos` — ver [`jinga.md`](jinga.md#instalação).
 
-Compilando do fonte (gcc + libs de dev: postgresql, mariadb, mongoc, openssl):
+Compilando do fonte (gcc, pkg-config + libs de dev: postgresql, mariadb,
+mongoc 1.x ou 2.x, openssl):
 
 ```bash
 make pool       # gera ./pool

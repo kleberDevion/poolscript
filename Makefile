@@ -3,6 +3,9 @@
 # Os clientes de banco (sqlite, libpq, MariaDB Connector/C, unixODBC), o TLS, o PNG e
 # o zlib entram ESTÁTICOS: o `pool` roda em máquina que não tem nenhum deles.
 CC      ?= gcc
+# Quem sabe onde mora o que o sistema instalou: no Linux, os cabeçalhos do
+# driver 2.x do Mongo e o que o libcrypto.a pede na ligação estática.
+PKG_CONFIG ?= pkg-config
 # A versão é constante de header (vm/ps_versao.h) — o compilador resolve, sem
 # shell nenhum no meio.
 # `-Wduplicated-branches` não vem no `-Wall -Wextra` e pegou dois defeitos
@@ -61,8 +64,17 @@ CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter \
            -I$(BREW_SSL)/include -I$(BREW_PQ)/include -I$(BREW_MY)/include/mariadb \
            -I$(BREW_MG)/include/libmongoc-1.0 -I$(BREW_MG)/include/libbson-1.0 -I$(BREW)/include
 else
+# O cliente do Mongo 1.x põe os cabeçalhos em `libmongoc-1.0` e `libbson-1.0`;
+# o 2.x (o `libmongoc-dev` do Debian forky, 2.5.6), numa pasta com a versão
+# (`/usr/include/mongoc-2.5.6`), que só o pkg-config sabe (`mongoc2`). Sem
+# ela, o `make pool` parava em `mongoc/mongoc.h` (motor-36). As pastas do 1.x
+# vêm antes: com os dois instalados, o motor compila com o 1.x, como sempre, e
+# o ps_mongo.c abre a biblioteca da série com que compilou. Com o 1.x só, o
+# `mongoc2` não existe e a variável sai vazia.
+MONGO2_INC := $(shell $(PKG_CONFIG) --cflags-only-I mongoc2 2>/dev/null)
 CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter -Wduplicated-branches \
-           -I/usr/include/postgresql -I/usr/include/mariadb -DUTF8PROC_EXPORTS -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0
+           -I/usr/include/postgresql -I/usr/include/mariadb -DUTF8PROC_EXPORTS -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0 \
+           $(MONGO2_INC)
 endif
 # O laço da VM despacha por goto calculado. O GCC junta todos os gotos num
 # salto indireto só e depois os duplica de volta em cada tratador — mas só
@@ -106,7 +118,13 @@ LIBS_POOL      := $(BREW_SSL)/lib/libssl.a $(BREW_SSL)/lib/libcrypto.a $(BREW)/l
 LIBS_TESTE     := -L$(BREW_SSL)/lib -lssl -lcrypto -L$(BREW)/lib -lpng -lsqlite3 -lz $(LIBS_SISTEMA)
 else
 LIBS_SISTEMA   := -lrt -lpthread -ldl -lm -l:libgmp.so.10
-LIBS_POOL      := -Wl,-Bstatic -lsqlite3 -lssl -lcrypto -lpng -lz -Wl,-Bdynamic $(LIBS_SISTEMA)
+# O que o libcrypto.a pede além do que esta linha já liga. O OpenSSL compilado
+# com zstd (o 3.6.5 do Debian forky) precisa da libzstd na ligação estática, e
+# sem ela o link parava em `ZSTD_...` (motor-37); quem diz é o pkg-config
+# (`--static`). Onde o OpenSSL não pede mais nada, não sobra nada, e a linha é
+# a de sempre.
+SSL_ESTATICO   := $(filter-out -lssl -lcrypto -lz -ldl -lpthread -lrt -lm,$(shell $(PKG_CONFIG) --static --libs-only-l libcrypto 2>/dev/null))
+LIBS_POOL      := $(strip -Wl,-Bstatic -lsqlite3 -lssl -lcrypto -lpng -lz $(SSL_ESTATICO) -Wl,-Bdynamic $(LIBS_SISTEMA))
 # as variantes de teste (asan, debug, fuzz, oom, cobertura) ligam dinâmico
 LIBS_TESTE     := -lsqlite3 -lssl -lcrypto -lpng -lz $(LIBS_SISTEMA)
 endif

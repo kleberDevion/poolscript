@@ -47,6 +47,13 @@ static const char *const MG_NOMES[] = {
     "/opt/homebrew/lib/libmongoc-1.0.0.dylib",
     "/usr/local/opt/mongo-c-driver@1/lib/libmongoc-1.0.0.dylib",
     "/opt/homebrew/opt/mongo-c-driver@1/lib/libmongoc-1.0.0.dylib", NULL };
+#elif MONGOC_MAJOR_VERSION >= 2
+/* o driver 2.x (o do Debian forky) chama a biblioteca de libmongoc2. Abre só a
+ * da série dos cabeçalhos com que o motor compilou, que é a mesma ABI: com o
+ * nome do 1.x só, o `connect` dizia que faltava a libmongoc-1.0.so.0 numa
+ * máquina com a libmongoc2.so.2 instalada (motor-38). O build_bundle.sh lê
+ * o nome daqui, do binário. */
+static const char *const MG_NOMES[] = { "libmongoc2.so.2", "libmongoc2.so", NULL };
 #else
 static const char *const MG_NOMES[] = { "libmongoc-1.0.so.0", "libmongoc-1.0.so", NULL };
 #endif

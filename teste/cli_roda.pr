@@ -2100,6 +2100,61 @@ confere("make install-doc: a pagina que saiu do repositorio sai da doc instalada
 confere("make install-doc: as paginas da arvore estao la",
         os.exists(INST + "/share/jinga/docs/jinker/jinker.md") and os.exists(INST + "/share/jinga/docs/jinker/route/route.md"))
 
+# motor-36 e motor-37: no Debian forky o `make pool` não compilava. O driver do
+# Mongo de lá é o 2.x, com os cabeçalhos numa pasta com a versão
+# (`/usr/include/mongoc-2.5.6`), que só o pkg-config sabe, e o libcrypto.a do
+# OpenSSL 3.6.5 de lá pede a libzstd na ligação estática. Um pkg-config de
+# mentira faz o papel daquela máquina, e o `make -n` mostra a linha que o
+# `make pool` rodaria, sem compilar nada. O MAKEFLAGS vai vazio: dentro do
+# `make check`, o de fora traria as variáveis dele. Só no Linux: os outros dois
+# sistemas têm ramo próprio no Makefile.
+if not WINDOWS and sys.platform() != "darwin"
+{
+    str PKG_FORKY = PASTA + "/pkg_config_forky.sh"
+    os.writeFile(PKG_FORKY, "case \"$*\" in\n*mongoc2*) echo \"-I/forky/mongoc-2.5.6 -I/forky/bson-2.5.6\" ;;\n"
+                 + "*libcrypto*) echo \"-lcrypto -lz -lzstd -ldl\" ;;\n*) exit 1 ;;\nesac\n")
+    r = roda(["make", "-n", "-W", "vm/main.c", "-C", os.cwd(), "pool", "PKG_CONFIG=sh " + PKG_FORKY],
+             amb={"MAKEFLAGS": ""})
+    confere("motor-36: com o driver 2.x do Mongo, a compilacao procura os cabecalhos onde o pkg-config diz",
+            r["rc"] == 0 and "-I/forky/mongoc-2.5.6 -I/forky/bson-2.5.6" in r["saida"])
+    confere("motor-37: a libzstd que o libcrypto.a pede entra no bloco estatico",
+            r["rc"] == 0 and "-lz -lzstd -Wl,-Bdynamic" in r["saida"])
+    # e a máquina do 1.x, sem zstd (a Ubuntu 24.04 do CI): a linha de sempre
+    str PKG_NADA = PASTA + "/pkg_config_nada.sh"
+    os.writeFile(PKG_NADA, "exit 1\n")
+    r = roda(["make", "-n", "-W", "vm/main.c", "-C", os.cwd(), "pool", "PKG_CONFIG=sh " + PKG_NADA],
+             amb={"MAKEFLAGS": ""})
+    confere("motor-36 e 37: sem o driver 2.x e sem zstd, a linha e a de antes",
+            r["rc"] == 0 and "-I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0" in r["saida"]
+            and "-lz -Wl,-Bdynamic" in r["saida"] and not "-lzstd" in r["saida"] and not "/forky/" in r["saida"])
+
+    # motor-40: o build_bundle.sh pergunta ao ldconfig onde mora cada cliente de
+    # banco, e no Debian ele fica em /usr/sbin, fora do PATH de quem não é root:
+    # o pacote parava dizendo que faltava a libpq.so.5, instalada. Aqui ele
+    # monta o pacote numa árvore mínima (o pool de verdade, o resto de mentira),
+    # com o PATH sem as pastas sbin. O pacote leva os quatro clientes, e a
+    # libmongoc é a que o pool abre (motor-38).
+    str PAC = PASTA + "/pacote"
+    os.mkdir(PAC + "/editor/vscode", exist_ok=True)
+    os.mkdir(PAC + "/docs", exist_ok=True)
+    os.mkdir(PAC + "/scripts", exist_ok=True)
+    os.mkdir(PAC + "/dados/icones", exist_ok=True)
+    os.copy("build_bundle.sh", PAC + "/build_bundle.sh")
+    os.copy(POOL, PAC + "/pool")
+    for each f in ["editor/vscode/server.js", "docs/x.md", "scripts/migra_pr.pr", "dados/zz-jinga.xml", "dados/icones/text-jinga.svg", "instalar.sh"]
+    {
+        os.writeFile(PAC + "/" + f, "\n")
+    }
+    r = roda(["bash", PAC + "/build_bundle.sh"], amb={"PATH": "/usr/local/bin:/usr/bin:/bin"})
+    str LIBS_PAC = PAC + "/dist/jinga-portable/lib/"
+    confere("motor-40: o pacote acha os clientes de banco sem o /usr/sbin no PATH",
+            r["rc"] == 0 and os.exists(LIBS_PAC + "libpq.so.5") and os.exists(LIBS_PAC + "libmariadb.so.3")
+            and os.exists(LIBS_PAC + "libodbc.so.2"))
+    str MONGO_SO = roda(["grep", "-aoE", "libmongoc(-1\\.0|2)\\.so\\.[0-9]+", POOL])["saida"].split("\n")[0]
+    confere("motor-38: o pacote leva a libmongoc que o pool abre (" + MONGO_SO + ")",
+            MONGO_SO != "" and os.exists(LIBS_PAC + MONGO_SO))
+}
+
 # ── relatório ───────────────────────────────────────────────────────────────
 post("")
 post("cli/jpkg:", ok, "checagens passaram")

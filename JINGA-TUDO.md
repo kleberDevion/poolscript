@@ -223,7 +223,7 @@ Guia de referência para retomar o projeto. Cada exemplo `ps` abaixo foi rodado 
 | Bloco | `{ }`, e só isso. A indentação é estética. `:` não abre bloco (a única exceção é o guard `main`, ver 2.7.4) |
 | Motor | VM em C (`vm/`): lexer, parser (AST), compilador, bytecode e VM. No x86-64 cada funct vira código de máquina na primeira execução (`vm/ps_jit_x64.h`) |
 | Binário | `jinga` roda, `jpkg` gerencia pacotes. É o mesmo binário. `pool` e `psl` são atalhos antigos que continuam instalados |
-| Versão | A fonte é `vm/ps_versao.h`, hoje em `20.0.1`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
+| Versão | A fonte é `vm/ps_versao.h`, hoje em `20.0.2`. O `./pool` e o `/usr/local/bin/jinga` respondem a mesma depois de `make pool` e da instalação (5.15) <!-- bump --> |
 | Lista viva de keywords, builtins, módulos e exceções | `jinga --metadata` (JSON) |
 
 ### 2.2 Rodar e conferir
@@ -1650,7 +1650,7 @@ Nomes procurados, na ordem:
 | Postgres | `libpq.so.5`, `libpq.so` | `libpq.5.dylib`, `@executable_path/../lib/jinga/libpq.5.dylib`, `/usr/local/opt/libpq/lib/libpq.5.dylib`, `/opt/homebrew/opt/libpq/lib/libpq.5.dylib` | `libpq.dll` |
 | MariaDB/MySQL | `libmariadb.so.3`, `libmysqlclient.so.21`, `libmariadb.so` | `libmariadb.3.dylib`, `@executable_path/../lib/jinga/libmariadb.3.dylib`, `/usr/local/lib/mariadb/...`, `/opt/homebrew/lib/mariadb/...`, `/usr/local/opt/mariadb-connector-c/lib/mariadb/...`, `/opt/homebrew/opt/mariadb-connector-c/lib/mariadb/...` | `libmariadb.dll` |
 | ODBC (mssql) | `libodbc.so.2`, `libodbc.so` | `libodbc.2.dylib`, `@executable_path/../lib/jinga/libodbc.2.dylib`, `/usr/local/lib/libodbc.2.dylib`, `/opt/homebrew/lib/libodbc.2.dylib` | `odbc32.dll` |
-| Mongo | `libmongoc-1.0.so.0`, `libmongoc-1.0.so` | `libmongoc-1.0.0.dylib`, `@executable_path/../lib/jinga/...`, `/usr/local/lib/...`, `/opt/homebrew/lib/...`, `/usr/local/opt/mongo-c-driver@1/lib/...`, `/opt/homebrew/opt/mongo-c-driver@1/lib/...` | `libmongoc2.dll` (driver 2.x, o do MSYS2), `libmongoc-1.0.dll` |
+| Mongo | `libmongoc-1.0.so.0`, `libmongoc-1.0.so` (driver 1.x) ou `libmongoc2.so.2`, `libmongoc2.so` (driver 2.x, o do Debian forky, desde o 20.0.2): só a série dos cabeçalhos com que o motor compilou (`MONGOC_MAJOR_VERSION`) | `libmongoc-1.0.0.dylib`, `@executable_path/../lib/jinga/...`, `/usr/local/lib/...`, `/opt/homebrew/lib/...`, `/usr/local/opt/mongo-c-driver@1/lib/...`, `/opt/homebrew/opt/mongo-c-driver@1/lib/...` | `libmongoc2.dll` (driver 2.x, o do MSYS2), `libmongoc-1.0.dll` |
 
 - `/usr/local` é o Homebrew do Mac Intel. `@executable_path/../lib/jinga/` é o pacote gerado por `build_bundle.sh`.
 - O **sqlite** vem dentro do binário, e um programa que usa só sqlite não carrega nenhum driver.
@@ -2195,8 +2195,8 @@ language-servers = ["jinga"]
 
 | item | valor |
 |---|---|
-| versão da linguagem | **20.0.1** (fonte: `vm/ps_versao.h`) <!-- bump --> |
-| `./pool --version` | `Jinga 20.0.1 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
+| versão da linguagem | **20.0.2** (fonte: `vm/ps_versao.h`) <!-- bump --> |
+| `./pool --version` | `Jinga 20.0.2 [PSVM] (<data da compilação>) Runtime standalone`; o `jinga` instalado em `/usr/local/bin` é o mesmo binário depois do `make install` (`cmp` igual em 2026-10-07) <!-- bump --> |
 | versão da extensão do VS Code | 8.6.15 <!-- bump ext --> |
 | binário `./pool` | 9.091.808 bytes |
 | esta máquina | Linux Mint 22.3 (kernel 7.0.0-30), Acer Aspire A315-58, Intel i3-1115G4, 4 CPUs, 7,5 GiB de RAM, glibc 2.39, `perf_event_paranoid` = 4 (o `perf stat` roda com `sudo`), `/dev/kvm` presente |
@@ -2216,6 +2216,8 @@ sudo apt-get install -y build-essential git pkg-config nodejs npm \
   libsqlite3-dev libpq-dev unixodbc-dev libssl-dev libpng-dev \
   zlib1g-dev libmariadb-dev libmongoc-dev libbson-dev libgmp-dev
 ```
+
+No Debian forky o `libmongoc-dev` é o driver 2.x (2.5.6), e o OpenSSL (3.6.5) é compilado com zstd. O Makefile acha os cabeçalhos do 2.x pelo `pkg-config` (`mongoc2`) e liga a `libzstd` que o `libcrypto.a` pede pelo `pkg-config --static`; o `libzstd-dev` vem com o `libmongoc-dev`. Até o 20.0.1 o `make pool` de lá parava no `mongoc/mongoc.h` e, com o cabeçalho achado, nos `ZSTD_...` (motor-36 e motor-37).
 
 Pra `make check` completo também entram: `clang` (fuzz), `lcov` (cobertura), `valgrind` (memcheck), `nvim` e `node`.
 
@@ -2237,7 +2239,7 @@ brew install lcov gh neovim node
   ```
 
 Como o Makefile muda por sistema (`SO := $(shell uname -s)`):
-- **Linux:** gcc, com `-Wduplicated-branches` e `--param=max-goto-duplication-insns=64` (sem esse parâmetro o laço da VM fica 16% mais lento em instruções, medido com perf stat). Sqlite, TLS, PNG e zlib entram estáticos (`-Wl,-Bstatic`).
+- **Linux:** gcc, com `-Wduplicated-branches` e `--param=max-goto-duplication-insns=64` (sem esse parâmetro o laço da VM fica 16% mais lento em instruções, medido com perf stat). Sqlite, TLS, PNG e zlib entram estáticos (`-Wl,-Bstatic`). O que o sistema põe em lugar próprio vem do `pkg-config` (`PKG_CONFIG`): os cabeçalhos do driver 2.x do Mongo, depois das pastas do 1.x, e o que o `libcrypto.a` pede na ligação estática além do que a linha já liga (a `libzstd`, no Debian forky).
 - **Darwin:** clang da Apple, sem os dois parâmetros acima. TLS e PNG entram pelos `.a` do Homebrew; sqlite e zlib vêm do macOS; desde `3c245e7` liga também os frameworks Security e CoreFoundation.
 - **Os dois:** os clientes de banco (Postgres, MySQL, ODBC, Mongo) não são ligados. Cada driver abre a biblioteca no primeiro `connect` (`vm/ps_dl.h`), e os cabeçalhos entram só pra compilar.
 
@@ -2776,7 +2778,7 @@ Antes de haver `jinga` instalado, o mesmo roda com `./pool scripts/compila.pr ..
 No **Linux** gera `dist/jinga-portable/` e `dist/jinga-portable.tar.gz`, com:
 - `jinga.bin`;
 - as `.so` de que ele depende, menos o núcleo do glibc (libc, libm, libpthread, libdl, librt, libresolv e o loader);
-- os clientes de banco `libpq.so.5`, `libmariadb.so.3`, `libodbc.so.2` e `libmongoc-1.0.so.0` com o que eles arrastam; se faltar um na máquina, o script para;
+- os clientes de banco `libpq.so.5`, `libmariadb.so.3`, `libodbc.so.2` e a libmongoc que o `pool` abre, com o que eles arrastam; se faltar um na máquina, o script para. O nome da libmongoc sai do próprio binário (`libmongoc-1.0.so.0` no driver 1.x, `libmongoc2.so.2` no 2.x do Debian forky, desde o 20.0.2). Quem diz onde cada um mora é o `ldconfig -p`: o do PATH e, sem ele, o `/sbin/ldconfig` (no Debian ele fica fora do PATH de quem não é root; motor-40);
 - o wrapper `jinga` (e `pool`) com `LD_LIBRARY_PATH`;
 - `lsp/`, `docs/`, `dados/` (MIME e ícone), `instalar.sh` e `LEIAME.txt`.
 
@@ -2837,7 +2839,7 @@ O job `release` só roda se `linux` e `mac` passarem.
 
 ### 5.15 Versão e bump
 
-- **Fonte única:** `#define PS_VERSAO "20.0.1"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
+- **Fonte única:** `#define PS_VERSAO "20.0.2"` em `vm/ps_versao.h` <!-- bump -->. O comentário do header descreve a numeração em base 100: os dígitos 2 e 3 vão de 0 a 99 e, ao chegar em 100, zeram e somam 1 à esquerda (8.2.99 -> 8.3.0, 8.99.99 -> 9.0.0).
 - O `scripts/bump.pr` soma 1 na casa pedida e não faz essa virada sozinho. Em X.Y.99, passar a versão exata.
 
 ```bash
@@ -2962,7 +2964,7 @@ O que o código e o CI já mostram do macOS:
 - **19.0.4 (2026-10-25): o UTF-8 inválido pela regra do Python, o trecho inteiro** (motor-35, resultado errado calado, e os-2). O `bytes.decode("utf-8", "replace")` punha um U+FFFD por byte do trecho inválido, e agora põe um por trecho, como o Python (a "U+FFFD Substitution of Maximal Subparts" do Unicode): `e2 82 28` dá `\ufffd(`. A frase do `UnicodeDecodeError`, no `decode` e no `os.readFile`, cita a faixa quando o trecho tem mais de um byte (`bytes in position 0-1`). Uma regra só (`utf8_porque` e `frase_utf8`, `vm/jinga_vm.c`); 72 combinações conferidas contra o Python 3.15 saem iguais. Casos em `teste/casos_libs.c`; o `teste/casos_python.c` regerado (os quatro casos pendentes do os-2 funcionam, e a regra dele saiu do gerador); a regra no capítulo 12 e na página do `decode`. Verde no Mac e na VPS: na VPS (dentro do `unshare --pid`, com o Neovim fora), a suíte com 10.349 casos com JIT, sem JIT, no `check-debug` e no `check-asan`, os portões e os roteiros, `analisa` e `avisos`; o P3 acusou só o hover do `e` do `catch` no exemplo novo da página do `decode` (editor-3, aberto), e as duas linhas entraram na catraca; no Mac, a suíte com 10.321 com JIT e sem, os conferidores, o P1, o P2 e o P3 com a catraca nova. Bench contra o 19.0.3 (`perf stat`): os outros 12 casos dentro de ±0,05%, e a `partida` sem JIT +0,31%, dentro da regra de ±0,5%.
 - **20.0.0 (2026-10-25): o `os.code` sai (decisão dele), e o `os.mkdir` faz o que o `os.makedirs` do Python faz** (os-3 e os-5, os dois últimos da seção `os`). Major, porque quebra quem usa `os.code`. O `os.code` abria o primeiro editor que achava no `PATH` (`code`, `cursor`, `zed`, `nano` ou `vim`) e deixava o editor rodando solto; na rodada da VPS do conserto do `mkdir`, o exemplo da página abriu o `nano`, e a tela dele caiu na saída do P1. Saíram a função (com o ramo do Windows), a página, a linha da tabela do `docs/libs_utilitarias.md`, os "Relacionados" do `cmd` e do `run`, a linha do `code` e o `code` de mentira do `scripts/mede_retornos.pr` e os dois comentários do `teste/cobre_stdlib.pr`. O `os.code()` dá `AttributeError: module 'os' has no attribute 'code'`, no `--check` e rodando, na mesma linha. No `mkdir`: a pasta do meio que não pode ser criada (um arquivo no caminho) é o erro, com o caminho até ela, e nada depois dela é criado (`f/g/h` com `f` arquivo citava `f/g/h`, e o Python cita `f/g`); o `.` no fim volta sem erro quando a pasta de cima acabou de ser criada (`b/f/.` criava `b/f` e dava `File exists`). 13 formas conferidas contra o `os.makedirs` do Python 3.15 saem iguais, com JIT e sem. Achados no caminho: o teste-13 (o grupo `os` do `mede_retornos.pr` não gravava desde o 17.0.19, porque media o `loadFile` de um PNG com `mode="r"`, que dá `UnicodeDecodeError`; agora mede um texto) e o doc-24, fechado por decisão dele (o comentário do exemplo do `loadFile` diz o `UnicodeDecodeError`, e o motor fica). As tabelas medidas foram regeradas: a das aridades no Mac (saem a linha e as oito frases do `code`) e a dos retornos na VPS (sai a linha do `code`). Casos em `teste/casos_libs.c`; o `teste/casos_python.c` regerado (os três casos pendentes funcionam, e a regra do `mkdir` saiu do gerador); o exemplo na página do `mkdir`. Verde no Mac e na VPS: na VPS (dentro do `unshare --pid`, com o Neovim fora), a suíte com 10.353 casos com JIT, sem JIT, no `check-debug` e no `check-asan`, os portões e os roteiros (o `exemplos_roda` vermelho só no `types.pr`, decisão dele), `analisa` e `avisos`; no Mac, a suíte com 10.325 com JIT e sem, os conferidores, as aridades, o P1, o P2, o P3 e a gramática. Bench contra o 19.0.4 (`perf stat`): o `chamada` dá +1,41% sem JIT e +1,55% com, e o `lista_indice` +1,58% e +1,23%; com 64 bytes a mais de ambiente, os dois binários trocam de valor (cada um tem os mesmos dois níveis: é a posição da pilha, não código mais caro). A `partida` vai de −0,46% a +1,11% com o ambiente acolchoado de 16 em 16 bytes (medido com os binários da primeira rodada, antes da tabela de retornos nova); os outros 10 casos ficam dentro de ±0,35%.
 - **20.0.1 (2026-10-25): o `Parsing.string` junta todo branco, pela régua do `split`** (motor-27, achado pelo gerador do P4). O `par_string` andava por byte e só juntava o espaço, o tab, o `\n` e o `\r`: `Parsing.string("a" + chr(12288) + "b")` devolvia o texto com o U+3000 no meio. Agora anda por caractere e usa a régua de branco da linguagem, a do `split()` e do `isspace` (`cp_eh_branco`, `vm/jinga_vm.c`): os 11 brancos medidos (U+3000, U+0085, `\x0b`, `\x0c`, U+00A0, U+2028, U+2029, U+1680, U+2000, U+202F, U+205F) viram um espaço, com JIT e sem, e os separadores U+001C a U+001F ficam no texto, como no `split()`. A página do `Parsing.string` diz a régua (o `" ".join(s.split())` do Python, menos esses quatro), com um exemplo que o P1 confere; o oráculo do `teste/geradores/python_doc.pr` segue a doc, e a regra que ligava a divergência ao motor-27 saiu. Casos em `teste/casos_libs.c`; o `teste/casos_python.c` regerado (os 32 casos pendentes funcionam, e só eles mudaram; sobram 2 pendentes, do motor-26 e do motor-28). Verde no Mac e na VPS: na VPS (dentro do `unshare --pid`, com o Neovim fora), a suíte com 10.357 casos com JIT, sem JIT, no `check-debug` e no `check-asan`, os portões e os roteiros (o `exemplos_roda` vermelho só no `types.pr`, decisão dele), `analisa` e `avisos`; no Mac, a suíte com 10.329 com JIT e sem, os conferidores, as aridades, o P1, o P2, o P3 e a gramática. Bench contra o 20.0.0 (`perf stat`): os 12 casos dentro de ±0,07%, e a `partida` −0,50% com JIT e −0,63% sem.
-- Versão da linguagem **20.0.1** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 20.0.1 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
+- Versão da linguagem **20.0.2** no repo e no binário instalado (`./pool --version` e `jinga --version` respondem `Jinga 20.0.2 [PSVM] (<data da compilação>) Runtime standalone`) <!-- bump -->
 - Extensão do editor: **8.6.15** (`editor/vscode/package.json`) <!-- bump ext -->
 - **O P3 e o lote 1 do P4 entraram juntos no `main` (2026-10-23, à noite)**, depois da rodada na VPS sobre o ramo, dentro do `unshare --pid`: a suíte com 10.062 casos com JIT, sem JIT e no `check-debug`; os portões só com as falhas conhecidas (`check` 41, `roda` 63, P2 492, P3 1.207 em 1.369 blocos, a gramática 10 em 61 s); LSP, depurador, Neovim (fora do `unshare`), `analisa`, `avisos` e o e2e local ok. A VPS tinha voltado a um estado sem o `bubblewrap`, e o portão `roda` parou vermelho dizendo isso, como deve; ele foi instalado de novo. No Mac, o `make check` roda com `sh -c 'ulimit -Hs 8192; ulimit -s 8192; make check'` (sem o teto duro, o `make` da Apple sobe a pilha dos filhos pra 64 MB, e a suíte para nos 6 casos do motor-1); ele para no `cli_roda` (motor-10).
 - Último commit de código no `main`: o 18.0.0 (`ef90f6c`, 2026-10-23, o `.type()` sai), sobre o 17.0.20 (`11aefc6`, 2026-10-17, a jinker serve arquivo); entre os dois, os portões e o estado (o P1 em `b09ff6b` e `ec7f562`, o P2 em `0d107a9`). Antes deles, a logo nova (`aca400d`, extensão 8.6.12), sobre o 17.0.19 (`58ae207`, Plano 6, lote 8, 2026-10-15), que levou o ramo `obra/lote8` num commit só, sobre o 17.0.18 (`with`, 2026-10-14, subido do Linux). No `2a668b9` (17.0.11) entrou, por engano meu (`git add -A`), o seu rename `examples/action.pr` → `examples/funct.pr` que estava na árvore (100% igual); desde então o commit leva só a lista de arquivos do lote. No `0262aac` (estado, 2026-10-18) entrou, por engano meu, a versão velha do `scripts/confere_saida_doc.pr`, que estava no índice desde a sessão anterior (eu não olhei o índice antes do commit); saiu no commit seguinte, e ele entra com o P1. Fora do controle de versão ficam só arquivos seus (`examples/s.pr`), que nunca entram em commit. A sua mudança em `vm/ps_lexer.c` (de 2026-10-12: `with` sai das palavras reservadas) entrou no 17.0.18, por ordem sua de 2026-10-14.
@@ -4124,7 +4126,7 @@ Os timers da Tecsol (`~/.config/systemd/user`) não sobem no Mac, porque o macOS
 2. Crie a VM com o Ubuntu 24.04 LTS, o mesmo do runner `ubuntu-24.04` do CI e da VPS. A configuração: 4 núcleos e 8 GB (metade do Mac), disco de 40 GB, rede em NAT.
 3. Dentro da VM, as dependências são as do `compila.pr` e do `build.yml`, mais o git e o node. O `compila.pr linux --instala`:
    - compila e roda a suíte com o JIT ligado e desligado;
-   - monta o `dist/jinga-portable.tar.gz` (que exige `libpq.so.5`, `libmariadb.so.3`, `libodbc.so.2` e `libmongoc-1.0.so.0`, todas trazidas pelos `-dev`);
+   - monta o `dist/jinga-portable.tar.gz` (que exige `libpq.so.5`, `libmariadb.so.3`, `libodbc.so.2` e a libmongoc, na Ubuntu 24.04 a `libmongoc-1.0.so.0`, todas trazidas pelos `-dev`);
    - faz o `sudo make install` com o MIME e o ícone do `.pr`, que o macOS não tem.
    ```bash
    sudo apt-get update

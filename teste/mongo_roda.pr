@@ -139,6 +139,27 @@ funct derruba() {
 
 
 if __name__ == "main" {
+    # motor-38: o `connect` abre a biblioteca do driver mesmo sem o mongod: o
+    # cliente do Mongo só fala com o servidor na primeira operação. Ela está em
+    # toda máquina que compila o motor (o -dev dos cabeçalhos traz a biblioteca
+    # junto), então aqui não há PULOU. No Debian forky o driver é o 2.x
+    # (libmongoc2.so.2), e o motor só procurava a libmongoc-1.0.so.0: o connect
+    # dizia que a biblioteca faltava, e este arquivo, sem mongod, só dizia
+    # PULOU. Fica fora de CHECAGENS, que são as do mongod.
+    motivo = ""
+    try {
+        sonda = psodbc.connect(driver="mongo", host="127.0.0.1", port=PORTA,
+                               database="ps_teste")
+        sonda.close()
+    }
+    catch (e) {
+        motivo = str(e)
+    }
+    if motivo != "" {
+        post("FALHOU mongo — o connect nao abriu o driver: " + motivo)
+        sys.exit(1)
+    }
+    post("mongo: o connect abriu o driver, sem o mongod")
     if not tem("mongod") {
         post("PULOU mongo — `mongod` nao esta no PATH: as " + str(CHECAGENS)
              + " checagens do driver nao rodaram")
