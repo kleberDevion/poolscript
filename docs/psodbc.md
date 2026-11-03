@@ -284,7 +284,10 @@ cliente de banco instalado.
 | `postgres` | `libpq.so.5` | `libpq5` |
 | `mysql`/`mariadb` | `libmariadb.so.3` | `libmariadb3` |
 | `mssql`/`sqlserver` | `libodbc.so.2` e o **driver ODBC do SQL Server** do fabricante | `libodbc2` + o driver |
-| `mongo` | `libmongoc-1.0.so.0` | `libmongoc-1.0-0t64` |
+| `mongo` | a do driver com que o `jinga` foi compilado: `libmongoc-1.0.so.0` (driver 1.x) ou `libmongoc2.so.2` (driver 2.x) | `libmongoc-1.0-0t64` (Ubuntu 24.04) ou `libmongoc2-2` (Debian forky) |
+
+Quem compila pelo `make pool` fica com a série do `libmongoc-dev` da própria
+máquina; o pacote portátil leva a biblioteca junto.
 
 Faltando a biblioteca, o `connect` daquele driver levanta um erro que diz
 qual é — e o programa segue (dá pra pegar com `try`):

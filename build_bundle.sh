@@ -189,8 +189,19 @@ done
 # de PG_NOMES, MY_NOMES, OD_NOMES (vm/ps_db.c) e MG_NOMES (vm/ps_mongo.c). Cada
 # um vai com o que ELE arrasta (Kerberos, LDAP, gnutls...). Faltando um nesta
 # máquina, o bundle sairia sem aquele driver: para aqui em vez de sair capenga.
-for nome in libpq.so.5 libmariadb.so.3 libodbc.so.2 libmongoc-1.0.so.0; do
-    so=$(ldconfig -p | awk -v n="$nome" '$1 == n {print $NF; exit}')
+# O do Mongo muda com a série do driver com que o `pool` compilou
+# (libmongoc-1.0.so.0 no 1.x, libmongoc2.so.2 no 2.x do Debian forky): sai do
+# próprio binário, que guarda o MG_NOMES da série dele. Fixo no 1.x, o bundle
+# parava no forky dizendo que faltava a libmongoc-1.0.so.0.
+MONGO_SO=$(grep -aoE 'libmongoc(-1\.0|2)\.so\.[0-9]+' pool | head -1)
+[ -n "$MONGO_SO" ] || { echo "o pool nao cita a libmongoc (MG_NOMES, vm/ps_mongo.c)" >&2; exit 1; }
+# Quem diz onde cada uma mora é o ldconfig, e no Debian ele fica em /usr/sbin,
+# fora do PATH de quem não é root: sem achá-lo, o `ldconfig -p` vinha vazio e o
+# bundle dizia que faltava a libpq.so.5, instalada (motor-40). O /sbin/ldconfig
+# é do glibc, em todo Linux.
+LDCONFIG=$(command -v ldconfig 2>/dev/null || echo /sbin/ldconfig)
+for nome in libpq.so.5 libmariadb.so.3 libodbc.so.2 "$MONGO_SO"; do
+    so=$("$LDCONFIG" -p | awk -v n="$nome" '$1 == n {print $NF; exit}')
     [ -n "$so" ] || { echo "falta $nome nesta maquina: o bundle sairia sem esse driver" >&2; exit 1; }
     for dep in "$so" $(ldd "$so" | awk '{print $3}' | grep '^/'); do
         echo "$dep" | grep -Eq "$NUCLEO" && continue

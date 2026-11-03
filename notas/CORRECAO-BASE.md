@@ -771,6 +771,70 @@ em cada item):
   salta pro fim dele (o `ignore` salta igual); as 72 combinações saem
   iguais ao Python, com JIT e sem. Casos: o "motor-35: ..." de
   `teste/casos_libs.c`; a regra no capítulo 12 e na página do `decode`.
+- ~~**motor-36** (achado instalando a Jinga no Debian forky/sid, 2026-10-29:
+  gcc 16.2, OpenSSL 3.6.5, mongo-c-driver 2.5.6) O `make pool` não
+  compilava: `vm/ps_mongo.c:8:10: fatal error: mongoc/mongoc.h: Arquivo ou
+  diretório inexistente`. O `libmongoc-dev` de lá é o driver 2.x, com os
+  cabeçalhos em `/usr/include/mongoc-2.5.6` e `/usr/include/bson-2.5.6`,
+  que só o `pkg-config` sabe (`mongoc2`); o ramo Linux do Makefile procurava
+  só `libmongoc-1.0` e `libbson-1.0`. Promessa: o README ("Compilando do
+  fonte ... `make pool`") e a linha do apt (5.2 do JINGA-TUDO, o
+  `instalar.sh`). `motor`.~~ Corrigido no 20.0.2: o ramo Linux pergunta ao
+  `pkg-config` (`PKG_CONFIG`) as pastas do `mongoc2` e as põe depois das do
+  1.x; com o 1.x só, a linha é a de antes. Casos: o "motor-36: ..." e o
+  "motor-36 e 37: ..." de `teste/cli_roda.pr` (um pkg-config de mentira e o
+  `make -n`).
+- ~~**motor-37** (achado no mesmo dia, com o cabeçalho do motor-36 achado
+  pelo `CPATH`) A ligação parava em 39 `referência não definida para
+  "ZSTD_..."`, do `libcrypto.a(libcrypto-lib-c_zstd.o)`: o OpenSSL 3.6.5 do
+  forky é compilado com zstd, e o `pkg-config --static --libs-only-l
+  libcrypto` de lá diz `-lcrypto -lz -lzstd -ldl`. O `LIBS_POOL` do Linux
+  ligava o `libcrypto.a` sem perguntar o que ele pede. `motor`.~~ Corrigido
+  no 20.0.2: o que o `pkg-config --static` diz além do que a linha já liga
+  entra no bloco estático, depois do `-lz` (no forky, a `-lzstd`; o
+  `libzstd-dev` vem com o `libmongoc-dev`). Casos: o "motor-37: ..." e o
+  "motor-36 e 37: ..." de `teste/cli_roda.pr`.
+- ~~**motor-38** (achado no mesmo dia, no binário compilado com o 2.x) O
+  `psodbc.connect(driver="mongo", host="127.0.0.1", port=27017,
+  database="loja")` dava, com JIT e sem, `NetworkError: o modulo mongo
+  precisa da biblioteca libmongoc-1.0.so.0, que nao foi encontrada
+  (libmongoc-1.0.so.0: cannot open shared object file: No such file or
+  directory)`, com a `libmongoc2.so.2` instalada. No Linux o motor só
+  conhecia o nome do 1.x, e a `docs/psodbc.md` mandava instalar o
+  `libmongoc-1.0-0t64`, que o forky não tem (só o `libmongoc2-2`). O
+  `teste/mongo_roda.pr`, sem `mongod`, dizia PULOU antes de qualquer
+  checagem, e o defeito passava calado. `os dois`.~~ Corrigido no 20.0.2: o
+  `ps_mongo.c` abre a série dos cabeçalhos com que o motor compilou
+  (`MONGOC_MAJOR_VERSION`: no 2.x, a `libmongoc2.so.2`, mesma ABI; as 34
+  funções do `MG_FUNCS` conferidas na `libmongoc2.so.2` e na
+  `libbson2.so.2`, dependência dela). O `connect` dá `MongoConnection`, com
+  JIT e sem, e a operação em porta fechada dá a frase do driver ("No
+  suitable servers found"). O `build_bundle.sh` lê o nome do binário. Doc: a
+  linha do mongo na `docs/psodbc.md` cita as duas séries. Caso: a condição
+  do `teste/mongo_roda.pr`, que abre o driver sem o `mongod` e sai FALHOU se
+  não abrir.
+- **motor-39** (achado no mesmo dia, na mesma máquina) O `instalar.sh`
+  instala o `pool` que estiver ao lado sem ver se ele roda nesta máquina, e
+  diz "pronto" com a linha da versão vazia (`$("$PREFIXO/bin/jinga"
+  --version 2>/dev/null)`). A `/usr/local/bin/jinga` daqui era um `Mach-O
+  64-bit x86_64 executable` (o `pool` do Mac), de 2026-10-26 12:14, e dava
+  `Erro no formato exec`. Foi o ramo Linux com um `pool` ao lado: os links
+  `jpkg`, `pool` e `psl`, o MIME da mesma hora e nenhuma `lib/jinga`.
+  Promessa: o jinga.md ("Instalação": um comando instala tudo) e o "pronto:
+  jinga <versão>" do próprio instalador. `motor`.
+- ~~**motor-40** (achado no mesmo dia, conferindo o motor-38 pelo
+  `scripts/compila.pr linux`) O `build_bundle.sh` pergunta ao `ldconfig -p`
+  onde mora cada cliente de banco, e no Debian o `ldconfig` fica em
+  `/usr/sbin`, fora do PATH de quem não é root (`ldconfig: comando não
+  encontrado`). O pacote parava em `falta libpq.so.5 nesta maquina`, com a
+  `libpq5` instalada, e com ele o `compila.pr linux`, que o README promete.
+  Na Ubuntu o `/usr/sbin` está no PATH de todo usuário, e o `build.yml` não
+  via. `motor`.~~ Corrigido no 20.0.2: o `ldconfig` do PATH, e sem ele o
+  `/sbin/ldconfig`, que é do glibc. O `compila.pr linux` desta máquina sai
+  com 0, e o pacote leva os quatro clientes, a `libmongoc2.so.2` entre eles.
+  Caso: o "motor-40: ..." de `teste/cli_roda.pr`, que monta o pacote numa
+  árvore mínima com o PATH sem as pastas sbin (e o "motor-38: o pacote leva
+  a libmongoc que o pool abre").
 
 ## os
 
@@ -1292,3 +1356,17 @@ e sem, e dá o mesmo erro.
   `install` chama e que apaga a pasta instalada antes de copiar. Teste:
   `teste/cli_roda.pr` instala numa pasta com uma página que não existe no
   repositório, e ela sai. `doc`.
+- **doc-35** (achado instalando a Jinga no Debian forky, 2026-10-29) O
+  começo rápido do README.md (linha 14) e o "Testar" do jinga.md (linha 195)
+  mandam rodar `jinga examples/01_hello.pr`, que não existe: `jinga: nao
+  consegui abrir 'examples/01_hello.pr'` (rc 66). O exemplo é o
+  `examples/hello.pr`. Nenhum portão lê as cercas ```bash. `doc`.
+- **doc-36** (achado no mesmo dia) O "Guia de deploy" do jinga.md diz que o
+  binário traz embutidos o libpq, o mysqlclient e o odbc, e manda instalar a
+  "cauda de auth do libpq" (LDAP, Kerberos, GnuTLS). O Makefile não liga
+  nenhum cliente de banco (cada driver abre a biblioteca no primeiro
+  `connect`, como diz a `docs/psodbc.md`), e o `ldd` do `pool` mostra só o
+  núcleo do glibc e a `libgmp.so.10`, que o guia não cita. A linha do apt
+  dele tem quatro pacotes que o forky não tem (`libmongoc-1.0-0`,
+  `libbson-1.0-0`, `libldap-2.5-0` e `libgnutls30`), e o comando inteiro
+  falha. `doc`.
