@@ -1,0 +1,15 @@
+import os as operationalsystem
+import sys as system
+import untils
+
+list args = system.argv; list commands = [[""]]
+# Função principal do progarama, responsavel por receber os argumentos da linha de comando.
+static funct main()
+{
+    if (untils.Until.length(args) > 1)
+    {
+        
+    }
+    return 
+}
+main()
