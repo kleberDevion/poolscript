@@ -1,8 +1,19 @@
-# Ordem em vigor (decisão do Kleber, 2026-10-16)
+# Ordem em vigor (decisão do Kleber, 2026-11-05)
 
-**Nada novo entra na Jinga até a correção da base que já existe estar
-finalizada.** A base é o `main` (17.0.19). Esta ordem só muda por escrito
-dele, neste arquivo.
+A correção da base continua primeiro. O que ele escreveu nesta data, e o
+detalhe, estão em `notas/PLANEJAMENTO.md`:
+
+1. Terminar as correções até não haver falha nenhuma nos pontos.
+2. Revisar a performance. Piorou com as correções: melhorar até ficar como
+   estava, ou melhor. Não piorou: manter.
+3. Seguir a trilha de desenvolvimento (as adições de `afz1.pr` e
+   `sintaxeGENERICS.pr`, registradas no planejamento).
+4. O ramo `obra/c1`, a integração com o C, só depois de não haver nada
+   comprometedor: falha nos pontos zerada e a performance não deixada pior.
+   Até lá não se mexe nele e não se faz merge.
+
+A base de partida da correção segue o `main` medido em 17.0.19. Esta ordem
+só muda por escrito dele, neste arquivo.
 
 ## O que a sessão faz
 
