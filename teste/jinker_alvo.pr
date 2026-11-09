@@ -190,6 +190,12 @@ funct consulta_tipada()
     return {"nome": nome}
 }
 
+@app.route("/tipo_request")
+funct tipo_request()
+{
+    return {"tipo": type(request)}
+}
+
 @app.route("/cabecalho")
 funct cabecalho()
 {

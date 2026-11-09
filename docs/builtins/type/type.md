@@ -75,7 +75,7 @@ CamelCase**.
 | registrador de rota | `jinker` | `"_RouteRegistrar"` |
 | registrador de middleware | `jinker` | `"MiddlewareRegistrar"` |
 | resposta da rota | `jinker` | `"JinkerResponse"` |
-| requisição | `jinker` | `"JinkerRequest"` |
+| requisição | `jinker` | `"RequestProxy"` |
 | proxy da requisição | `jinker` | `"RequestProxy"` |
 | arquivo recebido no upload | `jinker` | `"PoolFileUpload"` |
 | construtor de QR | `qrcode` | `"PoolQRCode"` |

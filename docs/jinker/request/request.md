@@ -1,9 +1,9 @@
 # `request` — o que chegou na requisição
 
 `request` está disponível automaticamente dentro de qualquer rota (e handler de
-socket) — você não declara nem importa. É uma instância de `JinkerRequest` e
-representa **tudo que o cliente mandou**: corpo, campos, parâmetros da URL,
-método, headers, arquivos.
+socket) — você não declara nem importa. É um `RequestProxy` fornecido pelo
+servidor e representa **tudo que o cliente mandou**: corpo, campos, parâmetros
+da URL, método, headers, arquivos.
 
 Os exemplos desta página pressupõem:
 
@@ -47,14 +47,18 @@ funct receber() {
 
 ---
 
-## `request` é do tipo `JinkerRequest`
+## `request` é do tipo `RequestProxy`
 
 Exportado pela lib caso você queira checar o tipo:
 
 ```ps
-from jinker import JinkerRequest
-# request is JinkerRequest  → True dentro de uma rota
+from jinker import JinkerRequest, request
+# type(request) == "RequestProxy" dentro de uma rota
 ```
+
+`JinkerRequest` é outro tipo interno, vazio de propósito, e não é o objeto
+entregue como `request` dentro do handler. A API descrita nesta página pertence
+ao `RequestProxy`.
 
 ---
 

@@ -218,6 +218,9 @@ confere("query diferencia maiúscula de minúscula",
 r = get(RAIZ + "/consulta_tipada?nome=um&nome=dois")
 confere("query repetida em variável str dá 500",
         r.status_code == 500)
+r = get(RAIZ + "/tipo_request")
+confere("request da rota é um RequestProxy",
+        r.get_json("tipo") == "RequestProxy")
 
 r = http_post(RAIZ + "/consulta_tipos",
               body="{\"inteiro\":42,\"flo\":4.5,\"infinito\":1e400,"

@@ -202,11 +202,14 @@ em cada item):
   documentação registra a semântica completa, e `teste/jinker_roda.pr` cobre
   query, tipos JSON, JSON inválido, corpo-raiz em lista e campos
   urlencoded/multipart.
-- **jinker-11** O nome do tipo do `request` da rota: a doc diz que ele "é uma
+- ~~**jinker-11** O nome do tipo do `request` da rota: a doc diz que ele "é uma
   instância de `JinkerRequest`" (`docs/jinker/request/request.md`), e no
   `--metadata` o `JinkerRequest` não tem membro nenhum; os membros estão num
   tipo `RequestProxy`, que a doc não cita. O editor e o `type()` mostram um
-  nome que a doc não tem. `os dois`.
+  nome que a doc não tem. `os dois`.~~
+  Decisão: a documentação pública passa a chamar o objeto da rota de
+  `RequestProxy`; `JinkerRequest` fica descrito como o tipo vazio interno. O
+  roteiro cobre `type(request) == "RequestProxy"`.
 
 ## editor
 
