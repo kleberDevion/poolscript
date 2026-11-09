@@ -798,6 +798,54 @@ async function main() {
          valor(m, 21).includes('mapping.post(') && valor(m, 21).includes('POST'), valor(m, 21).slice(0, 200));
   }
 
+  /* ── 9a-quater. módulo vs. objeto injetado ──────────────────────────────
+   * Constantes de módulo são valores, não chamadas; quando a página do
+   * membro não existe, a prosa da página do módulo ainda é a documentação
+   * correta. Dentro de rota/middleware, `request` é o RequestProxy da
+   * jinker, não o módulo cliente de mesmo nome. */
+  {
+    const MOD = [
+      'import sockets',
+      'import request',
+      'from jinker import Jinker',
+      'app = Jinker(__name__)',
+      'sockets.SO_LINGER',
+      'sockets.socket',
+      'request.get',
+      '@app.route("/x")',
+      'funct rota() {',
+      '    request.get("x")',
+      '}',
+      '@app.middleware("x")',
+      'funct meio() {',
+      '    request.get("x")',
+      '}',
+    ];
+    const MOD_SRC = MOD.join('\n') + '\n';
+    const m = await conversa(MOD_SRC, [
+      hov(30, 4, MOD[4].indexOf('SO_LINGER') + 2),
+      hov(31, 5, MOD[5].lastIndexOf('socket') + 2),
+      hov(32, 6, MOD[6].indexOf('get') + 1),
+      hov(33, 9, MOD[9].indexOf('get') + 1),
+      hov(34, 13, MOD[13].indexOf('get') + 1),
+    ]);
+    conf('constante `sockets.SO_LINGER` nao aparece como funcao e cai na prosa do modulo',
+         !valor(m, 30).includes('SO_LINGER()') && valor(m, 30).includes('A lib `sockets` traz os sockets'),
+         valor(m, 30));
+    conf('hover em `sockets.socket` traz retorno e fallback da pagina do modulo',
+         valor(m, 31).includes('sockets.socket(') && valor(m, 31).includes('-> socket')
+         && valor(m, 31).includes('A lib `sockets` traz os sockets'), valor(m, 31));
+    conf('hover em `request.get` cliente traz a pagina de request.get',
+         valor(m, 32).includes('request.get(') && valor(m, 32).includes('Faz uma requisição HTTP **GET**'),
+         valor(m, 32));
+    conf('hover em `request.get` dentro de rota usa RequestProxy',
+         valor(m, 33).includes('request.get(') && valor(m, 33).includes('query'),
+         valor(m, 33));
+    conf('hover em `request.get` dentro de middleware usa RequestProxy',
+         valor(m, 34).includes('request.get(') && valor(m, 34).includes('query'),
+         valor(m, 34));
+  }
+
   /* ── 9a-ter. linha quebrada DENTRO da funct não apaga a funct ─────────────
    * O parser não se recuperava dentro de bloco: um statement quebrado no corpo
    * derrubava a funct inteira da árvore, e o que vinha depois vazava pro topo.

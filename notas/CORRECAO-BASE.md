@@ -261,6 +261,12 @@ em cada item):
   o hover "módulo `request` — falta `import request` neste arquivo (rodando
   dá `NameError`)": o editor toma o nome pelo módulo cliente `request`
   (`docs/jinker/middleware/middleware.md:29`, `docs/jinker.md:53`).
+  **Corrigido em 20.0.8.** O servidor agora preserva valores de módulo como
+  campos (sem `()`), exibe o retorno dos métodos, usa a página específica ou
+  o resumo da página do módulo e resolve `request` como `RequestProxy` dentro
+  de rotas e middlewares. Regressão em `editor/vscode/teste_servidor.js`:
+  264 checagens passaram, com JIT e sem JIT não se aplica ao editor; quatro
+  casos de ambiente foram pulados com motivo explícito.
 - **editor-3** (achado pelo portão P3, 2026-10-23) O hover diz "nome não
   definido neste arquivo nem por import (rodando dá `NameError`)" em nomes que
   o motor liga, em blocos que o `--check` aprova. Na doc inteira são 550

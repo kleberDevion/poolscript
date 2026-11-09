@@ -174,7 +174,30 @@ function paginaDe(escopo, nome) {
   PAGINAS.set(chave, pg);
   return pg;
 }
-function resumoDe(escopo, nome) { return paginaDe(escopo, nome).resumo; }
+function resumoDe(escopo, nome) {
+  const direta = paginaDe(escopo, nome);
+  if (direta.resumo) return direta.resumo;
+  const candidatos = Array.isArray(escopo) ? escopo : [escopo];
+  for (const e of candidatos) {
+    if (!e) continue;
+    const partes = e.split('/');
+    const modulo = partes[partes.length - 1];
+    const pg = paginaDe(e, modulo);
+    if (pg.resumo) return pg.resumo;
+    const raiz = raizDoc();
+    if (raiz) {
+      const moduloPg = paginaArquivo(path.join(raiz, e, modulo, `${modulo}.md`));
+      if (moduloPg.resumo) return moduloPg.resumo;
+    }
+  }
+  return '';
+}
+function resumoDoModulo(mod) {
+  const raiz = raizDoc();
+  if (!raiz || !mod) return '';
+  const base = mod.split('.')[0];
+  return paginaArquivo(path.join(raiz, base, `${base}.md`)).resumo;
+}
 
 /* Uma página da doc lida do disco: o título (`# ...`), o primeiro parágrafo
  * (resumo) e o PRIMEIRO bloco de código (exemplo) — é o que o hover mostra
@@ -767,8 +790,8 @@ function exportadosDe(ref, dirModulo, dirScript, pilha) {
   const nativo = nativoDe(mod, ref.aspas, pontos);
   if (nativo) {
     return META.modulos[nativo].map((m) => Object.assign(
-      { kind: m.kind === 'value' ? 'campo' : 'funct', escopo: nativo, tipo: retornoVisivel(m.retorna) },
-      m, { mod: nativo, membro: m.nome }));
+      {}, m, { kind: m.kind === 'value' ? 'campo' : 'funct', escopo: nativo,
+        tipo: retornoVisivel(m.retorna), mod: nativo, membro: m.nome }));
   }
   const arq = arquivoDoImport(mod, dirModulo, ref.aspas, pontos, dirScript);
   return arq ? exportadosDeArquivo(arq, dirScript, pilha || new Set()) : [];
@@ -981,6 +1004,10 @@ function tipoDoNome(doc, nome, linha) {
     const e = A.entidadeEm(idx, linha);
     return e ? { tipo: 'entity', nome: e.nome, interno: true } : null;
   }
+  /* A jinker injeta `request` no escopo de uma rota ou middleware. Ele não é
+   * o módulo cliente `request`, embora esse módulo também exista na tabela. */
+  if (nome === 'request' && requestDaJinker(doc, linha))
+    return { tipo: 'tipo_motor', nome: 'RequestProxy', via: { mod: 'jinker/request', membro: 'request' } };
   /* O nome LIGADO por import vem antes da Entity de mesmo nome achada num
    * arquivo importado: `import pondy` (a lib cujo topo é `class pondy`)
    * liga o MÓDULO — `pondy.` lista a classe, `pondy.pondy().` os métodos
@@ -1004,6 +1031,14 @@ function tipoDoNome(doc, nome, linha) {
     if (b.kind === 'model' && b.no) return { tipo: 'model', no: b.no };
     if (b.kind === 'enum' && b.no) return { tipo: 'enum', no: b.no };
     break;
+  }
+
+  function requestDaJinker(doc, linha) {
+    const idx = idxDoc(doc);
+    const esc = idx.escopos.find((s) => s.tipo === 'funct' && s.ini <= linha + 1 && linha + 1 <= s.fim);
+    if (!esc) return false;
+    const dec = decoradorDe(idx, esc.nome, esc.ini - 1);
+    return /(?:^|\.)(?:route|get|post|put|patch|delete|head|options|middleware)$/.test(dec.slice(1));
   }
   /* Variável sem tipo declarado: o tipo é o da EXPRESSÃO atribuída por
    * último antes da linha — qualquer expressão, pela regra única de
@@ -2471,7 +2506,7 @@ function hoverDoImportado(doc, alvo, nome, linha) {
       const cab = nat.mod + '.' + (m.kind === 'value'
         ? m.nome + (retornoVisivel(m.retorna) ? ' -> ' + m.retorna : '')
         : assinatura(m));
-      const prosa = resumoDe(nat.mod, nat.membro);
+      const prosa = resumoDe(nat.mod, nat.membro) || resumoDoModulo(nat.mod);
       return md('```ps\n' + cab + '\n```' + (prosa ? '\n\n' + prosa : ''));
     }
   }
@@ -2634,7 +2669,13 @@ conexao.onHover((p) => {
      * "herdado de" só quando o membro veio de um pai de verdade — antes
      * `self.con` dizia "herdado de `Db`" no campo da própria classe */
     const dono = alvo && alvo.tipo === 'entity' ? alvo.nome : partes[partes.length - 1];
-    const prosa = m.escopo ? resumoDe(m.escopo, m.nome) : '';
+    const prosa = (m.escopo ? resumoDe(m.escopo, m.nome) : '')
+                || (alvo && alvo.tipo === 'modulo'
+                    ? resumoDoModulo(alvo.mod) : '')
+                || (alvo && alvo.tipo === 'import' && alvo.alvo && alvo.alvo.tipo === 'modulo'
+                    ? resumoDoModulo(alvo.alvo.mod) : '')
+                || (partes.length && META.modulos[partes[0]]
+                    ? resumoDoModulo(partes[0]) : '');
     const herd = m.de && m.de !== dono ? `\n\nherdado de \`${m.de}\`` : '';
     /* campo sem tipo declarado / método sem retorno declarado: o inferido */
     const mm = Object.assign({}, m);
