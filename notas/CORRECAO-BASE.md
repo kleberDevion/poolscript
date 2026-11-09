@@ -181,7 +181,7 @@ em cada item):
   retornam `list[str]`, na ordem original. A documentação e o roteiro
   `teste/jinker_roda.pr` cobrem os dois casos e o erro 500 da atribuição
   repetida a `str`.
-- **jinker-10** O que o `request.get(chave)` lê, medido:
+- ~~**jinker-10** O que o `request.get(chave)` lê, medido:
   - da query string, sempre texto: `?a=42` dá `'42'`, `?a=` dá `''`, e `%20`
     e `+` saem decodificados;
   - do corpo JSON, o tipo do JSON: `42` dá `int` (inteiro grande também),
@@ -197,7 +197,11 @@ em cada item):
   `docs/jinker/request/request.md` diz que o `request` representa "tudo que o
   cliente mandou: corpo, campos, ..."; os campos de formulário não chegam.
   `os dois`: a doc fica com tudo acima; o formulário é decisão sua (ler os
-  campos, ou a doc dizer que não lê e como fazer com o `text()`).
+  campos, ou a doc dizer que não lê e como fazer com o `text()`).~~
+  Decisão: os campos de formulário continuam fora de `request.get()`. A
+  documentação registra a semântica completa, e `teste/jinker_roda.pr` cobre
+  query, tipos JSON, JSON inválido, corpo-raiz em lista e campos
+  urlencoded/multipart.
 - **jinker-11** O nome do tipo do `request` da rota: a doc diz que ele "é uma
   instância de `JinkerRequest`" (`docs/jinker/request/request.md`), e no
   `--metadata` o `JinkerRequest` não tem membro nenhum; os membros estão num

@@ -15,9 +15,13 @@ from jinker import Jinker, cors, jsonify
 Jinker app = Jinker(__name__)
 ```
 
-Na query string, uma chave pode aparecer mais de uma vez. Uma ocorrência
-retorna `str`; várias ocorrências retornam `list[str]`, na ordem em que
-aparecem. O tipo, portanto, depende da requisição:
+## Query string
+
+Uma chave pode aparecer mais de uma vez. Uma ocorrência retorna `str`; várias
+ocorrências retornam `list[str]`, na ordem em que aparecem. O tipo, portanto,
+depende da requisição. O valor da query é sempre texto: `?idade=42` retorna
+`"42"`, `?idade=` retorna `""`, e `%20` e `+` são decodificados como espaço.
+As chaves diferenciam maiúsculas de minúsculas.
 
 ```ps
 @app.route("/unico")
@@ -41,6 +45,26 @@ funct varios_valores() {
 
 ---
 
+## Corpo JSON
+
+Se a chave não estiver na query, `request.get()` procura um objeto JSON no
+corpo e preserva o tipo do campo: número inteiro, número fracionário, `bool`,
+`list` ou `dict`. Isso vale mesmo sem o cabeçalho
+`Content-Type: application/json`.
+
+```ps
+@app.route("/tipos", methods=cors.options(["POST"]))
+funct tipos() {
+    inteiro = request.get("idade")       # 42
+    ativo = request.get("ativo")         # True
+    return jsonify({"idade": inteiro, "ativo": ativo})
+}
+```
+
+`null`, uma chave ausente, JSON inválido e um corpo JSON cuja raiz é uma lista
+não fornecem um campo: todos resultam em `Null`. Query tem prioridade sobre o
+corpo JSON.
+
 ## Exemplos
 
 **Da query string** (`/buscar?termo=jinga`):
@@ -62,6 +86,12 @@ funct buscar_varios() {
     return jsonify({"buscando": termos})
 }
 ```
+
+Campos de formulário `application/x-www-form-urlencoded` e campos de
+`multipart/form-data` não são lidos por `request.get()`: o resultado é `Null`.
+Para multipart, use [`request.file()`](../file/file.md) ou
+[`request.files()`](../files/files.md) para arquivos e `request.text()` se
+precisar processar o corpo cru.
 
 **Do corpo JSON** (`POST` com `{"nome": "ana"}`):
 

@@ -209,9 +209,32 @@ r = get(RAIZ + "/consulta?q=um&q=dois")
 list repetidos = r.get_json("q")
 confere("query repetida preserva a ordem e devolve lista",
         len(repetidos) == 2 and repetidos[0] == "um" and repetidos[1] == "dois")
+r = get(RAIZ + "/consulta?q=&A=mai")
+confere("query vazia vira texto vazio e diferencia caixa",
+        r.get_json("q") == "" and r.get_json("faltando") == Null)
+r = get(RAIZ + "/consulta?a=minuscula")
+confere("query diferencia maiúscula de minúscula",
+        r.get_json("q") == Null)
 r = get(RAIZ + "/consulta_tipada?nome=um&nome=dois")
 confere("query repetida em variável str dá 500",
         r.status_code == 500)
+
+r = http_post(RAIZ + "/consulta_tipos",
+              body="{\"inteiro\":42,\"flo\":4.5,\"infinito\":1e400,"
+                   + "\"booleano\":true,\"lista\":[1,2],\"objeto\":{\"x\":1},"
+                   + "\"nulo\":null,\"chave\":\"Mai\",\"A\":1}")
+confere("request.get preserva os tipos JSON",
+        r.get_json("inteiro") == 42 and r.get_json("flo") == 4.5
+        and r.get_json("booleano") == True
+        and r.get_json("lista")[1] == 2 and r.get_json("objeto")["x"] == 1)
+confere("request.get aceita inteiro JSON grande e infinito",
+        r.get_json("infinito") == True and r.get_json("nulo") == Null)
+confere("query ausente no corpo JSON não acha chave de outra caixa",
+        r.get_json("chave") == "Mai" and r.get_json("minuscula") == Null)
+r = http_post(RAIZ + "/consulta_tipos", body="[1,2,3]")
+confere("corpo JSON que é lista não fornece campo", r.get_json("chave") == Null)
+r = http_post(RAIZ + "/consulta_tipos", body="{invalido")
+confere("JSON inválido não dá erro e fornece Null", r.get_json("chave") == Null)
 
 r = get(RAIZ + "/param/42")
 confere("path param chega", r.get_json("id") == "42")
@@ -296,6 +319,10 @@ confere("upload chega com nome, tamanho e conteúdo",
         and r.get_json("conteudo") == "conteudo enviado")
 confere("upload é gravado no disco pelo save()", r.get_json("salvou") == True)
 confere("files() enxerga o arquivo", r.get_json("quantos") >= 1)
+confere("campo multipart não entra em request.get()", r.get_json("campo") == Null)
+r = http_post(RAIZ + "/consulta_form", body="quem=teste",
+              headers={"Content-Type": "application/x-www-form-urlencoded"})
+confere("campo urlencoded não entra em request.get()", r.get_json("campo") == Null)
 
 r = http_post(RAIZ + "/subir", body="sem arquivo nenhum")
 confere("POST sem arquivo devolve 400, não 500", r.status_code == 400)

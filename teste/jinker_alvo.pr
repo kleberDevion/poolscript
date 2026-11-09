@@ -167,6 +167,22 @@ funct consulta()
     return {"q": request.get("q"), "faltando": request.get("nao_existe")}
 }
 
+@app.route("/consulta_tipos", methods=["POST"])
+funct consulta_tipos()
+{
+    return {    "inteiro": request.get("inteiro"), "flo": request.get("flo"),
+    "infinito": request.get("infinito") == flo("inf"), "booleano": request.get("booleano"),
+            "lista": request.get("lista"), "objeto": request.get("objeto"),
+            "nulo": request.get("nulo"), "chave": request.get("chave"),
+            "minuscula": request.get("a")}
+}
+
+@app.route("/consulta_form", methods=["POST"])
+funct consulta_form()
+{
+    return {"campo": request.get("quem")}
+}
+
 @app.route("/consulta_tipada")
 funct consulta_tipada()
 {
@@ -270,7 +286,8 @@ funct subir()
     return {"nome": f.name, "tamanho": f.size, "tipo": f.content_type,
             "ext": f.ext, "salvou": os.exists(destino),
             # `files()` e POR CAMPO — exige o nome; sem ele levanta.
-            "conteudo": f.bytes().decode(), "quantos": request.files("arquivo").len()}
+            "conteudo": f.bytes().decode(), "quantos": request.files("arquivo").len(),
+            "campo": request.get("quem")}
 }
 
 
