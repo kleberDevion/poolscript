@@ -626,7 +626,7 @@ em cada item):
   A doc (1.6.3) diz que o campo dentro do formato vale ("`{x:{w}.2f}` usa a
   largura guardada em `w`"), e o `docs/lsp.md` diz que cada item de `erros`
   traz onde o erro começa e onde termina. `motor`.
-- **motor-26** (achado pelo gerador do P4, lote 3, 2026-10-24,
+- ~~**motor-26** (achado pelo gerador do P4, lote 3, 2026-10-24,
   `teste/casos_python.c`) A tabela de caixa do motor é a do Unicode 15.1, e o
   Python 3.15, que a doc cita, usa a do Unicode 17.0: em 110 caracteres o
   `upper` ou o `lower` do Python muda o caractere e o do motor não. São os
@@ -642,7 +642,11 @@ em cada item):
   17.0 (o `scripts/gera_unicode.pr` com o UCD 17.0), ou a doc diz que a
   referência é o UCD 15.1. O caso pendente lista os 110. Decisão dele
   (2026-10-24): as tabelas do motor passam pro Unicode 17.0, o do Python 3.15
-  que a doc cita, e a doc deixa de dizer 15.1. `motor` (tabelas do Unicode).
+  que a doc cita, e a doc deixa de dizer 15.1. `motor`   (tabelas do Unicode).~~ Corrigido nesta alteração: `vm/ps_unicode_tab.inc`
+  foi regenerado pelo `scripts/gera_unicode.pr` a partir do UCD 17.0.0. O
+  caso dos 110 caracteres passou a ser regressão em `teste/casos_python.c`;
+  a doc passou a citar UCD 17.0. O commit e a saída dos dois modos ficam
+  registrados aqui após os portões.
 - ~~**motor-27** (achado pelo gerador do P4, lote 3) O `Parsing.string` junta
   só quatro brancos: o espaço, o tab, o `\n` e o `\r`. O
   `" ".join(s.split())` do Python, que a doc cita, junta também estes:

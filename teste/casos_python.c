@@ -7,7 +7,7 @@
  * notas/CORRECAO-BASE.md: ele tem que falhar, e quando o motor acertar o
  * runner diz JA FUNCIONA e o gerador roda de novo.
  *
- * casos: 228  |  pendentes: 2 (motor-26: 1, motor-28: 1)  |  semente: 20261024
+ * casos: 228  |  pendentes: 1 (motor-28: 1)  |  semente: 20261024
  */
 #include "ps_teste.h"
 
@@ -3396,7 +3396,7 @@ const Caso CASOS_PYTHON[] = {
   "}\n",
   "",
   NULL, 0 },
-{ "python #17 caixa dos 110 caracteres que divergem (PENDENTE motor-26)",
+{ "python #17 caixa dos 110 caracteres que divergem",
   "str funct linha(int c, str u, str l) {\n"
   "    list us = []\n"
   "    for each ch in u {\n"
@@ -3526,7 +3526,7 @@ const Caso CASOS_PYTHON[] = {
   "93905 93878 93905\n"
   "93906 93879 93906\n"
   "93907 93880 93907",
-  NULL, 0, NULL, 1 },
+  NULL, 0, NULL, 0 },
 { "python #18 Parsing.string",
   "import Parsing\n"
   "post(\"[\" + Parsing.string(\"\\t\\x85'\\U00002028\\x1f\") + \"]\")\n",
