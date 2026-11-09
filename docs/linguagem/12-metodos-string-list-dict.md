@@ -86,7 +86,7 @@ Os três de número **não** são sinônimos, e nenhum deles para no ASCII:
 | `isdigit()` | os decimais **mais** os sobrescritos/subscritos: `²`, `³`, `¹`, `⁷`, `₄` |
 | `isnumeric()` | os anteriores **mais** fração, numeral romano e numeral CJK: `½`, `¾`, `Ⅷ`, `一` |
 
-Caixa e classes de caractere seguem a tabela do Unicode inteira (UCD 15.1),
+Caixa e classes de caractere seguem a tabela do Unicode inteira (UCD 17.0),
 de qualquer escrita: letra é a categoria L (`"漢字".isalpha()` é True),
 maiúscula e minúscula são as propriedades Uppercase e Lowercase, branco é a
 White_Space, e `upper`/`lower`/`title`/`capitalize`/`swapcase`/`casefold`

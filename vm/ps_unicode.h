@@ -32,7 +32,7 @@ enum {
 #define UNI_DIGITO        2048   /* Numeric_Type=Digit */
 #define UNI_NUMERICO      4096   /* Numeric_Type=Numeric */
 
-/* versão do UCD das tabelas ("15.1.0") */
+/* versão do UCD das tabelas (definida em ps_unicode_tab.inc) */
 const char *ps_uni_versao(void);
 
 /* categoria geral e marcas de um codepoint (fora da faixa: 0 = Cn) */
