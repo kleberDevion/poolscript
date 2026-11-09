@@ -15,6 +15,30 @@ from jinker import Jinker, cors, jsonify
 Jinker app = Jinker(__name__)
 ```
 
+Na query string, uma chave pode aparecer mais de uma vez. Uma ocorrência
+retorna `str`; várias ocorrências retornam `list[str]`, na ordem em que
+aparecem. O tipo, portanto, depende da requisição:
+
+```ps
+@app.route("/unico")
+funct um_valor() {
+    str um = request.get("q")       # /unico?q=jinga
+    return jsonify({"q": um})
+}
+```
+
+Uma variável declarada como `str` só pode receber a forma de uma ocorrência;
+se o cliente puder repetir a chave, trate o retorno como `str | list` antes
+de atribuir:
+
+```ps
+@app.route("/varios")
+funct varios_valores() {
+    list varios = request.get("q")  # /varios?q=jinga&q=pool
+    return jsonify({"q": varios})
+}
+```
+
 ---
 
 ## Exemplos
@@ -26,6 +50,16 @@ Jinker app = Jinker(__name__)
 funct buscar() {
     termo = request.get("termo")     # "jinga"
     return jsonify({"buscando": termo})
+}
+```
+
+Chaves repetidas preservam todos os valores:
+
+```ps
+@app.route("/buscar")
+funct buscar_varios() {
+    termos = request.get("termo")    # ["jinga", "pool"]
+    return jsonify({"buscando": termos})
 }
 ```
 

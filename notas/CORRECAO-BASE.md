@@ -169,14 +169,18 @@ do `request` não diz se obtém string também"), num servidor da jinker no
 loopback, com JIT e sem (`notas/` não guarda o programa; ele está descrito
 em cada item):
 
-- **jinker-9** O `request.get(chave)` da rota devolve LISTA quando a chave se
+- ~~**jinker-9** O `request.get(chave)` da rota devolve LISTA quando a chave se
   repete na query string: `?a=1&a=2` dá `['1', '2']`, e `?a=1` dá `'1'`. O
   tipo muda conforme o que o cliente manda, e a rota escrita com tipo
   (`str nome = request.get("nome")`) cai com 500 quando alguém repete o
   parâmetro. A página (`docs/jinker/request/get/get.md`) não diz nada sobre
   chave repetida. No Flask, `request.args.get` devolve o primeiro valor, e
   `getlist` devolve todos. `duvida`: a sua decisão é o primeiro valor, como
-  no Flask, com um jeito de pegar todos, ou a lista de hoje escrita na doc.
+  no Flask, com um jeito de pegar todos, ou a lista de hoje escrita na doc.~~
+  Decisão: mantém-se a lista atual. Uma ocorrência retorna `str`; várias
+  retornam `list[str]`, na ordem original. A documentação e o roteiro
+  `teste/jinker_roda.pr` cobrem os dois casos e o erro 500 da atribuição
+  repetida a `str`.
 - **jinker-10** O que o `request.get(chave)` lê, medido:
   - da query string, sempre texto: `?a=42` dá `'42'`, `?a=` dá `''`, e `%20`
     e `+` saem decodificados;

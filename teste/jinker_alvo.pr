@@ -167,6 +167,13 @@ funct consulta()
     return {"q": request.get("q"), "faltando": request.get("nao_existe")}
 }
 
+@app.route("/consulta_tipada")
+funct consulta_tipada()
+{
+    str nome = request.get("nome")
+    return {"nome": nome}
+}
+
 @app.route("/cabecalho")
 funct cabecalho()
 {
