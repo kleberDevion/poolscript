@@ -458,6 +458,11 @@ typedef struct {
      * próprio decorador num temporário distinto (`$reg0`, `$reg1`…), senão
      * o de dentro sobrescrevia o de fora antes de ele ser usado */
     int         decor_prof;
+    /* Profundidade da descida da árvore (compilação e checagem). O TETO
+     * CONTADO é o que faz o MESMO programa dar o mesmo resultado em qualquer
+     * `ulimit -s` (motor-1): a folga medida da pilha sozinha seguia o make 3.81
+     * da Apple (64 MB) e o mesmo 8000 blocos passava lá e falhava nos 8 MB. */
+    int         fundo;
     /* `finally` PENDENTES (try aninhado): o bloco é emitido inline nas saídas
      * do try, mas `return`, `break` e `continue` saltam por fora — sem isto o
      * finally simplesmente NÃO rodava nesses três caminhos. Cada entrada
@@ -5991,16 +5996,34 @@ static void expr(C *c, Unidade *u, PSNode *n)
     c->linha_atual = l; c->coluna_atual = co;
 }
 
+/* Teto CONTADO da descida da árvore (motor-1), irmão do PS_PARSE_PROF_MAX e do
+ * PS_PARSE_BLOCO_PROF_MAX do parser. A contagem é o que faz o MESMO programa
+ * dar o mesmo resultado em qualquer `ulimit -s`: a folga medida da pilha
+ * sozinha seguia o limite do processo, e o make 3.81 da Apple dá 64 MB aos
+ * filhos — os 8000 blocos aninhados passavam lá e falhavam nos 8 MB do shell.
+ * Um nível acima do teto é erro em qualquer pilha.
+ *
+ * O valor do bloco é o MESMO do parser (3000): o compilador desce a árvore
+ * que o parser aceitou, e o teto tem que falar no mesmo nível, senão o
+ * `--check` recusaria no compilador o que o parser aprovou. Subiu o valor,
+ * sobe o `fundo` do caso em teste/casos_crash.c junto. */
+#define PS_COMPILA_PROF_MAX 100000
+#define PS_COMPILA_BLOCO_PROF_MAX 1500
+
 /* FREIO da descida pela árvore. O parser tem o dele (`expressao`/`bloco`),
  * mas 4000 blocos aninhados ou 5000 decoradores passam por ele e derrubavam
  * o compilador e o checador, que descem a mesma árvore com quadros maiores e
- * sem freio nenhum. A medida é a folga da pilha do C, como no parser. */
+ * sem freio nenhum. Dois freios, como no parser: o TETO CONTADO (o mesmo
+ * resultado em qualquer pilha, motor-1) e a folga medida da pilha do C (o
+ * quadro do binário de verdade, que o ASan aumenta). */
 static int fundo_demais(C *c, PSNode *n, int bloco)
 {
-    /* dois freios, como no parser: o do bloco tem o dobro da margem do da
-     * expressão (ver `ps_pilha.h`), pra 4000 `if` aninhados acusarem o bloco
-     * e não a condição de dentro, em qualquer binário */
-    if (!(bloco ? ps_pilha_apertada_bloco() : ps_pilha_apertada())) return 0;
+    /* O do bloco tem o dobro da margem do da expressão (ver `ps_pilha.h`), pra
+     * 4000 `if` aninhados acusarem o bloco e não a condição de dentro, em
+     * qualquer binário */
+    if (c->fundo < (bloco ? PS_COMPILA_BLOCO_PROF_MAX : PS_COMPILA_PROF_MAX)
+            && !(bloco ? ps_pilha_apertada_bloco() : ps_pilha_apertada()))
+        return 0;
     cerro_sx(c, n, "%s", bloco ? "bloco aninhado demais" : "expressao aninhada demais");
     return 1;
 }
@@ -6062,13 +6085,23 @@ static void emite_literal_dict(C *c, Unidade *u, PSNode *n)
     }
 }
 
+static void expr_no_corpo(C *c, Unidade *u, PSNode *n);
+
 static void expr_no(C *c, Unidade *u, PSNode *n)
 {
     if (n && n->line) c->linha_atual = n->line;
     if (n && n->col)  c->coluna_atual = n->col;
     if (CFALHOU(c) || !n) return;
     if (fundo_demais(c, n, 0)) return;
+    /* o teto contado da descida (motor-1): a casca garante o decremento nos
+     * 44 `return` do corpo, como o `bloco` do parser */
+    c->fundo++;
+    expr_no_corpo(c, u, n);
+    c->fundo--;
+}
 
+static void expr_no_corpo(C *c, Unidade *u, PSNode *n)
+{
     switch (n->kind) {
         case N_LITERAL:
             switch (n->lit) {
@@ -6835,13 +6868,23 @@ static void stmt(C *c, Unidade *u, PSNode *n)
     c->linha_atual = l; c->coluna_atual = co;
 }
 
+static void stmt_no_corpo(C *c, Unidade *u, PSNode *n);
+
 static void stmt_no(C *c, Unidade *u, PSNode *n)
 {
     if (CFALHOU(c) || !n) return;
     if (n->line) c->linha_atual = n->line;
     if (n->col)  c->coluna_atual = n->col;
     if (fundo_demais(c, n, 1)) return;
+    /* o teto contado da descida (motor-1), como no `expr_no`: a casca garante
+     * o decremento em qualquer `return` do corpo (o `bloco` do parser) */
+    c->fundo++;
+    stmt_no_corpo(c, u, n);
+    c->fundo--;
+}
 
+static void stmt_no_corpo(C *c, Unidade *u, PSNode *n)
+{
     switch (n->kind) {
         case N_FUNCT_DECL: {
             /* O nome nasce ANTES do corpo compilar: sem isto uma funct

@@ -47,6 +47,11 @@ typedef struct {
     int        grupo_depth;
     /* Profundidade da descida recursiva. Ver PS_PARSE_PROF_MAX. */
     int        prof;
+    /* Profundidade só dos BLOCOS (contador próprio, motor-1): o custo de
+     * pilha por nível de bloco é o dobro do de uma expressão, e o teto é
+     * outro (`PS_PARSE_BLOCO_PROF_MAX`). Separado para o `if True` aninhado
+     * chegar ao teto dos blocos e não ao das expressões. */
+    int        prof_bloco;
     /* A lista do lexer, quando quem chamou a tem: é dela que saem os trechos
      * `{...}` das f-strings, com o offset no FONTE (o `texto` do token já vem
      * decodificado e não serve pra recalcular coluna). NULL = parse de um
@@ -90,25 +95,42 @@ typedef struct {
  * que veio de fora. Dentro do jinker é pior: a fibra tem pilha de 128 KB, ~64x
  * menor que os 8 MB do processo.
  *
- * QUEM DECIDE É A FOLGA DE PILHA, não a contagem. Contar nível não mede nada:
- * 2000 níveis de `(((...)))` gastam muito menos que 2000 níveis de expressão
- * com chamada, e o mesmo número que sobra folgado no `-O2` estoura no `-O0`,
- * onde o quadro é várias vezes maior. Número fixo ou aperta um build ou afrouxa
- * o outro, e o critério pra escolher acaba sendo "o valor que faz o teste
- * calar". `ps_pilha_apertada()` (ver `ps_pilha.h`) mede o que sobra de
- * verdade, e se adapta sozinha ao `ulimit -s` e à pilha pequena da fibra.
+ * DOIS FREIOS, e o TETO CONTADO é o que DECIDE.
  *
- * O CONTADOR CONTINUA, com teto alto (100 mil), e por um motivo só: a medição
- * de folga depende de a base ter sido marcada, e um chamador que esqueça de
- * marcar deixaria a descida sem freio nenhum. O contador é o cinto de
- * segurança do freio — nunca é ele que dispara em uso real.
+ * O critério é o da doc: o MESMO programa tem que dar o MESMO resultado em
+ * qualquer pilha. Só a folga medida não dá isso — ela segue o `ulimit -s`, e
+ * o make 3.81 da Apple sobe o limite dos filhos até o teto (64 MB). Medido no
+ * 20.0.4: 8000 blocos aninhados davam `bloco aninhado demais` com 8 MB e
+ * `{"ok":true}` com 64 MB; eram 4100 a borda com 8 MB e acima de 8000 com
+ * 64 MB. Isso é o motor-1.
  *
- * É o mesmo freio que o SQLite usa no parser dele.
+ * O teto é CONTADO e calibrado pela borda do MENOR `ulimit -s` que a linguagem
+ * promete (os 8 MB de `ulimit -s 8192`), com margem: 4000 níveis de bloco
+ * (a borda medida deu entre 4100 e 4200) e 100 mil de expressão. Uma
+ * profundidade acima do teto dá o MESMO erro em qualquer pilha.
+ *
+ * A folga medida (`ps_pilha_apertada`, ver `ps_pilha.h`) fica como CINTO DE
+ * SEGURANÇA, para o chamador que não marcou a base e para o binário de quadro
+ * grande (`-O0`, o ASan): ela dispara antes do teto quando a pilha é pequena
+ * demais para a contagem, e nunca depois dele.
+ *
+ * É o mesmo freio que o SQLite usa no parser dele, com o contador na frente.
  *
  * O caso "parser: 100 mil parenteses aninhados (acima do teto)" de
  * teste/casos_crash.c usa PS_PARSE_PROF_MAX + 1 pra valer em qualquer
  * `ulimit -s`: mudou o teto aqui, muda o `fundo` lá. */
 #define PS_PARSE_PROF_MAX 100000
+
+/* O teto dos BLOCOS. Um nível de bloco custa duas cascas de pilha (o `bloco`
+ * e o `bloco_no`) e o comando de dentro, contra uma só do parêntese: por isso
+ * o teto é bem menor.
+ *
+ * Calibrado pela borda medida com 8 MB, com margem para o quadro de um binário
+ * `-O0` ou sob ASan. Medido: a borda ficou entre 2000 e 3000 nos ambientes
+ * do projeto (Debian gcc 16 e o Ubuntu 24.04 do codespace com gcc 13), e os
+ * 1500 passam com folga. Ficam muito acima do uso real
+ * (a doc não tem bloco com mais de 10 níveis). */
+#define PS_PARSE_BLOCO_PROF_MAX 1500
 
 /* ── reservadas que também não podem virar nome ─────────────────────────── */
 /* `=`, `+=`, `-=`, `*=`, `/=`, `%=` — os operadores que abrem atribuição. */
@@ -2466,11 +2488,11 @@ static void pula_statement(P *p, int32_t ini)
 /* O que a descida do parser deixa pendurado quando um statement falha no meio.
  * Dentro de bloco, recuperar é voltar ao estado de ANTES do statement — zerar,
  * como o topo faz, perderia o `grupo_depth` do corpo de uma lambda. */
-typedef struct { int prof, grupo_depth, chave_abre_bloco, dec_sem_captura; int32_t nerros; } EstadoP;
+typedef struct { int prof, prof_bloco, grupo_depth, chave_abre_bloco, dec_sem_captura; int32_t nerros; } EstadoP;
 
 static EstadoP estado_salva(P *p)
 {
-    EstadoP e = { p->prof, p->grupo_depth, p->chave_abre_bloco, p->dec_sem_captura, p->out->nerros };
+    EstadoP e = { p->prof, p->prof_bloco, p->grupo_depth, p->chave_abre_bloco, p->dec_sem_captura, p->out->nerros };
     return e;
 }
 
@@ -2508,6 +2530,7 @@ static int recupera_no_bloco(P *p, int32_t ini, EstadoP e)
     if (!p->recupera || p->out->nerros >= 64) return 0;
     p->out->ok = 1;
     p->prof = e.prof;
+    p->prof_bloco = e.prof_bloco;
     p->grupo_depth = e.grupo_depth;
     p->chave_abre_bloco = e.chave_abre_bloco;
     p->dec_sem_captura = e.dec_sem_captura;
@@ -2567,16 +2590,19 @@ static PSNode *bloco_no(P *p);
  * mesmo jeito que o parêntese aninhado. */
 static PSNode *bloco(P *p)
 {
-    /* o freio do bloco tem o dobro da margem do da expressão (ver
-     * `ps_pilha.h`): é o que faz 4000 `if` aninhados acusarem o bloco, e não a
-     * condição `True` de dentro, em qualquer binário */
-    if (p->prof >= PS_PARSE_PROF_MAX || ps_pilha_apertada_bloco()) {
+    /* Teto CONTADO próprio (motor-1): o mesmo programa dá o mesmo resultado em
+     * qualquer `ulimit -s`. A folga medida fica de cinto: o freio do bloco tem
+     * o dobro da margem do da expressão (ver `ps_pilha.h`), e é ele que fala
+     * num binário de quadro grande (`-O0`, o ASan). */
+    if (p->prof_bloco >= PS_PARSE_BLOCO_PROF_MAX || ps_pilha_apertada_bloco()) {
         perro(p, "bloco aninhado demais", atual(p));
         return NULL;
     }
+    p->prof_bloco++;
     p->prof++;
     PSNode *r = bloco_no(p);
     p->prof--;
+    p->prof_bloco--;
     return r;
 }
 
@@ -5212,7 +5238,7 @@ static int proxima_topo(P *p, PSNode **out)
              * seria lido com o parser em meio de expressão. */
             if (r->nerros >= 64) return 0;
             r->ok = 1;
-            p->prof = 0; p->grupo_depth = 0; p->chave_abre_bloco = 0; p->dec_sem_captura = 0;
+            p->prof = 0; p->prof_bloco = 0; p->grupo_depth = 0; p->chave_abre_bloco = 0; p->dec_sem_captura = 0;
             /* até o fim do statement contado desde o começo dele: um bloco
              * que ele abriu não despeja o resto do corpo aqui em cima */
             pula_statement(p, antes);

@@ -89,6 +89,62 @@ const Caso CASOS_CRASH[] = {
   "    Process p = os.run([sys.executable, \"--check\", nome], capture=\"live\")\n"
   "    str t = p.read(65536)\n    int rc = p.wait()\n"
   "    post(nome, rc, \"aninhado demais\" in t)\n}\n", "b.pr 1 True\nd.pr 1 True", NULL, 0 },
+/* motor-1: a MESMA resposta em qualquer pilha.
+ *
+ * A trava de aninhamento media só a folga da pilha, e ela segue o `ulimit -s`:
+ * o make 3.81 da Apple sobe o limite dos filhos até 64 MB, e o MESMO programa
+ * dava `bloco aninhado demais` com 8 MB e `{"ok":true}` com 64 MB. Agora o
+ * TETO CONTADO decide (4000 blocos, 10000 grupos de regex, 7000 no casador),
+ * e a folga fica de cinto de segurança.
+ *
+ * O caso roda o mesmo programa duas vezes, cada uma com um `ulimit -s`
+ * diferente, e exige a saída IDÊNTICA byte a byte — o erro, a linha e a
+ * coluna. O `sh` só existe no Linux e no macOS: no Windows não há como baixar
+ * a pilha por filho, e o caso sai com a marca `linux`/`darwin` (o runner pula
+ * os de outro sistema).
+ *
+ * 1501 blocos: um acima do teto (1500) e abaixo da borda real dos 8 MB nos
+ * dois ambientes do projeto (2000 a 3000 neles) — é onde os freios antigos
+ * discordavam conforme a pilha. */
+{ "motor-1: o mesmo aninhamento dá a MESMA resposta com 8 MB e com 64 MB",
+  "import os\nimport sys\nimport json\n"
+  "str b = \"if True { \" * 1501 + \"post(1)\" + \" }\" * 1501 + \"\\n\"\n"
+  "using open(\"b.pr\", \"w\") as f { f.write(b) }\n"
+  "str r = \"import regex\\nint n = 10001\\nstr p = \\\"(?:\\\" * n + \\\"a\\\" + \\\")\\\" * n\\nregex.compile(p)\\n\"\n"
+  "using open(\"r.pr\", \"w\") as f { f.write(r) }\n"
+  "str saidas = \"\"\n"
+  "for each kb in [\"8192\", \"65532\"] {\n"
+  "    for each nome in [\"b.pr\", \"r.pr\"] {\n"
+  "        Process p = os.run([\"/bin/sh\", \"-c\", \"ulimit -s \" + kb + \"; \\\"$0\\\" \\\"$1\\\"\", sys.executable, nome], capture=\"live\")\n"
+  "        str t = p.read(65536)\n        str e = p.read_err(65536)\n        int rc = p.wait()\n"
+  "        saidas = saidas + nome + \":\" + str(rc) + \":\" + t.strip() + e.strip() + \"\\n@@@\\n\"\n"
+  "    }\n"
+  "}\n"
+  "# o erro ocupa VARIAS linhas (a frase e o quadro com o trecho), entao a\n"
+  "# comparacao e do texto inteiro de cada rodada, separado por um marcador\n"
+  "list blocos = []\n"
+  "for each b in saidas.split(\"@@@\") {\n"
+  "    if b.strip() != \"\" { blocos.append(b.strip()) }\n"
+  "}\n"
+  "post(len(blocos) == 4)\n"
+  "post(blocos[0] == blocos[2], blocos[1] == blocos[3])\n"
+  "# o rc é o de cada modo do parser: 2 no erro de sintaxe, 1 no da lib\n"
+  "post(blocos[0].startswith(\"b.pr:2:\"), blocos[1].startswith(\"r.pr:1:\"))\n"
+  "post(\"bloco aninhado demais\" in blocos[0], \"padrao aninhado demais\" in blocos[1])\n",
+  "True\nTrue True\nTrue True\nTrue True", NULL, 0, "linux" },
+{ "motor-1: o casador do regex dá a MESMA borda com 8 MB e com 64 MB",
+  "import os\nimport sys\n"
+  "str r = \"import regex\\nalvo = \\\"x\\\" * 7000\\npost(regex.findall(\\\"(?:a|(x))*\\\", alvo))\\n\"\n"
+  "using open(\"m.pr\", \"w\") as f { f.write(r) }\n"
+  "list saidas = []\n"
+  "for each kb in [\"8192\", \"65532\"] {\n"
+  "    Process p = os.run([\"/bin/sh\", \"-c\", \"ulimit -s \" + kb + \"; \\\"$0\\\" m.pr\", sys.executable], capture=\"live\")\n"
+  "    str t = p.read(65536)\n    str e = p.read_err(65536)\n    int rc = p.wait()\n"
+  "    saidas.append(str(rc) + \":\" + t.strip() + e.strip())\n"
+  "}\n"
+  "post(saidas[0] == saidas[1])\n"
+  "post(\"profundo demais\" in saidas[0])\n",
+  "True\nTrue", NULL, 0, "linux" },
 { "lista literal de 65537 itens no topo, em funct e em async funct roda e devolve o tamanho (antes corrompia o heap)",
   /* 65537 > STACK_SIZE: o literal e montado em lotes de 256 (BUILD_LIST 0 +
    * LIST_EXTEND) e a cota de cada frame e a profundidade exata (`pilha_max`),

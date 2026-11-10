@@ -673,14 +673,18 @@ própria frase, sempre como erro e nunca derrubando o processo:
 - **passos**: `RuntimeError: regex: backtracking demais`, quando o padrão volta
   atrás demais sobre o texto (2 milhões de passos);
 - **profundidade**: `RuntimeError: regex: padrao ou texto profundo demais pra
-  pilha`, quando as repetições de grupo descem a pilha além da folga medida
-  dela onde a busca roda. Dentro de uma `async funct` a pilha é a da tarefa,
-  menor que a do programa principal, e o limite chega antes. Um literal sem
+  pilha`, quando as repetições de grupo descem 7000 níveis. Um literal sem
   repetição (o `escape` de um texto longo) não desce a pilha.
 
-O padrão também tem teto: grupos aninhados além da pilha dão `ValueError:
-regex: padrao aninhado demais`, e um número de repetição acima de
+O padrão também tem teto: grupos aninhados acima de 10000 níveis dão
+`ValueError: regex: padrao aninhado demais`, e um número de repetição acima de
 4294967294 dá `the repetition number is too large`.
+
+Os dois tetos são **contados**, e não medidos pela pilha de onde o motor roda:
+o mesmo padrão dá o mesmo resultado no programa principal, dentro de uma
+`async funct` e com `ulimit -s` diferente. A folga real da pilha continua
+conferida, como cinto de segurança, num binário de quadro grande (`-O0`, o do
+ASan).
 
 ---
 

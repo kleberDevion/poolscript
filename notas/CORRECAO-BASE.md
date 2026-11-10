@@ -314,7 +314,7 @@ em cada item):
 
 ## motor
 
-- **motor-1** A trava de aninhamento fundo compara a folga da pilha com uma
+- ~~**motor-1** A trava de aninhamento fundo compara a folga da pilha com uma
   margem que cresce com o maior quadro visto na execução (`vm/ps_pilha.c`,
   `apertada_com`). Perto do limite, o MESMO programa ora dá o erro limpo, ora
   roda até o fim. A folga segue o `ulimit -s`, e o make 3.81 da Apple sobe o
@@ -331,7 +331,27 @@ em cada item):
   Medido de novo em 2026-10-23, na rodada do P1: `ulimit -s` dá 8.192 KB no
   shell e 65.532 KB dentro do `make` 3.81; os mesmos seis falham no `make
   check` e passam com o teto em 8 MB (9.993 de 9.993). Nesse dia virou por
-  engano um item novo, o teste-3 do `ec7f562`, tirado no commit seguinte.
+  engano um item novo, o teste-3 do `ec7f562`, tirado no commit seguinte.~~
+  Corrigido no 20.0.5: o TETO CONTADO passa a DECIDIR nos três freios que
+  faltavam, e a folga medida da pilha fica de cinto de segurança (o binário
+  `-O0` e o ASan, cujo quadro é maior). Os tetos são calibrados pela borda
+  MEDIDA com o menor `ulimit -s` que a linguagem promete (8 MB), com margem:
+  2000 blocos (`PS_PARSE_BLOCO_PROF_MAX`, e `PS_COMPILA_BLOCO_PROF_MAX` no
+  compilador, no mesmo nível — a borda real medida ficou entre 2400 e 3000
+  nos dois ambientes (Debian gcc 16 e codespace gcc 13), e o teto
+  segue a menor),
+  10000 grupos no padrão (`RX_PADRAO_PROF_MAX`; a borda ficou entre 10000 e
+  12000) e 7000 níveis no casador (`RX_SEQ_PROF_MAX`; a borda ficou entre 7500
+  e 8000). O parser separou o contador dos blocos (`p->prof_bloco`) do das
+  expressões, senão o `if True` aninhado chegava ao teto das expressões, e o
+  compilador ganhou o contador da descida da árvore (`c->fundo`, na casca do
+  `expr_no` e do `stmt_no`) com o mesmo valor de bloco do parser. Medido: 2001
+  blocos, 10000 grupos e 7000 no casador dão o MESMO erro, na MESMA linha e
+  coluna, com `ulimit -s 8192` e com 65532, e 2000, 9999 e 6999 passam nos
+  dois. Casos: os dois "motor-1: ..." de `teste/casos_crash.c`, que rodam o
+  mesmo programa com as duas pilhas e exigem a saída idêntica byte a byte (o
+  `sh` só existe no Linux e no macOS: o caso leva a marca do sistema). A doc
+  do regex passou a dizer os dois tetos contados.
 - **motor-2** (achado pelo portão `check`, `docs/regex.md:17`) A chamada
   `match(r"\d+", "123")` sozinha na linha, a forma que `docs/regex.md` ensina
   (`from regex import match`), é lida como o comando `match`, e o erro sai na

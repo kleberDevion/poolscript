@@ -12,6 +12,27 @@
 #define RX_ESTOUROU_PASSOS 1
 #define RX_ESTOUROU_FUNDO  2
 
+/* TETOS CONTADOS (motor-1). A folga medida da pilha decide perto do fim, mas
+ * sozinha ela segue o `ulimit -s`: o mesmo programa dava erro limpo com 8 MB e
+ * rodava até o fim com as 64 MB que o make 3.81 da Apple dá aos filhos. Estes
+ * dois tetos dão o MESMO resultado em qualquer pilha, e a folga continua ali
+ * como a rede de segurança do binário de verdade (o quadro do ASan é maior).
+ *
+ * RX_PADRAO_PROF_MAX conta o aninhamento de GRUPO na leitura do padrão (o
+ * `le_atomo -> le_grupo -> le_alt`), e RX_SEQ_PROF_MAX o de sequência no
+ * casamento (o `m_seq` descendo o corpo da repetição).
+ *
+ * Os valores são calibrados pela BORDA MEDIDA com o menor `ulimit -s` que a
+ * linguagem promete (8 MB), com margem para o quadro de um binário `-O0` ou
+ * sob ASan. Medido no 20.0.4: 10000 grupos aninhados compilavam e 12000 davam
+ * `padrao aninhado demais` com 8 MB, e os 12000 compilavam com 64 MB — o
+ * motor-1. O teto de 10000 põe a borda no mesmo lugar em qualquer pilha.
+ *
+ * O caso de crash que os exercita gera um nível acima do teto, e sobe o teto
+ * junto. */
+#define RX_PADRAO_PROF_MAX 10000
+#define RX_SEQ_PROF_MAX    7000
+
 /* ── árvore do padrão ────────────────────────────────────────────────────
  *
  *   Alt   := Seq ('|' Seq)*
@@ -120,6 +141,10 @@ typedef struct {
     int        *cond_ref;     /* condicional que cita grupo ainda não aberto: */
     int        *cond_pos;     /* o número e onde ele foi escrito, conferidos no fim */
     int         ncond, cap_cond;
+    int         prof;         /* profundidade de grupo ANINHADO no padrão. O teto
+                               * é contado (RX_PADRAO_PROF_MAX), além da folga
+                               * da pilha: é o que faz o MESMO padrão dar o mesmo
+                               * resultado em qualquer `ulimit -s` (motor-1). */
 } Leitor;
 
 /* O que veio antes, na sequência que está sendo lida. */
@@ -1040,6 +1065,8 @@ static int le_grupo(Leitor *l, Atomo *a)
     if (captura) {
         if (nome_ini >= 0) {
             int ja = grupo_por_nome_l(l, l->p + nome_ini, nome_len);
+            /* (o teto de aninhamento está no `le_atomo`, que é o ponto de
+             * entrada recursivo: o grupo sempre passa por ele) */
             if (ja > 0) {
                 snprintf(msgb, sizeof(msgb), "redefinition of group name '%.*s' as group %d; was group %d",
                          nome_len > 100 ? 100 : nome_len, l->p + nome_ini, l->ngrupos + 1, ja);
@@ -1066,7 +1093,9 @@ static int le_grupo(Leitor *l, Atomo *a)
     }
     if (lk_atras && l->look_grupos < 0) l->look_grupos = l->ngrupos;
     a->g_de = l->ngrupos;
+    l->prof++;                                /* o teto de aninhamento (motor-1) */
     a->grupo = le_alt(l);
+    l->prof--;
     a->g_ate = l->ngrupos;
     l->flags = flags_salvo;                   /* flags de escopo saem do grupo */
     l->look_grupos = look_salvo;
@@ -1097,8 +1126,10 @@ static int le_atomo(Leitor *l, Atomo *a)
     if (l->falhou || l->i >= l->n) return 0;
     /* O leitor e recursivo (`le_alt -> le_seq -> le_atomo -> le_alt`) e so o
      * grupo capturante tinha teto: `(?:` 20 mil vezes derrubava o processo.
-     * O freio e a folga medida da pilha, como no parser da linguagem. */
-    if (ps_pilha_apertada()) {
+     * Dois freios, como no parser da linguagem: o TETO CONTADO, que dá o mesmo
+     * resultado em qualquer `ulimit -s` (motor-1), e a folga medida da pilha,
+     * que cobre o quadro do binário de verdade (o do ASan é maior). */
+    if (l->prof >= RX_PADRAO_PROF_MAX || ps_pilha_apertada()) {
         /* sem a posicao: ela e onde a PILHA apertou, que muda com o tamanho
          * da pilha (fibra, ASan), e nao diz nada sobre o padrao */
         if (!l->falhou && l->erro && l->erro_cap > 0)
@@ -1828,13 +1859,23 @@ static int m_atomico(Estado *e, const Seq *s, int i, int pos, const Cont *k)
  * entrar e sair sempre fecham. */
 static int m_seq(Estado *e, const Seq *s, int i, int pos, const Cont *k)
 {
-    /* A FOLGA MEDIDA da pilha decide, e só ela: `ps_pilha_apertada` sabe em
-     * que pilha está (a fibra remarca a base ao entrar) e mede o quadro do
-     * binário de verdade (o do ASan é maior). Havia também um contador fixo
-     * de 6000 níveis, que barrava uso válido nos 8 MB do processo: um CSV de
-     * 3 mil campos com `(?:[a-z]+,)*` dava "profundo demais". */
-    if (ps_pilha_apertada()) { e->estourou = RX_ESTOUROU_FUNDO; return 0; }
-    return m_seq_corpo(e, s, i, pos, k);
+    /* DOIS freios, como no parser da linguagem (motor-1): o TETO CONTADO, que
+     * dá o mesmo resultado em qualquer `ulimit -s` (era o defeito: o mesmo
+     * texto dava erro com 8 MB e passava com os 64 MB do make da Apple), e a
+     * folga medida da pilha, que cobre o quadro do binário de verdade (o do
+     * ASan é maior).
+     *
+     * O teto é calibrado pela borda MEDIDA com 8 MB, com margem: 7500 `x`
+     * casavam com `(?:a|(x))*` e 8000 davam "profundo demais"; com 64 MB os
+     * 8500 casavam. Os 7000 põem a borda no mesmo lugar em qualquer pilha, e
+     * ficam bem acima do uso real (um CSV de 3 mil campos passa). */
+    if (e->prof >= RX_SEQ_PROF_MAX || ps_pilha_apertada()) {
+        e->estourou = RX_ESTOUROU_FUNDO; return 0;
+    }
+    e->prof++;
+    int r = m_seq_corpo(e, s, i, pos, k);
+    e->prof--;
+    return r;
 }
 
 static int m_seq_corpo(Estado *e, const Seq *s, int i, int pos, const Cont *k)
