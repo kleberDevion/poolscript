@@ -1757,6 +1757,18 @@ const Caso CASOS_LIBS[] = {
 { "motor-43: o PoolFile do open tambem tem bytes e name",
   "import os\nos.writeFile(\"w.txt\", \"conteudo\")\nObject a = open(\"w.txt\", \"r\")\npost(type(a), a.name, a.bytes())\na.close()\n",
   "PoolFile w.txt b'conteudo'", NULL, 0 },
+/* motor-13: o tipo do `app.route(...)` tinha dois nomes. O `--metadata`
+ * publica `RouteRegistrar` (e a doc tem docs/jinker/RouteRegistrar/), e o
+ * motor e o checador chamavam de `_RouteRegistrar`. */
+{ "motor-13: o RouteRegistrar declarado e aceito, com o nome da doc",
+  "from jinker import Jinker\nJinker app = Jinker(__name__)\nRouteRegistrar r = app.route(\"/x\")\n",
+  "", NULL, 0 },
+{ "motor-13: o membro que o RouteRegistrar nao tem e recusado antes de rodar",
+  "from jinker import Jinker\nJinker app = Jinker(__name__)\napp.route(\"/x\").p2_nao_existe()\n",
+  "", "'RouteRegistrar' object has no method 'p2_nao_existe'", 2 },
+{ "motor-13: o retorno do register e Null, e o --check sabe",
+  "from jinker import Jinker\nJinker app = Jinker(__name__)\nNull funct f() { return }\nint x = app.route(\"/x\").register(f)\n",
+  "", "variável x esperava int, recebeu Null", 2 },
 { "motor-11: a aridade do DbCursor.execute e conferida antes de rodar",
   "import psodbc\nDbConnection c = psodbc.connect(driver=\"sqlite\", base=\":memory:\")\nDbCursor cur = c.cursor()\ncur.execute()\n",
   "", "execute() takes at least 1 argument (0 given)", 2 },

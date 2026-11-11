@@ -4774,8 +4774,14 @@ static const char *const NOME_DE_OBJ[OBJ__COUNT] = {
     [OBJ_REGEX]      = "Pattern",
 };
 /* O registrador do jinker: um nome por kind, na ordem de JREG_MIDDLEWARE e o
- * de rota. Tabela pra o `tipos_valor` citar os dois. */
-static const char *const NOMES_JREG[] = { "MiddlewareRegistrar", "_RouteRegistrar" };
+ * de rota. Tabela pra o `tipos_valor` citar os dois.
+ *
+ * O de rota era `_RouteRegistrar`, com underscore, e o `--metadata` publica
+ * `RouteRegistrar` (a doc tem `docs/jinker/RouteRegistrar/`): o mesmo tipo
+ * tinha dois nomes, e `RouteRegistrar r = app.route("/x")` era recusado com
+ * `esperava RouteRegistrar, recebeu _RouteRegistrar` (motor-13). O nome que
+ * vale é o que a doc e o `--metadata` usam. */
+static const char *const NOMES_JREG[] = { "MiddlewareRegistrar", "RouteRegistrar" };
 
 static const char *nome_do_tipo_valor(Value v)
 {

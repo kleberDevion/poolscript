@@ -587,7 +587,7 @@ em cada item):
   `save` grava o que foi escrito. Casos: os três "motor-43: ..." de
   `teste/casos_libs.c`. A doc do `PoolFile` passou a dizer que vale nos dois
   sentidos.
-- **motor-13** (achado pelo portão P2, 2026-10-23) O tipo que o
+- ~~**motor-13** (achado pelo portão P2, 2026-10-23) O tipo que o
   `app.route(...)` devolve tem dois nomes: o `--metadata` publica
   `RouteRegistrar` (e a doc tem `docs/jinker/RouteRegistrar/`), e o motor e o
   checador chamam de `_RouteRegistrar`. `RouteRegistrar r =
@@ -597,7 +597,15 @@ em cada item):
   recebeu Null` (o `--metadata` diz `Null`). Pelo mesmo nome, ele não
   confere os membros: `app.route("/x").p2_nao_existe()` passa, e rodando dá
   `'_RouteRegistrar' object has no method 'p2_nao_existe'` (achado pela
-  chamada de membro que não existe do P2, 18.0.0). `motor`.
+  chamada de membro que não existe do P2, 18.0.0). `motor`.~~ Corrigido no
+  20.0.15: o nome que vale é o da doc e do `--metadata`, `RouteRegistrar`.
+  Saíram o `_RouteRegistrar` do `NOMES_JREG` (`vm/jinga_vm.c`) e o da tabela
+  de retornos medida (`vm/retornos_medidos.inc`). Medido: `RouteRegistrar r =
+  app.route("/x")` passa no `--check`; `app.route("/x").p2_nao_existe()` dá
+  `'RouteRegistrar' object has no method 'p2_nao_existe'` antes de rodar; e
+  `int x = app.route("/x").register(f)` dá `variável x esperava int, recebeu
+  Null`, como rodando. Casos: os três "motor-13: ..." de
+  `teste/casos_libs.c`.
 - ~~**motor-14** (decisão do Kleber, 2026-10-23) O `.type()` sai da linguagem:
   fica só o `type(x)`. Nas palavras dele: "o uso deve ser somente type() não
   .type(), retire ele, isso faz ter menos trabalho". Medido pelo portão P2: o
