@@ -1814,6 +1814,16 @@ const Caso CASOS_LIBS[] = {
 { "lote 8: os.loadFile tipa pelo arquivo, mode r devolve o texto, linha vazia do CSV nao e registro",
   "import os\nos.writeFile(\"nota.txt\", \"nota\")\nos.writeFile(\"v.csv\", \"a,b\\n1,2\\n\\n3,4\\n\\n\")\nos.writeFile(\"config.json\", \"{\\\"versao\\\": 3}\")\nstr t = os.loadFile(\"nota.txt\")\nlist l = os.loadFile(\"v.csv\")\nstr a = os.loadFile(\"config.json\", mode=\"r\")\ndict c = os.loadFile(\"config.json\")\npost(t, len(l), l)\npost(a, c)\ntry {\n    PoolFile p = os.loadFile(\"nota.txt\")\n} catch (Exception e) {\n    post(e)\n}\n",
   "nota 2 [{'a': '1', 'b': '2'}, {'a': '3', 'b': '4'}]\n{\"versao\": 3} {'versao': 3}\nvariável p esperava PoolFile, recebeu str (linha 12)", NULL, 0 },
+/* motor-8: o `mode` e conferido ANTES de tocar no disco, como o `open` do
+ * Python. O `os_procura` resolvia o caminho primeiro e falhava com ENOENT, e
+ * `os.loadFile("nao_existe.txt", mode="xyz")` dava FileNotFoundError — a
+ * pagina do `loadFile` mostra o ValueError sem criar arquivo nenhum. */
+{ "motor-8: o mode invalido e ValueError mesmo com o arquivo que nao existe",
+  "import os\ntry { os.loadFile(\"nao_existe.txt\", mode=\"xyz\") } catch (e) { post(type(e), e) }\n",
+  "str loadFile: 'xyz' nao e um mode valido — use 'r' ou 'rb' (linha 2)", NULL, 0 },
+{ "motor-8: o mode valido com o arquivo que nao existe continua FileNotFoundError",
+  "import os\ntry { os.loadFile(\"nao_existe.txt\", mode=\"r\") } catch (e) { post(type(e), e) }\n",
+  "str [Errno 2] No such file or directory: 'nao_existe.txt' (linha 2)", NULL, 0 },
 /* os-4: a virgula no fim da ultima linha abre um campo, vazio, tambem sem a
  * quebra de linha no fim do arquivo (o csv.DictReader do Python 3.15 da o
  * mesmo). Sem a quebra, o campo sumia: `1,` dava null, e o vazio a mais nao

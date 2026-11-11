@@ -448,14 +448,20 @@ em cada item):
   "motor-7: ..." de `teste/casos_libs.c`. A **aridade** dos membros do
   `RequestProxy` continua sem conferência: ele não está na tabela medida
   (`vm/aridades_medidas.inc`), e isso é o motor-11, item aberto.
-- **motor-8** (achado pelo portão `roda`, 2026-10-22,
+- ~~**motor-8** (achado pelo portão `roda`, 2026-10-22,
   `docs/os/loadFile/loadFile.md:98` e `:109`) O `os.loadFile` confere o
   `mode` DEPOIS de abrir o arquivo: `os.loadFile("nao_existe.txt",
   mode="xyz")` dá `FileNotFoundError`, e só com o arquivo existente sai o
   `ValueError: loadFile: 'xyz' nao e um mode valido`. A página mostra o
   `ValueError` sem criar arquivo nenhum, e o `open` do Python confere o modo
   antes de tocar no disco (`ValueError: invalid mode`). Com JIT e sem.
-  `motor`.
+  `motor`.~~ Corrigido no 20.0.10: a conferência do `mode` subiu para antes do
+  `os_procura`, que resolve o caminho e falhava com ENOENT primeiro. Medido:
+  `os.loadFile("nao_existe.txt", mode="xyz")` dá `ValueError: loadFile: 'xyz'
+  nao e um mode valido — use 'r' ou 'rb'`, e o mesmo caminho com `mode="r"`
+  continua `FileNotFoundError` (o modo válido não esconde o arquivo que falta).
+  Casos: os dois "motor-8: ..." de `teste/casos_libs.c`. A página do
+  `loadFile` ficou verde nos dois portões.
 - ~~**motor-9** (achado pelo portão `roda`, 2026-10-22, `docs/manpu.md:58`) O
   `mp.write(...)` devolve um `ManpuResult` que se imprime `Success` ou
   `Error` e que é `== True` quando deu certo. As páginas (`docs/manpu.md:58`

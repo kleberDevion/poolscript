@@ -14768,17 +14768,17 @@ static int mod_os_pathfolder(VM *v, Value *a, int n, Value *o) { return os_procu
 static int mod_os_loadfile(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "loadFile", 1, 2, n);
-    Value cam;
-    if (os_procura(vm, args, 1, &cam, 0, "loadFile") != 0) return -1;
-    if (fixa_raiz(vm, cam) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
-    const char *caminho = COMO_STRING(cam)->chars;
-    const char *ponto = strrchr(caminho, '.');
-    char ext[64] = "";
-    if (ponto) minusculo(ponto, ext, sizeof(ext));
 
     /* `mode`: o mesmo nome que a tabela do modulo declara e que o usuario
      * escreve na chamada. A variavel se chamava `modo` e as mensagens
-     * escreviam `mode` — dois nomes pra mesma coisa dentro da mesma funcao. */
+     * escreviam `mode` — dois nomes pra mesma coisa dentro da mesma funcao.
+     *
+     * O MODO E CONFERIDO ANTES DE TOCAR NO DISCO (motor-8): o `open` do
+     * Python valida o modo antes de abrir, e `os.loadFile("nao_existe.txt",
+     * mode="xyz")` dava `FileNotFoundError` — a pagina do `loadFile` mostra o
+     * `ValueError` sem criar arquivo nenhum. O `os_procura` abaixo resolve o
+     * caminho e falha com ENOENT antes de chegar aqui, e por isso a
+     * conferencia subiu pra frente dele. */
     const char *mode = NULL;
     if (n == 2 && args[1].t != V_NULL) {
         if (!EH_STRING(args[1])) { vm->sp--;
@@ -14797,6 +14797,14 @@ static int mod_os_loadfile(VM *vm, Value *args, int n, Value *out)
         BERRO(vm, "ValueError",
               "loadFile: '%s' nao e um mode valido — use 'r' ou 'rb'", mode);
     }
+
+    Value cam;
+    if (os_procura(vm, args, 1, &cam, 0, "loadFile") != 0) return -1;
+    if (fixa_raiz(vm, cam) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
+    const char *caminho = COMO_STRING(cam)->chars;
+    const char *ponto = strrchr(caminho, '.');
+    char ext[64] = "";
+    if (ponto) minusculo(ponto, ext, sizeof(ext));
 
     int bin = mode ? (strcmp(mode, "rb") == 0) : conteudo_binario(caminho);
 
