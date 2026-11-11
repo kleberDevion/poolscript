@@ -998,6 +998,23 @@ saiu: ..." de `teste/casos_libs.c`.
   antes do 1º exemplo (`prova_do_kill`), que reprova a forma sem o `--`; sem
   isolador, nenhum exemplo roda (vermelho no Linux e no macOS; no Windows, o
   portão diz que não rodou).
+- **teste-14** (achado na retomada de 2026-11-11, rodando o `make check` no
+  codespace e no Debian local) O portão **P3** (`scripts/confere_editor.pr`)
+  não termina: ele sobe o servidor do editor, conecta, faz o `initialize` e o
+  `didOpen`, e então **para sem imprimir nada** e sem sair com erro — o
+  `timeout` o mata. Medido no 20.0.7, nos dois ambientes (Ubuntu 24.04 do
+  codespace e Debian local), com o `node` e o `npm install` feitos: o log fica
+  com 0 linhas, e o processo fica dormindo (`State: S`) junto com o `node`,
+  sem CPU. O `make check` para ali, e os portões seguintes (P4, gramática) não
+  rodam. O que **não** é: não é regressão do lote do motor-1, do motor-2 nem
+  do motor-3 — o mesmo travamento acontece no `98485a0`, que é anterior aos
+  três. O que **funciona**, medido à parte: o servidor do editor conecta e
+  responde ao `initialize` e ao `hover` de um bloco escrito à mão (o
+  `t4.pr` da sessão), então o defeito está no caminho do portão com a doc
+  inteira, não no servidor. Suspeita: o `pede` espera a resposta do `id` dele
+  e descarta as notificações, e um bloco da doc que faça o servidor mandar
+  uma notificação com `id` (ou uma resposta fora de ordem) deixa os dois
+  lados esperando. `teste`.
 - **teste-4** (achado na rodada do P1, 2026-10-23) O `teste/e2e/mail_local.pr`
   passa e deixa os servidores falsos vivos, escutando até alguém matar. No
   Mac, depois de `./pool teste/e2e_roda.pr mail_local` (rc 0), sobraram 19:
