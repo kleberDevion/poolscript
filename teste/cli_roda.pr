@@ -1820,6 +1820,28 @@ r = roda([POOL, "importa.pr"])
 confere("import de caminho com extensao velha ensina a nova",
         r["rc"] != 0 and "ImportError" in r["saida"] and "migra_pr" in r["saida"])
 
+# motor-10: o caminho do migrador e o nome escrito saem INTEIROS na mensagem.
+# O `%.100s` cortava o caminho em 100 bytes e o comando apontava para um
+# arquivo que nao existe; o nome escrito era cortado em 40/120/200. O caso
+# monta uma pasta de 200+ caracteres e confere que o caminho do migrador
+# aparece inteiro na saida.
+str fundo = ""
+for each i in range(0, 6) {
+    fundo = fundo + "pasta_com_nome_bem_comprido_para_testar_o_corte/"
+}
+os.mkdir(PASTA + "/" + fundo, exist_ok=True)
+os.writeFile(PASTA + "/" + fundo + "vizinho.ps", "z = 1\n")
+os.writeFile(PASTA + "/" + fundo + "importa.pr", "import './vizinho.ps'\n")
+r = roda([POOL, fundo + "importa.pr"])
+# o ImportError sai no stderr, e o `roda` junta os dois na saida
+str migra = ""
+for each linha in r["saida"].splitlines() {
+    if "migra_pr" in linha { migra = linha }
+}
+confere("motor-10: o caminho do migrador sai inteiro, sem corte em 100 bytes",
+        r["rc"] != 0 and len(migra) > 150 and migra.contains("migra_pr.pr")
+        and migra.contains("--aplica"))
+
 # ── o migrador, numa pasta de mentira ───────────────────────────────────────
 #
 # Sem `--aplica` ele não pode encostar em nada: é essa promessa que faz alguém

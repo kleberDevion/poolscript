@@ -473,7 +473,7 @@ em cada item):
   `os.writeFile` levantam a exceção com o caminho. `os dois`: o motor dá o
   motivo (o `.status` que a doc promete, ou a exceção), e a doc diz qual.~~
   Fechado no 19.0.0: a lib `manpu` saiu inteira (decisão dele, 2026-10-24).
-- **motor-10** (achado no `make check` do Mac, 2026-10-23, pelo caso "import
+- ~~**motor-10** (achado no `make check` do Mac, 2026-10-23, pelo caso "import
   de caminho com extensao velha ensina a nova" do `teste/cli_roda.pr`) O
   `ImportError` do `import './x.ps'` manda rodar o migrador e corta o caminho
   dele em 100 bytes, calado (`jinga %.100s <pasta> --aplica`,
@@ -483,7 +483,16 @@ em cada item):
   também é cortado (`%.40s`, `%.120s`, `%.200s`), e a mensagem inteira cabe
   em 256 bytes (`char erro[256]` da VM). O caso só passa com o caminho curto
   (a VPS, o checkout dele). É a classe do Plano 10: caminho cortado calado
-  por buffer fixo. `motor`.
+  por buffer fixo. `motor`.~~ Corrigido no 20.0.11: os cortes saíram, e o
+  buffer da mensagem cresceu para `PS_CAMINHO_MAX + 512`. Junto foram os
+  outros três que a mensagem atravessa e que também cortavam calados: o
+  `tb_mod_msg` (o erro do import que falha dentro de um módulo, que vai pro
+  traceback), o `erro_msg` da fibra (o erro de uma `async funct`) e o
+  `msgbuf` do `catch` (que acrescenta o ` (linha N)`). Medido: com a pasta de
+  200+ caracteres, o `ImportError` traz o caminho do migrador inteiro (183
+  bytes na linha, sem `...`), e um nome de módulo de 257 caracteres sai
+  inteiro. Caso: o "motor-10: ..." de `teste/cli_roda.pr`, que monta a pasta
+  funda e confere o caminho inteiro na saída.
 - **motor-11** (achado pelo portão P2, 2026-10-23) O `--check` não confere a
   chamada dos membros de 11 tipos nem dos valores de módulo que se chamam:
   aceita qualquer quantidade, qualquer nome de parâmetro e qualquer tipo, e o

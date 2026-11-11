@@ -1378,7 +1378,13 @@ struct VM_ {
 
     Debug   dbg;             /* só com `pool --debug`; zerado no resto */
 
-    char    erro[256];
+    /* A mensagem do erro. Era 256 bytes, e o `ImportError` do `import
+     * './x.ps'` cortava o caminho do migrador em 100 (`%.100s`) e o nome
+     * escrito em 40/120/200, calados (motor-10): com o repositório numa pasta
+     * comprida saía um comando apontando para um arquivo que não existe. O
+     * tamanho agora comporta um caminho do sistema mais a frase inteira, e os
+     * cortes saíram. */
+    char    erro[PS_CAMINHO_MAX + 512];
     char    erro_tipo[64];   /* nome do tipo, pra casar `catch (Tipo e)` */
     /* Onde aconteceu o último erro que um `try` PEGOU (proto, linha, coluna).
      * O desvio pro tratador troca o frame, e com ele o ponto do erro sumia —
@@ -1419,7 +1425,9 @@ struct VM_ {
      * deixava a marca pendurada, e o erro seguinte, sem relação, herdava os
      * quadros dele. Ver `tb_dentro_poe`/`tb_dentro_consome`. */
     char    tb_mod_tipo[64];
-    char    tb_mod_msg[256];
+    /* o mesmo tamanho do `erro`: a mensagem do import que falhou dentro de um
+     * módulo vai inteira para o traceback (motor-10) */
+    char    tb_mod_msg[PS_CAMINHO_MAX + 512];
     /* 1 = o erro corrente saiu de um RERAISE (o `finally` ou o `using`
      * relançando o que pegaram); lido e apagado no `erro_runtime` */
     int     relanca;
@@ -1946,7 +1954,9 @@ typedef struct PSFuturo {
      * leu é anunciado no stderr no fim do programa: erro é erro, e sumir com
      * ele calado escondia falha de tarefa. */
     int    erro_lido;
-    char   erro_msg[256];
+    /* o mesmo tamanho do `erro` da VM: a mensagem da fibra vai inteira
+     * (motor-10) */
+    char   erro_msg[PS_CAMINHO_MAX + 512];
     char   erro_tipo[64];
     /* O traceback de DENTRO da tarefa. Sem ele o erro era atribuído à linha do
      * `await` (ou da chamada), e não à do `raise` — a pessoa lia a linha
@@ -30357,7 +30367,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
              * mesmo formato do interp: "mensagem\n  em linha N, coluna C".
              * A linha vem de `linha_agora`, calculada da tabela no topo. */
             vm->sp = sp; vm->locals_top = locals_top;
-            char msgbuf[1200];
+            /* cabe o `erro` inteiro mais o " (linha N)" (motor-10) */
+            char msgbuf[sizeof(vm->erro) + 32];
             /* Não carimba a linha duas vezes: um erro que atravessa mais de um
              * handler (ex.: `raise` dentro de catch com finally) já vem com o
              * "(linha N)" colado pelo primeiro. */
@@ -31861,17 +31872,20 @@ static int carrega_modulo_ps_em(VM *vm, const char *nome, Value *out, CaminhosIm
              * errado — a resposta é o nome do arquivo, não a busca. O
              * comando é o do migrador DESTA instalação. */
             char migra[4096];
+            /* Sem corte (motor-10): o caminho do migrador e o nome escrito
+             * saem inteiros. O `%.100s` cortava o caminho em 100 bytes e o
+             * comando apontava para um arquivo que nao existe. */
             if (ps_caminho_do_migrador(migra, sizeof(migra)))
                 snprintf(vm->erro, sizeof(vm->erro),
-                         "No module named '%.40s': %.8s e a extensao de antes, hoje o arquivo da "
-                         "linguagem e " PS_EXT " (jinga %.100s <pasta> --aplica)",
+                         "No module named '%s': %.8s e a extensao de antes, hoje o arquivo da "
+                         "linguagem e " PS_EXT " (jinga %s <pasta> --aplica)",
                          escrito, velha, migra);
             else
                 snprintf(vm->erro, sizeof(vm->erro),
-                         "No module named '%.120s': %s e a extensao de antes, hoje o arquivo da "
+                         "No module named '%s': %s e a extensao de antes, hoje o arquivo da "
                          "linguagem e " PS_EXT " (renomeie o arquivo)", escrito, velha);
         } else
-            snprintf(vm->erro, sizeof(vm->erro), "No module named '%.200s'", escrito);
+            snprintf(vm->erro, sizeof(vm->erro), "No module named '%s'", escrito);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ImportError");
         return -1;
     }
