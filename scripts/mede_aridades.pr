@@ -264,7 +264,11 @@ if __name__ == "main" {
     for each mod in meta["modulos"].keys() {
         str imp = "import " + mod.split(".")[0]
         for each m in meta["modulos"][mod] {
-            if m.get("kind", "function") != "function" {
+            # motor-11: o VALOR de modulo que se chama (`jinker.cors`) tambem
+            # entra. Ele nao e `function` no metadata, e ficava de fora da
+            # tabela: o `--check` aceitava `jinker.cors(0)` e o motor recusava
+            # rodando. O que decide e a chamada, nao o `kind`.
+            if m.get("kind", "function") != "function" and m.get("kind", "") != "value" {
                 continue
             }
             addEnd(membros, [mod, m["nome"], imp, mod + "." + m["nome"], m["params"]])

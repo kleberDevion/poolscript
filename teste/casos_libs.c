@@ -1718,6 +1718,20 @@ const Caso CASOS_LIBS[] = {
 { "motor-7: os membros que o request tem passam no --check",
   "from jinker import Jinker\nJinker app = Jinker(__name__)\n\n@app.route(\"/x\")\nstr funct h() {\n    str a = request.get(\"a\")\n    str b = request.method\n    str c = request.path_param(\"id\")\n    return a + b + c\n}\n",
   "", NULL, 0 },
+/* motor-11: os tipos que ficavam de fora da tabela medida. O `--check`
+ * aceitava qualquer quantidade e o motor recusava rodando. Os que nascem sem
+ * servidor entraram na tabela (DbConnection, DbCursor); o `jinker.cors` e um
+ * VALOR de modulo que se chama, e o medidor passou a incluir os `value`; e o
+ * `get_json`/`text` do `request` passaram a conferir a aridade no motor. */
+{ "motor-11: o jinker.cors(0) e recusado antes de rodar, como rodando",
+  "import jinker\nObject c = jinker.cors(0)\n",
+  "", "cors() argument 1 must be Jinker, not int", 2 },
+{ "motor-11: o jinker.cors(app) passa no --check",
+  "import jinker\nJinker app = jinker.Jinker()\nObject c = jinker.cors(app)\n",
+  "", NULL, 0 },
+{ "motor-11: a aridade do DbCursor.execute e conferida antes de rodar",
+  "import psodbc\nDbConnection c = psodbc.connect(driver=\"sqlite\", base=\":memory:\")\nDbCursor cur = c.cursor()\ncur.execute()\n",
+  "", "execute() takes at least 1 argument (0 given)", 2 },
 /* jinker-14: os argumentos do `app(...)` e do `cors(...)`. A porta 70000
  * escutava na 4464 e o terminal dizia 70000; `port="8080"` subia na 2000;
  * `workers` fora de 1..256 virava 1 ou 256; o texto no lugar da lista de

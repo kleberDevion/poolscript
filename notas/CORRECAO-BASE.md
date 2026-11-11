@@ -511,7 +511,31 @@ em cada item):
   passa, e rodando dá `cors() argument 1 must be Jinker, not int`. O
   comentário do `mede_aridades.pr` dizia que os de serviço ficavam de fora de
   propósito ("a VM confere rodando"). 395 chamadas na catraca do P2.
-  `motor` (checador).
+  `motor` (checador).~~ Corrigido no 20.0.12, em três frentes:
+  - **os tipos que nascem sem servidor** entraram na tabela medida:
+    `DbConnection` e `DbCursor` no `DONOS` do `scripts/portoes_donos.pr`
+    (criados com `psodbc.connect(driver="sqlite", base=":memory:")`), e a
+    tabela foi regerada (434 -> 509 entradas);
+  - **o valor de módulo que se chama** (`jinker.cors`) entrou: o
+    `mede_aridades.pr` só media `kind == "function"`, e o `cors` é `value`.
+    Agora os dois entram, e o que decide é a chamada, não o `kind`;
+  - **a aridade do `request`** passou a ser conferida no motor: o
+    `met_jpx_get_json` e o `met_jpx_text` ignoravam os argumentos
+    (`(void)args; (void)n;`) e aceitavam qualquer quantidade calado. Agora
+    dão `get_json() takes no arguments (2 given)` e `text() takes no
+    arguments (1 given)`, como a doc promete (sem parâmetro).
+
+  Medido: o `jinker.cors(0)` dá `cors() argument 1 must be Jinker, not int`
+  no `--check` (rc 2), a MESMA frase do motor; o `DbCursor.execute()` dá
+  `execute() takes at least 1 argument (0 given)` antes de rodar; e o
+  `jinker.cors(app)` passa. O P2 caiu de 355 para 282 falhas conhecidas, e
+  81 linhas saíram da catraca. Casos: os três "motor-11: ..." de
+  `teste/casos_libs.c`. **O que continua aberto**: os tipos que só existem
+  com a jinker no ar (`RequestProxy`, `PoolFileUpload`, `Response`,
+  `WsConnection`) e o `RouteRegistrar` (motor-13) — o checador confere os
+  membros deles (motor-7), mas a aridade não está na tabela medida, porque
+  eles não se criam sem servidor. As 259 linhas que restam na catraca são
+  deles.
 - **motor-12** (achado pelo portão P2, 2026-10-23) Chamar o que não se chama.
   - A propriedade chamada como método (`f.name()`, `regex.compile("a")
     .pattern()`, `app.static_url()`): o `--check` diz `PoolFile.name() takes no

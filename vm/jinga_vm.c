@@ -21430,7 +21430,10 @@ static PSJReq *jk_req_corrente(VM *vm)
 }
 static int met_jpx_get_json(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    (void)alvo; (void)args; (void)n;
+    (void)alvo; (void)args;
+    /* `request.get_json()` nao tem parametro (docs/jinker/request/get_json):
+     * aceitava qualquer quantidade calado (motor-11). */
+    if (n != 0) return erro_aridade(vm, "get_json", 0, 0, n);
     PSJReq *r = jk_req_corrente(vm);
     if (!r) { *out = MK_NULL(); return 0; }
     if (!EH_BYTES(r->corpo) || COMO_BYTES(r->corpo)->len == 0) { *out = MK_NULL(); return 0; }
@@ -21443,7 +21446,9 @@ static int met_jpx_get_json(VM *vm, Value alvo, Value *args, int n, Value *out)
 }
 static int met_jpx_text(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    (void)alvo; (void)args; (void)n;
+    (void)alvo; (void)args;
+    /* `request.text()` nao tem parametro (motor-11) */
+    if (n != 0) return erro_aridade(vm, "text", 0, 0, n);
     PSJReq *r = jk_req_corrente(vm);
     if (!r) { *out = MK_NULL(); return 0; }
     *out = jk_str_val(vm, EH_BYTES(r->corpo) ? COMO_BYTES(r->corpo)->chars : "");

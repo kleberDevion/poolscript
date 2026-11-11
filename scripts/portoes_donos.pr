@@ -35,7 +35,14 @@ dict DONOS = {
     "PoolCursor": ["import sqlite3", "sqlite3.connect(\":memory:\").cursor()"],
     "MailServer": ["import mail", "mail.MailServer()"],
     "MailMessage": ["import mail", "mail.MailMessage()"],
-    "MailReader": ["import mail", "mail.MailReader()"]
+    "MailReader": ["import mail", "mail.MailReader()"],
+    # motor-11: os tipos que ficavam de fora da tabela medida, e por isso o
+    # `--check` aceitava qualquer chamada e o motor recusava rodando. Os que
+    # nascem sem servidor entram aqui; os que só existem com a jinker no ar
+    # (`RequestProxy`, `PoolFileUpload`, `Response`, `WsConnection`) são
+    # medidos pelo P2 com uma jinker de verdade, e não por esta tabela.
+    "DbConnection": ["import psodbc", "psodbc.connect(driver=\"sqlite\", base=\":memory:\")"],
+    "DbCursor": ["import psodbc", "psodbc.connect(driver=\"sqlite\", base=\":memory:\").cursor()"]
 }
 
 # Chamada com valor de verdade que mexe fora do programa: so a quantidade
