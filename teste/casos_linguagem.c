@@ -1679,6 +1679,21 @@ const Caso CASOS_LINGUAGEM[] = {
 { "motor-3: o to com tipo que nao existe mantem a frase do tipo",
   "from Parsing import string\npost(string(\"42\", to banana))\n",
   "", "esperado tipo apos 'to'", 2 },
+/* motor-17: o `--check` nao sabia o tipo de quatro valores, e aceitava o que
+ * o motor recusava rodando. O nome de builtin como valor e `funct`; a
+ * chamada de uma `async funct` e `future`; a de uma funct com `yield` e
+ * `generator`; e o membro de enum e `int` (o valor do membro). */
+{ "motor-17: o nome de builtin usado como valor e funct",
+  "int x = len\n", "", "variável x esperava int, recebeu funct", 2 },
+{ "motor-17: a chamada de uma async funct e future",
+  "int async funct f() { return 1 }\nint x = f()\n",
+  "", "variável x esperava int, recebeu future", 2 },
+{ "motor-17: a chamada de uma funct com yield e generator",
+  "int funct gen() { yield 1 }\nstr s = gen()\n",
+  "", "variável s esperava str, recebeu generator", 2 },
+{ "motor-17: o membro de enum e int, e o metodo que ele nao tem e recusado",
+  "enum Cor { RED, GREEN }\nint x = Cor.RED.foo()\n",
+  "", "'int' object has no method 'foo'", 2 },
 { "pass no corpo de classe",
   "class Vazia {\n"
   "    pass\n"

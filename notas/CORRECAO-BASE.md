@@ -641,7 +641,7 @@ em cada item):
   fica fora da conferência como lado de uma união (casos "membro de funct" e
   "membro de Null"). A chamada de membro que não existe do P2 achou sozinha,
   rodando contra o 17.0.20.
-- **motor-17** (achado no conserto do motor-14, 2026-10-23) O `--check` não
+- ~~**motor-17** (achado no conserto do motor-14, 2026-10-23) O `--check` não
   sabe o tipo de quatro valores, e aceita o que o motor recusa rodando:
   - o nome de um builtin usado como valor: `int x = len` passa, e rodando dá
     `esperava int, recebeu funct`;
@@ -657,7 +657,25 @@ em cada item):
   (`len.p2_nao_existe()`, na catraca). O gerador de programas do P4 achou
   sozinho o do gerador e o da `async funct` (2026-10-24), encolhidos em
   `teste/p4_achados/960cdd53559c.pr` e `teste/p4_achados/46ee528fae3e.pr`, na
-  catraca. `motor` (checador).
+  catraca. `motor` (checador).~~ Corrigido no 20.0.16, os quatro:
+  - **o nome de builtin como valor** é `funct`: o `tp_de` do `N_NAME` passou
+    a devolver `funct` para o nome que o `ps_nome_pre_ligado` conhece e o
+    programa não sombreou;
+  - **a chamada de uma `async funct`** é `future`, e **a de uma funct com
+    `yield`** é `generator`: o `tp_ret_decl` devolvia `NULL` nos dois, e
+    agora devolve o tipo que a CHAMADA produz (o tipo escrito é o do `await`
+    e o do item do gerador);
+  - **o membro de enum** vale o tipo do enum, e o valor não tem método
+    nenhum: o `tp_de` do `N_MEMBER_ACCESS` devolve o nome do enum para
+    `Cor.RED`, e o `tp_confere_chamada` recusa `Cor.RED.foo()` e `c.foo()`
+    com `'int' object has no method 'foo'`, a frase do motor.
+
+  Medido: `int x = len` dá `esperava int, recebeu funct`; `int x = f()` com
+  `int async funct f()` dá `recebeu future`; `str s = gen()` com
+  `int funct gen() { yield 1 }` dá `recebeu generator`; e `Cor.RED.foo()` dá
+  `'int' object has no method 'foo'` antes de rodar. O `Cor c = Cor.RED`
+  continua passando, e o `int x = Cor.RED` é recusado, como rodando. Casos:
+  os quatro "motor-17: ..." de `teste/casos_linguagem.c`.
 - **motor-19** (achado pelo portão P3, 2026-10-23,
   `docs/linguagem/01-estrutura-lexica.md:333`) O `--tokens` lê como código o
   formato da f-string, o trecho depois do `:`. Em

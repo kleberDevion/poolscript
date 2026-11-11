@@ -3553,7 +3553,12 @@ static int tp_tem_yield(PSNode *n)
 static const char *tp_ret_decl(PSNode *decl)
 {
     if (!decl || decl->kind != N_FUNCT_DECL || !decl->texto2) return NULL;
-    if (decl->is_async || tp_tem_yield(decl->b)) return NULL;
+    /* O que a CHAMADA devolve não é o tipo escrito (motor-17): a `async funct`
+     * devolve `future` e a funct com `yield` devolve `generator`, e o
+     * `--check` aceitava `int x = f()` e `str s = gen()` e o motor recusava
+     * rodando. O tipo escrito é o do `await` e o do item do gerador. */
+    if (decl->is_async) return "future";
+    if (tp_tem_yield(decl->b)) return "generator";
     return tp_canon(decl->texto2);
 }
 
@@ -4149,6 +4154,13 @@ static const char *tp_de(C *c, Unidade *u, PSNode *n)
             if (c->usa_jinker && c->em_handler > 0 && n->texto
                     && strcmp(n->texto, "request") == 0)
                 return "RequestProxy";
+            /* O nome de um builtin usado como VALOR é `funct` (motor-17):
+             * `int x = len` passava e rodando dava `esperava int, recebeu
+             * funct`. O `ps_nome_pre_ligado` diz que o nome existe; aqui o
+             * que se sabe é o tipo dele. */
+            if (n->texto && !tp_nome_ligado(c, u, n->texto)
+                    && ps_nome_pre_ligado(n->texto))
+                return "funct";
             return NULL;
         }
         case N_BINARY_OP: {
@@ -4211,6 +4223,21 @@ static const char *tp_de(C *c, Unidade *u, PSNode *n)
                     int deco = 0;
                     PSNode *d = modulo_decl(sm->mod_pr, n->texto, &deco);
                     return (d && d->kind == N_FUNCT_DECL && !deco) ? "funct" : NULL;
+                }
+            }
+            /* `Enum.MEMBRO` vale o TIPO do enum (motor-17): o membro é um
+             * valor daquele tipo, e o `--check` aceitava `Cor.RED.foo()` e o
+             * motor recusava rodando com `'int' object has no method 'foo'`.
+             * O tipo é o nome do enum, e não `int`: `Cor c = Cor.RED` passa e
+             * `int x = Cor.RED` é recusado, como rodando. */
+            {
+                PSNode *en = tp_tipo_arq(c, n->a->kind == N_NAME ? n->a->texto : NULL);
+                if (en && en->kind == N_ENUM_DECL) {
+                    for (int32_t i = 0; i < en->lista.n; i++)
+                        if (en->lista.itens[i]->texto
+                                && strcmp(en->lista.itens[i]->texto, n->texto) == 0)
+                            return en->texto;
+                    return NULL;
                 }
             }
             /* `Classe.x`: o campo `static` tem o tipo escrito na declaração
@@ -5417,6 +5444,16 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
         }
     }
     const char *t = tp_de(c, u, f->a);
+    /* O valor de um ENUM não tem método nenhum (motor-17): `Cor.RED.foo()`
+     * passava e rodando dava `'int' object has no method 'foo'`. O enum é um
+     * tipo do arquivo, e por isso caía fora da conferência de nativo abaixo. */
+    if (t && !strchr(t, '|')) {
+        PSNode *en = tp_tipo_arq(c, t);
+        if (en && en->kind == N_ENUM_DECL) {
+            terro(c, f, "AttributeError", "'int' object has no method '%s'", f->texto);
+            return;
+        }
+    }
     if (t && !strchr(t, '|') && !tp_tipo_arq(c, t)) {
         /* método de valor nativo: `"a".upper(1)`, `[1].index(1, 2, 3, 4)`.
          * `char` e `long` rodam como str e int */
