@@ -1702,6 +1702,18 @@ const Caso CASOS_LINGUAGEM[] = {
   "", "bloco com ':' nao existe mais — use '{ }'", 2 },
 { "motor-20: o match com chaves continua valendo",
   "int x = 1\nmatch x {\n    case 1 { post(\"um\") }\n}\n", "um", NULL, 0 },
+/* motor-21: a palavra reservada usada como valor ou como tipo de campo dava
+ * uma frase que nao aponta a causa (`NameError: name 'while' is not defined`
+ * e `tipo if nao existe`). A frase agora e a da declaracao. */
+{ "motor-21: a palavra reservada usada como valor diz que e reservada",
+  "x = while\n",
+  "", "'while' e palavra reservada da linguagem e nao pode ser usada como nome de variavel", 2 },
+{ "motor-21: a palavra reservada como tipo de campo diz que e reservada",
+  "class A { if x }\n",
+  "", "'if' e palavra reservada da linguagem e nao pode ser usada como tipo", 2 },
+{ "motor-21: o tipo que nao existe mantem a frase do tipo",
+  "class A { naoexiste x }\n",
+  "", "tipo naoexiste não existe (campo x de A)", 2 },
 { "pass no corpo de classe",
   "class Vazia {\n"
   "    pass\n"

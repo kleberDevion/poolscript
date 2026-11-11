@@ -7806,8 +7806,19 @@ static void stmt_no_corpo(C *c, Unidade *u, PSNode *n)
                 PSNode *f = n->lista2_alias.itens[i];
                 if (f->kind != N_ENTITY_FIELD || !f->texto || !f->texto2) continue;
                 if (!tp_tipo_existe(c, u, f->texto2)) {
-                    terro(c, f, "AttributedValueError", "tipo %s não existe (campo %s de %s)",
-                          f->texto2, f->texto, n->texto ? n->texto : "?");
+                    /* A palavra reservada no lugar do tipo (`class A { if x }`)
+                     * dava `tipo if não existe`, que não aponta a causa
+                     * (motor-21). A frase é a da declaração. */
+                    int eh_kw = 0;
+                    for (const char *const *k = ps_lexer_keywords(); *k; k++)
+                        if (strcmp(*k, f->texto2) == 0) { eh_kw = 1; break; }
+                    if (eh_kw)
+                        terro(c, f, "SyntaxError",
+                              "'%s' e palavra reservada da linguagem e nao pode ser usada como tipo",
+                              f->texto2);
+                    else
+                        terro(c, f, "AttributedValueError", "tipo %s não existe (campo %s de %s)",
+                              f->texto2, f->texto, n->texto ? n->texto : "?");
                     continue;
                 }
                 if (f->a) {

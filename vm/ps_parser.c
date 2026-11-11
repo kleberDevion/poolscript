@@ -1641,6 +1641,30 @@ static PSNode *primario(P *p)
                 return n;
             }
             /* demais keywords válidas como expressão (post, input, self, base...) */
+            /* A palavra reservada que NÃO é expressão (`while`, `if`,
+             * `return`...) usada como valor dava `NameError: name 'while' is
+             * not defined`, que não aponta a causa (motor-21). A frase é a
+             * mesma da declaração, que já dizia o certo. A lista é a do
+             * lexer, e não a de `kw_abre_expr`: aquela é das palavras que
+             * ABREM uma expressão, e há keyword que é valor sem abrir
+             * (`self`, `base`, `Null`). */
+            {
+                static const char *const NAO_VALOR[] = {
+                    "if", "else", "elif", "while", "for", "each", "in", "is",
+                    "funct", "return", "continue", "break", "pass", "model",
+                    "enum", "try", "catch", "as", "of", "using", "import",
+                    "from", "PUSH", "GET", NULL
+                };
+                for (int k = 0; NAO_VALOR[k]; k++) {
+                    if (!t->texto || strcmp(t->texto, NAO_VALOR[k]) != 0) continue;
+                    char m[200];
+                    snprintf(m, sizeof(m),
+                             "'%s' e palavra reservada da linguagem e nao pode ser usada como nome de variavel",
+                             t->texto);
+                    perro(p, m, t);
+                    return NULL;
+                }
+            }
             p->pos++;
             PSNode *n = ps_node_novo(p->arena, N_NAME, t->line, t->col);
             if (!n) return NULL;

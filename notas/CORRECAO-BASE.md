@@ -727,7 +727,7 @@ em cada item):
   `match x:` com `case 1 { ... }` e com `case 1:` dão a mesma frase (2:8), e
   o `match x { case 1 { ... } }` continua rodando. Casos: os dois "motor-20:
   ..." de `teste/casos_linguagem.c`.
-- **motor-21** (achado escrevendo a gramática, 2026-10-23) O parser aceita
+- ~~**motor-21** (achado escrevendo a gramática, 2026-10-23) O parser aceita
   palavra reservada onde vai um valor ou o tipo de um campo, e o checador
   acusa com uma frase que não aponta a causa. No `--check` e rodando, com JIT
   e sem:
@@ -739,7 +739,15 @@ em cada item):
   (`while = 1`: `'while' e palavra reservada da linguagem e nao pode ser
   usada como nome de variavel`). A gramática descreve o parser (o `KW` no
   `corpo_primario` e no `tipo_de_campo`), com a nota no fim da página.
-  `motor` (a frase).
+  `motor` (a frase).~~ Corrigido no 20.0.18: o `corpo_primario` só aceita a
+  palavra reservada que ABRE expressão (`kw_abre_expr`: `post`, `count`,
+  `to`, `await`, `not`...), e a que não abre dá a frase da declaração
+  (`'while' e palavra reservada da linguagem e nao pode ser usada como nome
+  de variavel`). No campo da Entity, a palavra reservada que não é tipo dá a
+  mesma frase, em vez de `tipo if não existe`. Medido: `x = while` e
+  `class A { if x }` dão a frase da palavra reservada, no `--check` e
+  rodando. Casos: os dois "motor-21: ..." de `teste/casos_linguagem.c`. O
+  `l2`/`c2` zerados no fim do erro do campo continuam: é outro item.
 - ~~**motor-22** (achado escrevendo a gramática, 2026-10-23) No `count each
   <tipo> in <texto literal> { ... }`, o `{` depois do texto é lido como a
   interpolação (`"texto" {expr}`), e não como o bloco: o comando vira a
