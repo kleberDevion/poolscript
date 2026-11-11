@@ -676,7 +676,7 @@ em cada item):
   `'int' object has no method 'foo'` antes de rodar. O `Cor c = Cor.RED`
   continua passando, e o `int x = Cor.RED` é recusado, como rodando. Casos:
   os quatro "motor-17: ..." de `teste/casos_linguagem.c`.
-- **motor-19** (achado pelo portão P3, 2026-10-23,
+- ~~**motor-19** (achado pelo portão P3, 2026-10-23,
   `docs/linguagem/01-estrutura-lexica.md:333`) O `--tokens` lê como código o
   formato da f-string, o trecho depois do `:`. Em
   `post(f"{3.5:.1f}|{7:>4}|{255:x}")` saem, marcados `"em":"fstring"`:
@@ -697,7 +697,17 @@ em cada item):
   dentro de um campo de outra (`f"a{f'b{1 + 2}' + 'x'}c"`) vem como um token
   `FSTRING` marcado `"em":"fstring"`, sem o `interp` e sem os tokens de
   dentro dela. O `docs/lsp.md` ("Dentro da f-string") promete os dois pra
-  f-string: o intervalo de cada interpolação e os tokens de dentro.
+  f-string: o intervalo de cada interpolação e os tokens de dentro.~~
+  Corrigido no 20.0.17: o `--tokens` corta a interpolação no `:` de nível
+  zero (o formato não é código) e re-tokeniza cada campo `{...}` DENTRO do
+  formato, que é expressão. Medido: `f"{3.5:.1f}|{7:>4}|{255:x}"` dá só os
+  valores `3.5`, `7` e `255`, sem o `1f`, o `>4` nem o `x`; e
+  `f"{3.5:{w}.2f}"` dá o `w` como `IDENT` marcado `"em":"fstring"`, que é o
+  que o motor avalia (a largura muda com o `w`). Casos: os dois "motor-19:
+  ..." de `teste/cli_roda.pr`. **O que continua aberto**: a f-string dentro
+  de um campo de outra continua vindo sem os tokens de dentro — é outro
+  caminho (o lexer aninha a f-string como um token só), e fica registrado
+  aqui.
 - **motor-20** (achado escrevendo a gramática, 2026-10-23) O parser ainda tem
   o ramo do `match` com `:` e recuo, de quando havia bloco com `:`, e as
   frases dele pedem o `:` que saiu da linguagem. No `--check` e rodando, com

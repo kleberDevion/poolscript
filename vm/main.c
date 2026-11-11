@@ -1250,6 +1250,40 @@ static int cmd_tokens(const char *arquivo)
                 size_t off = tl->interps[k].off;
                 int32_t len = tl->interps[k].len;
                 if (len <= 0 || off + (size_t)len > tam) continue;
+                /* O FORMATO depois do `:` não é código (motor-19): a doc
+                 * (1.6.3) diz que ali vem o formato do `format()`
+                 * (`[preenche][<>^][0][largura][.precisao][tipo]`), e não uma
+                 * expressão. Sem o corte, `f"{3.5:.1f}"` dava um `DOT` e um
+                 * `SINC` vazio, `f"{7:>4}"` dava `OP` e `INT`, e `f"{n:x}"`
+                 * dava um `IDENT` para o `x` — que o hover do editor acusava
+                 * de nome não definido. Só o campo entre chaves DENTRO do
+                 * formato (`{x:{w}.2f}`) é expressão, e ele fica. */
+                int32_t corte = len, prof = 0;
+                for (int32_t z = 0; z < len; z++) {
+                    char ch = fonte[off + (size_t)z];
+                    if (ch == '(' || ch == '[' || ch == '{') prof++;
+                    else if (ch == ')' || ch == ']' || ch == '}') { if (prof > 0) prof--; }
+                    else if (ch == ':' && prof == 0) { corte = z; break; }
+                }
+                /* Os campos `{...}` DENTRO do formato são expressão (motor-19):
+                 * `f"{3.5:{w}.2f}"` avalia o `w`, e o `--tokens` não o listava.
+                 * Cada campo é re-tokenizado como a interpolação. */
+                int32_t campos[16][2]; int ncampos = 0;
+                for (int32_t z = corte; z < tl->interps[k].len && ncampos < 16; z++) {
+                    if (fonte[off + (size_t)z] != '{') continue;
+                    int32_t f = z + 1, prof2 = 0;
+                    for (; f < tl->interps[k].len; f++) {
+                        char ch = fonte[off + (size_t)f];
+                        if (ch == '{') prof2++;
+                        else if (ch == '}') { if (prof2 == 0) break; prof2--; }
+                    }
+                    if (f >= tl->interps[k].len) break;
+                    campos[ncampos][0] = z + 1; campos[ncampos][1] = f - (z + 1);
+                    ncampos++;
+                    z = f;
+                }
+                len = corte;
+                if (len <= 0) continue;
                 PSTokenList *sub = ps_lexer_tokenize_modo(fonte + off, (size_t)len, 1, 1);
                 if (!sub) continue;
                 for (int32_t q = 0; q < sub->n; q++) {
@@ -1278,6 +1312,33 @@ static int cmd_tokens(const char *arquivo)
                     fputs("\"}", stdout);
                 }
                 ps_lexer_free(sub);
+                /* os campos do formato, na posição deles no arquivo */
+                for (int32_t q = 0; q < ncampos; q++) {
+                    if (campos[q][1] <= 0) continue;
+                    PSTokenList *cs = ps_lexer_tokenize_modo(fonte + off + (size_t)campos[q][0],
+                                                             (size_t)campos[q][1], 1, 1);
+                    if (!cs) continue;
+                    for (int32_t w = 0; w < cs->n; w++) {
+                        const PSToken *s = &cs->tokens[w];
+                        if (s->type == T_EOF || s->type == T_NEWLINE
+                            || s->type == T_INDENT || s->type == T_DEDENT) continue;
+                        int lin = tl->interps[k].linha + s->line - 1;
+                        int col = (s->line == 1) ? tl->interps[k].col + campos[q][0] + s->col - 1 : s->col;
+                        int snch = s->nchars;
+                        if (snch <= 0 && s->texto) {
+                            snch = 0;
+                            for (int32_t z = 0; z < s->texto_len; z++)
+                                if (((unsigned char)s->texto[z] & 0xC0) != 0x80) snch++;
+                        }
+                        fputc(',', stdout);
+                        printf("{\"t\":\"%s\",\"l\":%d,\"c\":%d,\"n\":%d,\"l2\":%d,\"c2\":%d,\"em\":\"fstring\",\"v\":\"",
+                               ps_tok_nome(s->type), lin, col_para_utf16(lin, col),
+                               n_para_utf16(lin, col, snch), lin, col_para_utf16(lin, col + snch));
+                        if (s->texto) json_escapa(stdout, s->texto, s->texto_len);
+                        fputs("\"}", stdout);
+                    }
+                    ps_lexer_free(cs);
+                }
             }
         }
     }

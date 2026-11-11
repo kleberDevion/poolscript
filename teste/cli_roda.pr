@@ -475,6 +475,19 @@ confere("--check: método sem self dá um erro só, na linha da declaração",
 r = roda([POOL, "--tokens"], entrada="x = 1\n")
 confere("--tokens devolve JSON de tokens", "\"t\":\"IDENT\"" in r["saida"] and "\"l\":1" in r["saida"])
 
+# motor-19: o FORMATO depois do `:` da f-string nao e codigo. A doc (1.6.3)
+# diz que ali vem o formato do `format()`, e o `--tokens` lia `.1f`, `>4` e o
+# `x` de `{n:x}` como tokens de codigo — o hover do editor acusava o `x` de
+# nome nao definido. So o campo entre chaves DENTRO do formato e expressao.
+r = roda([POOL, "--tokens"], entrada="post(f\"{3.5:.1f}|{7:>4}|{255:x}\")\n")
+confere("motor-19: o formato da f-string nao vira token de codigo",
+        r["rc"] == 0 and "\"v\":\"3.5\"" in r["saida"] and "\"v\":\"7\"" in r["saida"]
+        and "\"v\":\"255\"" in r["saida"] and not "\"v\":\"1f\"" in r["saida"]
+        and not "\"v\":\"x\"" in r["saida"])
+r = roda([POOL, "--tokens"], entrada="int w = 5\npost(f\"{3.5:{w}.2f}\")\n")
+confere("motor-19: o campo dentro do formato e expressao, e sai como token",
+        r["rc"] == 0 and "\"v\":\"w\"" in r["saida"] and "\"em\":\"fstring\"" in r["saida"])
+
 # ── `--contexto`: o que o editor chama a cada tecla ─────────────────────────
 #
 # É a maior região descoberta do `main.c` (59 ramos) e o caminho mais quente do
