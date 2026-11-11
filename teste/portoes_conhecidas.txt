@@ -42,7 +42,6 @@ check	docs/jinker/Jinker/Jinker.md	07c22fd4fbc4	doc-15	todos	linha 118: from jin
 check	docs/request/get_json/get_json.md	e3e521e53e4e	doc-16	todos	linha 5: import request
 check	docs/request/text/text.md	057c53fb1083	doc-16	todos	linha 5: import request
 check	docs/qrcode.md	3f8ea5bebb96	doc-17	todos	linha 68: qr = qrcode.QRCode(...)
-check	docs/regex.md	12e0c09b89e5	motor-2	todos	linha 17: match("\d+", "abc123")   # False — tem letras
 roda	docs/sockets/recv/recv.md	7e1625bc5090	doc-1	todos	linha 45: import sockets
 roda	docs/sockets/recvfrom/recvfrom.md	70162e1c0f7f	doc-1	todos	linha 47: import sockets
 roda	docs/sockets/getsockopt/getsockopt.md	eae40c20b1f9	doc-1, doc-6	todos	linha 46: import sockets

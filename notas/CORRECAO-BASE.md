@@ -352,7 +352,7 @@ em cada item):
   mesmo programa com as duas pilhas e exigem a saída idêntica byte a byte (o
   `sh` só existe no Linux e no macOS: o caso leva a marca do sistema). A doc
   do regex passou a dizer os dois tetos contados.
-- **motor-2** (achado pelo portão `check`, `docs/regex.md:17`) A chamada
+- ~~**motor-2** (achado pelo portão `check`, `docs/regex.md:17`) A chamada
   `match(r"\d+", "123")` sozinha na linha, a forma que `docs/regex.md` ensina
   (`from regex import match`), é lida como o comando `match`, e o erro sai na
   linha de BAIXO: num arquivo com essa linha seguida de `post("depois")`, o
@@ -362,7 +362,19 @@ em cada item):
   longe da causa (`motor`), e a chamada solta, que o Python aceita porque o
   `match` dele é palavra reservada só no começo do comando seguido de `:`
   (`duvida`: o parser aceita como o Python, ou a página mostra a chamada
-  dentro de uma expressão).
+  dentro de uma expressão).~~ Corrigido no 20.0.6, pela decisão dele
+  (2026-11-10: "e sobre o match(), deixe assim como no python"): o `match` só
+  é COMANDO quando a linha termina em `:` (a regra do Python) ou tem o `{` do
+  bloco no nível zero (a forma da Jinga). A função `match_eh_comando`
+  (`vm/ps_parser.c`) varre a linha contando os agrupamentos abertos, e o `:`
+  de um dict dentro de `(` não conta. Sem `:` nem `{`, o caminho é o de
+  expressão, e a chamada solta roda. Medido: `match(r"\d+", "123")` sozinha
+  imprime `depois` e sai com 0, com JIT e sem; o comando `match x { case ... }`
+  e o `match (x) { ... }` continuam comando. Casos: os cinco "motor-2: ..." de
+  `teste/casos_linguagem.c`. A linha do motor-2 saiu da catraca do portão
+  `check` (`teste/portoes_conhecidas.txt`), e os dois portões da página do
+  regex ficaram verdes. O ramo do `match` com `:` e recuo continua morto, com
+  as frases que pedem o `:` que saiu da linguagem: é o motor-20, item aberto.
 - **motor-3** (achado pelo portão `check`, `docs/mail/MailServer/send/send.md:16`)
   O `to` usado como valor (`s.send(to, subject="x")`) dá `SyntaxError: esperado
   tipo apos 'to': int, float, str...`, que fala do operador de conversão. A

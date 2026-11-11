@@ -2030,6 +2030,25 @@ const Caso CASOS_LINGUAGEM[] = {
   "pegou", NULL, 0 },
 { "match com sujeito terminado em string",
   "match \"a\" {\n    case \"a\" {\n        post(\"casou\")\n    }\n}\n", "casou", NULL, 0 },
+/* motor-2: `match` so e COMANDO quando a linha termina em `:` (ou tem o `{`
+ * do bloco). Sem isso, a chamada solta da funcao `match` do `regex` — a forma
+ * que docs/regex.md ensina — era lida como o comando, e o erro saia na linha
+ * de BAIXO, falando de um `:` que ninguem escreveu. A regra e a do Python. */
+{ "motor-2: a chamada solta de match() e chamada, nao o comando match",
+  "from regex import match\nmatch(r\"\\d+\", \"123\")\npost(\"depois\")\n",
+  "depois", NULL, 0 },
+{ "motor-2: match() solto com o retorno guardado tambem e chamada",
+  "from regex import match\nbool r = match(r\"\\d+\", \"123\")\npost(r)\n",
+  "True", NULL, 0 },
+{ "motor-2: match() solto com dict no argumento e chamada, nao comando",
+  "from regex import match\nmatch(r\"a\", \"a\")\npost(\"ok\")\n",
+  "ok", NULL, 0 },
+{ "motor-2: o comando match com chaves continua comando",
+  "int x = 1\nmatch x {\n    case 1 { post(\"um\") }\n    case _ { post(\"outro\") }\n}\n",
+  "um", NULL, 0 },
+{ "motor-2: o comando match com o sujeito entre parenteses continua comando",
+  "int x = 1\nmatch (x) {\n    case 1 { post(\"um\") }\n}\n",
+  "um", NULL, 0 },
 { "interpolacao de string continua valendo",
   "n = 7\npost(\"vale: \" {n})\n", "vale: 7", NULL, 0 },
 

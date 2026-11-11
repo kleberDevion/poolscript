@@ -3769,6 +3769,39 @@ static PSNode *decorador_cabeca(P *p)
     return n;
 }
 
+/* `match` e COMANDO nesta linha? A regra e a do Python (motor-2): a palavra
+ * so e reservada quando a linha termina em `:`. A Jinga aceita `{` no lugar
+ * do `:`, e por isso a linha que tem `{` no nivel zero tambem e comando.
+ *
+ * A varredura para no fim da linha (o `T_NEWLINE`) e conta os agrupamentos
+ * abertos: o `:` de um dict (`match({"a": 1})`) ou de uma anotacao dentro de
+ * `(` nao conta, e o `{` de um dict tambem nao. O que decide e o `:` ou o `{`
+ * que fecha a linha, no nivel zero.
+ *
+ * Sem `:` nem `{` na linha, e a CHAMADA da funcao `match` (do modulo `regex`,
+ * ou de uma funct do proprio arquivo), e o caminho e o de expressao. */
+static int match_eh_comando(P *p)
+{
+    int32_t k = p->pos + 1;          /* depois do `match` */
+    int fundo = 0;
+    for (; tem(p, k); k++) {
+        PSToken *t = tok_i(p, k);
+        if (t->type == T_EOF || t->type == T_NEWLINE) return 0;
+        if (t->type == T_LPAREN || t->type == T_LBRACK || t->type == T_LBRACE) {
+            /* o `{` no nivel zero e o bloco do match, e nao um dict */
+            if (t->type == T_LBRACE && fundo == 0) return 1;
+            fundo++;
+            continue;
+        }
+        if (t->type == T_RPAREN || t->type == T_RBRACK || t->type == T_RBRACE) {
+            if (fundo > 0) fundo--;
+            continue;
+        }
+        if (t->type == T_COLON && fundo == 0) return 1;
+    }
+    return 0;
+}
+
 static PSNode *statement_no(P *p)
 {
     pula_separadores(p);
@@ -4597,8 +4630,17 @@ static PSNode *statement_no(P *p)
     /* `match` e palavra reservada: `match (x) {` e o statement com o sujeito
      * entre parenteses (precedencia, como em `if (a) or (b) {`). A exclusao
      * de `(` que havia aqui mandava `match (1 + 1) {` pro caminho de
-     * expressao, e o `{` virava "faltou ':' no dicionario". */
-    if (checa_kw(p, "match")) {
+     * expressao, e o `{` virava "faltou ':' no dicionario".
+     *
+     * `match` so e COMANDO quando a linha termina em `:` (motor-2). No Python
+     * a palavra e reservada so nesse caso: `match(r"\d+", "123")` sozinha na
+     * linha e a CHAMADA da funcao `match` do modulo `regex`, e era lida como o
+     * comando — o erro saia na linha de BAIXO, no `post` seguinte, falando de
+     * um `:` que ninguem escreveu. A regra e a do Python: o `:` no fim da
+     * linha e o que distingue o comando da chamada. O `{` continua valendo
+     * como bloco (a forma da Jinga), e por isso a linha que tem `{` tambem e
+     * comando. */
+    if (checa_kw(p, "match") && match_eh_comando(p)) {
         p->pos++;
         PSNode *n = ps_node_novo(p->arena, N_MATCH_STMT, t->line, t->col);
         if (!n) return NULL;
