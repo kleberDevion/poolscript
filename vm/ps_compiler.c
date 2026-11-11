@@ -587,6 +587,10 @@ typedef struct {
     int      nomes_incertos;
     /* o arquivo importa o jinker: o `request` é injetado quando o app sobe */
     int      usa_jinker;
+    /* Profundidade de HANDLER de rota (motor-6): > 0 dentro do corpo de uma
+     * funct decorada por `@app.route`/`@app.get`/... — é o único lugar onde o
+     * `request` existe. Fora dele o nome é NameError, como rodando. */
+    int      em_handler;
     int32_t  ntopo, cap_topo;
     IdxNomes ix_topo;          /* nome -> posição em `topo` */
     /* Toda Entity, model e enum do arquivo, em qualquer profundidade, por
@@ -3339,7 +3343,12 @@ static int tp_nome_inexistente(C *c, Unidade *u, const char *nome)
      * `String.upper`, `char(1)` davam NameError rodando e passavam aqui,
      * porque a pergunta era "está na tabela de tipos?"). */
     if (ps_nome_pre_ligado(nome)) return 0;
-    if (c->usa_jinker && !strcmp(nome, "request")) return 0;
+    /* O `request` da jinker só existe DENTRO de um handler de rota (motor-6):
+     * a VM o injeta no slot global quando o servidor sobe, e a doc diz
+     * "disponível automaticamente dentro de qualquer rota". Fora da rota o
+     * `--check` aprovava e rodando dava `NameError: name 'request' is not
+     * defined`. O `channel` saiu com o WebSocket da jinker no 19.0.0. */
+    if (c->usa_jinker && c->em_handler > 0 && !strcmp(nome, "request")) return 0;
     return 1;
 }
 
@@ -7453,6 +7462,21 @@ static void stmt_no_corpo(C *c, Unidade *u, PSNode *n)
             int embutido = nome && (strcmp(nome, "dataentity") == 0
                                     || strcmp(nome, "static") == 0
                                     || strcmp(nome, "NonNull") == 0);
+            /* `@app.route(...)`, `@app.get(...)`, `@app.post(...)`: o corpo da
+             * funct decorada é HANDLER de rota, e é o único lugar onde o
+             * `request` existe (motor-6). O nome do decorador é o caminho
+             * `obj.metodo`; o que importa é o ÚLTIMO membro. */
+            int eh_rota = 0;
+            if (dec && dec->lista.n >= 2) {
+                const char *ult = dec->lista.itens[dec->lista.n - 1]->texto;
+                if (ult && (!strcmp(ult, "route") || !strcmp(ult, "get")
+                            || !strcmp(ult, "post") || !strcmp(ult, "put")
+                            || !strcmp(ult, "delete") || !strcmp(ult, "patch")
+                            /* o middleware também recebe o `request`
+                             * (docs/jinker/middleware/middleware.md) */
+                            || !strcmp(ult, "middleware")))
+                    eh_rota = 1;
+            }
             if (nome && strcmp(nome, "dataentity") == 0) {
                 if (n->b) stmts_de(c, u, n->b);
                 return;
@@ -7505,7 +7529,11 @@ static void stmt_no_corpo(C *c, Unidade *u, PSNode *n)
                  * decorador empilhado ali dentro usa o próprio temporário) */
                 guarda_nome_modo(c, u, reg, 1);
                 c->decor_prof++;
+                /* o corpo da funct decorada por rota é HANDLER: é onde o
+                 * `request` existe (motor-6) */
+                if (eh_rota) c->em_handler++;
                 stmts_de(c, u, n->b);
+                if (eh_rota) c->em_handler--;
                 c->decor_prof--;
                 if (CFALHOU(c)) return;
                 /* 3) OP_DECORA: funct solta -> o nome passa a valer o resultado */

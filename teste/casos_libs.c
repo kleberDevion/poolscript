@@ -1686,6 +1686,26 @@ const Caso CASOS_LIBS[] = {
 { "WebSocket da jinker saiu: @a.socket(...) rodando (pelo Object), na linha do decorador",
   "from jinker import Jinker\nJinker app = Jinker(__name__)\nObject a = app\n@a.socket(\"/ws\")\nfunct ws() {\n    return \"x\"\n}\n",
   "", "AttributeError: 'Jinker' object has no method 'socket'", 1 },
+/* motor-6: o `request` da jinker só existe DENTRO de um handler de rota (ou
+ * do middleware). A VM o injeta no slot global quando o servidor sobe, e a
+ * doc diz "disponível automaticamente dentro de qualquer rota". Fora da rota
+ * o `--check` aprovava e rodando dava `NameError: name 'request' is not
+ * defined`. */
+{ "motor-6: o request fora de uma rota e NameError antes de rodar",
+  "from jinker import Jinker\nJinker app = Jinker(__name__)\nid = request.path_param(\"id\")\npost(id)\n",
+  "", "NameError: name 'request' is not defined", 2 },
+{ "motor-6: o request dentro da rota passa no --check",
+  "from jinker import Jinker\nJinker app = Jinker(__name__)\n\n@app.route(\"/x\")\nstr funct h() {\n    return request.path_param(\"id\")\n}\n",
+  "", NULL, 0 },
+{ "motor-6: o request no @app.get e no middleware passa no --check",
+  "from jinker import Jinker\nJinker app = Jinker(__name__)\n\n@app.get(\"/x\")\nstr funct h() {\n    return request.method\n}\n\n@app.middleware()\nNull funct mw() {\n    post(request.method)\n}\n",
+  "", NULL, 0 },
+{ "motor-6: a funct fora da rota que usa request e recusada, a de dentro nao",
+  "from jinker import Jinker\nJinker app = Jinker(__name__)\n\nstr funct fora() {\n    return request.method\n}\n\n@app.route(\"/x\")\nstr funct h() {\n    return \"ok\"\n}\n",
+  "", "NameError: name 'request' is not defined", 2 },
+{ "motor-6: o from jinker import request continua ligando o nome",
+  "from jinker import request\npost(request.text())\n",
+  "Null", NULL, 0 },
 /* jinker-14: os argumentos do `app(...)` e do `cors(...)`. A porta 70000
  * escutava na 4464 e o terminal dizia 70000; `port="8080"` subia na 2000;
  * `workers` fora de 1..256 virava 1 ou 256; o texto no lugar da lista de

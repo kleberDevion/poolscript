@@ -405,7 +405,7 @@ em cada item):
   O `os.readFile` e o `open` da Jinga levantam `FileNotFoundError` no mesmo
   caso, como o `open` do Python. `motor`.~~ Fechado no 19.0.0: a lib `manpu`
   saiu inteira (decisão dele, 2026-10-24: "muito limitada e sem uso real").
-- **motor-6** (achado pelo portão `roda`, 2026-10-18) O `request` da jinker
+- ~~**motor-6** (achado pelo portão `roda`, 2026-10-18) O `request` da jinker
   fora de uma rota. A doc diz que ele "está disponível automaticamente dentro
   de qualquer rota" (`docs/jinker/request/request.md`), e a VM só cria o nome
   quando o servidor sobe (`jk_slot_global(vm, "request")`). Mas o checador
@@ -416,7 +416,21 @@ em cada item):
   defined`, rc 1, com JIT e sem. Com `from jinker import request` o nome
   existe, e fora da rota `request.text()`, `request.method` e
   `request.get("x")` devolvem `Null` calados; o Flask, no mesmo caso, levanta
-  `RuntimeError: Working outside of request context`. `motor`.
+  `RuntimeError: Working outside of request context`. `motor`.~~ Corrigido no
+  20.0.8: o compilador passou a saber onde está um HANDLER de rota. O
+  `N_DECORATOR_STMT` reconhece o decorador de rota pelo ÚLTIMO membro do
+  caminho (`route`, `get`, `post`, `put`, `delete`, `patch` e `middleware`),
+  e o corpo do bloco decorado compila com `c->em_handler` incrementado. O
+  `tp_nome_inexistente` só aceita o `request` com `c->em_handler > 0`; fora
+  dele o nome é `NameError` antes de rodar, como rodando. O `channel` saiu
+  com o WebSocket da jinker no 19.0.0 e não voltou. Medido: o programa do
+  item dá `NameError: name 'request' is not defined` no `--check` (rc 2), e
+  o mesmo `request.path_param` dentro de `@app.route` passa; a funct fora da
+  rota que usa `request` é recusada, a de dentro não; o `@app.get` e o
+  `@app.middleware()` também valem; e o `from jinker import request` continua
+  ligando o nome (fora da rota ele devolve `Null`, como antes). Casos: os
+  cinco "motor-6: ..." de `teste/casos_libs.c`. A doc do `request` ficou
+  verde nos dois portões.
 
 - **motor-7** (achado em 2026-10-22, medindo o jinker-10) O `--check` aprova
   método que o `request` da rota não tem: `v = request.get_query("a")` dentro
