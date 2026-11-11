@@ -1729,6 +1729,34 @@ const Caso CASOS_LIBS[] = {
 { "motor-11: o jinker.cors(app) passa no --check",
   "import jinker\nJinker app = jinker.Jinker()\nObject c = jinker.cors(app)\n",
   "", NULL, 0 },
+/* motor-12: chamar o que nao se chama. A propriedade chamada como metodo
+ * dava `PoolFile.name() takes no keyword arguments`, como se fosse metodo sem
+ * parametro, e rodando dava `'str' object is not callable`. A constante de
+ * modulo chamada ja era recusada pelo motor-11. */
+{ "motor-12: a propriedade chamada como metodo e recusada antes de rodar",
+  "import os\nos.writeFile(\"x.txt\", \"conteudo\")\nPoolFile f = os.loadFile(\"x.txt\", mode=\"rb\")\nstr n = f.name()\n",
+  "", "'str' object is not callable", 2 },
+{ "motor-12: o metodo de verdade continua passando no --check",
+  "import os\nos.writeFile(\"x.txt\", \"conteudo\")\nPoolFile f = os.loadFile(\"x.txt\", mode=\"rb\")\nbyte b = f.bytes()\n",
+  "", NULL, 0 },
+{ "motor-12: a constante de modulo chamada e recusada antes de rodar",
+  "import sockets\nint x = sockets.AF_INET(0)\n",
+  "", "'int' object is not callable", 2 },
+/* motor-43: o `PoolFile` era DOIS tipos com o mesmo nome. O `open()` devolvia
+ * um handle com read/write/close, e o `os.loadFile(mode="rb")` o arquivo
+ * carregado em memoria, com name/size/bytes. Os dois respondiam `PoolFile` no
+ * `type()`, e o `--metadata` publicava a UNIAO — o `--check` aprovava
+ * `loadFile(...).read()` e o motor recusava rodando. Decisao do Kleber
+ * (2026-11-11): "um tipo so, com todos os metodos". */
+{ "motor-43: o PoolFile do loadFile tambem le, como o do open",
+  "import os\nos.writeFile(\"x.txt\", \"linha1\\nlinha2\\n\")\nPoolFile f = os.loadFile(\"x.txt\", mode=\"rb\")\npost(f.readline().strip())\npost(len(f.readlines()))\nPoolFile g = os.loadFile(\"x.txt\", mode=\"rb\")\npost(len(g.read()))\n",
+  "linha1\n1\n14", NULL, 0 },
+{ "motor-43: o PoolFile do loadFile escreve e o save grava o que foi escrito",
+  "import os\nos.writeFile(\"y.txt\", \"abc\")\nPoolFile f = os.loadFile(\"y.txt\", mode=\"rb\")\nf.write(\"def\")\npost(f.bytes())\nf.save(\"z.txt\")\npost(os.readFile(\"z.txt\"))\n",
+  "b'abcdef'\nabcdef", NULL, 0 },
+{ "motor-43: o PoolFile do open tambem tem bytes e name",
+  "import os\nos.writeFile(\"w.txt\", \"conteudo\")\nObject a = open(\"w.txt\", \"r\")\npost(type(a), a.name, a.bytes())\na.close()\n",
+  "PoolFile w.txt b'conteudo'", NULL, 0 },
 { "motor-11: a aridade do DbCursor.execute e conferida antes de rodar",
   "import psodbc\nDbConnection c = psodbc.connect(driver=\"sqlite\", base=\":memory:\")\nDbCursor cur = c.cursor()\ncur.execute()\n",
   "", "execute() takes at least 1 argument (0 given)", 2 },

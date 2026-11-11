@@ -545,7 +545,48 @@ em cada item):
     `qrcode.ERROR_CORRECT_L("")`, `sys.argv([])`): o `--check` aceita, e o
     motor diz `'int' object is not callable`.
 
-  88 chamadas na catraca do P2. `motor` (checador).
+  88 chamadas na catraca do P2. `motor` (checador).~~ Corrigido no 20.0.13:
+  a propriedade chamada como método é recusada antes de rodar, com a frase
+  do motor (`'str' object is not callable`), pelo `ps_nativo_tem_membro`
+  devolvendo 2 (valor) na chamada de membro nativo. O `dict` fica de fora:
+  `d.chave` é acesso à chave, e `d.type()` é a chave `type` chamada — o erro
+  é o `KeyError` da chave que não existe, não "não chamável". A constante de
+  módulo chamada já era recusada pelo motor-11. Casos: os três "motor-12:
+  ..." de `teste/casos_libs.c`.
+- **motor-43** (relato dele, 2026-11-11: "esse sistema de abertura de
+  arquivos e metodos de arquivo ta todo esquisito") O `PoolFile` é DOIS
+  tipos com o mesmo nome. O `open()` devolve um arquivo aberto, com `read`,
+  `readline`, `readlines`, `write`, `writelines` e `close`; o
+  `os.loadFile(mode="rb")` devolve o arquivo carregado em memória, com
+  `name`, `ext`, `size`, `path`, `bytes`, `save`, `move`, `copy` e `delete`.
+  Os dois respondem `PoolFile` no `type()`, e o `--metadata` publica a
+  UNIÃO das duas tabelas (`T_MET_ARQ` + `T_MET_PFILE`, `vm/jinga_vm.c`),
+  porque a chave do JSON é o nome do tipo. Medido no 20.0.12:
+  - `PoolFile f = os.loadFile("x.txt", mode="rb")` e `f.read()` dá
+    `{"ok":true}` no `--check` e `AttributeError: 'PoolFile' object has no
+    method 'read'` rodando — a classe do motor-12, e o `--check` aprova
+    porque o `--metadata` diz que `read` existe;
+  - o contrário também: `open("x.txt", "r").bytes()` passa no `--check` e
+    roda (o `bytes` está na união), mas o arquivo aberto não tem `bytes`;
+  - a doc (`docs/os/PoolFile/PoolFile.md`) diz que "arquivo aberto com
+    `open()` também é `PoolFile`" e lista os dois conjuntos de métodos como
+    se valessem nos dois — o que não é verdade em nenhum dos dois lados.
+  `os dois` (o motor, se os dois tipos tiverem de ser um só; a doc, se forem
+  dois tipos com nomes diferentes). **Decisão dele** (2026-11-11: "eles devem
+  ser iguais em retorno de tipo, senão é impossível usar assim"): **um tipo
+  só, com todos os métodos**.~~ Corrigido no 20.0.14: o `PSPoolFile` ganhou
+  `pos` e `fechado`, e os métodos `read`, `readline`, `readlines`, `write`,
+  `writelines` e `close`, operando sobre o conteúdo em memória — o `read`
+  avança o cursor, o `write` acrescenta no fim, e o `close` só marca fechado
+  (o `.bytes()` e o `.save()` continuam valendo). O `open()` já tinha os
+  métodos do `PoolFile` (`bytes`, `save`, `path`, `move`, `copy`, `delete`),
+  então os dois lados agora têm o mesmo conjunto. Medido: `type()` responde
+  `PoolFile` nos dois; `os.loadFile("x.txt", mode="rb").read()` lê, e o
+  `--check` aprova e o motor aceita (antes aprovava e recusava rodando);
+  `open("w.txt", "r").bytes()` e `.name` funcionam; e o `write` seguido de
+  `save` grava o que foi escrito. Casos: os três "motor-43: ..." de
+  `teste/casos_libs.c`. A doc do `PoolFile` passou a dizer que vale nos dois
+  sentidos.
 - **motor-13** (achado pelo portão P2, 2026-10-23) O tipo que o
   `app.route(...)` devolve tem dois nomes: o `--metadata` publica
   `RouteRegistrar` (e a doc tem `docs/jinker/RouteRegistrar/`), e o motor e o

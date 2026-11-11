@@ -68,6 +68,12 @@ img.move("final/foto.png")   # move (devolve o novo PoolFile)
 tipo, com os métodos de leitura e escrita por cima dos de acima. A página do
 [`open()`](../../builtins/open/open.md) detalha cada um.
 
+E vale nos DOIS sentidos: o `PoolFile` que o `os.loadFile()` devolve também
+lê e escreve, sobre o conteúdo que já está em memória. O `read` avança um
+cursor, o `write` acrescenta no fim, e o `close` só marca fechado — o
+conteúdo continua acessível pelo `.bytes()` e pelo `.save()`. É o mesmo tipo,
+com os mesmos métodos, venha ele do `open()` ou do `loadFile()`.
+
 | Acesso | O que faz |
 |---|---|
 | `.read(n=-1)` | lê tudo (ou `n` caracteres) |

@@ -492,6 +492,10 @@ typedef struct {
     char  *ext;
     Value  conteudo;      /* OBJ_BYTES */
     int64_t tamanho;
+    /* O cursor do `read`/`readline` e a marca do `close` (motor-43): o
+     * `PoolFile` é UM tipo só, e o carregado em memória também lê e escreve. */
+    int64_t pos;
+    int     fechado;
 } PSPoolFile;
 
 /* Conexão sqlite3. O `fechado` existe pela mesma razão do PSArquivo: close()
@@ -9747,9 +9751,131 @@ static int met_pf_path(VM *vm, Value alvo, Value *args, int n, Value *out)
     return devolve_texto(vm, out, abs, (int)strlen(abs));
 }
 
+/* ── leitura e escrita do PoolFile (motor-43) ────────────────────────────
+ *
+ * O `PoolFile` era DOIS tipos com o mesmo nome: o `open()` devolvia um handle
+ * com `read`/`write`/`close`, e o `os.loadFile(mode="rb")` devolvia o arquivo
+ * carregado em memória, com `name`/`size`/`bytes`. Os dois respondiam
+ * `PoolFile` no `type()`, e o `--metadata` publicava a UNIÃO das duas tabelas
+ * — o `--check` aprovava `loadFile(...).read()` e o motor recusava rodando.
+ *
+ * Decisão do Kleber (2026-11-11): "um tipo só, com todos os métodos". O
+ * `PoolFile` carregado em memória passa a ler e escrever sobre o conteúdo
+ * dele, com a mesma semântica do handle: o `read` avança um cursor, o
+ * `write` acrescenta no fim, e o `close` só marca fechado. */
+static int met_pf_read(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    if (n > 1) return erro_aridade(vm, "read", 0, 1, n);
+    PSPoolFile *f = COMO_PFILE(alvo);
+    if (f->fechado) return erro_sistema(vm, EBADF, f->caminho, NULL);
+    const char *dados = EH_BYTES(f->conteudo) ? COMO_BYTES(f->conteudo)->chars : "";
+    int64_t total = EH_BYTES(f->conteudo) ? COMO_BYTES(f->conteudo)->len : 0;
+    int64_t quer = -1;
+    if (n == 1 && args[0].t != V_NULL) {
+        if (args[0].t != V_INT) MERRO(vm, "TypeError", "read() argument 1 must be int, not %s",
+                                     nome_do_tipo_valor(args[0]));
+        quer = args[0].as.i;
+    }
+    if (f->pos > total) f->pos = total;
+    int64_t sobra = total - f->pos;
+    int64_t pega = (quer < 0 || quer > sobra) ? sobra : quer;
+    if (pega < 0) pega = 0;
+    f->pos += pega;
+    return devolve_texto(vm, out, dados + (total - sobra), (int)pega);
+}
+
+static int met_pf_readline(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)args;
+    if (n != 0) return erro_aridade(vm, "readline", 0, 0, n);
+    PSPoolFile *f = COMO_PFILE(alvo);
+    if (f->fechado) return erro_sistema(vm, EBADF, f->caminho, NULL);
+    const char *dados = EH_BYTES(f->conteudo) ? COMO_BYTES(f->conteudo)->chars : "";
+    int64_t total = EH_BYTES(f->conteudo) ? COMO_BYTES(f->conteudo)->len : 0;
+    if (f->pos >= total) return devolve_texto(vm, out, "", 0);
+    int64_t ini = f->pos, k = ini;
+    while (k < total && dados[k] != '\n') k++;
+    if (k < total) k++;                 /* a quebra entra na linha */
+    f->pos = k;
+    return devolve_texto(vm, out, dados + ini, (int)(k - ini));
+}
+
+static int met_pf_readlines(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)args;
+    if (n != 0) return erro_aridade(vm, "readlines", 0, 0, n);
+    PSPoolFile *f = COMO_PFILE(alvo);
+    if (f->fechado) return erro_sistema(vm, EBADF, f->caminho, NULL);
+    const char *dados = EH_BYTES(f->conteudo) ? COMO_BYTES(f->conteudo)->chars : "";
+    int64_t total = EH_BYTES(f->conteudo) ? COMO_BYTES(f->conteudo)->len : 0;
+    PSList *l = nova_seq(vm, 0, OBJ_LIST);
+    if (!l) return -1;
+    while (f->pos < total) {
+        int64_t ini = f->pos, k = ini;
+        while (k < total && dados[k] != '\n') k++;
+        if (k < total) k++;
+        f->pos = k;
+        Value s;
+        if (devolve_texto(vm, &s, dados + ini, (int)(k - ini)) != 0) return -1;
+        if (cresce_lista(vm, l) != 0) return -1;
+        l->itens[l->len++] = s;
+    }
+    *out = MK_OBJ(l);
+    return 0;
+}
+
+static int met_pf_write(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    if (n != 1) return erro_aridade(vm, "write", 1, 1, n);
+    PSPoolFile *f = COMO_PFILE(alvo);
+    if (f->fechado) return erro_sistema(vm, EBADF, f->caminho, NULL);
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "write() argument 1 must be str, not %s",
+                                  nome_do_tipo_valor(args[0]));
+    PSString *s = COMO_STRING(args[0]);
+    int64_t antes = EH_BYTES(f->conteudo) ? COMO_BYTES(f->conteudo)->len : 0;
+    char *buf = malloc((size_t)antes + (size_t)s->len + 1);
+    if (!buf) MERRO(vm, "MemoryError", "sem memoria em write()");
+    if (antes > 0) memcpy(buf, COMO_BYTES(f->conteudo)->chars, (size_t)antes);
+    if (s->len > 0) memcpy(buf + antes, s->chars, (size_t)s->len);
+    PSString *novo = novo_bytes(vm, buf, (int)(antes + s->len));
+    free(buf);
+    if (!novo) return -1;
+    f->conteudo = MK_OBJ(novo);
+    f->tamanho = novo->len;
+    *out = MK_INT((int64_t)s->len);
+    return 0;
+}
+
+static int met_pf_writelines(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    if (n != 1) return erro_aridade(vm, "writelines", 1, 1, n);
+    if (!EH_LIST(args[0])) MERRO(vm, "TypeError", "writelines() argument 1 must be list, not %s",
+                                 nome_do_tipo_valor(args[0]));
+    PSList *l = COMO_LIST(args[0]);
+    for (int32_t i = 0; i < l->len; i++) {
+        Value um[1] = { l->itens[i] };
+        if (met_pf_write(vm, alvo, um, 1, out) != 0) return -1;
+    }
+    *out = MK_NULL();
+    return 0;
+}
+
+static int met_pf_close(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)args;
+    if (n != 0) return erro_aridade(vm, "close", 0, 0, n);
+    COMO_PFILE(alvo)->fechado = 1;
+    *out = MK_NULL();
+    return 0;
+}
+
 static const MetodoNat METODOS_PFILE[] = {
     { "move", met_pf_move, "destino" }, { "copy", met_pf_copy, "destino" }, { "delete", met_pf_delete, NULL },
     { "bytes", met_pf_bytes, NULL }, { "save", met_pf_save, "caminho=Null" }, { "path", met_pf_path, NULL },
+    /* motor-43: os métodos do arquivo aberto, no mesmo tipo */
+    { "read", met_pf_read, "n=-1" }, { "readline", met_pf_readline, NULL },
+    { "readlines", met_pf_readlines, NULL }, { "write", met_pf_write, "conteudo" },
+    { "writelines", met_pf_writelines, "linhas" }, { "close", met_pf_close, NULL },
 };
 
 static const MetodoNat METODOS_LIST[] = {

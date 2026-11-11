@@ -5421,6 +5421,21 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
         /* método de valor nativo: `"a".upper(1)`, `[1].index(1, 2, 3, 4)`.
          * `char` e `long` rodam como str e int */
         const char *dono = tp_basico(t) ? tp_basico(t) : t;
+        /* A PROPRIEDADE chamada como método (motor-12): `f.name()` com
+         * `name` valendo `str` dava `PoolFile.name() takes no keyword
+         * arguments`, como se fosse método sem parâmetro, e rodando dava
+         * `'str' object is not callable`. O `ps_nativo_tem_membro` devolve 2
+         * para valor e 1 para método; o 2 aqui é a chamada do que não se
+         * chama. */
+        /* O dict fica de fora: `d.chave` é acesso à chave, e `d.type()` é a
+         * chave `type` chamada — o erro é o KeyError da chave que não existe,
+         * não "não chamável" (o caso ".type() num dict e a chave type"). */
+        if (strcmp(dono, "dict") != 0 && ps_nativo_tem_membro(dono, f->texto) == 2) {
+            const char *vt = tp_nativo(dono, f->texto);
+            terro(c, f, "TypeError", "'%s' object is not callable",
+                  vt ? vt : "valor");
+            return;
+        }
         if (ps_aridade_de(dono, f->texto, NULL)) tp_confere_nativo(c, n, dono, f->texto, dono, t_unico);
         return;
     }
