@@ -432,12 +432,22 @@ em cada item):
   cinco "motor-6: ..." de `teste/casos_libs.c`. A doc do `request` ficou
   verde nos dois portões.
 
-- **motor-7** (achado em 2026-10-22, medindo o jinker-10) O `--check` aprova
+- ~~**motor-7** (achado em 2026-10-22, medindo o jinker-10) O `--check` aprova
   método que o `request` da rota não tem: `v = request.get_query("a")` dentro
   de uma rota dá `{"ok":true}`, e rodando a rota cai com 500
   (`'RequestProxy' object has no method 'get_query'`). É da classe do
   `forAll` e do motor-6: o checador não confere os membros do `request`. A
-  P2 dos portões pega a classe toda. `motor`.
+  P2 dos portões pega a classe toda. `motor`.~~ Corrigido no 20.0.9: o
+  `tp_de` passou a devolver `RequestProxy` para o nome `request` dentro do
+  handler (o tipo que o `--metadata` publica), e com o tipo o checador
+  confere os membros pelo mesmo caminho de qualquer tipo nativo. Medido: o
+  `request.get_query("a")` dá `AttributeError: 'RequestProxy' object has no
+  method 'get_query'` no `--check` (rc 2), a MESMA frase que o motor dava
+  rodando; a propriedade que não existe dá a frase do `attribute`; e os
+  membros que existem (`get`, `method`, `path_param`) passam. Casos: os três
+  "motor-7: ..." de `teste/casos_libs.c`. A **aridade** dos membros do
+  `RequestProxy` continua sem conferência: ele não está na tabela medida
+  (`vm/aridades_medidas.inc`), e isso é o motor-11, item aberto.
 - **motor-8** (achado pelo portão `roda`, 2026-10-22,
   `docs/os/loadFile/loadFile.md:98` e `:109`) O `os.loadFile` confere o
   `mode` DEPOIS de abrir o arquivo: `os.loadFile("nao_existe.txt",

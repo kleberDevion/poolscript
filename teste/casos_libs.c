@@ -1706,6 +1706,18 @@ const Caso CASOS_LIBS[] = {
 { "motor-6: o from jinker import request continua ligando o nome",
   "from jinker import request\npost(request.text())\n",
   "Null", NULL, 0 },
+/* motor-7: o checador nao conferia os MEMBROS do `request` da rota. O tipo
+ * dele e o `RequestProxy` do `--metadata`, e o `tp_de` passou a devolve-lo
+ * dentro do handler (motor-6). A frase e a mesma que o motor da rodando. */
+{ "motor-7: o metodo que o request nao tem e recusado antes de rodar",
+  "from jinker import Jinker\nJinker app = Jinker(__name__)\n\n@app.route(\"/x\")\nstr funct h() {\n    return request.get_query(\"a\")\n}\n",
+  "", "'RequestProxy' object has no method 'get_query'", 2 },
+{ "motor-7: a propriedade que o request nao tem e recusada antes de rodar",
+  "from jinker import Jinker\nJinker app = Jinker(__name__)\n\n@app.route(\"/x\")\nstr funct h() {\n    return request.nao_existe\n}\n",
+  "", "'RequestProxy' object has no attribute 'nao_existe'", 2 },
+{ "motor-7: os membros que o request tem passam no --check",
+  "from jinker import Jinker\nJinker app = Jinker(__name__)\n\n@app.route(\"/x\")\nstr funct h() {\n    str a = request.get(\"a\")\n    str b = request.method\n    str c = request.path_param(\"id\")\n    return a + b + c\n}\n",
+  "", NULL, 0 },
 /* jinker-14: os argumentos do `app(...)` e do `cors(...)`. A porta 70000
  * escutava na 4464 e o terminal dizia 70000; `port="8080"` subia na 2000;
  * `workers` fora de 1..256 virava 1 ou 256; o texto no lugar da lista de

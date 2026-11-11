@@ -4142,6 +4142,13 @@ static const char *tp_de(C *c, Unidade *u, PSNode *n)
                 return s->estado ? s->tipo : NULL;
             }
             if (n->texto && strcmp(n->texto, "__name__") == 0) return "str";
+            /* O `request` da jinker dentro do handler: o tipo é o que o
+             * `--metadata` publica, e é o que faz o checador conferir os
+             * membros (motor-7). Sem isto o nome existia e o tipo não, e
+             * `request.get_query("a")` passava e caía rodando com 500. */
+            if (c->usa_jinker && c->em_handler > 0 && n->texto
+                    && strcmp(n->texto, "request") == 0)
+                return "RequestProxy";
             return NULL;
         }
         case N_BINARY_OP: {
