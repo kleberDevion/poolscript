@@ -708,7 +708,7 @@ em cada item):
   de um campo de outra continua vindo sem os tokens de dentro — é outro
   caminho (o lexer aninha a f-string como um token só), e fica registrado
   aqui.
-- **motor-20** (achado escrevendo a gramática, 2026-10-23) O parser ainda tem
+- ~~**motor-20** (achado escrevendo a gramática, 2026-10-23) O parser ainda tem
   o ramo do `match` com `:` e recuo, de quando havia bloco com `:`, e as
   frases dele pedem o `:` que saiu da linguagem. No `--check` e rodando, com
   JIT e sem:
@@ -721,7 +721,12 @@ em cada item):
   — use '{ }'`, e o `case 1:` dentro de `match x {` também. A doc (5.5) só
   tem o `match` de chaves. A gramática (`docs/linguagem/gramatica.md`)
   escreve só a forma de chaves: o ramo do `:` não aceita programa nenhum, e
-  os dois recusam os mesmos. `motor` (a frase).
+  os dois recusam os mesmos. `motor` (a frase).~~ Corrigido no 20.0.18: o
+  ramo morto saiu, e o `match` com `:` dá a MESMA frase do `if True:`,
+  `bloco com ':' nao existe mais — use '{ }'`, na coluna do `:`. Medido:
+  `match x:` com `case 1 { ... }` e com `case 1:` dão a mesma frase (2:8), e
+  o `match x { case 1 { ... } }` continua rodando. Casos: os dois "motor-20:
+  ..." de `teste/casos_linguagem.c`.
 - **motor-21** (achado escrevendo a gramática, 2026-10-23) O parser aceita
   palavra reservada onde vai um valor ou o tipo de um campo, e o checador
   acusa com uma frase que não aponta a causa. No `--check` e rodando, com JIT

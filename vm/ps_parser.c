@@ -4674,9 +4674,15 @@ static PSNode *statement_no(P *p)
         PSToken *abre_match = atual(p);
         int estilo_chaves = aceita(p, T_LBRACE);
         if (!estilo_chaves) {
-            if (!exige(p, T_COLON, "esperado ':' ou '{' apos expressao do match")) return NULL;
-            pula_separadores(p);
-            if (!exige(p, T_INDENT, "esperado indentacao apos 'match:'")) return NULL;
+            /* O bloco com `:` e recuo NAO existe mais na linguagem (motor-20):
+             * o ramo que o aceitava era morto, e as frases dele pediam o `:`
+             * que saiu. A frase e a mesma do `if True:`, que aponta a causa. */
+            if (checa(p, T_COLON)) {
+                perro(p, "bloco com ':' nao existe mais — use '{ }'", atual(p));
+                return NULL;
+            }
+            perro(p, "esperado '{' apos a expressao do match", atual(p));
+            return NULL;
         }
         /* No estilo de chaves o corpo do match é `{ }`: a indentação dentro
          * dele é livre, então os INDENT/DEDENT soltos são ignorados aqui. */

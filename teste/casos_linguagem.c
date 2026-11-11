@@ -1694,6 +1694,14 @@ const Caso CASOS_LINGUAGEM[] = {
 { "motor-17: o membro de enum e int, e o metodo que ele nao tem e recusado",
   "enum Cor { RED, GREEN }\nint x = Cor.RED.foo()\n",
   "", "'int' object has no method 'foo'", 2 },
+/* motor-20: o ramo do `match` com `:` e recuo era morto, e as frases dele
+ * pediam o `:` que saiu da linguagem. A frase agora e a do `if True:`, que
+ * aponta a causa. */
+{ "motor-20: o match com dois pontos diz que o bloco com ':' saiu",
+  "int x = 1\nmatch x:\n    case 1 { post(\"um\") }\n",
+  "", "bloco com ':' nao existe mais — use '{ }'", 2 },
+{ "motor-20: o match com chaves continua valendo",
+  "int x = 1\nmatch x {\n    case 1 { post(\"um\") }\n}\n", "um", NULL, 0 },
 { "pass no corpo de classe",
   "class Vazia {\n"
   "    pass\n"
