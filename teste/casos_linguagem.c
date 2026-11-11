@@ -1668,6 +1668,17 @@ const Caso CASOS_LINGUAGEM[] = {
   "funct f() { pass }\npost(f())\n", "Null", NULL, 0 },
 { "pass e palavra reservada",
   "pass = 1\n", "", "palavra reservada", 2 },
+/* motor-3: o `to` usado como VALOR caia no acucar do Parsing (`to <tipo>`) e a
+ * frase falava do operador de conversao, que nao e a causa. A declaracao
+ * `str to = "x"` ja dizia a frase certa; agora o valor diz a mesma. */
+{ "motor-3: o to usado como valor diz que e palavra reservada",
+  "from mail import MailServer\nMailServer s = MailServer(\"127.0.0.1\", 25)\ns.send(to, subject=\"x\")\n",
+  "", "'to' e palavra reservada da linguagem e nao pode ser usada como nome de variavel", 2 },
+{ "motor-3: o to como conversao do Parsing continua valendo",
+  "from Parsing import string\npost(string(\"42\", to int))\n", "42", NULL, 0 },
+{ "motor-3: o to com tipo que nao existe mantem a frase do tipo",
+  "from Parsing import string\npost(string(\"42\", to banana))\n",
+  "", "esperado tipo apos 'to'", 2 },
 { "pass no corpo de classe",
   "class Vazia {\n"
   "    pass\n"

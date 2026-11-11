@@ -1567,8 +1567,26 @@ static PSNode *primario(P *p)
                     for (size_t i = 0; i < sizeof(TIPOS)/sizeof(TIPOS[0]); i++)
                         if (strcmp(tt->texto, TIPOS[i]) == 0) { ok = 1; break; }
                 /* a frase enumera o VETOR de cima inteiro — dizia "int, float ou
-                 * str" enquanto o vetor aceitava nove */
-                if (!ok) { perro(p, "esperado tipo apos 'to': int, float, str, flo, bool, json, list, tup, dict, long ou char", tt); return NULL; }
+                 * str" enquanto o vetor aceitava nove.
+                 *
+                 * O `to` usado como VALOR (`s.send(to, subject="x")`, motor-3)
+                 * caía aqui e a frase falava do operador de conversão, que não
+                 * é a causa: `to` é palavra reservada da linguagem, e o que
+                 * quem escreveu precisa saber é isso. A frase é a mesma da
+                 * declaração (`str to = "x"`), que já apontava a causa. */
+                if (!ok) {
+                    if (tt->type == T_COMMA || tt->type == T_RPAREN
+                            || tt->type == T_RBRACK || tt->type == T_NEWLINE
+                            || tt->type == T_EOF || tt->type == T_OP) {
+                        char m[200];
+                        snprintf(m, sizeof(m),
+                                 "'to' e palavra reservada da linguagem e nao pode ser usada como nome de variavel");
+                        perro(p, m, t);
+                        return NULL;
+                    }
+                    perro(p, "esperado tipo apos 'to': int, float, str, flo, bool, json, list, tup, dict, long ou char", tt);
+                    return NULL;
+                }
                 p->pos += 2;                       /* to <tipo> */
                 PSNode *n = ps_node_novo(p->arena, N_LITERAL, t->line, t->col);
                 if (!n) return NULL;

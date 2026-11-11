@@ -871,6 +871,32 @@ em cada item):
   Caso: o "motor-40: ..." de `teste/cli_roda.pr`, que monta o pacote numa
   árvore mínima com o PATH sem as pastas sbin (e o "motor-38: o pacote leva
   a libmongoc que o pool abre").
+- **motor-41** (relato dele, 2026-11-10: "a lib mail nao inicia handshake") O
+  `MailServer.conn` e o `MailReader.conn` fazem o handshake SMTP/IMAP, mas o
+  `MailServer` **exige** STARTTLS: sem o servidor anunciar `STARTTLS` no EHLO,
+  o `conn` falha com `o servidor em <host> nao anunciou STARTTLS no EHLO
+  (porta de texto puro sem TLS?)`. Medido no 20.0.6 contra um servidor local
+  que anuncia `250-STARTTLS`: o handshake vai até o `STARTTLS` e para ali,
+  porque o TLS da lib `mail` é interno e não há como o programa ver ou trocar
+  o certificado. Contra um servidor que **não** anuncia STARTTLS (o caso do
+  relato), o `conn` recusa antes de qualquer `AUTH`. O que falta é decisão:
+  (a) o `conn` aceitar texto puro quando o servidor não anuncia STARTTLS (o
+  `smtplib` do Python faz isso com `starttls()` opcional), ou (b) a doc dizer
+  que a lib `mail` só fala com servidor que oferece STARTTLS. `os dois` (a
+  decisão é dele; a doc do `conn` promete "com TLS" sem dizer o que acontece
+  quando o servidor não oferece).
+- **motor-42** (relato dele, 2026-11-10: "não há SSL para criar conns seguras
+  com a lib socket") A lib `sockets` tem 91 membros no `--metadata` e
+  **nenhum** de TLS/SSL: não há `wrap_socket`, `SSLContext`, nem como envolver
+  um `socket` já conectado numa sessão TLS. Quem precisa de conexão segura
+  fora do `mail` (HTTPS, IMAP/SMTP próprios, qualquer protocolo sobre TLS)
+  não tem caminho na linguagem. O `mail` resolve por dentro (`ps_mail.c` usa
+  a OpenSSL direto), e o `request` também, mas o programa não alcança nenhum
+  dos dois. A doc do `sockets` não promete TLS em lugar nenhum (medido com
+  `grep`), então não é divergência de doc: é **falta de recurso**, e por isso
+  entra na lista como decisão dele, não como conserto de defeito. `duvida`:
+  entra na Jinga (o `ssl` do Python, com `SSLContext` e `wrap_socket`), ou a
+  doc diz que conexão segura é só pelo `mail` e pelo `request`?
 
 ## os
 
