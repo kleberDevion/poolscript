@@ -5526,9 +5526,13 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
          * chave type"). O `tem_membro` do dict é 2 para QUALQUER nome (chave
          * vale qualquer uma); o `ps_aridade_de` é que diz se é um método
          * de verdade. */
+        /* `metodo` = `dono`: aqui o receptor é um VALOR do tipo `dono`
+         * (`"abc".upper(nome=1)`), e a frase do motor leva o tipo na
+         * frente (`str.upper() takes no keyword arguments`). Ia NULL desde o
+         * motor-12, e o P2 ficou com 111 chamadas de frase diferente. */
         if (ps_aridade_de(dono, f->texto, NULL)
                 || (strcmp(dono, "dict") != 0 && ps_nativo_tem_membro(dono, f->texto) == 2))
-            tp_confere_nativo(c, n, dono, f->texto, NULL, t_unico);
+            tp_confere_nativo(c, n, dono, f->texto, dono, t_unico);
         return;
     }
     if (!t || strchr(t, '|')) return;
