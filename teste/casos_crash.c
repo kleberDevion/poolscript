@@ -138,7 +138,7 @@ const Caso CASOS_CRASH[] = {
   "# o rc é o de cada modo do parser: 2 no erro de sintaxe, 1 no da lib\n"
   "post(blocos[0].startswith(\"b.pr:2:\"), blocos[1].startswith(\"r.pr:1:\"))\n"
   "post(\"bloco aninhado demais\" in blocos[0], \"padrao aninhado demais\" in blocos[1])\n",
-  "True\nTrue True\nTrue True\nTrue True", NULL, 0, "unix" },
+  "True\nTrue True\nTrue True\nTrue True", NULL, 0, NULL, 0, "unix" },
 { "motor-1: o casador do regex dá a MESMA borda com 8 MB e com 64 MB",
   "import os\nimport sys\n"
   "str r = \"import regex\\nalvo = \\\"x\\\" * 7000\\npost(regex.findall(\\\"(?:a|(x))*\\\", alvo))\\n\"\n"
@@ -151,7 +151,7 @@ const Caso CASOS_CRASH[] = {
   "}\n"
   "post(saidas[0] == saidas[1])\n"
   "post(\"profundo demais\" in saidas[0])\n",
-  "True\nTrue", NULL, 0, "unix" },
+  "True\nTrue", NULL, 0, NULL, 0, "unix" },
 { "lista literal de 65537 itens no topo, em funct e em async funct roda e devolve o tamanho (antes corrompia o heap)",
   /* 65537 > STACK_SIZE: o literal e montado em lotes de 256 (BUILD_LIST 0 +
    * LIST_EXTEND) e a cota de cada frame e a profundidade exata (`pilha_max`),
