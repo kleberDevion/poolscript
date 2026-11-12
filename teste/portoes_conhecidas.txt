@@ -963,3 +963,12 @@ p3	docs/request/WsConnection/WsConnection.md	1883a9b8bf96	editor-3	todos	linha 2
 p4	teste/p4_achados/46ee528fae3e.pr	46ee528fae3e	motor-17	todos	linha 7: str s144 = tarefa130() (o --check não sabe o tipo da chamada de uma async funct)
 p4	teste/p4_achados/960cdd53559c.pr	960cdd53559c	motor-17	todos	linha 8: str s17 = gera5() (o --check não sabe o tipo da chamada de um gerador)
 gramatica	suite:casos_linguagem.c:motor-21: a palavra reservada usada como valor diz que e reservada	af70cb2fa40a	motor-21	todos	linha 1: x = while
+check	docs/jinker.md	9a5ed67a01ee	doc-20	todos	linha 380: funct pagina() {
+check	docs/jinker/render/render.md	9a5ed67a01ee	doc-20	todos	linha 45: funct pagina() {
+check	docs/jinker/request/header/header.md	b112b2f6fd4b	doc-20	todos	linha 53: funct confere() {
+check	docs/jinker/request/get_json/get_json.md	10c1349a4147	doc-20	todos	linha 38: funct criar() {
+check	docs/jinker/request/get_json/get_json.md	e5bf6a1d1c54	doc-20	todos	linha 54: # preciso de vários → get_json
+check	docs/jinker/request/path_param/path_param.md	a9e23d6442ca	doc-20	todos	linha 43: # GET /user/42?fmt=json
+check	docs/jinker/request/file/file.md	e9b87f0e36e9	doc-20	todos	linha 74: # só imagens; um .pdf aqui levanta erro
+check	docs/jinker/request/file/file.md	8344d1847132	doc-20	todos	linha 85: funct upload() {
+check	docs/jinker/request/get/get.md	425d0e8b81f6	doc-20	todos	linha 52: funct salvar() {
