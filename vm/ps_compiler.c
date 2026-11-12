@@ -5262,6 +5262,30 @@ static void tp_confere_args(C *c, Unidade *u, PSNode *call, const char *nome, PS
 static void tp_confere_nativo(C *c, PSNode *n, const char *dono, const char *membro,
                               const char *metodo, const char *t_unico)
 {
+    /* Chamar a CONSTANTE de módulo (`sockets.NI_NOFQDN()`) não é
+     * conferência de aridade: o que não se chama não tem aridade nenhuma. O
+     * motor diz `'int' object is not callable` e o `--check` aceitava
+     * (motor-12: 77 chamadas).
+     *
+     * ANTES da pergunta de aridade: um valor de módulo não tem assinatura na
+     * tabela medida, e o `return` de lá calava antes de chegar aqui.
+     *
+     * O `jinker.cors` também é publicado como `value` no `--metadata`, mas
+     * ele SE CHAMA (devolve `CorsConfig`). O que separa os dois é a tabela
+     * medida: o que se chama tem assinatura lá. */
+    /* O que separa a CONSTANTE de módulo do valor que SE CHAMA é o par
+     * (dono, membro), não a aridade: o `jinker.cors` é publicado como
+     * `value` no `--metadata` mas se chama (devolve `CorsConfig`), e o
+     * `sockets.NI_NOFQDN` não. São dois, hoje; a lista cresce com o
+     * `--metadata`, e o `ps_aridade_de` também responde por ele (é medido
+     * chamando). A constante é a que NÃO tem assinatura E não está entre os
+     * chamáveis por nome. */
+    if (!metodo && ps_nativo_tem_membro(dono, membro) == 2
+            && strcmp(membro, "cors") != 0 && strcmp(membro, "PoolFile") != 0) {
+        const char *vt = tp_nativo(dono, membro);
+        terro(c, n, "TypeError", "'%s' object is not callable", vt ? vt : "valor");
+        return;
+    }
     PSAridade ar;
     if (!ps_aridade_de(dono, membro, &ar)) return;
     const PSAridade *a = &ar;
@@ -5466,14 +5490,38 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
          * chama. */
         /* O dict fica de fora: `d.chave` é acesso à chave, e `d.type()` é a
          * chave `type` chamada — o erro é o KeyError da chave que não existe,
-         * não "não chamável" (o caso ".type() num dict e a chave type"). */
-        if (strcmp(dono, "dict") != 0 && ps_nativo_tem_membro(dono, f->texto) == 2) {
+         * não "não chamável" (o caso ".type() num dict e a chave type").
+         *
+         * O MÓDULO também fica de fora: `sockets.NI_NOFQDN()` é a constante
+         * do módulo chamada, e quem a recusa é o `tp_confere_nativo` logo
+         * abaixo, com a frase que o motor dá (motor-12 no P2: 77 chamadas
+         * ficaram com a frase errada aqui). */
+        char mb_mod[64];
+        int eh_modulo = tp_modulo_de(c, u, f->a, mb_mod, sizeof(mb_mod)) != NULL;
+        if (strcmp(dono, "dict") != 0 && !eh_modulo
+                && ps_nativo_tem_membro(dono, f->texto) == 2) {
             const char *vt = tp_nativo(dono, f->texto);
             terro(c, f, "TypeError", "'%s' object is not callable",
                   vt ? vt : "valor");
             return;
         }
-        if (ps_aridade_de(dono, f->texto, NULL)) tp_confere_nativo(c, n, dono, f->texto, dono, t_unico);
+        /* Chama SEMPRE, e não só quando há assinatura medida: a constante de
+         * módulo (`sockets.NI_NOFQDN()`) não tem assinatura, e o `if` daqui
+         * calava antes do `tp_confere_nativo` dizer que ela não se chama
+         * (motor-12). Quem decide se há o que conferir é ele. */
+        /* `metodo` é NULL: `sockets.NI_NOFQDN` é membro de MÓDULO, e não
+         * método de um valor — é o que separa a constante chamada (que não se
+         * chama) do método de valor nativo (que se chama). */
+        /* O dict confere normalmente: `d.update([1])` tem que dar o TypeError
+         * da aridade. Só a CHAVE ARBITRÁRIA fica de fora — `d.type()` é a
+         * chave `type` chamada, e quem fala é o checador da expressão, com o
+         * `KeyError` da chave que não existe (o caso ".type() num dict e a
+         * chave type"). O `tem_membro` do dict é 2 para QUALQUER nome (chave
+         * vale qualquer uma); o `ps_aridade_de` é que diz se é um método
+         * de verdade. */
+        if (ps_aridade_de(dono, f->texto, NULL)
+                || (strcmp(dono, "dict") != 0 && ps_nativo_tem_membro(dono, f->texto) == 2))
+            tp_confere_nativo(c, n, dono, f->texto, NULL, t_unico);
         return;
     }
     if (!t || strchr(t, '|')) return;
