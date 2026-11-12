@@ -5286,6 +5286,12 @@ static void tp_confere_nativo(C *c, PSNode *n, const char *dono, const char *mem
         terro(c, n, "TypeError", "'%s' object is not callable", vt ? vt : "valor");
         return;
     }
+    /* O `jinker.cors` tem `*apps` na assinatura medida, e o conferidor não
+     * entende variádico: `cors(options=[])` é válido (os `*apps` vêm vazios) e
+     * ele acusava "missing required argument '*apps'". Só a ARIDADE fica de
+     * fora; o tipo dos argumentos dados continua conferido, e é ele que recusa
+     * `cors(0)` com a frase do motor. */
+    int jk_cors = (strcmp(dono, "jinker") == 0 && strcmp(membro, "cors") == 0);
     PSAridade ar;
     if (!ps_aridade_de(dono, membro, &ar)) return;
     const PSAridade *a = &ar;
@@ -5331,14 +5337,15 @@ static void tp_confere_nativo(C *c, PSNode *n, const char *dono, const char *mem
         for (const char *q = a->params; *q && idx < dados; idx++) {
             const char *fim = strchr(q, ',');
             size_t tam = fim ? (size_t)(fim - q) : strlen(q);
-            if (!veio[idx] && !memchr(q, '=', tam)) {
+            /* o `cors` tem `*apps`: os obrigatórios são opcionais na chamada */
+            if (!jk_cors && !veio[idx] && !memchr(q, '=', tam)) {
                 terro(c, n, "TypeError", "%s() missing required argument '%.*s'", membro, (int)tam, q);
                 return;
             }
             q = fim ? fim + 1 : q + tam;
         }
     }
-    if (dados < a->minimo || (a->maximo >= 0 && dados > a->maximo)) {
+    if (!jk_cors && (dados < a->minimo || (a->maximo >= 0 && dados > a->maximo))) {
         char frase[160];
         ps_frase_aridade(frase, sizeof(frase), a->nome, a->minimo, a->maximo, dados);
         terro(c, n, "TypeError", "%s", frase);
