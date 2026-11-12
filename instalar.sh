@@ -1,0 +1,439 @@
+#!/usr/bin/env bash
+# Instala a Jinga numa máquina: o binário (`jinga`/`jpkg`, e os nomes antigos
+# `pool`/`psl`), o servidor LSP, o tipo MIME do `.pr` e o ícone.
+#
+# Numa máquina onde não há NADA — um WSL Debian recém-criado, por exemplo —
+# esta linha faz tudo sozinha, buscando o que faltar:
+#
+#   curl -fsSL https://raw.githubusercontent.com/kleberDevion/poolscript/main/instalar.sh | sudo bash
+#
+# Ela pega o pacote pronto do último release; não havendo release publicado,
+# clona o fonte, instala as dependências de compilação e compila. Nos dois
+# caminhos não sobra passo manual.
+#
+# Rodando dentro do repositório ou do bundle portátil, instala o que está ao
+# lado e não busca nada:
+#
+#   sudo ./instalar.sh                 # instala em /usr/local (+ MIME em /usr/share)
+#   sudo ./instalar.sh /opt/jinga      # outro prefixo
+#   sudo ./instalar.sh --remover
+#
+# O MIME vai pra /usr/share MESMO com outro prefixo: é a base que o desktop lê
+# por padrão. (Era obrigatório quando a extensão era `.ps`, que o PostScript
+# reivindica na mesma base; com `.pr` não há disputa, mas o lugar continua
+# sendo esse — é lá que o arquivo velho está, pra ser sobrescrito.)
+set -e
+
+REPO="${REPO:-https://github.com/kleberDevion/poolscript}"
+# `PACOTE` é a URL do bundle. Sai do release por padrão, mas aceita qualquer
+# outra origem — o repositório pode estar privado, e aí o release não responde
+# sem credencial. Servindo o `dist/` de outra máquina da rede, por exemplo:
+#   PACOTE=http://192.168.0.10:8080/jinga-portable.tar.gz sudo -E bash instalar.sh
+PACOTE="${PACOTE:-$REPO/releases/latest/download/jinga-portable.tar.gz}"
+# o nome do pacote de antes do rename, pra um release antigo continuar valendo
+PACOTE_ANTIGO="$REPO/releases/latest/download/pool-portable.tar.gz"
+
+# Vindo de `curl | bash` não existe arquivo nem pasta ao lado ($0 é "bash"), e
+# o `cd` levaria pra um lugar sem relação nenhuma com a Jinga.
+if [ -f "$0" ]; then
+    cd "$(dirname "$0")"
+fi
+
+PREFIXO=/usr/local
+DADOS=/usr/share
+REMOVER=0
+for arg in "$@"; do
+    case "$arg" in
+        --remover) REMOVER=1 ;;
+        -*)        echo "opção desconhecida: $arg" >&2; exit 1 ;;
+        *)         PREFIXO="$arg" ;;
+    esac
+done
+
+if [ "$(id -u)" != "0" ]; then
+    echo "precisa de root: sudo ./instalar.sh" >&2
+    exit 1
+fi
+
+# ── macOS ────────────────────────────────────────────────────────────────
+# O pacote do Mac (build_bundle.sh no macOS) já vem no layout da instalação:
+# bin/jinga, lib/jinga/*.dylib (o binário acha as libs por caminho relativo)
+# e share/jinga (LSP + doc). Instalar é copiar as três pastas pro prefixo.
+# Sem pacote ao lado, baixa o do release; dentro do repositório com ./pool
+# compilado nesta máquina, instala ele (ligado às libs do Homebrew daqui).
+if [ "$(uname -s)" = "Darwin" ]; then
+    PACOTE_MAC="${PACOTE_MAC:-$REPO/releases/latest/download/jinga-macos-x86_64.tar.gz}"
+    if [ "$REMOVER" = 1 ]; then
+        rm -f "$PREFIXO/bin/jinga" "$PREFIXO/bin/jpkg" "$PREFIXO/bin/pool" "$PREFIXO/bin/psl" \
+              "$PREFIXO/bin/jinga-lsp" "$PREFIXO/bin/poolscript-lsp"
+        rm -rf "$PREFIXO/lib/jinga" "$PREFIXO/share/jinga"
+        echo "removido."
+        exit 0
+    fi
+    if [ ! -f bin/jinga ] && [ ! -f pool ]; then
+        TMP=$(mktemp -d)
+        trap 'rm -rf "$TMP"' EXIT
+        echo "== baixando o pacote do macOS"
+        if ! curl -fsSL --retry 3 -o "$TMP/jinga-macos.tar.gz" "$PACOTE_MAC"; then
+            echo "não há pacote do macOS publicado. Compile do fonte:" >&2
+            echo "  git clone $REPO && cd poolscript && jinga scripts/compila.pr mac --instala" >&2
+            echo "  (sem a jinga ainda: brew install openssl@3 libpng gmp libpq mariadb-connector-c" >&2
+            echo "   unixodbc mongo-c-driver@1 && make pool && sudo make install)" >&2
+            exit 1
+        fi
+        tar xzf "$TMP/jinga-macos.tar.gz" -C "$TMP"
+        cd "$TMP/jinga-macos-x86_64"
+    fi
+    mkdir -p "$PREFIXO/bin" "$PREFIXO/share/jinga"
+    if [ -f bin/jinga ]; then
+        echo "== binário e bibliotecas"
+        install -m755 bin/jinga "$PREFIXO/bin/jinga"
+        rm -rf "$PREFIXO/lib/jinga"
+        mkdir -p "$PREFIXO/lib/jinga"
+        cp -R lib/jinga/. "$PREFIXO/lib/jinga/"
+        echo "== servidor LSP, doc e o migrador de extensão"
+        rm -rf "$PREFIXO/share/jinga/lsp" "$PREFIXO/share/jinga/docs" "$PREFIXO/share/jinga/scripts"
+        cp -R share/jinga/lsp "$PREFIXO/share/jinga/lsp"
+        cp -R share/jinga/docs "$PREFIXO/share/jinga/docs"
+        cp -R share/jinga/scripts "$PREFIXO/share/jinga/scripts"
+    else
+        echo "== binário compilado nesta máquina"
+        install -m755 pool "$PREFIXO/bin/jinga"
+        mkdir -p "$PREFIXO/share/jinga/lsp"
+        for j in editor/vscode/*.js; do
+            case "$(basename "$j")" in extension.js|teste_servidor.js) continue ;; esac
+            install -m644 "$j" "$PREFIXO/share/jinga/lsp/"
+        done
+        [ -d editor/vscode/node_modules ] && cp -R editor/vscode/node_modules "$PREFIXO/share/jinga/lsp/"
+        rm -rf "$PREFIXO/share/jinga/docs"
+        cp -R docs "$PREFIXO/share/jinga/docs"
+        # o migrador de extensão (a frase do `.ps` manda rodá-lo)
+        mkdir -p "$PREFIXO/share/jinga/scripts"
+        install -m644 scripts/migra_pr.pr "$PREFIXO/share/jinga/scripts/"
+    fi
+    for atalho in jpkg pool psl; do ln -sf "$PREFIXO/bin/jinga" "$PREFIXO/bin/$atalho"; done
+    printf '#!/bin/sh\n# Servidor LSP da Jinga. Ver docs/lsp.md.\nif ! command -v node >/dev/null 2>&1; then\n  echo "jinga-lsp precisa do node" >&2\n  exit 1\nfi\nexec node %s/share/jinga/lsp/server.js "${@:---stdio}"\n' \
+            "$PREFIXO" > "$PREFIXO/bin/jinga-lsp"
+    chmod 755 "$PREFIXO/bin/jinga-lsp"
+    cp "$PREFIXO/bin/jinga-lsp" "$PREFIXO/bin/poolscript-lsp"
+    command -v node >/dev/null 2>&1 \
+        || echo "   o servidor do editor precisa do node: instale pelo nodejs.org (pacote macOS x64)"
+    echo "pronto: $("$PREFIXO/bin/jinga" --version)"
+    exit 0
+fi
+
+# Os nomes de antes do rename saem junto: `pool`, `psl`, `poolscript-lsp`,
+# `share/poolscript`, `lib/poolscript`, `zz-poolscript.xml`.
+if [ "$REMOVER" = 1 ]; then
+    rm -f  "$PREFIXO/bin/jinga" "$PREFIXO/bin/jinga.bin" "$PREFIXO/bin/jpkg" \
+           "$PREFIXO/bin/jinga-lsp" \
+           "$PREFIXO/bin/pool" "$PREFIXO/bin/pool.bin" \
+           "$PREFIXO/bin/psl"  "$PREFIXO/bin/poolscript-lsp"
+    # `lib/jinga` (as .so do bundle) ficava pra trás: o --remover tirava
+    # o binário e deixava os 37 MB de biblioteca instalados.
+    rm -rf "$PREFIXO/share/jinga" "$PREFIXO/lib/jinga" \
+           "$PREFIXO/share/poolscript" "$PREFIXO/lib/poolscript"
+    rm -f "$DADOS/mime/packages/zz-jinga.xml" "$DADOS/mime/packages/zz-poolscript.xml"
+    rm -f "$DADOS/icons/hicolor/scalable/mimetypes/text-jinga.svg" \
+          "$DADOS/icons/hicolor/scalable/mimetypes/text-poolscript.svg"
+    update-mime-database "$DADOS/mime" 2>/dev/null || true
+    gtk-update-icon-cache -f -t "$DADOS/icons/hicolor" 2>/dev/null || true
+    echo "removido."
+    exit 0
+fi
+
+tem() { command -v "$1" >/dev/null 2>&1; }
+
+apt_instala() {
+    tem apt-get || return 1
+    if [ -z "${APT_ATUALIZADO:-}" ]; then
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq || true
+        APT_ATUALIZADO=1
+    fi
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$@"
+}
+
+baixa() {   # baixa <destino> <url>
+    if   tem curl; then curl -fsSL --retry 3 -o "$1" "$2"
+    elif tem wget; then wget -q -O "$1" "$2"
+    else return 1
+    fi
+}
+
+# As dependências de compilação. Os nomes são de Debian/Ubuntu.
+#
+# Os clientes de banco (Postgres, MySQL, ODBC, Mongo) não são ligados ao
+# binário — cada driver abre a biblioteca na primeira conexão (vm/ps_dl.h) —,
+# então daqui eles entram pelos CABEÇALHOS (os -dev), que trazem a biblioteca
+# junto. O `postgresql-server-dev-all`, o Kerberos, o LDAP e o ltdl só eram
+# necessários pra ligar a libpq estática, e saíram.
+DEPS_BUILD="build-essential git pkg-config nodejs npm
+            libsqlite3-dev libpq-dev unixodbc-dev libssl-dev libpng-dev
+            zlib1g-dev libmariadb-dev
+            libmongoc-dev libbson-dev libgmp-dev"
+
+compila_do_fonte() {   # compila_do_fonte <pasta_temporária>
+    local tmp="$1"
+    if ! tem apt-get; then
+        echo "sem release publicado e esta máquina não é Debian/Ubuntu:" >&2
+        echo "compile do fonte à mão — $REPO" >&2
+        exit 1
+    fi
+    echo "== instalando as dependências de compilação"
+    apt_instala $DEPS_BUILD
+    echo "== clonando o fonte"
+    git clone --depth 1 "$REPO" "$tmp/fonte"
+    echo "== compilando (leva alguns minutos)"
+    make -C "$tmp/fonte" -j"$(nproc)" pool
+    # O `node_modules` do LSP não é versionado: num clone limpo ele não existe,
+    # e sem ele o servidor sobe e morre na primeira linha.
+    ( cd "$tmp/fonte/editor/vscode" && npm install --omit=dev --silent ) \
+        || echo "   aviso: npm install falhou — o LSP fica sem dependências"
+}
+
+# O binário é `pool` no repositório (o alvo do make) e `jinga.bin` no bundle
+# (lá o `jinga` é o wrapper que aponta o LD_LIBRARY_PATH pras .so que vão
+# junto); um bundle de antes do rename traz `pool.bin`. Sem nenhum deles ao
+# lado, não há o que instalar: busca.
+if [ ! -f pool ] && [ ! -f jinga.bin ] && [ ! -f pool.bin ]; then
+    TMP=$(mktemp -d)
+    trap 'rm -rf "$TMP"' EXIT
+    if ! tem curl && ! tem wget; then
+        echo "== instalando o curl (esta máquina não tem curl nem wget)"
+        apt_instala curl || {
+            echo "sem curl/wget e sem apt: instale um dos dois" >&2
+            exit 1
+        }
+    fi
+    echo "== procurando o pacote pronto"
+    if baixa "$TMP/jinga-portable.tar.gz" "$PACOTE" \
+            || baixa "$TMP/jinga-portable.tar.gz" "$PACOTE_ANTIGO"; then
+        tar xzf "$TMP/jinga-portable.tar.gz" -C "$TMP"
+        ACHADO=$(find "$TMP" \( -name jinga.bin -o -name pool.bin \) -type f | head -1)
+        if [ -z "$ACHADO" ]; then
+            echo "o pacote baixado não tem jinga.bin dentro" >&2
+            exit 1
+        fi
+        echo "   pacote pronto — nada pra compilar"
+        cd "$(dirname "$ACHADO")"
+    else
+        echo "   não há release publicado — clonando e compilando"
+        compila_do_fonte "$TMP"
+        cd "$TMP/fonte"
+    fi
+fi
+
+echo "== binário"
+install -d "$PREFIXO/bin"
+BIN_BUNDLE=""
+[ -f jinga.bin ] && BIN_BUNDLE=jinga.bin
+[ -z "$BIN_BUNDLE" ] && [ -f pool.bin ] && BIN_BUNDLE=pool.bin
+if [ -n "$BIN_BUNDLE" ]; then
+    install -m755 "$BIN_BUNDLE" "$PREFIXO/bin/jinga.bin"
+    install -d "$PREFIXO/lib/jinga"
+    cp -a lib/. "$PREFIXO/lib/jinga/" 2>/dev/null || true
+    # O wrapper que vem no bundle aponta pra /usr/local fixo. Instalado em
+    # outro prefixo ele carregaria as .so de um caminho que não existe — daí
+    # ser escrito aqui, com o prefixo real.
+    printf '#!/bin/sh\n# Wrapper da Jinga: usa as .so instaladas junto do binário.\nLD_LIBRARY_PATH=%s/lib/jinga:$LD_LIBRARY_PATH exec %s/bin/jinga.bin "$@"\n' \
+            "$PREFIXO" "$PREFIXO" > "$PREFIXO/bin/jinga"
+    chmod 755 "$PREFIXO/bin/jinga"
+else
+    install -m755 pool "$PREFIXO/bin/jinga"
+fi
+# `jpkg` gerencia pacotes; `pool` e `psl` são os nomes de antes do rename.
+# Todos são o mesmo binário.
+for atalho in jpkg pool psl; do
+    ln -sf "$PREFIXO/bin/jinga" "$PREFIXO/bin/$atalho"
+done
+# o que sobrou de uma instalação com o nome antigo
+rm -f "$PREFIXO/bin/pool.bin"
+rm -rf "$PREFIXO/lib/poolscript" "$PREFIXO/share/poolscript"
+
+echo "== servidor LSP"
+# `lsp/` é o layout do bundle, `editor/vscode/` o do repositório. Procurar só
+# pelo segundo fazia o instalador do bundle abortar aqui (com `set -e`), logo
+# depois do binário: sem LSP, sem MIME e sem ícone.
+if [ -f lsp/server.js ]; then
+    LSP_ORIG=lsp
+else
+    LSP_ORIG=editor/vscode
+fi
+if [ -f "$LSP_ORIG/server.js" ]; then
+    install -d "$PREFIXO/share/jinga/lsp"
+    # O `server.js` foi dividido em módulos (`require('./analise.js')`), e
+    # copiar só ele deixava o LSP morrendo em `Cannot find module` em TODA
+    # máquina instalada. Vai tudo o que é do servidor — de fora ficam só o
+    # cliente do VS Code e o teste, que não são carregados por ele.
+    for j in "$LSP_ORIG"/*.js; do
+        case "$(basename "$j")" in
+            extension.js|teste_servidor.js) continue ;;
+        esac
+        install -m644 "$j" "$PREFIXO/share/jinga/lsp/"
+    done
+    for m in vscode-languageserver vscode-languageserver-protocol \
+             vscode-languageserver-types vscode-jsonrpc \
+             vscode-languageserver-textdocument semver; do
+        [ -d "$LSP_ORIG/node_modules/$m" ] || continue
+        mkdir -p "$PREFIXO/share/jinga/lsp/node_modules"
+        rm -rf "$PREFIXO/share/jinga/lsp/node_modules/$m"
+        cp -r "$LSP_ORIG/node_modules/$m" "$PREFIXO/share/jinga/lsp/node_modules/"
+    done
+    printf '#!/bin/sh\n# Servidor LSP da Jinga. Ver docs/lsp.md.\nif ! command -v node >/dev/null 2>&1; then\n  echo "jinga-lsp precisa do node" >&2\n  exit 1\nfi\nexec node %s/share/jinga/lsp/server.js "${@:---stdio}"\n' \
+            "$PREFIXO" > "$PREFIXO/bin/jinga-lsp"
+    chmod 755 "$PREFIXO/bin/jinga-lsp"
+    # o nome antigo do servidor continua respondendo (editor configurado antes)
+    cp "$PREFIXO/bin/jinga-lsp" "$PREFIXO/bin/poolscript-lsp"
+    # O servidor precisa do node em tempo de execução; quem instala numa
+    # máquina nova não deveria descobrir isso só quando o editor não completa.
+    if ! tem node; then
+        echo "   node não encontrado — instalando"
+        apt_instala nodejs || echo "   aviso: instale o node pra usar o LSP"
+    fi
+else
+    echo "   (não veio servidor LSP neste pacote)"
+    INCOMPLETO=1
+fi
+
+echo "== tirando instalação antiga do PATH"
+# Uma instalação velha em `~/.local/bin` vem ANTES de `/usr/local/bin` e
+# SEQUESTRA o comando: o `pool` respondia o erro de um pacote antigo que
+# não existe mais, com a instalação nova intacta logo atrás e invisível. O
+# instalador dizia "pronto" e o comando estava quebrado.
+#
+# Rodando por `sudo`, o `$PATH` é o do root e o `~/.local/bin` de quem chamou
+# não aparece nele — por isso a casa do `SUDO_USER` entra na busca à mão.
+VARRER=$(echo "$PATH" | tr ':' '\n')
+if [ -n "${SUDO_USER:-}" ]; then
+    CASA=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    if [ -n "$CASA" ]; then
+        VARRER="$VARRER
+$CASA/.local/bin
+$CASA/bin"
+    fi
+    # O PATH do usuário tem pastas que o do root não tem. No WSL isso inclui as
+    # do Windows (`/mnt/c/.../AppData/Roaming/npm`), onde um `pool` de instalação
+    # antiga também responde. Sem ler o PATH dele, essas ficavam de fora.
+    # Tem que ser um shell INTERATIVO: o `.bashrc` do Debian começa com um
+    # `case $- in *i*) ;; *) return;; esac`, então tudo que veio depois — o
+    # PATH do Windows incluído — não é lido por `su -c` comum.
+    PATH_USUARIO=$(su - "$SUDO_USER" -s /bin/bash -c 'bash -ic "printf %s \$PATH"' 2>/dev/null || true)
+    if [ -n "$PATH_USUARIO" ]; then
+        VARRER="$VARRER
+$(echo "$PATH_USUARIO" | tr ':' '\n')"
+    fi
+fi
+REMOVIDOS=$(echo "$VARRER" | sort -u | while read -r d; do
+    # Só caminho absoluto: o shell interativo lido acima pode ter escrito algo
+    # além do PATH, e nada disso vira alvo de `rm`.
+    case "$d" in /*) ;; *) continue ;; esac
+    if [ "$d" = "$PREFIXO/bin" ]; then
+        continue
+    fi
+    # Nas pastas do Windows o comando é um punhado de arquivos irmãos (o shim
+    # sh, o `.cmd`, o `.ps1`, o `.exe`) — apagar só o sem extensão deixaria o
+    # comando de pé no lado de lá.
+    for c in jinga jpkg jinga-lsp pool psl poolscript-lsp; do
+        for e in "" .cmd .ps1 .exe .bat; do
+            if [ -e "$d/$c$e" ] || [ -L "$d/$c$e" ]; then
+                rm -f "$d/$c$e" && echo "$d/$c$e"
+            fi
+        done
+    done
+done)
+if [ -n "$REMOVIDOS" ]; then
+    echo "$REMOVIDOS" | sed 's/^/   removido: /'
+else
+    echo "   nada no PATH"
+fi
+
+# Apagar o arquivo não basta: um `alias pool='...'` no `.bashrc` aponta pro
+# caminho velho DIRETO, sem passar pelo PATH, e sobrevive ao `hash -r`. Depois
+# da varredura acima o comando virava `No such file or directory` apontando pro
+# que acabara de ser removido. Tira o alias dos arquivos de shell do usuário.
+if [ -n "${SUDO_USER:-}" ] && [ -n "${CASA:-}" ]; then
+    ALIASES=""
+    for rc in .bashrc .bash_aliases .bash_profile .profile .zshrc; do
+        [ -f "$CASA/$rc" ] || continue
+        # Só linhas que DEFINEM o alias dos nossos comandos; qualquer outra
+        # menção a eles no arquivo fica onde está.
+        if grep -qE "^[[:space:]]*alias[[:space:]]+(jinga|jpkg|jinga-lsp|pool|psl|poolscript-lsp)=" "$CASA/$rc"; then
+            cp -a "$CASA/$rc" "$CASA/$rc.antes-da-jinga"
+            grep -vE "^[[:space:]]*alias[[:space:]]+(jinga|jpkg|jinga-lsp|pool|psl|poolscript-lsp)=" \
+                 "$CASA/$rc.antes-da-jinga" > "$CASA/$rc"
+            ALIASES="$ALIASES $rc"
+        fi
+    done
+    if [ -n "$ALIASES" ]; then
+        echo "   alias removido de:$ALIASES (cópia em <arquivo>.antes-da-jinga)"
+        REMOVIDOS="$REMOVIDOS
+alias"
+    fi
+fi
+
+echo "== documentação (o hover do editor lê daqui)"
+# O servidor LSP resolve o hover de palavra-chave, de builtin e de método de
+# lib nas páginas de `docs/`, procurando em `<prefixo>/share/jinga/docs`.
+# O instalador não levava a doc: a máquina ficava com hover vazio — ou com a
+# cópia velha de um `make install` antigo, ensinando `action`. Copia inteira e
+# substitui a que estiver lá, senão página apagada no repositório sobrevive
+# instalada e o hover mostra o que não existe mais.
+if [ -d docs ]; then
+    rm -rf "$PREFIXO/share/jinga/docs"
+    install -d "$PREFIXO/share/jinga"
+    cp -r docs "$PREFIXO/share/jinga/docs"
+else
+    echo "   (não veio documentação neste pacote)"
+    INCOMPLETO=1
+fi
+
+echo "== migrador de extensão"
+# A frase do arquivo `.ps` manda rodar o migrador pelo caminho instalado
+# (`<prefixo>/share/jinga/scripts/migra_pr.pr`): sem ele aqui, quem instalou
+# recebia um comando que não abre.
+if [ -f scripts/migra_pr.pr ]; then
+    install -d "$PREFIXO/share/jinga/scripts"
+    install -m644 scripts/migra_pr.pr "$PREFIXO/share/jinga/scripts/"
+fi
+
+echo "== tipo MIME e ícone do .pr"
+# Um pacote sem a pasta `dados/` fazia o `install` falhar e, com o `set -e`,
+# derrubava o script AQUI — depois do binário já instalado. Ficava uma
+# instalação pela metade que dizia "erro" sem dizer o que sobrou funcionando.
+if [ -f dados/zz-jinga.xml ]; then
+    install -d "$DADOS/mime/packages" "$DADOS/icons/hicolor/scalable/mimetypes"
+    install -m644 dados/zz-jinga.xml "$DADOS/mime/packages/"
+    install -m644 dados/icones/text-jinga.svg \
+            "$DADOS/icons/hicolor/scalable/mimetypes/"
+    # o registro do nome antigo sai: senão ficam dois tipos pro mesmo `.pr`
+    rm -f "$DADOS/mime/packages/zz-poolscript.xml" \
+          "$DADOS/icons/hicolor/scalable/mimetypes/text-poolscript.svg"
+    update-mime-database "$DADOS/mime" 2>/dev/null || true
+    gtk-update-icon-cache -f -t "$DADOS/icons/hicolor" 2>/dev/null || true
+else
+    echo "   (não veio o tipo MIME neste pacote)"
+    INCOMPLETO=1
+fi
+
+echo
+echo "pronto:"
+echo "  jinga            $("$PREFIXO/bin/jinga" --version 2>/dev/null)"
+echo "  jpkg             pacotes (mesmo binário); pool e psl, os nomes antigos, valem tambem"
+if [ -x "$PREFIXO/bin/jinga-lsp" ]; then
+    echo "  jinga-lsp        servidor LSP (aponte o editor pra ele; poolscript-lsp tambem responde)"
+fi
+if [ -f "$DADOS/mime/packages/zz-jinga.xml" ]; then
+    echo "  .pr              text/jinga, com a logo"
+fi
+if [ -n "$REMOVIDOS" ]; then
+    echo
+    echo "havia uma instalação antiga na máquina e ela foi removida. O shell que já"
+    echo "estava aberto ainda lembra dela — nele, rode:"
+    echo "    unalias jinga jpkg pool psl 2>/dev/null; hash -r"
+    echo "(ou abra um terminal novo, que já nasce limpo)."
+fi
+if [ -n "${INCOMPLETO:-}" ]; then
+    echo
+    echo "o pacote instalado não trazia tudo: o que faltou está marcado acima." >&2
+    echo "gere um completo com \`make bundle\` (ele leva lsp/ e dados/)." >&2
+fi
