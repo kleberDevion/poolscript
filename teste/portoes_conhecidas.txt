@@ -58,14 +58,11 @@ roda	docs/psodbc/query/query.md	b8035cef64e4	doc-19	todos	linha 90: psodbc.query
 roda	docs/jinker/request/path_param/path_param.md	a9e23d6442ca	doc-20	todos	linha 43: # GET /user/42?fmt=json
 roda	docs/jinker/request/file/file.md	e9b87f0e36e9	doc-20	todos	linha 74: # só imagens; um .pdf aqui levanta erro
 roda	docs/jinker/request/get_json/get_json.md	e5bf6a1d1c54	doc-20	todos	linha 54: # preciso de vários → get_json
-roda	docs/jinker/request/header/header.md	ada13b739c0f	doc-20	todos	linha 41: # um header, jeito recomendado
 roda	docs/mail/MailMessage/attach/attach.md	0cb0f783e9bf	doc-20	todos	linha 48: # dentro de uma rota que recebe upload
 roda	docs/psodbc/DbCursor/execute/execute.md	d4f46ce872ca	doc-20	todos	linha 54: nome = request.get("nome")
 roda	docs/json.md	0b9eb362e96c	doc-20	todos	linha 43: import json
 roda	docs/json/json.md	5b9f656e856c	doc-20	todos	linha 43: import json
 roda	docs/qrcode/QRImage/to_file/to_file.md	8842476ee3cf	doc-21	todos	linha 21: import qrcode
-roda	docs/os/loadFile/loadFile.md	592d8ea5b84f	motor-8	todos	linha 98: os.loadFile("legado.csv", mode="latin-1")
-roda	docs/os/loadFile/loadFile.md	fa94a719f6ae	motor-8	todos	linha 108: os.loadFile("x.txt", mode="xyz")
 p2	membro:sockets.TCP_KEEPALIVE	9ab57d73116b	motor-12	darwin	linha 3: sockets.TCP_KEEPALIVE(0)
 p2	membro:PoolFile.ext	bde2c75e936b	motor-12	todos	linha 11: open("./f.txt", "w").ext(p2_nao_existe=1)
 p2	membro:PoolFile.name	344292f6f93a	motor-12	todos	linha 11: open("./f.txt", "w").name(p2_nao_existe=1)
