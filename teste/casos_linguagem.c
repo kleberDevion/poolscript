@@ -1678,7 +1678,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "from Parsing import string\npost(string(\"42\", to int))\n", "42", NULL, 0 },
 { "motor-3: o to com tipo que nao existe mantem a frase do tipo",
   "from Parsing import string\npost(string(\"42\", to banana))\n",
-  "", "esperado tipo apos 'to'", 2 },
+  "", "esperado tipo apos 'to': int, float, str, flo, bool, json, list, tup, dict, long ou char", 2 },
 /* motor-17: o `--check` nao sabia o tipo de quatro valores, e aceitava o que
  * o motor recusava rodando. O nome de builtin como valor e `funct`; a
  * chamada de uma `async funct` e `future`; a de uma funct com `yield` e
@@ -1807,11 +1807,11 @@ const Caso CASOS_LINGUAGEM[] = {
  * regressões de parser desta linha do tempo saíram todas da interação entre
  * indentação e chave. A mensagem tem que ENSINAR, não só recusar. */
 { "bloco com ':' e recusado",
-  "if True:\n    post(\"A\")\n", "", "bloco com ':' nao existe mais", 2 },
+  "if True:\n    post(\"A\")\n", "", "bloco com ':' nao existe mais — use '{ }'", 2 },
 { "bloco com ':' numa linha so tambem e recusado",
-  "if True: post(\"A\")\n", "", "bloco com ':' nao existe mais", 2 },
+  "if True: post(\"A\")\n", "", "bloco com ':' nao existe mais — use '{ }'", 2 },
 { "Entity com ':' e recusada",
-  "Entity A:\n    funct m(self) { return 1 }\n", "", "bloco com ':' nao existe mais", 2 },
+  "Entity A:\n    funct m(self) { return 1 }\n", "", "bloco com ':' nao existe mais — use '{ }'", 2 },
 { "a mensagem diz o que usar no lugar",
   "while True:\n    break\n", "", "use '{ }'", 2 },
 { "dicionario com ':' continua valendo",
@@ -2046,7 +2046,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "run_selfwith_(\"main\") {\n    post(1)\n}\n",
   "", "use: if __name__ == \"main\"", 2 },
 { "if normal continua sem aceitar dois-pontos",
-  "if 1 == 1:\n    post(1)\n", "", "bloco com ':' nao existe mais", 2 },
+  "if 1 == 1:\n    post(1)\n", "", "bloco com ':' nao existe mais — use '{ }'", 2 },
 { "if com __name__ mas comparando outra coisa e if normal",
   "x = 1\nif __name__ == x {\n    post(\"nao\")\n} else {\n    post(\"if normal\")\n}\n",
   "if normal", NULL, 0 },
