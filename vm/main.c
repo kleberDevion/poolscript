@@ -1512,24 +1512,42 @@ static int cmd_ast(const char *arquivo)
 
     int nerros = tl->nerros + r->nerros;
     if (nerros > 0) {
+        /* Os erros saem na ORDEM DO ARQUIVO, e não por origem (motor-23):
+         * antes iam todos os do lexer e depois os do parser, e o MESMO
+         * programa dava um primeiro erro aqui e outro no `--check` — que
+         * compila e por isso mistura os dois na ordem em que aparecem. Um
+         * arquivo com `int x = = 1` na linha 2 e `int y = 1 $ 2` na 5 dava
+         * `$` (5:11) no `--ast` e `=` (2:9) no `--check`. A ordem tem que ser
+         * a mesma nos dois, e o primeiro erro é o primeiro do arquivo. */
+        typedef struct { const PSAviso *e; int da_lexer; } ErroOrd;
+        int total = nerros;
+        ErroOrd *ord = malloc(sizeof(ErroOrd) * (size_t)total);
+        if (!ord) { printf("{\"ok\":false,\"msg\":\"sem memoria\",\"arvore\":null}\n");
+                    ps_lexer_free(tl); ps_parse_free(r); free(fonte); return 1; }
+        int k = 0;
+        for (int32_t i = 0; i < tl->nerros; i++) { ord[k].e = &tl->erros[i]; ord[k].da_lexer = 1; k++; }
+        for (int32_t i = 0; i < r->nerros; i++) { ord[k].e = &r->erros[i]; ord[k].da_lexer = 0; k++; }
+        /* insertion sort: a lista é curta e esta é a ordem estável */
+        for (int a = 1; a < total; a++) {
+            ErroOrd t = ord[a]; int b = a - 1;
+            while (b >= 0 && (ord[b].e->linha > t.e->linha
+                              || (ord[b].e->linha == t.e->linha && ord[b].e->col > t.e->col))) {
+                ord[b + 1] = ord[b]; b--;
+            }
+            ord[b + 1] = t;
+        }
         /* o primeiro erro continua nos campos de cima, como o editor já lia */
-        const char *msg = tl->nerros > 0 ? tl->erros[0].msg : r->erros[0].msg;
-        int32_t l = tl->nerros > 0 ? tl->erros[0].linha : r->erros[0].linha;
-        int32_t c = tl->nerros > 0 ? tl->erros[0].col : r->erros[0].col;
+        const char *msg = ord[0].e->msg;
+        int32_t l = ord[0].e->linha;
+        int32_t c = ord[0].e->col;
         printf("{\"ok\":false,\"tipo\":\"SyntaxError\",\"msg\":\"");
         json_escapa(stdout, msg, (int)strlen(msg));
         printf("\",\"linha\":%d,\"coluna\":%d,\"erros\":[", l, col_para_utf16(l, c));
-        int primeiro = 1;
-        for (int32_t i = 0; i < tl->nerros; i++) {
-            if (!primeiro) putchar(',');
-            primeiro = 0;
-            imprime_erro_json(&tl->erros[i]);
+        for (int i = 0; i < total; i++) {
+            if (i) putchar(',');
+            imprime_erro_json((PSAviso *)ord[i].e);
         }
-        for (int32_t i = 0; i < r->nerros; i++) {
-            if (!primeiro) putchar(',');
-            primeiro = 0;
-            imprime_erro_json(&r->erros[i]);
-        }
+        free(ord);
         printf("],\"arvore\":");
     } else {
         printf("{\"ok\":true,\"arvore\":");

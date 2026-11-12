@@ -772,7 +772,7 @@ em cada item):
   bloco; a gramática lê o contêiner pela regra nova `soma_de_cabeca`. Casos:
   os "motor-22: ..." de `teste/casos_linguagem.c` (o bloco em cada letra,
   `_index` e `_match`, o `return;` e a forma de expressão), e o exemplo da 5.6.
-- **motor-23** (achado pelo portão `gramatica`, 2026-10-23) O `--ast` põe os
+- ~~**motor-23** (achado pelo portão `gramatica`, 2026-10-23) O `--ast` põe os
   erros do lexer na frente dos do parser, e o primeiro erro dele (o `msg`, a
   `linha` e a `coluna` de cima, e o primeiro de `erros`) não é o do `--check`
   nem o que sai rodando. No programa `post(1)` / `int x = = 1` / `post(2)` /
@@ -785,7 +785,17 @@ em cada item):
   programa. 10 lugares na catraca (portão `gramatica`): os 9 blocos da doc
   que mostram um erro com a frase escrita como linha do bloco (a crase e o
   travessão da frase são erro do lexer, depois do erro de verdade) e o caso
-  da suíte. `motor` (o `--ast`).
+  da suíte. `motor` (o `--ast`).~~ Corrigido no 20.0.19: o `--ast` junta os
+  erros do lexer e do parser e ordena por **linha e coluna** (ordenação por
+  inserção, estável) antes de publicar o `msg`/`linha`/`coluna` de cima e a
+  lista `erros`. O primeiro erro passa a ser o do arquivo, e não o da origem.
+  Medido no programa do item: `--ast` e `--check` dão os dois `expressao
+  invalida` (2:9) primeiro, e o `caractere inesperado: '$'` (5:11) continua na
+  lista, depois — antes o `--ast` dava o do lexer primeiro. O caso só do
+  lexer (`int x = 1 $`) e o só do parser (`int x = = 1`) continuam com o
+  primeiro erro certo, e o arquivo sem erro não muda. Caso: o "motor-23: ..."
+  de `teste/cli_roda.pr`, que compara o primeiro erro dos dois modos. As 10
+  linhas da catraca do portão `gramatica` saem na próxima rodada dele.
 - ~~**motor-24** (achado escrevendo a gramática, 2026-10-23) O valor do `count`
   (`int(7) count in xs`) aceita `*` e `**` e joga a estrela fora. Com `list
   xs = [7, 7, 1]` e `list l = [7]`, `post(int(*l) count in xs, int(7) count

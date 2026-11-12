@@ -933,6 +933,7 @@ os.writeFile(PASTA + "/multi.pr",
 r = roda([POOL, "--ast", "multi.pr"])
 confere("`funct f( {` nao engole a declaracao que vem depois",
         "FunctDecl:depois" in topo(r["saida"]))
+
 # A linha de baixo que VOLTA a indentacao da linha do `(` fecha o grupo ali:
 # `post(1)` e `x = = 2` nao sao argumentos de `f(`, sao as linhas seguintes.
 # Antes o grupo so fechava na declaracao (linha 5), tudo entre o `(` e ela
@@ -940,6 +941,22 @@ confere("`funct f( {` nao engole a declaracao que vem depois",
 # sumia da arvore.
 confere("o que esta depois do `(` aberto volta pra arvore",
         "ExpressionStmt:" in topo(r["saida"]))
+
+# motor-23: os erros saem na ORDEM DO ARQUIVO, e nao por origem (lexer
+# primeiro, parser depois). O `--ast` dava `$` (5:11) como primeiro erro e o
+# `--check` dava `=` (2:9) no MESMO programa. A ordem tem que ser a mesma nos
+# dois, e o primeiro erro e o primeiro do arquivo.
+os.writeFile(PASTA + "/dois_erros.pr",
+             "post(1)\nint x = = 1\npost(2)\npost(3)\nint y = 1 $ 2\n")
+r = roda([POOL, "--ast", "dois_erros.pr"])
+str saida_ast = r["saida"]
+r = roda([POOL, "--check", "dois_erros.pr"])
+str saida_chk = r["saida"]
+confere("motor-23: o --ast e o --check apontam o MESMO primeiro erro",
+        saida_ast.contains("\"linha\":2") and saida_chk.contains("\"linha\":2")
+        and saida_ast.contains("expressao invalida") and saida_chk.contains("expressao invalida")
+        # e o erro do lexer ($, linha 5) continua na lista, depois do primeiro
+        and saida_ast.contains("caractere inesperado") and saida_chk.contains("caractere inesperado"))
 r = roda([POOL, "--check", "multi.pr"])
 confere("o erro real da linha de baixo nao some como sintoma do `(`",
         erros_do_check(r["saida"]) == [[2, 8, "parentese '(' aberto nao foi fechado"],
