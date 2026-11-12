@@ -1,33 +1,5 @@
 # Jinga
 
-Doc — **[`jinga.md`](jinga.md)**.
-
-- Sintaxe da linguagem: [`docs/LANGUAGE.md`](docs/LANGUAGE.md)
-- Referência das libs (por método): [`docs/INDEX.md`](docs/INDEX.md)
-- Editor (VS Code, IntelliJ, Neovim): [`docs/lsp.md`](docs/lsp.md)
-- Depurador (breakpoint, passo a passo, gráfico de execução): [`docs/debugger.md`](docs/debugger.md)
-
-## Começo rápido
-
-```bash
-sudo ./instalar.sh          # binário + servidor LSP + MIME e ícone do .pr
-jinga examples/01_hello.pr
-```
-
-Numa máquina onde ainda não há nada (um WSL Debian novo, por exemplo), o
-instalador busca sozinho o que faltar:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/kleberDevion/poolscript/main/instalar.sh | sudo bash
-```
-
-macOS (Intel) e Windows (x64) têm pacote próprio, com `instalar.sh` e
-`instalar.ps1`; os três se compilam com `./pool scripts/compila.pr
-linux|mac|windows|todos` — ver [`jinga.md`](jinga.md#instalação).
-
-Compilando do fonte (gcc, pkg-config + libs de dev: postgresql, mariadb,
-mongoc 1.x ou 2.x, openssl):
-
 ```bash
 make pool       # gera ./pool
 make check      # compila e roda a suíte em C
