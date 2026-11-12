@@ -129,7 +129,10 @@ const Caso CASOS_PENDENTES[] = {
   "}\n"
   "post(map([1, 2], f))\n", "", "f() missing 1 required positional argument: 'y'", 1 },
 { "open() de diretório é erro",
-  "f = open(\"/tmp\")\npost(f.read())\n", "", "[Errno 21] Is a directory", 1 },
+  /* a pasta temporária do SISTEMA, e não o `/tmp` fixo: no Windows ele não
+   * existe, e o `open` dava `FileNotFoundError` em vez de `IsADirectoryError`. */
+  "import os\nstr tmp = os.getenv(\"TMPDIR\", os.getenv(\"TMP\", os.getenv(\"TEMP\", \"/tmp\")))\n"
+  "f = open(tmp)\npost(f.read())\n", "", "[Errno 21] Is a directory", 1 },
 { "writelines com bytes grava os bytes",
   "p = \"ps_teste_wl.bin\"\nusing open(p, \"wb\") as f { f.writelines([\"a\".encode()]) }\n"
   "using open(p, \"rb\") as f { post(f.read()) }\n",

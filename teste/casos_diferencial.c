@@ -4126,8 +4126,13 @@ const Caso CASOS_DIFERENCIAL[] = {
   "funct f(x, y) {\n    return x\n}\npost(map([1, 2], f))\n",
   "", "TypeError: f() missing 1 required positional argument: 'y'\n", 1 },
 { "dif #1371",
-  "f = open(\"/tmp\")\npost(f.read())\n",
-  "", "IsADirectoryError: [Errno 21] Is a directory: '/tmp'\n", 1 },
+  /* `open` de uma PASTA dá `IsADirectoryError`. O caminho era o `/tmp` fixo,
+   * que não existe no Windows — a pasta temporária do sistema é a que cada um
+   * espera: `TEMP`/`TMP` no Windows, `TMPDIR` no Linux e no macOS. O caso
+   * confere o TIPO do erro e o caminho que ele cita, não um `/tmp` literal. */
+  "import os\nstr tmp = os.getenv(\"TMPDIR\", os.getenv(\"TMP\", os.getenv(\"TEMP\", \"/tmp\")))\n"
+  "f = open(tmp)\npost(f.read())\n",
+  "", "IsADirectoryError: [Errno 21] Is a directory:", 1 },
 { "dif #1372",
   "p = \"ps_teste_wl.bin\"\nusing open(p, \"wb\") as f { f.writelines([\"a\".encode()]) }\nusing open(p, \"rb\") as f { post(f.read()) }\n",
   "b'a'", NULL, 0 },

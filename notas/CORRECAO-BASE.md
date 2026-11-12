@@ -1637,3 +1637,27 @@ e sem, e dá o mesmo erro.
   dele tem quatro pacotes que o forky não tem (`libmongoc-1.0-0`,
   `libbson-1.0-0`, `libldap-2.5-0` e `libgnutls30`), e o comando inteiro
   falha. `doc`.
+
+## lacuna
+
+Falta de recurso, e não divergência entre a doc e o motor: a doc não promete,
+o motor não tem, e o programa não alcança. Cada item é **decisão dele**
+(entra na Jinga, ou a doc diz que não tem e como fazer sem). Achados
+medidos, sem conserto.
+
+- **lacuna-1** (achado na sessão de 2026-11-12, adaptando os testes ao
+  Windows) Não há como perguntar ao sistema qual é a pasta TEMPORÁRIA. O
+  Python tem `tempfile.gettempdir()`, que resolve `TMPDIR` (Linux/macOS),
+  `TEMP` e `TMP` (Windows) e cai em `/tmp` ou `C:\TEMP`. Na Jinga, o caminho
+  é montar à mão com dois `os.getenv` encaixados
+  (`os.getenv("TMPDIR", os.getenv("TMP", os.getenv("TEMP", "/tmp")))`), e
+  isso ainda erra no Windows quando nenhum dos dois está definido. O
+  `Makefile`/`scripts` também usam `/tmp` fixo (`teste/bench.pr`, 8 vezes, e
+  `teste/geradores/oraculo.pr`), que só roda em sistema POSIX. `duvida`:
+  entra um `os.tempdir()` (ou a lib `tempfile`), ou a doc diz que a pasta
+  temporária se monta com `os.getenv`?
+- **lacuna-2** (o mesmo achado, por outro lado) Não há como criar arquivo ou
+  pasta temporária de nome único e que se apaga sozinho — o
+  `tempfile.NamedTemporaryFile` e o `TemporaryDirectory` do Python. Hoje o
+  programa escolhe o nome à mão e apaga no `finally`, e dois processos ao
+  mesmo tempo colidem. `duvida`: entra na Jinga, ou fica fora?
