@@ -375,12 +375,16 @@ em cada item):
   `check` (`teste/portoes_conhecidas.txt`), e os dois portões da página do
   regex ficaram verdes. O ramo do `match` com `:` e recuo continua morto, com
   as frases que pedem o `:` que saiu da linguagem: é o motor-20, item aberto.
-- **motor-3** (achado pelo portão `check`, `docs/mail/MailServer/send/send.md:16`)
+- ~~**motor-3** (achado pelo portão `check`, `docs/mail/MailServer/send/send.md:16`)
   O `to` usado como valor (`s.send(to, subject="x")`) dá `SyntaxError: esperado
   tipo apos 'to': int, float, str...`, que fala do operador de conversão. A
   declaração `str to = "x"` dá a frase certa: `'to' e palavra reservada da
   linguagem e nao pode ser usada como nome de variavel`. A frase do primeiro
-  caso não aponta a causa. `motor`.
+  caso não aponta a causa. `motor`.~~ Corrigido no 20.0.7: quando o `to` não é
+  seguido de um tipo (`to` no lugar de valor), a frase é a da declaração —
+  `'to' e palavra reservada da linguagem e nao pode ser usada como nome de
+  variavel` —, e a conversão `string("42", to int)` continua valendo. Casos:
+  os três "motor-3: ..." de `teste/casos_linguagem.c`.
 - ~~**motor-4** (GRAVE, perda de dado; achado lendo o `psodbc.query` em
   2026-10-18, por causa do doc-19) O `psodbc.query` copia o SQL num buffer
   fixo de 4.096 bytes com `snprintf` (`mod_db_query`, `vm/jinga_vm.c:21408`) e
@@ -493,7 +497,7 @@ em cada item):
   bytes na linha, sem `...`), e um nome de módulo de 257 caracteres sai
   inteiro. Caso: o "motor-10: ..." de `teste/cli_roda.pr`, que monta a pasta
   funda e confere o caminho inteiro na saída.
-- **motor-11** (achado pelo portão P2, 2026-10-23) O `--check` não confere a
+- ~~**motor-11** (achado pelo portão P2, 2026-10-23) O `--check` não confere a
   chamada dos membros de 11 tipos nem dos valores de módulo que se chamam:
   aceita qualquer quantidade, qualquer nome de parâmetro e qualquer tipo, e o
   motor recusa rodando. Os tipos são os que a tabela medida
@@ -535,8 +539,8 @@ em cada item):
   `WsConnection`) e o `RouteRegistrar` (motor-13) — o checador confere os
   membros deles (motor-7), mas a aridade não está na tabela medida, porque
   eles não se criam sem servidor. As 259 linhas que restam na catraca são
-  deles.
-- **motor-12** (achado pelo portão P2, 2026-10-23) Chamar o que não se chama.
+  deles.~~
+- ~~**motor-12** (achado pelo portão P2, 2026-10-23) Chamar o que não se chama.
   - A propriedade chamada como método (`f.name()`, `regex.compile("a")
     .pattern()`, `app.static_url()`): o `--check` diz `PoolFile.name() takes no
     keyword arguments`, como se fosse método sem parâmetro, e o motor diz
@@ -553,7 +557,7 @@ em cada item):
   é o `KeyError` da chave que não existe, não "não chamável". A constante de
   módulo chamada já era recusada pelo motor-11. Casos: os três "motor-12:
   ..." de `teste/casos_libs.c`.
-- **motor-43** (relato dele, 2026-11-11: "esse sistema de abertura de
+- ~~**motor-43** (relato dele, 2026-11-11: "esse sistema de abertura de
   arquivos e metodos de arquivo ta todo esquisito") O `PoolFile` é DOIS
   tipos com o mesmo nome. O `open()` devolve um arquivo aberto, com `read`,
   `readline`, `readlines`, `write`, `writelines` e `close`; o
@@ -586,7 +590,7 @@ em cada item):
   `open("w.txt", "r").bytes()` e `.name` funcionam; e o `write` seguido de
   `save` grava o que foi escrito. Casos: os três "motor-43: ..." de
   `teste/casos_libs.c`. A doc do `PoolFile` passou a dizer que vale nos dois
-  sentidos.
+  sentidos.~~
 - ~~**motor-13** (achado pelo portão P2, 2026-10-23) O tipo que o
   `app.route(...)` devolve tem dois nomes: o `--metadata` publica
   `RouteRegistrar` (e a doc tem `docs/jinker/RouteRegistrar/`), e o motor e o
