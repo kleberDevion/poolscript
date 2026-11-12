@@ -978,15 +978,6 @@ p3	docs/request/WsConnection/send/send.md	376e6f1df2fc	editor-3	todos	linha 21: 
 p3	docs/request/WsConnection/send/send.md	0b20ce48b2bf	editor-3	todos	linha 21: #p3 hover msg 4:35
 p3	docs/request/WsConnection/WsConnection.md	4dbe53a70b20	editor-3	todos	linha 26: #p3 hover msg 5:23
 p3	docs/request/WsConnection/WsConnection.md	1883a9b8bf96	editor-3	todos	linha 26: #p3 hover msg 5:35
-gramatica	docs/linguagem/09-imports.md	cb229558bbb6	motor-23	todos	linha 170: funct g() { (o --ast põe primeiro o erro do lexer da linha 174)
-gramatica	docs/linguagem/09-imports.md	cdaee6782bfe	motor-23	todos	linha 191: import json as j * (o --ast põe primeiro o erro do lexer da linha 193)
-gramatica	docs/linguagem/09-imports.md	e7b06cd769cf	motor-23	todos	linha 225: from mymod GET * (o --ast põe primeiro o erro do lexer da linha 227)
-gramatica	docs/linguagem/09-imports.md	bdd04c6b3568	motor-23	todos	linha 258: import 'sub/meu-mod.pr' (o --ast põe primeiro o erro do lexer da linha 260)
-gramatica	docs/linguagem/09-imports.md	cfc6d675d3db	motor-23	todos	linha 308: import ..pacote.modulo (o --ast põe primeiro o erro do lexer da linha 310)
-gramatica	docs/linguagem/09-imports.md	7825ac3fd01d	motor-23	todos	linha 389: SyntaxError: random: ... (o --ast põe primeiro o erro do lexer da linha 390)
-gramatica	docs/linguagem/06-funcoes.md	1ff017a6147f	motor-23	todos	linha 179: funct f(x: int) { post(x) } (o --ast põe primeiro o erro do lexer da linha 181)
-gramatica	docs/linguagem/06-funcoes.md	c714303fef9f	motor-23	todos	linha 205: funct f(*args, x) { } (o --ast põe primeiro o erro do lexer da linha 207)
-gramatica	docs/linguagem/14-decoradores.md	d4b9f98dc5ba	motor-23	todos	linha 386: SyntaxError: 'mapp' e campo de instancia ... (o --ast põe primeiro o erro do lexer da linha 387)
-gramatica	suite:casos_linguagem.c:rodando sai o primeiro erro da lista do --check	25b61422f612	motor-23	todos	linha 1: post(1) (o --ast põe primeiro o erro do lexer da linha 5)
 p4	teste/p4_achados/46ee528fae3e.pr	46ee528fae3e	motor-17	todos	linha 7: str s144 = tarefa130() (o --check não sabe o tipo da chamada de uma async funct)
 p4	teste/p4_achados/960cdd53559c.pr	960cdd53559c	motor-17	todos	linha 8: str s17 = gera5() (o --check não sabe o tipo da chamada de um gerador)
+gramatica	suite:casos_linguagem.c:motor-21: a palavra reservada usada como valor diz que e reservada	af70cb2fa40a	motor-21	todos	linha 1: x = while

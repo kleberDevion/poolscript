@@ -296,13 +296,25 @@ clausula_catch: 'catch' '(' [IDENT_UPPER [nome] | nome] ')' bloco
 
 usando: 'using' ~ expressao 'as' (IDENT | IDENT_UPPER | KW) bloco
 
-# match: o corpo é de chaves. A forma com `:` saiu da linguagem; o parser
-# ainda tem o ramo dela, que nunca fecha e pede o `:` (motor-20 da lista de
-# correção)
-escolha: 'match' ~ cabeca separador* '{' separador_largo* (caso separador_largo*)* '}'
+# match: o corpo é de chaves. A forma com `:` saiu da linguagem (motor-20:
+# o ramo dela saiu junto, e `match x:` dá a frase do `if True:`).
+#
+# `match` também não é comando SEMPRE: como no Python, a palavra só abre o
+# comando quando a linha tem o `{` do bloco (motor-2). Sem ele, ela é a
+# CHAMADA da função `match` do `regex`, e a regra que vale é a de expressão.
+#
+# Sem o `~` depois de `'match'`: o corte ali decidia antes de tentar a
+# cabeça, e `match("a", "b")` parava no `match` como comando — a regra de
+# expressão nunca era tentada. A escolha ordenada do PEG desfaz sozinha
+# quando o `{` não vem.
+escolha: 'match' cabeca separador* '{' separador_largo* (caso separador_largo*)* '}'
 caso: 'case' padrao ['if' cabeca] separador_largo* bloco
 
 # as expressões de cabeça
+#
+# O MODO_CABECA é o que faz o `{` que fecha a cabeça abrir o BLOCO em vez de
+# interpolar o texto — é ele que separa `match x {` (comando) de `match(x)`
+# (chamada).
 cabeca: MODO_CABECA expressao
 soma_de_cabeca: MODO_CABECA soma
 ```
@@ -463,7 +475,15 @@ argumento: ('**' | '*') expressao | nome_livre '=' expressao | expressao
 inicio_justaposto:
     | !'{' (INT | FLO | STR | FSTRING | BYTES | BOOL | NULL | COLOR | IDENT | IDENT_UPPER | '(' | '[' | palavra_que_abre_valor | '-' | '+' | '!')
     | tipo_de_expressao &'('
-palavra_que_abre_valor: 'post' | 'input' | 'addEnd' | 'char' | 'list' | 'json' | 'dict' | 'tup' | 'JSON' | 'self' | 'count' | 'to' | 'await' | 'not' | 'Not'
+# A lista do `kw_abre_expr` (`vm/ps_parser.c`): a palavra reservada que ABRE
+# uma expressão. É a pergunta que o parser faz em `pode_iniciar_expr` e em
+# `pode_seguir` — "este token pode começar uma expressão?". A lista aí e a do
+# parser são a MESMA — mudou numa, muda na outra.
+palavra_que_abre_valor: 'post' | 'input' | 'create' | 'clear' | 'space' | 'addEnd' | 'char' | 'list'
+    | 'json' | 'dict' | 'tup' | 'JSON' | 'self' | 'count' | 'to' | 'await'
+    | 'upper' | 'lower' | 'replace' | 'split' | 'strip' | 'join' | 'startswith'
+    | 'endswith' | 'find' | 'index' | 'format' | 'encode' | 'decode' | 'lstrip'
+    | 'rstrip' | 'title' | 'capitalize' | 'not' | 'Not'
 compreensao: 'for' 'each' nome 'in' expressao ['if' expressao]
 
 # o índice e a fatia `[ini:fim:passo]`, qualquer parte podendo faltar
@@ -494,6 +514,13 @@ corpo_primario:
     | 'count' ~ ['each'] tipo_de_count ['(' [expressao] ')'] 'in' soma
     | 'await' ~ unario
     | tipo_de_expressao !('(' | '.')
+    # KW: a palavra reservada que ABRE expressão (`post`, `count`, `to`,
+    # `await`, `not`...) ou que NÃO abre. A que não abre (`while`, `if`, `for`)
+    # é recusada pelo parser com a frase da palavra reservada (motor-21), mas
+    # a recusa é dele, e não da gramática: aqui ela entra como KW e o
+    # diagnosticador é quem fala. A regra `palavra_que_abre_valor` vale onde o
+    # parser PERGUNTA se o token pode iniciar uma expressão
+    # (`pode_iniciar_expr`), e é lá que ela é usada.
     | KW
 
 # a lambda: `funct(params) { ... }`, com os mesmos modificadores da funct
