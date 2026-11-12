@@ -2274,9 +2274,55 @@ int32_t ps_fstring_formato(const char *t, int32_t len)
  * texto do formato uma f-string, que o compilador monta antes de formatar. Os
  * nós nascem na posição da expressão, ainda em coordenada do trecho: o
  * `fstring_pos` de quem chama leva tudo pro arquivo. */
+/* O campo `{...}` DENTRO do formato (`{x:>{a b}}`) tem que ser UMA expressão
+ * (motor-25). O parser montava o nó e seguia, e quem recusava era o
+ * compilador — então o `--ast` aprovava e o `--check` recusava o MESMO
+ * programa. Aqui o trecho é lexado e parseado pelo mesmo caminho dos outros
+ * `{}`, e o que não é uma expressão só é erro do parser, na hora.
+ *
+ * Devolve 1 se o campo é válido (ou se não há campo), 0 se já acusou. */
+static int fstring_valida_campos(P *p, const char *spec, size_t slen)
+{
+    for (size_t i = 0; i < slen; i++) {
+        if (spec[i] != '{') continue;
+        size_t j = i + 1;
+        int prof = 0;
+        for (; j < slen; j++) {
+            if (spec[j] == '{') prof++;
+            else if (spec[j] == '}') { if (prof == 0) break; prof--; }
+        }
+        if (j >= slen) return 1;          /* sem o fecho: o resto é formato */
+        size_t clen = j - 1 - i;
+        char *campo = malloc(clen + 1);
+        if (!campo) return 1;
+        memcpy(campo, spec + i + 1, clen);
+        campo[clen] = '\0';
+        PSTokenList *toks = ps_lexer_tokenize(campo, clen);
+        int ok = 0;
+        if (toks && toks->ok) {
+            PSParseResult *r = ps_parse(toks->tokens, toks->n);
+            if (r && r->ok && r->programa && r->programa->lista.n == 1) {
+                PSNode *st = r->programa->lista.itens[0];
+                ok = st && st->kind == N_EXPRESSION_STMT && !st->e;
+            }
+            if (r) ps_parse_free(r);
+        }
+        if (toks) ps_lexer_free(toks);
+        free(campo);
+        if (!ok) {
+            perro(p, "dentro de {} da f-string vai uma expressao so (sobrou texto, ou e um comando)",
+                  atual(p));
+            return 0;
+        }
+        i = j;
+    }
+    return 1;
+}
+
 static PSNode *fstring_com_formato(P *p, PSNode *e, const char *spec, size_t slen)
 {
     int campo = memchr(spec, '{', slen) != NULL;
+    if (campo && !fstring_valida_campos(p, spec, slen)) return NULL;
     char *buf = malloc(slen + 6);
     if (!buf) return NULL;
     size_t nb = 0;

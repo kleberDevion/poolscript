@@ -825,6 +825,27 @@ em cada item):
   A doc (1.6.3) diz que o campo dentro do formato vale ("`{x:{w}.2f}` usa a
   largura guardada em `w`"), e o `docs/lsp.md` diz que cada item de `erros`
   traz onde o erro começa e onde termina. `motor`.
+
+  **Parte 1 fechada no 20.0.19**: o campo `{...}` dentro do formato passa pelo
+  PARSER (`fstring_valida_campos`, `vm/ps_parser.c`), e não só pelo
+  compilador. O `--ast` e o `--check` recusam o mesmo programa com a mesma
+  frase, na mesma linha. Medido: `f"{x:>{a b}}"` dá `dentro de {} da f-string
+  vai uma expressao so` nos dois (antes o `--ast` aprovava), e o campo válido
+  (`f"{1:>{a}}"` com `int a = 5`) continua imprimindo `    1`. Casos: os dois
+  "motor-25: ..." de `teste/cli_roda.pr`. **A parte 2 (as posições) é outro
+  item, o motor-45**, porque a correção é outra e mexe em todo erro de
+  f-string.
+- **motor-45** (achado na revisão do motor-25, 2026-11-12) A posição do erro
+  dentro de um campo do formato da f-string aponta o `{` de FORA, e não o nome
+  que falhou. Programa: `int x = 1` e `post(f"{x:>{a}}")`, com `a` não
+  definido. Medido no 20.0.19: o `--check` diz `NameError: name 'a' is not
+  defined` na coluna do `{` (2:12), e não na do `a` (2:14) — e o fim do erro
+  sai `l2` 1, `c2` 2, **antes do começo**. Rodando, a mesma frase. A causa é o
+  `carimba_pos(alvo, n->line, n->col)`, que põe a MESMA posição em todo nó da
+  sub-árvore do campo: o `a` nasce na coluna 1 do trecho e recebe a coluna do
+  `{`. A correção desloca cada nó pela posição dele DENTRO do trecho, como o
+  `fstring_ponto` faz para os `{}` de fora — e é maior, porque mexe na posição
+  de todo erro dentro de f-string. `motor`.
 - ~~**motor-26** (achado pelo gerador do P4, lote 3, 2026-10-24,
   `teste/casos_python.c`) A tabela de caixa do motor é a do Unicode 15.1, e o
   Python 3.15, que a doc cita, usa a do Unicode 17.0: em 110 caracteres o

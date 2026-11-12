@@ -957,6 +957,21 @@ confere("motor-23: o --ast e o --check apontam o MESMO primeiro erro",
         and saida_ast.contains("expressao invalida") and saida_chk.contains("expressao invalida")
         # e o erro do lexer ($, linha 5) continua na lista, depois do primeiro
         and saida_ast.contains("caractere inesperado") and saida_chk.contains("caractere inesperado"))
+
+# motor-25: o campo dentro do formato da f-string (`{x:>{a b}}`) tem que
+# passar pelo PARSER, como os outros `{}`. Antes o `--ast` aprovava e o
+# `--check` recusava, porque quem lia o campo era só o compilador.
+os.writeFile(PASTA + "/campo_formato.pr", "int x = 1\npost(f\"{x:>{a b}}\")\n")
+r = roda([POOL, "--ast", "campo_formato.pr"])
+str ast_campo = r["saida"]
+r = roda([POOL, "--check", "campo_formato.pr"])
+confere("motor-25: o campo invalido do formato e recusado nos dois modos",
+        ast_campo.startswith("{\"ok\":false")
+        and "vai uma expressao so" in ast_campo and "vai uma expressao so" in r["saida"])
+# o campo VALIDO continua valendo, e o formato faz o que promete
+os.writeFile(PASTA + "/campo_ok.pr", "int a = 5\npost(f\"{1:>{a}}\")\n")
+r = roda([POOL, "campo_ok.pr"])
+confere("motor-25: o campo valido do formato continua valendo", r["saida"] == "    1\n")
 r = roda([POOL, "--check", "multi.pr"])
 confere("o erro real da linha de baixo nao some como sintoma do `(`",
         erros_do_check(r["saida"]) == [[2, 8, "parentese '(' aberto nao foi fechado"],
