@@ -548,6 +548,9 @@ try {
                 bool eh_ctx = rot == "ps contexto"
                 if rot == "ps" or rot == "jinga" or eh_ctx or rot.startswith("ps sem-rodar") {
                     n = n + 1
+                    if os.getenv("P3_RASTRO", "") != "" {
+                        os.writeFile("/tmp/p3_rastro.txt", md + " bloco " + str(n) + "\n")
+                    }
                     str prog = contexto + b["texto"] + "\n"
                     str arq = trab + "/b" + str(n) + ".pr"
                     grava(arq, prog)
