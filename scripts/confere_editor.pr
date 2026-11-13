@@ -73,6 +73,9 @@ dict funct pede(dict c, str metodo, dict params) {
     while resposta.len() == 0 {
         dict m = le_mensagem(c["sock"], c["buf"])
         if m.len() == 0 {
+            if os.getenv("P3_RASTRO", "") != "" {
+                os.writeFile("/tmp/p3_morte.txt", "servidor fechou\nstderr: " + c["srv"].read_err().strip() + "\n")
+            }
             raise RuntimeError("o servidor do editor fechou a conexão")
         }
         if "method" in m {
