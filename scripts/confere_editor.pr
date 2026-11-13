@@ -69,9 +69,6 @@ dict funct pede(dict c, str metodo, dict params) {
     int meu = c["id"] + 1
     c["id"] = meu
     manda_mensagem(c["sock"], {"jsonrpc": "2.0", "id": meu, "method": metodo, "params": params})
-    if os.getenv("P3_RASTRO", "") != "" {
-        os.writeFile("/tmp/p3_met.txt", metodo + " id=" + str(meu) + "\n")
-    }
     dict resposta = {}
     while resposta.len() == 0 {
         dict m = le_mensagem(c["sock"], c["buf"])
