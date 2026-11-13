@@ -5905,11 +5905,33 @@ static void guarda_nome(C *c, Unidade *u, const char *nome)
  *
  * Por isso a sub-árvore recebe a posição do nó da f-string. A coluna não é a
  * exata dentro do trecho; a linha é a certa, e é ela que o traceback mostra. */
+/* Leva a posição de um nó do TRECHO (que nasceu na linha 1, coluna 1, como
+ * todo texto lexado sozinho) para a posição dele no ARQUIVO: `linha`/`col`
+ * são onde o trecho começa. A primeira linha do trecho soma a coluna; as
+ * seguintes já vêm certas na coluna e deslocadas na linha.
+ *
+ * O `linha_fim`/`col_fim` vão junto (motor-45): antes eles ficavam como o
+ * parser os deu no trecho, e o fim do erro saía na linha 1 com o começo na 4
+ * — o editor sublinhava de trás pra frente, ou nada, e o `lsp.md` promete o
+ * trecho inteiro em `l2`/`c2`. */
 static void carimba_pos(PSNode *n, int32_t linha, int32_t col)
 {
     if (!n) return;
-    n->line = linha;
-    n->col  = col;
+    if (n->line > 0) {
+        int32_t l = n->line, c = n->col;
+        if (l == 1 && c > 0) c = col + c - 1;
+        n->line = linha + l - 1;
+        n->col  = c;
+    } else {
+        n->line = linha;
+        n->col  = col;
+    }
+    if (n->linha_fim > 0) {
+        int32_t l = n->linha_fim, c = n->col_fim;
+        if (l == 1 && c > 0) c = col + c - 1;
+        n->linha_fim = linha + l - 1;
+        n->col_fim   = c;
+    }
     carimba_pos(n->a, linha, col);
     carimba_pos(n->b, linha, col);
     carimba_pos(n->c, linha, col);
@@ -6051,7 +6073,16 @@ static void compila_fstring(C *c, Unidade *u, PSNode *n)
                 return;
             }
             PSNode *alvo = st->a;
-            carimba_pos(alvo, n->line, n->col);
+            /* O trecho começa DEPOIS do `{` (motor-45): a posição de fora é a
+             * da f-string, e carimbar ela aqui punha todo erro do trecho na
+             * coluna do `{` — `f"{x:>{a}}"` acusava o `a` na coluna do `x`.
+             * A coluna do trecho no arquivo é a da f-string mais os caracteres
+             * já andados dentro dela (o `i` conta BYTES no texto; só o
+             * começo de caractere conta coluna). */
+            int32_t col_trecho = n->col;
+            for (int32_t z = 0; z < i + 1 && z < len; z++)
+                if (((unsigned char)t[z] & 0xC0) != 0x80) col_trecho++;
+            carimba_pos(alvo, n->line, col_trecho);
             /* O trecho é compilado como expressão NORMAL: se estourar (nome
              * fora de escopo, método inexistente...), o erro SOBE. Antes cada
              * trecho tinha um `try` que devolvia o texto cru — `f"oi {nome}"`
