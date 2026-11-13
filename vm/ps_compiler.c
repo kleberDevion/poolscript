@@ -3552,13 +3552,19 @@ static int tp_tem_yield(PSNode *n)
  * gerador devolve o gerador, `async` devolve o future. */
 static const char *tp_ret_decl(PSNode *decl)
 {
-    if (!decl || decl->kind != N_FUNCT_DECL || !decl->texto2) return NULL;
+    if (!decl || decl->kind != N_FUNCT_DECL) return NULL;
     /* O que a CHAMADA devolve não é o tipo escrito (motor-17): a `async funct`
      * devolve `future` e a funct com `yield` devolve `generator`, e o
      * `--check` aceitava `int x = f()` e `str s = gen()` e o motor recusava
-     * rodando. O tipo escrito é o do `await` e o do item do gerador. */
+     * rodando. O tipo escrito é o do `await` e o do item do gerador.
+     *
+     * ESTAS DUAS CONTAM SEM TIPO ESCRITO: `funct g()` com `yield` devolve
+     * `generator` e `async funct f()` devolve `future` — o `!decl->texto2`
+     * saía antes delas e `str s = g()` passava no `--check` e quebrava
+     * rodando (o caso `teste/p4_achados/960cdd53559c.pr`). */
     if (decl->is_async) return "future";
     if (tp_tem_yield(decl->b)) return "generator";
+    if (!decl->texto2) return NULL;
     return tp_canon(decl->texto2);
 }
 
