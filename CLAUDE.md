@@ -49,3 +49,19 @@ qual dos dois está errado e ele decide.
 - As regras de trabalho dele (português, sem emoji, Jinga tipada, só Edit/Write,
   commit só com os arquivos do lote, bump a cada alteração, doc no mesmo
   commit) continuam valendo e estão na memória da sessão.
+
+## O binário do PATH (decisão dele, 2026-11-12)
+
+**Todo binário estável sai para o PATH na hora, com `sudo make install`.** Os
+portões chamam `jinga` (do PATH) milhares de vezes; com o binário velho lá,
+eles não terminam ou dão resultado errado, e o defeito parece ser do motor.
+
+Em 2026-11-12 o PATH estava em 20.0.1 (de 29/10) e o código em 20.0.27. O
+portão da gramática e o P3 "travavam" — levou uma sessão para descobrir que
+era só o binário.
+
+Antes de rodar qualquer portão, e depois de todo commit que mexa no motor:
+
+1. `jinga --version` e `./pool --version` têm que dizer o MESMO número;
+2. se não, `sudo make install` antes de tudo;
+3. no codespace também (`sudo make install`, e o `npm install` do editor).
