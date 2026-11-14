@@ -835,7 +835,7 @@ em cada item):
   "motor-25: ..." de `teste/cli_roda.pr`. **A parte 2 (as posições) é outro
   item, o motor-45**, porque a correção é outra e mexe em todo erro de
   f-string.
-- **motor-45** (achado na revisão do motor-25, 2026-11-12) A posição do erro
+- ~~**motor-45** (achado na revisão do motor-25, 2026-11-12) A posição do erro
   dentro de um campo do formato da f-string aponta o `{` de FORA, e não o nome
   que falhou. Programa: `int x = 1` e `post(f"{x:>{a}}")`, com `a` não
   definido. Medido no 20.0.19: o `--check` diz `NameError: name 'a' is not
@@ -845,7 +845,12 @@ em cada item):
   sub-árvore do campo: o `a` nasce na coluna 1 do trecho e recebe a coluna do
   `{`. A correção desloca cada nó pela posição dele DENTRO do trecho, como o
   `fstring_ponto` faz para os `{}` de fora — e é maior, porque mexe na posição
-  de todo erro dentro de f-string. `motor`.
+  de todo erro dentro de f-string. `motor`.~~
+  Corrigido no 20.0.29: o `carimba_pos` desloca cada nó e o fim dele pela
+  posição que ele tem dentro do trecho, e o trecho começa depois do `{`, na
+  coluna dele no arquivo. Medido: `f"{x:>{a}}"` na linha 2 dá 2:14 (o `a`),
+  fim 2:15; a f-string de várias linhas aponta a linha e a coluna certas;
+  `f"{x.nao_existe}"` dá 2:10, fim 2:21. Suíte: 10398 de 10398.
 - ~~**motor-26** (achado pelo gerador do P4, lote 3, 2026-10-24,
   `teste/casos_python.c`) A tabela de caixa do motor é a do Unicode 15.1, e o
   Python 3.15, que a doc cita, usa a do Unicode 17.0: em 110 caracteres o
@@ -1186,7 +1191,7 @@ saiu: ..." de `teste/casos_libs.c`.
   antes do 1º exemplo (`prova_do_kill`), que reprova a forma sem o `--`; sem
   isolador, nenhum exemplo roda (vermelho no Linux e no macOS; no Windows, o
   portão diz que não rodou).
-- **teste-14** (achado na retomada de 2026-11-11, rodando o `make check` no
+- ~~**teste-14** (achado na retomada de 2026-11-11, rodando o `make check` no
   codespace e no Debian local) O portão **P3** (`scripts/confere_editor.pr`)
   não termina: ele sobe o servidor do editor, conecta, faz o `initialize` e o
   `didOpen`, e então **para sem imprimir nada** e sem sair com erro — o
@@ -1202,7 +1207,16 @@ saiu: ..." de `teste/casos_libs.c`.
   inteira, não no servidor. Suspeita: o `pede` espera a resposta do `id` dele
   e descarta as notificações, e um bloco da doc que faça o servidor mandar
   uma notificação com `id` (ou uma resposta fora de ordem) deixa os dois
-  lados esperando. `teste`.
+  lados esperando. `teste`.~~
+  Fechado em 2026-11-14: o P3 termina. O travamento de 2026-11-11 era o
+  `jinga` do PATH em 20.0.1, corrigido no 11-12 com o `make install`; a
+  rodada de 13/11 14:23, que ainda tinha 838 blocos sem resposta do motor e
+  1 discordância falsa em `docs/jinker.md:336` (o completion do `app` no
+  bloco do `middleware`), não se repetiu. Medido no 20.0.29, no codespace
+  (Linux): o P3 inteiro conferiu 1335 blocos, 26 fragmentos fora, 9.947
+  hovers e 2.606 completions (230 com tipo), com 0 sem resposta do motor,
+  0 falhas novas e as 597 conhecidas da catraca; `EXIT=0`, 659 s. Sozinha,
+  `docs/jinker.md` deu 27 blocos, 0 novas, 20 s.
 - **teste-4** (achado na rodada do P1, 2026-10-23) O `teste/e2e/mail_local.pr`
   passa e deixa os servidores falsos vivos, escutando até alguém matar. No
   Mac, depois de `./pool teste/e2e_roda.pr mail_local` (rc 0), sobraram 19:
@@ -1637,6 +1651,18 @@ e sem, e dá o mesmo erro.
   dele tem quatro pacotes que o forky não tem (`libmongoc-1.0-0`,
   `libbson-1.0-0`, `libldap-2.5-0` e `libgnutls30`), e o comando inteiro
   falha. `doc`.
+- ~~**doc-37** (achado pelo `audita_exemplos_doc` em 2026-11-14, depois do
+  motor-17) `docs/linguagem/06-funcoes.md:739` e `:780` fazem `f = t()` com
+  `t` uma `async funct`. O bloco ```ps contexto de 6.2.5 define `f` como
+  `Null funct f(Object a, *args, **kwarg)`, e o P1 o prepende a todo bloco
+  seguinte da página: o tipo de `f` já está fixado em `funct` (4.5), e o
+  future devolvido por `t()` é recusado — `AttributedValueError: variável f
+  é funct (tipo fixado na primeira atribuição), recebeu future`. O motor
+  está certo; o exemplo é que reusa o nome do contexto. O motor-17 (20.0.28)
+  é que fez o `async funct` sem tipo declarado devolver `future` de verdade;
+  antes o `null` deixava a atribuição passar calada. `doc`.~~
+  Corrigido no 20.0.30: os dois blocos usam `tarefa` em vez de `f`; o
+  `audita_exemplos_doc` volta a passar.
 
 ## lacuna
 

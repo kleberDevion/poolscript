@@ -73,9 +73,6 @@ dict funct pede(dict c, str metodo, dict params) {
     while resposta.len() == 0 {
         dict m = le_mensagem(c["sock"], c["buf"])
         if m.len() == 0 {
-            if os.getenv("P3_RASTRO", "") != "" {
-                os.writeFile("/tmp/p3_morte.txt", "servidor fechou\nstderr: " + c["srv"].read_err().strip() + "\n")
-            }
             raise RuntimeError("o servidor do editor fechou a conexão")
         }
         if "method" in m {
@@ -450,9 +447,6 @@ Null funct confere_bloco(dict c, dict meta, str md, dict b, str prog, str arq, i
                 str lugar = str(lr) + ":" + str(t["c"])
                 dict pos = {"textDocument": {"uri": uri}, "position": {"line": t["l"] - 1, "character": t["c"] - 1}}
                 conta["hovers"] = conta["hovers"] + 1
-                if os.getenv("P3_RASTRO", "") != "" {
-                    os.writeFile("/tmp/p3_tok.txt", md + " linha " + str(t["l"]) + " col " + str(t["c"]) + " " + str(t["v"]) + "\n")
-                }
                 str h = texto_do_hover(pede(c, "textDocument/hover", pos))
                 if h.strip() == "" {
                     addEnd(achados, achado(md, b, "hover " + t["v"] + " " + lugar, linha,

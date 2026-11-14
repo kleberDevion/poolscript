@@ -743,9 +743,9 @@ async funct t() {
     post("terminei")
 }
 
-f = t()
+tarefa = t()
 post("chamei")           # "comecei" já saiu antes desta linha
-await f                  # aqui o resto do corpo roda
+await tarefa             # aqui o resto do corpo roda
 ```
 
 **A tarefa anda sempre que o programa principal espera.** Uma tarefa que cedeu
@@ -783,7 +783,7 @@ async funct t() {
     post("tarefa")
 }
 
-f = t()
+tarefa = t()
 sleep(0.5)               # a tarefa termina durante este sono
 post("principal")        # tarefa, principal
 ```
