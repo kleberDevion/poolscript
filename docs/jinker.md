@@ -297,11 +297,13 @@ funct rota() {
 }
 ```
 
-`request` (o parâmetro implícito de toda rota) é uma instância de
-`JinkerRequest`; o objeto de retorno é `JinkerResponse` — ambos exportados
-pela lib (`from jinker import JinkerRequest, JinkerResponse`) caso precise
-checar o tipo (`request is JinkerRequest`) ou construir uma resposta na mão
-em vez de usar `jsonify`/`render`.
+`request` (o parâmetro implícito de toda rota) é um `RequestProxy`; o objeto de
+retorno é `JinkerResponse`. `JinkerResponse` é exportado pela lib
+(`from jinker import JinkerResponse`) para construir uma resposta na mão em vez
+de usar `jsonify`/`render`. `JinkerRequest` também é exportado, mas é um tipo
+vazio: dentro da rota `type(request)` é `"RequestProxy"`, não `"JinkerRequest"`.
+Veja [`RequestProxy`](objetos-internos/RequestProxy.md) e
+[`JinkerRequest`](objetos-internos/JinkerRequest.md).
 
 ---
 

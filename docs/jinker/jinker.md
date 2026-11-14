@@ -101,7 +101,7 @@ Importe de `jinker`: `from jinker import Jinker, cors, jsonify, render, request,
 | `jsonify(dados)` | atalho pra resposta JSON | [jsonify/jsonify.md](jsonify/jsonify.md) |
 | `render(caminho)` | resposta a partir de um arquivo | [render/render.md](render/render.md) |
 | `JinkerResponse` | o objeto de resposta (`.json`/`.send`/`.status`/`.header`/`.cookie`/`status_code`) | [JinkerResponse/JinkerResponse.md](JinkerResponse/JinkerResponse.md) |
-| `JinkerRequest` | o tipo de `request` | [request/request.md](request/request.md) |
+| `JinkerRequest` | tipo vazio exportado; o `request` da rota é `RequestProxy` | [request/request.md](request/request.md) |
 
 ---
 

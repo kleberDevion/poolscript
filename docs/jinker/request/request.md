@@ -1,9 +1,10 @@
 # `request` — o que chegou na requisição
 
 `request` está disponível automaticamente dentro de qualquer rota (e handler de
-socket) — você não declara nem importa. É uma instância de `JinkerRequest` e
-representa **tudo que o cliente mandou**: corpo, campos, parâmetros da URL,
-método, headers, arquivos.
+socket) — você não declara nem importa. É um `RequestProxy` e representa **tudo
+que o cliente mandou**: corpo JSON, query string, parâmetros da URL, método,
+headers e arquivos. Campos de formulário não entram no `get` (veja
+[get/get.md](get/get.md)).
 
 Os exemplos desta página pressupõem:
 
@@ -37,7 +38,7 @@ funct receber() {
 
 | Método | O que devolve | Página |
 |---|---|---|
-| `.get(chave)` | um campo do JSON **ou** da query string | [get/get.md](get/get.md) |
+| `.get(chave)` | um valor da query string **ou** do JSON; chave repetida na query devolve lista | [get/get.md](get/get.md) |
 | `.get_json()` | o corpo inteiro como dict/lista | [get_json/get_json.md](get_json/get_json.md) |
 | `.path_param(chave)` | valor de parâmetro dinâmico da URL (`/user/<id>`) | [path_param/path_param.md](path_param/path_param.md) |
 | `.header(nome)` | **um** cabeçalho pelo nome (case-insensitive), `Null` se faltar | [header/header.md](header/header.md) |
@@ -47,14 +48,14 @@ funct receber() {
 
 ---
 
-## `request` é do tipo `JinkerRequest`
+## `request` é do tipo `RequestProxy`
 
-Exportado pela lib caso você queira checar o tipo:
+Dentro da rota, `type(request)` devolve `"RequestProxy"`. O nome `JinkerRequest`
+também é exportado pela lib, mas é um tipo **vazio** — criável e sem membro
+nenhum; `request` **não** é um `JinkerRequest`.
 
-```ps
-from jinker import JinkerRequest
-# request is JinkerRequest  → True dentro de uma rota
-```
+Veja [`RequestProxy`](../../objetos-internos/RequestProxy.md) e
+[`JinkerRequest`](../../objetos-internos/JinkerRequest.md).
 
 ---
 

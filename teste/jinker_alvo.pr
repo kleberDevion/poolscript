@@ -164,7 +164,18 @@ funct recebe_json()
 @app.route("/consulta")
 funct consulta()
 {
-    return {"q": request.get("q"), "faltando": request.get("nao_existe")}
+    return {"q": request.get("q"), "tipo": type(request.get("q")),
+            "faltando": request.get("nao_existe"),
+            "tipo_faltando": type(request.get("nao_existe"))}
+}
+
+# O que o `request.get` enxerga no corpo: JSON (com tipo preservado) e o
+# formulário que ele NÃO lê; `texto` mostra o corpo cru para provar o caso.
+@app.route("/campo", methods=["POST"])
+funct campo()
+{
+    return {"a": request.get("a"), "tipo": type(request.get("a")),
+            "texto": request.text()}
 }
 
 @app.route("/cabecalho")

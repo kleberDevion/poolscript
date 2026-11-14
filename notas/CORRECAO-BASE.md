@@ -169,15 +169,20 @@ do `request` não diz se obtém string também"), num servidor da jinker no
 loopback, com JIT e sem (`notas/` não guarda o programa; ele está descrito
 em cada item):
 
-- **jinker-9** O `request.get(chave)` da rota devolve LISTA quando a chave se
+- ~~**jinker-9** O `request.get(chave)` da rota devolve LISTA quando a chave se
   repete na query string: `?a=1&a=2` dá `['1', '2']`, e `?a=1` dá `'1'`. O
   tipo muda conforme o que o cliente manda, e a rota escrita com tipo
   (`str nome = request.get("nome")`) cai com 500 quando alguém repete o
   parâmetro. A página (`docs/jinker/request/get/get.md`) não diz nada sobre
   chave repetida. No Flask, `request.args.get` devolve o primeiro valor, e
   `getlist` devolve todos. `duvida`: a sua decisão é o primeiro valor, como
-  no Flask, com um jeito de pegar todos, ou a lista de hoje escrita na doc.
-- **jinker-10** O que o `request.get(chave)` lê, medido:
+  no Flask, com um jeito de pegar todos, ou a lista de hoje escrita na doc.~~
+  Fechado no 20.0.31 pela opção **doc** (decisão de 2026-11-14): a página
+  `docs/jinker/request/get/get.md` assume a lista de hoje (assinatura
+  `-> valor | list | Null`, a tabela de chave repetida e a seção da rota
+  tipada); o motor não mudou. `teste/jinker_roda.pr` trava `?q=1&q=2` →
+  `["1", "2"]`, a chave única e a vazia.
+- ~~**jinker-10** O que o `request.get(chave)` lê, medido:
   - da query string, sempre texto: `?a=42` dá `'42'`, `?a=` dá `''`, e `%20`
     e `+` saem decodificados;
   - do corpo JSON, o tipo do JSON: `42` dá `int` (inteiro grande também),
@@ -193,12 +198,22 @@ em cada item):
   `docs/jinker/request/request.md` diz que o `request` representa "tudo que o
   cliente mandou: corpo, campos, ..."; os campos de formulário não chegam.
   `os dois`: a doc fica com tudo acima; o formulário é decisão sua (ler os
-  campos, ou a doc dizer que não lê e como fazer com o `text()`).
-- **jinker-11** O nome do tipo do `request` da rota: a doc diz que ele "é uma
+  campos, ou a doc dizer que não lê e como fazer com o `text()`).~~
+  Fechado no 20.0.31 pela opção **doc** (decisão de 2026-11-14): a página
+  `get.md` ganhou a tabela "O que o `get` enxerga" (query/JSON/formulário) e
+  `request.md` deixou de prometer "campos"; o formulário não é lido, e a doc
+  manda usar `text()`/`file()`/`files()`. `teste/jinker_roda.pr` trava os
+  tipos do JSON, o `Null` de ausente/inválido/lista, o JSON sem
+  `Content-Type` e o formulário fora do `get`.
+- ~~**jinker-11** O nome do tipo do `request` da rota: a doc diz que ele "é uma
   instância de `JinkerRequest`" (`docs/jinker/request/request.md`), e no
   `--metadata` o `JinkerRequest` não tem membro nenhum; os membros estão num
   tipo `RequestProxy`, que a doc não cita. O editor e o `type()` mostram um
-  nome que a doc não tem. `os dois`.
+  nome que a doc não tem. `os dois`.~~
+  Fechado no 20.0.31 pela opção **doc** (decisão de 2026-11-14): a doc passou
+  a dizer `RequestProxy` (`request.md`, `docs/jinker.md` e a tabela de
+  `docs/jinker/jinker.md`), e `JinkerRequest` ficou descrito como o tipo vazio
+  exportado; as páginas internas já estavam certas.
 
 ## editor
 
@@ -809,7 +824,7 @@ em cada item):
   quatro formas, no trecho da estrela; a gramática tirou a alternativa da
   estrela do `valor_de_count`. Casos: os "motor-24: ..." e os "motor-34: ..."
   de `teste/casos_linguagem.c`, e o exemplo da 3.10.
-- **motor-25** (achado montando o portão `gramatica`, 2026-10-23) O campo
+- ~~**motor-25** (achado montando o portão `gramatica`, 2026-10-23) O campo
   dentro do formato da f-string (`f"{x:>{w}}"`) não passa pelo parser: quem
   lê é o compilador, com outra frase e no lugar do campo de fora. No
   `--check` e rodando, com JIT e sem:
@@ -834,7 +849,8 @@ em cada item):
   (`f"{1:>{a}}"` com `int a = 5`) continua imprimindo `    1`. Casos: os dois
   "motor-25: ..." de `teste/cli_roda.pr`. **A parte 2 (as posições) é outro
   item, o motor-45**, porque a correção é outra e mexe em todo erro de
-  f-string.
+  f-string.~~
+  Fechado: a parte 1 no 20.0.19 e a parte 2 no 20.0.29 (motor-45).
 - ~~**motor-45** (achado na revisão do motor-25, 2026-11-12) A posição do erro
   dentro de um campo do formato da f-string aponta o `{` de FORA, e não o nome
   que falhou. Programa: `int x = 1` e `post(f"{x:>{a}}")`, com `a` não

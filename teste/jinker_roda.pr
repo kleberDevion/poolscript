@@ -199,11 +199,23 @@ for each mw_ruim in ["1", "2"]
 
 # ── query, path param e cabeçalho ───────────────────────────────────────────
 r = get(RAIZ + "/consulta?q=abc")
-confere("query string chega", r.get_json("q") == "abc")
-confere("parâmetro ausente vira Null", r.get_json("faltando") == Null)
+confere("query string chega", r.get_json("q") == "abc" and r.get_json("tipo") == "str")
+confere("parâmetro ausente vira Null",
+        r.get_json("faltando") == Null and r.get_json("tipo_faltando") == "Null")
 
 r = get(RAIZ + "/consulta?q=a%20b%2Bc")
 confere("query percent-encoded é decodificada", r.get_json("q") == "a b+c")
+
+# jinker-9: chave repetida na query devolve a LISTA, na ordem; uma so devolve
+# o valor. A doc passa a assumir a lista de hoje.
+r = get(RAIZ + "/consulta?q=1&q=2")
+confere("chave repetida na query devolve a lista na ordem",
+        r.get_json("q") == ["1", "2"] and r.get_json("tipo") == "list")
+r = get(RAIZ + "/consulta?q=")
+confere("chave vazia na query devolve \"\"", r.get_json("q") == "" and r.get_json("tipo") == "str")
+r = get(RAIZ + "/consulta?Q=1")
+confere("a chave diferencia maiúscula de minúscula",
+        r.get_json("q") == Null and r.get_json("tipo") == "Null")
 
 r = get(RAIZ + "/param/42")
 confere("path param chega", r.get_json("id") == "42")
@@ -279,6 +291,38 @@ confere("a lista de cabeçalhos não vem vazia", r.get_json("todos") == True)
 # ── JSON ────────────────────────────────────────────────────────────────────
 r = http_post(RAIZ + "/json", body={"nome": "ana", "n": 2})
 confere("JSON do cliente é lido campo a campo", r.get_json("veio") == "ana")
+
+# jinker-10: o que o `get` enxerga no corpo — tipo do JSON preservado,
+# formulário NÃO lido, inválido/lista viram Null sem erro, e o JSON é lido
+# mesmo sem Content-Type (string crua não ganha o cabeçalho).
+r = http_post(RAIZ + "/campo", body={"a": 42})
+confere("get lê int do JSON", r.get_json("a") == 42 and r.get_json("tipo") == "int")
+r = http_post(RAIZ + "/campo", body={"a": 4.5})
+confere("get lê flo do JSON", r.get_json("a") == 4.5 and r.get_json("tipo") == "flo")
+r = http_post(RAIZ + "/campo", body={"a": True})
+confere("get lê bool do JSON", r.get_json("a") == True and r.get_json("tipo") == "bool")
+r = http_post(RAIZ + "/campo", body={"a": [1, 2]})
+confere("get lê lista do JSON", r.get_json("a") == [1, 2] and r.get_json("tipo") == "list")
+r = http_post(RAIZ + "/campo", body={"a": {"x": 1}})
+confere("get lê dict do JSON", r.get_json("tipo") == "dict")
+r = http_post(RAIZ + "/campo", body={"a": Null})
+confere("null do JSON vira Null", r.get_json("a") == Null and r.get_json("tipo") == "Null")
+r = http_post(RAIZ + "/campo", body={"b": 1})
+confere("chave ausente no JSON vira Null", r.get_json("a") == Null)
+
+r = http_post(RAIZ + "/campo", body="{\"a\": 42}")
+confere("lê JSON mesmo sem Content-Type",
+        r.get_json("a") == 42 and r.get_json("tipo") == "int")
+r = http_post(RAIZ + "/campo", body="{nao e json}")
+confere("JSON inválido vira Null, não 500",
+        r.status_code == 200 and r.get_json("a") == Null)
+r = http_post(RAIZ + "/campo", body=[1, 2])
+confere("corpo JSON lista vira Null para o get", r.get_json("a") == Null)
+
+r = http_post(RAIZ + "/campo", body="a=form",
+              headers={"Content-Type": "application/x-www-form-urlencoded"})
+confere("formulário não entra no get; text() mostra o cru",
+        r.get_json("a") == Null and r.get_json("texto") == "a=form")
 
 # ── multipart: upload de arquivo ────────────────────────────────────────────
 os.writeFile(PASTA + "/enviar.txt", "conteudo enviado")
