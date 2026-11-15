@@ -25,9 +25,6 @@ check	docs/libs_utilitarias.md	adc8f33e0b02	doc-13	todos	linha 54: s = mail.Mail
 check	docs/libs_utilitarias.md	74b0c186e5d9	doc-13	todos	linha 85: r = mail.MailReader()
 check	docs/libs_utilitarias.md	8e7ef678e653	doc-13	todos	linha 141: import mail
 check	docs/libs_utilitarias.md	767b52a129c9	doc-13	todos	linha 167: import mail
-check	docs/request/get_json/get_json.md	e3e521e53e4e	doc-16	todos	linha 5: import request
-check	docs/request/text/text.md	057c53fb1083	doc-16	todos	linha 5: import request
-check	docs/qrcode.md	3f8ea5bebb96	doc-17	todos	linha 68: qr = qrcode.QRCode(...)
 roda	docs/sockets/detach/detach.md	c05ab5d6fa97	doc-5	darwin	linha 47: import sockets
 roda	docs/sockets/connect_ex/connect_ex.md	a092e69eaf07	doc-5	darwin	linha 43: import sockets
 roda	docs/sockets/getpeername/getpeername.md	9807faa4f34b	doc-5	darwin	linha 55: import sockets

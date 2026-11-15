@@ -67,12 +67,12 @@ A classe `QRCode`, com todos os parâmetros:
 
 ```ps
 qr = qrcode.QRCode(version=Null, error_correction="L", box_size=10, border=4)
-qrcode.add_data("dados")
-qrcode.make(fit=True)
-img = qrcode.make_image(fill_color="black", back_color="white")
+qr.add_data("dados")
+qr.make(fit=True)
+img = qr.make_image(fill_color="black", back_color="white")
 img.save("qr.png")
 
-qrcode.clear()   # limpa pra reusar o mesmo objeto
+qr.clear()   # limpa pra reusar o mesmo objeto
 ```
 
 `add_data()` aceita `dict`/`list` também — vira JSON automaticamente.

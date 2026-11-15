@@ -1524,17 +1524,20 @@ e sem, e dá o mesmo erro.
   do servidor como primeiro argumento`). `doc`.~~ Corrigido no 20.0.39: as
   chaves do `oauth` estão com aspas e o exemplo completo chama `cors(app, ...)`;
   como sobe servidor, a cerca ficou `sem-rodar`.
-- **doc-16** Duas páginas descrevem funções que a lib cliente `request` não
+- ~~**doc-16** Duas páginas descrevem funções que a lib cliente `request` não
   tem: `docs/request/get_json/get_json.md` (`request.get_json()`) e
   `docs/request/text/text.md` (`request.text()`): `AttributeError: module
   'request' has no attribute ...`. As duas são do `request` da jinker (dentro
   da rota), que tem página própria, e o índice `docs/request/request.md` não
-  aponta pra elas. `doc`.
-- **doc-17** `docs/qrcode.md:68` chama no módulo os métodos do objeto que ele
+  aponta pra elas. `doc`.~~ Corrigido no 20.0.39: as duas páginas foram
+  removidas; o `request` de rota já tem `docs/jinker/request/get_json` e
+  `docs/jinker/request/text`.
+- ~~**doc-17** `docs/qrcode.md:68` chama no módulo os métodos do objeto que ele
   mesmo cria: `qrcode.add_data`, `qrcode.make(fit=...)`, `qrcode.make_image` e
   `qrcode.clear` são do `PoolQRCode` (`qr.add_data`...). O commit `5b4cc2f`
   trocou `qr.` por `qrcode.` pra tirar o apelido do módulo e levou a variável
-  junto. `doc`.
+  junto. `doc`.~~ Corrigido no 20.0.40: o exemplo usa `qr.add_data`, `qr.make`,
+  `qr.make_image` e `qr.clear`.
 - **doc-18** Três frases de `docs/LANGUAGE.md` contradizem o motor:
   - linhas 177 a 181: "não existe checagem de redeclaração no motor" e
     `int x = 1` seguido de `str x = "a"` "troca o tipo em silêncio". O motor dá
