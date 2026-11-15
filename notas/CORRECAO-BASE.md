@@ -1584,7 +1584,7 @@ e sem, e dá o mesmo erro.
   contradizem sobre o `QRPoolFile`, e o checador aprova o que o motor recusa.
   `os dois` (o `attach` aceitar o `QRPoolFile`, ou a página do `to_file`
   deixar de prometer; e o checador conferir o tipo do argumento).
-- **doc-22** (relato dele, 2026-10-21) O `get` do `Response` do `request`
+- ~~**doc-22** (relato dele, 2026-10-21) O `get` do `Response` do `request`
   cliente. A página (`docs/request/Response/Response.md`) diz só "um header
   (case-insensitive) ou uma chave do JSON". Medido, com JIT e sem: cabeçalho
   sai texto; chave do JSON sai o tipo do JSON (`int`, `bool`, `list`...);
@@ -1593,7 +1593,9 @@ e sem, e dá o mesmo erro.
   só cabeçalho acha. E o `.headers` é um `dict` que diferencia maiúscula
   (`r.headers.get("x-dado")` dá `Null` e `"X-Dado"` dá o valor), ao contrário
   do `get` (o `requests` do Python usa um dicionário que não diferencia). A
-  página não diz nada disso. `doc`.
+  página não diz nada disso. `doc`.~~ Corrigido no 20.0.42: a página do
+  `Response` explica a precedência do header, a preservação do tipo do JSON,
+  o `Null` para chave ausente/`null` e a diferença de maiúsculas no `.headers`.
 - **doc-23** (relato dele, 2026-10-21: "os documentos estão rasos, só dizem o
   que é, mas não especifica se faz outra tarefa relevante ou como se
   comporta") A doc dos módulos diz o que o membro é e não diz o contrato: o

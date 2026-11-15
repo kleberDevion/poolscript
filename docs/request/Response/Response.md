@@ -38,6 +38,16 @@ Response resp = request.get("https://api.x.com/user/1")
 | `.get_json(chave=Null)` | o JSON inteiro, ou só uma chave dele |
 | `.get(chave)` | um **header** (case-insensitive) **ou** uma chave do JSON |
 
+### O que `.get(chave)` devolve
+
+`.get` procura primeiro nos cabeçalhos (sem diferenciar maiúscula) e só depois
+no JSON. Cabeçalho volta `str`; chave do JSON mantém o tipo (`int`, `bool`,
+`list`, ...). Se o mesmo nome existir nos dois, ganha o cabeçalho. Chave
+ausente e `null` do JSON devolvem `Null` — cheque com `== Null` se precisar
+distinguir. Corpo que não é JSON: só cabeçalho acha. Já `.headers` é um `dict`
+com as chaves como vieram: `r.headers.get("x-dado")` é `Null` quando o servidor
+mandou `X-Dado`.
+
 ---
 
 ## Binário e download
