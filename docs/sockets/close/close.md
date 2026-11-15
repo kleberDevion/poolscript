@@ -64,7 +64,7 @@ try {
 ```
 
 ```saida
-[Errno 9] Bad file descriptor
+[Errno 9] Bad file descriptor (linha 5)
 ```
 
 ## Bordas

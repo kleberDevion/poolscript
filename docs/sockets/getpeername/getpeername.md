@@ -46,8 +46,7 @@ cli.close(); srv.close()
 ```
 
 ```saida
-tup 2
-127.0.0.1 True
+tup 127.0.0.1 True
 ```
 
 Sem conexão, levanta:

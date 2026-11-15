@@ -16,7 +16,7 @@ str enc = "latin-1"
 ```assinatura
 resp = request.get(url)
 resp.save(destino)  -> PoolFile # move o arquivo do corpo pro destino
-resp.content        -> bytes    # o corpo, lido do arquivo quando você pede
+resp.content        -> byte    # o corpo, lido do arquivo quando você pede
 resp.decode(enc)    -> str      # texto num encoding específico
 ```
 

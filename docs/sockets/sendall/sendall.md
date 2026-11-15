@@ -26,7 +26,7 @@ precisa contar os bytes na mão.
 
 - **`TypeError`** — `sendall() takes at least 1 argument (0 given)` /
   `sendall() takes at most 2 arguments (3 given)`
-- **`TypeError`** — `a bytes-like object is required, not 'int'`
+- **`TypeError`** — `a byte-like object is required, not 'int'`
 - **`RuntimeError`** — `timed out`, quando o prazo estoura no meio
 - **`RuntimeError`** — o outro lado sumiu: `[Errno 32] Broken pipe`
 - **`OSError`** — socket fechado: `[Errno 9] Bad file descriptor`

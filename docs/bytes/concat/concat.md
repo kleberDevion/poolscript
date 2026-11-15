@@ -34,7 +34,7 @@ bytes.concat([cab, corpo])          # b'\x00\x02oi'
 - **TypeError** — o argumento não é lista, ou algum item não é bytes.
 
 ```ps
-bytes.concat([bytes.new("a"), 5])   # TypeError: sequence item 1: expected a bytes-like object, int found
+bytes.concat([bytes.new("a"), 5])   # TypeError: sequence item 1: expected a byte-like object, int found
 bytes.concat("abc")                 # TypeError: concat() argument 1 must be list or tup, not str
 ```
 

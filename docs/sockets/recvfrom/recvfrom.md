@@ -60,7 +60,7 @@ u1.close(); u2.close()
 
 ```saida
 tup 2
-bytes datagrama
+byte datagrama
 127.0.0.1 True
 ```
 

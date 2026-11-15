@@ -59,7 +59,7 @@ conn.close(); cli.close(); srv.close()
 ```
 
 ```saida
-bytes 13
+byte 13
 olá servidor
 ```
 

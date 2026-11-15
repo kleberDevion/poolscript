@@ -58,7 +58,7 @@ s.close()
 
 ```saida
 int 1
-bytes 4 b'\x01\x00\x00\x00'
+byte 4 b'\x01\x00\x00\x00'
 ```
 
 `SO_TYPE` diz com que tipo o socket nasceu:

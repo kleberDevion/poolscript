@@ -25,7 +25,7 @@ As três posições são obrigatórias — não há default nenhum.
 - **`TypeError`** — `level`/`optname` que não são `int`:
   `'str' object cannot be interpreted as an integer`
 - **`TypeError`** — valor de tipo que não serve:
-  `a bytes-like object is required, not 'flo'` (um `flo`, uma `list`…)
+  `a byte-like object is required, not 'flo'` (um `flo`, uma `list`…)
 - **`RuntimeError`** — opção que a camada não conhece:
   `[Errno 92] Protocol not available`
 - **`OSError`** — socket fechado: `[Errno 9] Bad file descriptor`

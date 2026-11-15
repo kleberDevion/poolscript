@@ -27,7 +27,7 @@ tamanho do dado, não um pedaço dele.
 
 - **`TypeError`** — `sendto() takes at least 2 arguments (1 given)` /
   `sendto() takes at most 3 arguments (4 given)`
-- **`TypeError`** — `a bytes-like object is required, not 'int'` (dado errado)
+- **`TypeError`** — `a byte-like object is required, not 'int'` (dado errado)
 - **`TypeError`** — `sendto(): AF_INET address must be tuple, not int`
   (endereço que não é a tupla `(host, porta)`)
 - **`RuntimeError`** — dado maior do que o datagrama aceita:

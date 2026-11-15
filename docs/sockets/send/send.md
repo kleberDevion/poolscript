@@ -30,7 +30,7 @@ Dois detalhes do número:
 
 - **`TypeError`** — `send() takes at least 1 argument (0 given)` /
   `send() takes at most 2 arguments (3 given)`
-- **`TypeError`** — `a bytes-like object is required, not 'int'`, quando `data`
+- **`TypeError`** — `a byte-like object is required, not 'int'`, quando `data`
   não é `str` nem `bytes`
 - **`RuntimeError`** — `timed out`, quando o prazo estoura (ou, em socket
   não-bloqueante, quando não cabe nada agora)
@@ -57,7 +57,7 @@ conn.close(); cli.close(); srv.close()
 ```saida
 4
 6
-b'abcdac\xcc\xa7ao'
+b'abcda\xc3\xa7\xc3\xa3o'
 ```
 
 ## Bordas

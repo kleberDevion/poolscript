@@ -1377,7 +1377,7 @@ compara. Nos sockets, as 11 divergências são da doc: o motor faz o que a doc
 da linguagem promete, e o exemplo da página está errado. As páginas ficam em
 `docs/sockets/`.
 
-- **doc-1** O tipo do valor binário é `byte` (`docs/linguagem/02-tipos-e-valores.md`,
+- ~~**doc-1** O tipo do valor binário é `byte` (`docs/linguagem/02-tipos-e-valores.md`,
   tabela dos tipos; `docs/bytes/bytes.md`). Três páginas mostram `bytes` na
   saída de `type()`: `recv/recv.md:45` (`bytes 13`),
   `recvfrom/recvfrom.md:47` (`bytes datagrama`) e
@@ -1391,20 +1391,27 @@ da linguagem promete, e o exemplo da página está errado. As páginas ficam em
   (`expected a bytes-like object`); o motor, o checador e
   `teste/casos_libs.c` dizem `byte-like`, pelo nome do tipo. O P1 não pega:
   a seção de erros não roda, e no erro anunciado em comentário ele confere o
-  tipo, não a frase. `doc`.
-- **doc-2** `close/close.md:55` imprime o `str(e)` de um `OSError` pego e
+  tipo, não a frase. `doc`.~~ Corrigido no 20.0.37: as saídas de `recv`,
+  `recvfrom` e `getsockopt` e o resumo de `Response.content` dizem `byte`; as
+  frases de erro de `send`/`sendall`/`sendto`/`setsockopt`/`bytes.concat`
+  dizem `byte-like`. P1 confere as páginas; as linhas `doc-1` saíram da
+  catraca.
+- ~~**doc-2** `close/close.md:55` imprime o `str(e)` de um `OSError` pego e
   espera `[Errno 9] Bad file descriptor`. A doc da linguagem (10.3) diz que a
   variável do `catch` vale `mensagem (linha N)`, e o motor dá
-  `[Errno 9] Bad file descriptor (linha 5)`. `doc`.
-- **doc-3** `getpeername/getpeername.md:34`: o programa faz um só
+  `[Errno 9] Bad file descriptor (linha 5)`. `doc`.~~ Corrigido no 20.0.37:
+  a saída da página mostra `(linha 5)`.
+- ~~**doc-3** `getpeername/getpeername.md:34`: o programa faz um só
   `post(type(par), par[0], par[1] == porta)`, e a saída da página tem duas
   linhas (`tup 2` e `127.0.0.1 True`), de outro programa. O motor dá
-  `tup 127.0.0.1 True`. `doc`.
-- **doc-4** `send/send.md:42`: depois de `send("abcd")` e `send("ação")`, a
+  `tup 127.0.0.1 True`. `doc`.~~ Corrigido no 20.0.37: a saída virou uma
+  linha só, como o `post` do programa.
+- ~~**doc-4** `send/send.md:42`: depois de `send("abcd")` e `send("ação")`, a
   página espera `b'abcdac\xcc\xa7ao'`, que não é o UTF-8 de `abcdação` (é o
   `c` com a cedilha combinante e o `a` sem til). O motor dá
   `b'abcda\xc3\xa7\xc3\xa3o'`, os 10 bytes que a própria página conta
-  (4 + 6). `doc`.
+  (4 + 6). `doc`.~~ Corrigido no 20.0.37: a saída é
+  `b'abcda\xc3\xa7\xc3\xa3o'`, os 10 bytes que a página conta.
 - **doc-5** (falha fora do Linux) O número do erro do sistema muda de um
   sistema pro outro, e a doc cita o do Linux como se fosse o de todos. Três
   exemplos testam o número e dão `False` no macOS:
