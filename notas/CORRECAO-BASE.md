@@ -909,7 +909,7 @@ em cada item):
   `teste/geradores/python_doc.pr` também. Casos: os quatro "motor-27: ..."
   de `teste/casos_libs.c`, e os 32 do `teste/casos_python.c` que estavam
   pendentes, regerado; o exemplo na página do `Parsing.string`.
-- **motor-28** (achado pelo gerador do P4, lote 3) O `-o` logo depois do
+- ~~**motor-28** (achado pelo gerador do P4, lote 3) O `-o` logo depois do
   arquivo não chega ao programa. `jinga filho.pr -o saida` não roda o
   `filho.pr`: gera um executável chamado `saida` (e diz `gerado: saida`).
   Depois do primeiro argumento, o `-o` chega: `jinga filho.pr x -o y` dá
@@ -925,7 +925,13 @@ em cada item):
   comando e o `-o` vai pro programa. Decisão dele (2026-10-24): o `-o`
   depois do arquivo vai pro programa, como no Python; o executável sai com a
   opção antes do arquivo (`jinga -o nome arquivo.pr`), e a doc e o `--help`
-  acompanham. `motor` (linha de comando).
+  acompanham. `motor` (linha de comando).~~
+  Corrigido no 20.0.32: `jinga -o saida fonte.pr` gera; `jinga fonte.pr -o
+  saida` roda o fonte com `['fonte.pr', '-o', 'saida']` no `sys.argv`, e o
+  `-o` sem o arquivo diz o uso. `jinga compile fonte.pr -o saida` continua.
+  Ajuda, `docs/LANGUAGE.md` e `docs/sys/argv/argv.md` seguem a ordem nova;
+  `teste/cli_roda.pr` mede os dois lados; o caso #222 de
+  `teste/casos_python.c` deixa de ser PENDENTE.
 - ~~**motor-29** (GRAVE, perda de dado; achado no conserto do motor-4,
   2026-10-24) O SQL vai pro banco como texto do C, que acaba no primeiro NUL.
   `cur.execute("delete from t\x00 where id = 1")` roda `delete from t` e apaga

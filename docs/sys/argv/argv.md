@@ -40,8 +40,11 @@ if (len(sys.argv) > 1) {
 
 Tudo o que vem **depois** do arquivo é do programa, inclusive o que parece
 opção do `jinga`: `jinga app.pr a --sem-jit` entrega `['app.pr', 'a',
-'--sem-jit']`. Opção pro próprio `jinga` (`--sem-jit`, `--utf16`) vai antes do
-arquivo. Com `-e`, os argumentos vêm depois do código: `jinga -e
+'--sem-jit']`, e `jinga app.pr -o saida` entrega `['app.pr', '-o', 'saida']`.
+Opção pro próprio `jinga` (`--sem-jit`, `--utf16`, `-o`) vai antes do
+arquivo: para gerar o executável, `jinga -o saida app.pr`.
+
+Com `-e`, os argumentos vêm depois do código: `jinga -e
 'import sys; post(sys.argv)' a b` imprime `['__main__', 'a', 'b']`.
 
 Então **conte quantos você espera contando o script**: um programa que precisa

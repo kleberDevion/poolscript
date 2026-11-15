@@ -40,7 +40,7 @@ static void ajuda(void)
 "\n"
 "Uso:\n"
 "  jinga arquivo.pr           Roda um arquivo\n"
-"  jinga arquivo.pr -o nome   Gera um executavel que roda sozinho (sem o fonte\n"
+"  jinga -o nome arquivo.pr   Gera um executavel que roda sozinho (sem o fonte\n"
 "                             e sem a jinga instalada)\n"
 "  jinga -e \"<codigo>\"        Roda codigo inline (uma linha)\n"
 "  jinga build                Roda todos os " PS_EXT " da pasta atual\n"
@@ -358,9 +358,10 @@ static int reporta(PSErroExec *e, const char *origem)
 
 /* ── `-o`: gerar um executavel que roda sozinho ──────────────────────────────
  *
- * `jinga programa.pr -o programa` produz um binario que NAO precisa do fonte
+ * `jinga -o programa programa.pr` produz um binario que NAO precisa do fonte
  * nem da `jinga` instalada: e uma copia deste mesmo binario com o programa
- * grudado no fim, mais um rodape que diz onde ele comeca.
+ * grudado no fim, mais um rodape que diz onde ele comeca. O `-o` DEPOIS do
+ * arquivo vai pro programa, como no Python (`sys.argv`).
  *
  * Rodape (os ultimos RODAPE_TAM bytes do arquivo):
  *
@@ -517,7 +518,7 @@ static int mesmo_caminho(const char *a, const char *b)
 #endif
 }
 
-/* `jinga fonte.pr -o saida` */
+/* `jinga -o saida fonte.pr` */
 static int cmd_compila(const char *fonte_arq, const char *saida)
 {
     size_t tam = 0;
@@ -2070,12 +2071,14 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    /* `jinga programa.pr -o saida` — gera o executavel em vez de rodar. */
-    if (argc >= 4 && !strcmp(argv[2], "-o"))
-        return cmd_compila(cmd, argv[3]);
-    if (argc == 3 && !strcmp(argv[2], "-o")) {
-        fprintf(stderr, "uso: jinga %s -o <saida>\n", cmd);
-        return 64;
+    /* `jinga -o saida programa.pr` — gera o executavel. O `-o` DEPOIS do
+     * arquivo vai pro programa, como no Python (`sys.argv`). */
+    if (!strcmp(cmd, "-o")) {
+        if (argc != 4) {
+            fprintf(stderr, "uso: jinga -o <saida> <arquivo.pr>\n");
+            return 64;
+        }
+        return cmd_compila(argv[3], argv[2]);
     }
 
     /* Opção que não existe (`--chek`, `-c`): virava nome de arquivo, e saía

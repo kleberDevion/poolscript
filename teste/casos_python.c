@@ -7,7 +7,7 @@
  * notas/CORRECAO-BASE.md: ele tem que falhar, e quando o motor acertar o
  * runner diz JA FUNCIONA e o gerador roda de novo.
  *
- * casos: 228  |  pendentes: 1 (motor-28: 1)  |  semente: 20261024
+ * casos: 228  |  pendentes: 0  |  semente: 20261024
  */
 #include "ps_teste.h"
 
@@ -7627,7 +7627,7 @@ const Caso CASOS_PYTHON[] = {
   "[x]\n"
   "[-e]",
   NULL, 0 },
-{ "python #222 sys.argv (PENDENTE motor-28)",
+{ "python #222 sys.argv",
   "import os\n"
   "import sys\n"
   "os.writeFile(\"filho.pr\", \"import sys\\nfor each a in sys.argv {\\n    post(\\\"[\\\" + a + \\\"]\\\")\\n}\\n\")\n"
@@ -7635,7 +7635,7 @@ const Caso CASOS_PYTHON[] = {
   "[filho.pr]\n"
   "[-o]\n"
   "[日本]",
-  NULL, 0, NULL, 1 },
+  NULL, 0, NULL, 0 },
 { "python #223 sys.argv",
   "import os\n"
   "import sys\n"

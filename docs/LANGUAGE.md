@@ -43,7 +43,7 @@ Este mark down tem alguams specs da linguagem.
 
 ```bash
 jinga arquivo.pr       # roda um arquivo
-jinga arquivo.pr -o nome   # gera um executável que roda sozinho
+jinga -o nome arquivo.pr   # gera um executável que roda sozinho
 jinga -e "<codigo>"    # roda o código direto da linha de comando
 jinga build            # roda todos os .pr da pasta atual
 jinga --version / -v / -V       # versão do binário
@@ -52,15 +52,20 @@ jinga --help    / -h       # ajuda
 
 `pool` - e o nome atecessor, continua em uso.
 
-### Compilar: `jinga arquivo.pr -o nome`
+### Compilar: `jinga -o nome arquivo.pr`
 
 Gera um **executável que roda sozinho** — sem o `.pr` ao lado e sem o `jinga`
 instalado na máquina de quem roda.
 
 ```bash
-jinga programa.pr -o programa
+jinga -o programa programa.pr
 ./programa um dois        # os argumentos chegam em sys.argv
 ```
+
+O `-o` vale **antes** do arquivo. Depois do arquivo, tudo é argumento do
+programa (`sys.argv`), inclusive o que parece opção do `jinga`: `jinga
+programa.pr -o outro` roda `programa.pr` com `['programa.pr', '-o', 'outro']`,
+como no Python.
 
 Como é feito: o binário copia **a si mesmo** e gruda o seu programa no fim,
 com um rodapé que diz onde ele começa. Na partida, o executável lê o próprio

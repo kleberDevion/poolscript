@@ -742,13 +742,6 @@ str funct item_de(dict c, dict r) {
     if s == "caixa" {
         return "motor-26"
     }
-    dict t = c["tarefa"]
-    if s == "sys.argv" {
-        if t["args"].len() > 0 and t["args"][0] == "-o" {
-            return "motor-28"
-        }
-        return ""
-    }
     return ""
 }
 
