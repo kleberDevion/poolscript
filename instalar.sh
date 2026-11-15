@@ -55,6 +55,28 @@ if [ "$(id -u)" != "0" ]; then
     exit 1
 fi
 
+# O binário instalado precisa rodar NESTA máquina. Um `pool` de outra
+# arquitetura/OS ao lado (o do Mac numa pasta Linux) era copiado e o
+# instalador anunciava "pronto" com a versão vazia (motor-39).
+binario_roda() {   # binario_roda <caminho>
+    local saida
+    saida=$("$1" --version 2>/dev/null) || return 1
+    case "$saida" in
+        Jinga\ *) return 0 ;;
+        *)        return 1 ;;
+    esac
+}
+
+exige_binario() {  # exige_binario <caminho>
+    if binario_roda "$1"; then
+        return 0
+    fi
+    echo "erro: o binário não roda nesta máquina: $1" >&2
+    echo "  $("$1" --version 2>&1)" >&2
+    echo "  pacote de outra arquitetura? compile do fonte: make pool" >&2
+    exit 1
+}
+
 # ── macOS ────────────────────────────────────────────────────────────────
 # O pacote do Mac (build_bundle.sh no macOS) já vem no layout da instalação:
 # bin/jinga, lib/jinga/*.dylib (o binário acha as libs por caminho relativo)
@@ -98,6 +120,7 @@ if [ "$(uname -s)" = "Darwin" ]; then
         cp -R share/jinga/scripts "$PREFIXO/share/jinga/scripts"
     else
         echo "== binário compilado nesta máquina"
+        exige_binario ./pool
         install -m755 pool "$PREFIXO/bin/jinga"
         mkdir -p "$PREFIXO/share/jinga/lsp"
         for j in editor/vscode/*.js; do
@@ -111,6 +134,7 @@ if [ "$(uname -s)" = "Darwin" ]; then
         mkdir -p "$PREFIXO/share/jinga/scripts"
         install -m644 scripts/migra_pr.pr "$PREFIXO/share/jinga/scripts/"
     fi
+    exige_binario "$PREFIXO/bin/jinga"
     for atalho in jpkg pool psl; do ln -sf "$PREFIXO/bin/jinga" "$PREFIXO/bin/$atalho"; done
     printf '#!/bin/sh\n# Servidor LSP da Jinga. Ver docs/lsp.md.\nif ! command -v node >/dev/null 2>&1; then\n  echo "jinga-lsp precisa do node" >&2\n  exit 1\nfi\nexec node %s/share/jinga/lsp/server.js "${@:---stdio}"\n' \
             "$PREFIXO" > "$PREFIXO/bin/jinga-lsp"
@@ -239,8 +263,10 @@ if [ -n "$BIN_BUNDLE" ]; then
             "$PREFIXO" "$PREFIXO" > "$PREFIXO/bin/jinga"
     chmod 755 "$PREFIXO/bin/jinga"
 else
+    exige_binario ./pool
     install -m755 pool "$PREFIXO/bin/jinga"
 fi
+exige_binario "$PREFIXO/bin/jinga"
 # `jpkg` gerencia pacotes; `pool` e `psl` são os nomes de antes do rename.
 # Todos são o mesmo binário.
 for atalho in jpkg pool psl; do

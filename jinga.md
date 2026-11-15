@@ -64,6 +64,11 @@ sudo ./instalar.sh --remover
 
 Do repositório com o fonte, `sudo make install` faz o mesmo.
 
+Antes de dizer `pronto`, o instalador roda o binário que acabou de instalar
+(`--version`). Se ele não rodar nesta máquina — um `pool` do macOS numa pasta
+Linux, por exemplo —, a instalação para com erro em vez de anunciar a versão
+vazia.
+
 O instalador também **apaga qualquer Jinga antiga que responda pelo
 comando**. Uma instalação velha em `~/.local/bin` vem antes de `/usr/local/bin`
 e sequestra o `pool`: era o caso do shim em Python, que respondia

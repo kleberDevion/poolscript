@@ -1064,7 +1064,7 @@ em cada item):
   linha do mongo na `docs/psodbc.md` cita as duas séries. Caso: a condição
   do `teste/mongo_roda.pr`, que abre o driver sem o `mongod` e sai FALHOU se
   não abrir.
-- **motor-39** (achado no mesmo dia, na mesma máquina) O `instalar.sh`
+- ~~**motor-39** (achado no mesmo dia, na mesma máquina) O `instalar.sh`
   instala o `pool` que estiver ao lado sem ver se ele roda nesta máquina, e
   diz "pronto" com a linha da versão vazia (`$("$PREFIXO/bin/jinga"
   --version 2>/dev/null)`). A `/usr/local/bin/jinga` daqui era um `Mach-O
@@ -1072,7 +1072,11 @@ em cada item):
   `Erro no formato exec`. Foi o ramo Linux com um `pool` ao lado: os links
   `jpkg`, `pool` e `psl`, o MIME da mesma hora e nenhuma `lib/jinga`.
   Promessa: o jinga.md ("Instalação": um comando instala tudo) e o "pronto:
-  jinga <versão>" do próprio instalador. `motor`.
+  jinga <versão>" do próprio instalador. `motor`.~~ Corrigido no 20.0.33: o
+  instalador roda `--version` no `pool` de origem e no binário já instalado;
+  se não sair `Jinga ...`, para com erro em vez de anunciar "pronto". O
+  `jinga.md` diz isso, e `teste/cli_roda.pr` reproduz o `pool` que não roda
+  nesta máquina (sem root, com um `id` de mentira e prefixo temporário).
 - ~~**motor-40** (achado no mesmo dia, conferindo o motor-38 pelo
   `scripts/compila.pr linux`) O `build_bundle.sh` pergunta ao `ldconfig -p`
   onde mora cada cliente de banco, e no Debian o `ldconfig` fica em

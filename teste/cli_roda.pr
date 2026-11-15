@@ -2233,6 +2233,26 @@ if not WINDOWS and sys.platform() != "darwin"
             MONGO_SO != "" and os.exists(LIBS_PAC + MONGO_SO))
 }
 
+# motor-39: o `instalar.sh` copiava o `pool` que estivesse ao lado sem ver se
+# ele rodava NESTA máquina, e anunciava "pronto" com a versão vazia (o caso do
+# `pool` do Mac numa pasta Linux). Aqui o `pool` é um script que sai 1, e um
+# `id` de mentira diz que somos root: o instalador tem que parar antes do
+# "pronto", sem escrever fora do prefixo temporário.
+if not WINDOWS
+{
+    str QUEB = PASTA + "/instala_quebrado"
+    os.mkdir(QUEB + "/bin")
+    os.copy("instalar.sh", QUEB + "/instalar.sh")
+    os.writeFile(QUEB + "/pool", "#!/bin/sh\nexit 1\n")
+    os.writeFile(QUEB + "/bin/id", "#!/bin/sh\necho 0\n")
+    os.run(["chmod", "755", QUEB + "/pool", QUEB + "/bin/id"], capture=True)
+    r = roda(["bash", QUEB + "/instalar.sh", QUEB + "/prefixo"],
+             amb={"PATH": QUEB + "/bin:/usr/bin:/bin"})
+    confere("motor-39: o instalador recusa o binario que nao roda nesta maquina",
+            r["rc"] != 0 and not "pronto" in r["saida"]
+            and "não roda nesta máquina" in r["saida"])
+}
+
 # ── relatório ───────────────────────────────────────────────────────────────
 post("")
 post("cli/jpkg:", ok, "checagens passaram")
