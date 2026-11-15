@@ -1661,7 +1661,7 @@ e sem, e dá o mesmo erro.
   `editor/vscode/teste_servidor.js` ainda tinham "universais" no nome, e eles
   conferem que o `type` não aparece.~~ Corrigido no commit do P3: as duas
   frases e os três nomes dizem o que o editor faz.
-- **doc-28** (achado escrevendo a gramática, 2026-10-23) A precedência do
+- ~~**doc-28** (achado escrevendo a gramática, 2026-10-23) A precedência do
   capítulo 3 diverge do parser em dois pontos, medidos no `--check` e
   rodando, com JIT e sem:
   - o resumo (3.13) diz "`*`/`/`/`%` < `**` < unários", e a tabela 3.1 e o
@@ -1672,13 +1672,15 @@ e sem, e dá o mesmo erro.
     2, a // 2 * 3)` imprime `8 9`.
 
   A gramática (`docs/linguagem/gramatica.md`) tem a tabela que o portão
-  confere. `doc`.
-- **doc-29** (achado escrevendo a gramática, 2026-10-23) A tabela de padrões
+  confere. `doc`.~~ Corrigido no 20.0.44: o resumo 3.13 põe unários antes de
+  `**` e a tabela 3.1 inclui `//` no nível 11.
+- ~~**doc-29** (achado escrevendo a gramática, 2026-10-23) A tabela de padrões
   do `case` (5.5) não tem o padrão de dicionário nem o número negativo, e o
   motor aceita e roda os dois, com JIT e sem: com `dict d = {"a": 1}`, o
   `match d` com `case {"a": x} { post("a vale", x) }` imprime `a vale 1`; com
   `int n = -3`, o `case -3` casa. A gramática tem os dois
-  (`padrao_simples`). `doc`.
+  (`padrao_simples`). `doc`.~~ Corrigido no 20.0.44: a tabela 5.5 tem o padrão
+  de dicionário e o número negativo, e o resumo do capítulo 5 cita os dois.
 - **doc-30** (achado escrevendo a gramática, 2026-10-23) A 4.5 diz que o alvo
   do desempacotamento "é o mesmo da seção 4.4: nome, membro (`o.x`), índice
   (`l[i]`, `d[k]`) e as cadeias deles (`o.d["k"]`)". O desempacotamento

@@ -310,6 +310,8 @@ Padrões suportados (verificados):
 | Curinga — `case _ { }` | sempre (não liga nome) | — |
 | Alternativa — `case 1 \| 2 \| 3 { }` | casa com qualquer um dos valores | — |
 | Lista — `case [a, b] { }` | o sujeito é uma lista com essa forma | `a`, `b` = os elementos |
+| Dicionário — `case {"a": x} { }` | o sujeito é um dict com essa chave | `x` = o valor da chave |
+| Número negativo — `case -3 { }` | o sujeito é igual a `-3` | — |
 | Guarda — `case x if x > 5 { }` | o padrão casa **e** a condição é verdadeira | conforme o padrão |
 
 ```ps
@@ -448,7 +450,8 @@ dentro não vazam).
 - **`break` / `continue`** — no laço mais interno.
 - **`pass`** — no-op; ocupa o lugar de um corpo vazio, em qualquer posição de
   statement (não precisa de laço).
-- **`match` / `case`** — literal, captura, `_`, `|`, lista, guarda; sem casar =
+- **`match` / `case`** — literal, negativo, captura, `_`, `|`, lista, dicionário,
+  guarda; sem casar =
   no-op; ligações são do case.
 - **`count each Tipo in c`** — laço sobre os elementos do tipo (`_match`,
   `_index`, `self`/`_count`).

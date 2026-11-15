@@ -32,7 +32,7 @@ precedência e são resolvidos pela associatividade indicada.
 | 8 | E bit a bit | `&` | à esquerda |
 | 9 | Deslocamento | `<<` &nbsp; `>>` | à esquerda |
 | 10 | Adição / subtração | `+` &nbsp; `-` | à esquerda |
-| 11 | Multiplicação / divisão / módulo | `*` &nbsp; `/` &nbsp; `%` | à esquerda |
+| 11 | Multiplicação / divisão / módulo | `*` &nbsp; `/` &nbsp; `%` &nbsp; `//` | à esquerda |
 | 12 | Unários | `+` &nbsp; `-` &nbsp; `~` &nbsp; `await` | prefixa (à direita) |
 | 13 | Potência | `**` | **à direita** |
 | 14 | Pós-fixados | chamada `()` &nbsp; membro `.x` &nbsp; índice/fatia `[…]` &nbsp; `++` `--` | à esquerda |
@@ -689,8 +689,8 @@ mesmas regras de `x + 1`.
 ## 3.13. Resumo
 
 - **Precedência**: ternário < `or` < `and` < `not` < comparação < bitwise
-  (`|`<`^`<`&`) < deslocamento < `+`/`-` < `*`/`/`/`%` < `**` < unários <
-  pós-fixados.
+  (`|`<`^`<`&`) < deslocamento < `+`/`-` < `*`/`/`/`%`/`//` < unários <
+  `**` < pós-fixados.
 - **`/` é sempre real** (dá `flo`); o quociente inteiro é `//` (3.2.3), e a
   potência é `**` ou `pow()` (3.2.3b).
 - **`%`** segue o sinal do divisor.
