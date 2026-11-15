@@ -11,7 +11,7 @@ Doc — **[`jinga.md`](jinga.md)**.
 
 ```bash
 sudo ./instalar.sh          # binário + servidor LSP + MIME e ícone do .pr
-jinga examples/01_hello.pr
+jinga examples/hello.pr
 ```
 
 Numa máquina onde ainda não há nada (um WSL Debian novo, por exemplo), o

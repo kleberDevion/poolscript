@@ -1698,12 +1698,13 @@ e sem, e dá o mesmo erro.
   --confere` nem os portões P1 (`confere_saida_doc.pr`), P2 e P3.~~
   Corrigido no commit do P4 (lote 1): a lista segue o `Makefile`, com o
   portão `gramatica`.
-- **doc-32** (achado pelo gerador do P4, lote 3, 2026-10-24) O exemplo do
+- ~~**doc-32** (achado pelo gerador do P4, lote 3, 2026-10-24) O exemplo do
   capítulo 12 diz que `"İ".lower()` dá `i`. O resultado é o `i` seguido do
   ponto combinante U+0307, dois caracteres, no motor e no Python. A página do
   `lower` diz certo (`docs/str/lower/lower.md`: "`len("İ".lower())` é 2").
   Lugar: `docs/linguagem/12-metodos-string-list-dict.md`, linha 45 (`# i —
-  o I turco com pingo`). `doc`.
+  o I turco com pingo`). `doc`.~~ Corrigido no 20.0.45: o comentário diz
+  `"i" + U+0307` e "dois caracteres".
 - **doc-33** (achado pelo gerador do P4, lote 3) A página do `static_folder`
   diz que o tipo sai "pela tabela padrão do `mimetypes` do Python 3.15 (a
   mesma do `http.server`, 213 extensões)". A da jinker é a
@@ -1732,11 +1733,12 @@ e sem, e dá o mesmo erro.
   `install` chama e que apaga a pasta instalada antes de copiar. Teste:
   `teste/cli_roda.pr` instala numa pasta com uma página que não existe no
   repositório, e ela sai. `doc`.
-- **doc-35** (achado instalando a Jinga no Debian forky, 2026-10-29) O
+- ~~**doc-35** (achado instalando a Jinga no Debian forky, 2026-10-29) O
   começo rápido do README.md (linha 14) e o "Testar" do jinga.md (linha 195)
   mandam rodar `jinga examples/01_hello.pr`, que não existe: `jinga: nao
   consegui abrir 'examples/01_hello.pr'` (rc 66). O exemplo é o
-  `examples/hello.pr`. Nenhum portão lê as cercas ```bash. `doc`.
+  `examples/hello.pr`. Nenhum portão lê as cercas ```bash. `doc`.~~ Corrigido
+  no 20.0.45: `README.md` e `jinga.md` chamam `examples/hello.pr`.
 - **doc-36** (achado no mesmo dia) O "Guia de deploy" do jinga.md diz que o
   binário traz embutidos o libpq, o mysqlclient e o odbc, e manda instalar a
   "cauda de auth do libpq" (LDAP, Kerberos, GnuTLS). O Makefile não liga

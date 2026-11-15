@@ -197,7 +197,7 @@ make verifica  # dependências dinâmicas e tamanho do ELF
 ### Testar
 ```bash
 jinga --version
-jinga examples/01_hello.pr
+jinga examples/hello.pr
 ```
 
 ### Editor (opcional)

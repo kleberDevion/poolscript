@@ -42,7 +42,7 @@ post("ΣΟΦΟΣ".lower())   # σοφος  — Σ no fim de palavra vira ς, nã
 post("ß".upper())       # SS     — ß não tem maiúscula de um caractere só
 post("ß".title())       # Ss     — só a inicial sobe
 post("Привет".upper())  # ПРИВЕТ
-post("İ".lower())       # i      — o I turco com pingo
+post("İ".lower())       # "i" + U+0307 — dois caracteres (o I turco com pingo)
 ```
 
 ### Bordas e preenchimento
