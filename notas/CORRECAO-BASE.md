@@ -1620,7 +1620,7 @@ e sem, e dá o mesmo erro.
   comentário do exemplo diz `UnicodeDecodeError: o PNG não é UTF-8`, e o
   motor fica. O portão `roda` lê o tipo do erro no comentário como erro
   anunciado, e a linha da catraca saiu.
-- **doc-25** `docs/os/PoolFile/PoolFile.md:31` comenta
+- ~~**doc-25** `docs/os/PoolFile/PoolFile.md:31` comenta
   `os.loadFile("logo.png")   # PoolFile (extensão binária)`. Quem decide é o
   conteúdo, não a extensão: medido, um `.png` com texto dentro volta `str`, e
   um `.txt` com bytes binários volta `PoolFile` (a regra está certa no
@@ -1629,7 +1629,10 @@ e sem, e dá o mesmo erro.
   `os.copy` e o `os.move` não criam a pasta de destino (`FileNotFoundError`
   com o caminho de destino), e o `os.rmdir` de pasta com conteúdo dá
   `OSError` com o número do sistema (66, medido no macOS); as páginas
-  do `copy`, do `move` e do `rmdir` também não dizem. `doc`.
+  do `copy`, do `move` e do `rmdir` também não dizem. `doc`.~~ Corrigido no
+  20.0.43: o comentário do `PoolFile` diz "conteúdo binário" e a página explica
+  o byte NUL; o `rmdir` cita `Errno 39` no Linux e `66` no macOS; o `copy` e o
+  `move` já avisavam que não criam a pasta de destino.
 - **doc-26** (achado pelo portão P2, 2026-10-23, na conferência das páginas
   de método do `scripts/audita_doc.pr`) 14 páginas de método dão aos
   parâmetros outros nomes que o motor. A doc escreve em inglês e o motor em

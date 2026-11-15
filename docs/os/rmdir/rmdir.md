@@ -37,7 +37,8 @@ os.rmdir("cache", force=True)      # remove a pasta e tudo dentro dela
 ## `force` é destrutivo — cuidado
 
 Com `force=False` (padrão), remover uma pasta que **tem arquivos** dá erro — é
-uma proteção. Com `force=True`, a pasta e **todo o conteúdo** são apagados
+uma proteção. O erro é `OSError: [Errno 39] Directory not empty` no Linux e
+`[Errno 66]` no macOS. Com `force=True`, a pasta e **todo o conteúdo** são apagados
 recursivamente, sem confirmação e **sem volta**, em qualquer profundidade
 (antes desistia acima de 32 níveis de pasta, com "Directory not empty" e nada
 apagado).

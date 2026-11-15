@@ -31,9 +31,12 @@ os.writeFile("arquivo_qualquer.dat", bytes.fromhex("00ff10ee"))
 ```ps
 import os
 
-img = os.loadFile("logo.png")     # PoolFile (extensão binária)
-pdf = os.loadFile("nota.pdf")     # PoolFile
+img = os.loadFile("logo.png")     # PoolFile (conteúdo binário)
+pdf = os.loadFile("nota.pdf")     # PoolFile (conteúdo binário)
 ```
+
+A extensão não decide o tipo: vale o conteúdo — byte NUL nos primeiros 8 KB
+vira `PoolFile`; um `.png` só com texto volta `str`.
 
 ---
 
