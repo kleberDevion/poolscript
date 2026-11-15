@@ -149,7 +149,7 @@ exp = date.timestamp() + date.hora(days=7)
 
 ## Exemplo completo com middleware JWT
 
-```ps
+```ps sem-rodar: inicia o servidor Jinker
 import jwt
 import hash
 import psodbc
@@ -160,11 +160,11 @@ from jinker import Jinker, cors, jsonify
 
 load()
 
-str SECRET = os.getenv("SECRET_KEY")
-str DB = os.getenv("DB_PATH")
+str SECRET = os.getenv("SECRET_KEY", "segredo")
+str DB = os.getenv("DB_PATH", "app.db")
 
 app = Jinker(__name__)
-cors(options=["POST", "GET"], permiser=["*/api", "allowed.all/Users-Agent"])
+cors(app, options=["POST", "GET"], permiser=["*/api", "allowed.all/Users-Agent"])
 
 @app.middleware()
 funct auth() {
@@ -176,7 +176,7 @@ funct auth() {
     if (not payload) {
         return jsonify({"msg": "token inválido ou expirado"}), 401
     }
-    continue
+    pass
 }
 
 @app.route("/api/login", auth=cors.permiser(), methods=cors.options(["POST"]))

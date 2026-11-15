@@ -461,10 +461,10 @@ em vez de propagar a exceção, devolvem um valor (útil para handlers de rota) 
 e o erro sai junto no stderr, com o traceback, em vez de sumir:
 
 ```ps
-int funct f() { return 1 / 0 }
+int funct f() { return 1 % 0 }
 post(f())     # 500 (e o ZeroDivisionError sai no stderr)
 
-bool funct g() { return 1 / 0 }
+bool funct g() { return (1 % 0) == 0 }
 post(g())     # False
 ```
 

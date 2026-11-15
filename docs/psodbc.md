@@ -42,7 +42,7 @@ Assinatura completa:
 
 ```assinatura
 connect(driver="sqlite", host="localhost", port=0, user="", password="",
-        database="", base="", url="", odbc_driver="", trust_server_cert=True)
+        database="", base="", url="")
 ```
 
 Nem todo parâmetro vale pra todo driver — esta tabela diz qual usa o quê:
@@ -54,8 +54,6 @@ Nem todo parâmetro vale pra todo driver — esta tabela diz qual usa o quê:
 | `port` (default se 0) | — | 5432 | 3306 | **1433** | 27017 |
 | `user` / `password` | — | sim | sim | **sim — os DOIS juntos, senão vira autenticação do Windows** | sim |
 | `database` | — | sim | sim | **sim** (vazio = banco padrão do login) | sim |
-| `odbc_driver` | — | — | — | **sim** (só dele) | — |
-| `trust_server_cert` | — | — | — | **sim** (só dele) | — |
 | `url` | `sqlite:///arq.db` (relativo) / `sqlite:////abs/arq.db` (absoluto) / `sqlite:///C:/dados/arq.db` (absoluto no Windows) | `postgres://...` | `mysql://...` | **`sqlserver://user:senha@host:1433/banco`** | `mongodb://...` |
 
 ### SQL Server em detalhe (`driver="mssql"` ou `"sqlserver"`)
@@ -75,17 +73,6 @@ Nem todo parâmetro vale pra todo driver — esta tabela diz qual usa o quê:
 string vira `SERVER=host,porta` (vírgula — convenção do SQL Server, feito
 automaticamente). Com instância nomeada normalmente NÃO se passa porta.
 
-**`odbc_driver`:** vazio auto-detecta o primeiro instalado, nesta ordem:
-`ODBC Driver 18 for SQL Server` → `17` → `13` → `SQL Server Native Client
-11.0` → `FreeTDS` → `SQL Server`. Se nenhum existir, erro claro pedindo pra
-instalar o 17/18. Só passe o nome exato se quiser forçar um específico.
-
-**`trust_server_cert`** (default `True`): manda `TrustServerCertificate=yes` —
-necessário porque o ODBC Driver 18+ valida o certificado por padrão e derruba
-a conexão com certificado autoassinado (erro `08001` "cadeia de certificação...
-não é de confiança"). Só use `False` se o servidor tiver certificado de CA
-confiável de verdade.
-
 **Automático (não é parâmetro):** a conexão abre com `autocommit=True` — sem
 isso `CREATE DATABASE`/`DROP DATABASE` são rejeitados pelo SQL Server por
 rodarem dentro de transação implícita. E o placeholder de parâmetros no
@@ -95,7 +82,7 @@ bateria de testes pra conferir a ligação com tipo, como nos outros três).
 
 **Exemplos completos:**
 
-```ps
+```ps sem-rodar: precisa do SQL Server e do driver ODBC 18
 import psodbc
 
 # 1. Autenticação SQL, servidor remoto, porta explícita
@@ -113,10 +100,6 @@ conn = psodbc.connect(driver="sqlserver", host=r"localhost\SQLEXPRESS", database
 
 # 3. Por URL — igual ao exemplo 1 (senha com @ vira %40 na URL)
 conn = psodbc.connect(url="sqlserver://sa:Senha%40123@10.0.0.5:1433/vendas")
-
-# 4. Forçando um driver ODBC específico
-conn = psodbc.connect(driver="sqlserver", host="localhost", database="vendas",
-                      odbc_driver="ODBC Driver 17 for SQL Server")
 
 cursor = conn.cursor()
 cursor.execute("SELECT * FROM clientes WHERE ativo = ?", (True,))

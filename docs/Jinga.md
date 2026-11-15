@@ -1,4 +1,4 @@
-# Jinga v20.0.37
+# Jinga v20.0.38
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 jinga --version
-# Jinga 20.0.37 [PSVM] (2026-09-24) Runtime standalone
+# Jinga 20.0.38 [PSVM] (2026-09-24) Runtime standalone
 #                       ^ a data da compilação DESTE binário: duas
 #                         cópias da mesma versão se distinguem por ela
 ```
@@ -305,7 +305,7 @@ int x = 10
 x += 5    # 15
 x -= 2    # 13
 x *= 3    # 39
-x /= 2    # 19.5
+x = x // 2    # 19
 x++       # incrementa
 x--       # decrementa
 ```
@@ -461,7 +461,7 @@ Catch simples:
 
 ```ps
 try {
-    int x = 1 / 0
+    int x = 1 // 0
 } catch (e) {
     post(f"Erro: {e}")
 }
@@ -613,12 +613,12 @@ post(Hex.RED)   # #f00
 ```
 
 Auto e explícito se misturam. Um valor **int** explícito reancora a sequência
-(os próximos autos continuam a partir dele); um valor não-int não mexe no
-contador:
+(os próximos autos continuam a partir dele); um valor não-int encerra a
+sequência, e o próximo membro sem valor é erro:
 
 ```ps
 public enum Mix { A, B = 10, C, D = "x", E }
-# A=0  B=10  C=11  D="x"  E=12
+# TypeError: enum Mix: o membro E nao tem valor e o anterior (D) nao e inteiro
 ```
 
 Membros separados por vírgula (opcional no último). Acessar um membro que não
@@ -818,7 +818,7 @@ regra: `x is Object`, `x is String` (o apelido de `str`), e o nome de um enum
 
 ## Exemplo completo — Backend com auth
 
-```ps
+```ps sem-rodar: inicia o servidor Jinker
 import psodbc
 import hash
 import jwt
@@ -829,11 +829,11 @@ from jinker import Jinker, cors, jsonify
 
 load()
 
-str DB_PATH = os.getenv("DB_PATH")
-str SECRET = os.getenv("SECRET_KEY")
+str DB_PATH = os.getenv("DB_PATH", "app.db")
+str SECRET = os.getenv("SECRET_KEY", "segredo")
 
 app = Jinker(__name__)
-cors(options=["POST", "GET"], permiser=["*/api", "allowed.all/Users-Agent"])
+cors(app, options=["POST", "GET"], permiser=["*/api", "allowed.all/Users-Agent"])
 public model Usuario() {
     nome: str(length=60)
     email: str(length=100)
@@ -850,7 +850,7 @@ public funct verificar() {
     if (not payload) {
         return jsonify({"msg": "token inválido"}), 401
     }
-    continue
+    pass
 }
 
 @app.route("/api/cadastro", auth=cors.permiser(), methods=cors.options(["POST"]))
@@ -858,7 +858,7 @@ public funct cadastrar() {
     data = request.get_json()
 
     if (data == Usuario) {
-        continue
+        pass
     } else {
         return jsonify({"msg": "dados inválidos"}), 400
     }

@@ -1438,7 +1438,7 @@ de cada página (os blocos ```ps contexto): o `--check` de cada exemplo com o
 que a página pressupõe na frente. Cada um foi medido de novo rodando, com JIT
 e sem, e dá o mesmo erro.
 
-- **doc-7** Três exemplos tratam a divisão `/` entre inteiros como inteiro. A
+- ~~**doc-7** Três exemplos tratam a divisão `/` entre inteiros como inteiro. A
   doc da linguagem diz que `/` dá `flo` sempre (3.2.1), que o retorno da funct
   tipada não é convertido (6.4) e que não há conversão implícita.
   `docs/LANGUAGE.md:455`: `int funct f() { return 1 / 0 }` e
@@ -1447,14 +1447,19 @@ e sem, e dá o mesmo erro.
   o sentinela nunca aparece. `docs/Jinga.md:303`: `x /= 2    # 19.5` com
   `int x` (`variável x esperava int, recebeu flo`). `docs/Jinga.md:462`:
   `int x = 1 / 0` dentro do `try`, então o `catch` que imprimiria
-  `Erro: division by zero` nunca roda. `doc`.
-- **doc-8** Dois middlewares liberam a rota com `continue`: `docs/Jinga.md:858`
+  `Erro: division by zero` nunca roda. `doc`.~~ Corrigido no 20.0.37: os
+  sentinelas usam `1 % 0` (que levanta `ZeroDivisionError` e devolve `int`/
+  `bool`); `x = x // 2` mantém `int`; no `try`, `int x = 1 // 0`. O `check`
+  das três páginas passa.
+- ~~**doc-8** Dois middlewares liberam a rota com `continue`: `docs/Jinga.md:858`
   (linhas 890 e 898) e `docs/hash_jwt.md:152` (linha 179). A doc da linguagem
   diz que `continue` fora de laço é `SyntaxError` (5.4), e a do middleware
   (`docs/jinker/middleware/middleware.md`) diz que quem libera a rota é o
   `pass`; o motor dá `SyntaxError: 'continue' fora de laco`. Com `pass`, os
-  dois blocos passam. `doc`.
-- **doc-9** `docs/psodbc.md` promete dois parâmetros do `connect` que o motor
+  dois blocos passam. `doc`.~~ Corrigido no 20.0.37: os dois blocos usam
+  `pass` e `cors(app, ...)`; como iniciam o servidor Jinker, ficam
+  `sem-rodar: inicia o servidor Jinker`. O P1 e o `check` passam.
+- ~~**doc-9** `docs/psodbc.md` promete dois parâmetros do `connect` que o motor
   não tem, `odbc_driver` e `trust_server_cert`: na assinatura (linha 40), na
   tabela (linhas 54 e 55), nos parágrafos (75 a 84) e no exemplo 4 do bloco da
   linha 95 (`odbc_driver="ODBC Driver 17 for SQL Server"`, recusado com
@@ -1463,12 +1468,17 @@ e sem, e dá o mesmo erro.
   diz que os dois "estava documentado e não existe no motor". A linha 75 ainda
   promete que o driver ODBC é achado sozinho (18, 17, 13...), e o motor fixa
   `DRIVER={ODBC Driver 18 for SQL Server}` (`vm/jinga_vm.c:21355`). `doc` (ou
-  `motor`, se a decisão for ter os dois parâmetros).
-- **doc-10** `docs/Jinga.md:619`: o texto diz que "um valor não-int não mexe
+  `motor`, se a decisão for ter os dois parâmetros).~~ Corrigido no 20.0.37: a
+  assinatura, a tabela, os parágrafos e o exemplo do `psodbc.connect` não
+  citam mais `odbc_driver`/`trust_server_cert`; o exemplo de conexão SQL
+  Server ficou `sem-rodar` (precisa do driver).
+- ~~**doc-10** `docs/Jinga.md:619`: o texto diz que "um valor não-int não mexe
   no contador" do enum, e o exemplo promete `E=12` em
   `enum Mix { A, B = 10, C, D = "x", E }`. A doc da linguagem (8.2) e o motor
   dizem o contrário: `TypeError: enum Mix: o membro E nao tem valor e o
-  anterior (D) nao e inteiro`. `doc`.
+  anterior (D) nao e inteiro`. `doc`.~~ Corrigido no 20.0.37: o texto diz que
+  um valor não-int encerra a sequência, e o exemplo mostra o `TypeError` do
+  motor.
 - ~~**doc-11** `full` e `mei` sem aspas nos exemplos do `manpu`: `cell=full` e
   `amount=full` dão `NameError: name 'full' is not defined`. A assinatura
   (`docs/manpu/remove/remove.md`: `amount="full"`) e o motor (que compara os

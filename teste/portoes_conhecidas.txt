@@ -21,13 +21,6 @@
 # pra quem lê. Falha que não está
 # aqui reprova o portão, e linha daqui que não falha mais também reprova
 # (consertado: tire a linha e risque o item).
-check	docs/LANGUAGE.md	ad54a78e33a9	doc-7	todos	linha 455: int funct f() { return 1 / 0 }
-check	docs/Jinga.md	4de580d08911	doc-7	todos	linha 303: int x = 10
-check	docs/Jinga.md	d123e62078f9	doc-7	todos	linha 462: try {
-check	docs/Jinga.md	5e99954a629a	doc-8	todos	linha 858: import psodbc
-check	docs/hash_jwt.md	1c09cb817f98	doc-8	todos	linha 152: import jwt
-check	docs/psodbc.md	4e9762978205	doc-9	todos	linha 95: import psodbc
-check	docs/Jinga.md	4b33d1141574	doc-10	todos	linha 619: public enum Mix { A, B = 10, C, D = "x", E }
 check	docs/mail/MailServer/MailServer.md	828a8efb5610	doc-12	todos	linha 5: from mail import MailServer
 check	docs/mail/MailReader/MailReader.md	c42dfaaa51b1	doc-12	todos	linha 5: from mail import MailReader
 check	docs/mail/MailMessage/MailMessage.md	ce779b72de96	doc-12	todos	linha 6: from mail import MailMessage
