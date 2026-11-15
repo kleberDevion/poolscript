@@ -895,7 +895,10 @@ function linhaDeOrdem(idx, linha) {
   if (linha === undefined) return Infinity;
   const L = linha + 1;
   for (const e of idx.escopos) {
-    if (e.tipo !== 'modulo' && e.ini <= L && L <= e.fim) return Infinity;
+    /* bloco não congela a ordem do arquivo: só funct/método/lambda rodam
+     * depois de o topo inteiro ter carregado */
+    if ((e.tipo === 'funct' || e.tipo === 'metodo' || e.tipo === 'lambda')
+        && e.ini <= L && L <= e.fim) return Infinity;
   }
   return linha;
 }
@@ -2391,12 +2394,19 @@ const LITERAIS = [
  * `static funct m()` de uma variável chamada `static`. */
 function ehCabecaDeFunct(doc, tok) {
   const toks = tokensDe(doc).filter((t) => t.l0 === tok.l0 && t.c0 >= tok.c0 && t.n > 0);
-  const passa = ['public', 'private', 'async', 'str', 'int', 'flo', 'bool'];
+  const passa = ['public', 'private', 'async', 'str', 'int', 'flo', 'bool',
+                'Null', 'object', 'list', 'dict', 'tup', 'byte', 'float'];
   for (const t of toks) {
     if (t === tok) continue;
     /* `funct`, e as grafias mortas que o lexer ainda reconhece pra acusar */
     if (t.t === 'KW' && ['funct', 'action', 'reaction'].includes(t.v)) return true;
     if (MODIFICADORES.includes(t.v) || (t.t === 'KW' && passa.includes(t.v))) continue;
+    /* tipo/apelido/Entity antes do `funct` (`static string funct`,
+     * `static Null funct`, `static Pessoa funct`) — antes só os escalares
+     * passavam, e o `static` de método tipado caía no genérico. `Null` é
+     * token NULL (literal), não KW/IDENT. */
+    if (t.t === 'NULL' || t.t === 'BOOL') continue;
+    if (t.t === 'IDENT' || t.t === 'IDENT_UPPER') continue;
     return false;
   }
   return false;
@@ -2602,6 +2612,169 @@ function hoverDoImportado(doc, alvo, nome, linha) {
   return md('```ps\nimport ' + (alvo.mod || alvo.arquivo || nome) + '\n```\n\nmódulo' + (corpo || '\n\n' + membros.length + ' membros') + de);
 }
 
+/* O nome do MÓDULO na linha do import (`from jinker import ...`,
+ * `import request as web`). O `from` não liga o módulo no arquivo, mas o
+ * hover dele ainda é a página do módulo — antes caía no "não definido". */
+function moduloNoImport(doc, tok) {
+  if (!tok) return null;
+  let achado = null;
+  const anda = (no) => {
+    if (!no || typeof no !== 'object' || achado) return;
+    if (no.k === 'ImportStmt' && no.l - 1 === tok.l0) {
+      const nomes = no.lista || [];
+      const m = nomes[0];
+      if (m && m.texto && m.l - 1 === tok.l0
+          && m.c - 1 <= tok.c0 && tok.c0 < m.c - 1 + m.texto.length) {
+        achado = nomes.map((x) => x && x.texto).filter(Boolean).join('.');
+      }
+    }
+    A.cada(no, anda);
+  };
+  anda(idxDoc(doc).arvore);
+  return achado;
+}
+
+/* O token que é o NOME da declaração (`funct falar`, `nome: str`, `RED`). O
+ * `FunctDecl.c` aponta pro `funct`, então o nome é procurado a partir dali. */
+function tokenDaDeclaracao(doc, no, texto) {
+  for (const t of tokensDe(doc)) {
+    if (t.l0 === no.l - 1 && t.v === texto && t.c0 >= (no.c - 1)) return t;
+  }
+  return null;
+}
+
+/* Hover do nome na PRÓPRIA declaração: método (`funct falar(self)`), campo de
+ * model/Entity e membro de enum. Esses nomes não são variáveis de escopo; sem
+ * isto o hover dizia "não definido" no `nome: str` e no `__init__`. */
+function hoverDaDeclaracao(doc, tok) {
+  if (!tok) return null;
+  let achado = null;
+  const anda = (no, ctx) => {
+    if (!no || typeof no !== 'object' || achado) return;
+    const c2 = Object.assign({}, ctx);
+    if (no.k === 'EntityDecl') c2.entidade = no.texto;
+    if (no.k === 'ModelDecl') c2.modelo = no.texto;
+    if (no.k === 'EnumDecl') c2.enum = no.texto;
+    /* `FunctDecl` só aqui quando é MÉTODO (Entity): a funct de topo já tem
+     * o hover que mostra o decorador, e interceptá-la perdia o `@app.post`.
+     * Antes da varredura de tokens, o teste barato de nome/linha: sem ele
+     * cada hover varria os tokens para TODA declaração do arquivo. */
+    let t = null;
+    if (((no.k === 'FunctDecl' && ctx.entidade) || no.k === 'EntityField'
+         || no.k === 'ModelField' || no.k === 'EnumMember')
+        && tok.v === no.texto && tok.l0 === no.l - 1) {
+      t = tokenDaDeclaracao(doc, no, no.texto);
+    }
+    if (t && t.l0 === tok.l0 && t.c0 === tok.c0) { achado = { no, ctx: c2, tipo: no.k }; return; }
+    /* dentro do método, uma funct aninhada não é método da Entity */
+    if (no.k === 'FunctDecl') c2.entidade = null;
+    for (const k of ['a', 'b', 'c', 'e']) if (no[k]) anda(no[k], c2);
+    for (const k of ['lista', 'lista2', 'alias']) for (const x of no[k] || []) anda(x, c2);
+  };
+  anda(idxDoc(doc).arvore, {});
+  if (!achado) return null;
+  const no = achado.no;
+  if (achado.tipo === 'FunctDecl') {
+    const ps = (no.lista || []).map((p) => {
+      const estrela = p && p.i2 === 2 ? '**' : (p && p.i2 === 1 ? '*' : '');
+      return { nome: estrela + ((p && p.texto) || ''), tipo: (p && p.texto2) || null, default: null };
+    });
+    const cab = (no.private ? 'private ' : '') + (no.static ? 'static ' : '')
+              + (no.nonnull ? 'nonnull ' : '') + (no.texto2 ? no.texto2 + ' ' : '')
+              + (no.async ? 'async ' : '') + 'funct '
+              + assinatura({ nome: no.texto, params: ps });
+    const dono = achado.ctx.entidade ? 'método de `' + achado.ctx.entidade + '`' : 'funct';
+    return md('```ps\n' + cab + '\n```\n\n' + dono + ' · declarada na linha ' + no.l);
+  }
+  if (achado.tipo === 'EnumMember') {
+    const tipo = tipoDoLiteral(no.a) || 'int';
+    const val = no.a ? ' = ' + valorDeParamTxt(no.a) : '';
+    return md('```ps\n' + tipo + ' ' + no.texto + val + '\n```\n\nmembro do enum `'
+              + (achado.ctx.enum || '') + '` · linha ' + no.l);
+  }
+  const campo = (no.private ? 'private ' : '') + (no.static ? 'static ' : '')
+              + (no.nonnull ? 'nonnull ' : '') + (no.texto2 ? no.texto2 + ' ' : '')
+              + no.texto + paramsDeCampoTxt(no);
+  const dono = achado.tipo === 'ModelField'
+    ? 'campo do model `' + (achado.ctx.modelo || '') + '`'
+    : 'campo de `' + (achado.ctx.entidade || '') + '`';
+  return md('```ps\n' + campo + '\n```\n\n' + dono + ' · declarado na linha ' + no.l);
+}
+
+/* `@dataentity`, `@NonNull` e `@static` são reconhecidos pelo motor e não são
+ * variáveis: o hover deles é a explicação do decorador, não "não definido". */
+const DECORADORES_DO_MOTOR = {
+  dataentity: 'decorador do motor: gera o `__init__` e as conversões a partir dos campos tipados',
+  NonNull: 'grafia antiga de `nonnull`: nenhum parâmetro pode chegar `Null`',
+  static: 'grafia antiga de `static`: o membro é do tipo, não da instância',
+};
+
+function hoverDeDecorador(doc, tok) {
+  if (!tok || !DECORADORES_DO_MOTOR[tok.v]) return null;
+  const toks = tokensDe(doc);
+  const i = toks.indexOf(tok);
+  const ant = i > 0 ? toks[i - 1] : null;
+  if (!ant || ant.v !== '@' || ant.l0 !== tok.l0) return null;
+  return md('```ps\n@' + tok.v + '\n```\n\n' + DECORADORES_DO_MOTOR[tok.v]);
+}
+
+/* `raise Quebrou(...)` e `catch (Quebrou e)`: nome de exceção é tipo literal
+ * (10.4.1), não variável — o hover não pode dizer que falta declaração. */
+function hoverDeExcecaoLiteral(doc, tok) {
+  if (!tok || (META.excecoes || []).some((x) => x.nome === tok.v)) return null;
+  const c = tok.v[0];
+  if (!(c >= 'A' && c <= 'Z')) return null;
+  let achado = false;
+  const anda = (no) => {
+    if (!no || typeof no !== 'object' || achado) return;
+    if (no.k === 'RaiseStmt' && no.texto === tok.v && no.l - 1 === tok.l0) achado = true;
+    if (no.k === 'CatchClause' && no.texto2 === tok.v && no.l - 1 === tok.l0) achado = true;
+    A.cada(no, anda);
+  };
+  anda(idxDoc(doc).arvore);
+  if (!achado) return null;
+  return md('```ps\n' + tok.v + '\n```\n\nnome de exceção literal do `raise`/`catch` — '
+            + 'o tipo é livre e não precisa ser declarado');
+}
+
+/* O token é modificador (`static`/`nonnull`) em qualquer forma da declaração:
+ * campo (`static int n = 1`, `public static object mapp = …`), método
+ * (`static Null funct main`) e a ordem livre da doc (`int static private d`,
+ * `private int static c`). O `ehCabecaDeFunct` cobre a cabeça de funct; este
+ * cobre o campo e o `static` no MEIO da declaração. */
+function ehModificadorDeCampo(doc, tok) {
+  if (!tok || !MODIFICADORES.includes(tok.v)) return false;
+  const linha = tokensDe(doc).filter((t) => t.l0 === tok.l0 && t.n > 0);
+  const i = linha.indexOf(tok);
+  if (i < 0) return false;
+  const MODS = MODIFICADORES.concat(['public', 'private', 'async']);
+  const ehTipo = (t) => t && (t.t === 'IDENT' || t.t === 'IDENT_UPPER' || t.t === 'KW'
+                              || t.t === 'NULL' || t.t === 'BOOL');
+  const ehNome = (t) => t && (t.t === 'IDENT' || t.t === 'IDENT_UPPER');
+  const ehFunct = (t) => t && t.t === 'KW' && ['funct', 'action', 'reaction'].includes(t.v);
+  const fimDecl = (t) => !t || (t.t === 'OP' && (t.v === '=' || t.v === ':' || t.v === '('))
+                      || t.t === 'SEMI' || t.t === 'COLON';
+  const pulaMods = (j) => { while (j < linha.length && MODS.includes(linha[j].v)) j++; return j; };
+  /* `static Tipo funct` */
+  let j = pulaMods(i + 1);
+  let k = j;
+  if (ehTipo(linha[k])) k = pulaMods(k + 1);
+  if (ehFunct(linha[k])) return true;
+  /* `static Tipo nome =` */
+  if (ehTipo(linha[j])) {
+    const m = pulaMods(j + 1);
+    if (ehNome(linha[m]) && fimDecl(linha[m + 1])) return true;
+  }
+  /* `Tipo static nome =` (o `static` depois do tipo) */
+  let p = i - 1;
+  while (p >= 0 && MODS.includes(linha[p].v)) p--;
+  if (ehTipo(linha[p])) {
+    const m = pulaMods(i + 1);
+    if (ehNome(linha[m]) && fimDecl(linha[m + 1])) return true;
+  }
+  return false;
+}
+
 conexao.onHover((p) => {
   const doc = docs.get(p.textDocument.uri);
   if (!doc) return null;
@@ -2652,7 +2825,8 @@ conexao.onHover((p) => {
   /* `static`/`nonnull` chegam como IDENT (não são reservadas), então não
    * passam pela porta de palavra-chave abaixo: sem esta exceção, o hover em
    * cima do modificador colado devolvia nada. */
-  if (tok && MODIFICADORES.includes(tok.v) && !aposPonto && ehCabecaDeFunct(doc, tok)) {
+  if (tok && MODIFICADORES.includes(tok.v) && !aposPonto
+      && (ehCabecaDeFunct(doc, tok) || ehModificadorDeCampo(doc, tok))) {
     return hoverDeKeyword(doc, tok);
   }
   /* `String`, `Integer`…: apelidos de tipo, que o lexer entrega como IDENT
@@ -2675,6 +2849,27 @@ conexao.onHover((p) => {
 
   const { partes, nome } = nomeSob(doc, p.position);
   if (!nome) return null;
+
+  const soNome = !partes.length && !aposPonto;
+  if (soNome && tok && tok.v === '_') {
+    return md('```ps\ncase _\n```\n\ncuringa: casa qualquer valor e não liga nome (5.5)');
+  }
+  if (soNome && tok && (tok.t === 'IDENT' || tok.t === 'IDENT_UPPER')) {
+    /* `from jinker import ...`: o MÓDULO na linha do import não é variável,
+     * mas tem página — antes caía no nome não definido. */
+    const modImport = moduloNoImport(doc, tok);
+    if (modImport) {
+      return hoverDoImportado(doc, { tipo: 'modulo', mod: modImport }, modImport, p.position.line);
+    }
+    /* nome na própria declaração: método/campo/membro de enum */
+    const decl = hoverDaDeclaracao(doc, tok);
+    if (decl) return decl;
+    /* decorador e exceção literal do motor, que não são variáveis */
+    const dec = hoverDeDecorador(doc, tok);
+    if (dec) return dec;
+    const excLit = hoverDeExcecaoLiteral(doc, tok);
+    if (excLit) return excLit;
+  }
 
   /* `base` — contextual, chega como IDENT: o pai, como o `super`. A prosa
    * é a seção 7.5.2 de 07-entity, pela crase do título. */
@@ -2858,6 +3053,28 @@ conexao.onHover((p) => {
   if (alvo) return hoverDoImportado(doc, alvo, nome, p.position.line);
   const daLinguagem = hoverDaLinguagem(doc, nome, receptorDeModulo);
   if (daLinguagem) return daLinguagem;
+  /* `prev` antes do `prev = ...`, e `i`/`dentro` DEPOIS do bloco que os
+   * ligou: o motor liga na ordem do arquivo e o bloco fecha. O hover diz
+   * onde o nome nasce/era, sem mandar o usuário a um NameError. */
+  const dep = A.ligacaoDepois(idx, nome, p.position.line);
+  if (dep) {
+    return md('```ps\n' + nome + '\n```\n\n`' + nome + '` só é ligado na linha '
+              + (dep.linha + 1) + '; nesta linha ele ainda não existe (4.6.3)');
+  }
+  const enc = A.ligacaoEncerrada(idx, nome, p.position.line);
+  if (enc) {
+    const esc = (idx.escopos || []).find((e) => (e.liga || []).includes(enc));
+    let onde = 'bloco';
+    if (esc) {
+      if (esc.tipo === 'metodo') onde = 'método `' + (esc.nome || '') + '`';
+      else if (esc.tipo === 'funct') onde = 'funct `' + (esc.nome || '') + '`';
+      else if (esc.tipo === 'lambda') onde = 'lambda';
+      else if (esc.tipo === 'compreensao') onde = 'compreensão';
+      else onde = 'bloco `' + (esc.nome || esc.tipo) + '`';
+    }
+    return md('```ps\n' + nome + '\n```\n\n`' + nome + '` era d' + (onde.startsWith('bloco') ? 'o ' : 'a ')
+              + onde + ' que terminou; não vale depois (4.6.1/4.6.3)');
+  }
   /* nome que nada liga: dizer isso é melhor que um hover em branco — e se
    * um `import *` o deixou de fora por ser `private`, dizer de onde */
   const priv = privadoNaEstrela(doc, nome);
@@ -2875,6 +3092,10 @@ conexao.onHover((p) => {
  * NameError)" — o contrário do que o motor faz (ele, 2026-10-05). O `json.`
  * sem `import json` é o módulo, e aí o NameError é de verdade. */
 function hoverDaLinguagem(doc, nome, receptorDeModulo) {
+  if (nome === '__name__' && !receptorDeModulo) {
+    return md('```ps\nstr __name__\n```\n\n`__name__` é `"__main__"` quando o arquivo roda direto '
+              + 'e o nome do módulo quando ele é importado');
+  }
   if (receptorDeModulo) {
     return md('```ps\nimport ' + nome + '\n```\n\nmódulo `' + nome + '` — falta `import ' + nome
               + '` neste arquivo (rodando dá `NameError`)');

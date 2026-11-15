@@ -917,6 +917,161 @@ async function main() {
          && valor(m, 31).includes('exceptions.md'), valor(m, 31));
   }
 
+  /* ── 9b-ter. editor-3: escopo de bloco, ligação e nomes do motor ─────────
+   *
+   * Medido antes: variável nova do `if`/laço continuava "não definida" depois
+   * do bloco; `prev` lido antes da atribuição idem; `__name__`, módulo na
+   * linha do `from`/`import`, decoradores do motor (`@dataentity`,
+   * `@NonNull`), campo/model/enum/método na própria declaração e `Quebrou`
+   * caíam no genérico. Cada caso abaixo é um desses hovers. */
+  {
+    const ponto = (src, trecho, n) => {
+      let i = -1;
+      for (let k = 0; k <= (n || 0); k++) i = src.indexOf(trecho, i + 1);
+      const antes = src.slice(0, i);
+      return { line: antes.split('\n').length - 1, character: i - antes.lastIndexOf('\n') - 1 };
+    };
+    const hovDe = (id, src, trecho, n, desloca) => {
+      const p = ponto(src, trecho, n);
+      return hov(id, p.line, p.character + (desloca || 0));
+    };
+    const proibido = (t) => t.includes('nome não definido') || t.includes('NameError');
+
+    {
+      const SRC = 'if True {\n    dentro = 1\n}\npost(dentro)\n';
+      const m = await conversa(SRC, [hovDe(40, SRC, 'dentro', 1)]);
+      const t = valor(m, 40);
+      conf('nome novo do `if` depois do bloco diz que o bloco terminou',
+           t.includes('bloco `if`') && t.includes('terminou') && !proibido(t), t);
+    }
+    {
+      const SRC = 'for each i in [1, 2] {\n    s = i\n}\npost(i)\n';
+      const m = await conversa(SRC, [hovDe(41, SRC, 'post(i)', 0, 5)]);
+      const t = valor(m, 41);
+      conf('variável do laço depois do laço diz que o bloco terminou',
+           t.includes('for each') && t.includes('terminou') && !proibido(t), t);
+    }
+    {
+      const SRC = 'for each i in [1, 2] {\n    x = prev\n    prev = i\n}\n';
+      const m = await conversa(SRC, [hovDe(42, SRC, 'prev', 0)]);
+      const t = valor(m, 42);
+      conf('nome lido antes da atribuição diz em que linha ele nasce',
+           t.includes('linha 3') && t.includes('ainda não existe') && !proibido(t), t);
+    }
+    {
+      const SRC = 'try {\n    raise ZeroDivisionError("x")\n} catch (ZeroDivisionError e) {\n    z = e\n}\n';
+      const m = await conversa(SRC, [hovDe(43, SRC, 'z = e', 0, 4)]);
+      const t = valor(m, 43);
+      conf('variável do catch mostra o tipo da exceção',
+           t.includes('ZeroDivisionError e') && !proibido(t), t);
+    }
+    {
+      const SRC = 'f = funct(int x) { return x + 1 }\n';
+      const m = await conversa(SRC, [hovDe(44, SRC, 'x + 1')]);
+      const t = valor(m, 44);
+      conf('parâmetro de lambda é apresentado como parâmetro de lambda',
+           t.includes('parametro de lambda') && !proibido(t), t);
+    }
+    {
+      const SRC = 'nums = [1, 2]\npost([n * 2 for each n in nums])\n';
+      const m = await conversa(SRC, [hovDe(45, SRC, 'n * 2')]);
+      const t = valor(m, 45);
+      conf('variável da compreensão não vira nome não definido',
+           t.includes('compreensao') && !proibido(t), t);
+    }
+    {
+      const SRC = 'ponto = [0, 0]\nmatch ponto {\n    case [x, y] if x == y {\n        post(x)\n    }\n}\n';
+      const m = await conversa(SRC, [hovDe(46, SRC, 'post(x)', 0, 5)]);
+      const t = valor(m, 46);
+      conf('nome ligado pelo `case` é do case, não do módulo',
+           t.includes('case') && !proibido(t), t);
+    }
+    {
+      const SRC = 'using open("x") as f {\n    conteudo = f\n}\npost(conteudo)\n';
+      const m = await conversa(SRC, [hovDe(47, SRC, 'conteudo', 1)]);
+      const t = valor(m, 47);
+      conf('nome do corpo do `using` sobrevive depois do bloco',
+           t.includes('conteudo') && t.includes('linha 2') && !proibido(t), t);
+    }
+    {
+      const SRC = 'x = 1\nfunct f() {\n    global x\n    x = 2\n}\n';
+      const m = await conversa(SRC, [hovDe(48, SRC, 'x = 2')]);
+      const t = valor(m, 48);
+      conf('`global` liga a escrita no módulo, não no escopo local',
+           t.includes('linha 1') && !t.includes('local') && !proibido(t), t);
+    }
+    {
+      const SRC = 'from jinker import Jinker\nimport request as web\n';
+      const m = await conversa(SRC, [
+        hovDe(49, SRC, 'jinker'), hovDe(50, SRC, 'request'),
+      ]);
+      const t1 = valor(m, 49), t2 = valor(m, 50);
+      conf('módulo na linha do `from` tem página, não nome não definido',
+           t1.includes('jinker') && t1.includes('membros') && !proibido(t1), t1);
+      conf('módulo na linha do `import` também tem página',
+           t2.includes('request') && t2.includes('membros') && !proibido(t2), t2);
+    }
+    {
+      const SRC = 'if __name__ == "__main__" {\n    post("x")\n}\n';
+      const m = await conversa(SRC, [hovDe(51, SRC, '__name__')]);
+      const t = valor(m, 51);
+      conf('`__name__` é `str` do motor, não nome não definido',
+           t.includes('str __name__') && t.includes('__main__'), t);
+    }
+    {
+      const SRC = '@dataentity\nEntity Pessoa {\n    str nome\n    static int n = 1\n'
+                + '    funct falar(self) {\n        return self.nome\n    }\n}\n'
+                + 'enum Cor {\n    RED = 1\n}\n'
+                + 'model Rota() {\n    email: str(length=60)\n}\n'
+                + '@NonNull\nfunct limpa(str x) {\n}\n';
+      const m = await conversa(SRC, [
+        hovDe(52, SRC, '@dataentity', 0, 1), hovDe(53, SRC, 'str nome', 0, 4),
+        hovDe(54, SRC, 'n = 1'), hovDe(55, SRC, 'falar'),
+        hovDe(56, SRC, 'RED'), hovDe(57, SRC, 'email'),
+        hovDe(58, SRC, '@NonNull', 0, 1), hovDe(59, SRC, 'static'),
+      ]);
+      const t52 = valor(m, 52), t53 = valor(m, 53), t54 = valor(m, 54), t55 = valor(m, 55);
+      const t56 = valor(m, 56), t57 = valor(m, 57), t58 = valor(m, 58), t59 = valor(m, 59);
+      conf('`@dataentity` é decorador do motor', t52.includes('@dataentity') && t52.includes('decorador'), t52);
+      conf('campo de Entity na declaração é campo, não variável', t53.includes('str nome') && t53.includes('Pessoa'), t53);
+      conf('campo `static` na declaração mostra o `static`', t54.includes('static int n') && !proibido(t54), t54);
+      conf('nome do método na declaração mostra a assinatura', t55.includes('funct falar(self)') && t55.includes('método'), t55);
+      conf('membro do enum na declaração mostra o valor', t56.includes('int RED = 1') && t56.includes('enum'), t56);
+      conf('campo do model na declaração mostra os parâmetros', t57.includes('str email(length=60)') && t57.includes('model'), t57);
+      conf('`@NonNull` é a grafia antiga de `nonnull`', t58.includes('@NonNull') && t58.includes('nonnull'), t58);
+      conf('`static` de campo tem a seção da linguagem', t59.includes('static') && !proibido(t59), t59);
+    }
+    {
+      const SRC = 'funct f() {\n    raise Quebrou("x")\n}\n';
+      const m = await conversa(SRC, [hovDe(60, SRC, 'Quebrou')]);
+      const t = valor(m, 60);
+      conf('`Quebrou` no `raise` é exceção literal, não variável',
+           t.includes('exceção literal') && !proibido(t), t);
+    }
+    {
+      const SRC = 'match valor {\n    case _ {\n        post(1)\n    }\n}\n';
+      const m = await conversa(SRC, [hovDe(61, SRC, '_')]);
+      const t = valor(m, 61);
+      conf('`_` do `case` é curinga, não nome não definido',
+           t.includes('curinga') && !proibido(t), t);
+    }
+    {
+      const SRC = 'class C {\n    static int a = 1\n    int static private d = 4\n'
+                + '    public static string funct main() {\n        return "x"\n    }\n'
+                + '    static Null funct fim() {\n        return\n    }\n}\n';
+      const m = await conversa(SRC, [
+        hovDe(62, SRC, 'static', 1), hovDe(63, SRC, 'static', 2), hovDe(64, SRC, 'static', 3),
+      ]);
+      const t62 = valor(m, 62), t63 = valor(m, 63), t64 = valor(m, 64);
+      conf('`static` DEPOIS do tipo (`int static private d`) tem a seção',
+           t62.includes('static') && !proibido(t62), t62);
+      conf('`static` de método tipado (`public static string funct`) tem a seção',
+           t63.includes('static') && !proibido(t63), t63);
+      conf('`static Null funct` (tipo literal `Null`) tem a seção',
+           t64.includes('static') && !proibido(t64), t64);
+    }
+  }
+
   /* ── 9c. TODO receptor expõe o que é — a matriz de contextos ─────────────
    *
    * Medido antes, 16 de 30 contextos vazios ou errados: `from mail import

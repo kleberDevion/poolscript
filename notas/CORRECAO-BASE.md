@@ -283,7 +283,7 @@ em cada item):
   `Response.get`, `request`/`request.get` na rota e completion de `request.`);
   as 33 linhas `editor-2` saíram da catraca do P3, que fecha com os itens
   abertos conhecidos.
-- **editor-3** (achado pelo portão P3, 2026-10-23) O hover diz "nome não
+- ~~**editor-3** (achado pelo portão P3, 2026-10-23) O hover diz "nome não
   definido neste arquivo nem por import (rodando dá `NameError`)" em nomes que
   o motor liga, em blocos que o `--check` aprova. Na doc inteira são 550
   lugares. Pelo papel que o portão dá ao nome:
@@ -326,7 +326,20 @@ em cada item):
     linha do `from` nem na do `import ... as`, nem os nomes que o motor liga.
     O `__name__`, por exemplo, o completion oferece e o hover não conhece.
 
-  `motor` (editor).
+  `motor` (editor).~~ Corrigido no 20.0.35: o `analise.js` ganhou a árvore de
+  escopos por BLOCO (`escoposDaArvore`), com write-through no escopo de fora e
+  `forcar` para o binding do bloco; entram `catch`, lambda, compreensão,
+  `case`, `using`, `global`, `count each`, `for each` múltiplo e `FieldDecl`;
+  `ligacaoDepois`/`ligacaoEncerrada` dizem onde o nome nasce ou de que bloco
+  ele era, e `visiveisEm` ordena por nível. No `server.js`, `linhaDeOrdem` só
+  congela a ordem em funct/método/lambda; o hover do módulo na linha do
+  import, de `__name__`, de `@dataentity`/`@NonNull`, do `static`/`nonnull`
+  em qualquer ordem (campo e método, inclusive `Null`), do membro na própria
+  declaração (campo de model/Entity, método, enum), de `raise Quebrou(...)`/
+  `catch (Quebrou e)` e do `_` do `case` deixou de cair no genérico. Testes:
+  seção 9b-ter de `editor/vscode/teste_servidor.js`; 290 checagens (4
+  puladas). As 532 linhas `editor-3` saíram da catraca; o P3 da doc inteira
+  fica com as 33 linhas `editor-4` e 0 consertadas.
 - **editor-4** (achado pelo portão P3, 2026-10-23) O completion depois de um
   ponto devolve todos os nomes do escopo (de 132 a 141 nos blocos da doc), e
   não o membro que o programa usa, em dois casos:

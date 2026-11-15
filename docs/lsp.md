@@ -99,6 +99,14 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   instaladas e os **arquivos e pastas** `.pr` ao lado do documento (`import
   pasta.` entra na pasta); `from X import ` oferece os **membros** de X —
   módulo, lib ou arquivo — menos os já listados;
+- **escopo de bloco** — `if`/`while`/`for each`/`count each`/`try`/`catch`/
+  `finally`/`case` abrem escopo próprio (4.6): o nome novo não vaza, o nome
+  de fora recebe a escrita (write-through) e o laço reinicia o corpo a cada
+  volta. `using` é a exceção — o `as` e o que nasce no corpo sobrevivem
+  (4.8); `global` escreve no módulo. Passado o bloco, o hover do nome diz de
+  que bloco ele era e que o bloco terminou; lido antes da linha que o liga
+  (`prev`), diz em que linha ele nasce — nos dois casos sem mandar o usuário
+  a um `NameError` (4.6.1/4.6.3);
 - **todo receptor expõe o que é** — `x.` responde pelo tipo de `x`, venha de
   onde vier: declaração (`str s`), construção (`Jinker(…)`, `MailServer(…)`,
   `Rota()`), **literal** (`nome = "ana"` → métodos de `str`; `[…]`, `{…}`,
@@ -149,9 +157,17 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   e a linha; num parâmetro, `byte raw` e a funct dona; numa funct do arquivo,
   `int async funct f(...)` e o decorador em cima; num `model`, os campos;
   num `enum`, os membros com o valor de cada um; num membro de enum,
-  `int User.idade = 17` e de qual enum é. O hover **nunca fica em branco**:
-  nome que nada liga diz "não definido" (e, se um `import *` o deixou de
-  fora por ser `private`, diz de qual módulo); membro que o tipo não tem
+  `int User.idade = 17` e de qual enum é. O módulo na própria linha do
+  `from X import`/`import X as Y` mostra a página dele; `__name__`, os
+  `_match`/`_index`/`_count` do `count each`, `@dataentity`/`@NonNull` e o
+  `static` de campo respondem como o motor os liga; o nome do campo, do
+  método (`funct falar(self)`, o `__init__`) e do membro de enum na
+  **declaração** mostra a assinatura dele; `raise Quebrou(...)` e
+  `catch (Quebrou e)` dizem que o nome é o tipo literal da exceção (10.4.1);
+  o `_` do `case` é o curinga que não liga nome (5.5).
+  O hover **nunca fica em branco**: o nome que nada liga mesmo diz "não
+  definido" (e, se um `import *` o deixou de fora por ser `private`, diz de
+  qual módulo); membro que o tipo não tem
   diz `` `C` não tem `upper` `` e lista o que `C` tem; `lib.x` com `x`
   `private` na lib (funct, class, model, enum ou variável) diz que existe,
   mas é private, e a linha da declaração; dentro de uma string diz que é

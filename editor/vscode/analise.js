@@ -153,6 +153,9 @@ function ligacoesDe(no, poe) {
     case 'VarDecl':                                      /* str x = "a" */
       poe(no.texto, 'variavel', no.texto2, no);
       break;
+    case 'FieldDecl':                                    /* private int x = 1 */
+      poe(no.texto, 'variavel', no.texto2, no);
+      break;
     case 'ForEachStmt':                                  /* for each it in … */
       poe(no.texto, 'variavel do laco', null, no);
       break;
@@ -455,69 +458,279 @@ function entidadesDaArvore(arvore) {
 
 /* ── escopos ────────────────────────────────────────────────────────────── */
 /*
- * Um escopo por `funct` (com os parâmetros) e um pelo módulo. O intervalo é
- * em LINHAS, do início do nó até a última linha da subárvore dele.
+ * A árvore de escopos do módulo (4.6): módulo, `funct`/método/lambda,
+ * Entity, compreensão e UM escopo por bloco (`if`/`elif`/`else`, `for each`,
+ * `while`, `count each`, `try`/`catch`/`finally`, `case`). O `using` anda no
+ * mesmo escopo (o alias e o corpo sobrevivem, 4.8); o `global` escreve no
+ * módulo. O intervalo é em LINHAS, do início do nó até a última da subárvore.
  */
 function escoposDaArvore(arvore) {
-  const escopos = [{ tipo: 'modulo', nome: '', ini: 1, fim: ultimaLinha(arvore), liga: [] }];
+  const modulo = { tipo: 'modulo', nome: '', ini: 1, fim: ultimaLinha(arvore),
+                   pai: null, nivel: 0, liga: [], globais: new Set() };
+  const escopos = [modulo];
 
-  const anda = (no, dono) => {
-    if (!no || typeof no !== 'object') return;
-
-    if (no.k === 'FunctDecl') {
-      const esc = { tipo: 'funct', nome: no.texto, ini: no.l, fim: ultimaLinha(no), liga: [] };
-      for (const p of no.lista || []) {
-        /* o tipo declarado (`byte raw`) vai junto: é ele que faz `raw.` e o
-         * hover de `raw.split` responderem pelo tipo — antes era `tipo: null`
-         * e o parâmetro tipado ficava mudo, enquanto `params` ao lado já lia
-         * o mesmo `texto2` */
-        if (p && p.texto) esc.liga.push({ nome: p.texto, kind: 'parametro', tipo: p.texto2 || null, linha: p.l - 1, no: p });
-      }
-      escopos.push(esc);
-      /* a funct LIGA O PRÓPRIO NOME no escopo de fora. O nó vai junto (`no`):
-       * o hover mostra `static int async funct f(...)` lendo texto2/async e os
-       * modificadores colados do nó, em vez de perder o que a árvore já tem. */
-      dono.liga.push({ nome: no.texto, kind: 'funct', tipo: no.texto2 || null, async: !!no.async,
-                       estatica: !!no.static, nonnull: !!no.nonnull,
-                       linha: no.l - 1, no,
-                       params: (no.lista || []).filter((p) => p && p.texto !== 'self')
-                                               .map((p) => ({ nome: nomeParam(p), tipo: p.texto2 || null,
-                                                              default: null })) });
-      cada(no, (f) => { if (f !== no.b) return; anda(f, esc); });
-      if (no.b) anda(no.b, esc);
-      return;
-    }
-
-    if (no.k === 'EntityDecl') {
-      dono.liga.push({ nome: no.texto, kind: 'class', tipo: null, linha: no.l - 1 });
-      /* o corpo da Entity não liga nomes de módulo: os métodos são membros */
-      for (const m of no.lista || []) {
-        if (m && m.k === 'FunctDecl') {
-          const esc = { tipo: 'metodo', nome: m.texto, entidade: no.texto,
-                        ini: m.l, fim: ultimaLinha(m), liga: [] };
-          for (const p of m.lista || []) {
-            /* o tipo declarado (`byte raw`) vai junto: é ele que faz `raw.` e o
-         * hover de `raw.split` responderem pelo tipo — antes era `tipo: null`
-         * e o parâmetro tipado ficava mudo, enquanto `params` ao lado já lia
-         * o mesmo `texto2` */
-        if (p && p.texto) esc.liga.push({ nome: p.texto, kind: 'parametro', tipo: p.texto2 || null, linha: p.l - 1, no: p });
-          }
-          escopos.push(esc);
-          if (m.b) anda(m.b, esc);
-        }
-      }
-      return;
-    }
-
-    ligacoesDe(no, (nome, kind, tipo, origem) => {
-      /* o nó de origem viaja na ligação: o hover de um model lê os campos
-       * dele dali, sem varrer a árvore de novo */
-      if (nome) dono.liga.push({ nome, kind, tipo, linha: (origem.l || 1) - 1, no: origem });
-    });
-    cada(no, (f) => anda(f, dono));
+  const cria = (tipo, nome, ini, fim, pai, extra) => {
+    const e = Object.assign({ tipo, nome, ini, fim, pai: pai || null,
+                              nivel: (pai ? pai.nivel : -1) + 1,
+                              liga: [], globais: new Set() }, extra || {});
+    escopos.push(e);
+    return e;
   };
 
-  anda(arvore, escopos[0]);
+  /* O `global` vale na funct mais próxima; a escrita vai pro módulo. */
+  const funcaoDe = (esc) => {
+    for (let e = esc; e; e = e.pai) {
+      if (e.tipo === 'funct' || e.tipo === 'metodo' || e.tipo === 'lambda') return e;
+    }
+    return null;
+  };
+
+  const acha = (esc, nome) => {
+    for (let e = esc; e; e = e.pai) {
+      for (const b of e.liga) if (b.nome === nome) return b;
+    }
+    return null;
+  };
+
+  /* `forcar` é a ligação que nasce no bloco e não faz write-through (variável
+   * do laço, do catch, parâmetro de lambda, nome do case). Sem ele, a
+   * atribuição procura o nome no escopo de fora e atualiza — 4.6.2. */
+  const liga = (esc, nome, kind, tipo, origem, op) => {
+    if (!nome) return null;
+    op = op || {};
+    let alvo = esc;
+    if (!op.forcar) {
+      const f = funcaoDe(esc);
+      if (f && f.globais.has(nome)) alvo = modulo;
+    }
+    const existente = op.forcar ? null : acha(alvo, nome);
+    if (existente) {
+      if (!existente.tipo && tipo) existente.tipo = tipo;
+      return existente;
+    }
+    const b = { nome, kind, tipo: tipo || null, linha: ((origem && origem.l) || 1) - 1, no: origem };
+    if (op.extra) Object.assign(b, op.extra);
+    alvo.liga.push(b);
+    return b;
+  };
+
+  const params = (esc, lista, kind) => {
+    for (const p of lista || []) {
+      if (!p || !p.texto) continue;
+      /* o tipo declarado (`byte raw`) vai junto: é ele que faz `raw.` e o
+       * hover de `raw.split` responderem pelo tipo — antes era `tipo: null`
+       * e o parâmetro tipado ficava mudo, enquanto `params` ao lado já lia
+       * o mesmo `texto2` */
+      liga(esc, p.texto, kind || 'parametro', p.texto2 || null, p, { forcar: true });
+    }
+  };
+
+  const bindPadrao = (pat, esc) => {
+    if (!pat || typeof pat !== 'object') return;
+    if (pat.k === 'MatchPattern') {
+      if (pat.texto === 'capture' && pat.texto2)
+        liga(esc, pat.texto2, 'nome do case', null, pat, { forcar: true });
+    }
+    for (const x of pat.lista || []) bindPadrao(x, esc);
+  };
+
+  const andaBloco = (bloco, esc) => {
+    for (const s of (bloco && bloco.lista) || []) anda(s, esc);
+  };
+
+  const anda = (no, esc) => {
+    if (!no || typeof no !== 'object') return;
+    switch (no.k) {
+      case 'FunctDecl': {
+        /* a funct LIGA O PRÓPRIO NOME no escopo de fora. O nó vai junto:
+         * o hover mostra `static int async funct f(...)` lendo texto2/async
+         * e os modificadores colados do nó. */
+        liga(esc, no.texto, 'funct', no.texto2 || null, no, {
+          extra: { async: !!no.async, estatica: !!no.static, nonnull: !!no.nonnull,
+                   params: (no.lista || []).filter((p) => p && p.texto !== 'self')
+                                           .map((p) => ({ nome: nomeParam(p), tipo: p.texto2 || null,
+                                                          default: null })) },
+        });
+        const fe = cria('funct', no.texto, no.l, ultimaLinha(no), esc);
+        params(fe, no.lista);
+        andaBloco(no.b, fe);
+        return;
+      }
+
+      case 'EntityDecl': {
+        liga(esc, no.texto, 'class', null, no);
+        const ce = cria('entity', no.texto, no.l, ultimaLinha(no), esc);
+        /* o corpo da Entity não liga nomes de módulo: os métodos são membros */
+        for (const m of no.lista || []) {
+          if (!m || m.k !== 'FunctDecl') continue;
+          const me = cria('metodo', m.texto, m.l, ultimaLinha(m), ce, { entidade: no.texto });
+          params(me, m.lista);
+          andaBloco(m.b, me);
+        }
+        return;
+      }
+
+      case 'LambdaExpr': {
+        const le = cria('lambda', '', no.l, ultimaLinha(no), esc);
+        params(le, no.lista, 'parametro de lambda');
+        andaBloco(no.b, le);
+        return;
+      }
+
+      case 'IfStmt': {
+        for (const br of no.lista || []) {
+          if (!br) continue;
+          if (br.a) anda(br.a, esc);
+          const be = cria('bloco', 'if', br.b ? br.b.l : br.l,
+                          br.b ? ultimaLinha(br.b) : br.l, esc);
+          andaBloco(br.b, be);
+        }
+        return;
+      }
+
+      case 'ForEachStmt': {
+        if (no.a) anda(no.a, esc);
+        const be = cria('bloco', 'for each', no.b ? no.b.l : no.l,
+                        no.b ? ultimaLinha(no.b) : no.l, esc);
+        /* o parser guarda o primeiro nome em `texto` e a lista inteira em
+         * `e`; quando `e` existe, ele já traz o primeiro — ligar os dois
+         * criava binding duplicado para `for each nome, idade` */
+        if (no.e) alvosDoUnpack(no.e, (nome, kind, tipo, origem) =>
+          liga(be, nome, 'variavel do laco', tipo, origem || no, { forcar: true }));
+        else liga(be, no.texto, 'variavel do laco', null, no, { forcar: true });
+        andaBloco(no.b, be);
+        return;
+      }
+
+      case 'WhileStmt': {
+        if (no.a) anda(no.a, esc);
+        const be = cria('bloco', 'while', no.b ? no.b.l : no.l,
+                        no.b ? ultimaLinha(no.b) : no.l, esc);
+        andaBloco(no.b, be);
+        return;
+      }
+
+      case 'CountEachStmt': {
+        if (no.c) anda(no.c, esc);
+        const be = cria('bloco', 'count each', no.e ? no.e.l : no.l,
+                        no.e ? ultimaLinha(no.e) : no.l, esc);
+        liga(be, '_match', 'variavel do count each', no.texto || null, no, { forcar: true });
+        liga(be, '_index', 'variavel do count each', 'int', no, { forcar: true });
+        liga(be, '_count', 'variavel do count each', 'int', no, { forcar: true });
+        andaBloco(no.e, be);
+        return;
+      }
+
+      case 'TryCatchStmt': {
+        if (no.a) {
+          const te = cria('bloco', 'try', no.a.l, ultimaLinha(no.a), esc);
+          andaBloco(no.a, te);
+        }
+        for (const cc of no.lista || []) {
+          if (!cc) continue;
+          const ce = cria('bloco', 'catch', cc.b ? cc.b.l : cc.l,
+                          cc.b ? ultimaLinha(cc.b) : cc.l, esc);
+          liga(ce, cc.texto, 'variavel do catch', cc.texto2 || null, cc, { forcar: true });
+          andaBloco(cc.b, ce);
+        }
+        if (no.c) {
+          const fe = cria('bloco', 'finally', no.c.l, ultimaLinha(no.c), esc);
+          andaBloco(no.c, fe);
+        }
+        return;
+      }
+
+      case 'MatchStmt': {
+        if (no.a) anda(no.a, esc);
+        for (const mc of no.lista || []) {
+          if (!mc) continue;
+          const ce = cria('bloco', 'case', mc.b ? mc.b.l : mc.l,
+                          mc.b ? ultimaLinha(mc.b) : mc.l, esc);
+          if (mc.a) {
+            bindPadrao(mc.a, ce);
+            anda(mc.a, ce);
+          }
+          andaBloco(mc.b, ce);
+        }
+        return;
+      }
+
+      case 'UsingStmt': {
+        if (no.a) anda(no.a, esc);
+        /* `using` é a exceção ao escopo de bloco: o alias e o que nasce no
+         * corpo sobrevivem depois dele (4.8). Por isso o corpo anda no MESMO
+         * escopo, e não num bloco novo. */
+        liga(esc, no.texto, 'variavel do using', null, no);
+        andaBloco(no.b, esc);
+        return;
+      }
+
+      case 'GlobalStmt': {
+        const f = funcaoDe(esc);
+        for (const n of no.lista || []) {
+          if (!n || !n.texto) continue;
+          if (f) f.globais.add(n.texto);
+          liga(modulo, n.texto, 'global', null, n);
+        }
+        return;
+      }
+
+      case 'Assignment': {
+        liga(esc, no.texto, 'variavel', null, no);
+        if (no.a) anda(no.a, esc);
+        return;
+      }
+
+      case 'VarDecl': {
+        liga(esc, no.texto, 'variavel', no.texto2 || null, no);
+        if (no.a) anda(no.a, esc);
+        return;
+      }
+
+      case 'UnpackAssignment': {
+        alvosDoUnpack(no.a, (nome, kind, tipo, origem) =>
+          liga(esc, nome, kind || 'variavel', tipo, origem || no));
+        if (no.b) anda(no.b, esc);
+        return;
+      }
+
+      case 'FieldDecl': {
+        liga(esc, no.texto, 'variavel', no.texto2 || null, no, {
+          extra: { privado: !!no.private, estatica: !!no.static, nonnull: !!no.nonnull },
+        });
+        if (no.a) anda(no.a, esc);
+        return;
+      }
+
+      case 'ModelDecl':
+        liga(esc, no.texto, 'model', null, no);
+        return;
+
+      case 'EnumDecl':
+        liga(esc, no.texto, 'enum', null, no);
+        return;
+
+      case 'ListComp': {
+        if (no.a) anda(no.a, esc);
+        const ce = cria('compreensao', no.texto, no.l, ultimaLinha(no), esc);
+        liga(ce, no.texto, 'variavel da compreensao', null, no, { forcar: true });
+        if (no.b) anda(no.b, ce);
+        if (no.c) anda(no.c, ce);
+        return;
+      }
+
+      case 'RaiseStmt':
+        /* `raise Quebrou(...)`: o nome é um tipo literal, não uma variável;
+         * o hover trata o nó. Só a mensagem é expressão. */
+        if (no.a) anda(no.a, esc);
+        return;
+
+      default:
+        cada(no, (f) => anda(f, esc));
+    }
+  };
+
+  anda(arvore, modulo);
   return escopos;
 }
 
@@ -545,7 +758,9 @@ function indexa(arvore) {
 function visiveisEm(idx, linha) {
   const L = linha + 1;
   const dentro = idx.escopos.filter((e) => e.ini <= L && L <= e.fim);
-  dentro.sort((x, y) => (y.ini - x.ini));            /* mais interno primeiro */
+  /* mais interno primeiro; no mesmo nível, o que começa depois (e termina
+   * antes) é o mais interno — dois blocos na mesma linha (if/catch) */
+  dentro.sort((x, y) => (y.nivel - x.nivel) || (y.ini - x.ini) || (x.fim - y.fim));
   const out = [];
   const jaTem = new Set();
   for (const e of dentro) {
@@ -561,6 +776,31 @@ function visiveisEm(idx, linha) {
   return out;
 }
 
+/* A ligação do nome DEPOIS do cursor, num escopo que contém a linha. É o
+ * `prev` lido antes do `prev = i`: o hover diz onde ele nasce em vez de
+ * "não definido". */
+function ligacaoDepois(idx, nome, linha) {
+  const L = linha + 1;
+  for (const e of idx.escopos) {
+    if (!(e.ini <= L && L <= e.fim)) continue;
+    const b = e.liga.find((x) => x.nome === nome && x.linha > linha);
+    if (b) return b;
+  }
+  return null;
+}
+
+/* A ligação que existiu num escopo já FECHADO (variável do laço/if depois do
+ * bloco). O hover diz que ela era do bloco, em vez de "não definido". */
+function ligacaoEncerrada(idx, nome, linha) {
+  const L = linha + 1;
+  for (const e of idx.escopos) {
+    if (e.fim >= L) continue;
+    const b = e.liga.find((x) => x.nome === nome);
+    if (b) return b;
+  }
+  return null;
+}
+
 /* O método/Entity que contém a linha — quem responde o `self.`. */
 function entidadeEm(idx, linha) {
   const L = linha + 1;
@@ -573,5 +813,6 @@ function entidadeEm(idx, linha) {
   return null;
 }
 
-module.exports = { indexa, visiveisEm, entidadeEm, cadeiaAntes, ultimaLinha, cada,
+module.exports = { indexa, visiveisEm, ligacaoDepois, ligacaoEncerrada, entidadeEm,
+                   cadeiaAntes, ultimaLinha, cada,
                    especificadorEhCaminho, nomeDoArquivoImport };
