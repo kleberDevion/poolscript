@@ -1538,7 +1538,7 @@ e sem, e dá o mesmo erro.
   trocou `qr.` por `qrcode.` pra tirar o apelido do módulo e levou a variável
   junto. `doc`.~~ Corrigido no 20.0.40: o exemplo usa `qr.add_data`, `qr.make`,
   `qr.make_image` e `qr.clear`.
-- **doc-18** Três frases de `docs/LANGUAGE.md` contradizem o motor:
+- ~~**doc-18** Três frases de `docs/LANGUAGE.md` contradizem o motor:
   - linhas 177 a 181: "não existe checagem de redeclaração no motor" e
     `int x = 1` seguido de `str x = "a"` "troca o tipo em silêncio". O motor dá
     `AttributedValueError: variável x já foi declarada como int e não pode ser
@@ -1550,7 +1550,9 @@ e sem, e dá o mesmo erro.
     bloco vazio (já no `HEAD`);
   - linha 785: "Os parênteses após o nome são obrigatórios, mesmo sem
     herança". A regra é a de `class A {` sem `()`, e o motor recusa
-    `class A() { }`. `doc`.
+    `class A() { }`. `doc`.~~ Corrigido no 20.0.41: a redeclaração com outro
+  tipo é `AttributedValueError`; escape desconhecido mantém a barra e avisa;
+  `class A {` não leva `()` (só com herança).
 - **doc-19** (achado pelo portão `roda`) `docs/psodbc/query/query.md:49` e
   `:62` ensinam passar o comando como tupla `(sql, params)`, com `?` no lugar
   dos valores ("nunca concatene na string"). O motor só aceita texto:

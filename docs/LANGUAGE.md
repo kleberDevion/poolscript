@@ -183,11 +183,10 @@ Bytes crus têm literal próprio: `b"\x89PNG\r\n\x1a\n"` (qualquer byte, `\xHH`
 `x is byte` — e `bytes` é o módulo de conversões (`bytes.fromhex`, `bytes.new`).
 Detalhes em [bytes](bytes/bytes.md).
 
-> Esta seção dizia que **redeclarar** uma variável já tipada no mesmo escopo é
-> erro. Não é: `int x = 1` seguido de `int x = 2` roda com rc=0, e
-> `int x = 1` seguido de `str x = "a"` troca o tipo em silêncio. Não existe
-> checagem de redeclaração no motor (`grep -rn redeclar vm/*.c` não acha nada).
-> A frase prometia uma proteção que nunca houve.
+> Esta seção dizia que `int x = 1` seguido de `str x = "a"` troca o tipo em
+> silêncio. Não troca: o motor recusa com `AttributedValueError: variável x já
+> foi declarada como int e não pode ser redeclarada como str` (rc 2). Repetir
+> o mesmo tipo (`int x = 2`) é permitido.
 
 `input()` sempre devolve `str`; ao declarar com tipo (`int n = input()`) o
 valor é convertido automaticamente (e falha com erro claro se não for
@@ -262,13 +261,13 @@ maiúscula — igual a `True` e `False`.
 ```
 
 Escapes reconhecidos: `\n \t \r \\ \" \'`. **Qualquer outro** `\X` (ex.: `\U`,
-`\l`, `\A`) **perde o backslash silenciosamente** e mantém só a letra — não é
-erro. Isso é comum em outras linguagens C-like, mas costuma pegar quem embute
-caminhos do Windows direto numa string (`"C:\Users\..."` vira `"C:Users..."`,
-com `\t` virando um TAB literal). Para caminhos/regex, use **string raw**:
+`\l`, `\A`) **mantém o backslash** e avisa com
+`SyntaxWarning: sequencia de escape invalida '\U' — a barra fica no texto`;
+o texto guarda `\U`. Caminhos do Windows ainda pedem cuidado (`\t`, `\n` etc.
+continuam sendo escapes), então use **string raw**:
 
 ```texto
-
+r"C:\Users\ana\documentos"
 ```
 
 Os exemplos abaixo pressupõem:
@@ -790,8 +789,8 @@ post(a.falar())         # Bicho faz um som
 
 Regras concretas:
 
-- **Os parênteses após o nome são obrigatórios**, mesmo sem herança:
-  `class Animal` — `class Animal` sozinho é erro de sintaxe.
+- **Sem herança, sem parênteses**: `class Animal {`; os parênteses só entram
+  com a classe-pai (`class Cachorro(Animal) {`). `class Animal()` é erro.
 - **`__init__` é opcional.** Sem ele, a instância nasce sem atributos e você
   os cria depois (`obj.x = ...`) ou só usa os métodos.
 - **Todo método declarado precisa de `self` como primeiro parâmetro** — é o
