@@ -4,7 +4,7 @@ Constrói o e-mail a ser enviado: remetente, destinatário, assunto, corpo
 (texto ou HTML) e anexos. Depois passe pro [`MailServer.send()`](../MailServer/send/send.md).
 
 ```ps
-from mail import MailMessage
+import mail
 m = mail.MailMessage()
 ```
 

@@ -21,17 +21,10 @@
 # pra quem lê. Falha que não está
 # aqui reprova o portão, e linha daqui que não falha mais também reprova
 # (consertado: tire a linha e risque o item).
-check	docs/mail/MailServer/MailServer.md	828a8efb5610	doc-12	todos	linha 5: from mail import MailServer
-check	docs/mail/MailReader/MailReader.md	c42dfaaa51b1	doc-12	todos	linha 5: from mail import MailReader
-check	docs/mail/MailMessage/MailMessage.md	ce779b72de96	doc-12	todos	linha 6: from mail import MailMessage
 check	docs/libs_utilitarias.md	adc8f33e0b02	doc-13	todos	linha 54: s = mail.MailServer()
 check	docs/libs_utilitarias.md	74b0c186e5d9	doc-13	todos	linha 85: r = mail.MailReader()
 check	docs/libs_utilitarias.md	8e7ef678e653	doc-13	todos	linha 141: import mail
 check	docs/libs_utilitarias.md	767b52a129c9	doc-13	todos	linha 167: import mail
-check	docs/jinker/Jinker/Jinker.md	81e6501260ac	doc-15	todos	linha 59: app = Jinker(__name__, oauth={poolip: True, rate: 60, bloq: 1})
-check	docs/jinker/Jinker/Jinker.md	a2fb8c48fb05	doc-15	todos	linha 75: # no máximo 60 req/min por IP; quem passar fica banido 1 dia
-check	docs/jinker/Jinker/Jinker.md	841c4b21cb64	doc-15	todos	linha 98: # juntos (cert e chave no mesmo arquivo)
-check	docs/jinker/Jinker/Jinker.md	07c22fd4fbc4	doc-15	todos	linha 118: from jinker import Jinker, cors, jsonify
 check	docs/request/get_json/get_json.md	e3e521e53e4e	doc-16	todos	linha 5: import request
 check	docs/request/text/text.md	057c53fb1083	doc-16	todos	linha 5: import request
 check	docs/qrcode.md	3f8ea5bebb96	doc-17	todos	linha 68: qr = qrcode.QRCode(...)

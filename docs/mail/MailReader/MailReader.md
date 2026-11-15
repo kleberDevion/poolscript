@@ -3,7 +3,7 @@
 Conecta na caixa de e-mail e **lê** mensagens: lista, filtra e pega o corpo.
 
 ```ps
-from mail import MailReader
+import mail
 r = mail.MailReader()
 ```
 

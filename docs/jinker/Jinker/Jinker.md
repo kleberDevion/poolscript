@@ -73,7 +73,7 @@ app(workers=0)
 Um dict com chaves opcionais. Só o que você colocar é ativado.
 
 ```ps
-app = Jinker(__name__, oauth={poolip: True, rate: 60, bloq: 1, tls: True})
+app = Jinker(__name__, oauth={"poolip": True, "rate": 60, "bloq": 1, "tls": True})
 ```
 
 ### `poolip` — rate limit + ban de IP
@@ -90,7 +90,7 @@ Passou disso → recebe **429 Too Many Requests** e é **banido por `bloq` dias*
 
 ```ps
 # no máximo 60 req/min por IP; quem passar fica banido 1 dia
-app = Jinker(__name__, oauth={poolip: True, rate: 60, bloq: 1})
+app = Jinker(__name__, oauth={"poolip": True, "rate": 60, "bloq": 1})
 ```
 
 Sem `poolip: True`, não há limite nenhum (o `rate`/`bloq` são ignorados).
@@ -113,10 +113,10 @@ Let's Encrypt e mkcert entregam: `fullchain.pem` + `privkey.pem`):
 
 ```ps
 # juntos (cert e chave no mesmo arquivo)
-app = Jinker(__name__, oauth={tls: True, cert: ".jinkerTls"})
+app = Jinker(__name__, oauth={"tls": True, "cert": ".jinkerTls"})
 
 # separados (o normal de um cert real)
-app = Jinker(__name__, oauth={tls: True, cert: "fullchain.pem", key: "privkey.pem"})
+app = Jinker(__name__, oauth={"tls": True, "cert": "fullchain.pem", "key": "privkey.pem"})
 ```
 
 Sem `key`, o jinker procura a chave irmã `<base>.key` ao lado do cert (ex:
@@ -131,12 +131,12 @@ passo a passo: **[tls.md](../tls.md)**.
 
 ## Exemplo completo
 
-```ps
+```ps sem-rodar: sobe o servidor na porta 8080 e fica escutando
 from jinker import Jinker, cors, jsonify
 import os
 
-app = Jinker(__name__, oauth={poolip: True, rate: 100, bloq: 1})
-cors(options=["GET", "POST"], origins=["https://meusite.com"])
+app = Jinker(__name__, oauth={"poolip": True, "rate": 100, "bloq": 1})
+cors(app, options=["GET", "POST"], origins=["https://meusite.com"])
 
 @app.route("/api/status", methods=cors.options(["GET"]))
 funct status() {

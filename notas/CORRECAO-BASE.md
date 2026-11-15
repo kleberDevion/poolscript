@@ -1489,12 +1489,13 @@ e sem, e dá o mesmo erro.
   `docs/manpu/ManpuFile/write/write.md:24`. `doc`.~~
   Fechado no 19.0.0: as páginas saíram com a lib `manpu` (decisão dele,
   2026-10-24).
-- **doc-12** Três páginas do `mail` importam com `from mail import X` e chamam
+- ~~**doc-12** Três páginas do `mail` importam com `from mail import X` e chamam
   `mail.X()`: `docs/mail/MailServer/MailServer.md:5`,
   `docs/mail/MailReader/MailReader.md:5` e
   `docs/mail/MailMessage/MailMessage.md:6`. Pela doc da linguagem (9.2), o
   `from ... import` não liga o nome do módulo; o motor dá
-  `NameError: name 'mail' is not defined`. `doc`.
+  `NameError: name 'mail' is not defined`. `doc`.~~ Corrigido no 20.0.39: as
+  três páginas usam `import mail` e continuam chamando `mail.X()`.
 - **doc-13** O `login` do `MailServer` e do `MailReader`: as páginas dele
   (`docs/mail/MailServer/login/login.md` e `docs/mail/MailReader/login/login.md`)
   prometem `login(user, password) -> Null`; o motor tem
@@ -1504,7 +1505,7 @@ e sem, e dá o mesmo erro.
   `docs/manpu.md:226`, que saiu com a manpu no 19.0.0). `os dois`: os nomes
   são decisão sua; os da doc são os
   do `smtplib` e do `imaplib` do Python (`login(user, password)`).
-- **doc-14** O `body` do `MailMessage` com `byte`: a página dele
+- ~~**doc-14** O `body` do `MailMessage` com `byte`: a página dele
   (`docs/mail/MailMessage/body/body.md:12`) diz que o corpo aceita "texto,
   HTML, ou bytes de um arquivo", e `docs/manpu/load/load.md` ensinava passar o
   `byte` do `manpu.load`. O motor só aceita `str`:
@@ -1512,15 +1513,17 @@ e sem, e dá o mesmo erro.
   `docs/manpu/load/load.md:15`, `docs/manpu.md:42` e `docs/manpu.md:226`. A
   própria `MailMessage.md` diz "texto ou HTML". `os dois`. Os três blocos
   saíram com a manpu no 19.0.0; fica a promessa da `body.md:12`, sem bloco
-  que a rode.
-- **doc-15** `docs/jinker/Jinker/Jinker.md:59`, `:75`, `:98` e `:118` escrevem
+  que a rode.~~ Corrigido no 20.0.39: a tabela do `body` diz só "texto ou HTML".
+- ~~**doc-15** `docs/jinker/Jinker/Jinker.md:59`, `:75`, `:98` e `:118` escrevem
   o `oauth` com chave sem aspas (`{poolip: True, rate: 60}`): pela doc da
   linguagem (2, a chave do dict é uma expressão), é `NameError`, e
   `docs/jinker/tls/tls.md` e `docs/objetos-internos/PoolIp.md` já escrevem
   com aspas. O bloco da
   linha 118 também chama `cors(options=..., origins=...)` sem o servidor, que
   `docs/jinker/cors/cors.md` diz ser erro (rodando: `TypeError: cors() precisa
-  do servidor como primeiro argumento`). `doc`.
+  do servidor como primeiro argumento`). `doc`.~~ Corrigido no 20.0.39: as
+  chaves do `oauth` estão com aspas e o exemplo completo chama `cors(app, ...)`;
+  como sobe servidor, a cerca ficou `sem-rodar`.
 - **doc-16** Duas páginas descrevem funções que a lib cliente `request` não
   tem: `docs/request/get_json/get_json.md` (`request.get_json()`) e
   `docs/request/text/text.md` (`request.text()`): `AttributeError: module

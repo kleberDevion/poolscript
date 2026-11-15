@@ -3,7 +3,7 @@
 Conecta num servidor de e-mail, faz login e envia mensagens.
 
 ```ps
-from mail import MailServer
+import mail
 s = mail.MailServer()
 ```
 

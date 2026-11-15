@@ -9,7 +9,7 @@ m.body(content, is_html: bool = False) -> Null
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
-| `content` | — | o corpo (texto, HTML, ou bytes de um arquivo) |
+| `content` | — | o corpo (texto ou HTML) |
 | `is_html` | `False` | `True` = o conteúdo é HTML e vai ser renderizado |
 
 Os exemplos desta página pressupõem:
