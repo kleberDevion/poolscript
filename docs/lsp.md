@@ -81,7 +81,9 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   `base(Pai).` lista o que o pai tem, com o `__init__` (07-entity §7.5.2);
   hover em `base` mostra a seção. Item de lista/dict (`sys.argv[0].`) é de
   tipo desconhecido, texto indexado é texto; `str(x).` / `int(x).` começam
-  a cadeia no tipo; `sys.stdout.` entra no submódulo.
+  a cadeia no tipo; `sys.stdout.` entra no submódulo. A linha que começa com
+  `.` continua a expressão de cima (01-estrutura-lexica), inclusive várias
+  continuações: o completion resolve a cadeia inteira, não o escopo solto.
 
   > O nome de Entity é `IDENT_UPPER` no lexer (§1.4) e o servidor exigia
   > `IDENT`. Uma linha — e com ela toda Entity, de todo arquivo, era invisível:
@@ -110,7 +112,7 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
 - **todo receptor expõe o que é** — `x.` responde pelo tipo de `x`, venha de
   onde vier: declaração (`str s`), construção (`Jinker(…)`, `MailServer(…)`,
   `Rota()`), **literal** (`nome = "ana"` → métodos de `str`; `[…]`, `{…}`,
-  `"abc".` direto), retorno de método ou de funct com tipo declarado,
+  `[1, 2].` → `list`, `(1, 2).` → `tup`, `"abc".` direto), retorno de método ou de funct com tipo declarado,
   `model` e `enum` do arquivo (`Rota.`, `Cor.`), `self.` com campos do corpo
   da classe, de `self.x = …` e os herdados. Receptor que existe mas cujo tipo
   é desconhecido (`for each x in …`) não recebe nada: desde o 18.0.0 nenhum

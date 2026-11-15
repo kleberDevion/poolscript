@@ -339,8 +339,8 @@ em cada item):
   `catch (Quebrou e)` e do `_` do `case` deixou de cair no genérico. Testes:
   seção 9b-ter de `editor/vscode/teste_servidor.js`; 290 checagens (4
   puladas). As 532 linhas `editor-3` saíram da catraca; o P3 da doc inteira
-  fica com as 33 linhas `editor-4` e 0 consertadas.
-- **editor-4** (achado pelo portão P3, 2026-10-23) O completion depois de um
+  fica sem nenhuma linha `p3` depois do `editor-4` (20.0.36).
+- ~~**editor-4** (achado pelo portão P3, 2026-10-23) O completion depois de um
   ponto devolve todos os nomes do escopo (de 132 a 141 nos blocos da doc), e
   não o membro que o programa usa, em dois casos:
   - **a cadeia que continua na linha de baixo** (26 lugares): `.send(...)`
@@ -356,7 +356,13 @@ em cada item):
   no `cadeiaAntes` do `editor/vscode/analise.js`. Ele lê só a linha do
   cursor, e o grupo `[...]` ou `(...)` sem nome antes dele termina a cadeia
   vazia. Aí o completion responde como se não houvesse receptor. `motor`
-  (editor).
+  (editor).~~ Corrigido no 20.0.36: `receptorLiteral()` reconhece a lista e a
+  tupla escritas antes do ponto (`[10, 20, 30].`, `(10, 20).`) sem confundir
+  índice/chamada (`sys.argv[0].`, `f(x).`); `cadeiaDaContinuacao()` junta a
+  linha que começa com `.` às linhas de cima (inclusive várias continuações)
+  e lê a cadeia inteira no completion. Testes 70–72 de
+  `editor/vscode/teste_servidor.js`; 293 checagens (4 puladas). As 33 linhas
+  `editor-4` saíram da catraca do P3, que fica sem nenhuma linha `p3`.
 
 ## motor
 

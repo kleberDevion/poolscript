@@ -2000,7 +2000,57 @@ function receptorLiteral(doc, pos) {
   const t = toks[n - 2].t;
   if ((t === 'STR' || t === 'FSTRING') && META.tipos.str) return 'str';
   if (t === 'BYTES' && META.tipos.byte) return 'byte';
-  return null;
+  /* `[10, 20, 30].` e `(10, 20).` — a lista/tupla escrita ANTES do ponto é o
+   * receptor. O token antes do DOT é o fecho do grupo, não um nome: sem isto
+   * a cadeia ficava vazia e o completion listava 132 nomes do escopo. */
+  if (t !== 'RBRACK' && t !== 'RPAREN') return null;
+  const abre = t === 'RBRACK' ? 'LBRACK' : 'LPAREN';
+  let prof = 0, j = n - 2;
+  for (; j >= 0; j--) {
+    if (toks[j].t === t) prof++;
+    else if (toks[j].t === abre) { prof--; if (prof === 0) break; }
+  }
+  if (j < 0) return null;
+  /* `sys.argv[0].` / `f(x).` / `l[i].`: o grupo é ÍNDICE ou CHAMADA, não
+   * literal — o token antes do `[`/`(` é nome ou outro grupo. Só é literal
+   * quando nada disso precede (`[1, 2]`, `(1, 2)`). */
+  const ant = j > 0 ? toks[j - 1] : null;
+  if (ant && (ant.t === 'IDENT' || ant.t === 'IDENT_UPPER'
+              || ant.t === 'RPAREN' || ant.t === 'RBRACK')) return null;
+  if (abre === 'LBRACK') return META.tipos.list ? 'list' : null;
+  /* parênteses: só é tupla se houver vírgula no nível de fora; `(x)` é só
+   * a expressão `x` entre parênteses, e aí quem resolve é a cadeia normal */
+  let nivel = 0, virgula = false;
+  for (let k = j + 1; k < n - 1; k++) {
+    const tk = toks[k];
+    if (tk.t === 'LPAREN' || tk.t === 'LBRACK' || tk.t === 'LBRACE') nivel++;
+    else if (tk.t === 'RPAREN' || tk.t === 'RBRACK' || tk.t === 'RBRACE') { if (nivel > 0) nivel--; }
+    else if (tk.v === ',' && nivel === 0) virgula = true;
+  }
+  return virgula && META.tipos.tup ? 'tup' : null;
+}
+
+/* `expr
+    .membro`: a linha que começa com `.` continua a expressão de
+ * cima (01-estrutura-lexica). Junta a base e as continuações até o cursor e
+ * lê a cadeia inteira; sem isto `return JinkerResponse()` + `.send(...)`
+ * respondia como se não houvesse receptor. */
+function cadeiaDaContinuacao(doc, p) {
+  const linhas = doc.getText().split('\n');
+  const atual = (linhas[p.position.line] || '').slice(0, p.position.character);
+  if (!atual.trimStart().startsWith('.')) return null;
+  if (dentroDeParenteses(doc, p.position)) return null;
+  const partes = [atual];
+  let k = p.position.line - 1;
+  while (k >= 0) {
+    const l = linhas[k];
+    if (l.trim() === '') { k--; continue; }
+    partes.unshift(l);
+    if (!l.trimStart().startsWith('.')) break;
+    k--;
+  }
+  if (partes.length < 2) return null;
+  return A.cadeiaAntes(partes.join(''), partes.join('').length);
 }
 
 /* Receptor de tipo DESCONHECIDO (`lines[1].decode`, `head.decode` com `head`
@@ -2134,9 +2184,19 @@ function completa(doc, p) {
 
   const cad = A.cadeiaAntes(linhaAte(doc, p.position), p.position.character);
 
-  /* `"a,b".` — o receptor é um LITERAL de texto: o token antes do ponto é STR */
+  /* `"a,b".` / `[1, 2].` / `(1, 2).` — o receptor é o literal antes do ponto */
   const lit = receptorLiteral(doc, p.position);
   if (lit) return membrosDe(doc, { tipo: 'tipo_motor', nome: lit }, p.position.line).map((m) => itemDeMembro(m, lit));
+
+  /* a linha começando com `.` continua a expressão da linha de cima */
+  if (!cad.partes.length) {
+    const cont = cadeiaDaContinuacao(doc, p);
+    if (cont && cont.partes.length) {
+      const membros = membrosDaCadeia(doc, cont.partes, p.position.line);
+      const deOnde = cont.partes[cont.partes.length - 1];
+      return membros.map((m) => itemDeMembro(m, deOnde));
+    }
+  }
 
   /* `base(` — o que vai aqui é o NOME DE UM PAI da Entity do cursor. Pelo
    * texto, não pela árvore: `base(` aberto (mesmo remendado, `base()`) não é

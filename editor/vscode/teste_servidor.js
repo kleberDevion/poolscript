@@ -1056,6 +1056,28 @@ async function main() {
            t.includes('curinga') && !proibido(t), t);
     }
     {
+      /* editor-4: a lista/tupla escrita antes do ponto e a cadeia na linha
+       * de baixo. Antes o completion listava 132 nomes do escopo. */
+      const SRC = 'post([10, 20, 30].)\npost((10, 20).)\n';
+      const m = await conversa(SRC, [
+        compl(70, 0, SRC.split('\n')[0].indexOf('.') + 1),
+        compl(71, 1, SRC.split('\n')[1].indexOf('.') + 1),
+      ]);
+      const l70 = rotulos(resp(m, 70)), l71 = rotulos(resp(m, 71));
+      conf('`[10, 20, 30].` sugere os membros de list',
+           l70.includes('index') && l70.includes('has') && !l70.includes('post'), l70.slice(0, 8));
+      conf('`(10, 20).` sugere os membros de tup',
+           l71.includes('contains') && !l71.includes('post'), l71.slice(0, 8));
+    }
+    {
+      const SRC = 'from jinker import JinkerResponse\nr = JinkerResponse()\n'
+                + '    .json({"a": 1})\n    .\n';
+      const m = await conversa(SRC, [compl(72, 3, 5)]);
+      const L = rotulos(resp(m, 72));
+      conf('cadeia na linha de baixo continua a expressao de cima',
+           L.includes('send') && L.includes('status') && !L.includes('post'), L.slice(0, 10));
+    }
+    {
       const SRC = 'class C {\n    static int a = 1\n    int static private d = 4\n'
                 + '    public static string funct main() {\n        return "x"\n    }\n'
                 + '    static Null funct fim() {\n        return\n    }\n}\n';
