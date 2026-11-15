@@ -248,6 +248,55 @@ function linksAbsolutos(texto, arq) {
   return saida;
 }
 
+/* A página de um MÓDULO (`docs/<mod>/<mod>.md`; submódulo:
+ * `docs/<a>/<b>/<b>.md`). É dela que sai a linha da tabela quando o membro
+ * não tem página própria (`sockets.SO_LINGER`, `sockets.socket`). */
+function paginaDoModulo(mod) {
+  const raiz = raizDoc();
+  if (!raiz || !mod) return null;
+  const partes = mod.split('.');
+  return paginaArquivo(path.join(raiz, ...partes, partes[partes.length - 1] + '.md'));
+}
+
+/* A descrição do membro na TABELA da página (`| \`SO_LINGER\` | … |`,
+ * `| \`.get(chave)\` | … |`, `| \`socket(...)\` | … |`): a doc de módulo e de
+ * tipo publica ali o que o hover não achava, porque não há uma página por
+ * membro. Devolve a segunda célula, ou "". */
+function linhaDaTabela(arq, nome) {
+  if (!arq || !nome) return '';
+  let texto;
+  try { texto = fs.readFileSync(arq, 'utf8'); } catch (_) { return ''; }
+  const alvos = ['`' + nome + '`', '`' + nome + '(', '`.' + nome + '`', '`.' + nome + '('];
+  for (const linha of texto.split('\n')) {
+    const t = linha.trim();
+    if (!t.startsWith('|')) continue;
+    const cels = t.split('|');
+    const rot = (cels[1] || '').trim();
+    if (!alvos.some((a) => rot.includes(a))) continue;
+    const desc = (cels[2] || '').trim();
+    if (desc) return desc;
+  }
+  return '';
+}
+
+/* A prosa de um membro: a página dele; sem ela, a linha da tabela do módulo
+ * (membro nativo) ou do tipo (membro de `Response`, `RequestProxy`…). */
+function prosaDoMembro(m, alvo, nome) {
+  const p = m.escopo ? resumoDe(m.escopo, m.nome) : '';
+  if (p) return p;
+  if (m.mod) {
+    const pg = paginaDoModulo(m.mod);
+    const d = pg && pg.arq ? linhaDaTabela(pg.arq, nome) : '';
+    if (d) return linksAbsolutos(d, pg.arq);
+  }
+  if (alvo && alvo.tipo === 'tipo_motor') {
+    const pg = paginaDoTipo(alvo.nome, alvo.via);
+    const d = pg && pg.arq ? linhaDaTabela(pg.arq, nome) : '';
+    if (d) return linksAbsolutos(d, pg.arq);
+  }
+  return '';
+}
+
 /* A assinatura de um tipo do motor como a doc a apresenta no título da
  * página (`Jinker(name="main", oauth=Null, …)`), sem as crases. */
 function tituloDaPagina(pg) {
@@ -766,9 +815,15 @@ function exportadosDe(ref, dirModulo, dirScript, pilha) {
   if (!mod) return [];
   const nativo = nativoDe(mod, ref.aspas, pontos);
   if (nativo) {
+    /* `kind` vem DEPOIS do `m`: o membro do módulo traz `value`/`function` do
+     * `--metadata`, e o `Object.assign` deixava ele sobrescrever o
+     * `campo`/`funct` do editor. Era o `sockets.SO_LINGER() -> int` do
+     * editor-2 — constante com cara de função. */
     return META.modulos[nativo].map((m) => Object.assign(
-      { kind: m.kind === 'value' ? 'campo' : 'funct', escopo: nativo, tipo: retornoVisivel(m.retorna) },
-      m, { mod: nativo, membro: m.nome }));
+      {}, m, {
+        kind: m.kind === 'value' ? 'campo' : m.kind === 'function' ? 'funct' : m.kind,
+        escopo: nativo, tipo: retornoVisivel(m.retorna), mod: nativo, membro: m.nome,
+      }));
   }
   const arq = arquivoDoImport(mod, dirModulo, ref.aspas, pontos, dirScript);
   return arq ? exportadosDeArquivo(arq, dirScript, pilha || new Set()) : [];
@@ -980,6 +1035,12 @@ function tipoDoNome(doc, nome, linha) {
   if (nome === 'self') {
     const e = A.entidadeEm(idx, linha);
     return e ? { tipo: 'entity', nome: e.nome, interno: true } : null;
+  }
+  /* `request` dentro de uma rota/middleware do jinker: o motor liga o nome,
+   * o arquivo não o declara. Sem isto a cadeia caía nos candidatos de `get`
+   * (str, dict, Jinker…) e o hover dizia que faltava `import request`. */
+  if (nome === 'request' && emHandlerJinker(idx, linha)) {
+    return { tipo: 'tipo_motor', nome: 'RequestProxy', via: { mod: 'jinker', membro: 'request' } };
   }
   /* O nome LIGADO por import vem antes da Entity de mesmo nome achada num
    * arquivo importado: `import pondy` (a lib cujo topo é `class pondy`)
@@ -2455,6 +2516,43 @@ function decoradorDe(idx, nome, linha) {
   return achado;
 }
 
+/* Os decoradores que fazem do corpo da funct um handler do jinker. Neles o
+ * motor liga `request` (e o `socket`, no `@app.socket`), sem declaração nem
+ * import — o hover tem que dizer o mesmo. A lista é a forma que a doc usa;
+ * o verbo é o último pedaço (`app.route`, `servidor.post`…). */
+const HANDLERS_JINKER = new Set(['route', 'middleware', 'get', 'post', 'put', 'patch', 'delete']);
+
+/* As FunctDecl dentro de um DecoratorStmt (ele pode embrulhar outro
+ * DecoratorStmt, com dois decoradores na mesma funct). */
+function functsDoDecorador(no, out) {
+  if (!no || typeof no !== 'object') return;
+  if (no.k === 'FunctDecl') { out.push(no); return; }
+  for (const x of (no.lista || [])) functsDoDecorador(x, out);
+  if (no.b) functsDoDecorador(no.b, out);
+}
+
+/* A linha está dentro da funct de um handler do jinker? */
+function emHandlerJinker(idx, linha) {
+  let achado = false;
+  const anda = (no) => {
+    if (!no || typeof no !== 'object' || achado) return;
+    if (no.k === 'DecoratorStmt') {
+      const nome = ((no.a && no.a.lista) || []).map((x) => x && x.texto).filter(Boolean).join('.');
+      const verbo = nome.split('.').pop();
+      if (HANDLERS_JINKER.has(verbo)) {
+        const fs_ = [];
+        functsDoDecorador(no.b, fs_);
+        for (const f of fs_) {
+          if (f.l <= linha + 1 && linha + 1 <= A.ultimaLinha(f)) { achado = true; return; }
+        }
+      }
+    }
+    A.cada(no, anda);
+  };
+  anda(idx.arvore || null);
+  return achado;
+}
+
 /* O hover de um nome que veio de import — nomeado (`from m import f`) ou
  * trazido por um `*`. É o mesmo texto nos dois: pro motor é a mesma ligação. */
 function hoverDoImportado(doc, alvo, nome, linha) {
@@ -2527,6 +2625,16 @@ conexao.onHover((p) => {
   const toksAqui = tokensDe(doc);
   const antes = tok ? toksAqui[toksAqui.indexOf(tok) - 1] : null;
   const aposPonto = !!(antes && antes.t === 'DOT' && antes.l0 === tok.l0);
+  /* `request` dentro de rota/middleware do jinker: o motor liga o nome,
+   * então o hover apresenta o tipo em vez de mandar importar o módulo
+   * `request` (o `receptorDeModulo` abaixo, sem esta cláusula, via só o
+   * `.` e dizia "falta import request"). */
+  if (tok && tok.v === 'request' && !aposPonto
+      && emHandlerJinker(idxDoc(doc), p.position.line)) {
+    return md('```ps\nRequestProxy request\n```'
+              + apresentaTipo(doc, { tipo: 'tipo_motor', nome: 'RequestProxy',
+                                     via: { mod: 'jinker', membro: 'request' } }));
+  }
   /* o nome seguido de `=` que não é atribuição: o de um argumento nomeado
    * (`count=2` também, que o lexer marca KW) ou o parâmetro de validação do
    * campo de `model` (`in=[...]`). Antes da palavra-chave: o `count` do
@@ -2634,7 +2742,7 @@ conexao.onHover((p) => {
      * "herdado de" só quando o membro veio de um pai de verdade — antes
      * `self.con` dizia "herdado de `Db`" no campo da própria classe */
     const dono = alvo && alvo.tipo === 'entity' ? alvo.nome : partes[partes.length - 1];
-    const prosa = m.escopo ? resumoDe(m.escopo, m.nome) : '';
+    const prosa = prosaDoMembro(m, alvo, nome);
     const herd = m.de && m.de !== dono ? `\n\nherdado de \`${m.de}\`` : '';
     /* campo sem tipo declarado / método sem retorno declarado: o inferido */
     const mm = Object.assign({}, m);

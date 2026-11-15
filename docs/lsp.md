@@ -119,8 +119,10 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   `class` aparece só na classe escrita em Jinga;
 - **hover de um nome da linguagem** — o builtin (`len`, `range`, `sum`…)
   mostra a assinatura e a página `docs/builtins/`; o nome de tipo mostra o
-  tipo; `json.` sem `import json` diz que falta o import. Nenhum nome que a
-  linguagem liga sozinha cai no "rodando dá NameError";
+  tipo; `json.` sem `import json` diz que falta o import; `request` dentro de
+  rota/middleware da jinker é o `RequestProxy` injetado, não o módulo cliente
+  `request`. Nenhum nome que a linguagem liga sozinha cai no "rodando dá
+  NameError";
 - **hover do nome de um argumento nomeado** — `origins` em
   `cors(app, origins=lista)` é o parâmetro do chamado, não uma variável:
   `origins = Null`, "parâmetro de `cors`", com a assinatura. Vale no
@@ -134,6 +136,9 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
 - **hover** — a assinatura real do método e o tipo que ele devolve, com a
   prosa da página `docs/…` achada pelo **caminho** (`jinker/request/get`;
   método de tipo em `docs/<tipo>/`, como `docs/str/upper/`, `docs/byte/decode/`).
+  Sem página do membro, a prosa vem da linha da tabela da página do módulo/tipo
+  (`sockets.SO_LINGER`, `sockets.socket`, `Response.get`); a constante sai como
+  campo (`int sockets.SO_LINGER`), não como chamada.
   O receptor pode ser variável de tipo conhecido, **parâmetro tipado**
   (`byte raw` → `raw.split`), **literal** (`"x".encode`, `b"x".decode`) ou
   expressão de tipo **desconhecido** (`lines[1].decode`, `head.decode`): aí o

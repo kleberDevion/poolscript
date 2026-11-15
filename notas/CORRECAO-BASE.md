@@ -246,7 +246,7 @@ em cada item):
   Testes (`editor/vscode/teste_servidor.js`): os "hover no ..." e
   "signatureHelp em `cors(` mostra `origins = Null`", e as linhas do editor-1
   saíram da catraca do P3.
-- **editor-2** (relato dele, 2026-10-21: "a lib sockets não tem as constantes
+- ~~**editor-2** (relato dele, 2026-10-21: "a lib sockets não tem as constantes
   em sua doc") Medido no servidor do editor instalado (17.0.20), com pedidos
   de hover:
   - sobre `sockets.SO_LINGER` sai `sockets.SO_LINGER() -> int`, como se a
@@ -264,7 +264,25 @@ em cada item):
   `request` que a jinker põe à disposição dentro da rota e do middleware tem
   o hover "módulo `request` — falta `import request` neste arquivo (rodando
   dá `NameError`)": o editor toma o nome pelo módulo cliente `request`
-  (`docs/jinker/middleware/middleware.md:29`, `docs/jinker.md:53`).
+  (`docs/jinker/middleware/middleware.md:29`, `docs/jinker.md:53`).~~ Corrigido
+  no 20.0.34: em `exportadosDe()` o `kind` normalizado vem DEPOIS do membro
+  do `--metadata` (o `value` sobrescrevia o `campo`), então
+  `sockets.SO_LINGER` sai `int sockets.SO_LINGER`, não chamada; o
+  `prosaDoMembro()` procura a linha da tabela na página do módulo/tipo quando
+  não há página por membro (`sockets.socket`, `Response.get` — o retorno é
+  `*` no motor, então a linha da tabela diz "header ou chave do JSON");
+  `emHandlerJinker()` reconhece pela ÁRVORE a funct embrulhada por
+  `@...route/middleware/get/post/put/patch/delete` (inclusive decoradores
+  aninhados), e `tipoDoNome()`/o hover de `request` devolvem
+  `RequestProxy` (a página `objetos-internos/RequestProxy.md`), com a prosa
+  de `jinker/request/get` em `request.get`. Fora de rota/middleware o nome
+  continua não ligado, como o motor. O 20.0.8 (`bb18b7b`) tinha uma correção
+  parcial destes dois casos, mas ela não está no código atual; esta volta sem
+  regex, pela árvore, e com o fallback da tabela. Testes em
+  `editor/vscode/teste_servidor.js` (9b-bis: constante, `sockets.socket`,
+  `Response.get`, `request`/`request.get` na rota e completion de `request.`);
+  as 33 linhas `editor-2` saíram da catraca do P3, que fecha com os itens
+  abertos conhecidos.
 - **editor-3** (achado pelo portão P3, 2026-10-23) O hover diz "nome não
   definido neste arquivo nem por import (rodando dá `NameError`)" em nomes que
   o motor liga, em blocos que o `--check` aprova. Na doc inteira são 550

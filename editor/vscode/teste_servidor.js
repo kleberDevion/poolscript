@@ -798,6 +798,56 @@ async function main() {
          valor(m, 21).includes('mapping.post(') && valor(m, 21).includes('POST'), valor(m, 21).slice(0, 200));
   }
 
+  /* ── 9b-bis. módulo/tipo: constante, membro sem página e `request` ───────
+   *
+   * Medido antes: `sockets.SO_LINGER` saía `SO_LINGER() -> int` (o `kind` do
+   * `--metadata` sobrescrevia o `campo`); `sockets.socket` e `Response.get`
+   * saíam só com a assinatura, porque a prosa está na TABELA da página do
+   * módulo/tipo; e `request` dentro de `@app.route` saía "módulo request —
+   * falta import request", como se não fosse o proxy da rota. */
+  {
+    const SRC = 'import sockets\nint a = sockets.SO_LINGER\ns = sockets.socket()\n';
+    const L = SRC.split('\n');
+    const m = await conversa(SRC, [
+      hov(30, 1, L[1].indexOf('SO_LINGER') + 3),
+      hov(31, 2, L[2].lastIndexOf('socket') + 2),
+    ]);
+    const t1 = valor(m, 30);
+    conf('`sockets.SO_LINGER` é campo `int`, nao funcao',
+         t1.includes('int sockets.SO_LINGER') && !t1.includes('SO_LINGER()') && t1.includes('close'), t1);
+    const t2 = valor(m, 31);
+    conf('`sockets.socket` traz a prosa da tabela de `sockets`',
+         t2.includes('sockets.socket(') && t2.includes('cria um socket'), t2);
+  }
+  {
+    const SRC = 'import request\nResponse r = request.get("https://x")\ny = r.get("a")\n';
+    const L = SRC.split('\n');
+    const m = await conversa(SRC, [hov(32, 2, L[2].indexOf('get') + 1)]);
+    const t = valor(m, 32);
+    conf('`Response.get` traz a prosa da tabela, nao a do modulo `request`',
+         t.includes('r.get(') && t.includes('header') && t.includes('chave do JSON'), t);
+  }
+  {
+    const SRC = 'from jinker import Jinker\napp = Jinker(__name__)\n\n@app.route("/x")\nfunct f() {\n    return request.get("a")\n}\n';
+    const L = SRC.split('\n');
+    const m = await conversa(SRC, [
+      hov(33, 5, L[5].indexOf('request') + 2),
+      hov(34, 5, L[5].indexOf('request.get') + 'request.'.length + 1),
+    ]);
+    const tr = valor(m, 33);
+    conf('`request` em rota do jinker e `RequestProxy`, sem "falta import"',
+         tr.includes('RequestProxy request') && !tr.includes('falta `import request`') && !tr.includes('NameError'), tr);
+    const tg = valor(m, 34);
+    conf('`request.get` em rota tem a prosa da pagina de `get`',
+         tg.includes('request.get(') && tg.includes('Pega') && !tg.includes('receptor de tipo desconhecido'), tg);
+  }
+  {
+    const SRC = 'from jinker import Jinker\napp = Jinker(__name__)\n\n@app.route("/x")\nfunct f() {\n    x = request.\n}\n';
+    const m = await conversa(SRC, [compl(35, 5, 16)]);
+    const L = rotulos(resp(m, 35));
+    conf('`request.` em rota sugere `get`/`get_json`', L.includes('get') && L.includes('get_json'), L.slice(0, 8));
+  }
+
   /* ── 9a-ter. linha quebrada DENTRO da funct não apaga a funct ─────────────
    * O parser não se recuperava dentro de bloco: um statement quebrado no corpo
    * derrubava a funct inteira da árvore, e o que vinha depois vazava pro topo.
