@@ -1127,7 +1127,7 @@ em cada item):
   Caso: o "motor-40: ..." de `teste/cli_roda.pr`, que monta o pacote numa
   árvore mínima com o PATH sem as pastas sbin (e o "motor-38: o pacote leva
   a libmongoc que o pool abre").
-- **motor-41** (relato dele, 2026-11-10: "a lib mail nao inicia handshake") O
+- ~~**motor-41** (relato dele, 2026-11-10: "a lib mail nao inicia handshake") O
   `MailServer.conn` e o `MailReader.conn` fazem o handshake SMTP/IMAP, mas o
   `MailServer` **exige** STARTTLS: sem o servidor anunciar `STARTTLS` no EHLO,
   o `conn` falha com `o servidor em <host> nao anunciou STARTTLS no EHLO
@@ -1140,7 +1140,10 @@ em cada item):
   `smtplib` do Python faz isso com `starttls()` opcional), ou (b) a doc dizer
   que a lib `mail` só fala com servidor que oferece STARTTLS. `os dois` (a
   decisão é dele; a doc do `conn` promete "com TLS" sem dizer o que acontece
-  quando o servidor não oferece).
+  quando o servidor não oferece). `motor`.~~ Corrigido no 20.0.48: `conn(host,
+  port=Null, tls=False)` começa em texto puro (25/143) e `tls=True` liga o
+  STARTTLS no SMTP (587) ou o TLS direto no IMAP (993). Os quatro caminhos
+  (SMTP/IMAP, puro/TLS) rodam no `teste/e2e/mail_local.pr`.
 - **motor-42** (relato dele, 2026-11-10: "não há SSL para criar conns seguras
   com a lib socket") A lib `sockets` tem 91 membros no `--metadata` e
   **nenhum** de TLS/SSL: não há `wrap_socket`, `SSLContext`, nem como envolver

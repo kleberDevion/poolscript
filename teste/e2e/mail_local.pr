@@ -353,6 +353,49 @@ if __name__ == "main" {
         encerra(0)
     }
 
+    # ── 0. texto puro: o padrao de conn() ───────────────────────────────────
+    #
+    # O STARTTLS era obrigatorio; agora `tls=False` e o padrao. O servidor
+    # falso sem TLS anuncia AUTH no EHLO e nao anuncia STARTTLS.
+    porta = sobe_com(SRV, "SMTP_FALSO_SEM_TLS=1")
+    if porta == 0 {
+        post("ERRO: o SMTP falso sem TLS nao subiu —", os.readFile(LOG_SRV))
+        encerra(1)
+    }
+    r = roda("import mail\n"
+             + "s = mail.MailServer()\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "s.login(\"teste@local\", \"segredo123\")\n"
+             + "m = mail.MailMessage()\n"
+             + "m.fromAddress(\"teste@local\")\n"
+             + "m.toAddress(\"destino@local\")\n"
+             + "m.subject(\"sem TLS\")\n"
+             + "m.body(\"texto puro\")\n"
+             + "s.send(m)\n"
+             + "s.quit()\n"
+             + "post(\"ENVIOU\")\n", "")
+    erros = erros + conf("SMTP: texto puro e o padrao", r[0] == 0 and "ENVIOU" in r[1], r[1])
+    caixa = ""
+    if os.exists(CAIXA) {
+        caixa = le_caixa()
+    }
+    erros = erros + conf("SMTP: nao mandou STARTTLS",
+                         "CLARO EHLO" in caixa and not "STARTTLS" in caixa
+                         and not "TLS_OK" in caixa, caixa)
+    erros = erros + conf("SMTP: autenticou e enviou sem TLS",
+                         "LOGIN_OK teste@local" in caixa
+                         and "CLARO MAIL FROM:<teste@local>" in caixa, caixa)
+
+    # com tls=True o servidor sem STARTTLS tem que ser recusado
+    porta = sobe_com(SRV, "SMTP_FALSO_SEM_TLS=1")
+    r = roda("import mail\n"
+             + "s = mail.MailServer()\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
+             + "post(\"CONECTOU\")\n", "")
+    erros = erros + conf("SMTP: tls=True exige STARTTLS",
+                         r[0] != 0 and not "CONECTOU" in r[1]
+                         and "nao anunciou STARTTLS" in r[1], r[1])
+
     # ── 1. certificado nao confiavel: TEM que ser recusado ──────────────────
     porta = sobe_servidor()
     if porta == 0 {
@@ -361,7 +404,7 @@ if __name__ == "main" {
     }
     r = roda("import mail\n"
              + "s = mail.MailServer()\n"
-             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "post(\"CONECTOU\")\n", "")
     erros = erros + conf("cert auto-assinado é RECUSADO", r[0] != 0, r[1])
     erros = erros + conf("e o erro diz o motivo e a saida",
@@ -384,7 +427,7 @@ if __name__ == "main" {
     }
     r = roda("import mail\n"
              + "s = mail.MailServer()\n"
-             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "s.login(\"teste@local\", \"segredo123\")\n"
              + "m = mail.MailMessage()\n"
              + "m.fromAddress(\"teste@local\")\n"
@@ -419,7 +462,7 @@ if __name__ == "main" {
     }
     r = roda("import mail\n"
              + "s = mail.MailServer()\n"
-             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "s.login(\"teste@local\", \"senha ERRADA\")\n"
              + "post(\"LOGOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
     erros = erros + conf("senha errada falha", r[0] != 0 and not "LOGOU" in r[1], r[1])
@@ -427,14 +470,14 @@ if __name__ == "main" {
     # ── 4. porta fechada: erro de conexao, nao trava nem crash ──────────────
     r = roda("import mail\n"
              + "s = mail.MailServer()\n"
-             + "s.conn(\"127.0.0.1\", 1)\n"
+             + "s.conn(\"127.0.0.1\", 1, True)\n"
              + "post(\"CONECTOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
     erros = erros + conf("porta fechada falha limpo", r[0] != 0 and not "CONECTOU" in r[1], r[1])
 
     # ── 5. host que nao resolve ─────────────────────────────────────────────
     r = roda("import mail\n"
              + "s = mail.MailServer()\n"
-             + "s.conn(\"nao.existe.mesmo.invalido\", 587)\n"
+             + "s.conn(\"nao.existe.mesmo.invalido\", 587, True)\n"
              + "post(\"CONECTOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
     erros = erros + conf("host inexistente falha limpo", r[0] != 0 and not "CONECTOU" in r[1], r[1])
 
@@ -446,7 +489,7 @@ if __name__ == "main" {
     porta = sobe_com("teste/smtp_falso.py", "SMTP_FALSO_AUTH=login")
     r = roda("import mail\n"
              + "s = mail.MailServer()\n"
-             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "s.login(\"teste@local\", \"segredo123\")\n"
              + "m = mail.MailMessage()\n"
              + "m.fromAddress(\"teste@local\")\n"
@@ -469,7 +512,7 @@ if __name__ == "main" {
     porta = sobe_com("teste/smtp_falso.py", "SMTP_FALSO_AUTH=login")
     r = roda("import mail\n"
              + "s = mail.MailServer()\n"
-             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "s.login(\"teste@local\", \"ERRADA\")\n"
              + "post(\"LOGOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
     erros = erros + conf("AUTH LOGIN com senha errada falha",
@@ -482,7 +525,7 @@ if __name__ == "main" {
     }
     r = roda("import mail\n"
              + "s = mail.MailServer()\n"
-             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "s.login(\"teste@local\", \"segredo123\")\n"
              + "m = mail.MailMessage()\n"
              + "m.fromAddress(\"teste@local\")\n"
@@ -506,6 +549,28 @@ if __name__ == "main" {
 
     # ── 6. IMAP: a metade LEITORA, que nunca tinha rodado ───────────────────
     #
+    # Texto puro e o padrao tambem aqui: `tls=False` pula o TLS IMPLICITO.
+    porta = sobe_com("teste/imap_falso.py", "IMAP_FALSO_SEM_TLS=1")
+    if porta == 0 {
+        post("ERRO: o IMAP falso sem TLS nao subiu —", os.readFile(LOG_SRV))
+        encerra(1)
+    }
+    r = roda("import mail\n"
+             + "r = mail.MailReader()\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.login(\"teste@local\", \"segredo123\")\n"
+             + "r.select(\"INBOX\")\n"
+             + "post(\"N\", len(r.search(\"ALL\")))\n"
+             + "r.close()\n", "")
+    erros = erros + conf("IMAP: texto puro e o padrao", r[0] == 0 and "N 7" in r[1], r[1])
+    caixa = ""
+    if os.exists(CAIXA) {
+        caixa = le_caixa()
+    }
+    erros = erros + conf("IMAP: sem TLS_OK no servidor", not "TLS_OK" in caixa, caixa)
+    erros = erros + conf("IMAP: autenticou em texto puro", "LOGIN_OK" in caixa, caixa)
+
+    #
     # `ps_mail.c` são duas metades. A de enviar (SMTP) já está coberta acima; a
     # de ler (`MailReader`) estava INTEIRA sem teste — conectar, login, select,
     # search, fetch e close nunca tinham executado, porque o único teste de
@@ -522,7 +587,7 @@ if __name__ == "main" {
     }
     r = roda("import mail\n"
              + "r = mail.MailReader()\n"
-             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "post(\"CONECTOU\")\n", "")
     erros = erros + conf("IMAP: cert auto-assinado é RECUSADO", r[0] != 0, r[1])
     erros = erros + conf("IMAP: o erro diz o motivo",
@@ -532,7 +597,7 @@ if __name__ == "main" {
     porta = sobe("teste/imap_falso.py")
     r = roda("import mail\n"
              + "r = mail.MailReader()\n"
-             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "r.login(\"teste@local\", \"segredo123\")\n"
              + "r.select(\"INBOX\")\n"
              + "ids = r.search(\"ALL\")\n"
@@ -565,7 +630,7 @@ if __name__ == "main" {
     porta = sobe("teste/imap_falso.py")
     r = roda("import mail\n"
              + "r = mail.MailReader()\n"
-             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "r.login(\"teste@local\", \"segredo123\")\n"
              + "r.select(\"INBOX\", readonly=False)\n"
              + "r.close()\n"
@@ -590,7 +655,7 @@ if __name__ == "main" {
     porta = sobe("teste/imap_falso.py")
     r = roda("import mail\n"
              + "r = mail.MailReader()\n"
-             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "r.login(\"teste@local\", \"segredo123\")\n"
              + "r.select(\"INBOX\")\n"
              + "post(\"ASCII\", len(r.search(\"SUBJECT\", \"acentuada\")))\n"
@@ -607,7 +672,7 @@ if __name__ == "main" {
     porta = sobe("teste/imap_falso.py")
     r = roda("import mail\n"
              + "r = mail.MailReader()\n"
-             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "r.login(\"teste@local\", \"segredo123\")\n"
              + "r.select(\"INBOX\")\n"
              + "post(\"ACENTO\", len(r.search(\"SUBJECT\", \"relatório\")))\n"
@@ -632,7 +697,7 @@ if __name__ == "main" {
     porta = sobe("teste/imap_falso.py")
     r = roda("import mail\n"
              + "r = mail.MailReader()\n"
-             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "r.login(\"teste@local\", \"segredo123\")\n"
              + "r.select(\"INBOX\")\n"
              + "for each m in r.search(\"ALL\") {\n"
@@ -662,7 +727,7 @@ if __name__ == "main" {
     porta = sobe("teste/imap_falso.py")
     r = roda("import mail\n"
              + "r = mail.MailReader()\n"
-             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "r.login(\"teste@local\", \"ERRADA\")\n"
              + "post(\"LOGOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
     erros = erros + conf("IMAP: senha errada falha", r[0] != 0 and not "LOGOU" in r[1], r[1])
@@ -670,7 +735,7 @@ if __name__ == "main" {
     porta = sobe("teste/imap_falso.py")
     r = roda("import mail\n"
              + "r = mail.MailReader()\n"
-             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "r.login(\"teste@local\", \"segredo123\")\n"
              + "r.select(\"INBOX\")\n"
              + "post(r.body(\"999\"))\n"
@@ -731,7 +796,7 @@ if __name__ == "main" {
     porta = sobe_servidor()
     r = roda("import mail\n"
              + "s = mail.MailServer()\n"
-             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "s.login(\"teste@local\", \"segredo123\")\n"
              + "s.send(\"destino@local\", \"assunto curto\", \"corpo curto\")\n"
              + "s.quit()\n"
@@ -754,7 +819,7 @@ if __name__ == "main" {
     porta = sobe_servidor()
     r = roda("import mail\n"
              + "s = mail.MailServer()\n"
-             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "try { s.login(\"a\"*4000 + \"@x.com\", \"senha\") }\n"
              + "catch (e) { post(\"LEVANTOU\", e) }\n", "PS_MAIL_TLS_INSEGURO=1")
     erros = erros + conf("AUTH com usuário de 4000 chars não estoura a pilha",
@@ -769,7 +834,7 @@ if __name__ == "main" {
     porta = sobe_com("teste/imap_falso.py", "IMAP_FALSO_HOSTIL=literal_negativo")
     r = roda("import mail\n"
              + "r = mail.MailReader()\n"
-             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "r.login(\"teste@local\", \"segredo123\")\n"
              + "r.select(\"INBOX\")\n"
              + "try { post(r.body(\"1\")) }\n"
@@ -785,7 +850,7 @@ if __name__ == "main" {
     porta = sobe("teste/imap_falso.py")
     r = roda("import mail\n"
              + "r = mail.MailReader()\n"
-             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "r.login(\"teste@local\", \"segredo123\")\n"
              + "r.select(\"INBOX\")\n"
              + "post(\"C7 [\" + r.body(\"7\").strip() + \"]\")\n"
@@ -801,7 +866,7 @@ if __name__ == "main" {
     porta = sobe("teste/imap_falso.py")
     r = roda("import mail\n"
              + "r = mail.MailReader()\n"
-             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ", True)\n"
              + "r.login(\"teste@local\", \"segredo123\")\n"
              + "try { r.select(\"INBOX\\r\\nA99 DELETE INBOX\") }\n"
              + "catch (e) { post(\"LEVANTOU\", e) }\n", "PS_MAIL_TLS_INSEGURO=1")

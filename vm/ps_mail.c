@@ -241,7 +241,7 @@ static int smtp_manda(PSMailConn *c, const char *cmd)
     return cru_escreve(c, lin, n);
 }
 
-PSMailConn *ps_smtp_conecta(const char *host, int porta, char *erro, size_t cap)
+PSMailConn *ps_smtp_conecta(const char *host, int porta, int tls, char *erro, size_t cap)
 {
     int fd = tcp_conecta(host, porta, erro, cap);
     if (fd < 0) return NULL;
@@ -258,35 +258,37 @@ PSMailConn *ps_smtp_conecta(const char *host, int porta, char *erro, size_t cap)
         if (erro) snprintf(erro, cap, "EHLO recusado");
         goto falha;
     }
-    /* Três falhas diferentes davam a mesma frase ("extension not supported"):
-     * o servidor não anunciar STARTTLS, a escrita cair, e o servidor recusar
-     * o comando. Cada uma diz o que houve. */
-    if (!strstr(extras, "STARTTLS")) {
-        if (erro) snprintf(erro, cap, "o servidor em %s nao anunciou STARTTLS no EHLO "
-                                      "(porta de texto puro sem TLS?)", host);
-        goto falha;
-    }
-    if (smtp_manda(c, "STARTTLS") != 0) {
-        if (erro) snprintf(erro, cap, "a conexao com %s caiu ao mandar STARTTLS", host);
-        goto falha;
-    }
-    {
-        char resp[512];
-        int cod = smtp_resposta(c, resp, sizeof(resp));
-        if (cod != 220) {
-            if (erro) snprintf(erro, cap, cod < 0
-                               ? "a conexao com %s caiu depois do STARTTLS%s"
-                               : "o servidor em %s recusou STARTTLS: %s",
-                               host, cod < 0 ? "" : resp);
+    if (tls) {
+        /* Três falhas diferentes davam a mesma frase ("extension not supported"):
+         * o servidor não anunciar STARTTLS, a escrita cair, e o servidor recusar
+         * o comando. Cada uma diz o que houve. */
+        if (!strstr(extras, "STARTTLS")) {
+            if (erro) snprintf(erro, cap, "o servidor em %s nao anunciou STARTTLS no EHLO "
+                                          "(porta de texto puro sem TLS?)", host);
             goto falha;
         }
-    }
-    c->nbuf = 0;                       /* nada legível atravessa o handshake */
-    if (liga_tls(c, host, erro, cap) != 0) goto falha;
-    if (smtp_manda(c, "EHLO jinga.local") != 0
-            || smtp_resposta(c, extras, sizeof(extras)) != 250) {
-        if (erro) snprintf(erro, cap, "EHLO recusado depois do TLS");
-        goto falha;
+        if (smtp_manda(c, "STARTTLS") != 0) {
+            if (erro) snprintf(erro, cap, "a conexao com %s caiu ao mandar STARTTLS", host);
+            goto falha;
+        }
+        {
+            char resp[512];
+            int cod = smtp_resposta(c, resp, sizeof(resp));
+            if (cod != 220) {
+                if (erro) snprintf(erro, cap, cod < 0
+                                   ? "a conexao com %s caiu depois do STARTTLS%s"
+                                   : "o servidor em %s recusou STARTTLS: %s",
+                                   host, cod < 0 ? "" : resp);
+                goto falha;
+            }
+        }
+        c->nbuf = 0;                   /* nada legível atravessa o handshake */
+        if (liga_tls(c, host, erro, cap) != 0) goto falha;
+        if (smtp_manda(c, "EHLO jinga.local") != 0
+                || smtp_resposta(c, extras, sizeof(extras)) != 250) {
+            if (erro) snprintf(erro, cap, "EHLO recusado depois do TLS");
+            goto falha;
+        }
     }
     /* guarda a linha AUTH pro login escolher o mecanismo */
     c->auth[0] = '\0';
@@ -439,13 +441,13 @@ void ps_smtp_quit(PSMailConn *c)
 
 /* ── IMAP ───────────────────────────────────────────────────────────────── */
 
-PSMailConn *ps_imap_conecta(const char *host, int porta, char *erro, size_t cap)
+PSMailConn *ps_imap_conecta(const char *host, int porta, int tls, char *erro, size_t cap)
 {
     int fd = tcp_conecta(host, porta, erro, cap);
     if (fd < 0) return NULL;
     PSMailConn *c = conn_nova(fd);
     if (!c) { if (erro) snprintf(erro, cap, "sem memoria"); return NULL; }
-    if (liga_tls(c, host, erro, cap) != 0) { ps_mail_solta(c); return NULL; }
+    if (tls && liga_tls(c, host, erro, cap) != 0) { ps_mail_solta(c); return NULL; }
     char lin[1024];
     if (le_linha(c, lin, sizeof(lin)) < 4 || strncmp(lin, "* OK", 4) != 0) {
         if (erro) snprintf(erro, cap, "servidor IMAP nao deu boas-vindas");

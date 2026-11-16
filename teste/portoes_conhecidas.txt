@@ -21,10 +21,10 @@
 # pra quem lê. Falha que não está
 # aqui reprova o portão, e linha daqui que não falha mais também reprova
 # (consertado: tire a linha e risque o item).
-check	docs/libs_utilitarias.md	adc8f33e0b02	doc-13	todos	linha 54: s = mail.MailServer()
-check	docs/libs_utilitarias.md	74b0c186e5d9	doc-13	todos	linha 85: r = mail.MailReader()
-check	docs/libs_utilitarias.md	8e7ef678e653	doc-13	todos	linha 141: import mail
-check	docs/libs_utilitarias.md	767b52a129c9	doc-13	todos	linha 167: import mail
+check	docs/libs_utilitarias.md	811c41d514cf	doc-13	todos	linha 54: s = mail.MailServer()
+check	docs/libs_utilitarias.md	8b4dffc884d9	doc-13	todos	linha 85: r = mail.MailReader()
+check	docs/libs_utilitarias.md	afafe2fdf77a	doc-13	todos	linha 142: import mail
+check	docs/libs_utilitarias.md	16d439f85d7e	doc-13	todos	linha 168: import mail
 roda	docs/sockets/detach/detach.md	c05ab5d6fa97	doc-5	darwin	linha 47: import sockets
 roda	docs/sockets/connect_ex/connect_ex.md	a092e69eaf07	doc-5	darwin	linha 43: import sockets
 roda	docs/sockets/getpeername/getpeername.md	9807faa4f34b	doc-5	darwin	linha 55: import sockets
@@ -285,9 +285,7 @@ p2	membro:WsConnection.close	d8dd2eccec89	motor-11	todos	linha 9: request.ws_con
 p2	membro:WsConnection.close	149b13d6e777	motor-11	todos	linha 10: request.ws_connect("ws://127.0.0.1:@W@/ws").close(True)
 p2	membro:WsConnection.close	961d2b6345c4	motor-11	todos	linha 11: request.ws_connect("ws://127.0.0.1:@W@/ws").close(p2_nao_exi
 titulo	docs/mail/MailReader/login/login.md	c0748ee62a63	doc-26	todos	linha 1: MailReader.login(user, password)
-titulo	docs/mail/MailReader/conn/conn.md	058de648be64	doc-26	todos	linha 1: MailReader.conn(host, port)
 titulo	docs/mail/MailServer/login/login.md	8672571320f7	doc-26	todos	linha 1: MailServer.login(user, password)
-titulo	docs/mail/MailServer/conn/conn.md	ff80addaa40b	doc-26	todos	linha 1: MailServer.conn(host, port)
 titulo	docs/mail/MailMessage/subject/subject.md	b1f1d8252e5e	doc-26	todos	linha 1: MailMessage.subject(title)
 titulo	docs/mail/MailMessage/fromAddress/fromAddress.md	d07525842136	doc-26	todos	linha 1: MailMessage.fromAddress(address)
 titulo	docs/mail/MailMessage/body/body.md	523d4a74f14b	doc-26	todos	linha 1: MailMessage.body(content, is_html)

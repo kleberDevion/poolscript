@@ -53,7 +53,7 @@ MailReader r = mail.MailReader()
 
 ```ps
 s = mail.MailServer()
-s.conn("smtp.meuservidor.com")          # porta 587; outra: s.conn(host, 2525)
+s.conn("smtp.meuservidor.com", Null, True)  # 587, STARTTLS; clique: s.conn(host, 2525)
 s.login(user="seu@gmail.com", password="sua_senha_app")
 ```
 
@@ -84,12 +84,13 @@ m.body("<h1>Olá!</h1><p>Bem vindo.</p>", True)
 
 ```ps
 r = mail.MailReader()
-r.conn("imap.meuservidor.com")          # porta 993
+r.conn("imap.meuservidor.com", Null, True)  # 993, TLS direto
 r.login(user="seu@gmail.com", password="sua_senha_app")
 ```
 
-`.conn()` recebe o host do servidor IMAP, com TLS, e porta 993 quando não se
-passa outra: `r.conn("127.0.0.1", 1143)` pra um servidor local.
+`.conn()` recebe o host do servidor IMAP. O padrão é texto puro na 143;
+com `tls=True` usa TLS direto na 993. `r.conn("127.0.0.1", 1143)` é um servidor
+local em texto puro.
 
 `.select()` escolhe a pasta e retorna o próprio objeto, então dá pra encadear direto com `.search()`:
 
@@ -147,7 +148,7 @@ load()
 
 funct verificar_caixa() {
     r = mail.MailReader()
-    r.conn(os.getenv("MAIL_IMAP"))
+    r.conn(os.getenv("MAIL_IMAP"), Null, True)
     r.login(user=os.getenv("MAIL_SYSTEM"), password=os.getenv("PASSWORD_SYSTEM"))
 
     nao_lidos = r.select("INBOX", True).search("UNSEEN")
@@ -175,7 +176,7 @@ load()
 funct enviar_email(nome, email_destino) {
     try {
         s = mail.MailServer()
-        s.conn(os.getenv("MAIL_SMTP"))
+        s.conn(os.getenv("MAIL_SMTP"), Null, True)
         s.login(
             user=os.getenv("MAIL_SYSTEM"),
             password=os.getenv("PASSWORD_SYSTEM")

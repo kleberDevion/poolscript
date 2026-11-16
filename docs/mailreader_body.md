@@ -178,7 +178,7 @@ sempre funcionou, o que não funcionava era acento — e agora funciona.**
 
 ```ps sem-rodar: precisa do servidor de e-mail
 reader = mail.MailReader()
-reader.conn("imap.meuservidor.com")  # porta 993
+reader.conn("imap.meuservidor.com", Null, True)  # 993, TLS direto
 reader.login("user@gmail.com", "senha-de-app")
 reader.select("INBOX", True)          # readonly=True por padrão
 

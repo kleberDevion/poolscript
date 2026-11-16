@@ -1,8 +1,8 @@
 # mail — Enviar e ler e-mails
 
 Lib pra **enviar** e-mails (via SMTP) e **ler** a caixa de entrada (via IMAP).
-Você passa o host do servidor; sem porta, a lib usa 587 no envio e 993 na
-leitura.
+Você passa o host do servidor. Sem porta e sem TLS, a lib usa 25 no envio e
+143 na leitura; com `tls=True`, usa 587 e 993.
 
 ```ps
 import mail
@@ -38,7 +38,7 @@ m.body("Corpo do e-mail")
 
 # 2. conecta, loga e envia
 s = mail.MailServer()
-s.conn(os.getenv("MAIL_SMTP"))                   # porta 587
+s.conn(os.getenv("MAIL_SMTP"), Null, True)       # 587, STARTTLS
 s.login(os.getenv("MAIL_USER"), os.getenv("MAIL_PASS"))
 s.send(m)
 s.quit()
@@ -62,7 +62,7 @@ import os
 
 ```ps sem-rodar: lê a conta de e-mail do ambiente (MAIL_USER...) e precisa do servidor
 r = mail.MailReader()
-r.conn(os.getenv("MAIL_IMAP"))                   # porta 993
+r.conn(os.getenv("MAIL_IMAP"), Null, True)       # 993, TLS direto
 r.login(os.getenv("MAIL_USER"), os.getenv("MAIL_PASS"))
 r.select("INBOX")
 emails = r.search("ALL", limit=10)

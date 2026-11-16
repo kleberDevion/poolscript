@@ -39,7 +39,7 @@ else {
     # ── MailServer: envia por SMTP ──────────────────────────────────────────
     s = mail.MailServer()
     post("MailServer ->", type(s))
-    s.conn(host_smtp)
+    s.conn(host_smtp, Null, True)
     s.login(usuario, senha)
     post("login -> ok")
     s.send(msg)
@@ -49,7 +49,7 @@ else {
     # ── MailReader: lê de volta por IMAP ────────────────────────────────────
     r = mail.MailReader()
     post("MailReader ->", type(r))
-    r.conn(host_imap)
+    r.conn(host_imap, Null, True)
     r.login(usuario, senha)
     post("login IMAP -> ok")
     r.select("INBOX")

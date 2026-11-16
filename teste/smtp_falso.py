@@ -42,6 +42,80 @@ USUARIO = "teste@local"
 SENHA = "segredo123"
 
 
+def atende_claro(bruto, caixa):
+    """O mesmo dialogo, sem TLS. `SMTP_FALSO_SEM_TLS=1` escolhe este caminho."""
+    ev = []
+
+    def linha(sock):
+        dados = b""
+        while not dados.endswith(b"\r\n"):
+            p = sock.recv(1)
+            if not p:
+                return None
+            dados += p
+        return dados[:-2].decode("utf-8", "replace")
+
+    bruto.sendall(b"220 local.invalido SMTP falso sem TLS\r\n")
+    dentro_do_data = False
+    corpo = []
+    while True:
+        cmd = linha(bruto)
+        if cmd is None:
+            return ev
+        ev.append("CLARO " + cmd)
+        if dentro_do_data:
+            if cmd == ".":
+                dentro_do_data = False
+                ev.append("CORPO " + " | ".join(corpo))
+                bruto.sendall(b"250 aceito\r\n")
+            else:
+                corpo.append(cmd)
+            continue
+        alto = cmd.upper()
+        if alto.startswith("EHLO"):
+            bruto.sendall(b"250-local.invalido\r\n250 AUTH LOGIN PLAIN\r\n")
+        elif alto.startswith("AUTH PLAIN"):
+            blob = cmd[len("AUTH PLAIN"):].strip()
+            if not blob:
+                bruto.sendall(b"334 \r\n")
+                blob = linha(bruto) or ""
+            try:
+                partes = base64.b64decode(blob).split(b"\x00")
+            except Exception:
+                partes = []
+            u = partes[1].decode("utf-8", "replace") if len(partes) > 2 else ""
+            s_ = partes[2].decode("utf-8", "replace") if len(partes) > 2 else ""
+            if u == USUARIO and s_ == SENHA:
+                ev.append("LOGIN_OK " + u)
+                bruto.sendall(b"235 autenticado\r\n")
+            else:
+                ev.append("LOGIN_NEGADO " + u)
+                bruto.sendall(b"535 usuario ou senha errados\r\n")
+        elif alto == "AUTH LOGIN":
+            bruto.sendall(b"334 " + base64.b64encode(b"Username:") + b"\r\n")
+            u = base64.b64decode(linha(bruto) or "").decode("utf-8", "replace")
+            bruto.sendall(b"334 " + base64.b64encode(b"Password:") + b"\r\n")
+            s = base64.b64decode(linha(bruto) or "").decode("utf-8", "replace")
+            if u == USUARIO and s == SENHA:
+                ev.append("LOGIN_OK " + u)
+                bruto.sendall(b"235 autenticado\r\n")
+            else:
+                ev.append("LOGIN_NEGADO " + u)
+                bruto.sendall(b"535 usuario ou senha errados\r\n")
+        elif alto.startswith("MAIL FROM"):
+            bruto.sendall(b"250 remetente ok\r\n")
+        elif alto.startswith("RCPT TO"):
+            bruto.sendall(b"250 destinatario ok\r\n")
+        elif alto == "DATA":
+            dentro_do_data = True
+            bruto.sendall(b"354 manda, termina com ponto\r\n")
+        elif alto == "QUIT":
+            bruto.sendall(b"221 tchau\r\n")
+            return ev
+        else:
+            bruto.sendall(b"500 nao entendi\r\n")
+
+
 def atende(bruto, ctx, caixa):
     """Um diálogo SMTP completo. Escreve cada evento em `caixa`."""
     ev = []
@@ -54,6 +128,9 @@ def atende(bruto, ctx, caixa):
                 return None
             dados += p
         return dados[:-2].decode("utf-8", "replace")
+
+    if os.environ.get("SMTP_FALSO_SEM_TLS") == "1":
+        return atende_claro(bruto, caixa)
 
     bruto.sendall(b"220 local.invalido SMTP falso\r\n")
     while True:

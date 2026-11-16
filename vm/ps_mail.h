@@ -16,8 +16,9 @@
 typedef struct PSMailConn PSMailConn;
 
 /* ── SMTP ───────────────────────────────────────────────────────────────── */
-/* Conecta, lê o greeting, EHLO, STARTTLS, EHLO de novo. */
-PSMailConn *ps_smtp_conecta(const char *host, int porta, char *erro, size_t cap);
+/* Conecta, lê o greeting e faz EHLO. Com `tls`, faz STARTTLS e EHLO de novo. */
+PSMailConn *ps_smtp_conecta(const char *host, int porta, int tls,
+                            char *erro, size_t cap);
 /* AUTH PLAIN se anunciado, senão AUTH LOGIN. */
 int  ps_smtp_login(PSMailConn *c, const char *user, const char *senha,
                    char *erro, size_t cap);
@@ -28,8 +29,9 @@ int  ps_smtp_envia(PSMailConn *c, const char *de, const char *para,
 /* QUIT + fecha. Nunca falha — erro de despedida não interessa a ninguém. */
 void ps_smtp_quit(PSMailConn *c);
 
-/* ── IMAP (TLS direto na porta, sem STARTTLS) ──────────────────────────── */
-PSMailConn *ps_imap_conecta(const char *host, int porta, char *erro, size_t cap);
+/* ── IMAP (com `tls`, TLS direto na porta, sem STARTTLS) ────────────────── */
+PSMailConn *ps_imap_conecta(const char *host, int porta, int tls,
+                            char *erro, size_t cap);
 int  ps_imap_login(PSMailConn *c, const char *user, const char *senha,
                    char *erro, size_t cap);
 /* `readonly` usa EXAMINE em vez de SELECT. */

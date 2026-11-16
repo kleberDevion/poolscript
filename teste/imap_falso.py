@@ -233,17 +233,19 @@ def main():
             except (socket.timeout, OSError):
                 return
             ev = []
-            try:
-                # TLS IMPLÍCITO: o handshake vem ANTES de qualquer byte de
-                # protocolo. Handshake recusado é resultado esperado em metade
-                # dos testes — é o cliente rejeitando o certificado.
-                sock = ctx.wrap_socket(bruto, server_side=True)
-            except (ssl.SSLError, OSError) as e:
-                ev.append("HANDSHAKE_RECUSADO " + type(e).__name__)
-                with open(caixa, "a") as f:
-                    f.write("\n".join(ev) + "\n--- fim do dialogo\n")
-                continue
-            ev.append("TLS_OK")
+            sock = bruto
+            if os.environ.get("IMAP_FALSO_SEM_TLS") != "1":
+                try:
+                    # TLS IMPLÍCITO: o handshake vem ANTES de qualquer byte de
+                    # protocolo. Handshake recusado é resultado esperado em
+                    # metade dos testes — é o cliente rejeitando o certificado.
+                    sock = ctx.wrap_socket(bruto, server_side=True)
+                except (ssl.SSLError, OSError) as e:
+                    ev.append("HANDSHAKE_RECUSADO " + type(e).__name__)
+                    with open(caixa, "a") as f:
+                        f.write("\n".join(ev) + "\n--- fim do dialogo\n")
+                    continue
+                ev.append("TLS_OK")
             try:
                 atende(sock, ev)
             except Exception as e:                 # servidor de teste não cai

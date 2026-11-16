@@ -9924,7 +9924,7 @@ static int met_mr_search(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_mr_body(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_mr_close(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_MAILSRV[] = {
-    { "conn", met_ms_conn, "host,porta=Null" }, { "login", met_ms_login, "usuario,senha" },
+    { "conn", met_ms_conn, "host,port=Null,tls=False" }, { "login", met_ms_login, "usuario,senha" },
     { "send", met_ms_send, "to_or_msg,subject=Null,body=Null,html=False" }, { "quit", met_ms_quit, NULL },
 };
 static const MetodoNat METODOS_MAILMSG[] = {
@@ -9933,7 +9933,7 @@ static const MetodoNat METODOS_MAILMSG[] = {
     { "attach", met_mm_attach, "arquivo_ou_caminho" }, { "get_as_string", met_mm_asstring, NULL },
 };
 static const MetodoNat METODOS_MAILRD[] = {
-    { "conn", met_mr_conn, "host,porta=Null" }, { "login", met_mr_login, "usuario,senha" },
+    { "conn", met_mr_conn, "host,port=Null,tls=False" }, { "login", met_mr_login, "usuario,senha" },
     { "select", met_mr_select, "folder=\"INBOX\",readonly=True" },
     { "search", met_mr_search, "criterion_type=\"ALL\",term=Null,limit=Null,include_body=False" },
     { "body", met_mr_body, "id" }, { "close", met_mr_close, NULL },
@@ -16963,10 +16963,12 @@ static const MembroMod MOD_SQLITE3[] = {
 
 /* ── módulo mail ────────────────────────────────────────────────────────── */
 /* SMTP/IMAP/MIME em C (ps_mail.c). O `conn` recebe o HOST como está escrito,
- * sem tabela de provedores; sem porta, a do protocolo (587 no envio, 993 na
- * leitura). */
-#define MAIL_PORTA_SMTP 587
-#define MAIL_PORTA_IMAP 993
+ * sem tabela de provedores. Sem porta, usa a do modo: 25/143 em texto puro,
+ * 587/993 com TLS. */
+#define MAIL_PORTA_SMTP 25
+#define MAIL_PORTA_SMTP_TLS 587
+#define MAIL_PORTA_IMAP 143
+#define MAIL_PORTA_IMAP_TLS 993
 
 /* Erro de rede vira OSError; erro de uso (ordem errada de chamada) vira
  * RuntimeError — é a divisão entre erro de rede e erro de uso. */
@@ -18425,9 +18427,9 @@ static const MembroMod MOD_SOCKETS[] = {
  * thread do pool e a fibra cede — igual banco e HTTP, pra `await` no mail não
  * travar o worker. Só dados C viajam pra thread. */
 static void fib_offload(VM *vm, void (*fn)(void *), void *arg);   /* def. junto do jinker */
-typedef struct { const char *host; int porta; char *erro; size_t cap; PSMailConn *conn; } SmtpConnOff;
+typedef struct { const char *host; int porta, tls; char *erro; size_t cap; PSMailConn *conn; } SmtpConnOff;
 static void smtp_conn_off(void *p){ SmtpConnOff *o = (SmtpConnOff *)p;
-    o->conn = ps_smtp_conecta(o->host, o->porta, o->erro, o->cap); }
+    o->conn = ps_smtp_conecta(o->host, o->porta, o->tls, o->erro, o->cap); }
 typedef struct { PSMailConn *c; const char *user, *senha; char *erro; size_t cap; int rc; } SmtpLoginOff;
 static void smtp_login_off(void *p){ SmtpLoginOff *o = (SmtpLoginOff *)p;
     o->rc = ps_smtp_login(o->c, o->user, o->senha, o->erro, o->cap); }
@@ -18436,7 +18438,7 @@ static void smtp_send_off(void *p){ SmtpSendOff *o = (SmtpSendOff *)p;
     o->rc = ps_smtp_envia(o->c, o->de, o->para, o->msg, o->n, o->erro, o->cap); }
 /* IMAP (leitura de mail) offloadado — reusa as structs conn/login do SMTP */
 static void imap_conn_off(void *p){ SmtpConnOff *o = (SmtpConnOff *)p;
-    o->conn = ps_imap_conecta(o->host, o->porta, o->erro, o->cap); }
+    o->conn = ps_imap_conecta(o->host, o->porta, o->tls, o->erro, o->cap); }
 static void imap_login_off(void *p){ SmtpLoginOff *o = (SmtpLoginOff *)p;
     o->rc = ps_imap_login(o->c, o->user, o->senha, o->erro, o->cap); }
 typedef struct { PSMailConn *c; const char *pasta; int readonly; char *erro; size_t cap; int rc; } ImapSelOff;
@@ -18469,17 +18471,18 @@ static void imap_fetch_off(void *p){ ImapFetchOff *o = (ImapFetchOff *)p;
 
 static int met_ms_conn(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) return erro_aridade(vm, "conn", 1, 2, n);
+    if (n < 1 || n > 3) return erro_aridade(vm, "conn", 1, 3, n);
     if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "conn() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
-    int porta_in = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
+    int porta_in = (n >= 2 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
+    int tls = (n >= 3) && val_truthy(&args[2]);
     char host[256];
     snprintf(host, sizeof(host), "%s", COMO_STRING(args[0])->chars);
-    int porta = porta_in > 0 ? porta_in : MAIL_PORTA_SMTP;
+    int porta = porta_in > 0 ? porta_in : (tls ? MAIL_PORTA_SMTP_TLS : MAIL_PORTA_SMTP);
     PSMailSrv *m = COMO_MAILSRV(alvo);
     if (m->conn) { ps_mail_solta(m->conn); m->conn = NULL; }
     char e[180];
-    SmtpConnOff co = { host, porta, e, sizeof(e), NULL };
+    SmtpConnOff co = { host, porta, tls, e, sizeof(e), NULL };
     fib_offload(vm, smtp_conn_off, &co);   /* connect+TLS na thread: não trava */
     PSMailConn *c = co.conn;
     if (!c) MAIL_ERRO_REDE(vm, e);
@@ -18569,17 +18572,18 @@ static int met_ms_quit(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static int met_mr_conn(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) return erro_aridade(vm, "conn", 1, 2, n);
+    if (n < 1 || n > 3) return erro_aridade(vm, "conn", 1, 3, n);
     if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "conn() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
-    int porta_in = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
+    int porta_in = (n >= 2 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
+    int tls = (n >= 3) && val_truthy(&args[2]);
     char host[256];
     snprintf(host, sizeof(host), "%s", COMO_STRING(args[0])->chars);
-    int porta = porta_in > 0 ? porta_in : MAIL_PORTA_IMAP;
+    int porta = porta_in > 0 ? porta_in : (tls ? MAIL_PORTA_IMAP_TLS : MAIL_PORTA_IMAP);
     PSMailMsg_reader *m = COMO_MAILRD(alvo);
     if (m->conn) { ps_mail_solta(m->conn); m->conn = NULL; }
     char e[180];
-    SmtpConnOff co = { host, porta, e, sizeof(e), NULL };
+    SmtpConnOff co = { host, porta, tls, e, sizeof(e), NULL };
     fib_offload(vm, imap_conn_off, &co);   /* connect+TLS IMAP na thread: não trava */
     PSMailConn *c = co.conn;
     if (!c) MAIL_ERRO_REDE(vm, e);
