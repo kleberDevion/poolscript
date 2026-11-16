@@ -1739,7 +1739,7 @@ e sem, e dá o mesmo erro.
   consegui abrir 'examples/01_hello.pr'` (rc 66). O exemplo é o
   `examples/hello.pr`. Nenhum portão lê as cercas ```bash. `doc`.~~ Corrigido
   no 20.0.45: `README.md` e `jinga.md` chamam `examples/hello.pr`.
-- **doc-36** (achado no mesmo dia) O "Guia de deploy" do jinga.md diz que o
+- ~~**doc-36** (achado no mesmo dia) O "Guia de deploy" do jinga.md diz que o
   binário traz embutidos o libpq, o mysqlclient e o odbc, e manda instalar a
   "cauda de auth do libpq" (LDAP, Kerberos, GnuTLS). O Makefile não liga
   nenhum cliente de banco (cada driver abre a biblioteca no primeiro
@@ -1747,7 +1747,10 @@ e sem, e dá o mesmo erro.
   núcleo do glibc e a `libgmp.so.10`, que o guia não cita. A linha do apt
   dele tem quatro pacotes que o forky não tem (`libmongoc-1.0-0`,
   `libbson-1.0-0`, `libldap-2.5-0` e `libgnutls30`), e o comando inteiro
-  falha. `doc`.
+  falha. `doc`.~~ Corrigido no 20.0.46: o guia diz que sqlite/TLS/PNG/zlib são
+  estáticos, que o núcleo dinâmico é glibc + `libgmp.so.10` e que cada driver
+  de banco carrega o cliente no primeiro `connect`; saiu a linha única de apt
+  com os pacotes inexistentes.
 - ~~**doc-37** (achado pelo `audita_exemplos_doc` em 2026-11-14, depois do
   motor-17) `docs/linguagem/06-funcoes.md:739` e `:780` fazem `f = t()` com
   `t` uma `async funct`. O bloco ```ps contexto de 6.2.5 define `f` como

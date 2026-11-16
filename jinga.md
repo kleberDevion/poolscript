@@ -216,25 +216,33 @@ mostra o **gráfico de execução** com a linha que quebrou em vermelho — ver
 
 ## Guia de deploy (rodar num servidor/VPS)
 
-O binário **PSVM** (`jinga`) já traz **embutido** (não precisa instalar nada):
+O binário **PSVM** (`jinga`) liga **estaticamente** sqlite, OpenSSL (TLS),
+PNG e zlib. O núcleo dinâmico é só a glibc e o **gmp**:
 
-> **sqlite, libpq (postgres), mysqlclient, odbc, openssl (TLS), png, z.**
-> Ou seja: Todas as libs que são padrão da linguagem ja estão com suas dependencias embutidas no ELF, so existem
-> algumas que são estaticas e e necessario o ``.so`` dela para o ELF chamar em Runtime
-
-O binário **chama de fora** (a `.so` precisa existir no servidor):
-- **Mongo** — `libmongoc-1.0-0 libbson-1.0-0 libmongocrypt0 libsnappy1v5` (só se usar MongoDB).
-- **Cauda de auth do libpq** (LDAP/Kerberos/GnuTLS — `libldap-2.5-0 libsasl2-2 libgssapi-krb5-2 libgnutls30`.
-- **Sistema** — `libltdl7 libzstd1 libstdc++6 libgcc-s1`.
-- **glibc** (`libc`, `libm`, `pthread`, `dl`, `resolv`) — todo Linux já tem. 
-
-**VPS (Debian/Ubuntu), uma linha:**
 ```bash
-sudo apt update && sudo apt install -y \
-  libmongoc-1.0-0 libbson-1.0-0 libmongocrypt0 libsnappy1v5 \
-  libldap-2.5-0 libsasl2-2 libgssapi-krb5-2 libgnutls30 libzstd1 libltdl7
+ldd ./pool
+# libm.so.6, libgmp.so.10, libc.so.6
 ```
-Se faltar alguma: `ldd ./pool | grep "not found"` mostra o nome exato.
+
+As bibliotecas de banco **não entram no ELF**: cada driver abre a `.so` do
+sistema no primeiro `connect` (como diz `docs/psodbc.md`). Instale só o cliente
+do banco que for usar:
+
+- **PostgreSQL** — `libpq5` (o pacote já puxa a cauda de auth: LDAP, Kerberos,
+  GnuTLS).
+- **MySQL/MariaDB** — `libmariadb3` ou o Connector/C da distro.
+- **ODBC** — `unixodbc` mais o driver do banco (ex.: `msodbcsql18`).
+- **Mongo** — o cliente Mongo da distro (`libmongoc-*`/`libbson-*`; o nome do
+  pacote muda com a versão).
+
+O `gmp` é sempre necessário:
+
+```bash
+sudo apt update && sudo apt install -y libgmp10
+```
+
+Se faltar alguma `.so` de driver, o erro do `connect` diz qual; `ldd ./pool`
+não mostra as que são carregadas por `dlopen`.
 
 **Alternativa sem instalar nada** — bundle portátil (`make bundle`): gera
 `dist/jinga-portable/` = binário + pasta `lib/` com todas as `.so`, e o wrapper
