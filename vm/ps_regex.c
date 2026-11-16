@@ -1805,10 +1805,10 @@ static int m_atomico(Estado *e, const Seq *s, int i, int pos, const Cont *k)
     const Quant *q = &s->itens[i];
     const Atomo *a = &q->atomo;
     int g0 = a->g_de + 1, ng = a->g_ate - a->g_de;     /* os grupos de dentro */
-    int local[2 * 16];
+    int local[2 * 16] = {0};
     int *salvo = local;
     if (ng > 16) {
-        salvo = malloc(sizeof(int) * 2 * (size_t)ng);
+        salvo = calloc(2 * (size_t)ng, sizeof(int));
         if (!salvo) { e->estourou = RX_ESTOUROU_FUNDO; return 0; }
     }
     for (int t = 0; t < ng; t++) {
