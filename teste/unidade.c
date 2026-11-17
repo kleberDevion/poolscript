@@ -31,11 +31,20 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <errno.h>
+#include <float.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <math.h>
+#include <time.h>
+#ifdef __APPLE__
+#include <dlfcn.h>
+#endif
 
 #include "ps_hash.h"
 #include "ps_regex.h"
 #include "ps_ast.h"
 #include "ps_pilha.h"
+#include "ps_c.h"
 
 static int falhas = 0;
 static int total = 0;
@@ -703,6 +712,335 @@ static void teste_regex_fundo(void)
     CONF(casa("(a*)*b", "b", "b"), "estrela sobre estrela travou ou nao casou");
 }
 
+/* ── o C pela libffi (vm/ps_c.c) ─────────────────────────────────────────
+ * Tudo conferido contra o próprio compilador C: a forma do struct contra o
+ * `offsetof`, e cada chamada contra o que a função do C devolve chamada
+ * direto. */
+static unsigned char devolve_uchar(void) { return 200; }
+static signed char devolve_schar(void) { return -5; }
+static short soma_short(short a, short b) { return (short)(a + b); }
+
+static void trata_compara(void *ret, void **args, void *dados)
+{
+    (void)dados;
+    const int *a = *(const int **)args[0];
+    const int *b = *(const int **)args[1];
+    ps_c_ret_grava_int(&ps_c_int, ret, (*a > *b) - (*a < *b));
+}
+
+static void teste_c(void)
+{
+    grupo("c/tipos");
+    PSCTipo *sz = ps_c_tipo_por_nome("size_t");
+    CONF(sz && sz->tam == sizeof(size_t) && sz->sem_sinal == 1, "size_t com o tamanho e o sinal do sistema");
+    CONF(ps_c_tipo_por_nome("unsigned long int") == &ps_c_ulong, "grafia longa do unsigned long");
+    CONF(ps_c_tipo_por_nome("long double")->tam == sizeof(long double), "long double");
+    CONF(ps_c_tipo_por_nome("int32_t")->tam == 4 && !ps_c_tipo_por_nome("int32_t")->sem_sinal, "int32_t");
+    CONF(ps_c_tipo_por_nome("nao_existe") == NULL, "nome que nao e tipo do C");
+    CONF(ps_c_ponteiro(&ps_c_char) == ps_c_ponteiro(&ps_c_char), "o mesmo ponteiro e o mesmo objeto");
+    CONF(strcmp(ps_c_ponteiro(ps_c_const(&ps_c_char))->nome, "const char *") == 0,
+         "nome do const char *: '%s'", ps_c_ponteiro(ps_c_const(&ps_c_char))->nome);
+    struct trio { char c; int i; double d; };
+    const char *nomes[] = { "c", "i", "d" };
+    PSCTipo *tps[] = { &ps_c_char, &ps_c_int, &ps_c_double };
+    PSCTipo *st = ps_c_struct("struct trio", 0, nomes, tps, 3, NULL, 0, 0);
+    CONF(st && st->campos[1].desloc == offsetof(struct trio, i)
+         && st->campos[2].desloc == offsetof(struct trio, d)
+         && st->tam == sizeof(struct trio) && st->alinha == _Alignof(struct trio),
+         "struct pela regra do C igual ao do compilador");
+
+    grupo("c/chamada");
+    unsigned char ret[64];
+    PSCTipo *pchar = ps_c_ponteiro(ps_c_const(&ps_c_char));
+    PSCTipo *f_strlen = ps_c_funcao(sz, &pchar, 1, 0);
+    const char *texto = "jinga";
+    void *a1[] = { &texto };
+    CONF(ps_c_chama((void (*)(void))strlen, f_strlen, a1, 1, NULL, ret) == 0
+         && ps_c_ret_uint(sz, ret) == 5, "strlen pela libffi");
+    PSCTipo *f_uc = ps_c_funcao(&ps_c_uchar, NULL, 0, 0);
+    CONF(ps_c_chama((void (*)(void))devolve_uchar, f_uc, NULL, 0, NULL, ret) == 0
+         && ps_c_ret_uint(&ps_c_uchar, ret) == 200, "unsigned char de volta");
+    PSCTipo *f_sc = ps_c_funcao(&ps_c_schar, NULL, 0, 0);
+    CONF(ps_c_chama((void (*)(void))devolve_schar, f_sc, NULL, 0, NULL, ret) == 0
+         && ps_c_ret_int(&ps_c_schar, ret) == -5, "signed char negativo de volta");
+    PSCTipo *dois_short[] = { &ps_c_short, &ps_c_short };
+    PSCTipo *f_ss = ps_c_funcao(&ps_c_short, dois_short, 2, 0);
+    short sa = 30000, sb = 10000;
+    void *a2[] = { &sa, &sb };
+    CONF(ps_c_chama((void (*)(void))soma_short, f_ss, a2, 2, NULL, ret) == 0
+         && ps_c_ret_int(&ps_c_short, ret) == (short)(30000 + 10000), "short que da a volta, como no C");
+    /* variádica: int snprintf(char *, size_t, const char *, ...) */
+    PSCTipo *fixos[] = { ps_c_ponteiro(&ps_c_char), sz, pchar };
+    PSCTipo *f_snprintf = ps_c_funcao(&ps_c_int, fixos, 3, 1);
+    char buf[64];
+    char *pbuf = buf;
+    size_t cap = sizeof buf;
+    const char *fmt = "x=%d y=%.2f s=%s";
+    int vi = 42;
+    double vd = 2.5;
+    const char *vs = "ok";
+    void *a3[] = { &pbuf, &cap, &fmt, &vi, &vd, &vs };
+    PSCTipo *var[] = { &ps_c_int, &ps_c_double, pchar };
+    buf[0] = '\0';
+    CONF(ps_c_chama((void (*)(void))snprintf, f_snprintf, a3, 6, var, ret) == 0
+         && ps_c_ret_int(&ps_c_int, ret) == 16 && strcmp(buf, "x=42 y=2.50 s=ok") == 0,
+         "snprintf variadica: '%s'", buf);
+    /* struct por valor: div_t div(int, int), com a forma do sistema */
+    const char *nd[] = { "quot", "rem" };
+    PSCTipo *td[] = { &ps_c_int, &ps_c_int };
+    size_t dd[] = { offsetof(div_t, quot), offsetof(div_t, rem) };
+    PSCTipo *t_div = ps_c_struct("div_t", 0, nd, td, 2, dd, sizeof(div_t), _Alignof(div_t));
+    PSCTipo *dois_int[] = { &ps_c_int, &ps_c_int };
+    PSCTipo *f_div = ps_c_funcao(t_div, dois_int, 2, 0);
+    int num = 17, den = 5;
+    void *a4[] = { &num, &den };
+    div_t r = { 0, 0 };
+    CONF(ps_c_tam_ret(t_div) <= sizeof ret && ps_c_chama((void (*)(void))div, f_div, a4, 2, NULL, ret) == 0
+         && (memcpy(&r, ret, sizeof r), r.quot == 3 && r.rem == 2), "div_t por valor");
+
+    grupo("c/callback");
+    PSCTipo *pvoid = ps_c_ponteiro(ps_c_const(&ps_c_void));
+    PSCTipo *dois_pv[] = { pvoid, pvoid };
+    PSCTipo *f_cmp = ps_c_funcao(&ps_c_int, dois_pv, 2, 0);
+    void (*codigo)(void) = NULL;
+    void *fecho = ps_c_closure_nova(f_cmp, trata_compara, NULL, &codigo);
+    CONF(fecho && codigo, "closure da libffi");
+    if (fecho && codigo) {
+        int v[6] = { 5, 3, 9, 1, 7, 2 };
+        qsort(v, 6, sizeof(int), (int (*)(const void *, const void *))codigo);
+        CONF(v[0] == 1 && v[1] == 2 && v[2] == 3 && v[3] == 5 && v[4] == 7 && v[5] == 9,
+             "qsort com comparador closure");
+        ps_c_closure_solta(fecho);
+    }
+    PSCTipo *f_var = ps_c_funcao(&ps_c_int, dois_pv, 2, 1);
+    CONF(ps_c_closure_nova(f_var, trata_compara, NULL, &codigo) == NULL,
+         "closure variadica recusada (a libffi nao tem)");
+}
+
+/* A tabela da biblioteca padrão (vm/c_padrao.decl): cada nome se lê, cada
+ * função existe no sistema, e o endereço achado pelo nome é o que o
+ * compilador liga em C11 (teste/unidade_c11.c, compilado com -std=c11). */
+typedef struct { const char *nome; void (*f)(void); } PSCEnderecoC11;
+extern const PSCEnderecoC11 ps_c11_enderecos[];
+extern const int ps_c11_n;
+
+static void anota(char *buf, size_t cap, const char *nome)
+{
+    size_t n = strlen(buf);
+    if (n + strlen(nome) + 3 < cap) snprintf(buf + n, cap - n, "%s%s", n ? ", " : "", nome);
+}
+
+#ifdef __APPLE__
+/* O macOS escolhe a variante de algumas contas pela CPU (sinf, cosf): a
+ * entrada muda com quem pergunta, o ligador ou o dlsym. A biblioteca e a conta
+ * são as mesmas (conferido bit a bit em 2026-10-15). */
+static int mesma_biblioteca(void (*a)(void), void (*b)(void))
+{
+    Dl_info x, y;
+    return dladdr((const void *)a, &x) && dladdr((const void *)b, &y) && x.dli_fbase == y.dli_fbase;
+}
+#endif
+
+static void teste_c_tabela(void)
+{
+    grupo("c/tabela");
+    int n = ps_c_nnomes();
+    int em_ordem = n > 0;
+    for (int i = 1; i < n; i++)
+        if (strcmp(ps_c_nome(i - 1), ps_c_nome(i)) >= 0) em_ordem = 0;
+    CONF(em_ordem, "os %d nomes em ordem de strcmp (a busca e binaria)", n);
+
+    char sem_tipo[512] = "", sem_endereco[512] = "";
+    for (int i = 0; i < n; i++) {
+        int da_vm = ps_c_marcas(i) & PSC_MARCA_VM;
+        PSCTipo *t = NULL;
+        switch (ps_c_especie(i)) {
+            case PSC_NOME_FUNCAO:
+            case PSC_NOME_MACRO:
+            case PSC_NOME_LITERAL:
+                t = ps_c_tipo_de(i);
+                if (!t || t->kind != PSC_FUNC) anota(sem_tipo, sizeof sem_tipo, ps_c_nome(i));
+                if (!da_vm && !ps_c_endereco(i)) anota(sem_endereco, sizeof sem_endereco, ps_c_nome(i));
+                break;
+            case PSC_NOME_VALOR: {
+                t = ps_c_tipo_de(i);
+                if (!t || t->kind == PSC_FUNC) anota(sem_tipo, sizeof sem_tipo, ps_c_nome(i));
+                unsigned char lido[32];
+                if (!da_vm && ps_c_le_valor(i, lido, NULL, 0) != 0)
+                    anota(sem_endereco, sizeof sem_endereco, ps_c_nome(i));
+                break;
+            }
+            case PSC_NOME_TIPO:
+            case PSC_NOME_OPACO:
+            case PSC_NOME_ESTRUTURA:
+                t = ps_c_tipo_de(i);
+                if (!t || t->tam == 0) anota(sem_tipo, sizeof sem_tipo, ps_c_nome(i));
+                break;
+            default:
+                break;
+        }
+    }
+    CONF(sem_tipo[0] == '\0', "toda declaracao da tabela se le: falham %s", sem_tipo);
+    CONF(sem_endereco[0] == '\0', "toda funcao da tabela existe neste sistema: faltam %s", sem_endereco);
+
+    char difere[512] = "";
+    for (int k = 0; k < ps_c11_n; k++) {
+        void (*meu)(void) = ps_c_endereco(ps_c_busca(ps_c11_enderecos[k].nome));
+        if (meu == ps_c11_enderecos[k].f) continue;
+#ifdef __APPLE__
+        if (meu && mesma_biblioteca(meu, ps_c11_enderecos[k].f)) continue;
+#endif
+        anota(difere, sizeof difere, ps_c11_enderecos[k].nome);
+    }
+    CONF(ps_c11_n > 0 && difere[0] == '\0',
+         "o endereco achado pelo nome e o que o compilador liga em C11: difere %s", difere);
+
+    /* o leitor de declarações */
+    char nome[64], erro[200];
+    PSCTipo *t = ps_c_le_decl("int (*compar)(const void *, const void *)", nome, sizeof nome, erro, sizeof erro);
+    CONF(t && t->kind == PSC_PONT && t->alvo->kind == PSC_FUNC && t->alvo->nparams == 2
+         && strcmp(nome, "compar") == 0 && strcmp(t->nome, "int (*)(const void *, const void *)") == 0,
+         "ponteiro de funcao: '%s', nome '%s' (%s)", t ? t->nome : "NULL", nome, erro);
+    t = ps_c_le_decl("void (*signal(int sig, void (*func)(int)))(int)", nome, sizeof nome, erro, sizeof erro);
+    CONF(t && t->kind == PSC_FUNC && t->nparams == 2 && t->ret->kind == PSC_PONT
+         && t->ret->alvo->kind == PSC_FUNC && t->ret->alvo->ret == &ps_c_void
+         && t->params[1]->kind == PSC_PONT && strcmp(nome, "signal") == 0,
+         "funcao que devolve ponteiro de funcao, como o signal (%s)", erro);
+    t = ps_c_le_decl("int a[2][3]", NULL, 0, NULL, 0);
+    CONF(t && t->kind == PSC_ARRAY && t->n == 2 && t->alvo->n == 3 && t->tam == 6 * sizeof(int),
+         "int a[2][3]: array de 2 arrays de 3");
+    t = ps_c_le_decl("int (*p)[3]", NULL, 0, NULL, 0);
+    CONF(t && t->kind == PSC_PONT && t->alvo->kind == PSC_ARRAY && t->alvo->n == 3,
+         "int (*p)[3]: ponteiro pra array");
+    t = ps_c_le_decl("int *v[3]", NULL, 0, NULL, 0);
+    CONF(t && t->kind == PSC_ARRAY && t->alvo->kind == PSC_PONT, "int *v[3]: array de ponteiros");
+    t = ps_c_tipo_por_nome("char *const");
+    CONF(t && t->kind == PSC_PONT && t->constante && strcmp(t->nome, "char *const") == 0,
+         "char *const: o const e do ponteiro ('%s')", t ? t->nome : "NULL");
+    CONF(ps_c_tipo_por_nome("unsigned long long int") == &ps_c_ullong
+         && ps_c_tipo_por_nome("long double") == &ps_c_ldouble
+         && ps_c_tipo_por_nome("signed char") == &ps_c_schar, "grafias dos escalares");
+    t = ps_c_tipo_por_nome("struct tm *");
+    CONF(t && t->kind == PSC_PONT && t->alvo->kind == PSC_STRUCT && t->alvo->tam == sizeof(struct tm),
+         "struct tm *");
+    CONF(ps_c_le_decl("int (*f)(int", NULL, 0, erro, sizeof erro) == NULL && erro[0],
+         "declaracao quebrada da erro: '%s'", erro);
+    CONF(ps_c_tipo_por_nome("int x") == NULL, "nome de tipo nao aceita nome declarado");
+    t = ps_c_tipo_de(ps_c_busca("qsort"));
+    CONF(t && t->nparams == 4 && t->ret == &ps_c_void && t->params[3]->kind == PSC_PONT
+         && t->params[3]->alvo->kind == PSC_FUNC, "qsort da tabela: '%s'", t ? t->nome : "NULL");
+    t = ps_c_tipo_de(ps_c_busca("printf"));
+    CONF(t && t->variadica && t->nparams == 1, "printf variadica com 1 fixo");
+
+    /* constantes, com valor e tipo deste sistema */
+    PSCTipo *kt = NULL;
+    uint64_t kv = 0;
+    long double kf = 0;
+    CONF(ps_c_const_int(ps_c_busca("EOF"), &kt, &kv) == 0 && kt == &ps_c_int && (int64_t)kv == EOF, "EOF");
+    CONF(ps_c_const_int(ps_c_busca("INT_MIN"), &kt, &kv) == 0 && (int64_t)kv == INT_MIN, "INT_MIN");
+    CONF(ps_c_const_int(ps_c_busca("ULLONG_MAX"), &kt, &kv) == 0 && kt == &ps_c_ullong && kv == ULLONG_MAX,
+         "ULLONG_MAX");
+    CONF(ps_c_const_int(ps_c_busca("SIZE_MAX"), &kt, &kv) == 0 && kt == ps_c_tipo_por_nome("size_t")->canon
+         && kv == SIZE_MAX, "SIZE_MAX no tipo do size_t");
+    CONF(ps_c_const_flo(ps_c_busca("DBL_MAX"), &kt, &kf) == 0 && kt == &ps_c_double && kf == DBL_MAX, "DBL_MAX");
+    CONF(ps_c_const_texto(ps_c_busca("PRId64")) && strcmp(ps_c_const_texto(ps_c_busca("PRId64")), PRId64) == 0,
+         "PRId64 e o texto deste sistema");
+#ifdef FP_FAST_FMA
+    CONF(ps_c_const_int(ps_c_busca("FP_FAST_FMA"), &kt, &kv) == 0 && kv == 1, "FP_FAST_FMA definida");
+#else
+    CONF(ps_c_const_int(ps_c_busca("FP_FAST_FMA"), &kt, &kv) == -1, "FP_FAST_FMA nao definida neste sistema");
+#endif
+    /* o import (`import <stdio.h>`): o cabeçalho de cada nome, os nomes que o
+     * C declara em mais de um cabeçalho (o NULL), o que inclui outro (o
+     * inttypes.h traz o stdint.h) e os cabeçalhos do C11 que ficam de fora */
+    const char *motivo_cab = NULL;
+    CONF(ps_c_cab_existe("stdio.h", NULL) == 1 && ps_c_cab_existe("foo.h", &motivo_cab) == 0 && !motivo_cab,
+         "stdio.h existe, foo.h nao");
+    CONF(ps_c_cab_existe("setjmp.h", &motivo_cab) == 0 && motivo_cab && strstr(motivo_cab, "try/catch"),
+         "setjmp.h fica de fora com o motivo");
+    CONF(ps_c_vale_com(ps_c_busca("printf"), "stdio.h") && !ps_c_vale_com(ps_c_busca("printf"), "stdlib.h"),
+         "printf so com o stdio.h");
+    CONF(ps_c_vale_com(ps_c_busca("NULL"), "stdio.h") && ps_c_vale_com(ps_c_busca("NULL"), "time.h")
+         && !ps_c_vale_com(ps_c_busca("NULL"), "math.h"), "NULL pelos cabecalhos que o C diz");
+    CONF(ps_c_vale_com(ps_c_busca("INT32_MAX"), "inttypes.h") && !ps_c_vale_com(ps_c_busca("INT32_MAX"), "stdio.h"),
+         "inttypes.h traz o stdint.h");
+    int ncab = 0;
+    while (ps_c_cab(ncab)) ncab++;
+    CONF(ncab == 13, "13 cabecalhos na tabela (%d)", ncab);
+
+    t = ps_c_tipo_de(ps_c_busca("struct tm"));
+    int tm_ok = t && t->kind == PSC_STRUCT && t->ncampos == 9 && t->tam == sizeof(struct tm);
+    for (int k = 0; tm_ok && k < t->ncampos; k++)
+        if (strcmp(t->campos[k].nome, "tm_year") == 0) tm_ok = t->campos[k].desloc == offsetof(struct tm, tm_year);
+    CONF(tm_ok, "struct tm com a forma do sistema");
+
+    /* chamada pela tabela: o endereço e o tipo vêm dela */
+    unsigned char ret[64];
+    int i = ps_c_busca("strlen");
+    const char *texto = "jinga";
+    void *a1[] = { &texto };
+    CONF(ps_c_chama(ps_c_endereco(i), ps_c_tipo_de(i), a1, 1, NULL, ret) == 0
+         && ps_c_ret_uint(ps_c_tipo_de(i)->ret, ret) == 5, "strlen pela tabela");
+    i = ps_c_busca("div");
+    int num = 17, den = 5;
+    void *a2[] = { &num, &den };
+    div_t r = { 0, 0 };
+    CONF(ps_c_chama(ps_c_endereco(i), ps_c_tipo_de(i), a2, 2, NULL, ret) == 0
+         && (memcpy(&r, ret, sizeof r), r.quot == 3 && r.rem == 2), "div pela tabela, div_t por valor");
+    /* o sscanf do C99: `%as` lê um float com %a e depois o texto "s" (no
+     * scanf antigo da GNU, `%as` alocava um texto) */
+    i = ps_c_busca("sscanf");
+    union { float f; char *p; char espaco[16]; } u;
+    memset(&u, 0, sizeof u);
+    const char *entrada = "1.5s", *formato = "%as";
+    void *pu = &u;
+    void *a3[] = { &entrada, &formato, &pu };
+    PSCTipo *var3[] = { ps_c_ponteiro(&ps_c_float) };
+    CONF(ps_c_chama(ps_c_endereco(i), ps_c_tipo_de(i), a3, 3, var3, ret) == 0
+         && ps_c_ret_int(&ps_c_int, ret) == 1 && u.f == 1.5f, "sscanf do C99: %%as e float e texto");
+    i = ps_c_busca("isnan");
+    double nan_ = NAN;
+    void *a4[] = { &nan_ };
+    CONF(ps_c_chama(ps_c_endereco(i), ps_c_tipo_de(i), a4, 1, NULL, ret) == 0
+         && ps_c_ret_int(&ps_c_int, ret) != 0, "isnan, macro, pela funcao nossa");
+    i = ps_c_busca("INT64_C");
+    int64_t grande = INT64_C(9000000000);
+    void *a5[] = { &grande };
+    CONF(ps_c_chama(ps_c_endereco(i), ps_c_tipo_de(i), a5, 1, NULL, ret) == 0
+         && ps_c_ret_int(ps_c_tipo_de(i)->ret, ret) == INT64_C(9000000000), "INT64_C");
+    /* os valores lidos na hora, contra a macro de verdade */
+    char motivo[200] = "";
+    FILE *lido = NULL;
+    CONF(ps_c_le_valor(ps_c_busca("stdout"), &lido, motivo, sizeof motivo) == 0 && lido == stdout,
+         "stdout, valor lido na hora (%s)", motivo);
+    size_t mb = 0;
+    CONF(ps_c_le_valor(ps_c_busca("MB_CUR_MAX"), &mb, motivo, sizeof motivo) == 0 && mb == (size_t)MB_CUR_MAX,
+         "MB_CUR_MAX pela expansao da macro: %zu, a macro da %zu (%s)", mb, (size_t)MB_CUR_MAX, motivo);
+    int me = -1;
+    CONF(ps_c_le_valor(ps_c_busca("math_errhandling"), &me, motivo, sizeof motivo) == 0 && me == math_errhandling,
+         "math_errhandling pela expansao da macro: %d, a macro da %d (%s)", me, (int)math_errhandling, motivo);
+    CONF(ps_c_pronto(motivo, sizeof motivo) == 0, "a libffi abre (%s)", motivo);
+    /* o fpclassify pela definição do C11, contra a macro do sistema */
+    double amostras[] = { 0.0, -0.0, 1.0, -2.5, DBL_MIN, DBL_MIN / 4, DBL_MAX, INFINITY, -INFINITY, NAN };
+    int classe_ok = 1;
+    i = ps_c_busca("fpclassify");
+    for (size_t k = 0; k < sizeof amostras / sizeof amostras[0]; k++) {
+        void *ak[] = { &amostras[k] };
+        classe_ok = classe_ok && ps_c_chama(ps_c_endereco(i), ps_c_tipo_de(i), ak, 1, NULL, ret) == 0
+                    && ps_c_ret_int(&ps_c_int, ret) == fpclassify(amostras[k]);
+    }
+    CONF(classe_ok, "fpclassify pela definicao do C11 = a macro do sistema");
+
+    i = ps_c_busca("errno");
+    CONF(ps_c_especie(i) == PSC_NOME_VALOR && (ps_c_marcas(i) & PSC_MARCA_VM) && ps_c_endereco(i) == NULL,
+         "errno e da VM");
+    i = ps_c_busca("vprintf");
+    CONF(ps_c_especie(i) == PSC_NOME_FORA && strstr(ps_c_decl(i), "va_list") != NULL,
+         "vprintf fica de fora, com o motivo");
+    CONF(strcmp(ps_c_cabecalho(ps_c_busca("printf")), "stdio.h") == 0, "printf e do stdio.h");
+    CONF(ps_c_busca("nao_existe") == -1 && ps_c_busca("struct tm") >= 0, "busca pelo nome");
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1) filtro = argv[1];
@@ -716,6 +1054,8 @@ int main(int argc, char **argv)
     teste_regex_fundo();
     teste_ast();
     teste_pilha();
+    teste_c();
+    teste_c_tabela();
 
     printf("\nunidade: %d checagens, %d falharam\n", total, falhas);
     /* Filtro que não casa nada = 0 checagens = "passou"? Não: é erro de quem

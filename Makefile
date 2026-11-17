@@ -131,9 +131,12 @@ endif
 # A UNIDADE (teste/unidade.c) liga só os módulos puros e, no Windows, a
 # bcrypt — lá o aleatório do ps_hash.c é o BCryptGenRandom, e sem ela o link
 # para em `undefined reference to BCryptGenRandom`.
+# A `ps_c.c` (a biblioteca do C na Jinga) entra, mas a libffi NÃO: no Linux e
+# no macOS ela é aberta na primeira chamada (vm/ps_dl.h), como os bancos; no
+# Windows entra estática.
 LIBS_UNIDADE := -lm
 ifeq ($(E_WIN),1)
-LIBS_UNIDADE += -lbcrypt
+LIBS_UNIDADE += -lbcrypt -lffi
 endif
 # O analisador (-fanalyzer) e os avisos extra são do gcc de verdade: no macOS
 # é o do Homebrew (`brew install gcc`), já que ali o `gcc` é o clang. A imagem
@@ -953,9 +956,15 @@ check-e2e-local: pool
 # seguinte (o do `check`) dizia "is up to date" e saía 0 sem rodar caso
 # nenhum. Compilar toda vez também tira o binário velho de quando só um
 # cabeçalho da VM mudou, que esta regra não lista.
-unidade: teste/unidade.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(MK)
-	$(CC) $(CFLAGS) -g -I$(VM) -o $@$(EXE) teste/unidade.c \
-	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(LIBS_UNIDADE)
+# `teste/unidade_c11.c` compila À PARTE, com `-std=c11` (: o endereço que o
+# compilador liga em C11 estrito; a glibc manda o `scanf` pelo nome pro da GNU
+# antiga, e o C11 liga o `__isoc99_scanf`). O `unidade.c` compara os dois.
+UNIDADE_C11 = $(CC) $(CFLAGS) -std=c11 -c -o unidade_c11.o teste/unidade_c11.c
+unidade: teste/unidade.c teste/unidade_c11.c teste/c_padrao_enderecos.inc $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(VM)/ps_c.c $(VM)/ps_c_padrao.inc $(MK)
+	$(UNIDADE_C11)
+	$(CC) $(CFLAGS) -g -I$(VM) -o $@$(EXE) teste/unidade.c unidade_c11.o \
+	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_unicode.c $(VM)/ps_ast.c $(VM)/ps_c.c $(LIBS_UNIDADE)
+	@rm -f unidade_c11.o
 	@./$@$(EXE)
 
 .PHONY: unidade
