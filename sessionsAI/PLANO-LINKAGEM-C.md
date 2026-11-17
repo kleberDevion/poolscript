@@ -81,19 +81,35 @@ sem a marca continua a regra de hoje (sem conversão implícita). Nada de
 
 1. **[feito]** Reescrever `examples/types.pr` no desenho da seção 2.1 e
    pulá-lo no `exemplos_roda.pr` com motivo (lista `PROPOSTA`).
-2. **[em andamento]** Rodar `make check` completo e confirmar rc=0. A
+2. **[feito, 2026-11-17]** Rodar `make check` completo e confirmar rc=0. A
    primeira rodada achou um bug real do motor: erro de tipo ESTÁTICO dentro
    de `try { } catch (TypeError e)` impedia o programa de rodar, e o catch
    nunca via (o `r.save(7)` do `jinker_roda.pr`). O conserto está em
    `vm/ps_compiler.c` — o `terro` pergunta à pilha de `try` se o catch pega a
    classe; se pega, o erro fica pro motor, com a mesma frase — e o caso fixo
    entrou em `teste/casos_erros.c`.
+   Medido no codespace
+   (`symmetrical-space-goldfish-r4qqr6jxxppvcpvg7`, `gh codespace ssh`), o
+   único lugar onde o `check` inteiro cabe: suíte 10402/10402 com e sem JIT,
+   unidade 249, P1/P2/P3/P4 e os demais portões com 0 falhas conhecidas,
+   depurador 26, exemplos 11 rodados + 1 `PROPOSTA` (`types.pr`), analisa,
+   e2e local ok — **RC=0**. O P3 é a parte longa (702 s, 1334 blocos,
+   10611 hovers).
 3. **[feito no `1d5213b`]** Commitar a 20.0.49. A instalação no PATH fica
    para quando o dono quiser (`sudo make install`); o `./pool --version` é
-   a conferência desta árvore.
-4. Criar o ramo `obra/c2` a partir do main.
+   a conferência desta árvore. No codespace o PATH estava em 20.0.48 com a
+   árvore em 20.0.50: `make install` alinhou as duas antes do `check`.
+4. **[feito, 2026-11-17]** Criar o ramo `obra/c2` a partir do main
+   (`a5d92cd`).
 
 **Portão:** `make check` verde; suíte 10398/10398 com e sem JIT; versões iguais.
+
+> **Onde rodar (2026-11-17):** na máquina local o `check` passa de 120 s e o
+> terminal corta. Rode no codespace pelo `gh`:
+> `gh codespace ssh -c symmetrical-space-goldfish-r4qqr6jxxppvcpvg7 -- 'cd /workspaces/poolscript && make check'`.
+> Primeiro `git pull`, `sudo make install` e o `npm install` do editor.
+> A suíte medida no 20.0.50 (após a Fase 0, item 1) é 10402/10402; o número
+> da seção 6 é o de 20.0.49.
 
 ### Fase 1 — portar o C1 para o main (fatias)
 

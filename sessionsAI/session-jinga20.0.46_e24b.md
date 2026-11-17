@@ -5513,14 +5513,50 @@ feito direto nos arquivos e medido pelos mesmos portões.
 
 Medido no 20.0.49 (Linux): `confere_checador`, `audita_doc`,
 `audita_exemplos_doc`, `confere_saida_doc`, `confere_gramatica` e
-`teste/geradores/programas.pr` passam; a suíte passa 10398/10398.
+`teste/geradores/programas.pr` passam; a suíte passa 10398/10398. O
+`make check` completo para na exceção conhecida de `examples/types.pr` (o
+esboço do `deftype`), como nas versões anteriores.
 
 **motor-42** (TLS em `sockets`) fica para a frente de linkagem com o C: quando
 o motor estiver apto a usar `.h`/`.so`, a `sockets` vira wrapper da SSL do C
 (`SSLContext`/`wrap_socket`) e o próprio Dev monta a conexão TLS.
 
-**Próximo (2026-11-17):** plano de retomada da linkagem C — assinaturas C
-(funções, arrays, enums, structs/typedef), `.h`/`.so`, catálogo de libs e,
-depois, generics.
+**Próximo (2026-11-17):** plano de retomada da linkagem C em
+`sessionsAI/PLANO-LINKAGEM-C.md` — assinaturas C (funções, arrays, enums,
+structs/typedef), `.h`/`.so`, catálogo de libs e, depois, generics. O plano
+está aguardando aprovação.
 
 Versão **20.0.49**.
+---
+## Fase 0 fechada — 20.0.50 (2026-11-17)
+A base da frente de linkagem com o C está fechada e medida. O `make check`
+inteiro não cabe na máquina local (passa de 120 s e o terminal corta), então
+ele roda **no codespace**, pelo `gh`
+(`symmetrical-space-goldfish-r4qqr6jxxppvcpvg7`,
+`kleberDevion/poolscript`); a regra ficou escrita no `CLAUDE.md`.
+| item da Fase 0 | estado |
+| --- | --- |
+| 1. `examples/types.pr` no desenho e pulado com motivo | feito no `a5d92cd` |
+| 2. `make check` completo, rc=0 | **feito**: RC=0 no codespace |
+| 3. commitar a 20.0.49 | feito no `1d5213b`; o 20.0.50 é o bump |
+| 4. ramo `obra/c2` a partir do main | feito (`a5d92cd`) |
+Medido no 20.0.50, no codespace, com o PATH alinhado por `make install`
+(estava em 20.0.48 com a árvore em 20.0.50): suíte **10402/10402** com e sem
+JIT; unidade 249; `mede_aridades --confere` 547; `audita_doc` e a cobertura
+516/516; **P1** (1334 blocos, 10611 hovers, 2744 completions, 0 sem resposta);
+**P2** (547 membros, 7960 chamadas, só Mongo fora por falta do `mongod`);
+**P3** (1334 blocos, 702 s, o editor e o motor concordam); **P4** (10548
+programas, 115/115 regras, 308139 tokens; a suíte no checador 10365 conferidos;
+150 programas gerados); depurador 26; exemplos 11 rodados + 1 `PROPOSTA`
+(`types.pr`); fuzz replay 1 achado sem voltar a matar; e2e local ok.
+Todas as sete catracas com **0 falhas conhecidas**.
+O P3 é o trecho longo: roda sozinho, em silêncio, e só imprime no fim. Não há
+timeout nele; o que parecia travamento era o `timeout` de um teste meu.
+**Próximo:** fatia **1a** no `obra/c2` — `vm/ps_c.c`, `vm/ps_c.h`,
+`vm/ps_c_padrao.inc`, `vm/c_padrao.decl`, `teste/unidade_c11.c`,
+`teste/casos_c.c`, `teste/casos_c_padrao.c` e `teste/c_padrao_enderecos.inc`,
+com o Makefile da `libffi`, sem sintaxe nova, com bump **21.0.0**. O `ps_c.h`
+hoje é incluído por compilador, parser e VM; portar pelo ramo antigo é
+porta de comportamento do 17.x, então a 1a entra só com o runtime e a unidade
+C11 e o resto segue nas fatias 1b–1e.
+Versão **20.0.50**.

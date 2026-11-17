@@ -65,3 +65,31 @@ Antes de rodar qualquer portão, e depois de todo commit que mexa no motor:
 1. `jinga --version` e `./pool --version` têm que dizer o MESMO número;
 2. se não, `sudo make install` antes de tudo;
 3. no codespace também (`sudo make install`, e o `npm install` do editor).
+
+## O codespace (instrução dele, 2026-11-17)
+
+O `make check` não cabe no tempo desta máquina local: ele passa de 120 s e o
+terminal corta. **Rode no codespace, pelo `gh`**, não na máquina local:
+
+```bash
+gh codespace ssh -c symmetrical-space-goldfish-r4qqr6jxxppvcpvg7 -- \
+  'cd /workspaces/poolscript && make check'
+```
+
+O codespace é `symmetrical-space-goldfish-r4qqr6jxxppvcpvg7`
+(`kleberDevion/poolscript`, ramo `main`). Antes de rodar, lá dentro valem as
+regras acima: `git pull`, `sudo make install` e `npm install` do editor.
+
+O `check` inteiro leva ~20 min lá (o P3 sozinho, 702 s: 1334 blocos, 10611
+hovers). Deixar no servidor, gravando o log, e ler depois — a saída do P3 só
+sai no fim:
+
+```bash
+gh codespace ssh -c symmetrical-space-goldfish-r4qqr6jxxppvcpvg7 -- \
+  'cd /workspaces/poolscript && setsid bash -c "(make check > /tmp/check.log 2>&1; echo RC=\$? >> /tmp/check.log) &"'
+gh codespace ssh -c symmetrical-space-goldfish-r4qqr6jxxppvcpvg7 -- 'tail -3 /tmp/check.log'
+```
+
+Medido em 2026-11-17 (20.0.50, após a Fase 0): **RC=0**, suíte 10402/10402
+com e sem JIT, unidade 249, P1–P4 com 0 falhas conhecidas, exemplos 11
+rodados + 1 `PROPOSTA` (`types.pr`), e2e local ok.
