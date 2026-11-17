@@ -5524,3 +5524,64 @@ o motor estiver apto a usar `.h`/`.so`, a `sockets` vira wrapper da SSL do C
 depois, generics.
 
 Versão **20.0.49**.
+---
+## Parada de 2026-11-17 (17:10) — o estado salvo
+
+### Onde está o código
+
+- `main` = **20.0.50** (`47771bb`), a Fase 0 fechada.
+- **`obra/c2` = `950f322`**, a **fatia 1a** da linkagem com o C: o runtime
+  `vm/ps_c.c`, `vm/ps_c.h`, `vm/ps_c_padrao.inc`, `vm/c_padrao.decl`,
+  `teste/unidade_c11.c`, `teste/c_padrao_enderecos.inc`,
+  `scripts/gera_c_padrao.pr`, `scripts/audita_c.pr` e o `Makefile` (o alvo
+  `unidade` com o `c11` e o `ps_c.c`). O `pool` **ainda não mudou**: o
+  `ps_c.c` não entra no binário nesta fatia, então nada roda diferente.
+- O codespace está no `obra/c2` (`950f322`), com o `make install` feito.
+
+### O que foi medido (codespace, `obra/c2`)
+
+- **`make check` RC=0.** Suíte **10402/10402** com JIT, sem JIT e no P4;
+  **unidade 310** (249 de antes + 61 do C); o P1 nos 10402; P2 com 547
+  membros e 7960 chamadas; P3 com 1334 blocos e 10611 hovers (701 s); P4 da
+  gramática com 10548 programas; depurador, exemplos (11 rodados + 1
+  `PROPOSA`), e2e local. As **8** catracas com 0 falhas conhecidas.
+- O gerador `scripts/gera_c_padrao.pr --grava` reproduz o `.inc` e o
+  `c_padrao_enderecos.inc` **byte a byte** (735 nomes, 300 funções, 13
+  cabeçalhos).
+
+### Decisões dele que mudam o desenho (hoje)
+
+1. **Não existe lista de libc.** O acesso ao C é **total**: qualquer lib C
+   (`.h`, `.so`, `.dll`, `.dylib`). A tabela de 735 nomes é **assinatura**,
+   não licença.
+2. **Assinatura do C vale sempre**; **lib exige `import`** (o cabeçalho ou o
+   binário). Sem o import, `NameError`.
+3. **Diagnóstico de C é do `cc`/`clang`**, não da Jinga: tipo errado,
+   segfault, layout, uso depois de `free` — a Jinga repassa e mostra a frase
+   dele. Reimplementar isso é trabalho de trouxa.
+4. A ordem das frentes: linkagem → generics → performance → libs em Jinga no
+   repositório dele (`kleberDevion/libs`), para o binário emagrecer.
+
+Escrito em `CLAUDE.md`, `sessionsAI/PLANO-LINKAGEM-C.md` (decisões 7 e 8,
+seções 2.2 e 4.0) e `sessionsAI/VISAO-2026-11-17.md`.
+
+### Onde a 1b começa (amanhã)
+
+No ramo `obra/c2`, com o código do `obra/c1` como referência (portar, não
+mergear):
+
+- **parser**: `import <stdio.h>` (o `N_C_IMPORT`) e o `import c "libfoo.so"`
+  — o parser do c1 já tem o `N_C_IMPORT`; a lista de token vem do c1.
+- **compilador**: `declara_import_c` (linha ~10545 do c1), `c_nome_visivel`
+  (o nome do C só vale com o cabeçalho importado), `c_confere_import_tipo`
+  e o `ix_nomes_c` (nome do C usado como valor). A tabela do `ps_c.c` dá o
+  tipo; o `import` é que libera.
+- **tipos do C em variável** (`int *p`, `size_t n`): `declara_tipo_c`, com o
+  `ps_c_le_decl` que já está no `obra/c2` e testado (310).
+- **VM**: a chamada (`ps_c_endereco`, `ps_c_chama`, `ps_c_tipo_de`) e as
+  mensagens. O `errno`, o `exit`/`atexit` e o tratador de queda ficam na 1d.
+- Portão da 1b: unidade, `make check` RC=0 no codespace, P1–P4, sem bench
+  (§13 do `PLANO`).
+
+**Nada do c1 veio no merge**: parser, compilador e VM do main mudaram muito
+desde o 17.0.19; cada fatia entra com o seu teste.

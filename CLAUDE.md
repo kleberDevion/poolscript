@@ -50,6 +50,45 @@ qual dos dois está errado e ele decide.
   commit só com os arquivos do lote, bump a cada alteração, doc no mesmo
   commit) continuam valendo e estão na memória da sessão.
 
+## O acesso ao C é total, e a lib pede `import` (decisão dele, 2026-11-17)
+
+Duas coisas diferentes, não se misturam:
+
+- **Assinatura do C**: a forma do tipo, a declaração, o `sizeof`, o `struct`, o
+  ponteiro — **isso vale sempre**, em qualquer programa, sem `import`.
+- **Lib**: para chamar a função de verdade, **o `import` é obrigatório**, e
+  vale para **qualquer lib C**: cabeçalho (`import <stdio.h>`), `.so`
+  (`import c "libfoo.so"`), `.dll` (`"libfoo.dll"`), `.dylib`, ou só o nome
+  (`"libfoo"`, resolve no caminho do sistema). Sem ele o nome não existe
+  (`NameError`).
+
+**Não existe lista de libc limitando o que o programa alcança** — o acesso é
+total a qualquer `.so`/DLL. A tabela do C (`vm/c_padrao.decl`, 735 nomes) é a
+**assinatura** (o tipo) desses nomes, não uma licença: nome da lib importada
+que não está na tabela chama igual, com a declaração escrita no programa.
+
+- **Diagnóstico do C é do `cc`** (decisão dele, 2026-11-17): a Jinga **não
+  reimplementa** diagnóstico de C. Tipo errado, aridade, layout de `struct`,
+  segfault, ponteiro inválido, uso depois de `free` — quem decide é o
+  `cc`/`clang`. A Jinga **repassa** a declaração (importador de `.h` no build,
+  oráculo C/Jinga) e **mostra a frase dele**; o `--check` confere só o que
+  sabe sem rodar (tipo conhecido, aridade, formato do `printf`). O resto é
+  trabalho de trouxa e não se faz.
+
+Detalhe e o que muda na fatia 1b: `sessionsAI/PLANO-LINKAGEM-C.md`, decisões
+7 e 8, a seção 2.2 e a 4.0.
+
+## A ordem das frentes (decisão dele, 2026-11-17)
+
+1. Linkagem com o C (em curso, `obra/c2`);
+2. generics;
+3. melhoria de performance da linguagem;
+4. as libs reescritas em Jinga e mandadas para o repositório de libs dele
+   (`kleberDevion/libs`), para o binário emagrecer e programa complexo
+   competir com Go e Rust.
+
+Uma frente por vez, na ordem. `sessionsAI/VISAO-2026-11-17.md` tem o resto.
+
 ## O binário do PATH (decisão dele, 2026-11-12)
 
 **Todo binário estável sai para o PATH na hora, com `sudo make install`.** Os

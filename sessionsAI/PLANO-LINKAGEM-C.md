@@ -47,7 +47,23 @@ a doc completa; a tabela do Windows; a rodada na VPS; o merge como 17.1.0.
 | 3 | versionamento | C1 = **21.0.0** (a fatia 1a abre a linha); libs externas = **21.1.0**; `T[]`/tipos = **21.2.0**; generics = **22.0.0**. |
 | 4 | assinatura de lib externa | Arquivo `.decl` + carga do `.so`; importador de `.h` em tempo de build (`cc -E` → `.decl`), nunca preprocessador em runtime. |
 | 5 | `T[]` | Lista de hoje com o tipo do item conferido, crescendo com `addEnd`; decidir o que `type()` devolve. |
-| 6 | sintaxe da lib externa | `import c "libfoo.so"` + declarações no `.decl`; fechar na fatia 2a. |
+| 6 | sintaxe da lib externa | `import` da lib, **vale para qualquer lib C**: cabeçalho (`import <stdio.h>`) ou binário (`import c "libfoo.so"`, `"libfoo.dll"`, `"libfoo.dylib"`, `"libfoo"`). O `.decl` guarda a assinatura; o importador de `.h` no build (`cc -E`) gera o `.decl`. Fechar na fatia 2a. |
+| 7 | **lista de libc** (2026-11-17) | **Não existe.** O acesso ao C é **total**: qualquer função de qualquer lib C (`.h`, `.so`, `.dll`, `.dylib`), sem catálogo de nomes que a linguagem imponha. O que **não** é opcional é o `import` da **lib**: para chamar, o programa diz de onde vem. A tabela do C1 (`c_padrao.decl`, 735 nomes) é a **assinatura** desses nomes (o tipo), não uma licença de uso. |
+| 8 | **`import` de lib** (2026-11-17) | **Obrigatório, para qualquer lib C** — `.h`, `.so`, `.dll`, `.dylib`. Sem o import da lib, o nome não existe: `NameError`, como hoje. O import dá a lib ao programa (carrega o binário e/ou as assinaturas). |
+
+### 2.2. O que muda na tabela do C1 (abre a 1b)
+
+A regra, em duas linhas: **assinatura do C = sempre; lib = só com `import`**.
+
+| hoje | depois |
+| --- | --- |
+| achar a função **só** pelo nome na tabela; o resto é `NameError` | a tabela dá o **tipo** do nome (rápido, para o `--check`); a função é resolvida no símbolo (`dlsym`) quando a chamada roda |
+| `import <stdio.h>` obrigatório | **continua obrigatório** — é o que carrega a lib. O que muda é que a lista da tabela deixa de ser o limite: qualquer nome da lib importada vale |
+| nome fora da tabela: `NameError` | com o cabeçalho importado e sem tipo na tabela, o programa **escreve a declaração** (`ps_c_le_decl`) e chama; o tipo escrito vale para o `--check` |
+| `ps_c_especie == PSC_NOME_FORA` recusa (`setjmp.h`, `vprintf`, `va_list`) | nada é recusado por estar fora da tabela. `vprintf` chama com `va_list` declarado; `setjmp`/`longjmp` chama (o risco é do programa, e a doc diz) |
+| macros (`isnan`, `INT64_C`, `NULL`, `EOF`) | valor de macro **só pela tabela** (o C não expõe macro no `.so`): o que não está lá tem que ser escrito pelo programa. Limite do C, não da Jinga |
+
+O que **não** muda: a tabela continua gerada e conferida contra os cabeçalhos, porque é ela que dá tipo e aridade ao `--check`. Regra para quem for mexer: a tabela **dá assinatura**; o `import` **é que libera a lib**. Faltar na tabela não impede chamar; faltar o `import` impede.
 
 ### 2.1. O desenho do item 16 (tipos)
 
@@ -102,8 +118,10 @@ Cada fatia é um commit que compila e passa nos portões; nada de merge.
 1. **1a — runtime do C**: `vm/ps_c.c`, `vm/ps_c.h`, `vm/ps_c_padrao.inc`,
    `vm/c_padrao.decl`, `libffi`, unidade C11 e testes de tipo/layout. Sem
    sintaxe nova ainda.
-2. **1b — linguagem**: `import <stdio.h>`, nomes e constantes do C, tipos do
-   C em variável, `--check`, `--metadata` e editor.
+2. **1b — linguagem**: o `import` do **cabeçalho obrigatório** (decisão 8)
+   libera a lib; a tabela dá o tipo, e o nome sem tipo na tabela recebe a
+   declaração escrita no programa; tipos do C em variável; `--check`,
+   `--metadata` e editor.
 3. **1c — ponteiro e memória**: `*p`, `p[i]`, `&x`, `sizeof`, cast, `const`,
    array, `struct`, `union`, `typedef`, `{...}`, `->`, `offsetof`.
 4. **1d — callbacks e fim de programa**: `qsort`/`bsearch`, `atexit`,
@@ -152,7 +170,51 @@ Depois de `T[]` e do sistema de tipos estável. Decidir a sintaxe (Java/C# ou
 outra), se o tipo é apagado ou reificado, e se aceita limite. Portão: suíte,
 P1–P4, editor, doc e bench.
 
+### Fase 5 — performance da linguagem (visão do dono, 2026-11-17)
+
+Depois da linkagem e dos generics. A régua é o `make bench` e o
+`teste/bench.pr`: medir antes, mudar, medir de novo. O alvo declarado por ele
+é **programas complexos e longos competitivos com Go e Rust**. Sem plano
+ainda; abre quando a Fase 4 fechar, com o estado medido do bench no dia.
+
+### Fase 6 — as libs em Jinga, fora do binário (visão do dono, 2026-11-17)
+
+**Reescrever as libs em Jinga e mandá-las para `kleberDevion/libs`**, para
+diminuir o peso do binário na compilação. Hoje o `pool` liga mail, http, qr,
+db, mongo, jinker, pkg, debug, so, unicode e a tabela do C num executável
+só; quem usa `post()` paga o resto. A direção é a mesma que já moveu os
+clientes de banco e a `libffi` para o `dlopen` no primeiro uso (`vm/ps_dl.h`):
+o que é lib sai do motor.
+
+O caminho que a Fase 2 abre: a lib em Jinga é um pacote `jpkg` que declara o
+que usa e é compilado junto com o programa, sem libffi. Antes disso, decidir
+onde o código da lib vive (repo separado), como o motor o carrega sem embutir
+o binário, e como o instalador sabe o que instalar. Mede-se pelo binário
+(tamanho, tempo de partida) e pelo bench — nunca por impressão.
+
+Ver `sessionsAI/VISAO-2026-11-17.md`, com o registro da ordem dele.
+
 ## 4. Portões e critérios de pronto
+
+### 4.0. Quem diagnostica o C é o `cc`/`clang` (decisão dele, 2026-11-17)
+
+**A Jinga não reimplementa diagnóstico de C.** O compilador C do sistema já é
+o oráculo, e é ele que decide:
+
+- tipo errado numa chamada do C, aridade, conversão, o layout de `struct`;
+- segfault, ponteiro inválido, uso depois de `free`, estouro de buffer;
+- os avisos e os endereços do C11 (o `unidade_c11.c` é exatamente isso).
+
+O papel da Jinga: **repassar** a declaração ao `cc`/`clang` (o importador de
+`.h` no build: `cc -E` → `.decl`; e o oráculo dos 13 casos que roda o par
+C/Jinga), **mostrar a frase dele** quando a chamada falha, e não inventar
+regra própria onde a do C vale. O `--check` só confere o que a Jinga sabe sem
+rodar (tipo conhecido, aridade, o formato do `printf`); o que depende do C é
+do C. Nada de reescrever analisador semântico de C em `.pr`.
+
+Em prática, na 1d/1e: o tratador de queda mostra a linha da Jinga e repassa
+ao `cc` a função e os tipos para ele apontar o erro; o `audita_c` e o oráculo
+do `cc` são de **build**, não portões que repetem a análise do compilador.
 
 - **Todo commit**: `make check`; `./testar` com e sem JIT; `teste/unidade`;
   `casos_c`; `audita_c`; P1–P4.
@@ -194,7 +256,9 @@ P1–P4, editor, doc e bench.
    sem sintaxe nova, com bump **21.0.0**;
 6. rodar unidade C11 e `make check`.
 
-Depois da 1a, a 1b entra com o `import <stdio.h>` e o `--check`.
+Depois da 1a, a 1b entra com o `import <stdio.h>` (cabeçalho, a lib do
+sistema) e o `--check`; o `import` de `.so`/`.dll` de terceiros entra na
+Fase 2, com o mesmo obrigatório.
 
 ## 7. Aprovação
 
@@ -202,3 +266,7 @@ Aprovado pelo dono em 2026-11-17: fatias no `obra/c2`, C1 como 21.0.0,
 `.decl` com importador de `.h` no build, `T[]` como lista com item conferido,
 primeiro lote Fase 0 + 1a. `types.pr` fica em `examples/` e é pulado com
 motivo. Nenhuma decisão aberta.
+
+Aprovado também, no mesmo dia, a **decisão 7**: lista de libc para limitar o
+que o programa alcança não faz sentido; o acesso é total. A tabela do C1 é
+ajuda de tipo, não porteiro.
