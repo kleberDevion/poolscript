@@ -537,13 +537,28 @@ ANALISA_FORA := $(VM)/jinga_vm.c
 #                                 analisador perde o vínculo e dá o vetor por
 #                                 perdido. Ele fica em `o->blocos` e sai no
 #                                 `ps_lexer_free` (`free(lista->blocos)`)
+#   ps_db.c    DOUBLE-free de `grande` — o analisador perde a distincao ao
+#                                 atravessar o `realloc` de `t->b` dentro de
+#                                 `tc_reserva` (chamada por
+#                                 `sql_varre_placeholders`): marca esse
+#                                 `realloc` como "first free" e propaga o
+#                                 "ja liberado" pro `grande` do `odbc_exec`.
+#                                 Sao ponteiros distintos, em funcoes
+#                                 distintas. O `grande` (calloc na linha do
+#                                 SQLDescribeCol) tem UM `free`, e o
+#                                 `grande = NULL` do caminho de erro e o que
+#                                 protege. Conferido no caminho de nos
+#                                 completo do `-fanalyzer` (179 -> 745: o
+#                                 "first free" de 370 e o `realloc` de
+#                                 `t->b`, nao o `grande`)
 # Cada entrada e um padrao de `grep` (regex basica, sem espaco: `.` casa o
 # espaco e as aspas do gcc) casando ARQUIVO + MENSAGEM, nao arquivo:linha —
 # a linha anda a cada edicao e o portao reprovava o mesmo falso positivo de
 # antes, ja conferido, so porque o codigo acima dele cresceu (345 -> 357).
 ANALISA_ACEITOS := ps_db.c:[0-9]*:[0-9]*:.*leak.of..strdup \
                    ps_win.h:[0-9]*:[0-9]*:.*leak.of.file.descriptor \
-                   ps_lexer.c:[0-9]*:[0-9]*:.*leak.of..nv.
+                   ps_lexer.c:[0-9]*:[0-9]*:.*leak.of..nv. \
+                   ps_db.c:[0-9]*:[0-9]*:.*double-.free..of..grande
 ANALISA_ALVO := $(if $(ANALISA_TUDO),$(FONTES),$(filter-out $(ANALISA_FORA),$(FONTES)))
 
 # O TETO não vale em todo sistema, e isso tem que aparecer. No macOS o kernel
