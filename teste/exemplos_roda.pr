@@ -35,6 +35,12 @@ SERVIDOR = []
 # como sucesso calado.
 PODE_FALTAR = ["mail_demo.pr", "request.pr", "push_get.pr", "swagger.pr"]
 
+# Esboços de proposta: existem para o desenho ficar escrito, não para rodar.
+# São pulados de propósito, e o resumo diz quais e por quê. Hoje só o item 16
+# (tipos): `type`, o `type` limitado, o `type enum` e o `@literal` ainda não
+# existem na linguagem.
+PROPOSTA = ["types.pr"]
+
 
 # ── processos: sem shell, nos três sistemas ─────────────────────────────────
 #
@@ -168,6 +174,7 @@ if __name__ == "main" {
     okey = []
     falhou = []
     pulou = []
+    proposta = []
     so_sintaxe = []
     # `examples/swagger.pr` gera a doc em `path/docs` a partir da pasta onde
     # roda (a raiz do repo). O que a rodada criou, a rodada apaga: a sobra
@@ -184,6 +191,11 @@ if __name__ == "main" {
 
     for each n in nomes {
         caminho = PASTA + "/" + n
+
+        if PROPOSTA.contains(n) {
+            addEnd(proposta, n)
+            continue
+        }
 
         if SERVIDOR.contains(n) {
             r = confere_sintaxe(caminho)
@@ -233,12 +245,16 @@ if __name__ == "main" {
     }
     post("")
     post("exemplos:", str(len(nomes)), " rodaram:", str(len(okey)),
-         " so sintaxe:", str(len(so_sintaxe)), " pularam:", str(len(pulou)))
+         " so sintaxe:", str(len(so_sintaxe)), " pularam:", str(len(pulou)),
+         " propostas:", str(len(proposta)))
     if len(so_sintaxe) > 0 {
         post("   (servidor, nao executados:", (", ").join(so_sintaxe) + ")")
     }
     if len(pulou) > 0 {
         post("   (PULARAM por falta de servico:", (", ").join(pulou) + ")")
+    }
+    if len(proposta) > 0 {
+        post("   (PROPOSTAS, nao executados de proposito:", (", ").join(proposta) + ")")
     }
     if len(falhou) > 0 {
         post("")

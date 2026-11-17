@@ -1,57 +1,64 @@
-
-# O deftype, permite esse tipo de expressão - int16 nome = 100; - sem ele - in16 nome = int16(100);
-deftype class int16
-{
-    # O codenome Literals, e uma Hiper classe, mae de todas, que nela pode se atribuir a uma classe
-    # qualquer o literal que pertence a outro tipo primitivo da linaguagem, ja callme
-    # Se refere a classe chamar a se mesma dentro de seu escopo, o sinal -> e so de atribuição.
-    callme int16(int value) -> Literals.int
-    {
-        if (value < 0xFFFF || value > 0)
-        {
-            return value
-        }
-        return  f'Valor atribuido a {int16} fora de 16bits.'
-    }
-}
-
-int16 idade = 17;
+# ESBOÇO — item 16 (tipos), decisão do dono em 2026-11-17.
+#
+# Nada aqui roda ainda: o item 16 entra depois da linkagem com o C e do
+# `T[]` (item 13). Este arquivo é a proposta escrita, não um exemplo.
+# O `teste/exemplos_roda.pr` o pula de propósito (lista PROPOSTA).
+#
+# Só existem estas formas:
+#
+#   1. `type Nome = tipo`                    — outro nome para um tipo
+#   2. `type Nome = tipo(min=..., max=...)`  — tipo limitado
+#   3. `type enum Nome { membro = tipo; }`   — enum de tipos
+#   4. `type class Nome { @literal ... }`    — classe que recebe literal
+#
+# Nada de `deftype class`, `callme` ou `Literals`.
 
 # ---------------------------------------------------------------------------
-# Proposta do assistente (2026-10-23), escrita abaixo da sua pra você comparar.
-# Nada disso existe ainda: é desenho pra trilha de dev (item 16 do
-# JINGA-TUDO 6.4), que entra depois da correção da base. A decisão é sua.
-#
-# O seu deftype junta duas coisas que as linguagens consolidadas separam.
-#
-# 1) TIPO LIMITADO (o int16): um primitivo com faixa, como o Ada faz desde 1983
-#    (`type Int16 is range -2**15 .. 2**15 - 1;`) e o Pascal (`type Idade =
-#    0..150;`). A forma `type Nome = ...` é a do Python 3.12 (PEP 695) e do
-#    TypeScript. As restrições são as palavras que o `model` da Jinga já usa
-#    pra validar campo (min, max, length, regex, in), sem palavra nova:
+# 1) Tipo com outro nome. `int16` é o `int`; não há tipo novo por baixo.
 
-type int16 = int(min=-32768, max=32767)
+type int16 = int
+type Texto = str
+
+int16 x = 100            # vale
+Texto t = "ok"           # vale
+
+# ---------------------------------------------------------------------------
+# 2) Tipo limitado: as palavras que o `model` já usa (min, max, length,
+#    regex, in), sem palavra nova.
+
+type Int16 = int(min=-32768, max=32767)
 type Idade = int(min=0, max=150)
 type Cpf = str(length=11, regex=r"\d{11}")
 
-int16 x = 100            # vale: o literal cabe, conferido ANTES de rodar
-int16 y = 40000          # erro antes de rodar:
-                         #   ValueError: 40000 fora de int16 (-32768 a 32767)
+Int16 y = 40000          # erro antes de rodar:
+                         #   ValueError: 40000 fora de Int16 (-32768 a 32767)
 Idade i = int(input())   # valor que só se sabe rodando: conferido rodando,
                          #   com o mesmo ValueError, na linha da atribuição
-int z = x + 1            # int16 é int: entra em toda conta de int
-int16 w = x + 1          # o resultado volta a ser conferido na atribuição
+int z = x + 1            # Int16 é int: entra em toda conta de int
+Int16 w = x + 1          # o resultado volta a ser conferido na atribuição
 
-#    Fora da faixa é ERRO, como o Constraint_Error do Ada. Nunca dá a volta
-#    calado (como o int16_t do C, que o Plano 1 traz pra memória do C) nem
-#    vira texto no lugar do número.
-#
-# 2) CLASSE QUE RECEBE LITERAL (o `int16 idade = 17` sem `int16(17)`): é o
-#    construtor de conversão do C++ (`Dinheiro d = 10;` chama `Dinheiro(int)`,
-#    e o `explicit` desliga) e o `implicit operator` do C#. Aqui, o construtor
-#    marcado diz de que literal a classe nasce:
+Cpf cpf = "12345678901"  # vale
+Cpf errado = "123"       # erro antes de rodar: length=11
 
-class Dinheiro {
+# Fora da faixa é ERRO, como o Constraint_Error do Ada. Nunca dá a volta
+# calado (como o int16_t do C) nem vira texto no lugar do número.
+
+# ---------------------------------------------------------------------------
+# 3) Enum de tipos: cada membro é um tipo limitado e se usa como tipo.
+
+type enum Faixa {
+    idade = int(min=18, max=120);
+}
+
+Faixa.idade user_age = 23    # vale
+Faixa.idade outra = 200      # erro antes de rodar:
+                             #   ValueError: 200 fora de Faixa.idade (18 a 120)
+
+# ---------------------------------------------------------------------------
+# 4) Classe que recebe literal: o decorador `@literal` pega o tipo do
+#    parâmetro do construtor e o passa pra classe.
+
+type class Dinheiro {
     int centavos = 0
 
     @literal                         # aceita `Dinheiro d = 10.50`
@@ -66,13 +73,6 @@ class Dinheiro {
 Dinheiro preco = 10.50     # chama o __init__ marcado: o mesmo que Dinheiro(10.50)
 Dinheiro outro = "dez"     # erro antes de rodar: o construtor pede flo
 
-#    Sem o @literal, `Dinheiro d = 10.50` continua erro, que é a regra de hoje
-#    (sem conversão implícita). Só a classe que pede recebe literal, e o tipo
-#    do literal é o do parâmetro do construtor, conferido antes de rodar.
-#
-# Três pontos do esboço de cima que este desenho resolve:
-# - `value < 0xFFFF || value > 0` aceita qualquer número: o -5 passa pela
-#   primeira condição e o 100000 pela segunda. A faixa do int16 com sinal é
-#   -32768 a 32767 (sem sinal, 0 a 65535);
-# - devolver o texto do erro faz a variável receber o texto: `idade` viraria
-#   a frase. O erro tem que ser levantado (raise);
+# Sem o @literal, `Dinheiro d = 10.50` continua erro, que é a regra de hoje
+# (sem conversão implícita). Só a classe que pede recebe literal, e o tipo
+# do literal é o do parâmetro do construtor, conferido antes de rodar.
