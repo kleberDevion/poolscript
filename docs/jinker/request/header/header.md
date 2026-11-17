@@ -51,6 +51,7 @@ todos = request.headers            # {"Host": "...", "User-Agent": "...", ...}
 ## Ausente devolve `Null`
 
 ```ps
+@app.route("/api", methods=["GET"])
 funct confere() {
     x = request.header("X-Nao-Existe")   # Null
     if (x is Null) {

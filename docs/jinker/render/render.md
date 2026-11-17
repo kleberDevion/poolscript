@@ -43,6 +43,7 @@ Por isso a forma de dois argumentos é a certa quando a pasta é fixa e o arquiv
 vem de fora:
 
 ```ps
+@app.route("/pagina/<nome>")
 funct pagina() {
     nome = request.path_param("nome")
     return render("paginas", f"{nome}.html")   # paginas/<nome>.html

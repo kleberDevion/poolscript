@@ -5,7 +5,8 @@ Os exemplos desta página pressupõem (o `request` é o da jinker, usado no
 
 ```ps contexto
 from json import parse, stringify
-from jinker import request
+from jinker import Jinker, request
+Jinker app = Jinker(__name__)
 ```
 
 ---
@@ -43,7 +44,10 @@ post(texto)   # {"nome": "joão", "idade": 30}
 ```ps
 import json
 
-body = json.parse(request.text())
-resposta = json.stringify({"status": "ok", "recebido": body})
-post(resposta)
+@app.route("/api", methods=["POST"])
+funct api() {
+    body = json.parse(request.text())
+    resposta = json.stringify({"status": "ok", "recebido": body})
+    return resposta
+}
 ```

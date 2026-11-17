@@ -1,9 +1,9 @@
-# `MailMessage.fromAddress(address)`
+# `MailMessage.fromAddress(endereco)`
 
 Define o **remetente** do e-mail (quem envia).
 
 ```assinatura
-m.fromAddress(address: str) -> Null
+m.fromAddress(endereco: str) -> MailMessage
 ```
 
 Os exemplos desta página pressupõem:

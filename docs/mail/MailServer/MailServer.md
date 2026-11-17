@@ -14,7 +14,7 @@ s = mail.MailServer()
 | Método | O que faz | Página |
 |---|---|---|
 | `.conn(host, port, tls)` | conecta ao servidor SMTP | [conn/conn.md](conn/conn.md) |
-| `.login(user, senha)` | autentica | [login/login.md](login/login.md) |
+| `.login(usuario, senha)` | autentica | [login/login.md](login/login.md) |
 | `.send(msg)` | envia a mensagem | [send/send.md](send/send.md) |
 | `.quit()` | encerra a conexão | [quit/quit.md](quit/quit.md) |
 

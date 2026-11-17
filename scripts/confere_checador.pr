@@ -55,7 +55,7 @@ import date
 from './portoes_catraca.pr' import aplica, relata, linha_nova
 from './portoes_isola.pr' import prepara_isolamento, executa
 from './portoes_doc.pr' import lista_md, blocos_de
-from './portoes_donos.pr' import TIPOS, VALOR, DONOS, SO_QUANTIDADE, eh_aridade, cita_tipo, sem_linha
+from './portoes_donos.pr' import TIPOS, VALOR, DONOS, DONOS_SERVIDOS, SO_QUANTIDADE, eh_aridade, cita_tipo, sem_linha
 
 str TMP = "ps_confere_checador_tmp_" + str(date.timestamp_ms())
 # o prazo do programa de um membro inteiro, e o de uma chamada sozinha
@@ -71,17 +71,9 @@ dict DONOS_A_MAIS = {
     "DbCursor": ["import psodbc", "psodbc.connect(driver=\"sqlite\", base=\"p2.db\").cursor()"]
 }
 
-# Os donos que só existem com um servidor no ar: onde a chamada roda (dentro
-# da rota, ou no cliente que fala com ela) e a expressão que cria o receptor.
-# `@P@` é a porta HTTP da rodada e `@W@` a seguinte, a do par de eco do
-# WebSocket (`teste/ws_par.pr`: o servidor de WebSocket saiu da jinker no
-# 19.0.0, e o cliente ficou).
-dict DONOS_SERVIDOS = {
-    "RequestProxy": ["rota", "request"],
-    "PoolFileUpload": ["rota", "request.file(\"arquivo\")"],
-    "Response": ["cliente", "request.get(\"http://127.0.0.1:@P@/p2r?a=1\")"],
-    "WsConnection": ["cliente", "request.ws_connect(\"ws://127.0.0.1:@W@/ws\")"]
-}
+# Os donos que só existem com um servidor no ar vêm de `portoes_donos.pr`
+# (a mesma tabela que o `mede_aridades.pr` usa), e `@P@`/`@W@` são trocados
+# pela porta da rodada logo abaixo.
 # A porta da 1ª rodada com servidor; cada rodada sobe a jinker numa porta
 # nova, pra não esbarrar na anterior, que ainda está fechando.
 int PORTA_BASE = 28970

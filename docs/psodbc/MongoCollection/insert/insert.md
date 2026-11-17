@@ -1,9 +1,9 @@
-# `MongoCollection.insert(document)`
+# `MongoCollection.insert(documento)`
 
 Insere **um** documento (dict) na coleção.
 
 ```assinatura
-col.insert(document: dict) -> Null
+col.insert(documento: dict) -> Null
 ```
 
 Os exemplos desta página pressupõem:

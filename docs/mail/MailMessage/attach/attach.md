@@ -1,11 +1,14 @@
-# `MailMessage.attach(file_or_path)`
+# `MailMessage.attach(arquivo_ou_caminho)`
 
 Anexa um arquivo ao e-mail. Aceita um **caminho** (string), um
-[`PoolFile`](../../../os/PoolFile/PoolFile.md) (binário carregado) ou um
-`PoolFileUpload` (arquivo recebido num upload).
+[`PoolFile`](../../../os/PoolFile/PoolFile.md) (binário carregado), um
+`PoolFileUpload` (arquivo recebido num upload) ou um
+[`QRPoolFile`](../../../objetos-internos/QRPoolFile.md) (imagem de QR ainda em
+memória, de [`qrcode.gen`](../../../qrcode/gen/gen.md) ou
+[`QRImage.to_file`](../../../qrcode/QRImage/to_file/to_file.md)).
 
 ```assinatura
-m.attach(file_or_path) -> Null
+m.attach(arquivo_ou_caminho) -> bool
 ```
 
 Os exemplos desta página pressupõem:
@@ -14,7 +17,8 @@ Os exemplos desta página pressupõem:
 import mail
 import os
 import bytes
-from jinker import request
+from jinker import Jinker, request
+Jinker app = Jinker(__name__)
 MailMessage m = mail.MailMessage()
 # os arquivos dos exemplos (os binários com o começo de um arquivo de verdade)
 os.writeFile("relatorio.pdf", bytes.fromhex("255044462d312e340a25e2e3cfd30a0000"))
@@ -46,9 +50,11 @@ m.attach(pdf)
 ## Anexar um upload recebido (jinker)
 
 ```ps
-# dentro de uma rota que recebe upload
-foto = request.file("foto")
-m.attach(foto)                    # PoolFileUpload
+@app.route("/upload", methods=["POST"])
+funct anexar() {
+    foto = request.file("foto")
+    m.attach(foto)                    # PoolFileUpload
+}
 ```
 
 ---

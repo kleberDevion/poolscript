@@ -1,15 +1,15 @@
-# `MongoCollection.update(query, new_values)`
+# `MongoCollection.update(query, novo)`
 
 Atualiza os documentos que batem com o filtro, aplicando os novos valores.
 
 ```assinatura
-col.update(query: dict, new_values: dict) -> Null
+col.update(query: dict, novo: dict) -> Null
 ```
 
 | Parâmetro | O que é |
 |---|---|
 | `query` | filtro — quais documentos atualizar |
-| `new_values` | os campos a mudar (e seus novos valores) |
+| `novo` | os campos a mudar (e seus novos valores) |
 
 Os exemplos desta página pressupõem:
 

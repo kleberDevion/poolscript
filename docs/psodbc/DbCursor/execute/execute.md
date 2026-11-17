@@ -13,7 +13,8 @@ quem usa):
 
 ```ps contexto
 import psodbc
-from jinker import request
+from jinker import Jinker, request
+Jinker app = Jinker(__name__)
 # as tabelas dos exemplos, com algumas linhas
 psodbc.query(base="loja.db", cmd="CREATE TABLE produtos (id INTEGER PRIMARY KEY, nome TEXT, preco REAL)")
 psodbc.query(base="loja.db", cmd="INSERT INTO produtos (nome, preco) VALUES ('caneta', 2.5), ('caderno', 15.0), ('mochila', 120.0)")
@@ -52,13 +53,16 @@ conn.commit()
 ## Sempre use `?` para valores
 
 ```ps
-nome = request.get("nome")
+@app.route("/users", methods=["GET"])
+funct busca_por_nome() {
+    nome = request.get("nome")
 
-# CERTO — parâmetro:
-cursor.execute("SELECT * FROM users WHERE nome = ?", (nome,))
+    # CERTO — parâmetro:
+    cursor.execute("SELECT * FROM users WHERE nome = ?", (nome,))
 
-# ERRADO — concatenar permite SQL injection:
-cursor.execute("SELECT * FROM users WHERE nome = '" + nome + "'")
+    # ERRADO — concatenar permite SQL injection:
+    cursor.execute("SELECT * FROM users WHERE nome = '" + nome + "'")
+}
 ```
 
 O `?` deixa o driver escapar o valor com segurança. Repare que `params` é uma

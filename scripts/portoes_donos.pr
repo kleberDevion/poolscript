@@ -37,12 +37,34 @@ dict DONOS = {
     "MailMessage": ["import mail", "mail.MailMessage()"],
     "MailReader": ["import mail", "mail.MailReader()"],
     # motor-11: os tipos que ficavam de fora da tabela medida, e por isso o
-    # `--check` aceitava qualquer chamada e o motor recusava rodando. Os que
-    # nascem sem servidor entram aqui; os que só existem com a jinker no ar
-    # (`RequestProxy`, `PoolFileUpload`, `Response`, `WsConnection`) são
-    # medidos pelo P2 com uma jinker de verdade, e não por esta tabela.
+    # `--check` aceitava qualquer chamada e o motor recusava rodando.
     "DbConnection": ["import psodbc", "psodbc.connect(driver=\"sqlite\", base=\":memory:\")"],
     "DbCursor": ["import psodbc", "psodbc.connect(driver=\"sqlite\", base=\":memory:\").cursor()"]
+}
+
+# Os tipos que o `mede_aridades.pr` mede e o portão P2 cria de outro jeito (o
+# `RouteRegistrar` sai de `app.route`, e o `RequestProxy` é o `request`
+# global). A aridade não depende de haver requisição corrente: o nativo
+# confere os argumentos ANTES de ler o proxy, então o singleton do import
+# basta para medir. Aqui a expressão é a mesma dos dois lados.
+#   tipo -> [import, expressao que cria o receptor]
+dict DONOS_MEDIDOS = {
+    "RouteRegistrar": ["import jinker", "jinker.Jinker().route(\"/p2\")"],
+    "RequestProxy": ["from jinker import request", "request"]
+}
+
+# Os donos que só existem com um servidor no ar: onde a chamada roda (dentro
+# da rota, ou no cliente que fala com ela) e a expressão que cria o receptor.
+# `@P@` é a porta HTTP da rodada e `@W@` a seguinte, a do par de eco do
+# WebSocket (`teste/ws_par.pr`). O `RequestProxy` também está na
+# `DONOS_MEDIDOS` (o singleton do import basta para medir a aridade); aqui ele
+# fica para o portão P2 exercitar o proxy DENTRO de uma requisição de verdade.
+#   tipo -> ["rota" | "cliente", expressão]
+dict DONOS_SERVIDOS = {
+    "RequestProxy": ["rota", "request"],
+    "PoolFileUpload": ["rota", "request.file(\"arquivo\")"],
+    "Response": ["cliente", "request.get(\"http://127.0.0.1:@P@/p2r?a=1\")"],
+    "WsConnection": ["cliente", "request.ws_connect(\"ws://127.0.0.1:@W@/ws\")"]
 }
 
 # Chamada com valor de verdade que mexe fora do programa: so a quantidade

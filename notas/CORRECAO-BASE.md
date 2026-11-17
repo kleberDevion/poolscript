@@ -1156,6 +1156,9 @@ em cada item):
   entra na lista como decisão dele, não como conserto de defeito. `duvida`:
   entra na Jinga (o `ssl` do Python, com `SSLContext` e `wrap_socket`), ou a
   doc diz que conexão segura é só pelo `mail` e pelo `request`?
+  **Decisão (2026-11-16):** fica para a frente de linkagem com o C. Quando o
+  motor estiver apto a usar `.h`/`.so`, a `sockets` vira wrapper da SSL do C
+  (`SSLContext`/`wrap_socket`) e o próprio Dev monta a conexão TLS.
 
 ## os
 
@@ -1415,7 +1418,7 @@ da linguagem promete, e o exemplo da página está errado. As páginas ficam em
   `b'abcda\xc3\xa7\xc3\xa3o'`, os 10 bytes que a própria página conta
   (4 + 6). `doc`.~~ Corrigido no 20.0.37: a saída é
   `b'abcda\xc3\xa7\xc3\xa3o'`, os 10 bytes que a página conta.
-- **doc-5** (falha fora do Linux) O número do erro do sistema muda de um
+- ~~**doc-5** (falha fora do Linux) O número do erro do sistema muda de um
   sistema pro outro, e a doc cita o do Linux como se fosse o de todos. Três
   exemplos testam o número e dão `False` no macOS:
   `detach/detach.md:47` (`"Errno 98"`, endereço em uso: 48 no macOS),
@@ -1429,12 +1432,12 @@ da linguagem promete, e o exemplo da página está errado. As páginas ficam em
   `:61`. O motor passa o número que o sistema dá, como o Python: medido no Mac
   com o Python 3, 48, 57, 61 e 63, os mesmos da Jinga. A forma certa já está
   em `connect/connect.md:30` ("os números e o texto são os do sistema", com o
-  de cada um). `doc`.
-- **doc-6** (falha fora do Linux) `getsockopt/getsockopt.md:46`,
+  de cada um). `doc`.~~ Corrigido no 20.0.49: os três exemplos comparam com os números dos três sistemas e as seções "Erros" citam o número de cada um.
+- ~~**doc-6** (falha fora do Linux) `getsockopt/getsockopt.md:46`,
   `setsockopt/setsockopt.md:35` e `setsockopt/setsockopt.md:70` esperam ler
   `1` de volta de `SO_REUSEADDR` e `SO_KEEPALIVE` ligados. O macOS devolve o
   valor da própria opção (4 e 8), e o Python no Mac dá o mesmo; o motor passa
-  o que o sistema dá. O que vale nos dois é "diferente de 0". `doc`.
+  o que o sistema dá. O que vale nos dois é "diferente de 0". `doc`.~~ Corrigido no 20.0.49: os exemplos leem `!= 0`, que vale nos dois sistemas.
 
 Achados pelo portão `check` do P1 em 2026-10-18, depois de escrito o contexto
 de cada página (os blocos ```ps contexto): o `--check` de cada exemplo com o
@@ -1499,7 +1502,7 @@ e sem, e dá o mesmo erro.
   `from ... import` não liga o nome do módulo; o motor dá
   `NameError: name 'mail' is not defined`. `doc`.~~ Corrigido no 20.0.39: as
   três páginas usam `import mail` e continuam chamando `mail.X()`.
-- **doc-13** O `login` do `MailServer` e do `MailReader`: as páginas dele
+- ~~**doc-13** O `login` do `MailServer` e do `MailReader`: as páginas dele
   (`docs/mail/MailServer/login/login.md` e `docs/mail/MailReader/login/login.md`)
   prometem `login(user, password) -> Null`; o motor tem
   `login(usuario, senha) -> bool` (`--metadata`) e recusa o nome da doc:
@@ -1507,7 +1510,7 @@ e sem, e dá o mesmo erro.
   `docs/libs_utilitarias.md:54`, `:85`, `:141` e `:167` (e o
   `docs/manpu.md:226`, que saiu com a manpu no 19.0.0). `os dois`: os nomes
   são decisão sua; os da doc são os
-  do `smtplib` e do `imaplib` do Python (`login(user, password)`).
+  do `smtplib` e do `imaplib` do Python (`login(user, password)`).~~ Corrigido no 20.0.49: as páginas e os exemplos usam `usuario`/`senha`, os nomes do motor.
 - ~~**doc-14** O `body` do `MailMessage` com `byte`: a página dele
   (`docs/mail/MailMessage/body/body.md:12`) diz que o corpo aceita "texto,
   HTML, ou bytes de um arquivo", e `docs/manpu/load/load.md` ensinava passar o
@@ -1556,14 +1559,14 @@ e sem, e dá o mesmo erro.
     `class A() { }`. `doc`.~~ Corrigido no 20.0.41: a redeclaração com outro
   tipo é `AttributedValueError`; escape desconhecido mantém a barra e avisa;
   `class A {` não leva `()` (só com herança).
-- **doc-19** (achado pelo portão `roda`) `docs/psodbc/query/query.md:49` e
+- ~~**doc-19** (achado pelo portão `roda`) `docs/psodbc/query/query.md:49` e
   `:62` ensinam passar o comando como tupla `(sql, params)`, com `?` no lugar
   dos valores ("nunca concatene na string"). O motor só aceita texto:
   `TypeError: query() argument 2 must be str, not tup`. Quem segue a página
   não tem como passar parâmetro pelo `query`, e o aviso contra concatenar fica
   sem saída. `os dois` (o motor, se o `query` tiver de aceitar parâmetros como
-  a página diz; senão, a doc).
-- **doc-20** (achado pelo portão `roda`) Cinco exemplos usam o `request` da
+  a página diz; senão, a doc).~~ Corrigido no 20.0.49: `psodbc.query` aceita `cmd=(sql, params)` e o exemplo roda.
+- ~~**doc-20** (achado pelo portão `roda`) Cinco exemplos usam o `request` da
   jinker no topo do programa, fora de uma rota, onde a doc dele não promete
   nada (e o motor-6 faz o `--check` aprovar): `docs/jinker/request/path_param/path_param.md:43`,
   `docs/jinker/request/file/file.md:74`,
@@ -1576,8 +1579,8 @@ e sem, e dá o mesmo erro.
   str, not Null`. O mesmo em `docs/mail/MailMessage/attach/attach.md:39`
   ("dentro de uma rota que recebe upload", escrito no topo: o `request.file`
   dá `Null` e o `attach(Null)` quebra). A forma que as outras páginas usam é
-  o trecho dentro da rota. `doc`.
-- **doc-21** (achado pelo portão `roda`) `docs/qrcode/QRImage/to_file/to_file.md:21`
+  o trecho dentro da rota. `doc`.~~ Corrigido no 20.0.49: os exemplos com `request` estão dentro de rotas; `audita_exemplos_doc` e `confere_saida_doc` passam.
+- ~~**doc-21** (achado pelo portão `roda`) `docs/qrcode/QRImage/to_file/to_file.md:21`
   ensina anexar o QR num e-mail sem gravar no disco:
   `m.attach(img.to_file())`. O `--check` aprova e rodando sai
   `TypeError: attach() argument 1 must be str, not QRPoolFile`, com JIT e
@@ -1586,7 +1589,7 @@ e sem, e dá o mesmo erro.
   o `PoolFile` de um arquivo binário passam). Duas falhas: as duas páginas se
   contradizem sobre o `QRPoolFile`, e o checador aprova o que o motor recusa.
   `os dois` (o `attach` aceitar o `QRPoolFile`, ou a página do `to_file`
-  deixar de prometer; e o checador conferir o tipo do argumento).
+  deixar de prometer; e o checador conferir o tipo do argumento).~~ Corrigido no 20.0.49: `MailMessage.attach` aceita `QRPoolFile`; `attach(img.to_file())` roda.
 - ~~**doc-22** (relato dele, 2026-10-21) O `get` do `Response` do `request`
   cliente. A página (`docs/request/Response/Response.md`) diz só "um header
   (case-insensitive) ou uma chave do JSON". Medido, com JIT e sem: cabeçalho
@@ -1636,7 +1639,7 @@ e sem, e dá o mesmo erro.
   20.0.43: o comentário do `PoolFile` diz "conteúdo binário" e a página explica
   o byte NUL; o `rmdir` cita `Errno 39` no Linux e `66` no macOS; o `copy` e o
   `move` já avisavam que não criam a pasta de destino.
-- **doc-26** (achado pelo portão P2, 2026-10-23, na conferência das páginas
+- ~~**doc-26** (achado pelo portão P2, 2026-10-23, na conferência das páginas
   de método do `scripts/audita_doc.pr`) 14 páginas de método dão aos
   parâmetros outros nomes que o motor. A doc escreve em inglês e o motor em
   português:
@@ -1655,7 +1658,7 @@ e sem, e dá o mesmo erro.
   Quem segue a doc e passa o argumento por nome leva erro, no `--check` e
   rodando: `login(user="x", password="y")` dá `TypeError: 'user' is an invalid
   keyword argument for login()`. Qual dos dois nomes fica é decisão dele. 14
-  páginas na catraca (portão `titulo`). `os dois`.
+  páginas na catraca (portão `titulo`). `os dois`.~~ Corrigido no 20.0.49: as 14 páginas usam os nomes do motor; `audita_doc` não tem divergência.
 - ~~**doc-27** (achado montando o P3, 2026-10-23) O lote do 18.0.0 deixou
   frases sobre o `.type()` que saiu. No `docs/lsp.md`, o receptor de tipo
   desconhecido "recebe ao menos o que todo valor tem", e o hover de `int n`

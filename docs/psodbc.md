@@ -212,7 +212,7 @@ frente) responde normalmente por `.`.
 
 | Método | Retorno |
 |---|---|
-| `.collection(name)` | `MongoCollection` |
+| `.collection(nome)` | `MongoCollection` |
 | `.close()` | — |
 
 ### `MongoCollection`
@@ -221,9 +221,9 @@ frente) responde normalmente por `.`.
 |---|---|
 | `.find(query=Null, skip=0, limit=0, sort=Null)` | `list` ou `Null` — `skip`/`limit`/`sort` rodam no servidor |
 | `.find_one(query=Null)` | `dict` ou `Null` |
-| `.insert(document)` | `Null` |
-| `.insert_many(documents)` | `Null` |
-| `.update(query, new_values)` | `Null` |
+| `.insert(documento)` | `Null` |
+| `.insert_many(documentos)` | `Null` |
+| `.update(query, novo)` | `Null` |
 | `.remove(query)` | `Null` |
 | `.count(query=Null)` | `int` |
 

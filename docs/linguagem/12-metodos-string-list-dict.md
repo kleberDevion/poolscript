@@ -126,7 +126,7 @@ caractere da classe.
 
 | Método | Faz |
 |---|---|
-| `format(a, b)` | preenche `{}` e `{0}` no template — **posicional só**; não há como preencher `{nome}` por aqui. O formato de cada campo (`{:>8}`, `{:05d}`, `{:.2f}`, `{:x}`) está na página do [`format`](../str/format/format.md) |
+| `format(*valores)` | preenche `{}` e `{0}` no template — **posicional só**; não há como preencher `{nome}` por aqui. O formato de cada campo (`{:>8}`, `{:05d}`, `{:.2f}`, `{:x}`) está na página do [`format`](../str/format/format.md) |
 | `format_map(dict)` | preenche `{nome}`, pelas chaves do dict |
 | `match(padrao)` | a string **inteira** casa com a regex? (`bool`) — o mesmo que [`regex.match`](../regex/match/match.md); casamento parcial é `regex.search` |
 | `findall(padrao)` | lista de todas as ocorrências da regex |

@@ -1,4 +1,4 @@
-# `s.format(a, b)`
+# `s.format(*valores)`
 
 Preenche `{}` e `{0}` no template, **por posição**.
 
@@ -6,8 +6,7 @@ Preenche `{}` e `{0}` no template, **por posição**.
 
 | nome | tipo | default | nota |
 |---|---|---|---|
-| `a` | qualquer | Null | posicional |
-| `b` | qualquer | Null | posicional |
+| `valores` | qualquer | — | posicional, quantos o formato pedir |
 
 Chamar sem argumento nenhum funciona (`"x".format()` devolve `"x"`).
 

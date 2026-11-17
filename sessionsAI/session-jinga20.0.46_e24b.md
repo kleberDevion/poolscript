@@ -5492,3 +5492,35 @@ Commit `8f07e87` — **20.0.48**, pushed/synced/build/install OK. Próximo: `doc
 
 ---
 
+## Fechamento da correção em massa — 20.0.49 (2026-11-16)
+
+A lista de correção em massa foi fechada. A catraca de portões,
+`teste/portoes_conhecidas.txt`, ficou **vazia**: eram 285 linhas, agora 0. Os
+16 arquivos de agente do plano não foram usados como mecanismo; o trabalho foi
+feito direto nos arquivos e medido pelos mesmos portões.
+
+| item | o que mudou |
+| --- | --- |
+| motor-11 (A11–A15) | `RouteRegistrar`, `RequestProxy`, `Response`, `PoolFileUpload` e `WsConnection` entraram na tabela medida; `vm/aridades_medidas.inc` regerado; `scripts/mede_aridades.pr --confere` passa (547 membros). |
+| motor-12 | `sockets.TCP_KEEPALIVE`; a linha Darwin da catraca era obsoleta. `SO_KEEPALIVE(0)` reproduz a recusa do motor. |
+| motor-21 | o parser já estava corrigido no 20.0.18; faltava a gramática escrita, que passou a excluir as palavras que o parser recusa como valor (`!('if' \| ... ) KW`). `confere_gramatica.pr`: 0 falhas, 115/115 regras usadas. |
+| doc-26 | as 14 páginas de método usam os nomes de parâmetro do motor; `audita_doc.pr` sem divergência. |
+| doc-13 | `libs_utilitarias.md` usa `usuario`/`senha`; os blocos que conectam em servidor de e-mail real ficaram `sem-rodar`. |
+| doc-20 | os exemplos com `request` foram para dentro de rotas; `json.md`, `json/json.md` e `get.md` corrigidos; `audita_exemplos_doc` e `confere_saida_doc` passam. |
+| doc-5/doc-6 | exemplos e seções "Erros" de `sockets` aceitam os números de Linux, macOS e Windows; `getsockopt`/`setsockopt` comparam `!= 0`. |
+| doc-19 | `psodbc.query` aceita `cmd=(sql, params)`; o exemplo roda. |
+| doc-21 | `MailMessage.attach` aceita `QRPoolFile`; `attach(qrcode.make(...).to_file())` devolve `True`. |
+
+Medido no 20.0.49 (Linux): `confere_checador`, `audita_doc`,
+`audita_exemplos_doc`, `confere_saida_doc`, `confere_gramatica` e
+`teste/geradores/programas.pr` passam; a suíte passa 10398/10398.
+
+**motor-42** (TLS em `sockets`) fica para a frente de linkagem com o C: quando
+o motor estiver apto a usar `.h`/`.so`, a `sockets` vira wrapper da SSL do C
+(`SSLContext`/`wrap_socket`) e o próprio Dev monta a conexão TLS.
+
+**Próximo (2026-11-17):** plano de retomada da linkagem C — assinaturas C
+(funções, arrays, enums, structs/typedef), `.h`/`.so`, catálogo de libs e,
+depois, generics.
+
+Versão **20.0.49**.

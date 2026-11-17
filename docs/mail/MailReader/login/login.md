@@ -1,10 +1,10 @@
-# `MailReader.login(user, password)`
+# `MailReader.login(usuario, senha)`
 
 Autentica na caixa de e-mail (IMAP). Chame depois de
 [`.conn()`](../conn/conn.md).
 
 ```assinatura
-r.login(user: str, password: str) -> Null
+r.login(usuario: str, senha: str) -> bool
 ```
 
 O exemplo desta página pressupõe:

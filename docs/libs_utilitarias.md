@@ -51,10 +51,10 @@ MailReader r = mail.MailReader()
 
 ### Configuração
 
-```ps
+```ps sem-rodar: conecta no servidor SMTP de exemplo
 s = mail.MailServer()
 s.conn("smtp.meuservidor.com", Null, True)  # 587, STARTTLS; clique: s.conn(host, 2525)
-s.login(user="seu@gmail.com", password="sua_senha_app")
+s.login(usuario="seu@gmail.com", senha="sua_senha_app")
 ```
 
 `.conn()` recebe o host do servidor SMTP (está nas configurações da sua conta
@@ -82,10 +82,10 @@ m.body("<h1>Olá!</h1><p>Bem vindo.</p>", True)
 
 ### Lendo e-mails (`MailReader`)
 
-```ps
+```ps sem-rodar: conecta no servidor IMAP de exemplo
 r = mail.MailReader()
 r.conn("imap.meuservidor.com", Null, True)  # 993, TLS direto
-r.login(user="seu@gmail.com", password="sua_senha_app")
+r.login(usuario="seu@gmail.com", senha="sua_senha_app")
 ```
 
 `.conn()` recebe o host do servidor IMAP. O padrão é texto puro na 143;
@@ -139,7 +139,7 @@ Use `(a)` quando a busca pode trazer muitos resultados e você só vai abrir alg
 
 ### Exemplo completo — leitura
 
-```ps
+```ps sem-rodar: lê a conta de e-mail do ambiente e conecta no servidor
 import mail
 from dotenv import load
 import os
@@ -149,7 +149,7 @@ load()
 funct verificar_caixa() {
     r = mail.MailReader()
     r.conn(os.getenv("MAIL_IMAP"), Null, True)
-    r.login(user=os.getenv("MAIL_SYSTEM"), password=os.getenv("PASSWORD_SYSTEM"))
+    r.login(usuario=os.getenv("MAIL_SYSTEM"), senha=os.getenv("PASSWORD_SYSTEM"))
 
     nao_lidos = r.select("INBOX", True).search("UNSEEN")
     post(f"{len(nao_lidos)} email(s) não lido(s)")
@@ -178,8 +178,8 @@ funct enviar_email(nome, email_destino) {
         s = mail.MailServer()
         s.conn(os.getenv("MAIL_SMTP"), Null, True)
         s.login(
-            user=os.getenv("MAIL_SYSTEM"),
-            password=os.getenv("PASSWORD_SYSTEM")
+            usuario=os.getenv("MAIL_SYSTEM"),
+            senha=os.getenv("PASSWORD_SYSTEM")
         )
 
         m = mail.MailMessage()

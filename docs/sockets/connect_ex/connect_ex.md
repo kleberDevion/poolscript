@@ -51,16 +51,17 @@ post(cli.connect_ex(("127.0.0.1", srv.getsockname()[1])))
 cli.close(); srv.close()
 
 fechado = sockets.socket()
-post(fechado.connect_ex(("127.0.0.1", 1)))
+codigo = fechado.connect_ex(("127.0.0.1", 1))
+post(codigo in (111, 61, 107))   # o número muda de sistema
 fechado.close()
 ```
 
 ```saida
 0
-111
+True
 ```
 
-(`111` é a saída no Linux; no macOS sai `61`, no Windows `107`.)
+(`111` no Linux, `61` no macOS, `107` no Windows.)
 
 Varredura simples, sem `try` em volta de cada porta:
 

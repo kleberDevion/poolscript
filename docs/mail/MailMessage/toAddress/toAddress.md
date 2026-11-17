@@ -1,9 +1,9 @@
-# `MailMessage.toAddress(address)`
+# `MailMessage.toAddress(endereco)`
 
 Define o **destinatário** do e-mail (quem recebe).
 
 ```assinatura
-m.toAddress(address: str) -> Null
+m.toAddress(endereco: str) -> MailMessage
 ```
 
 O exemplo desta página pressupõe:

@@ -10,7 +10,7 @@ O exemplo desta página pressupõe:
 
 ```ps contexto
 import mail
-str user = "eu@meuservidor.com"
+str usuario = "eu@meuservidor.com"
 str senha = "senha-de-app"
 MailMessage m = mail.MailMessage()
 ```
@@ -22,7 +22,7 @@ MailMessage m = mail.MailMessage()
 ```ps sem-rodar: precisa do servidor de e-mail
 s = mail.MailServer()
 s.conn("smtp.meuservidor.com")
-s.login(user, senha)
+s.login(usuario, senha)
 s.send(m)
 s.quit()          # fecha a conexão
 ```

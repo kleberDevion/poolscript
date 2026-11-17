@@ -1098,7 +1098,6 @@ Libs `.pr` instaladas nesta máquina em `~/.jinga/libs` (são do dono e vão jun
 | `int x` | `declaracao de variavel exige '='` | `int x = 0` |
 | `funct f(x: int)` | `no parametro o tipo vem ANTES do nome` | `funct f(int x)` |
 | `int async f(x)` | `faltou 'funct' antes de 'f': int async funct f(...)` | Com `funct` |
-| `print("x")` | `NameError: name 'print' is not defined` | `post("x")` |
 | `post(vlaor)` | `NameError: name 'vlaor' is not defined. Did you mean: 'valor'?` | O nome certo |
 | `json.parsse(...)` | `AttributeError: module 'json' has no attribute 'parsse'. Did you mean: 'parse'?` | `json.parse` |
 | `{tls: True}` | `NameError: name 'tls' is not defined` | `{"tls": True}` |

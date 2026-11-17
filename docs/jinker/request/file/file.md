@@ -72,17 +72,21 @@ Duas camadas automáticas:
    qualquer outra levanta erro com a lista permitida na mensagem.
 
 ```ps
-# só imagens; um .pdf aqui levanta erro
-foto = request.file("foto", allowed=[".jpg", ".jpeg", ".png"])
+@app.route("/upload", methods=cors.options(["POST"]))
+funct receber() {
+    # só imagens; um .pdf aqui levanta erro
+    foto = request.file("foto", allowed=[".jpg", ".jpeg", ".png"])
 
-# sem allowed: aceita qualquer extensão que NÃO esteja na lista de bloqueadas
-doc = request.file("documento")
+    # sem allowed: aceita qualquer extensão que NÃO esteja na lista de bloqueadas
+    doc = request.file("documento")
+}
 ```
 
 Envolva em `try/catch` se quiser responder o erro de extensão em vez de deixar
 virar 500:
 
 ```ps
+@app.route("/upload", methods=cors.options(["POST"]))
 funct upload() {
     try {
         foto = request.file("foto", allowed=[".png"])

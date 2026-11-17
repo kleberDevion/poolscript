@@ -14,7 +14,7 @@ r = mail.MailReader()
 | Método | O que faz | Página |
 |---|---|---|
 | `.conn(host, port, tls)` | conecta ao servidor IMAP | [conn/conn.md](conn/conn.md) |
-| `.login(user, senha)` | autentica | [login/login.md](login/login.md) |
+| `.login(usuario, senha)` | autentica | [login/login.md](login/login.md) |
 | `.select(pasta)` | escolhe a pasta (INBOX, etc.) | [select/select.md](select/select.md) |
 | `.search(criterio, term, limit)` | busca e-mails | [search/search.md](search/search.md) |
 | `.body(id)` | pega o corpo de um e-mail específico | [body/body.md](body/body.md) |

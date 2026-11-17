@@ -380,6 +380,7 @@ Internamente `render("paginas", "index.html")` só faz `"paginas" / "index.html"
 quando a pasta é fixa e o arquivo é variável:
 
 ```ps
+@app.route("/pagina/<nome>")
 funct pagina() {
     nome = request.path_param("nome")
     return render("paginas", f"{nome}.html")   # paginas/<nome>.html

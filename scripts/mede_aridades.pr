@@ -28,9 +28,10 @@
 import os
 import sys
 import json
+import sockets
 # os receptores, os valores de amostra e a leitura das frases, os mesmos do
 # portão P2
-from './portoes_donos.pr' import TIPOS, VALOR, DONOS, SO_QUANTIDADE, eh_aridade, cita_tipo, sem_linha
+from './portoes_donos.pr' import TIPOS, VALOR, DONOS, DONOS_MEDIDOS, DONOS_SERVIDOS, SO_QUANTIDADE, eh_aridade, cita_tipo, sem_linha
 
 # a pasta de trabalho, absoluta e com `/` (o caminho entra no fonte das sondas,
 # e a barra invertida do Windows viraria escape la dentro)
@@ -99,7 +100,6 @@ str funct cabeca(str imp) {
             + "        mr_arq.write(mr_linha.replace(\"\\n\", \" \") + \"\\n\")\n    }\n}\n")
 }
 
-
 # Roda o programa na pasta de trabalho, sem shell (o `make check` roda no
 # Linux, no macOS e no Windows): `os.run` com a entrada fechada (a sonda do
 # `input()` le o fim) e a saida lida ate o fim. A sonda nao tem prazo: medido
@@ -157,9 +157,178 @@ dict funct sondas_de(str chave, str chamado) {
 }
 
 
+# ── os donos que só existem com um servidor no ar ────────────────────────────
+
+# A porta da primeira rodada; cada membro servido usa uma faixa nova (a
+# anterior pode ainda estar fechando).
+int PORTA = 29600
+
+
+# Espera a porta aceitar conexão, por até 5 s.
+Null funct espera_porta(int porta) {
+    int n = 0
+    bool ok = False
+    while n < 100 and not ok {
+        Object s = sockets.socket(sockets.AF_INET, sockets.SOCK_STREAM)
+        ok = s.connect_ex(("127.0.0.1", porta)) == 0
+        s.close()
+        if not ok {
+            sleep(0.05)
+        }
+        n = n + 1
+    }
+}
+
+
+# A jinker da rodada, com a rota que devolve JSON e a que recebe o upload.
+Object funct sobe_http(int porta) {
+    str fonte = ("import jinker\n"
+                 + "Jinker app = jinker.Jinker(name=\"mede\")\n"
+                 + "@app.route(\"/p2r\")\n"
+                 + "funct p2r() { return {\"a\": 1} }\n"
+                 + "@app.route(\"/p2\", methods=[\"POST\"])\n"
+                 + "funct p2() { return {\"a\": 1} }\n"
+                 + "if __name__ == \"main\" {\n    app(debug=False, host=\"127.0.0.1\", port=" + str(porta) + ")\n}\n")
+    os.writeFile(TMP + "/srv.pr", fonte)
+    Object p = os.run([POOL, TMP + "/srv.pr"], capture="live")
+    espera_porta(porta)
+    return p
+}
+
+
+# O par de eco do WebSocket (`teste/ws_par.pr`): o servidor de WebSocket saiu
+# da jinker no 19.0.0, e o cliente ficou.
+Object funct sobe_ws(int porta) {
+    os.writeFile(TMP + "/par.pr", os.readFile("teste/ws_par.pr"))
+    Object p = os.run([POOL, TMP + "/par.pr", str(porta)], capture="live")
+    espera_porta(porta)
+    return p
+}
+
+
+list funct linhas_de(str arq) {
+    list linhas = []
+    if os.exists(arq) {
+        for each l in os.readFile(arq).split("\n") {
+            if l != "" {
+                addEnd(linhas, l)
+            }
+        }
+    }
+    return linhas
+}
+
+
+dict funct res_de(list linhas) {
+    dict res = {}
+    for each l in linhas {
+        if l == "FIM" {
+            continue
+        }
+        int k = l.find("|")
+        if k > 0 {
+            res[l[:k]] = sem_linha(l[k + 1:])
+        }
+    }
+    return res
+}
+
+
+# As sondas no cliente (Response e WsConnection): o receptor é a expressão do
+# `DONOS_SERVIDOS`, com a porta no lugar do `@P@`/`@W@`.
+dict funct roda_cliente(dict s, str criado, int porta) {
+    str fonte = cabeca("import request") + "Object mr_r = " + criado.replace("@P@", str(porta)).replace("@W@", str(porta + 1)) + "\n"
+    for each r in s.keys() {
+        str c = s[r][0].replace("@P@", str(porta)).replace("@W@", str(porta + 1))
+        fonte = fonte + sonda(c, s[r][1], r)
+    }
+    fonte = fonte + "mr_anota(\"FIM\")\n"
+    return res_de(roda(fonte))
+}
+
+
+# As sondas dentro da rota (PoolFileUpload): o servidor roda o handler com o
+# receptor, e o cliente manda o multipart e espera. O resultado é escrito pelo
+# servidor no mesmo `r.txt` das outras sondas.
+Null funct roda_rota(dict s, list mb, int porta, dict saida) {
+    str expr = mb[5].replace("@P@", str(porta)).replace("@W@", str(porta + 1))
+    str fonte = ("import jinker\nfrom jinker import request\n" + cabeca("")
+                 + "Jinker mr_app = jinker.Jinker(name=\"mede\")\n"
+                 + "@mr_app.route(\"/p2\", methods=[\"POST\"])\nfunct mr_h() {\n"
+                 + "    Object mr_r = " + expr + "\n")
+    for each r in s.keys() {
+        fonte = fonte + sonda(s[r][0], s[r][1], r)
+    }
+    fonte = fonte + ("    return \"ok\"\n}\n"
+                     + "@mr_app.route(\"/p2r\")\nfunct mr_rr() { return {\"a\": 1} }\n"
+                     + "if __name__ == \"main\" {\n    mr_app(debug=False, host=\"127.0.0.1\", port=" + str(porta) + ")\n}\n")
+    os.writeFile(TMP + "/srv.pr", fonte)
+    str cli = ("import os\nimport sys\nimport request\n"
+               + "Process p = os.run([sys.executable, \"srv.pr\"], capture=\"live\")\n"
+               + "int n = 0\nbool ok = False\n"
+               + "while n < 100 and not ok {\n"
+               + "    try {\n"
+               + "        Object t = request.get(\"http://127.0.0.1:" + str(porta) + "/p2r\", timeout=1)\n"
+               + "        ok = True\n"
+               + "    } catch (Exception e) {\n        sleep(0.05)\n    }\n"
+               + "    n = n + 1\n}\n"
+               + "os.writeFile(\"up.txt\", \"conteudo do upload\")\n"
+               + "try {\n"
+               + "    request.post(\"http://127.0.0.1:" + str(porta) + "/p2\", fields={\"campo\": \"valor\"}, "
+               + "file={\"arquivo\": {\"name\": \"up.txt\"}}, timeout=20)\n"
+               + "} finally {\n    p.kill()\n    p.wait()\n}\n")
+    roda(cli)
+    dict res = res_de(linhas_de(TMP + "/r.txt"))
+    for each k in res.keys() {
+        saida[k] = res[k]
+    }
+}
+
+
+# Mede um membro servido: sobe o servidor que o receptor precisa, roda as
+# sondas e derruba o servidor.
+dict funct mede_servido(list mb, dict s) {
+    str dono = mb[0]
+    str lado = mb[6]
+    int porta = PORTA
+    PORTA = PORTA + 4
+    if lado == "rota" {
+        dict res = {}
+        roda_rota(s, mb, porta, res)
+        return res
+    }
+    if dono == "WsConnection" {
+        Object par = sobe_ws(porta + 1)
+        dict res = {}
+        for each r in s.keys() {
+            dict um = {}
+            um[r] = s[r]
+            dict x = roda_cliente(um, mb[5], porta)
+            for each k in x.keys() {
+                res[k] = x[k]
+            }
+        }
+        par.kill()
+        par.wait()
+        return res
+    }
+    Object srv = sobe_http(porta)
+    dict res = roda_cliente(s, mb[5], porta)
+    srv.kill()
+    srv.wait()
+    return res
+}
+
+
 # Mede um membro: devolve {rotulo: "ok" | "T|frase" | "o|frase"}.
-dict funct mede(str imp, str chamado, str chave) {
+dict funct mede(list mb) {
+    str imp = mb[2]
+    str chamado = mb[3]
+    str chave = mb[0] + "|" + mb[1]
     dict s = sondas_de(chave, chamado)
+    if len(mb) > 6 and mb[6] != "" {
+        return mede_servido(mb, s)
+    }
     str fonte = cabeca(imp)
     for each r in s.keys() {
         fonte = fonte + sonda(s[r][0], s[r][1], r)
@@ -256,10 +425,11 @@ if __name__ == "main" {
     }
     dict meta = json.parse(os.run([POOL, "--metadata"], capture=True))
 
-    # (dono, membro, import, chamado, params)
+    # (dono, membro, import, chamado, params, criado, lado) — `criado` e
+    # `lado` só para os donos servidos (`DONOS_SERVIDOS`).
     list membros = []
     for each b in meta["builtins"] {
-        addEnd(membros, ["builtins", b["nome"], "", b["nome"], b["params"]])
+        addEnd(membros, ["builtins", b["nome"], "", b["nome"], b["params"], "", ""])
     }
     for each mod in meta["modulos"].keys() {
         str imp = "import " + mod.split(".")[0]
@@ -271,7 +441,7 @@ if __name__ == "main" {
             if m.get("kind", "function") != "function" and m.get("kind", "") != "value" {
                 continue
             }
-            addEnd(membros, [mod, m["nome"], imp, mod + "." + m["nome"], m["params"]])
+            addEnd(membros, [mod, m["nome"], imp, mod + "." + m["nome"], m["params"], "", ""])
         }
     }
     for each t in meta["tipos"].keys() {
@@ -280,7 +450,32 @@ if __name__ == "main" {
         }
         for each m in meta["tipos"][t] {
             str criado = DONOS[t][1].replace("@TMP@", TMP)
-            addEnd(membros, [t, m["nome"], DONOS[t][0], criado + "." + m["nome"], m["params"]])
+            addEnd(membros, [t, m["nome"], DONOS[t][0], criado + "." + m["nome"], m["params"], "", ""])
+        }
+    }
+    # os tipos cujo receptor é uma expressão de outro dono (`request` global,
+    # `app.route(...)`): a expressão é a mesma do portão P2.
+    for each t in meta["tipos"].keys() {
+        if not (t in DONOS_MEDIDOS) {
+            continue
+        }
+        for each m in meta["tipos"][t] {
+            addEnd(membros, [t, m["nome"], DONOS_MEDIDOS[t][0],
+                             DONOS_MEDIDOS[t][1] + "." + m["nome"], m["params"], "", ""])
+        }
+    }
+    # os que precisam de servidor no ar: a expressão é a do `DONOS_SERVIDOS`,
+    # a mesma do portão P2. O RequestProxy fica de fora daqui: medido pela
+    # `DONOS_MEDIDOS`, sem servidor.
+    for each t in meta["tipos"].keys() {
+        if not (t in DONOS_SERVIDOS) or t in DONOS_MEDIDOS {
+            continue
+        }
+        for each m in meta["tipos"][t] {
+            str lado = DONOS_SERVIDOS[t][0]
+            str expr = DONOS_SERVIDOS[t][1]
+            str chamado = "mr_r." + m["nome"] if lado == "rota" else expr + "." + m["nome"]
+            addEnd(membros, [t, m["nome"], "", chamado, m["params"], expr, lado])
         }
     }
 
@@ -290,7 +485,7 @@ if __name__ == "main" {
         str dono = mb[0]
         str membro = mb[1]
         str chave = dono + "|" + membro
-        dict res = mede(mb[2], mb[3], chave)
+        dict res = mede(mb)
         list fx = faixa(res)
         if fx[0] == -2 {
             addEnd(AVISOS, chave + ": nenhuma quantidade aceita (" + str(res.get("A0", "?")) + ")")

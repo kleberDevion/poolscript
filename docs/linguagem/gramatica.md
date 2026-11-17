@@ -514,14 +514,16 @@ corpo_primario:
     | 'count' ~ ['each'] tipo_de_count ['(' [expressao] ')'] 'in' soma
     | 'await' ~ unario
     | tipo_de_expressao !('(' | '.')
-    # KW: a palavra reservada que ABRE expressão (`post`, `count`, `to`,
-    # `await`, `not`...) ou que NÃO abre. A que não abre (`while`, `if`, `for`)
-    # é recusada pelo parser com a frase da palavra reservada (motor-21), mas
-    # a recusa é dele, e não da gramática: aqui ela entra como KW e o
-    # diagnosticador é quem fala. A regra `palavra_que_abre_valor` vale onde o
-    # parser PERGUNTA se o token pode iniciar uma expressão
-    # (`pode_iniciar_expr`), e é lá que ela é usada.
-    | KW
+    # KW: a palavra reservada como valor. O parser aceita quase todas nessa
+    # posição (`post`, `class`, `yield`, `type`...); as que ele recusa com a
+    # frase da declaração (`while`, `if`, `for`...) ficam fora do olhar
+    # adiante, e a gramática recusa junto (motor-21). A regra
+    # `palavra_que_abre_valor` é outra pergunta — se o token pode INICIAR uma
+    # expressão — e vale onde o parser a faz (`pode_iniciar_expr`).
+    | !('if' | 'else' | 'elif' | 'while' | 'for' | 'each' | 'in' | 'is'
+        | 'funct' | 'return' | 'continue' | 'break' | 'pass' | 'model' | 'enum'
+        | 'try' | 'catch' | 'as' | 'of' | 'using' | 'import' | 'from'
+        | 'PUSH' | 'GET') KW
 
 # a lambda: `funct(params) { ... }`, com os mesmos modificadores da funct
 lambda: !CABECA_REPETIDA (modificador_de_cabeca | tipo_de_retorno)* 'funct' '(' [lista_de_parametros_de_lambda] ')' bloco
@@ -596,14 +598,12 @@ ficam fora da conferência.
 
 A gramática descreve o **parser**. Depois dele, o compilador confere mais coisa
 (capítulo 10): o nome que não existe, o tipo, a aridade, o `break` fora de
-laço, o `return` fora de funct. Três formas que o parser aceita e o compilador
-recusa, com a frase que ainda não aponta a causa:
+laço, o `return` fora de funct. A palavra reservada no lugar de um valor
+(`x = while`) e como tipo de campo de classe (`class A { if x }`) é recusada
+já pelo **parser**, com a frase da declaração (motor-21): a gramática e ele
+concordam. Uma forma que o parser aceita e o compilador recusa, com a frase
+que ainda não aponta a causa:
 
-- a palavra reservada no lugar de um valor: `x = while` passa no parser como
-  nome, e o checador diz `NameError: name 'while' is not defined` (motor-21
-  da lista de correção);
-- a palavra reservada como tipo de campo de classe: `class A { if x }` vira
-  `tipo if não existe` (motor-21);
 - o primeiro comando que termina num nome solto, com outro comando na mesma
   linha (`retrun x`): o parser marca, e o checador acusa o nome que não
   existe, os dois comandos na mesma linha ou a causa que ele acha (o `//`

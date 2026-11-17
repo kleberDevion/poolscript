@@ -45,7 +45,7 @@ import json
 import os
 
 # um JSON guardado numa variável de ambiente
-config = json.parse(os.getenv("CONFIG_JSON"))
+config = json.parse(os.getenv("CONFIG_JSON", "{}"))
 ```
 
 ---

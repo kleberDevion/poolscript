@@ -13,7 +13,7 @@ r.close() -> Null
 ```ps
 r = mail.MailReader()
 r.conn("imap.meuservidor.com")
-r.login(user, senha)
+r.login(usuario, senha)
 r.select("INBOX")
 emails = r.search("ALL", limit=10)
 # ... processa ...

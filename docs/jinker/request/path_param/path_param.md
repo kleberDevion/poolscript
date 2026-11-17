@@ -41,9 +41,12 @@ funct perfil() {
 São fontes diferentes:
 
 ```ps
-# GET /user/42?fmt=json
-id  = request.path_param("id")   # "42"  (do caminho)
-fmt = request.get("fmt")         # "json" (da query string)
+@app.route("/user/<id>", methods=cors.options(["GET"]))
+funct busca() {
+    # GET /user/42?fmt=json
+    id  = request.path_param("id")   # "42"  (do caminho)
+    fmt = request.get("fmt")         # "json" (da query string)
+}
 ```
 
 ---

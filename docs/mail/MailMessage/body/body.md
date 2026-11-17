@@ -1,15 +1,15 @@
-# `MailMessage.body(content, is_html=False)`
+# `MailMessage.body(conteudo, is_html=False)`
 
 Define o **corpo** do e-mail — o texto principal. Pode ser texto simples ou
 HTML.
 
 ```assinatura
-m.body(content, is_html: bool = False) -> Null
+m.body(conteudo, is_html: bool = False) -> MailMessage
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
-| `content` | — | o corpo (texto ou HTML) |
+| `conteudo` | — | o corpo (texto ou HTML) |
 | `is_html` | `False` | `True` = o conteúdo é HTML e vai ser renderizado |
 
 Os exemplos desta página pressupõem:

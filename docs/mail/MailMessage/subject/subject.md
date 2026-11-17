@@ -1,10 +1,10 @@
-# `MailMessage.subject(title)`
+# `MailMessage.subject(titulo)`
 
 Define o **assunto** (título) do e-mail — a linha que aparece na lista de
 e-mails do destinatário.
 
 ```assinatura
-m.subject(title: str) -> Null
+m.subject(titulo: str) -> MailMessage
 ```
 
 O exemplo desta página pressupõe:

@@ -17169,6 +17169,18 @@ static int met_mm_attach(VM *vm, Value alvo, Value *args, int n, Value *out)
         *out = MK_BOOL(1);
         return 0;
     }
+    /* O QRPoolFile é a imagem do QR ainda em memória (`qrcode.gen` e
+     * `QRImage.to_file`), com nome e bytes como o PoolFile. A página do
+     * `attach` promete anexá-lo, e o `to_file` ensina exatamente isso:
+     * aceitar aqui evita o desvio de gravar em disco só pra anexar. */
+    if (EH_QRFILE(args[0])) {
+        PSQRFile *q = COMO_QRFILE(args[0]);
+        PSString *by = EH_BYTES(q->conteudo) ? COMO_BYTES(q->conteudo) : NULL;
+        if (mailmsg_add_parte(vm, m, 1, q->nome, by ? by->chars : "",
+                              by ? (size_t)by->len : 0) != 0) return -1;
+        *out = MK_BOOL(1);
+        return 0;
+    }
     if (EH_STRING(args[0])) {
         if (CAMINHO_SEM_NUL(vm, COMO_STRING(args[0]), "o caminho") != 0) return -1;
         const char *caminho = COMO_STRING(args[0])->chars;
@@ -20506,11 +20518,20 @@ static int mod_db_query(VM *vm, Value *args, int n, Value *out)
         *out = MK_OBJ(o);
         return 0;
     }
-    /* cmd = str; substitui @t por table */
-    if (!EH_STRING(args[1])) { ps_db_solta(c);
-        BERRO(vm, "TypeError", "query() argument 2 must be str, not %s",
-              nome_do_tipo_valor(args[1])); }
-    PSString *cmd_s = COMO_STRING(args[1]);
+    /* cmd = str ou a tupla (sql, params); substitui @t por table */
+    PSString *cmd_s = NULL;
+    Value params_v = MK_NULL();
+    if (EH_STRING(args[1])) {
+        cmd_s = COMO_STRING(args[1]);
+    } else if (EH_SEQ(args[1]) && COMO_LIST(args[1])->len == 2
+               && EH_STRING(COMO_LIST(args[1])->itens[0])) {
+        cmd_s = COMO_STRING(COMO_LIST(args[1])->itens[0]);
+        params_v = COMO_LIST(args[1])->itens[1];
+    } else {
+        ps_db_solta(c);
+        BERRO(vm, "TypeError", "query() argument 2 must be str or (sql, params), not %s",
+              nome_do_tipo_valor(args[1]));
+    }
     PSString *tab_s = (n > 2 && EH_STRING(args[2])) ? COMO_STRING(args[2]) : NULL;
     if (db_sql_sem_nul(vm, cmd_s->chars, cmd_s->len) != 0
             || (tab_s && db_sql_sem_nul(vm, tab_s->chars, tab_s->len) != 0)) {
@@ -20533,14 +20554,33 @@ static int mod_db_query(VM *vm, Value *args, int n, Value *out)
         memcpy(sql + antes + ntab, at + 2, ncmd - antes - 2 + 1);   /* com o NUL do fim */
     } else memcpy(sql, cmd, ncmd + 1);
 
+    /* Os parâmetros da tupla viram texto antes de tocar o banco, como no
+     * `DbCursor.execute`: o que falha aqui não deixa consulta pela metade. */
+    int np = 0;
+    char *tipos_p = NULL;
+    char **pars = NULL;
+    int *lens = NULL;
+    if (params_v.t != V_NULL && params_v.t != V_UNSET) {
+        if (!EH_SEQ(params_v)) {
+            free(sql); ps_db_solta(c);
+            BERRO(vm, "TypeError", "parameters are of unsupported type");
+        }
+        if (db_params_txt(vm, params_v, &pars, &lens, &tipos_p, &np) != 0) {
+            free(sql); ps_db_solta(c); return -1;
+        }
+    }
     PSDbRes res; char tp[64];
-    int rq = ps_db_exec(c, sql, NULL, NULL, NULL, 0, &res, erro, sizeof(erro), tp, sizeof(tp));
+    int rq = ps_db_exec(c, sql, (const char **)pars, lens, tipos_p, np,
+                        &res, erro, sizeof(erro), tp, sizeof(tp));
     free(sql);
+    free(tipos_p); free(lens);
     if (rq != 0) {
+        db_params_libera(pars, np);
         ps_db_solta(c);
         snprintf(vm->erro,sizeof(vm->erro),"%.200s",erro); snprintf(vm->erro_tipo,sizeof(vm->erro_tipo),"%.60s",tp);
         return -1;
     }
+    db_params_libera(pars, np);
     /* SELECT sem linhas -> Null; com linhas -> lista de dicts; DML -> Null */
     int eh_select = res.tem_result;
     if (!eh_select || res.nlinhas == 0) {
@@ -21569,7 +21609,7 @@ static int met_jpx_get_json(VM *vm, Value alvo, Value *args, int n, Value *out)
     (void)alvo; (void)args;
     /* `request.get_json()` nao tem parametro (docs/jinker/request/get_json):
      * aceitava qualquer quantidade calado (motor-11). */
-    if (n != 0) return erro_aridade(vm, "get_json", 0, 0, n);
+    if (n != 0) return erro_aridade(vm, "get_json", 0, 0, n);  /* "get_json() takes no arguments" */
     PSJReq *r = jk_req_corrente(vm);
     if (!r) { *out = MK_NULL(); return 0; }
     if (!EH_BYTES(r->corpo) || COMO_BYTES(r->corpo)->len == 0) { *out = MK_NULL(); return 0; }
@@ -21584,7 +21624,7 @@ static int met_jpx_text(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)alvo; (void)args;
     /* `request.text()` nao tem parametro (motor-11) */
-    if (n != 0) return erro_aridade(vm, "text", 0, 0, n);
+    if (n != 0) return erro_aridade(vm, "text", 0, 0, n);  /* idem a frase unica */
     PSJReq *r = jk_req_corrente(vm);
     if (!r) { *out = MK_NULL(); return 0; }
     *out = jk_str_val(vm, EH_BYTES(r->corpo) ? COMO_BYTES(r->corpo)->chars : "");
@@ -21797,7 +21837,9 @@ static int jk_coleta_uploads(VM *vm, PSJReq *r, const char *campo, Value allowed
 static int met_jpx_file(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)alvo;
-    if (n < 1) return erro_aridade(vm, "file", 1, 1, n);
+    /* DUAS posições: o `field` e o `allowed` opcional. O `1,1` recusava o
+     * segundo argumento que a linha seguinte já processava. */
+    if (n < 1 || n > 2) return erro_aridade(vm, "file", 1, 2, n);
     if (!EH_STRING(args[0]))
         MERRO(vm, "TypeError", "file() argument 1 must be str, not %s",
               nome_do_tipo_valor(args[0]));
@@ -21807,7 +21849,7 @@ static int met_jpx_file(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_jpx_files(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)alvo;
-    if (n < 1) return erro_aridade(vm, "files", 1, 1, n);
+    if (n < 1 || n > 2) return erro_aridade(vm, "files", 1, 2, n);
     if (!EH_STRING(args[0]))
         MERRO(vm, "TypeError", "files() argument 1 must be str, not %s",
               nome_do_tipo_valor(args[0]));

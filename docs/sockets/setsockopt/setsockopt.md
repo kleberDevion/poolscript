@@ -36,17 +36,17 @@ As três posições são obrigatórias — não há default nenhum.
 import sockets
 s = sockets.socket()
 post(s.setsockopt(sockets.SOL_SOCKET, sockets.SO_REUSEADDR, 1))
-post(s.getsockopt(sockets.SOL_SOCKET, sockets.SO_REUSEADDR))
+post(s.getsockopt(sockets.SOL_SOCKET, sockets.SO_REUSEADDR) != 0)
 post(s.setsockopt(sockets.SOL_SOCKET, sockets.SO_KEEPALIVE, True))
-post(s.getsockopt(sockets.SOL_SOCKET, sockets.SO_KEEPALIVE))
+post(s.getsockopt(sockets.SOL_SOCKET, sockets.SO_KEEPALIVE) != 0)
 s.close()
 ```
 
 ```saida
 Null
-1
+True
 Null
-1
+True
 ```
 
 O par que evita `Address already in use` ao reiniciar um servidor:

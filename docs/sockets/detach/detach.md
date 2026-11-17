@@ -55,7 +55,8 @@ b = sockets.socket()
 try {
     b.bind(("127.0.0.1", porta))
 } catch (e) {
-    post("Errno 98" in str(e))
+    msg = str(e)
+    post("Errno 98" in msg or "Errno 48" in msg or "Errno 10048" in msg)
 }
 b.close()
 ```

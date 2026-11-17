@@ -60,7 +60,8 @@ Se a chave não existir em nenhum dos dois, devolve `Null`. Trate isso quando o
 campo é obrigatório:
 
 ```ps
-funct salvar() {
+@app.route("/obrigatorio", methods=cors.options(["POST"]))
+funct exige() {
     nome = request.get("nome")
     if (nome is Null) {
         return jsonify({"erro": "campo 'nome' obrigatório"}), 400

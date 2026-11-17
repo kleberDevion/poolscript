@@ -36,6 +36,7 @@ Se o corpo não for JSON válido (ou estiver vazio), devolve `Null`. Cheque ante
 de indexar:
 
 ```ps
+@app.route("/usuario", methods=cors.options(["POST"]))
 funct criar() {
     data = request.get_json()
     if (data is Null) {
@@ -52,13 +53,16 @@ funct criar() {
 - [`.get("nome")`](../get/get.md) — só **um** campo (query string ou JSON).
 
 ```ps
-# preciso de vários → get_json
-data = request.get_json()
-nome = data["nome"]
-email = data["email"]
+@app.route("/usuario", methods=cors.options(["POST"]))
+funct campos() {
+    # preciso de vários → get_json
+    data = request.get_json()
+    nome = data["nome"]
+    email = data["email"]
 
-# preciso de um → get
-nome = request.get("nome")
+    # preciso de um → get
+    nome = request.get("nome")
+}
 ```
 
 ---

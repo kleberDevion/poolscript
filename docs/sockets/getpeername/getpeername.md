@@ -25,8 +25,9 @@ lado de lá:
 
 - **`TypeError`** — `getpeername() takes no arguments (1 given)`
 - **`RuntimeError`** — socket sem conexão:
-  `[Errno 107] Transport endpoint is not connected`. Ao contrário do
-  `getsockname()`, aqui **não** existe resposta neutra
+  `[Errno 107] Transport endpoint is not connected` no Linux, `[Errno 57]` no
+  macOS e `[Errno 10057]` no Windows. Ao contrário do `getsockname()`, aqui
+  **não** existe resposta neutra
 - **`OSError`** — socket fechado: `[Errno 9] Bad file descriptor`
 
 ## Exemplos
@@ -57,7 +58,8 @@ s = sockets.socket()
 try {
     s.getpeername()
 } catch (e) {
-    post("Errno 107" in str(e))
+    msg = str(e)
+    post("Errno 107" in msg or "Errno 57" in msg or "Errno 10057" in msg)
 }
 s.close()
 ```
