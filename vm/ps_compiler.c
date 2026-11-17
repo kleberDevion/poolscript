@@ -478,6 +478,13 @@ typedef struct {
      * um pai dele ou o catch sem tipo): o módulo que não existe ali é o
      * import opcional, e o erro é do programa rodando, não do `--check` */
     int         import_protegido;
+    /* Os `try` em volta cujo CORPO está compilando agora (o próprio `try`,
+     * não os `catch` dele): o checador pergunta a esta pilha se o erro
+     * estático que achou seria pego rodando. Se for, ele não impede o
+     * programa de rodar — vira o erro do motor no ponto de sempre, igual ao
+     * import protegido. Procurar é do mais interno pro mais externo. */
+    PSNode    **try_corpos;
+    int32_t     ntry_corpos, cap_try_corpos;
     /* profundidade de `count each` aberto — muda o que `return;` devolve */
     int         dentro_count_each;
     /* Nome do primeiro pai da Entity cujos métodos estão sendo compilados —
@@ -2746,11 +2753,70 @@ static const char *tp_guarda(C *c, const char *s)
     return d;
 }
 
+/* As classes que a VM levanta rodando — as únicas que um `catch` de fora
+ * pode pegar. SyntaxError (e o que é só do checador) fica de fora: ela para
+ * a compilação, e `try` nenhum a pegaria rodando. RuntimeError também fica:
+ * os dois usos dela no checador (`campo/método estático`) não têm gêmeo no
+ * motor. */
+static int tp_classe_do_try(const char *classe)
+{
+    return !strcmp(classe, "TypeError")
+        || !strcmp(classe, "ValueError")
+        || !strcmp(classe, "AttributedValueError")
+        || !strcmp(classe, "AttributeError")
+        || !strcmp(classe, "NameError")
+        || !strcmp(classe, "ImportError");
+}
+
+/* `catch (Tipo e)` do `try` que está compilando o corpo agora pega um erro
+ * de classe `classe`? Sobe do try mais interno pro mais externo; o `catch`
+ * sem tipo pega tudo (menos o `<sys.exit>`, que não é erro de tipo). */
+static int tp_try_pega(C *c, const char *classe)
+{
+    if (!c || !classe) return 0;
+    for (int32_t i = c->ntry_corpos - 1; i >= 0; i--) {
+        PSNode *t = c->try_corpos[i];
+        if (!t) continue;
+        for (int32_t k = 0; k < t->lista.n; k++) {
+            PSNode *cl = t->lista.itens[k];
+            if (!cl || !cl->texto2) return 1;
+            if (ps_excecao_eh(classe, cl->texto2)) return 1;
+        }
+    }
+    return 0;
+}
+
+/* Abre/fecha o corpo de um `try` na pilha do checador. Os `catch` do mesmo
+ * `try` ficam FORA: um erro no corpo do catch só é pego por um try de fora. */
+static void tp_try_abre(C *c, PSNode *n)
+{
+    if (c->ntry_corpos + 1 > c->cap_try_corpos) {
+        int32_t novo = c->cap_try_corpos ? c->cap_try_corpos * 2 : 16;
+        PSNode **nv = realloc(c->try_corpos, sizeof(PSNode *) * (size_t)novo);
+        if (!nv) { cerro(c, "sem memoria", n); return; }
+        c->try_corpos = nv;
+        c->cap_try_corpos = novo;
+    }
+    c->try_corpos[c->ntry_corpos++] = n;
+}
+
+static void tp_try_fecha(C *c)
+{
+    if (c->ntry_corpos > 0) c->ntry_corpos--;
+}
+
 /* Registra um erro da tipagem estática — sem parar a compilação. O mesmo
  * erro no mesmo lugar entra uma vez (um nó pode ser olhado duas vezes). */
 static void terro(C *c, PSNode *n, const char *classe, const char *fmt, ...)
 {
     PSErroTipo e;
+    /* A classe que o `try` em volta pega é erro do programa RODANDO: o motor
+     * a levanta no mesmo ponto, com a mesma frase, e o `catch` trata. Impedir
+     * de rodar aqui tirava o `try` do programador — o `r.save(7)` do
+     * `jinker_roda.pr` dentro de `catch (TypeError e)` nunca era pego.
+     * Só entram as classes que a VM realmente levanta; SyntaxError é da
+     * compilação (e um `catch` em volta não a tornaria executável). */
+    if (classe && tp_classe_do_try(classe) && tp_try_pega(c, classe)) return;
     memset(&e, 0, sizeof(e));
     va_list ap;
     va_start(ap, fmt);
@@ -8508,6 +8574,7 @@ static void stmt_no_corpo(C *c, Unidade *u, PSNode *n)
              * que ele roda sempre. */
             int32_t setup = emite(c, u, OP_SETUP_TRY, 0);
             c->dentro_try++;
+            tp_try_abre(c, n);
             /* enquanto o corpo (e os catches) compilam, este `finally` fica
              * PENDENTE: `return`/`break`/`continue` lá dentro emitem o bloco
              * antes de saltar, senão ele não roda nesses caminhos. */
@@ -8541,6 +8608,7 @@ static void stmt_no_corpo(C *c, Unidade *u, PSNode *n)
             c->import_protegido -= pega_import;
             escopo_fecha(c, u, Mt);            /* vars do try não vazam (saída normal) */
             c->dentro_try--;
+            tp_try_fecha(c);
             emite(c, u, OP_POP_TRY, 0);
             int32_t pula_catches = emite(c, u, OP_JUMP, 0);
 
@@ -10077,6 +10145,7 @@ static void compila_termina(C *c, Unidade *u)
     free(c->tpool);
     free(c->topo);
     free(c->fin_pend);
+    free(c->try_corpos);
     /* laço que ficou aberto (a compilação parou no meio dele) ainda tem os
      * vetores de salto; o fechamento normal é `fecha_laco` */
     for (int32_t i = 0; i < c->nlacos; i++) {

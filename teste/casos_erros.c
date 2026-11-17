@@ -266,6 +266,31 @@ const Caso CASOS_ERROS[] = {
   "try {\n    raise ValueError(\"x\")\n} catch (e) {\n    post(\"peguei\")\n} finally {\n    post(\"f2\")\n}\n",
   "ok\nf1\npeguei\nf2", NULL, 0 },
 
+/* ── erro de tipo ESTÁTICO dentro de um `try` que o pega é do motor ──
+ * O checador sabia o tipo dos literais e acusava `1 + "x"` e `len(5)` antes
+ * de rodar; o `catch (TypeError e)` em volta nunca via nada. Agora esses
+ * erros são do programa RODANDO, no ponto de sempre e com a frase da VM —
+ * o `try` do programador vale como vale para qualquer erro de tipo. */
+{ "try pega o + de tipos errados dos literais",
+  "try {\n    post(1 + \"x\")\n} catch (TypeError e) {\n    post(\"pegou\")\n}\n",
+  "pegou", NULL, 0 },
+{ "try pega o len de um literal",
+  "try {\n    post(len(5))\n} catch (TypeError e) {\n    post(\"pegou len\")\n}\n",
+  "pegou len", NULL, 0 },
+{ "catch de outro tipo deixa o erro de tipo passar",
+  "try {\n    post(1 + \"x\")\n} catch (ValueError e) {\n    post(\"NAO DEVIA\")\n}\n",
+  "", "TypeError: unsupported operand type(s) for +: 'int' and 'str'", 2 },
+{ "try pega o parâmetro tipado com valor errado",
+  "class C {\n"
+  "    funct f(self, str x) { return x }\n"
+  "}\n"
+  "try {\n"
+  "    post(C().f(7))\n"
+  "} catch (AttributedValueError e) {\n"
+  "    post(\"pegou attr\")\n"
+  "}\n",
+  "pegou attr", NULL, 0 },
+
 /* ── nonnull (e o decorador @NonNull, a grafia antiga) ── */
 { "@NonNull dentro de Entity",
   "class C {\n"
