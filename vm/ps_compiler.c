@@ -8862,6 +8862,10 @@ static void stmt_no_corpo(C *c, Unidade *u, PSNode *n)
              * 1ª passada, e a VM o liga no símbolo do sistema no `c_liga_global`
              * (pelo ps_c_simbolo). Nada a emitir. */
             return;
+        case N_C_TIPO_DECL:
+            /* `struct nome { ... }` do C: o tipo já foi registrado no ps_c.c
+             * pelo parser. Nada a emitir. */
+            return;
 
         default:
             cerro(c, "statement ainda nao compila na VM", n);

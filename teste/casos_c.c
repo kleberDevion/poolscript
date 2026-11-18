@@ -89,6 +89,23 @@ const Caso CASOS_C[] = {
     {"C: cast para ponto flutuante e para inteiro",
      "post((double)3)\n"
      "post((int)3.9)\n",
-     "3.0\n3", NULL, 0},
+     "3.0\n3", NULL, 0},    /* ── struct, union, array e offsetof ───────────────────────────────────── */
+    {"C: struct declarado no programa, sizeof bate com o cc",
+     "struct ponto { int x; int y }\n"
+     "post(sizeof(struct ponto))\n",
+     "8", NULL, 0},
+    {"C: union declarada no programa",
+     "union u { int a; float b }\n"
+     "post(\"ok\")\n",
+     "ok", NULL, 0},
+    {"C: offsetof do campo",
+     "#include \"stddef.h\"\n"
+     "struct ponto { int x; int y }\n"
+     "post(offsetof(struct ponto, y))\n",
+     "4", NULL, 0},
+    {"C: array do C com inicializador e indice",
+     "int v[3] = {1, 2, 3}\n"
+     "post(v[1])\n",
+     "2", NULL, 0},
 };
 const int NC_C = N_CASOS(CASOS_C);

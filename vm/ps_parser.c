@@ -554,6 +554,31 @@ static int corpo_depois_dos_parenteses(P *p, int j)
 
 static PSNode *expressao(P *p);
 
+/* `{` antes do dict: o conteúdo tem `:` na primeira posição de chave? Sem
+ * `:`, é a LISTA do inicializador do C (`{1, 2, 3}`); com `:`, o dicionário
+ * da linguagem (`{"a": 1}`). Um `{` vazio continua dicionário. */
+static int chaves_sao_lista(P *p)
+{
+    int prof = 0;
+    int primeiro = 1;
+    for (int k = 0; ; k++) {
+        PSToken *q = espia(p, k);
+        if (q->type == T_EOF) return 0;
+        if (q->type == T_LBRACE) { prof++; continue; }
+        if (q->type == T_RBRACE) { if (--prof == 0) return 0; continue; }
+        if (q->type == T_NEWLINE) continue;
+        if (primeiro) {
+            /* o primeiro item é uma string/chave? Vê se o `:` vem antes de
+             * qualquer `,` ou `}` */
+            primeiro = 0;
+        }
+        if (prof == 1 && (q->type == T_COLON || (q->type == T_OP && q->texto && !strcmp(q->texto, ":"))))
+            return 0;
+        if (prof == 1 && (q->type == T_COMMA || (q->type == T_OP && q->texto && !strcmp(q->texto, ","))))
+            return 1;
+    }
+}
+
 /* `struct nome { ... }` e `union nome { ... }` — a declaração de TIPO do C
  * dentro do programa. Os campos são declarações do C separadas por `;`, e o
  * tipo é registrado com `ps_c_struct_abre`/`ps_c_struct_fecha` (o motor do C
@@ -565,7 +590,7 @@ static PSNode *expressao(P *p);
 static PSNode *declaracao_c_struct(P *p)
 {
     PSToken *t0 = espia(p, 0);
-    if (!t0->texto || strcmp(t0->texto, "struct") != 0 && strcmp(t0->texto, "union") != 0)
+    if (!t0->texto || (strcmp(t0->texto, "struct") != 0 && strcmp(t0->texto, "union") != 0))
         return NULL;
     int eh_union = strcmp(t0->texto, "union") == 0;
     int j = 1;
@@ -639,13 +664,41 @@ static PSNode *declaracao_c_var(P *p)
             continue;
         }
         if (t->type == T_EOF || t->type == T_SEMI || t->type == T_LPAREN
-            || t->type == T_LBRACE || t->type == T_LBRACK) return NULL;
+            || t->type == T_LBRACE) return NULL;
+        /* `int v[3]`: o tamanho do array faz parte do nome declarado — o
+         * texto guarda `v[3]` e o leitor do C entende o array */
+        if (t->type == T_LBRACK) {
+            int k2 = j + 1;
+            PSToken *q = espia(p, k2);
+            if (q->type == T_RBRACK) { j = k2; continue; }
+            while (espia(p, k2)->type != T_RBRACK && espia(p, k2)->type != T_EOF) k2++;
+            j = k2;
+            continue;
+        }
         if (t->type == T_OP && t->texto && strcmp(t->texto, "=") == 0) { tem_igual = 1; break; }
         if (t->type != T_IDENT && t->type != T_IDENT_UPPER && t->type != T_KW
             && !(t->type == T_OP && t->texto && strcmp(t->texto, "*") == 0)) return NULL;
     }
     PSToken *nm = espia(p, j - 1);
     if (!nm->texto || (nm->type != T_IDENT && nm->type != T_IDENT_UPPER)) return NULL;
+    /* o `[N]` do array, se houver (o nome declarado é `v[3]`) */
+    char nome_decl[160];
+    snprintf(nome_decl, sizeof nome_decl, "%s", nm->texto);
+    if (espia(p, j)->type == T_LBRACK) {
+        int k2 = j + 1;
+        char tam[32] = "";
+        size_t tw = 0;
+        while (espia(p, k2)->type != T_RBRACK && espia(p, k2)->type != T_EOF) {
+            PSToken *q = espia(p, k2);
+            int n3 = snprintf(tam + tw, sizeof tam - tw, "%s", q->texto ? q->texto : "");
+            if (n3 > 0 && (size_t)n3 < sizeof tam - tw) tw += (size_t)n3;
+            k2++;
+        }
+        snprintf(nome_decl, sizeof nome_decl, "%s[%s]", nm->texto, tam);
+        j = k2 + 1;
+        if (espia(p, j)->type == T_OP && espia(p, j)->texto && !strcmp(espia(p, j)->texto, "=")) { tem_igual = 1; j++; }
+        else if (espia(p, j)->type == T_NEWLINE) { tem_igual = 0; }
+    }
     /* o texto do tipo, do começo até o nome, lido pelo leitor do C */
     char texto[256];
     size_t w = 0;
@@ -657,8 +710,8 @@ static PSNode *declaracao_c_var(P *p)
         if (n2 < 0 || (size_t)n2 >= sizeof texto - w) return NULL;
         w += (size_t)n2;
     }
-    char decl[320], nome[128], erro[200];
-    snprintf(decl, sizeof decl, "%s %s", texto, nm->texto);
+    char decl[320], nome[160], erro[200];
+    snprintf(decl, sizeof decl, "%s %s", texto, nome_decl);
     PSCTipo *tipo = ps_c_le_decl(decl, nome, sizeof nome, erro, sizeof erro);
     if (!tipo) return NULL;                       /* não é tipo do C */
     if (strcmp(nome, nm->texto) != 0) return NULL; /* o nome não bateu */
@@ -1453,6 +1506,59 @@ static PSNode *primario(P *p)
 {
     PSToken *t = atual(p);
 
+    /* `offsetof(struct ponto, y)` — o operador do C: o deslocamento do campo
+     * dentro do struct, calculado pelo registro do tipo do C. Os dois
+     * argumentos são NOME DE TIPO e NOME DE CAMPO, lidos como texto, e não
+     * como expressão (`struct` não é nome de valor). */
+    if (t->texto && !strcmp(t->texto, "offsetof") && espia(p, 1)->type == T_LPAREN) {
+        int32_t l0 = t->line, c0 = t->col;
+        int j = 2;
+        char tipo[160];
+        size_t w = 0;
+        /* o tipo: até a virgula */
+        for (;; j++) {
+            PSToken *q = espia(p, j);
+            if (q->type == T_EOF || q->type == T_NEWLINE) break;
+            if (q->type == T_COMMA || (q->type == T_OP && q->texto && !strcmp(q->texto, ","))) break;
+            if (q->type == T_RPAREN) break;
+            int n2 = snprintf(tipo + w, sizeof tipo - w, "%s%s", w ? " " : "",
+                              q->texto ? q->texto : "");
+            if (n2 < 0 || (size_t)n2 >= sizeof tipo - w) { w = 0; break; }
+            w += (size_t)n2;
+        }
+        if (w > 0 && espia(p, j)->type != T_RPAREN) {
+            PSToken *campo = espia(p, j + 1);
+            PSToken *fech = espia(p, j + 2);
+            if (campo->type == T_IDENT && campo->texto && fech->type == T_RPAREN) {
+                PSCTipo *tp = ps_c_tipo_por_nome(tipo);
+                int ok = 0;
+                size_t desl = 0;
+                if (tp) {
+                    for (int k = 0; k < tp->ncampos; k++)
+                        if (tp->campos[k].nome && !strcmp(tp->campos[k].nome, campo->texto)) {
+                            desl = tp->campos[k].desloc; ok = 1; break;
+                        }
+                }
+                if (ok) {
+                    p->pos += (size_t)(j + 3);
+                    PSNode *n = ps_node_novo(p->arena, N_LITERAL, l0, c0);
+                    if (!n) return NULL;
+                    n->lit = L_INT;
+                    n->i = (int64_t)desl;
+                    return n;
+                }
+                char m[320];
+                snprintf(m, sizeof m, "offsetof: %s%s%s",
+                         tp ? "o tipo nao tem o campo " : "tipo nao registrado: ",
+                         tp ? campo->texto : tipo, "");
+                perro(p, m, campo);
+                return NULL;
+            }
+        }
+        perro(p, "offsetof espera offsetof(struct nome, campo)", t);
+        return NULL;
+    }
+
     /* CAST do C: `(char)65`, `(int)x`, `(unsigned long)n`. Em posição de
      * primário, um `(` seguido de um TIPO DO C e `)` é cast: o valor é o
      * seguinte, convertido para o tipo. Não é cast quando o tipo é da
@@ -1820,6 +1926,30 @@ static PSNode *primario(P *p)
             return n;
         }
         case T_LBRACE: {
+            /* `{1, 2, 3}` sem `:` é a LISTA do inicializador do C (`int v[3] =
+             * {1, 2, 3}`); com `:` é o dicionário da linguagem, como sempre. */
+            if (chaves_sao_lista(p)) {
+                p->pos++;
+                PSNode *n = ps_node_novo(p->arena, N_LIST_LITERAL, t->line, t->col);
+                if (!n) return NULL;
+                pula_separadores(p);
+                while (!checa(p, T_RBRACE) && !checa(p, T_EOF)) {
+                    PSNode *it = expressao(p);
+                    if (!it || FALHOU(p)) return NULL;
+                    if (n->lista.n == n->lista.cap) {
+                        int32_t nc = n->lista.cap ? n->lista.cap * 2 : 4;
+                        PSNode **nv = realloc(n->lista.itens, sizeof(PSNode *) * (size_t)nc);
+                        if (!nv) return NULL;
+                        n->lista.itens = nv; n->lista.cap = nc;
+                    }
+                    n->lista.itens[n->lista.n++] = it;
+                    pula_separadores(p);
+                    if (checa(p, T_COMMA) || checa_op(p, ",")) { p->pos++; pula_separadores(p); }
+                    else break;
+                }
+                if (checa(p, T_RBRACE)) p->pos++;
+                return n;
+            }
             p->pos++;
             p->grupo_depth++;
             PSNode *n = ps_node_novo(p->arena, N_DICT_LITERAL, t->line, t->col);
@@ -5543,11 +5673,44 @@ static PSNode *statement_no(P *p)
         PSToken *nt = atual(p);
         const char *nome = exige_nome(p, "variavel");
         if (FALHOU(p)) return NULL;
-        if (!(checa_op(p, "="))) { perro(p, "declaracao de variavel exige '='", onde_falta(p, nt)); return NULL; }
+        /* `int v[3] = {1, 2, 3}`: o tamanho do array na declaração tipada. O
+         * nome guardado é o do array com o tamanho (`v[3]`), e o valor é
+         * uma lista da Jinga (`{1, 2, 3}` lê como lista). */
+        char nome_arr[160];
+        int eh_array_c = 0;
+        snprintf(nome_arr, sizeof nome_arr, "%s", nome);
+        if (checa(p, T_LBRACK)) {
+            p->pos++;
+            char tam[32] = "";
+            size_t tw = 0;
+            while (!checa(p, T_RBRACK) && !checa(p, T_EOF)) {
+                PSToken *q = atual(p);
+                int n3 = snprintf(tam + tw, sizeof tam - tw, "%s", q->texto ? q->texto : "");
+                if (n3 > 0 && (size_t)n3 < sizeof tam - tw) tw += (size_t)n3;
+                p->pos++;
+            }
+            if (checa(p, T_RBRACK)) p->pos++;
+            snprintf(nome_arr, sizeof nome_arr, "%s[%s]", nome, tam);
+            nome = dup_str(p, nome_arr);
+            eh_array_c = 1;
+        }
+        if (!(checa_op(p, "=")) && !checa(p, T_LBRACE)) { perro(p, "declaracao de variavel exige '='", onde_falta(p, nt)); return NULL; }
         p->pos++;
         PSNode *n = ps_node_novo(p->arena, N_VAR_DECL, nt->line, nt->col);
         if (!n) return NULL;
-        n->texto = nome; n->texto2 = tipo;
+        /* `v[3]` é a variável `v`, e para o checador da Jinga o valor é uma
+         * lista; o tipo e o tamanho do array do C ficam no registro do C. */
+        if (eh_array_c) {
+            char so_nome[160];
+            snprintf(so_nome, sizeof so_nome, "%s", nome);
+            so_nome[strcspn(so_nome, "[")] = '\0';
+            n->texto = dup_str(p, so_nome);
+            n->texto2 = dup_str(p, "list");
+        } else {
+            n->texto = nome;
+            n->texto2 = tipo;
+        }
+        n->tipo_do_c = (uint8_t)eh_array_c;   /* `v[3]`: o nome é do array */
         n->a = expressao(p);
         if (FALHOU(p)) return NULL;
         return n;
