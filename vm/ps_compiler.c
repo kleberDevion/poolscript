@@ -3432,6 +3432,8 @@ static int tp_ligado_no_escopo(C *c, Unidade *u, const char *nome)
  * certo rodando — e sai antes: uma `int funct` engolia esse erro e o programa
  * terminava calado, com `rc=0`, sem nunca ter feito o que devia. */
 /* O nome não é ligado por nada: nem o escopo, nem a VM, nem o jinker. */
+static void passada2_stmt(C *c, Unidade *u, PSNode *s);
+
 static int tp_nome_inexistente(C *c, Unidade *u, const char *nome)
 {
     if (tp_ligado_no_escopo(c, u, nome)) return 0;
@@ -7383,6 +7385,12 @@ static void stmt_no_corpo(C *c, Unidade *u, PSNode *n)
             return;
 
         case N_BLOCK: {
+            /* `enum {}` do C (marca texto3 = "c"): os membros são globais que
+             * FICAM — sem escopo, sem CLEAR_GLOBAL no fim */
+            if (n->texto3 && !strcmp(n->texto3, "c")) {
+                bloco_stmts(c, u, n);
+                return;
+            }
             int32_t M = escopo_marca(u);
             bloco_stmts(c, u, n);
             escopo_fecha(c, u, M);   /* variáveis do bloco não vazam */
@@ -7665,6 +7673,18 @@ static void stmt_no_corpo(C *c, Unidade *u, PSNode *n)
         }
 
         case N_ENUM_DECL: {
+            /* `enum {}` do C: os membros já são VAR_DECL com valor inteiro,
+             * e entram como globais comuns — sem descritor de enum. */
+            if (n->texto3 && !strcmp(n->texto3, "c")) {
+                for (int32_t k = 0; k < n->lista.n; k++) {
+                    PSNode *m = n->lista.itens[k];
+                    if (!m || !m->texto) continue;
+                    grava_valor(c, u, m->a);
+                    memset(&c->grava, 0, sizeof(c->grava));
+                    guarda_nome_modo(c, u, m->texto, 1);
+                }
+                return;
+            }
             /* Descritor no programa (nome + nomes dos membros + flag auto);
              * os valores EXPLÍCITOS são expressões, empilhadas em ordem de
              * membro antes do MAKE_ENUM, que aplica a auto-numeração. */
@@ -9461,6 +9481,15 @@ static void tp_pre_stmt(C *c, Unidade *mod, PSNode *s, int decorado)
 {
     if (!s || CFALHOU(c)) return;
     switch (s->kind) {
+        case N_ENUM_DECL:
+            /* `enum {}` do C: cada membro é uma declaração inteira, e entra
+             * como global, uma a uma */
+            if (s->texto3 && !strcmp(s->texto3, "c")) {
+                for (int32_t k = 0; k < s->lista.n; k++)
+                    tp_pre_stmt(c, mod, s->lista.itens[k], decorado);
+                return;
+            }
+            break;
         case N_VAR_DECL:
             if (!s->texto) return;
             grava_valor(c, mod, s->a);
@@ -9493,7 +9522,6 @@ static void tp_pre_stmt(C *c, Unidade *mod, PSNode *s, int decorado)
             tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
             break;
         case N_MODEL_DECL:
-        case N_ENUM_DECL:
             if (!s->texto) return;
             memset(&c->grava, 0, sizeof(c->grava));
             c->grava.decl = s; c->grava.no = s;
@@ -9976,6 +10004,8 @@ static void passada1_fim(C *c, PSNode *programa)
  * sintetizado num método desta declaração é desfeito aqui mesmo, porque o nó
  * dela morre com o statement (na árvore inteira, o nó vive; desfazer cedo é
  * igual). */
+static void passada2_stmt(C *c, Unidade *u, PSNode *s);
+
 static void passada2_stmt(C *c, Unidade *u, PSNode *s)
 {
     if (CFALHOU(c)) return;

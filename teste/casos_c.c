@@ -106,6 +106,15 @@ const Caso CASOS_C[] = {
     {"C: array do C com inicializador e indice",
      "int v[3] = {1, 2, 3}\n"
      "post(v[1])\n",
-     "2", NULL, 0},
+     "2", NULL, 0},    /* ── typedef e enum do C ───────────────────────────────────────────────── */
+    {"C: typedef do C da nome novo ao tipo",
+     "typedef unsigned long tamanho\n"
+     "tamanho n = 5\n"
+     "post(n)\n",
+     "5", NULL, 0},
+    {"C: enum do C vale pelos nomes soltos",
+     "enum d { A, B = 5, C }\n"
+     "post(A, B, C)\n",
+     "0 5 6", NULL, 0},
 };
 const int NC_C = N_CASOS(CASOS_C);

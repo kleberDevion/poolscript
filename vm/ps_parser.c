@@ -579,6 +579,123 @@ static int chaves_sao_lista(P *p)
     }
 }
 
+/* `typedef tipo nome` do C: dá um nome novo a um tipo do C (`typedef unsigned
+ * long tamanho`), e daí em diante `tamanho n = 5` vale. O tipo é registrado
+ * com `ps_c_typedef`, e o leitor do C o acha pelo nome. Devolve o nó
+ * (N_C_TIPO_DECL), ou NULL se não é typedef. */
+static PSNode *declaracao_c_typedef(P *p)
+{
+    PSToken *t0 = espia(p, 0);
+    if (!t0->texto || strcmp(t0->texto, "typedef") != 0) return NULL;
+    int j = 1;
+    char texto[256];
+    size_t w = 0;
+    PSToken *nome = NULL;
+    for (; ; j++) {
+        PSToken *q = espia(p, j);
+        if (q->type == T_NEWLINE) { if (w == 0) continue; break; }
+        if (q->type == T_EOF || q->type == T_SEMI) break;
+        if (q->type != T_IDENT && q->type != T_IDENT_UPPER && q->type != T_KW
+            && !(q->type == T_OP && q->texto && !strcmp(q->texto, "*"))) return NULL;
+        int n2 = snprintf(texto + w, sizeof texto - w, "%s%s", w ? " " : "",
+                          q->texto ? q->texto : "");
+        if (n2 < 0 || (size_t)n2 >= sizeof texto - w) return NULL;
+        w += (size_t)n2;
+        nome = q;
+    }
+    if (!nome) return NULL;
+    /* o último nome é o novo tipo; o resto é o tipo do C que ele nomeia */
+    char *ult = strrchr(texto, ' ');
+    if (!ult) return NULL;
+    *ult = '\0';
+    char erro[200];
+    PSCTipo *alvo = ps_c_le_decl(texto, NULL, 0, NULL, 0);
+    if (!alvo) return NULL;
+    PSCTipo *tp = ps_c_typedef(ult + 1, alvo, erro, sizeof erro);
+    if (!tp) {
+        char m[280];
+        snprintf(m, sizeof m, "%s", erro);
+        perro(p, m, nome);
+        return NULL;
+    }
+    int32_t l0 = t0->line, c0 = t0->col;
+    p->pos += (size_t)j;
+    if (checa(p, T_SEMI)) p->pos++;
+    PSNode *n = ps_node_novo(p->arena, N_C_TIPO_DECL, l0, c0);
+    if (!n) return NULL;
+    n->texto = dup_str(p, ult + 1);
+    n->texto2 = dup_str(p, texto);
+    return n;
+}
+
+/* `enum nome { A, B = 5, C }` do C: cada membro vale um inteiro. Sem valor, o
+ * membro vale o anterior + 1 (o primeiro, 0); com `= expr`, o valor da
+ * expressão (a mais simples: inteiro ou outro membro). Os nomes entram como
+ * CONSTANTES do programa (`A`, `B`...), globais, como as da tabela. */
+static PSNode *declaracao_c_enum(P *p)
+{
+    PSToken *t0 = espia(p, 0);
+    if (!t0->texto || strcmp(t0->texto, "enum") != 0) return NULL;
+    int j = 1;
+    PSToken *etq = espia(p, j);
+    if (etq->type == T_IDENT && espia(p, j + 1)->type == T_LBRACE) j++;
+    if (espia(p, j)->type != T_LBRACE) return NULL;
+    p->pos += (size_t)j + 1;          /* deixa o cursor no 1º membro */
+    j = 0;
+    int32_t l0 = t0->line, c0 = t0->col;
+    int64_t valor = 0;
+    PSNode *lista[256];
+    int nlista = 0;
+    while (!checa(p, T_RBRACE) && !checa(p, T_EOF)) {
+        while (checa(p, T_NEWLINE) || checa(p, T_COMMA) || checa_op(p, ",")) p->pos++;
+        if (checa(p, T_RBRACE)) break;
+        PSToken *m = atual(p);
+        if ((m->type != T_IDENT && m->type != T_IDENT_UPPER) || !m->texto) {
+            perro(p, "enum do C espera o nome do membro", m);
+            return NULL;
+        }
+        p->pos++;
+        if (checa_op(p, "=")) {
+            p->pos++;
+            PSToken *v = atual(p);
+            if (v->type == T_INT && v->texto) { valor = strtoll(v->texto, NULL, 0); p->pos++; }
+        }
+        /* o membro como constante do programa: vira um global com o valor */
+        PSNode *d = ps_node_novo(p->arena, N_ASSIGNMENT, m->line, m->col);
+        if (!d) return NULL;
+        d->texto = dup_str(p, m->texto);
+        d->texto2 = dup_str(p, "=");
+        PSNode *lit = ps_node_novo(p->arena, N_LITERAL, m->line, m->col);
+        if (!lit) return NULL;
+        lit->lit = L_INT; lit->i = valor;
+        d->a = lit;
+        if (nlista < 256) lista[nlista++] = d;
+        valor++;
+        while (checa(p, T_NEWLINE)) p->pos++;
+    }
+    if (checa(p, T_RBRACE)) p->pos++;
+    if (checa(p, T_SEMI)) p->pos++;
+    /* o enum do C é só o conjunto de constantes: cada membro é uma variável
+     * inteira no topo, como `X = 0`, `Y = 1` — o programa as lê pelo nome */
+    if (nlista == 1) return lista[0];
+    if (nlista == 0) {
+        PSNode *n = ps_node_novo(p->arena, N_LITERAL, l0, c0);
+        if (n) n->lit = L_NULL;
+        return n;
+    }
+    /* o `enum` do C são as constantes do programa, e cada membro é um comando
+     * `A = 0` normal: devolve um bloco que o laço do topo executa em ordem */
+    PSNode *bloco_n = ps_node_novo(p->arena, N_BLOCK, l0, c0);
+    if (!bloco_n) return NULL;
+    bloco_n->lista.itens = calloc((size_t)nlista, sizeof(PSNode *));
+    if (!bloco_n->lista.itens) return NULL;
+    for (int k = 0; k < nlista; k++) bloco_n->lista.itens[k] = lista[k];
+    bloco_n->lista.n = nlista;
+    bloco_n->lista.cap = nlista;
+    bloco_n->texto3 = dup_str(p, "c");   /* marca: enum do C (globais que ficam) */
+    return bloco_n;
+}
+
 /* `struct nome { ... }` e `union nome { ... }` — a declaração de TIPO do C
  * dentro do programa. Os campos são declarações do C separadas por `;`, e o
  * tipo é registrado com `ps_c_struct_abre`/`ps_c_struct_fecha` (o motor do C
@@ -5136,8 +5253,19 @@ static PSNode *statement_no(P *p)
         return n;
     }
 
+    /* `enum nome { A, B = 5, C }` DO C: os membros valem como nomes soltos e
+     * como inteiros (`post(A)`), e não como `Nome.A` — a forma da linguagem
+     * vem logo depois. */
+    if (checa_kw(p, "enum") && (espia(p, 2)->type == T_LBRACE || (espia(p, 1)->type == T_IDENT && espia(p, 2)->type == T_LBRACE))) {
+        PSNode *ce = declaracao_c_enum(p);
+        if (ce) return ce;
+        if (FALHOU(p)) return NULL;
+    }
+
     /* enum Nome { A, B=v } — namespace de constantes; Nome.A devolve o valor.
-     * Membro é NOME (auto) ou NOME = expr (explícito); vírgula opcional. */
+     * Membro é NOME (auto) ou NOME = expr (explícito); vírgula opcional.
+     * O `enum` do C (membros que valem como nomes soltos, sem `Nome.A`) é
+     * tratado antes, em `declaracao_c_enum`. */
     if (checa_kw(p, "enum")) {
         p->pos++;
         PSNode *n = ps_node_novo(p->arena, N_ENUM_DECL, t->line, t->col);
@@ -5475,6 +5603,16 @@ static PSNode *statement_no(P *p)
         {
             PSNode *ac = assinatura_c(p);
             if (ac) return ac;
+            if (FALHOU(p)) return NULL;
+        }
+
+        /* `typedef tipo nome` e `enum nome { ... }` do C */
+        {
+            PSNode *td = declaracao_c_typedef(p);
+            if (td) return td;
+            if (FALHOU(p)) return NULL;
+            PSNode *en = declaracao_c_enum(p);
+            if (en) return en;
             if (FALHOU(p)) return NULL;
         }
 
