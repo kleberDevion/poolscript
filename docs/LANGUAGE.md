@@ -312,17 +312,16 @@ argumento, e isso é erro — ver linguagem 3.11):
 post("Clima: " {grau} " graus")
 ```
 
-**String colorida** (ANSI 24-bit), hex de **exatamente 3 ou 6 dígitos** ou
-nome conhecido:
+**String colorida** (ANSI 24-bit), hex de **exatamente 3 ou 6 dígitos**, com o
+`#` obrigatório:
 
 ```ps
-post(<red>"alerta")
-post(<2196f3>"azul")
-post(<fff>"branco")
+post(<#ff0000>"alerta")
+post(<#2196f3>"azul")
+post(<#fff>"branco")
 ```
-Nomes disponíveis: `red, green, blue, yellow, cyan, magenta, white, black,
-purple, orange, pink, gray, grey, lime, teal`. Um hex de 4 ou 5 dígitos, ou um
-nome desconhecido, **não** é tratado como cor — o `<` volta a ser o operador
+Não há cor por nome (`<red>` não é cor). Um hex de 4 ou 5 dígitos, um `<…>` sem o
+`#`, ou um nome, **não** é tratado como cor — o `<` volta a ser o operador
 "menor que".
 
 ---

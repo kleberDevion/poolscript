@@ -40,6 +40,13 @@
           "end": "\"\"\""
         },
         {
+          "comment": "`#include \"lib.h\"` — a MACRO do C, e a única coisa com `#` que o motor executa. Vem ANTES da regra do comentário: sem esta, o editor pintava de comentário uma linha que roda (o motor e o editor discordavam).",
+          "match": "^\\s*(#include)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.import.jinga" }
+          }
+        },
+        {
           "name": "comment.line.number-sign.jinga",
           "match": "#.*$"
         }

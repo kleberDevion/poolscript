@@ -1091,7 +1091,7 @@ Null funct expande(dict g, dict prof, dict no, dict s, int nivel, int teto, list
         } elif n == "NULL" {
             addEnd(saida, "Null")
         } elif n == "COLOR" {
-            addEnd(saida, "<red>")
+            addEnd(saida, "<#ff0000>")
         } elif n == "KW" {
             addEnd(saida, "post")
         } elif n == "NEWLINE" {

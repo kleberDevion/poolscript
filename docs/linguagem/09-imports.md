@@ -427,7 +427,51 @@ módulo (o tipo é o do valor, só rodando) e módulo em ciclo de import. Módul
 que não compila (sintaxe ou tipo) é acusado na linha do `import`, com a
 frase que o import daria rodando.
 
-## 9.6. Import não roda o guard de entrada
+## 9.6. O cabeçalho do C — `#include "stdio.h"` e `import "stdio.h"`
+
+A biblioteca padrão do C entra pelo **cabeçalho**, e é o `import` que libera a
+lib: sem ele o nome não existe (`NameError`, e a mensagem diz qual cabeçalho
+importar). As três grafias abaixo são a mesma coisa:
+
+```ps
+#include "stdio.h"
+import "stdio.h"
+include "stdio.h"
+```
+
+O `#` da frente é a macro do C, e é a única coisa com `#` que o motor executa —
+todo o resto de `#` continua sendo comentário de linha. O `;` do fim do C pode
+ficar. O cabeçalho tem que vir entre **aspas**: `#include <stdio.h>` é erro com
+a frase que diz a forma certa.
+
+Da tabela do C (`vm/c_padrao.decl`) vem a **assinatura** de cada nome — tipo e
+aridade —, e a chamada vai de verdade pela libffi:
+
+```ps
+#include "stdio.h"
+#include "string.h"
+printf("n=%d\n", 42)
+str a = "abc"
+post(strlen(a))
+post(strcmp(a, "abd"))
+```
+```saida
+n=42
+3
+-1
+```
+
+O que a doc garante: o tipo é conferido antes de chamar (`strlen(42)` é
+`TypeError` dizendo o tipo que o C pede), nas variádicas o **formato** diz o
+tipo de cada argumento a mais (`printf`, `scanf`), e o retorno volta no tipo da
+Jinga — `void` vira `Null`, `char *` vira `str`, inteiro vira `int`. O que a doc
+**não** garante é o C: ponteiro inválido, escrita depois do fim de um buffer e
+uso depois de `free` são inseguros como no C, e quem diagnostica isso é o `cc`.
+
+Acesso ao C é total: qualquer cabeçalho do C11 vale, e o nome que não está na
+tabela o programa escreve a declaração.
+
+## 9.7. Import não roda o guard de entrada
 
 Quando um arquivo é **importado**, o bloco `if __name__ == "main":` dele **não
 executa** (só roda quando o arquivo é o principal — seção 5.7). Vale até pra um
@@ -451,7 +495,7 @@ post(mymod.saudar("ana"))
 
 ---
 
-## 9.7. Resumo
+## 9.8. Resumo
 
 - **`import mod [as m]`** — liga o módulo; acesso por `mod.x`.
 - **`from mod import x [as y], z`** — liga nomes soltos.
@@ -471,5 +515,7 @@ post(mymod.saudar("ana"))
 - **`from .mod` / `from ..pkg.mod`** — relativo com pontos.
 - Resolução (nome, sem caminho): **stdlib → lib global → arquivo ao lado de
   quem importa → arquivo do projeto**; senão `ImportError`.
+- **`#include "stdio.h"`** / **`import "stdio.h"`** / **`include "stdio.h"`**
+  — o cabeçalho do C; o import libera a lib e a chamada vai pela libffi.
 - **Importar não dispara** o guard `if __name__ == "main"` do módulo; no
   arquivo executado, `__name__` vale `"main"`.

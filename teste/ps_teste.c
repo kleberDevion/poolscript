@@ -141,6 +141,7 @@ static const Grupo GRUPOS[] = {
     { "oraculo",   CASOS_ORACULO,   0 },
     { "robustez",  CASOS_ROBUSTEZ,  0 },
     { "libs",      CASOS_LIBS,      0 },
+    { "c",         CASOS_C,         0 },
     { "regex_re",  CASOS_REGEX_RE,  0 },
     { "python",    CASOS_PYTHON,    0 },
 };
@@ -161,6 +162,7 @@ static int tamanho_do_grupo(const char *g)
     if (!strcmp(g, "libs"))      return NC_LIBS;
     if (!strcmp(g, "regex_re"))  return NC_REGEX_RE;
     if (!strcmp(g, "python"))    return NC_PYTHON;
+    if (!strcmp(g, "c"))         return NC_C;
     return 0;
 }
 

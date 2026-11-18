@@ -17,6 +17,7 @@
  * em silêncio.
  */
 #include "ps_parser.h"
+#include "ps_c.h"           /* o cabeçalho do C: `import "stdio.h"` */
 #include "ps_caminho.h"
 #include "ps_pilha.h"
 #include "ps_retornos.h"
@@ -4382,26 +4383,45 @@ static PSNode *statement_no(P *p)
      *
      * `*` (as três grafias são a mesma regra): `texto3 = "*"`, e o nó não liga
      * o nome do módulo — liga os nomes que ele exporta. */
-    if (checa_kw(p, "import") || checa_kw(p, "from") || checa_kw(p, "PUSH")) {
+    if (checa_kw(p, "import") || checa_kw(p, "include") || checa_kw(p, "from") || checa_kw(p, "PUSH")) {
+        /* `include "stdio.h"` é o cabeçalho do C pelo nome, a mesma coisa que
+         * `import "stdio.h"` (decisão dele de 2026-11-18). O `#` da frente é
+         * aceito e lido como o `include` (`#include "stdio.h"` lê igual); o
+         * `;` do C no fim é aceito e ignorado. */
+        if (checa_kw(p, "include")) {
+            PSToken *kw = atual(p);
+            p->pos++;
+            PSToken *tk = atual(p);
+            if (tk->type != T_STR || !tk->texto) {
+                perro(p, "include espera o cabeçalho entre aspas: include \"stdio.h\"", tk);
+                return NULL;
+            }
+            p->pos++;
+            if (checa_op(p, ";")) p->pos++;
+            PSNode *ci = ps_node_novo(p->arena, N_C_IMPORT, kw->line, kw->col);
+            if (!ci) return NULL;
+            ci->texto = dup_str(p, tk->texto);
+            return ci;
+        }
         PSNode *n = ps_node_novo(p->arena, N_IMPORT_STMT, t->line, t->col);
         if (!n) return NULL;
 
         if (aceita_kw(p, "import")) {
             n->texto = dup_str(p, "import");
-            /* `import <stdio.h>`: o cabeçalho do C (a lib do sistema). O lexer
-             * só produz o token do cabeçalho DEPOIS da palavra `import`; em
-             * qualquer outro lugar o `<...>` é cor (`<red>`). */
-            PSToken *cab = atual(p);
-            if (cab->type == T_HEADER) {
+            /* `import "stdio.h"`: o cabeçalho do C (a lib do sistema), o mesmo
+             * do include. `import "modulo"` continua sendo módulo: o que decide
+             * é o nome ser um cabeçalho da tabela. */
+            if (checa(p, T_STR) && atual(p)->texto && ps_c_cab_existe(atual(p)->texto, NULL)) {
+                PSToken *tk = atual(p);
                 p->pos++;
-                PSNode *ci = ps_node_novo(p->arena, N_C_IMPORT, cab->line, cab->col);
+                if (checa_op(p, ";")) p->pos++;
+                PSNode *ci = ps_node_novo(p->arena, N_C_IMPORT, tk->line, tk->col);
                 if (!ci) return NULL;
-                ci->texto = dup_str(p, cab->texto ? cab->texto : "");
+                ci->texto = dup_str(p, tk->texto);
                 return ci;
             }
             if (checa_op(p, "<")) {
-                /* `<` solto depois de `import` (`import 2 < 3`): não é cabeçalho */
-                perro(p, "import <...> espera o nome do cabeçalho do C, como <stdio.h>", cab);
+                perro(p, "o cabeçalho do C vai entre aspas: import \"stdio.h\"", atual(p));
                 return NULL;
             }
             int aspas = modulo_entre_aspas(p, n);

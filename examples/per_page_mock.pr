@@ -80,7 +80,7 @@ funct SearchInbox(self, data) {
         }), 200
     }
     catch (e) {
-        post(<red>f"Erro interno em SmtpControl.SearchInbox(): {e}")
+        post(<#ff0000>f"Erro interno em SmtpControl.SearchInbox(): {e}")
         return jinker.jsonify({
             "status_code": 500,
             "message": "Server Internal Error!"

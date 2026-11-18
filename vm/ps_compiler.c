@@ -6745,35 +6745,16 @@ static void expr_no_corpo(C *c, Unidade *u, PSNode *n)
         }
 
         case N_COLOR_STR_EXPR: {
-            /* `<red>"txt"` vira UMA constante já com os escapes ANSI: a cor é
-             * conhecida em compilação, então não há o que decidir em runtime.
-             * Hex de 4 ou 5 dígitos e nome desconhecido não são cor — o lexer
-             * já teria voltado o `<` a ser "menor que", então aqui só chega
-             * cor válida. */
-            static const struct { const char *nome, *hex; } CORES[] = {
-                {"red","FF3B30"}, {"green","34C759"}, {"blue","2196F3"},
-                {"yellow","FFD60A"}, {"cyan","5AC8FA"}, {"magenta","FF2D55"},
-                {"white","FFFFFF"}, {"black","000000"}, {"purple","AF52DE"},
-                {"orange","FF9500"}, {"pink","FF2D55"}, {"gray","8E8E93"},
-                {"grey","8E8E93"}, {"lime","30D158"}, {"teal","5AC8FA"},
-            };
+            /* `<#RRGGBB>"txt"` vira UMA constante já com os escapes ANSI: a cor
+             * é conhecida em compilação, então não há o que decidir em runtime.
+             * Só hexadecimal (decisão dele de 2026-11-18): não há lista de
+             * nomes de cor. */
             const char *cor = n->texto ? n->texto : "";
             char hex[7] = {0};
-            for (size_t k = 0; k < sizeof(CORES)/sizeof(CORES[0]); k++) {
-                int igual = 1;
-                for (const char *a = cor, *b = CORES[k].nome; ; a++, b++) {
-                    char ca = (*a >= 'A' && *a <= 'Z') ? (char)(*a + 32) : *a;
-                    if (ca != *b) { igual = 0; break; }
-                    if (!*b) break;
-                }
-                if (igual) { memcpy(hex, CORES[k].hex, 6); break; }
-            }
-            if (!hex[0]) {
-                size_t ln = strlen(cor);
-                if (ln == 6) memcpy(hex, cor, 6);
-                else if (ln == 3) { for (int k = 0; k < 3; k++) { hex[k*2] = cor[k]; hex[k*2+1] = cor[k]; } }
-                else { cerro_sx(c, n, "cor invalida"); return; }
-            }
+            size_t ln = strlen(cor);
+            if (ln == 6) memcpy(hex, cor, 6);
+            else if (ln == 3) { for (int k = 0; k < 3; k++) { hex[k*2] = cor[k]; hex[k*2+1] = cor[k]; } }
+            else { cerro_sx(c, n, "cor invalida: use <#RRGGBB> ou <#RGB>"); return; }
             unsigned r = 0, g = 0, b = 0;
             if (sscanf(hex, "%2x%2x%2x", &r, &g, &b) != 3) { cerro_sx(c, n, "cor invalida"); return; }
 

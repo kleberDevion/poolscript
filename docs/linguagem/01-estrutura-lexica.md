@@ -408,17 +408,17 @@ x = true      # NameError: name 'true' is not defined. Did you mean: 'True'?
 
 ### 1.6.5. Literal de cor — `<cor>"texto"`
 
-Uma sintaxe própria: `<hex>` ou `<nome>` colado numa string produz um token de
-cor (aplicado como sequência ANSI na saída).
+Uma sintaxe própria: `<#hex>` colado numa string produz um token de cor
+(aplicado como sequência ANSI na saída).
 
-- `<hex>` = **3 ou 6** dígitos hexadecimais (como no CSS). 4 ou 5 dígitos **não**
-  são cor válida e o `<...>` volta a ser tratado como operador.
-- `<nome>` = uma das cores nomeadas: `red green blue yellow cyan magenta white
-  black purple orange pink gray/grey lime teal`.
+- `<#hex>` = **3 ou 6** dígitos hexadecimais, com o `#` obrigatório (como no
+  CSS: `<#f00>`, `<#2196F3>`). 4 ou 5 dígitos, ou sem o `#`, **não** são cor
+  válida e o `<...>` volta a ser tratado como operador.
+- Não há cor por nome: `<red>` não é cor.
 
 ```ps
-post(<red>"erro!")
-post(<2196F3>"azul")
+post(<#ff0000>"erro!")
+post(<#2196F3>"azul")
 ```
 
 ### 1.6.6. Coleções

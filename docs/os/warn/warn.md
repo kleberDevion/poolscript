@@ -36,7 +36,7 @@ os.warn("tudo certo", "green")                        # verde
 
 - **`os.warn(text, cor)`** — atalho pra uma mensagem colorida no stderr,
   pensado pra avisos/logs.
-- **`post(<red>"texto")`** — cor inline em qualquer `post`, pra saída normal.
+- **`post(<#ff0000>"texto")`** — cor inline em qualquer `post`, pra saída normal.
 
 Use `os.warn` pra logs de aviso; use `post` com cor pra saída comum colorida.
 
@@ -44,6 +44,6 @@ Use `os.warn` pra logs de aviso; use `post` com cor pra saída comum colorida.
 
 ## Relacionados
 
-- `post` — saída normal (aceita cor inline `<red>"..."`)
+- `post` — saída normal (aceita cor inline `<#ff0000>"..."`)
 - Cores da linguagem — ver a seção de strings coloridas em
   [`../../LANGUAGE.md`](../../LANGUAGE.md)

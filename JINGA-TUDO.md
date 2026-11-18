@@ -267,7 +267,7 @@ O REPL não existe: `jinga repl` responde isso e sugere `-e`.
 - **String**: `"..."` e `'...'` são equivalentes. Multilinha usa `'''...'''` (aspas **simples** triplas, porque `"""` é comentário). Também existem `f"...{x}..."`, `r"..."` (cru), `f'''...'''` e `r'''...'''`.
 - **Escapes**: `\n \t \r \\ \" \' \a \b \f \v \e` (ESC), `\033`, `\xHH`, `\uXXXX`, `\UXXXXXXXX`. Um escape desconhecido mantém a barra e gera `SyntaxWarning` no stderr (o programa roda).
 - **Bytes**: `b"\x89PNG"` é do tipo `byte`. `br"..."` é cru e `b'''...'''` é multilinha. `\u` não vale em bytes.
-- **Cor**: `<red>"texto"`, `<2196f3>"texto"`, `<f00>"texto"` geram ANSI 24-bit e fecham sozinhos. Nomes aceitos: `red green blue yellow cyan magenta white black purple orange pink gray grey lime teal`. Hex de 4 ou 5 dígitos não é cor.
+- **Cor**: `<#ff0000>"texto"`, `<#2196f3>"texto"`, `<#f00>"texto"` geram ANSI 24-bit e fecham sozinhos. É só hexadecimal, com o `#` obrigatório, em 3 ou 6 dígitos: não há cor por nome (`<red>` não é cor).
 - **Booleano**: `True`, `False`. **Nulo**: `Null`. Só essa grafia, a mesma que o motor imprime (desde o 16.2.7); `true`, `false`, `null`, `None` e `none` são nomes comuns, e usar um deles dá `NameError` antes de rodar, com a dica da grafia certa.
 - **Números**: `42`, `3.14`, `1e5` (sempre `flo`). `.5` é erro: o dígito antes do ponto é obrigatório. Um inteiro maior que 64 bits vira bignum automaticamente, e `type()` continua `int`.
 - **Identificador**: `[A-Za-z_][A-Za-z0-9_]*`, **sem acento**. Maiúscula inicial é convenção para classe, lib e tipo de erro. `catch (Tipo e)` e `raise Tipo(...)` exigem maiúscula.
@@ -287,7 +287,7 @@ sql = '''SELECT *
 FROM usuarios'''
 post(sql)
 post(r"C:\temp\novo")
-post(<red>"erro", <2196f3>"azul", "sem cor")
+post(<#ff0000>"erro", <#2196f3>"azul", "sem cor")
 b = b"\x89PNG"
 post(type(b), len(b), b[0])            # byte 4 137
 post(7 // 2, 7 / 2, 2 ** 10, -7 % 3)   # 3 3.5 1024 2

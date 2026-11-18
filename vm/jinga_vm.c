@@ -4795,6 +4795,18 @@ static const char *const NOME_DE_OBJ[OBJ__COUNT] = {
  * vale é o que a doc e o `--metadata` usam. */
 static const char *const NOMES_JREG[] = { "MiddlewareRegistrar", "RouteRegistrar" };
 
+/* A função da biblioteca do C como valor chamável (`printf`, `f = strlen`). */
+static PSCFuncObj *nova_cfunc(VM *vm, int32_t idx)
+{
+    PSCFuncObj *f = calloc(1, sizeof(PSCFuncObj));
+    if (!f) return NULL;
+    f->obj.type = OBJ_CFUNC; f->obj.marked = 0;
+    f->obj.next = vm->objetos; vm->objetos = (Obj *)f;
+    f->idx = idx;
+    vm->alocado += sizeof(PSCFuncObj);
+    return f;
+}
+
 /* ── os nomes da biblioteca do C ────────────────────────────────────────
  * Ligados na carga do programa, como os builtins, e só para os nomes que o
  * arquivo importou (`import <stdio.h>`): o import é obrigatório (decisão
@@ -4842,8 +4854,23 @@ static int c_liga_global(VM *vm, int32_t slot, int32_t idx)
         case PSC_NOME_NULO:
             v = MK_NULL();
             break;
+        case PSC_NOME_FUNCAO:
+        case PSC_NOME_MACRO:
+        case PSC_NOME_LITERAL: {
+            /* a função em si: o valor chamável que `chama_cfunc` chama. As
+             * que a VM faz (atexit, exit, errno) ficam de fora: são nativas. */
+            if (ps_c_marcas(idx) & PSC_MARCA_VM) return 0;
+            PSCFuncObj *f = nova_cfunc(vm, idx);
+            if (!f) {
+                snprintf(vm->erro, sizeof vm->erro, "sem memoria ao ligar %s", ps_c_nome(idx));
+                snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "MemoryError");
+                return -1;
+            }
+            v = MK_OBJ(f);
+            break;
+        }
         default:
-            return 0;      /* função: fica para a parte da chamada */
+            return 0;      /* valor lido na hora: ver ps_c_le_valor */
     }
     if (v.t != V_UNSET) vm->globals[slot] = v;
     return 0;
@@ -5997,6 +6024,7 @@ static int chama_valor_kw(VM *vm, Value fn, Value *args, int n,
 static int chama_valor_modo(VM *vm, Value fn, Value *args, int n,
                             const Value *kw_nomes, const Value *kw_vals, int nkw,
                             int async_no_lugar, Value *out);
+static int chama_cfunc(VM *vm, PSCFuncObj *cf, Value *args, int n, Value *out);
 /* objetos jinker chamáveis (app(), cors()): a linha de cada um na tabela
  * `JK_CHAMAVEIS`, junto da jinker */
 typedef int (*FnMetodoChamavel)(VM *, Value, Value *, int, Value *);
@@ -25997,6 +26025,226 @@ static int instancia_decor(VM *vm, PSClass *cl, Value *out)
     return 0;
 }
 
+/* Chama a função da biblioteca do C (`printf`, `strlen`): converte cada
+ * argumento da Jinga para a memória do C no tipo que o protótipo pede — nas
+ * variádicas, no tipo que o formato do `printf`/`scanf` pede, já promovido
+ * pela regra das variádicas — e chama pela libffi (ps_c_chama). O diagnóstico
+ * do C é do `cc` (decisão 4.0 do plano): a Jinga só diz o que sabe sem rodar.
+ *
+ * Cada argumento escalar vive num buffer de 64 bytes empilhado; as strings são
+ * passadas pelo `chars` delas, que não se move durante a chamada (a string é
+ * imutável e a chamada é síncrona). */
+#define PSC_MAX_ARGS 32
+static int chama_cfunc(VM *vm, PSCFuncObj *cf, Value *args, int n, Value *out)
+{
+    int32_t idx = cf->idx;
+    PSCTipo *ft = ps_c_tipo_de(idx);
+    const char *nome = ps_c_nome(idx);
+    if (!ft || ft->kind != PSC_FUNC)
+    {
+        snprintf(vm->erro, sizeof vm->erro, "%s nao e funcao do C", nome);
+        snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "TypeError");
+        return -1;
+    }
+    if (n > PSC_MAX_ARGS)
+    {
+        snprintf(vm->erro, sizeof vm->erro, "%s: argumentos demais (maximo %d)", nome, PSC_MAX_ARGS);
+        snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "TypeError");
+        return -1;
+    }
+    int variadica = ft->variadica;
+    if (!variadica && n != ft->nparams)
+    {
+        snprintf(vm->erro, sizeof vm->erro,
+                 "%s() takes exactly %d argument%s (%d given)",
+                 nome, ft->nparams, ft->nparams == 1 ? "" : "s", n);
+        snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "TypeError");
+        return -1;
+    }
+    /* variádica: o formato é o último parâmetro fixo, e ele diz o tipo de cada
+     * argumento a mais (a MESMA regra do `--check`: ps_c_formato) */
+    PSCTipo *tvar[PSC_MAX_ARGS];
+    PSCTipo **tipos_var = NULL;
+    if (variadica)
+    {
+        int ifixo = ft->nparams > 0 ? ft->nparams - 1 : 0;
+        if (ifixo >= n || args[ifixo].t != V_OBJ || args[ifixo].as.obj->type != OBJ_STRING)
+        {
+            snprintf(vm->erro, sizeof vm->erro, "%s espera o formato no argumento %d",
+                     nome, ifixo + 1);
+            snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "TypeError");
+            return -1;
+        }
+        const char *fmt = COMO_STRING(args[ifixo])->chars;
+        char conv[PSC_MAX_ARGS][24], erro[256];
+        const char *tipo_erro = NULL;
+        int k = ps_c_formato(nome, fmt, 0, tvar, conv, PSC_MAX_ARGS, erro, sizeof erro, &tipo_erro);
+        if (k < 0)
+        {
+            snprintf(vm->erro, sizeof vm->erro, "%s", erro);
+            snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "%s", tipo_erro ? tipo_erro : "ValueError");
+            return -1;
+        }
+        if (k != n - ft->nparams)
+        {
+            char frase[256];
+            ps_c_frase_formato_conta(frase, sizeof frase, nome, k, n - ft->nparams);
+            snprintf(vm->erro, sizeof vm->erro, "%s", frase);
+            snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "TypeError");
+            return -1;
+        }
+        tipos_var = tvar;
+    }
+
+    unsigned char buf[PSC_MAX_ARGS][64];
+    void *parg[PSC_MAX_ARGS];
+    for (int i = 0; i < n; i++)
+    {
+        PSCTipo *tp = i < ft->nparams ? ft->params[i] : tipos_var[i - ft->nparams];
+        if (!tp) {
+            snprintf(vm->erro, sizeof vm->erro, "%s: tipo do argumento %d desconhecido", nome, i + 1);
+            snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "TypeError");
+            return -1;
+        }
+        memset(buf[i], 0, sizeof buf[i]);
+        parg[i] = buf[i];
+        int eh_str = args[i].t == V_OBJ && args[i].as.obj->type == OBJ_STRING;
+        switch (tp->kind)
+        {
+        case PSC_PONT:
+            /* `char *`/`const char *` e `void *`: a string da Jinga passa
+             * como o `chars` dela (o C lê; escrever nele é assunto do C). A
+             * libffi quer o ENDEREÇO de onde está o ponteiro, não o ponteiro:
+             * ele vai pro buf, e o buf é o argumento. */
+            if (eh_str && tp->alvo && ((tp->alvo->kind == PSC_INT && tp->alvo->eh_char) || tp->alvo->kind == PSC_VOID))
+            {
+                char *ch = COMO_STRING(args[i])->chars;
+                memcpy(buf[i], &ch, sizeof ch);
+                break;
+            }
+            /* `Null` e o NULL do C: ponteiro nulo, que qualquer ponteiro aceita
+             * (`free(Null)`, `fclose(Null)` — o C é que decide o que fazer). */
+            if (args[i].t == V_NULL) break;
+            goto invalido;
+        case PSC_INT:
+            if (args[i].t != V_INT)
+                goto invalido;
+            if (tp->tam == 1)
+            {
+                int8_t x = (int8_t)args[i].as.i;
+                memcpy(buf[i], &x, 1);
+            }
+            else if (tp->tam == 2)
+            {
+                int16_t x = (int16_t)args[i].as.i;
+                memcpy(buf[i], &x, 2);
+            }
+            else if (tp->tam == 4)
+            {
+                int32_t x = (int32_t)args[i].as.i;
+                memcpy(buf[i], &x, 4);
+            }
+            else
+            {
+                int64_t x = args[i].as.i;
+                memcpy(buf[i], &x, 8);
+            }
+            break;
+        case PSC_FLUT:
+            if (args[i].t == V_FLOAT)
+            {
+                double d = args[i].as.d;
+                memcpy(buf[i], &d, sizeof d);
+            }
+            else if (args[i].t == V_INT)
+            {
+                double d = (double)args[i].as.i;
+                memcpy(buf[i], &d, sizeof d);
+            }
+            else
+                goto invalido;
+            break;
+        case PSC_BOOL:
+            if (args[i].t != V_INT)
+                goto invalido;
+            {
+                int8_t x = args[i].as.i ? 1 : 0;
+                memcpy(buf[i], &x, 1);
+            }
+            break;
+        default:
+            goto invalido;
+        }
+        continue;
+    invalido:
+        snprintf(vm->erro, sizeof vm->erro, "%s: argumento %d sem conversao para %s",
+                 nome, i + 1, tp->nome ? tp->nome : "?");
+        snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "TypeError");
+        return -1;
+    }
+
+    void (*f)(void) = ps_c_endereco(idx);
+    if (!f)
+    {
+        snprintf(vm->erro, sizeof vm->erro, "%s nao esta no sistema", nome);
+        snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "RuntimeError");
+        return -1;
+    }
+    unsigned char ret[64];
+    memset(ret, 0, sizeof ret);
+    if (ps_c_chama(f, ft, parg, n, tipos_var, ret) != 0)
+    {
+        snprintf(vm->erro, sizeof vm->erro, "%s: a libffi recusou a chamada", nome);
+        snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "TypeError");
+        return -1;
+    }
+    PSCTipo *r = ft->ret;
+    if (!r || r->kind == PSC_VOID)
+    {
+        *out = MK_NULL();
+        return 0;
+    }
+    if (r->kind == PSC_INT)
+    {
+        *out = r->sem_sinal ? MK_INT((int64_t)ps_c_ret_uint(r, ret)) : MK_INT(ps_c_ret_int(r, ret));
+        return 0;
+    }
+    if (r->kind == PSC_FLUT)
+    {
+        double d = 0;
+        if (r->tam >= 8)
+            memcpy(&d, ret, sizeof d);
+        else if (r->tam == 4)
+        {
+            float x = 0;
+            memcpy(&x, ret, sizeof x);
+            d = (double)x;
+        }
+        *out = MK_FLOAT(d);
+        return 0;
+    }
+    if (r->kind == PSC_PONT && r->alvo && r->alvo->kind == PSC_INT && r->alvo->eh_char)
+    {
+        char *s = NULL;
+        memcpy(&s, ret, sizeof s);
+        if (!s)
+        {
+            *out = MK_NULL();
+            return 0;
+        }
+        PSString *ps = nova_string(vm, s, (int)strlen(s));
+        if (!ps)
+        {
+            snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "MemoryError");
+            return -1;
+        }
+        *out = MK_OBJ(ps);
+        return 0;
+    }
+    *out = MK_INT(ps_c_ret_int(&ps_c_int, ret));
+    return 0;
+}
+
 /* Chamada vinda do C com posicionais E nomeados (`kw_nomes`/`kw_vals`, nkw).
  * Nomeado só existe pra quem tem proto — nativa e tipo não recebem nome.
  * `async_no_lugar`: ver `chamada_sem_frame`. */
@@ -26014,6 +26262,7 @@ static int chama_valor_modo(VM *vm, Value fn, Value *args, int n,
         return -1;
     }
     if (fn.t == V_NATIVE) return BUILTINS[fn.as.nativa].fn(vm, args, n, out);
+    if (EH_CFUNC(fn)) return chama_cfunc(vm, COMO_CFUNC(fn), args, n, out);
     if (EH_NATIVA(fn)) return COMO_NATIVA(fn)->fn(vm, args, n, out);
     if (EH_METNAT(fn)) {
         PSMetodoNat *m = COMO_METNAT(fn);
@@ -28264,6 +28513,20 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (checa_aridade_nat(vm, &TABELAS[m->tabela][m->idx], n) != 0) goto erro_runtime;
                 int rc_m; REANCORA(rc_m = TABELAS[m->tabela][m->idx].fn(vm, m->alvo, &stack[sp - n], n, &rv));
                 if (rc_m != 0) {
+                    if (!vm->erro_tipo[0])
+                        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+                    goto erro_runtime;
+                }
+                sp = sp - n - 1;
+                stack[sp++] = rv;
+            } else if (EH_CFUNC(alvo)) {
+                /* função da biblioteca padrão do C (`printf`): chama pela
+                 * libffi, com os argumentos convertidos no tipo do C */
+                vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
+                vm->erro_tipo[0] = '\0';
+                Value rv;
+                int rc_c; REANCORA(rc_c = chama_cfunc(vm, COMO_CFUNC(alvo), &stack[sp - n], n, &rv));
+                if (rc_c != 0) {
                     if (!vm->erro_tipo[0])
                         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
                     goto erro_runtime;

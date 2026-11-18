@@ -9,39 +9,39 @@ Verificado na VM (bytes de saída conferidos).
 
 ---
 
-## 13.1. Literal de cor — `<cor>"texto"`
+## 13.1. Literal de cor — `<#cor>"texto"`
 
 Colar uma cor entre `< >` imediatamente antes de uma string tinge **aquela
 string**:
 
 ```ps
-post(<red>"erro!")
-post(<2196F3>"azul em hex")
+post(<#ff0000>"erro!")
+post(<#2196F3>"azul em hex")
 ```
 
-A cor pode ser:
+A cor é **só hexadecimal**, com o `#` obrigatório (o mesmo do CSS):
 
-- **um nome** (ver a tabela em 13.2): `<red>`, `<blue>`, …
-- **hex de 6 dígitos** (como no CSS): `<2196F3>`
-- **hex de 3 dígitos** (expandido, como no CSS `#f00` → `#ff0000`): `<f00>`
+- **hex de 6 dígitos**: `<#2196F3>`
+- **hex de 3 dígitos** (expandido, `<#f00>` → `<#ff0000>`)
 
-4 ou 5 dígitos hex **não** são cor válida (aí o `<…>` volta a ser tratado como
-operador de comparação).
+Não há nome de cor: `<red>` **não** é cor, e o motor recusa a expressão. Um `<…>`
+que não seja `#` seguido de 3 ou 6 dígitos hexadecimais volta a ser o operador
+de comparação `<`.
 
 ### Como funciona
 
 O literal vira uma sequência ANSI **de cor real (24-bit / truecolor)**: emite o
-código da cor, o texto, e um **reset** logo depois. Ou seja, `<red>"X"` produz
-exatamente:
+código da cor, o texto, e um **reset** logo depois. Ou seja, `<#ff0000>"X"`
+produz exatamente:
 
 ```texto
-\e[38;2;255;59;48m  X  \e[0m
+\e[38;2;255;0;0m  X  \e[0m
 ```
 
 Consequências práticas:
 
 - **Auto-fecha**: a cor vale só para aquela string e **não vaza** para o resto.
-  `post(<red>"erro", "normal")` sai com `erro` vermelho e `normal` na cor
+  `post(<#ff0000>"erro", "normal")` sai com `erro` vermelho e `normal` na cor
   padrão.
 - É **cor de texto (primeiro plano)** apenas. Fundo e estilos (negrito etc.)
   são via ANSI manual (13.3).
@@ -50,20 +50,21 @@ Consequências práticas:
 
 ---
 
-## 13.2. Cores nomeadas
+## 13.2. Cores de antes, em hex
 
-| Nome | Hex | | Nome | Hex |
+Os nomes que a linguagem aceitava viraram hex. É só copiar a coluna:
+
+| antes | agora | | antes | agora |
 |---|---|---|---|---|
-| `red` | `FF3B30` | | `orange` | `FF9500` |
-| `green` | `34C759` | | `purple` | `AF52DE` |
-| `blue` | `2196F3` | | `pink` | `FF2D55` |
-| `yellow` | `FFD60A` | | `gray` / `grey` | `8E8E93` |
-| `cyan` | `5AC8FA` | | `lime` | `30D158` |
-| `magenta` | `FF2D55` | | `teal` | `5AC8FA` |
-| `white` | `FFFFFF` | | `black` | `000000` |
+| `red` | `<#FF3B30>` | | `orange` | `<#FF9500>` |
+| `green` | `<#34C759>` | | `purple` | `<#AF52DE>` |
+| `blue` | `<#2196F3>` | | `pink` | `<#FF2D55>` |
+| `yellow` | `<#FFD60A>` | | `gray` / `grey` | `<#8E8E93>` |
+| `cyan` | `<#5AC8FA>` | | `lime` | `<#30D158>` |
+| `magenta` | `<#FF2D55>` | | `teal` | `<#5AC8FA>` |
+| `white` | `<#FFFFFF>` | | `black` | `<#000000>` |
 
-(`gray` e `grey` são o mesmo; `pink` coincide com `magenta`, e `teal` com
-`cyan`.) Para qualquer outra cor, use o hex direto: `<hexde6>"…"`.
+Para qualquer outra cor, use o hex dela: `<#RRGGBB>"…"`.
 
 ---
 
