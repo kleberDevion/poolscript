@@ -554,6 +554,67 @@ static int corpo_depois_dos_parenteses(P *p, int j)
 
 static PSNode *expressao(P *p);
 
+/* `struct nome { ... }` e `union nome { ... }` — a declaração de TIPO do C
+ * dentro do programa. Os campos são declarações do C separadas por `;`, e o
+ * tipo é registrado com `ps_c_struct_abre`/`ps_c_struct_fecha` (o motor do C
+ * que já calcula tamanho, alinhamento e deslocamento pela regra da libffi).
+ * Vale como declaração só no topo do arquivo, como no C.
+ *
+ * Devolve o nó (N_C_DECL, com o texto da declaração), ou NULL se não é
+ * struct/union do C. */
+static PSNode *declaracao_c_struct(P *p)
+{
+    PSToken *t0 = espia(p, 0);
+    if (!t0->texto || strcmp(t0->texto, "struct") != 0 && strcmp(t0->texto, "union") != 0)
+        return NULL;
+    int eh_union = strcmp(t0->texto, "union") == 0;
+    int j = 1;
+    PSToken *etq = espia(p, j);
+    if (etq->type != T_IDENT || !etq->texto) return NULL;
+    j++;
+    if (espia(p, j)->type != T_LBRACE) return NULL;   /* só o uso do tipo */
+    j++;
+    /* os campos, até o `}` */
+    char campos[1024];
+    size_t w = 0;
+    int prof = 1;
+    for (; ; j++) {
+        PSToken *q = espia(p, j);
+        if (q->type == T_EOF) return NULL;
+        if (q->type == T_LBRACE) prof++;
+        else if (q->type == T_RBRACE) { if (--prof == 0) { j++; break; } }
+        if (q->type == T_NEWLINE) continue;
+        int n2 = snprintf(campos + w, sizeof campos - w, "%s%s", w ? " " : "",
+                          q->texto ? q->texto : "");
+        if (n2 < 0 || (size_t)n2 >= sizeof campos - w) return NULL;
+        w += (size_t)n2;
+    }
+    char etiqueta[160];
+    snprintf(etiqueta, sizeof etiqueta, "%s %s", eh_union ? "union" : "struct", etq->texto);
+    char erro[256];
+    PSCTipo *tp = ps_c_struct_abre(etiqueta, eh_union, erro, sizeof erro);
+    if (!tp) {
+        char m[320];
+        snprintf(m, sizeof m, "%s", erro);
+        perro(p, m, etq);
+        return NULL;
+    }
+    if (ps_c_struct_fecha(tp, campos, erro, sizeof erro) != 0) {
+        char m[320];
+        snprintf(m, sizeof m, "%s", erro);
+        perro(p, m, etq);
+        return NULL;
+    }
+    int32_t l0 = t0->line, c0 = t0->col;
+    p->pos += (size_t)j;
+    if (checa(p, T_SEMI)) p->pos++;
+    PSNode *n = ps_node_novo(p->arena, N_C_TIPO_DECL, l0, c0);
+    if (!n) return NULL;
+    n->texto = dup_str(p, etiqueta);
+    n->texto2 = dup_str(p, campos);
+    return n;
+}
+
 /* Declaração de variável na FORMA do C (`const char *cu = "siu"`, `int n`,
  * `size_t tam`): o tipo do C na frente do nome, e o `=` com o valor. A
  * declaração é lida por `ps_c_le_decl` (a mesma do C), e vira a variável
@@ -5284,6 +5345,13 @@ static PSNode *statement_no(P *p)
         {
             PSNode *ac = assinatura_c(p);
             if (ac) return ac;
+            if (FALHOU(p)) return NULL;
+        }
+
+        /* `struct nome { ... }` / `union nome { ... }` do C */
+        {
+            PSNode *sd = declaracao_c_struct(p);
+            if (sd) return sd;
             if (FALHOU(p)) return NULL;
         }
 

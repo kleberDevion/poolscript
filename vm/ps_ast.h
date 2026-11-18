@@ -105,7 +105,10 @@ typedef enum {
     N_C_DECL,
     /* CAST do C (`(char)65`, `(int)x`): a = o valor, texto = o tipo do C.
      * O compilador converte para o tipo no momento de emitir. */
-    N_CAST_EXPR
+    N_CAST_EXPR,
+    /* `struct nome { ... }` / `union nome { ... }` do C: declara o TIPO (nada
+     * a emitir; o tipo já foi registrado no ps_c.c pelo parser). */
+    N_C_TIPO_DECL
 } PSNodeKind;
 
 /* Qual campo do literal vale */
