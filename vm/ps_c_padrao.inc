@@ -3,7 +3,7 @@
  * Incluído só por vm/ps_c.c, que define os tipos das tabelas e o PS_C_TIPO. */
 
 #define PS_C_NCAB 13
-#define PS_C_NNOMES 735
+#define PS_C_NNOMES 685
 
 static const char PS_C_TEXTO[] =
     "\0"
@@ -134,8 +134,6 @@ static const char PS_C_TEXTO[] =
     "LONG_MAX\0"
     "LONG_MIN\0"
     "L_tmpnam\0"
-    "L_tmpnam_s\0"
-    "é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS\0"
     "MATH_ERREXCEPT\0"
     "MATH_ERRNO\0"
     "MB_CUR_MAX\0"
@@ -230,7 +228,6 @@ static const char PS_C_TEXTO[] =
     "PTRDIFF_MAX\0"
     "PTRDIFF_MIN\0"
     "RAND_MAX\0"
-    "RSIZE_MAX\0"
     "SCHAR_MAX\0"
     "SCHAR_MIN\0"
     "SCNd16\0"
@@ -313,7 +310,6 @@ static const char PS_C_TEXTO[] =
     "SIZE_MAX\0"
     "TIME_UTC\0"
     "TMP_MAX\0"
-    "TMP_MAX_S\0"
     "UCHAR_MAX\0"
     "UINT16_C\0"
     "int UINT16_C(int value)\0"
@@ -352,11 +348,9 @@ static const char PS_C_TEXTO[] =
     "_IOFBF\0"
     "_IOLBF\0"
     "_IONBF\0"
-    "__STDC_WANT_LIB_EXT1__\0"
     "__bool_true_false_are_defined\0"
     "abort\0"
     "_Noreturn void abort(void)\0"
-    "abort_handler_s\0"
     "abs\0"
     "int abs(int j)\0"
     "acos\0"
@@ -375,7 +369,6 @@ static const char PS_C_TEXTO[] =
     "void *aligned_alloc(size_t alignment, size_t size)\0"
     "asctime\0"
     "char *asctime(const struct tm *timeptr)\0"
-    "asctime_s\0"
     "asin\0"
     "double asin(double x)\0"
     "asinf\0"
@@ -421,7 +414,6 @@ static const char PS_C_TEXTO[] =
     "bool\0"
     "bsearch\0"
     "void *bsearch(const void *key, const void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *))\0"
-    "bsearch_s\0"
     "calloc\0"
     "void *calloc(size_t nmemb, size_t size)\0"
     "cbrt\0"
@@ -441,7 +433,6 @@ static const char PS_C_TEXTO[] =
     "clock\0"
     "clock_t clock(void)\0"
     "clock_t\0"
-    "constraint_handler_t\0"
     "copysign\0"
     "double copysign(double x, double y)\0"
     "copysignf\0"
@@ -462,7 +453,6 @@ static const char PS_C_TEXTO[] =
     "long double cosl(long double x)\0"
     "ctime\0"
     "char *ctime(const time_t *timer)\0"
-    "ctime_s\0"
     "difftime\0"
     "double difftime(time_t time1, time_t time0)\0"
     "div\0"
@@ -487,7 +477,6 @@ static const char PS_C_TEXTO[] =
     "long double erfl(long double x)\0"
     "errno\0"
     "int errno\0"
-    "errno_t\0"
     "exit\0"
     "_Noreturn void exit(int status)\0"
     "exp\0"
@@ -567,13 +556,11 @@ static const char PS_C_TEXTO[] =
     "long double fmodl(long double x, long double y)\0"
     "fopen\0"
     "FILE *fopen(const char * restrict filename, const char * restrict mode)\0"
-    "fopen_s\0"
     "fpclassify\0"
     "int fpclassify(double x)\0"
     "fpos_t\0"
     "fprintf\0"
     "int fprintf(FILE * restrict stream, const char * restrict format, ...)\0"
-    "fprintf_s\0"
     "fputc\0"
     "int fputc(int c, FILE *stream)\0"
     "fputs\0"
@@ -584,7 +571,6 @@ static const char PS_C_TEXTO[] =
     "void free(void *ptr)\0"
     "freopen\0"
     "FILE *freopen(const char * restrict filename, const char * restrict mode, FILE * restrict stream)\0"
-    "freopen_s\0"
     "frexp\0"
     "double frexp(double value, int *exp)\0"
     "frexpf\0"
@@ -594,7 +580,6 @@ static const char PS_C_TEXTO[] =
     "fscanf\0"
     "int fscanf(FILE * restrict stream, const char * restrict format, ...)\0"
     "__isoc99_fscanf\0"
-    "fscanf_s\0"
     "fseek\0"
     "int fseek(FILE *stream, long int offset, int whence)\0"
     "fsetpos\0"
@@ -609,20 +594,14 @@ static const char PS_C_TEXTO[] =
     "int getchar(void)\0"
     "getenv\0"
     "char *getenv(const char *name)\0"
-    "getenv_s\0"
-    "gets\0"
-    "saiu do C11, porque lia sem limite e passava do fim do buffer; use fgets\0"
-    "gets_s\0"
     "gmtime\0"
     "struct tm *gmtime(const time_t *timer)\0"
-    "gmtime_s\0"
     "hypot\0"
     "double hypot(double x, double y)\0"
     "hypotf\0"
     "float hypotf(float x, float y)\0"
     "hypotl\0"
     "long double hypotl(long double x, long double y)\0"
-    "ignore_handler_s\0"
     "ilogb\0"
     "int ilogb(double x)\0"
     "ilogbf\0"
@@ -734,7 +713,6 @@ static const char PS_C_TEXTO[] =
     "long long int llroundl(long double x)\0"
     "localtime\0"
     "struct tm *localtime(const time_t *timer)\0"
-    "localtime_s\0"
     "log\0"
     "double log(double x)\0"
     "log10\0"
@@ -786,7 +764,6 @@ static const char PS_C_TEXTO[] =
     "int mblen(const char *s, size_t n)\0"
     "mbstowcs\0"
     "size_t mbstowcs(wchar_t * restrict pwcs, const char * restrict s, size_t n)\0"
-    "mbstowcs_s\0"
     "mbtowc\0"
     "int mbtowc(wchar_t * restrict pwc, const char * restrict s, size_t n)\0"
     "memchr\0"
@@ -795,13 +772,10 @@ static const char PS_C_TEXTO[] =
     "int memcmp(const void *s1, const void *s2, size_t n)\0"
     "memcpy\0"
     "void *memcpy(void * restrict s1, const void * restrict s2, size_t n)\0"
-    "memcpy_s\0"
     "memmove\0"
     "void *memmove(void *s1, const void *s2, size_t n)\0"
-    "memmove_s\0"
     "memset\0"
     "void *memset(void *s, int c, size_t n)\0"
-    "memset_s\0"
     "mktime\0"
     "time_t mktime(struct tm *timeptr)\0"
     "modf\0"
@@ -846,7 +820,6 @@ static const char PS_C_TEXTO[] =
     "long double powl(long double x, long double y)\0"
     "printf\0"
     "int printf(const char * restrict format, ...)\0"
-    "printf_s\0"
     "ptrdiff_t\0"
     "putc\0"
     "int putc(int c, FILE *stream)\0"
@@ -856,7 +829,6 @@ static const char PS_C_TEXTO[] =
     "int puts(const char *s)\0"
     "qsort\0"
     "void qsort(void *base, size_t nmemb, size_t size, int (*compar)(const void *, const void *))\0"
-    "qsort_s\0"
     "quick_exit\0"
     "_Noreturn void quick_exit(int status)\0"
     "rand\0"
@@ -893,7 +865,6 @@ static const char PS_C_TEXTO[] =
     "float roundf(float x)\0"
     "roundl\0"
     "long double roundl(long double x)\0"
-    "rsize_t\0"
     "scalbln\0"
     "double scalbln(double x, long int n)\0"
     "scalblnf\0"
@@ -909,8 +880,6 @@ static const char PS_C_TEXTO[] =
     "scanf\0"
     "int scanf(const char * restrict format, ...)\0"
     "__isoc99_scanf\0"
-    "scanf_s\0"
-    "set_constraint_handler_s\0"
     "setbuf\0"
     "void setbuf(FILE * restrict stream, char * restrict buf)\0"
     "setvbuf\0"
@@ -932,10 +901,8 @@ static const char PS_C_TEXTO[] =
     "size_t\0"
     "snprintf\0"
     "int snprintf(char * restrict s, size_t n, const char * restrict format, ...)\0"
-    "snprintf_s\0"
     "sprintf\0"
     "int sprintf(char * restrict s, const char * restrict format, ...)\0"
-    "sprintf_s\0"
     "sqrt\0"
     "double sqrt(double x)\0"
     "sqrtf\0"
@@ -947,7 +914,6 @@ static const char PS_C_TEXTO[] =
     "sscanf\0"
     "int sscanf(const char * restrict s, const char * restrict format, ...)\0"
     "__isoc99_sscanf\0"
-    "sscanf_s\0"
     "stderr\0"
     "FILE *stderr\0"
     "stdin\0"
@@ -956,7 +922,6 @@ static const char PS_C_TEXTO[] =
     "FILE *stdout\0"
     "strcat\0"
     "char *strcat(char * restrict s1, const char * restrict s2)\0"
-    "strcat_s\0"
     "strchr\0"
     "char *strchr(const char *s, int c)\0"
     "strcmp\0"
@@ -965,26 +930,20 @@ static const char PS_C_TEXTO[] =
     "int strcoll(const char *s1, const char *s2)\0"
     "strcpy\0"
     "char *strcpy(char * restrict s1, const char * restrict s2)\0"
-    "strcpy_s\0"
     "strcspn\0"
     "size_t strcspn(const char *s1, const char *s2)\0"
     "strerror\0"
     "char *strerror(int errnum)\0"
-    "strerror_s\0"
-    "strerrorlen_s\0"
     "strftime\0"
     "size_t strftime(char * restrict s, size_t maxsize, const char * restrict format, const struct tm * restrict timeptr)\0"
     "strlen\0"
     "size_t strlen(const char *s)\0"
     "strncat\0"
     "char *strncat(char * restrict s1, const char * restrict s2, size_t n)\0"
-    "strncat_s\0"
     "strncmp\0"
     "int strncmp(const char *s1, const char *s2, size_t n)\0"
     "strncpy\0"
     "char *strncpy(char * restrict s1, const char * restrict s2, size_t n)\0"
-    "strncpy_s\0"
-    "strnlen_s\0"
     "strpbrk\0"
     "char *strpbrk(const char *s1, const char *s2)\0"
     "strrchr\0"
@@ -1001,7 +960,6 @@ static const char PS_C_TEXTO[] =
     "intmax_t strtoimax(const char * restrict nptr, char ** restrict endptr, int base)\0"
     "strtok\0"
     "char *strtok(char * restrict s1, const char * restrict s2)\0"
-    "strtok_s\0"
     "strtol\0"
     "long int strtol(const char * restrict nptr, char ** restrict endptr, int base)\0"
     "strtold\0"
@@ -1067,10 +1025,8 @@ static const char PS_C_TEXTO[] =
     "int timespec_get(struct timespec *ts, int base)\0"
     "tmpfile\0"
     "FILE *tmpfile(void)\0"
-    "tmpfile_s\0"
     "tmpnam\0"
     "char *tmpnam(char *s)\0"
-    "tmpnam_s\0"
     "tolower\0"
     "int tolower(int c)\0"
     "toupper\0"
@@ -1097,32 +1053,33 @@ static const char PS_C_TEXTO[] =
     "uintptr_t\0"
     "ungetc\0"
     "int ungetc(int c, FILE *stream)\0"
+    "va_list\0"
     "vfprintf\0"
-    "o va_list só existe dentro de uma função variádica do C\0"
-    "vfprintf_s\0"
+    "int vfprintf(FILE * restrict stream, const char * restrict format, va_list arg)\0"
     "vfscanf\0"
-    "vfscanf_s\0"
+    "int vfscanf(FILE * restrict stream, const char * restrict format, va_list arg)\0"
+    "__isoc99_vfscanf\0"
     "vprintf\0"
-    "vprintf_s\0"
+    "int vprintf(const char * restrict format, va_list arg)\0"
     "vscanf\0"
-    "vscanf_s\0"
+    "int vscanf(const char * restrict format, va_list arg)\0"
+    "__isoc99_vscanf\0"
     "vsnprintf\0"
-    "vsnprintf_s\0"
+    "int vsnprintf(char * restrict s, size_t n, const char * restrict format, va_list arg)\0"
     "vsprintf\0"
-    "vsprintf_s\0"
+    "int vsprintf(char * restrict s, const char * restrict format, va_list arg)\0"
     "vsscanf\0"
-    "vsscanf_s\0"
+    "int vsscanf(const char * restrict s, const char * restrict format, va_list arg)\0"
+    "__isoc99_vsscanf\0"
     "wchar_t\0"
     "wcstoimax\0"
     "intmax_t wcstoimax(const wchar_t * restrict nptr, wchar_t ** restrict endptr, int base)\0"
     "wcstombs\0"
     "size_t wcstombs(char * restrict s, const wchar_t * restrict pwcs, size_t n)\0"
-    "wcstombs_s\0"
     "wcstoumax\0"
     "uintmax_t wcstoumax(const wchar_t * restrict nptr, wchar_t ** restrict endptr, int base)\0"
     "wctomb\0"
-    "int wctomb(char *s, wchar_t wchar)\0"
-    "wctomb_s\0";
+    "int wctomb(char *s, wchar_t wchar)\0";
 
 /* os cabeçalhos, na ordem do .decl: o `cab` de cada nome */
 static const uint16_t PS_C_CAB[PS_C_NCAB] = { 1, 9, 17, 25, 36, 45, 52, 62, 71, 80, 88, 97, 106 };
@@ -1130,8 +1087,7 @@ static const uint16_t PS_C_CAB[PS_C_NCAB] = { 1, 9, 17, 25, 36, 45, 52, 62, 71, 
 /* ── o import (`import <stdio.h>`) ─────────────────────────────────────────
  * PS_C_TAMBEM: o nome e os outros cabeçalhos com que ele vale, separados por
  * espaço (os nomes que o C11 declara em mais de um cabeçalho). PS_C_INCLUI:
- * o cabeçalho e o que ele traz. PS_C_CAB_FORA: o cabeçalho do C11 que a
- * Jinga não tem e o motivo. */
+ * o cabeçalho e o que ele traz. */
 static const char PS_C_TAMBEM[] =
     "NULL\0locale.h stdio.h stdlib.h string.h time.h wchar.h\0"
     "size_t\0stdio.h stdlib.h string.h time.h uchar.h wchar.h\0"
@@ -1141,24 +1097,6 @@ static const char PS_C_TAMBEM[] =
     "";
 static const char PS_C_INCLUI[] =
     "inttypes.h\0stdint.h\0"
-    "";
-static const char PS_C_CAB_FORA[] =
-    "setjmp.h\0pular por cima da VM corrompe a VM; a Jinga tem try/catch\0"
-    "stdarg.h\0o va_list só existe dentro de uma função variádica do C\0"
-    "threads.h\0a VM roda numa thread só, e funct da Jinga em outra thread corrompe a VM\0"
-    "stdatomic.h\0a VM roda numa thread só, e funct da Jinga em outra thread corrompe a VM\0"
-    "assert.h\0o assert da Jinga faz esse papel (levanta AssertionError com a linha)\0"
-    "iso646.h\0são outros nomes pros operadores (bitand, xor, not_eq...), gramática e não biblioteca; o and, o or e o not a Jinga já tem\0"
-    "stdalign.h\0são palavras da gramática do C (alignas, noreturn), não biblioteca\0"
-    "stdnoreturn.h\0são palavras da gramática do C (alignas, noreturn), não biblioteca\0"
-    "signal.h\0ainda não está na Jinga (é a segunda parte da biblioteca do C)\0"
-    "locale.h\0ainda não está na Jinga (é a segunda parte da biblioteca do C)\0"
-    "wchar.h\0ainda não está na Jinga (é a segunda parte da biblioteca do C)\0"
-    "wctype.h\0ainda não está na Jinga (é a segunda parte da biblioteca do C)\0"
-    "uchar.h\0ainda não está na Jinga (é a segunda parte da biblioteca do C)\0"
-    "fenv.h\0ainda não está na Jinga (é a segunda parte da biblioteca do C)\0"
-    "complex.h\0ainda não está na Jinga (é a segunda parte da biblioteca do C)\0"
-    "tgmath.h\0ainda não está na Jinga (é a segunda parte da biblioteca do C)\0"
     "";
 
 /* Os nomes em ordem de strcmp: a busca é binária. Os números são posições
@@ -1273,633 +1211,583 @@ static const PSCNome PS_C_NOMES[PS_C_NNOMES] = {
     { 1514, 0, 79, 0, 4, PSC_NOME_CONST, 0 },  /* LONG_MAX */
     { 1523, 0, 80, 0, 4, PSC_NOME_CONST, 0 },  /* LONG_MIN */
     { 1532, 0, 81, 0, 9, PSC_NOME_CONST, 0 },  /* L_tmpnam */
-    { 1541, 1552, 0, 0, 9, PSC_NOME_FORA, 0 },  /* L_tmpnam_s */
-    { 1626, 0, 82, 0, 5, PSC_NOME_CONST, 0 },  /* MATH_ERREXCEPT */
-    { 1641, 0, 83, 0, 5, PSC_NOME_CONST, 0 },  /* MATH_ERRNO */
-    { 1652, 1663, 1, 0, 10, PSC_NOME_VALOR, 0 },  /* MB_CUR_MAX */
-    { 1681, 0, 84, 0, 4, PSC_NOME_CONST, 0 },  /* MB_LEN_MAX */
-    { 1692, 0, 16, 0, 5, PSC_NOME_CONSTFLO, 0 },  /* NAN */
-    { 1696, 0, 0, 0, 7, PSC_NOME_NULO, 0 },  /* NULL */
-    { 1701, 0, 0, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIX16 */
-    { 1708, 0, 1, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIX32 */
-    { 1715, 0, 2, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIX64 */
-    { 1722, 0, 3, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIX8 */
-    { 1728, 0, 4, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXFAST16 */
-    { 1739, 0, 5, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXFAST32 */
-    { 1750, 0, 6, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXFAST64 */
-    { 1761, 0, 7, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXFAST8 */
-    { 1771, 0, 8, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXLEAST16 */
-    { 1783, 0, 9, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXLEAST32 */
-    { 1795, 0, 10, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXLEAST64 */
-    { 1807, 0, 11, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXLEAST8 */
-    { 1818, 0, 12, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXMAX */
-    { 1826, 0, 13, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXPTR */
-    { 1834, 0, 14, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRId16 */
-    { 1841, 0, 15, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRId32 */
-    { 1848, 0, 16, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRId64 */
-    { 1855, 0, 17, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRId8 */
-    { 1861, 0, 18, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdFAST16 */
-    { 1872, 0, 19, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdFAST32 */
-    { 1883, 0, 20, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdFAST64 */
-    { 1894, 0, 21, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdFAST8 */
-    { 1904, 0, 22, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdLEAST16 */
-    { 1916, 0, 23, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdLEAST32 */
-    { 1928, 0, 24, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdLEAST64 */
-    { 1940, 0, 25, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdLEAST8 */
-    { 1951, 0, 26, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdMAX */
-    { 1959, 0, 27, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdPTR */
-    { 1967, 0, 28, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIi16 */
-    { 1974, 0, 29, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIi32 */
-    { 1981, 0, 30, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIi64 */
-    { 1988, 0, 31, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIi8 */
-    { 1994, 0, 32, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiFAST16 */
-    { 2005, 0, 33, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiFAST32 */
-    { 2016, 0, 34, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiFAST64 */
-    { 2027, 0, 35, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiFAST8 */
-    { 2037, 0, 36, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiLEAST16 */
-    { 2049, 0, 37, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiLEAST32 */
-    { 2061, 0, 38, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiLEAST64 */
-    { 2073, 0, 39, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiLEAST8 */
-    { 2084, 0, 40, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiMAX */
-    { 2092, 0, 41, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiPTR */
-    { 2100, 0, 42, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIo16 */
-    { 2107, 0, 43, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIo32 */
-    { 2114, 0, 44, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIo64 */
-    { 2121, 0, 45, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIo8 */
-    { 2127, 0, 46, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoFAST16 */
-    { 2138, 0, 47, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoFAST32 */
-    { 2149, 0, 48, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoFAST64 */
-    { 2160, 0, 49, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoFAST8 */
-    { 2170, 0, 50, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoLEAST16 */
-    { 2182, 0, 51, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoLEAST32 */
-    { 2194, 0, 52, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoLEAST64 */
-    { 2206, 0, 53, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoLEAST8 */
-    { 2217, 0, 54, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoMAX */
-    { 2225, 0, 55, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoPTR */
-    { 2233, 0, 56, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIu16 */
-    { 2240, 0, 57, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIu32 */
-    { 2247, 0, 58, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIu64 */
-    { 2254, 0, 59, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIu8 */
-    { 2260, 0, 60, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuFAST16 */
-    { 2271, 0, 61, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuFAST32 */
-    { 2282, 0, 62, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuFAST64 */
-    { 2293, 0, 63, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuFAST8 */
-    { 2303, 0, 64, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuLEAST16 */
-    { 2315, 0, 65, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuLEAST32 */
-    { 2327, 0, 66, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuLEAST64 */
-    { 2339, 0, 67, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuLEAST8 */
-    { 2350, 0, 68, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuMAX */
-    { 2358, 0, 69, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuPTR */
-    { 2366, 0, 70, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIx16 */
-    { 2373, 0, 71, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIx32 */
-    { 2380, 0, 72, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIx64 */
-    { 2387, 0, 73, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIx8 */
-    { 2393, 0, 74, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxFAST16 */
-    { 2404, 0, 75, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxFAST32 */
-    { 2415, 0, 76, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxFAST64 */
-    { 2426, 0, 77, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxFAST8 */
-    { 2436, 0, 78, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxLEAST16 */
-    { 2448, 0, 79, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxLEAST32 */
-    { 2460, 0, 80, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxLEAST64 */
-    { 2472, 0, 81, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxLEAST8 */
-    { 2483, 0, 82, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxMAX */
-    { 2491, 0, 83, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxPTR */
-    { 2499, 0, 85, 0, 8, PSC_NOME_CONST, 0 },  /* PTRDIFF_MAX */
-    { 2511, 0, 86, 0, 8, PSC_NOME_CONST, 0 },  /* PTRDIFF_MIN */
-    { 2523, 0, 87, 0, 10, PSC_NOME_CONST, 0 },  /* RAND_MAX */
-    { 2532, 1552, 1, 0, 8, PSC_NOME_FORA, 0 },  /* RSIZE_MAX */
-    { 2542, 0, 88, 0, 4, PSC_NOME_CONST, 0 },  /* SCHAR_MAX */
-    { 2552, 0, 89, 0, 4, PSC_NOME_CONST, 0 },  /* SCHAR_MIN */
-    { 2562, 0, 84, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNd16 */
-    { 2569, 0, 85, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNd32 */
-    { 2576, 0, 86, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNd64 */
-    { 2583, 0, 87, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNd8 */
-    { 2589, 0, 88, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdFAST16 */
-    { 2600, 0, 89, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdFAST32 */
-    { 2611, 0, 90, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdFAST64 */
-    { 2622, 0, 91, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdFAST8 */
-    { 2632, 0, 92, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdLEAST16 */
-    { 2644, 0, 93, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdLEAST32 */
-    { 2656, 0, 94, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdLEAST64 */
-    { 2668, 0, 95, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdLEAST8 */
-    { 2679, 0, 96, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdMAX */
-    { 2687, 0, 97, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdPTR */
-    { 2695, 0, 98, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNi16 */
-    { 2702, 0, 99, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNi32 */
-    { 2709, 0, 100, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNi64 */
-    { 2716, 0, 101, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNi8 */
-    { 2722, 0, 102, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiFAST16 */
-    { 2733, 0, 103, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiFAST32 */
-    { 2744, 0, 104, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiFAST64 */
-    { 2755, 0, 105, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiFAST8 */
-    { 2765, 0, 106, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiLEAST16 */
-    { 2777, 0, 107, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiLEAST32 */
-    { 2789, 0, 108, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiLEAST64 */
-    { 2801, 0, 109, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiLEAST8 */
-    { 2812, 0, 110, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiMAX */
-    { 2820, 0, 111, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiPTR */
-    { 2828, 0, 112, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNo16 */
-    { 2835, 0, 113, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNo32 */
-    { 2842, 0, 114, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNo64 */
-    { 2849, 0, 115, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNo8 */
-    { 2855, 0, 116, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoFAST16 */
-    { 2866, 0, 117, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoFAST32 */
-    { 2877, 0, 118, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoFAST64 */
-    { 2888, 0, 119, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoFAST8 */
-    { 2898, 0, 120, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoLEAST16 */
-    { 2910, 0, 121, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoLEAST32 */
-    { 2922, 0, 122, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoLEAST64 */
-    { 2934, 0, 123, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoLEAST8 */
-    { 2945, 0, 124, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoMAX */
-    { 2953, 0, 125, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoPTR */
-    { 2961, 0, 126, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNu16 */
-    { 2968, 0, 127, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNu32 */
-    { 2975, 0, 128, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNu64 */
-    { 2982, 0, 129, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNu8 */
-    { 2988, 0, 130, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuFAST16 */
-    { 2999, 0, 131, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuFAST32 */
-    { 3010, 0, 132, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuFAST64 */
-    { 3021, 0, 133, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuFAST8 */
-    { 3031, 0, 134, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuLEAST16 */
-    { 3043, 0, 135, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuLEAST32 */
-    { 3055, 0, 136, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuLEAST64 */
-    { 3067, 0, 137, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuLEAST8 */
-    { 3078, 0, 138, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuMAX */
-    { 3086, 0, 139, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuPTR */
-    { 3094, 0, 140, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNx16 */
-    { 3101, 0, 141, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNx32 */
-    { 3108, 0, 142, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNx64 */
-    { 3115, 0, 143, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNx8 */
-    { 3121, 0, 144, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxFAST16 */
-    { 3132, 0, 145, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxFAST32 */
-    { 3143, 0, 146, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxFAST64 */
-    { 3154, 0, 147, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxFAST8 */
-    { 3164, 0, 148, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxLEAST16 */
-    { 3176, 0, 149, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxLEAST32 */
-    { 3188, 0, 150, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxLEAST64 */
-    { 3200, 0, 151, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxLEAST8 */
-    { 3211, 0, 152, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxMAX */
-    { 3219, 0, 153, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxPTR */
-    { 3227, 0, 90, 0, 9, PSC_NOME_CONST, 0 },  /* SEEK_CUR */
-    { 3236, 0, 91, 0, 9, PSC_NOME_CONST, 0 },  /* SEEK_END */
-    { 3245, 0, 92, 0, 9, PSC_NOME_CONST, 0 },  /* SEEK_SET */
-    { 3254, 0, 93, 0, 4, PSC_NOME_CONST, 0 },  /* SHRT_MAX */
-    { 3263, 0, 94, 0, 4, PSC_NOME_CONST, 0 },  /* SHRT_MIN */
-    { 3272, 0, 95, 0, 8, PSC_NOME_CONST, 0 },  /* SIG_ATOMIC_MAX */
-    { 3287, 0, 96, 0, 8, PSC_NOME_CONST, 0 },  /* SIG_ATOMIC_MIN */
-    { 3302, 0, 97, 0, 8, PSC_NOME_CONST, 0 },  /* SIZE_MAX */
-    { 3311, 0, 98, 0, 12, PSC_NOME_CONST, 0 },  /* TIME_UTC */
-    { 3320, 0, 99, 0, 9, PSC_NOME_CONST, 0 },  /* TMP_MAX */
-    { 3328, 1552, 2, 0, 9, PSC_NOME_FORA, 0 },  /* TMP_MAX_S */
-    { 3338, 0, 100, 0, 4, PSC_NOME_CONST, 0 },  /* UCHAR_MAX */
-    { 3348, 3357, 5, 0, 8, PSC_NOME_LITERAL, 0 },  /* UINT16_C */
-    { 3381, 0, 101, 0, 8, PSC_NOME_CONST, 0 },  /* UINT16_MAX */
-    { 3392, 3401, 6, 0, 8, PSC_NOME_LITERAL, 0 },  /* UINT32_C */
-    { 3447, 0, 102, 0, 8, PSC_NOME_CONST, 0 },  /* UINT32_MAX */
-    { 3458, 3467, 7, 0, 8, PSC_NOME_LITERAL, 0 },  /* UINT64_C */
-    { 3513, 0, 103, 0, 8, PSC_NOME_CONST, 0 },  /* UINT64_MAX */
-    { 3524, 3532, 8, 0, 8, PSC_NOME_LITERAL, 0 },  /* UINT8_C */
-    { 3555, 0, 104, 0, 8, PSC_NOME_CONST, 0 },  /* UINT8_MAX */
-    { 3565, 3575, 9, 0, 8, PSC_NOME_LITERAL, 0 },  /* UINTMAX_C */
-    { 3612, 0, 105, 0, 8, PSC_NOME_CONST, 0 },  /* UINTMAX_MAX */
-    { 3624, 0, 106, 0, 8, PSC_NOME_CONST, 0 },  /* UINTPTR_MAX */
-    { 3636, 0, 107, 0, 8, PSC_NOME_CONST, 0 },  /* UINT_FAST16_MAX */
-    { 3652, 0, 108, 0, 8, PSC_NOME_CONST, 0 },  /* UINT_FAST32_MAX */
-    { 3668, 0, 109, 0, 8, PSC_NOME_CONST, 0 },  /* UINT_FAST64_MAX */
-    { 3684, 0, 110, 0, 8, PSC_NOME_CONST, 0 },  /* UINT_FAST8_MAX */
-    { 3699, 0, 111, 0, 8, PSC_NOME_CONST, 0 },  /* UINT_LEAST16_MAX */
-    { 3716, 0, 112, 0, 8, PSC_NOME_CONST, 0 },  /* UINT_LEAST32_MAX */
-    { 3733, 0, 113, 0, 8, PSC_NOME_CONST, 0 },  /* UINT_LEAST64_MAX */
-    { 3750, 0, 114, 0, 8, PSC_NOME_CONST, 0 },  /* UINT_LEAST8_MAX */
-    { 3766, 0, 115, 0, 4, PSC_NOME_CONST, 0 },  /* UINT_MAX */
-    { 3775, 0, 116, 0, 4, PSC_NOME_CONST, 0 },  /* ULLONG_MAX */
-    { 3786, 0, 117, 0, 4, PSC_NOME_CONST, 0 },  /* ULONG_MAX */
-    { 3796, 0, 118, 0, 4, PSC_NOME_CONST, 0 },  /* USHRT_MAX */
-    { 3806, 0, 119, 0, 8, PSC_NOME_CONST, 0 },  /* WCHAR_MAX */
-    { 3816, 0, 120, 0, 8, PSC_NOME_CONST, 0 },  /* WCHAR_MIN */
-    { 3826, 0, 121, 0, 8, PSC_NOME_CONST, 0 },  /* WINT_MAX */
-    { 3835, 0, 122, 0, 8, PSC_NOME_CONST, 0 },  /* WINT_MIN */
-    { 3844, 3850, 0, 0, 10, PSC_NOME_FUNCAO, 0 },  /* _Exit */
-    { 3883, 0, 123, 0, 9, PSC_NOME_CONST, 0 },  /* _IOFBF */
-    { 3890, 0, 124, 0, 9, PSC_NOME_CONST, 0 },  /* _IOLBF */
-    { 3897, 0, 125, 0, 9, PSC_NOME_CONST, 0 },  /* _IONBF */
-    { 3904, 1552, 3, 0, 1, PSC_NOME_FORA, 0 },  /* __STDC_WANT_LIB_EXT1__ */
-    { 3927, 0, 126, 0, 6, PSC_NOME_CONST, 0 },  /* __bool_true_false_are_defined */
-    { 3957, 3963, 1, 0, 10, PSC_NOME_FUNCAO, 0 },  /* abort */
-    { 3990, 1552, 4, 0, 10, PSC_NOME_FORA, 0 },  /* abort_handler_s */
-    { 4006, 4010, 2, 0, 10, PSC_NOME_FUNCAO, 0 },  /* abs */
-    { 4025, 4030, 3, 0, 5, PSC_NOME_FUNCAO, 0 },  /* acos */
-    { 4052, 4058, 4, 0, 5, PSC_NOME_FUNCAO, 0 },  /* acosf */
-    { 4079, 4085, 5, 0, 5, PSC_NOME_FUNCAO, 0 },  /* acosh */
-    { 4108, 4115, 6, 0, 5, PSC_NOME_FUNCAO, 0 },  /* acoshf */
-    { 4137, 4144, 7, 0, 5, PSC_NOME_FUNCAO, 0 },  /* acoshl */
-    { 4178, 4184, 8, 0, 5, PSC_NOME_FUNCAO, 0 },  /* acosl */
-    { 4217, 4231, 9, 0, 10, PSC_NOME_FUNCAO, 0 },  /* aligned_alloc */
-    { 4282, 4290, 10, 0, 12, PSC_NOME_FUNCAO, 0 },  /* asctime */
-    { 4330, 1552, 5, 0, 12, PSC_NOME_FORA, 0 },  /* asctime_s */
-    { 4340, 4345, 11, 0, 5, PSC_NOME_FUNCAO, 0 },  /* asin */
-    { 4367, 4373, 12, 0, 5, PSC_NOME_FUNCAO, 0 },  /* asinf */
-    { 4394, 4400, 13, 0, 5, PSC_NOME_FUNCAO, 0 },  /* asinh */
-    { 4423, 4430, 14, 0, 5, PSC_NOME_FUNCAO, 0 },  /* asinhf */
-    { 4452, 4459, 15, 0, 5, PSC_NOME_FUNCAO, 0 },  /* asinhl */
-    { 4493, 4499, 16, 0, 5, PSC_NOME_FUNCAO, 0 },  /* asinl */
-    { 4532, 4546, 17, 0, 10, PSC_NOME_FUNCAO, PSC_MARCA_VM },  /* at_quick_exit */
-    { 4584, 4589, 18, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atan */
-    { 4611, 4617, 19, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atan2 */
-    { 4650, 4657, 20, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atan2f */
-    { 4688, 4695, 21, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atan2l */
-    { 4744, 4750, 22, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atanf */
-    { 4771, 4777, 23, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atanh */
-    { 4800, 4807, 24, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atanhf */
-    { 4829, 4836, 25, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atanhl */
-    { 4870, 4876, 26, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atanl */
-    { 4909, 4916, 27, 0, 10, PSC_NOME_FUNCAO, PSC_MARCA_VM },  /* atexit */
-    { 4947, 4952, 28, 0, 10, PSC_NOME_FUNCAO, 0 },  /* atof */
-    { 4982, 4987, 29, 0, 10, PSC_NOME_FUNCAO, 0 },  /* atoi */
-    { 5014, 5019, 30, 0, 10, PSC_NOME_FUNCAO, 0 },  /* atol */
-    { 5051, 5057, 31, 0, 10, PSC_NOME_FUNCAO, 0 },  /* atoll */
-    { 5095, 0, 0, 0, 6, PSC_NOME_TIPO, 0 },  /* bool */
-    { 5100, 5108, 32, 0, 10, PSC_NOME_FUNCAO, 0 },  /* bsearch */
-    { 5227, 1552, 6, 0, 10, PSC_NOME_FORA, 0 },  /* bsearch_s */
-    { 5237, 5244, 33, 0, 10, PSC_NOME_FUNCAO, 0 },  /* calloc */
-    { 5284, 5289, 34, 0, 5, PSC_NOME_FUNCAO, 0 },  /* cbrt */
-    { 5311, 5317, 35, 0, 5, PSC_NOME_FUNCAO, 0 },  /* cbrtf */
-    { 5338, 5344, 36, 0, 5, PSC_NOME_FUNCAO, 0 },  /* cbrtl */
-    { 5377, 5382, 37, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ceil */
-    { 5404, 5410, 38, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ceilf */
-    { 5431, 5437, 39, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ceill */
-    { 5470, 5479, 40, 0, 9, PSC_NOME_FUNCAO, 0 },  /* clearerr */
-    { 5507, 5513, 41, 0, 12, PSC_NOME_FUNCAO, 0 },  /* clock */
-    { 5533, 0, 1, 0, 12, PSC_NOME_TIPO, 0 },  /* clock_t */
-    { 5541, 1552, 7, 0, 10, PSC_NOME_FORA, 0 },  /* constraint_handler_t */
-    { 5562, 5571, 42, 0, 5, PSC_NOME_FUNCAO, 0 },  /* copysign */
-    { 5607, 5617, 43, 0, 5, PSC_NOME_FUNCAO, 0 },  /* copysignf */
-    { 5651, 5661, 44, 0, 5, PSC_NOME_FUNCAO, 0 },  /* copysignl */
-    { 5713, 5717, 45, 0, 5, PSC_NOME_FUNCAO, 0 },  /* cos */
-    { 5738, 5743, 46, 0, 5, PSC_NOME_FUNCAO, 0 },  /* cosf */
-    { 5763, 5768, 47, 0, 5, PSC_NOME_FUNCAO, 0 },  /* cosh */
-    { 5790, 5796, 48, 0, 5, PSC_NOME_FUNCAO, 0 },  /* coshf */
-    { 5817, 5823, 49, 0, 5, PSC_NOME_FUNCAO, 0 },  /* coshl */
-    { 5856, 5861, 50, 0, 5, PSC_NOME_FUNCAO, 0 },  /* cosl */
-    { 5893, 5899, 51, 0, 12, PSC_NOME_FUNCAO, 0 },  /* ctime */
-    { 5932, 1552, 8, 0, 12, PSC_NOME_FORA, 0 },  /* ctime_s */
-    { 5940, 5949, 52, 0, 12, PSC_NOME_FUNCAO, 0 },  /* difftime */
-    { 5993, 5997, 53, 0, 10, PSC_NOME_FUNCAO, 0 },  /* div */
-    { 6029, 6029, 0, 0, 10, PSC_NOME_ESTRUTURA, 0 },  /* div_t */
-    { 6061, 0, 2, 0, 5, PSC_NOME_TIPO, 0 },  /* double_t */
-    { 6070, 6074, 54, 0, 5, PSC_NOME_FUNCAO, 0 },  /* erf */
-    { 6095, 6100, 55, 0, 5, PSC_NOME_FUNCAO, 0 },  /* erfc */
-    { 6122, 6128, 56, 0, 5, PSC_NOME_FUNCAO, 0 },  /* erfcf */
-    { 6149, 6155, 57, 0, 5, PSC_NOME_FUNCAO, 0 },  /* erfcl */
-    { 6188, 6193, 58, 0, 5, PSC_NOME_FUNCAO, 0 },  /* erff */
-    { 6213, 6218, 59, 0, 5, PSC_NOME_FUNCAO, 0 },  /* erfl */
-    { 6250, 6256, 2, 0, 1, PSC_NOME_VALOR, PSC_MARCA_VM },  /* errno */
-    { 6266, 1552, 9, 0, 1, PSC_NOME_FORA, 0 },  /* errno_t */
-    { 6274, 6279, 60, 0, 10, PSC_NOME_FUNCAO, PSC_MARCA_VM },  /* exit */
-    { 6311, 6315, 61, 0, 5, PSC_NOME_FUNCAO, 0 },  /* exp */
-    { 6336, 6341, 62, 0, 5, PSC_NOME_FUNCAO, 0 },  /* exp2 */
-    { 6363, 6369, 63, 0, 5, PSC_NOME_FUNCAO, 0 },  /* exp2f */
-    { 6390, 6396, 64, 0, 5, PSC_NOME_FUNCAO, 0 },  /* exp2l */
-    { 6429, 6434, 65, 0, 5, PSC_NOME_FUNCAO, 0 },  /* expf */
-    { 6454, 6459, 66, 0, 5, PSC_NOME_FUNCAO, 0 },  /* expl */
-    { 6491, 6497, 67, 0, 5, PSC_NOME_FUNCAO, 0 },  /* expm1 */
-    { 6520, 6527, 68, 0, 5, PSC_NOME_FUNCAO, 0 },  /* expm1f */
-    { 6549, 6556, 69, 0, 5, PSC_NOME_FUNCAO, 0 },  /* expm1l */
-    { 6590, 6595, 70, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fabs */
-    { 6617, 6623, 71, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fabsf */
-    { 6644, 6650, 72, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fabsl */
-    { 6683, 6690, 73, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fclose */
-    { 6715, 6720, 74, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fdim */
-    { 6752, 6758, 75, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fdimf */
-    { 6788, 6794, 76, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fdiml */
-    { 6842, 6847, 77, 0, 9, PSC_NOME_FUNCAO, 0 },  /* feof */
-    { 6870, 6877, 78, 0, 9, PSC_NOME_FUNCAO, 0 },  /* ferror */
-    { 6902, 6909, 79, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fflush */
-    { 6934, 6940, 80, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fgetc */
-    { 6964, 6972, 81, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fgetpos */
-    { 7031, 7037, 82, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fgets */
-    { 7099, 0, 3, 0, 5, PSC_NOME_TIPO, 0 },  /* float_t */
-    { 7107, 7113, 83, 0, 5, PSC_NOME_FUNCAO, 0 },  /* floor */
-    { 7136, 7143, 84, 0, 5, PSC_NOME_FUNCAO, 0 },  /* floorf */
-    { 7165, 7172, 85, 0, 5, PSC_NOME_FUNCAO, 0 },  /* floorl */
-    { 7206, 7210, 86, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fma */
-    { 7251, 7256, 87, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmaf */
-    { 7294, 7299, 88, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmal */
-    { 7361, 7366, 89, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmax */
-    { 7398, 7404, 90, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmaxf */
-    { 7434, 7440, 91, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmaxl */
-    { 7488, 7493, 92, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmin */
-    { 7525, 7531, 93, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fminf */
-    { 7561, 7567, 94, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fminl */
-    { 7615, 7620, 95, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmod */
-    { 7652, 7658, 96, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmodf */
-    { 7688, 7694, 97, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmodl */
-    { 7742, 7748, 98, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fopen */
-    { 7820, 1552, 10, 0, 9, PSC_NOME_FORA, 0 },  /* fopen_s */
-    { 7828, 7839, 0, 0, 5, PSC_NOME_MACRO, 0 },  /* fpclassify */
-    { 7864, 0, 1, 0, 9, PSC_NOME_OPACO, 0 },  /* fpos_t */
-    { 7871, 7879, 99, 0, 9, PSC_NOME_FUNCAO, PSC_MARCA_PRINTF },  /* fprintf */
-    { 7950, 1552, 11, 0, 9, PSC_NOME_FORA, 0 },  /* fprintf_s */
-    { 7960, 7966, 100, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fputc */
-    { 7997, 8003, 101, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fputs */
-    { 8062, 8068, 102, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fread */
-    { 8153, 8158, 103, 0, 10, PSC_NOME_FUNCAO, 0 },  /* free */
-    { 8179, 8187, 104, 0, 9, PSC_NOME_FUNCAO, 0 },  /* freopen */
-    { 8285, 1552, 12, 0, 9, PSC_NOME_FORA, 0 },  /* freopen_s */
-    { 8295, 8301, 105, 0, 5, PSC_NOME_FUNCAO, 0 },  /* frexp */
-    { 8338, 8345, 106, 0, 5, PSC_NOME_FUNCAO, 0 },  /* frexpf */
-    { 8381, 8388, 107, 0, 5, PSC_NOME_FUNCAO, 0 },  /* frexpl */
-    { 8436, 8443, 108, 8513, 9, PSC_NOME_FUNCAO, PSC_MARCA_SCANF },  /* fscanf */
-    { 8529, 1552, 13, 0, 9, PSC_NOME_FORA, 0 },  /* fscanf_s */
-    { 8538, 8544, 109, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fseek */
-    { 8597, 8605, 110, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fsetpos */
-    { 8650, 8656, 111, 0, 9, PSC_NOME_FUNCAO, 0 },  /* ftell */
-    { 8685, 8692, 112, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fwrite */
-    { 8784, 8789, 113, 0, 9, PSC_NOME_FUNCAO, 0 },  /* getc */
-    { 8812, 8820, 114, 0, 9, PSC_NOME_FUNCAO, 0 },  /* getchar */
-    { 8838, 8845, 115, 0, 10, PSC_NOME_FUNCAO, 0 },  /* getenv */
-    { 8876, 1552, 14, 0, 10, PSC_NOME_FORA, 0 },  /* getenv_s */
-    { 8885, 8890, 15, 0, 9, PSC_NOME_FORA, 0 },  /* gets */
-    { 8963, 1552, 16, 0, 9, PSC_NOME_FORA, 0 },  /* gets_s */
-    { 8970, 8977, 116, 0, 12, PSC_NOME_FUNCAO, 0 },  /* gmtime */
-    { 9016, 1552, 17, 0, 12, PSC_NOME_FORA, 0 },  /* gmtime_s */
-    { 9025, 9031, 117, 0, 5, PSC_NOME_FUNCAO, 0 },  /* hypot */
-    { 9064, 9071, 118, 0, 5, PSC_NOME_FUNCAO, 0 },  /* hypotf */
-    { 9102, 9109, 119, 0, 5, PSC_NOME_FUNCAO, 0 },  /* hypotl */
-    { 9158, 1552, 18, 0, 10, PSC_NOME_FORA, 0 },  /* ignore_handler_s */
-    { 9175, 9181, 120, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ilogb */
-    { 9201, 9208, 121, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ilogbf */
-    { 9228, 9235, 122, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ilogbl */
-    { 9261, 9269, 123, 0, 3, PSC_NOME_FUNCAO, 0 },  /* imaxabs */
-    { 9298, 9306, 124, 0, 3, PSC_NOME_FUNCAO, 0 },  /* imaxdiv */
-    { 9356, 9356, 1, 0, 3, PSC_NOME_ESTRUTURA, 0 },  /* imaxdiv_t */
-    { 9393, 0, 4, 0, 8, PSC_NOME_TIPO, 0 },  /* int16_t */
-    { 9401, 0, 5, 0, 8, PSC_NOME_TIPO, 0 },  /* int32_t */
-    { 9409, 0, 6, 0, 8, PSC_NOME_TIPO, 0 },  /* int64_t */
-    { 9417, 0, 7, 0, 8, PSC_NOME_TIPO, 0 },  /* int8_t */
-    { 9424, 0, 8, 0, 8, PSC_NOME_TIPO, 0 },  /* int_fast16_t */
-    { 9437, 0, 9, 0, 8, PSC_NOME_TIPO, 0 },  /* int_fast32_t */
-    { 9450, 0, 10, 0, 8, PSC_NOME_TIPO, 0 },  /* int_fast64_t */
-    { 9463, 0, 11, 0, 8, PSC_NOME_TIPO, 0 },  /* int_fast8_t */
-    { 9475, 0, 12, 0, 8, PSC_NOME_TIPO, 0 },  /* int_least16_t */
-    { 9489, 0, 13, 0, 8, PSC_NOME_TIPO, 0 },  /* int_least32_t */
-    { 9503, 0, 14, 0, 8, PSC_NOME_TIPO, 0 },  /* int_least64_t */
-    { 9517, 0, 15, 0, 8, PSC_NOME_TIPO, 0 },  /* int_least8_t */
-    { 9530, 0, 16, 0, 8, PSC_NOME_TIPO, 0 },  /* intmax_t */
-    { 9539, 0, 17, 0, 8, PSC_NOME_TIPO, 0 },  /* intptr_t */
-    { 9548, 9556, 125, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isalnum */
-    { 9575, 9583, 126, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isalpha */
-    { 9602, 9610, 127, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isblank */
-    { 9629, 9637, 128, 0, 0, PSC_NOME_FUNCAO, 0 },  /* iscntrl */
-    { 9656, 9664, 129, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isdigit */
-    { 9683, 9692, 1, 0, 5, PSC_NOME_MACRO, 0 },  /* isfinite */
-    { 9715, 9723, 130, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isgraph */
-    { 9742, 9752, 2, 0, 5, PSC_NOME_MACRO, 0 },  /* isgreater */
-    { 9786, 9801, 3, 0, 5, PSC_NOME_MACRO, 0 },  /* isgreaterequal */
-    { 9840, 9846, 4, 0, 5, PSC_NOME_MACRO, 0 },  /* isinf */
-    { 9866, 9873, 5, 0, 5, PSC_NOME_MACRO, 0 },  /* isless */
-    { 9904, 9916, 6, 0, 5, PSC_NOME_MACRO, 0 },  /* islessequal */
-    { 9952, 9966, 7, 0, 5, PSC_NOME_MACRO, 0 },  /* islessgreater */
-    { 10004, 10012, 131, 0, 0, PSC_NOME_FUNCAO, 0 },  /* islower */
-    { 10031, 10037, 8, 0, 5, PSC_NOME_MACRO, 0 },  /* isnan */
-    { 10057, 10066, 9, 0, 5, PSC_NOME_MACRO, 0 },  /* isnormal */
-    { 10089, 10097, 132, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isprint */
-    { 10116, 10124, 133, 0, 0, PSC_NOME_FUNCAO, 0 },  /* ispunct */
-    { 10143, 10151, 134, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isspace */
-    { 10170, 10182, 10, 0, 5, PSC_NOME_MACRO, 0 },  /* isunordered */
-    { 10218, 10226, 135, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isupper */
-    { 10245, 10254, 136, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isxdigit */
-    { 10274, 10279, 137, 0, 10, PSC_NOME_FUNCAO, 0 },  /* labs */
-    { 10305, 10311, 138, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ldexp */
-    { 10343, 10350, 139, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ldexpf */
-    { 10381, 10388, 140, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ldexpl */
-    { 10431, 10436, 141, 0, 10, PSC_NOME_FUNCAO, 0 },  /* ldiv */
-    { 10480, 10480, 2, 0, 10, PSC_NOME_ESTRUTURA, 0 },  /* ldiv_t */
-    { 10514, 10521, 142, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lgamma */
-    { 10545, 10553, 143, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lgammaf */
-    { 10576, 10584, 144, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lgammal */
-    { 10619, 10625, 145, 0, 10, PSC_NOME_FUNCAO, 0 },  /* llabs */
-    { 10662, 10668, 146, 0, 10, PSC_NOME_FUNCAO, 0 },  /* lldiv */
-    { 10724, 10724, 3, 0, 10, PSC_NOME_ESTRUTURA, 0 },  /* lldiv_t */
-    { 10769, 10776, 147, 0, 5, PSC_NOME_FUNCAO, 0 },  /* llrint */
-    { 10807, 10815, 148, 0, 5, PSC_NOME_FUNCAO, 0 },  /* llrintf */
-    { 10846, 10854, 149, 0, 5, PSC_NOME_FUNCAO, 0 },  /* llrintl */
-    { 10891, 10899, 150, 0, 5, PSC_NOME_FUNCAO, 0 },  /* llround */
-    { 10931, 10940, 151, 0, 5, PSC_NOME_FUNCAO, 0 },  /* llroundf */
-    { 10972, 10981, 152, 0, 5, PSC_NOME_FUNCAO, 0 },  /* llroundl */
-    { 11019, 11029, 153, 0, 12, PSC_NOME_FUNCAO, 0 },  /* localtime */
-    { 11071, 1552, 19, 0, 12, PSC_NOME_FORA, 0 },  /* localtime_s */
-    { 11083, 11087, 154, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log */
-    { 11108, 11114, 155, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log10 */
-    { 11137, 11144, 156, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log10f */
-    { 11166, 11173, 157, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log10l */
-    { 11207, 11213, 158, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log1p */
-    { 11236, 11243, 159, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log1pf */
-    { 11265, 11272, 160, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log1pl */
-    { 11306, 11311, 161, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log2 */
-    { 11333, 11339, 162, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log2f */
-    { 11360, 11366, 163, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log2l */
-    { 11399, 11404, 164, 0, 5, PSC_NOME_FUNCAO, 0 },  /* logb */
-    { 11426, 11432, 165, 0, 5, PSC_NOME_FUNCAO, 0 },  /* logbf */
-    { 11453, 11459, 166, 0, 5, PSC_NOME_FUNCAO, 0 },  /* logbl */
-    { 11492, 11497, 167, 0, 5, PSC_NOME_FUNCAO, 0 },  /* logf */
-    { 11517, 11522, 168, 0, 5, PSC_NOME_FUNCAO, 0 },  /* logl */
-    { 11554, 11560, 169, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lrint */
-    { 11585, 11592, 170, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lrintf */
-    { 11617, 11624, 171, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lrintl */
-    { 11655, 11662, 172, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lround */
-    { 11688, 11696, 173, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lroundf */
-    { 11722, 11730, 174, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lroundl */
-    { 11762, 11769, 175, 0, 10, PSC_NOME_FUNCAO, 0 },  /* malloc */
-    { 11795, 11812, 3, 0, 5, PSC_NOME_VALOR, 0 },  /* math_errhandling */
-    { 11833, 0, 2, 0, 7, PSC_NOME_OPACO, 0 },  /* max_align_t */
-    { 11845, 11851, 176, 0, 10, PSC_NOME_FUNCAO, 0 },  /* mblen */
-    { 11886, 11895, 177, 0, 10, PSC_NOME_FUNCAO, 0 },  /* mbstowcs */
-    { 11971, 1552, 20, 0, 10, PSC_NOME_FORA, 0 },  /* mbstowcs_s */
-    { 11982, 11989, 178, 0, 10, PSC_NOME_FUNCAO, 0 },  /* mbtowc */
-    { 12059, 12066, 179, 0, 11, PSC_NOME_FUNCAO, 0 },  /* memchr */
-    { 12111, 12118, 180, 0, 11, PSC_NOME_FUNCAO, 0 },  /* memcmp */
-    { 12171, 12178, 181, 0, 11, PSC_NOME_FUNCAO, 0 },  /* memcpy */
-    { 12247, 1552, 21, 0, 11, PSC_NOME_FORA, 0 },  /* memcpy_s */
-    { 12256, 12264, 182, 0, 11, PSC_NOME_FUNCAO, 0 },  /* memmove */
-    { 12314, 1552, 22, 0, 11, PSC_NOME_FORA, 0 },  /* memmove_s */
-    { 12324, 12331, 183, 0, 11, PSC_NOME_FUNCAO, 0 },  /* memset */
-    { 12370, 1552, 23, 0, 11, PSC_NOME_FORA, 0 },  /* memset_s */
-    { 12379, 12386, 184, 0, 12, PSC_NOME_FUNCAO, 0 },  /* mktime */
-    { 12420, 12425, 185, 0, 5, PSC_NOME_FUNCAO, 0 },  /* modf */
-    { 12465, 12471, 186, 0, 5, PSC_NOME_FUNCAO, 0 },  /* modff */
-    { 12509, 12515, 187, 0, 5, PSC_NOME_FUNCAO, 0 },  /* modfl */
-    { 12571, 12575, 188, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nan */
-    { 12604, 12609, 189, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nanf */
-    { 12638, 12643, 190, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nanl */
-    { 12678, 12688, 191, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nearbyint */
-    { 12715, 12726, 192, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nearbyintf */
-    { 12752, 12763, 193, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nearbyintl */
-    { 12801, 12811, 194, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nextafter */
-    { 12848, 12859, 195, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nextafterf */
-    { 12894, 12905, 196, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nextafterl */
-    { 12958, 12969, 197, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nexttoward */
-    { 13012, 13024, 198, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nexttowardf */
-    { 13066, 13078, 199, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nexttowardl */
-    { 13132, 13141, 0, 0, 7, PSC_NOME_SINTAXE, 0 },  /* offsetof */
-    { 13175, 13182, 200, 0, 9, PSC_NOME_FUNCAO, 0 },  /* perror */
-    { 13209, 13213, 201, 0, 5, PSC_NOME_FUNCAO, 0 },  /* pow */
-    { 13244, 13249, 202, 0, 5, PSC_NOME_FUNCAO, 0 },  /* powf */
-    { 13278, 13283, 203, 0, 5, PSC_NOME_FUNCAO, 0 },  /* powl */
-    { 13330, 13337, 204, 0, 9, PSC_NOME_FUNCAO, PSC_MARCA_PRINTF },  /* printf */
-    { 13383, 1552, 24, 0, 9, PSC_NOME_FORA, 0 },  /* printf_s */
-    { 13392, 0, 18, 0, 7, PSC_NOME_TIPO, 0 },  /* ptrdiff_t */
-    { 13402, 13407, 205, 0, 9, PSC_NOME_FUNCAO, 0 },  /* putc */
-    { 13437, 13445, 206, 0, 9, PSC_NOME_FUNCAO, 0 },  /* putchar */
-    { 13464, 13469, 207, 0, 9, PSC_NOME_FUNCAO, 0 },  /* puts */
-    { 13493, 13499, 208, 0, 10, PSC_NOME_FUNCAO, 0 },  /* qsort */
-    { 13592, 1552, 25, 0, 10, PSC_NOME_FORA, 0 },  /* qsort_s */
-    { 13600, 13611, 209, 0, 10, PSC_NOME_FUNCAO, PSC_MARCA_VM },  /* quick_exit */
-    { 13649, 13654, 210, 0, 10, PSC_NOME_FUNCAO, 0 },  /* rand */
-    { 13669, 13677, 211, 0, 10, PSC_NOME_FUNCAO, 0 },  /* realloc */
-    { 13715, 13725, 212, 0, 5, PSC_NOME_FUNCAO, 0 },  /* remainder */
-    { 13762, 13773, 213, 0, 5, PSC_NOME_FUNCAO, 0 },  /* remainderf */
-    { 13808, 13819, 214, 0, 5, PSC_NOME_FUNCAO, 0 },  /* remainderl */
-    { 13872, 13879, 215, 0, 9, PSC_NOME_FUNCAO, 0 },  /* remove */
-    { 13912, 13919, 216, 0, 5, PSC_NOME_FUNCAO, 0 },  /* remquo */
-    { 13963, 13971, 217, 0, 5, PSC_NOME_FUNCAO, 0 },  /* remquof */
-    { 14013, 14021, 218, 0, 5, PSC_NOME_FUNCAO, 0 },  /* remquol */
-    { 14081, 14088, 219, 0, 9, PSC_NOME_FUNCAO, 0 },  /* rename */
-    { 14133, 14140, 220, 0, 9, PSC_NOME_FUNCAO, 0 },  /* rewind */
-    { 14166, 14171, 221, 0, 5, PSC_NOME_FUNCAO, 0 },  /* rint */
-    { 14193, 14199, 222, 0, 5, PSC_NOME_FUNCAO, 0 },  /* rintf */
-    { 14220, 14226, 223, 0, 5, PSC_NOME_FUNCAO, 0 },  /* rintl */
-    { 14259, 14265, 224, 0, 5, PSC_NOME_FUNCAO, 0 },  /* round */
-    { 14288, 14295, 225, 0, 5, PSC_NOME_FUNCAO, 0 },  /* roundf */
-    { 14317, 14324, 226, 0, 5, PSC_NOME_FUNCAO, 0 },  /* roundl */
-    { 14358, 1552, 26, 0, 7, PSC_NOME_FORA, 0 },  /* rsize_t */
-    { 14366, 14374, 227, 0, 5, PSC_NOME_FUNCAO, 0 },  /* scalbln */
-    { 14411, 14420, 228, 0, 5, PSC_NOME_FUNCAO, 0 },  /* scalblnf */
-    { 14456, 14465, 229, 0, 5, PSC_NOME_FUNCAO, 0 },  /* scalblnl */
-    { 14513, 14520, 230, 0, 5, PSC_NOME_FUNCAO, 0 },  /* scalbn */
-    { 14551, 14559, 231, 0, 5, PSC_NOME_FUNCAO, 0 },  /* scalbnf */
-    { 14589, 14597, 232, 0, 5, PSC_NOME_FUNCAO, 0 },  /* scalbnl */
-    { 14639, 14645, 233, 14690, 9, PSC_NOME_FUNCAO, PSC_MARCA_SCANF },  /* scanf */
-    { 14705, 1552, 27, 0, 9, PSC_NOME_FORA, 0 },  /* scanf_s */
-    { 14713, 1552, 28, 0, 10, PSC_NOME_FORA, 0 },  /* set_constraint_handler_s */
-    { 14738, 14745, 234, 0, 9, PSC_NOME_FUNCAO, 0 },  /* setbuf */
-    { 14802, 14810, 235, 0, 9, PSC_NOME_FUNCAO, 0 },  /* setvbuf */
-    { 14890, 14898, 11, 0, 5, PSC_NOME_MACRO, 0 },  /* signbit */
-    { 14920, 14924, 236, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sin */
-    { 14945, 14950, 237, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sinf */
-    { 14970, 14975, 238, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sinh */
-    { 14997, 15003, 239, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sinhf */
-    { 15024, 15030, 240, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sinhl */
-    { 15063, 15068, 241, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sinl */
-    { 15100, 0, 19, 0, 7, PSC_NOME_TIPO, 0 },  /* size_t */
-    { 15107, 15116, 242, 0, 9, PSC_NOME_FUNCAO, PSC_MARCA_PRINTF },  /* snprintf */
-    { 15193, 1552, 29, 0, 9, PSC_NOME_FORA, 0 },  /* snprintf_s */
-    { 15204, 15212, 243, 0, 9, PSC_NOME_FUNCAO, PSC_MARCA_PRINTF },  /* sprintf */
-    { 15278, 1552, 30, 0, 9, PSC_NOME_FORA, 0 },  /* sprintf_s */
-    { 15288, 15293, 244, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sqrt */
-    { 15315, 15321, 245, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sqrtf */
-    { 15342, 15348, 246, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sqrtl */
-    { 15381, 15387, 247, 0, 10, PSC_NOME_FUNCAO, 0 },  /* srand */
-    { 15417, 15424, 248, 15495, 9, PSC_NOME_FUNCAO, PSC_MARCA_SCANF },  /* sscanf */
-    { 15511, 1552, 31, 0, 9, PSC_NOME_FORA, 0 },  /* sscanf_s */
-    { 15520, 15527, 4, 0, 9, PSC_NOME_VALOR, 0 },  /* stderr */
-    { 15540, 15546, 5, 0, 9, PSC_NOME_VALOR, 0 },  /* stdin */
-    { 15558, 15565, 6, 0, 9, PSC_NOME_VALOR, 0 },  /* stdout */
-    { 15578, 15585, 249, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strcat */
-    { 15644, 1552, 32, 0, 11, PSC_NOME_FORA, 0 },  /* strcat_s */
-    { 15653, 15660, 250, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strchr */
-    { 15695, 15702, 251, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strcmp */
-    { 15745, 15753, 252, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strcoll */
-    { 15797, 15804, 253, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strcpy */
-    { 15863, 1552, 33, 0, 11, PSC_NOME_FORA, 0 },  /* strcpy_s */
-    { 15872, 15880, 254, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strcspn */
-    { 15927, 15936, 255, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strerror */
-    { 15963, 1552, 34, 0, 11, PSC_NOME_FORA, 0 },  /* strerror_s */
-    { 15974, 1552, 35, 0, 11, PSC_NOME_FORA, 0 },  /* strerrorlen_s */
-    { 15988, 15997, 256, 0, 12, PSC_NOME_FUNCAO, 0 },  /* strftime */
-    { 16114, 16121, 257, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strlen */
-    { 16150, 16158, 258, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strncat */
-    { 16228, 1552, 36, 0, 11, PSC_NOME_FORA, 0 },  /* strncat_s */
-    { 16238, 16246, 259, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strncmp */
-    { 16300, 16308, 260, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strncpy */
-    { 16378, 1552, 37, 0, 11, PSC_NOME_FORA, 0 },  /* strncpy_s */
-    { 16388, 1552, 38, 0, 11, PSC_NOME_FORA, 0 },  /* strnlen_s */
-    { 16398, 16406, 261, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strpbrk */
-    { 16452, 16460, 262, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strrchr */
-    { 16496, 16503, 263, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strspn */
-    { 16549, 16556, 264, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strstr */
-    { 16601, 16608, 265, 0, 10, PSC_NOME_FUNCAO, 0 },  /* strtod */
-    { 16675, 16682, 266, 0, 10, PSC_NOME_FUNCAO, 0 },  /* strtof */
-    { 16748, 16758, 267, 0, 3, PSC_NOME_FUNCAO, 0 },  /* strtoimax */
-    { 16840, 16847, 268, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strtok */
-    { 16906, 1552, 39, 0, 11, PSC_NOME_FORA, 0 },  /* strtok_s */
-    { 16915, 16922, 269, 0, 10, PSC_NOME_FUNCAO, 0 },  /* strtol */
-    { 17001, 17009, 270, 0, 10, PSC_NOME_FUNCAO, 0 },  /* strtold */
-    { 17082, 17090, 271, 0, 10, PSC_NOME_FUNCAO, 0 },  /* strtoll */
-    { 17175, 17183, 272, 0, 10, PSC_NOME_FUNCAO, 0 },  /* strtoul */
-    { 17272, 17281, 273, 0, 10, PSC_NOME_FUNCAO, 0 },  /* strtoull */
-    { 17376, 17386, 274, 0, 3, PSC_NOME_FUNCAO, 0 },  /* strtoumax */
-    { 17469, 17469, 4, 0, 12, PSC_NOME_ESTRUTURA, 0 },  /* struct timespec */
-    { 17527, 17527, 5, 0, 12, PSC_NOME_ESTRUTURA, 0 },  /* struct tm */
-    { 17713, 17721, 275, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strxfrm */
-    { 17792, 17799, 276, 0, 10, PSC_NOME_FUNCAO, 0 },  /* system */
-    { 17830, 17834, 277, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tan */
-    { 17855, 17860, 278, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tanf */
-    { 17880, 17885, 279, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tanh */
-    { 17907, 17913, 280, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tanhf */
-    { 17934, 17940, 281, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tanhl */
-    { 17973, 17978, 282, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tanl */
-    { 18010, 18017, 283, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tgamma */
-    { 18041, 18049, 284, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tgammaf */
-    { 18072, 18080, 285, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tgammal */
-    { 18115, 18120, 286, 0, 12, PSC_NOME_FUNCAO, 0 },  /* time */
-    { 18147, 0, 20, 0, 12, PSC_NOME_TIPO, 0 },  /* time_t */
-    { 18154, 18167, 287, 0, 12, PSC_NOME_FUNCAO, 0 },  /* timespec_get */
-    { 18215, 18223, 288, 0, 9, PSC_NOME_FUNCAO, 0 },  /* tmpfile */
-    { 18243, 1552, 40, 0, 9, PSC_NOME_FORA, 0 },  /* tmpfile_s */
-    { 18253, 18260, 289, 0, 9, PSC_NOME_FUNCAO, 0 },  /* tmpnam */
-    { 18282, 1552, 41, 0, 9, PSC_NOME_FORA, 0 },  /* tmpnam_s */
-    { 18291, 18299, 290, 0, 0, PSC_NOME_FUNCAO, 0 },  /* tolower */
-    { 18318, 18326, 291, 0, 0, PSC_NOME_FUNCAO, 0 },  /* toupper */
-    { 18345, 18351, 292, 0, 5, PSC_NOME_FUNCAO, 0 },  /* trunc */
-    { 18374, 18381, 293, 0, 5, PSC_NOME_FUNCAO, 0 },  /* truncf */
-    { 18403, 18410, 294, 0, 5, PSC_NOME_FUNCAO, 0 },  /* truncl */
-    { 18444, 0, 21, 0, 8, PSC_NOME_TIPO, 0 },  /* uint16_t */
-    { 18453, 0, 22, 0, 8, PSC_NOME_TIPO, 0 },  /* uint32_t */
-    { 18462, 0, 23, 0, 8, PSC_NOME_TIPO, 0 },  /* uint64_t */
-    { 18471, 0, 24, 0, 8, PSC_NOME_TIPO, 0 },  /* uint8_t */
-    { 18479, 0, 25, 0, 8, PSC_NOME_TIPO, 0 },  /* uint_fast16_t */
-    { 18493, 0, 26, 0, 8, PSC_NOME_TIPO, 0 },  /* uint_fast32_t */
-    { 18507, 0, 27, 0, 8, PSC_NOME_TIPO, 0 },  /* uint_fast64_t */
-    { 18521, 0, 28, 0, 8, PSC_NOME_TIPO, 0 },  /* uint_fast8_t */
-    { 18534, 0, 29, 0, 8, PSC_NOME_TIPO, 0 },  /* uint_least16_t */
-    { 18549, 0, 30, 0, 8, PSC_NOME_TIPO, 0 },  /* uint_least32_t */
-    { 18564, 0, 31, 0, 8, PSC_NOME_TIPO, 0 },  /* uint_least64_t */
-    { 18579, 0, 32, 0, 8, PSC_NOME_TIPO, 0 },  /* uint_least8_t */
-    { 18593, 0, 33, 0, 8, PSC_NOME_TIPO, 0 },  /* uintmax_t */
-    { 18603, 0, 34, 0, 8, PSC_NOME_TIPO, 0 },  /* uintptr_t */
-    { 18613, 18620, 295, 0, 9, PSC_NOME_FUNCAO, 0 },  /* ungetc */
-    { 18652, 18661, 42, 0, 9, PSC_NOME_FORA, 0 },  /* vfprintf */
-    { 18721, 1552, 43, 0, 9, PSC_NOME_FORA, 0 },  /* vfprintf_s */
-    { 18732, 18661, 44, 0, 9, PSC_NOME_FORA, 0 },  /* vfscanf */
-    { 18740, 1552, 45, 0, 9, PSC_NOME_FORA, 0 },  /* vfscanf_s */
-    { 18750, 18661, 46, 0, 9, PSC_NOME_FORA, 0 },  /* vprintf */
-    { 18758, 1552, 47, 0, 9, PSC_NOME_FORA, 0 },  /* vprintf_s */
-    { 18768, 18661, 48, 0, 9, PSC_NOME_FORA, 0 },  /* vscanf */
-    { 18775, 1552, 49, 0, 9, PSC_NOME_FORA, 0 },  /* vscanf_s */
-    { 18784, 18661, 50, 0, 9, PSC_NOME_FORA, 0 },  /* vsnprintf */
-    { 18794, 1552, 51, 0, 9, PSC_NOME_FORA, 0 },  /* vsnprintf_s */
-    { 18806, 18661, 52, 0, 9, PSC_NOME_FORA, 0 },  /* vsprintf */
-    { 18815, 1552, 53, 0, 9, PSC_NOME_FORA, 0 },  /* vsprintf_s */
-    { 18826, 18661, 54, 0, 9, PSC_NOME_FORA, 0 },  /* vsscanf */
-    { 18834, 1552, 55, 0, 9, PSC_NOME_FORA, 0 },  /* vsscanf_s */
-    { 18844, 0, 35, 0, 7, PSC_NOME_TIPO, 0 },  /* wchar_t */
-    { 18852, 18862, 296, 0, 3, PSC_NOME_FUNCAO, 0 },  /* wcstoimax */
-    { 18950, 18959, 297, 0, 10, PSC_NOME_FUNCAO, 0 },  /* wcstombs */
-    { 19035, 1552, 56, 0, 10, PSC_NOME_FORA, 0 },  /* wcstombs_s */
-    { 19046, 19056, 298, 0, 3, PSC_NOME_FUNCAO, 0 },  /* wcstoumax */
-    { 19145, 19152, 299, 0, 10, PSC_NOME_FUNCAO, 0 },  /* wctomb */
-    { 19187, 1552, 57, 0, 10, PSC_NOME_FORA, 0 },  /* wctomb_s */
+    { 1541, 0, 82, 0, 5, PSC_NOME_CONST, 0 },  /* MATH_ERREXCEPT */
+    { 1556, 0, 83, 0, 5, PSC_NOME_CONST, 0 },  /* MATH_ERRNO */
+    { 1567, 1578, 1, 0, 10, PSC_NOME_VALOR, 0 },  /* MB_CUR_MAX */
+    { 1596, 0, 84, 0, 4, PSC_NOME_CONST, 0 },  /* MB_LEN_MAX */
+    { 1607, 0, 16, 0, 5, PSC_NOME_CONSTFLO, 0 },  /* NAN */
+    { 1611, 0, 0, 0, 7, PSC_NOME_NULO, 0 },  /* NULL */
+    { 1616, 0, 0, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIX16 */
+    { 1623, 0, 1, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIX32 */
+    { 1630, 0, 2, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIX64 */
+    { 1637, 0, 3, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIX8 */
+    { 1643, 0, 4, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXFAST16 */
+    { 1654, 0, 5, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXFAST32 */
+    { 1665, 0, 6, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXFAST64 */
+    { 1676, 0, 7, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXFAST8 */
+    { 1686, 0, 8, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXLEAST16 */
+    { 1698, 0, 9, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXLEAST32 */
+    { 1710, 0, 10, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXLEAST64 */
+    { 1722, 0, 11, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXLEAST8 */
+    { 1733, 0, 12, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXMAX */
+    { 1741, 0, 13, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIXPTR */
+    { 1749, 0, 14, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRId16 */
+    { 1756, 0, 15, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRId32 */
+    { 1763, 0, 16, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRId64 */
+    { 1770, 0, 17, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRId8 */
+    { 1776, 0, 18, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdFAST16 */
+    { 1787, 0, 19, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdFAST32 */
+    { 1798, 0, 20, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdFAST64 */
+    { 1809, 0, 21, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdFAST8 */
+    { 1819, 0, 22, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdLEAST16 */
+    { 1831, 0, 23, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdLEAST32 */
+    { 1843, 0, 24, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdLEAST64 */
+    { 1855, 0, 25, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdLEAST8 */
+    { 1866, 0, 26, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdMAX */
+    { 1874, 0, 27, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIdPTR */
+    { 1882, 0, 28, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIi16 */
+    { 1889, 0, 29, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIi32 */
+    { 1896, 0, 30, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIi64 */
+    { 1903, 0, 31, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIi8 */
+    { 1909, 0, 32, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiFAST16 */
+    { 1920, 0, 33, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiFAST32 */
+    { 1931, 0, 34, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiFAST64 */
+    { 1942, 0, 35, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiFAST8 */
+    { 1952, 0, 36, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiLEAST16 */
+    { 1964, 0, 37, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiLEAST32 */
+    { 1976, 0, 38, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiLEAST64 */
+    { 1988, 0, 39, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiLEAST8 */
+    { 1999, 0, 40, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiMAX */
+    { 2007, 0, 41, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIiPTR */
+    { 2015, 0, 42, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIo16 */
+    { 2022, 0, 43, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIo32 */
+    { 2029, 0, 44, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIo64 */
+    { 2036, 0, 45, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIo8 */
+    { 2042, 0, 46, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoFAST16 */
+    { 2053, 0, 47, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoFAST32 */
+    { 2064, 0, 48, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoFAST64 */
+    { 2075, 0, 49, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoFAST8 */
+    { 2085, 0, 50, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoLEAST16 */
+    { 2097, 0, 51, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoLEAST32 */
+    { 2109, 0, 52, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoLEAST64 */
+    { 2121, 0, 53, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoLEAST8 */
+    { 2132, 0, 54, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoMAX */
+    { 2140, 0, 55, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIoPTR */
+    { 2148, 0, 56, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIu16 */
+    { 2155, 0, 57, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIu32 */
+    { 2162, 0, 58, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIu64 */
+    { 2169, 0, 59, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIu8 */
+    { 2175, 0, 60, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuFAST16 */
+    { 2186, 0, 61, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuFAST32 */
+    { 2197, 0, 62, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuFAST64 */
+    { 2208, 0, 63, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuFAST8 */
+    { 2218, 0, 64, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuLEAST16 */
+    { 2230, 0, 65, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuLEAST32 */
+    { 2242, 0, 66, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuLEAST64 */
+    { 2254, 0, 67, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuLEAST8 */
+    { 2265, 0, 68, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuMAX */
+    { 2273, 0, 69, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIuPTR */
+    { 2281, 0, 70, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIx16 */
+    { 2288, 0, 71, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIx32 */
+    { 2295, 0, 72, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIx64 */
+    { 2302, 0, 73, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIx8 */
+    { 2308, 0, 74, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxFAST16 */
+    { 2319, 0, 75, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxFAST32 */
+    { 2330, 0, 76, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxFAST64 */
+    { 2341, 0, 77, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxFAST8 */
+    { 2351, 0, 78, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxLEAST16 */
+    { 2363, 0, 79, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxLEAST32 */
+    { 2375, 0, 80, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxLEAST64 */
+    { 2387, 0, 81, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxLEAST8 */
+    { 2398, 0, 82, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxMAX */
+    { 2406, 0, 83, 0, 3, PSC_NOME_TEXTO, 0 },  /* PRIxPTR */
+    { 2414, 0, 85, 0, 8, PSC_NOME_CONST, 0 },  /* PTRDIFF_MAX */
+    { 2426, 0, 86, 0, 8, PSC_NOME_CONST, 0 },  /* PTRDIFF_MIN */
+    { 2438, 0, 87, 0, 10, PSC_NOME_CONST, 0 },  /* RAND_MAX */
+    { 2447, 0, 88, 0, 4, PSC_NOME_CONST, 0 },  /* SCHAR_MAX */
+    { 2457, 0, 89, 0, 4, PSC_NOME_CONST, 0 },  /* SCHAR_MIN */
+    { 2467, 0, 84, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNd16 */
+    { 2474, 0, 85, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNd32 */
+    { 2481, 0, 86, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNd64 */
+    { 2488, 0, 87, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNd8 */
+    { 2494, 0, 88, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdFAST16 */
+    { 2505, 0, 89, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdFAST32 */
+    { 2516, 0, 90, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdFAST64 */
+    { 2527, 0, 91, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdFAST8 */
+    { 2537, 0, 92, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdLEAST16 */
+    { 2549, 0, 93, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdLEAST32 */
+    { 2561, 0, 94, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdLEAST64 */
+    { 2573, 0, 95, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdLEAST8 */
+    { 2584, 0, 96, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdMAX */
+    { 2592, 0, 97, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNdPTR */
+    { 2600, 0, 98, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNi16 */
+    { 2607, 0, 99, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNi32 */
+    { 2614, 0, 100, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNi64 */
+    { 2621, 0, 101, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNi8 */
+    { 2627, 0, 102, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiFAST16 */
+    { 2638, 0, 103, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiFAST32 */
+    { 2649, 0, 104, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiFAST64 */
+    { 2660, 0, 105, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiFAST8 */
+    { 2670, 0, 106, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiLEAST16 */
+    { 2682, 0, 107, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiLEAST32 */
+    { 2694, 0, 108, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiLEAST64 */
+    { 2706, 0, 109, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiLEAST8 */
+    { 2717, 0, 110, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiMAX */
+    { 2725, 0, 111, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNiPTR */
+    { 2733, 0, 112, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNo16 */
+    { 2740, 0, 113, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNo32 */
+    { 2747, 0, 114, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNo64 */
+    { 2754, 0, 115, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNo8 */
+    { 2760, 0, 116, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoFAST16 */
+    { 2771, 0, 117, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoFAST32 */
+    { 2782, 0, 118, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoFAST64 */
+    { 2793, 0, 119, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoFAST8 */
+    { 2803, 0, 120, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoLEAST16 */
+    { 2815, 0, 121, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoLEAST32 */
+    { 2827, 0, 122, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoLEAST64 */
+    { 2839, 0, 123, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoLEAST8 */
+    { 2850, 0, 124, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoMAX */
+    { 2858, 0, 125, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNoPTR */
+    { 2866, 0, 126, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNu16 */
+    { 2873, 0, 127, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNu32 */
+    { 2880, 0, 128, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNu64 */
+    { 2887, 0, 129, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNu8 */
+    { 2893, 0, 130, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuFAST16 */
+    { 2904, 0, 131, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuFAST32 */
+    { 2915, 0, 132, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuFAST64 */
+    { 2926, 0, 133, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuFAST8 */
+    { 2936, 0, 134, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuLEAST16 */
+    { 2948, 0, 135, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuLEAST32 */
+    { 2960, 0, 136, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuLEAST64 */
+    { 2972, 0, 137, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuLEAST8 */
+    { 2983, 0, 138, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuMAX */
+    { 2991, 0, 139, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNuPTR */
+    { 2999, 0, 140, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNx16 */
+    { 3006, 0, 141, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNx32 */
+    { 3013, 0, 142, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNx64 */
+    { 3020, 0, 143, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNx8 */
+    { 3026, 0, 144, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxFAST16 */
+    { 3037, 0, 145, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxFAST32 */
+    { 3048, 0, 146, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxFAST64 */
+    { 3059, 0, 147, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxFAST8 */
+    { 3069, 0, 148, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxLEAST16 */
+    { 3081, 0, 149, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxLEAST32 */
+    { 3093, 0, 150, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxLEAST64 */
+    { 3105, 0, 151, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxLEAST8 */
+    { 3116, 0, 152, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxMAX */
+    { 3124, 0, 153, 0, 3, PSC_NOME_TEXTO, 0 },  /* SCNxPTR */
+    { 3132, 0, 90, 0, 9, PSC_NOME_CONST, 0 },  /* SEEK_CUR */
+    { 3141, 0, 91, 0, 9, PSC_NOME_CONST, 0 },  /* SEEK_END */
+    { 3150, 0, 92, 0, 9, PSC_NOME_CONST, 0 },  /* SEEK_SET */
+    { 3159, 0, 93, 0, 4, PSC_NOME_CONST, 0 },  /* SHRT_MAX */
+    { 3168, 0, 94, 0, 4, PSC_NOME_CONST, 0 },  /* SHRT_MIN */
+    { 3177, 0, 95, 0, 8, PSC_NOME_CONST, 0 },  /* SIG_ATOMIC_MAX */
+    { 3192, 0, 96, 0, 8, PSC_NOME_CONST, 0 },  /* SIG_ATOMIC_MIN */
+    { 3207, 0, 97, 0, 8, PSC_NOME_CONST, 0 },  /* SIZE_MAX */
+    { 3216, 0, 98, 0, 12, PSC_NOME_CONST, 0 },  /* TIME_UTC */
+    { 3225, 0, 99, 0, 9, PSC_NOME_CONST, 0 },  /* TMP_MAX */
+    { 3233, 0, 100, 0, 4, PSC_NOME_CONST, 0 },  /* UCHAR_MAX */
+    { 3243, 3252, 5, 0, 8, PSC_NOME_LITERAL, 0 },  /* UINT16_C */
+    { 3276, 0, 101, 0, 8, PSC_NOME_CONST, 0 },  /* UINT16_MAX */
+    { 3287, 3296, 6, 0, 8, PSC_NOME_LITERAL, 0 },  /* UINT32_C */
+    { 3342, 0, 102, 0, 8, PSC_NOME_CONST, 0 },  /* UINT32_MAX */
+    { 3353, 3362, 7, 0, 8, PSC_NOME_LITERAL, 0 },  /* UINT64_C */
+    { 3408, 0, 103, 0, 8, PSC_NOME_CONST, 0 },  /* UINT64_MAX */
+    { 3419, 3427, 8, 0, 8, PSC_NOME_LITERAL, 0 },  /* UINT8_C */
+    { 3450, 0, 104, 0, 8, PSC_NOME_CONST, 0 },  /* UINT8_MAX */
+    { 3460, 3470, 9, 0, 8, PSC_NOME_LITERAL, 0 },  /* UINTMAX_C */
+    { 3507, 0, 105, 0, 8, PSC_NOME_CONST, 0 },  /* UINTMAX_MAX */
+    { 3519, 0, 106, 0, 8, PSC_NOME_CONST, 0 },  /* UINTPTR_MAX */
+    { 3531, 0, 107, 0, 8, PSC_NOME_CONST, 0 },  /* UINT_FAST16_MAX */
+    { 3547, 0, 108, 0, 8, PSC_NOME_CONST, 0 },  /* UINT_FAST32_MAX */
+    { 3563, 0, 109, 0, 8, PSC_NOME_CONST, 0 },  /* UINT_FAST64_MAX */
+    { 3579, 0, 110, 0, 8, PSC_NOME_CONST, 0 },  /* UINT_FAST8_MAX */
+    { 3594, 0, 111, 0, 8, PSC_NOME_CONST, 0 },  /* UINT_LEAST16_MAX */
+    { 3611, 0, 112, 0, 8, PSC_NOME_CONST, 0 },  /* UINT_LEAST32_MAX */
+    { 3628, 0, 113, 0, 8, PSC_NOME_CONST, 0 },  /* UINT_LEAST64_MAX */
+    { 3645, 0, 114, 0, 8, PSC_NOME_CONST, 0 },  /* UINT_LEAST8_MAX */
+    { 3661, 0, 115, 0, 4, PSC_NOME_CONST, 0 },  /* UINT_MAX */
+    { 3670, 0, 116, 0, 4, PSC_NOME_CONST, 0 },  /* ULLONG_MAX */
+    { 3681, 0, 117, 0, 4, PSC_NOME_CONST, 0 },  /* ULONG_MAX */
+    { 3691, 0, 118, 0, 4, PSC_NOME_CONST, 0 },  /* USHRT_MAX */
+    { 3701, 0, 119, 0, 8, PSC_NOME_CONST, 0 },  /* WCHAR_MAX */
+    { 3711, 0, 120, 0, 8, PSC_NOME_CONST, 0 },  /* WCHAR_MIN */
+    { 3721, 0, 121, 0, 8, PSC_NOME_CONST, 0 },  /* WINT_MAX */
+    { 3730, 0, 122, 0, 8, PSC_NOME_CONST, 0 },  /* WINT_MIN */
+    { 3739, 3745, 0, 0, 10, PSC_NOME_FUNCAO, 0 },  /* _Exit */
+    { 3778, 0, 123, 0, 9, PSC_NOME_CONST, 0 },  /* _IOFBF */
+    { 3785, 0, 124, 0, 9, PSC_NOME_CONST, 0 },  /* _IOLBF */
+    { 3792, 0, 125, 0, 9, PSC_NOME_CONST, 0 },  /* _IONBF */
+    { 3799, 0, 126, 0, 6, PSC_NOME_CONST, 0 },  /* __bool_true_false_are_defined */
+    { 3829, 3835, 1, 0, 10, PSC_NOME_FUNCAO, 0 },  /* abort */
+    { 3862, 3866, 2, 0, 10, PSC_NOME_FUNCAO, 0 },  /* abs */
+    { 3881, 3886, 3, 0, 5, PSC_NOME_FUNCAO, 0 },  /* acos */
+    { 3908, 3914, 4, 0, 5, PSC_NOME_FUNCAO, 0 },  /* acosf */
+    { 3935, 3941, 5, 0, 5, PSC_NOME_FUNCAO, 0 },  /* acosh */
+    { 3964, 3971, 6, 0, 5, PSC_NOME_FUNCAO, 0 },  /* acoshf */
+    { 3993, 4000, 7, 0, 5, PSC_NOME_FUNCAO, 0 },  /* acoshl */
+    { 4034, 4040, 8, 0, 5, PSC_NOME_FUNCAO, 0 },  /* acosl */
+    { 4073, 4087, 9, 0, 10, PSC_NOME_FUNCAO, 0 },  /* aligned_alloc */
+    { 4138, 4146, 10, 0, 12, PSC_NOME_FUNCAO, 0 },  /* asctime */
+    { 4186, 4191, 11, 0, 5, PSC_NOME_FUNCAO, 0 },  /* asin */
+    { 4213, 4219, 12, 0, 5, PSC_NOME_FUNCAO, 0 },  /* asinf */
+    { 4240, 4246, 13, 0, 5, PSC_NOME_FUNCAO, 0 },  /* asinh */
+    { 4269, 4276, 14, 0, 5, PSC_NOME_FUNCAO, 0 },  /* asinhf */
+    { 4298, 4305, 15, 0, 5, PSC_NOME_FUNCAO, 0 },  /* asinhl */
+    { 4339, 4345, 16, 0, 5, PSC_NOME_FUNCAO, 0 },  /* asinl */
+    { 4378, 4392, 17, 0, 10, PSC_NOME_FUNCAO, PSC_MARCA_VM },  /* at_quick_exit */
+    { 4430, 4435, 18, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atan */
+    { 4457, 4463, 19, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atan2 */
+    { 4496, 4503, 20, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atan2f */
+    { 4534, 4541, 21, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atan2l */
+    { 4590, 4596, 22, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atanf */
+    { 4617, 4623, 23, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atanh */
+    { 4646, 4653, 24, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atanhf */
+    { 4675, 4682, 25, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atanhl */
+    { 4716, 4722, 26, 0, 5, PSC_NOME_FUNCAO, 0 },  /* atanl */
+    { 4755, 4762, 27, 0, 10, PSC_NOME_FUNCAO, PSC_MARCA_VM },  /* atexit */
+    { 4793, 4798, 28, 0, 10, PSC_NOME_FUNCAO, 0 },  /* atof */
+    { 4828, 4833, 29, 0, 10, PSC_NOME_FUNCAO, 0 },  /* atoi */
+    { 4860, 4865, 30, 0, 10, PSC_NOME_FUNCAO, 0 },  /* atol */
+    { 4897, 4903, 31, 0, 10, PSC_NOME_FUNCAO, 0 },  /* atoll */
+    { 4941, 0, 0, 0, 6, PSC_NOME_TIPO, 0 },  /* bool */
+    { 4946, 4954, 32, 0, 10, PSC_NOME_FUNCAO, 0 },  /* bsearch */
+    { 5073, 5080, 33, 0, 10, PSC_NOME_FUNCAO, 0 },  /* calloc */
+    { 5120, 5125, 34, 0, 5, PSC_NOME_FUNCAO, 0 },  /* cbrt */
+    { 5147, 5153, 35, 0, 5, PSC_NOME_FUNCAO, 0 },  /* cbrtf */
+    { 5174, 5180, 36, 0, 5, PSC_NOME_FUNCAO, 0 },  /* cbrtl */
+    { 5213, 5218, 37, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ceil */
+    { 5240, 5246, 38, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ceilf */
+    { 5267, 5273, 39, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ceill */
+    { 5306, 5315, 40, 0, 9, PSC_NOME_FUNCAO, 0 },  /* clearerr */
+    { 5343, 5349, 41, 0, 12, PSC_NOME_FUNCAO, 0 },  /* clock */
+    { 5369, 0, 1, 0, 12, PSC_NOME_TIPO, 0 },  /* clock_t */
+    { 5377, 5386, 42, 0, 5, PSC_NOME_FUNCAO, 0 },  /* copysign */
+    { 5422, 5432, 43, 0, 5, PSC_NOME_FUNCAO, 0 },  /* copysignf */
+    { 5466, 5476, 44, 0, 5, PSC_NOME_FUNCAO, 0 },  /* copysignl */
+    { 5528, 5532, 45, 0, 5, PSC_NOME_FUNCAO, 0 },  /* cos */
+    { 5553, 5558, 46, 0, 5, PSC_NOME_FUNCAO, 0 },  /* cosf */
+    { 5578, 5583, 47, 0, 5, PSC_NOME_FUNCAO, 0 },  /* cosh */
+    { 5605, 5611, 48, 0, 5, PSC_NOME_FUNCAO, 0 },  /* coshf */
+    { 5632, 5638, 49, 0, 5, PSC_NOME_FUNCAO, 0 },  /* coshl */
+    { 5671, 5676, 50, 0, 5, PSC_NOME_FUNCAO, 0 },  /* cosl */
+    { 5708, 5714, 51, 0, 12, PSC_NOME_FUNCAO, 0 },  /* ctime */
+    { 5747, 5756, 52, 0, 12, PSC_NOME_FUNCAO, 0 },  /* difftime */
+    { 5800, 5804, 53, 0, 10, PSC_NOME_FUNCAO, 0 },  /* div */
+    { 5836, 5836, 0, 0, 10, PSC_NOME_ESTRUTURA, 0 },  /* div_t */
+    { 5868, 0, 2, 0, 5, PSC_NOME_TIPO, 0 },  /* double_t */
+    { 5877, 5881, 54, 0, 5, PSC_NOME_FUNCAO, 0 },  /* erf */
+    { 5902, 5907, 55, 0, 5, PSC_NOME_FUNCAO, 0 },  /* erfc */
+    { 5929, 5935, 56, 0, 5, PSC_NOME_FUNCAO, 0 },  /* erfcf */
+    { 5956, 5962, 57, 0, 5, PSC_NOME_FUNCAO, 0 },  /* erfcl */
+    { 5995, 6000, 58, 0, 5, PSC_NOME_FUNCAO, 0 },  /* erff */
+    { 6020, 6025, 59, 0, 5, PSC_NOME_FUNCAO, 0 },  /* erfl */
+    { 6057, 6063, 2, 0, 1, PSC_NOME_VALOR, PSC_MARCA_VM },  /* errno */
+    { 6073, 6078, 60, 0, 10, PSC_NOME_FUNCAO, PSC_MARCA_VM },  /* exit */
+    { 6110, 6114, 61, 0, 5, PSC_NOME_FUNCAO, 0 },  /* exp */
+    { 6135, 6140, 62, 0, 5, PSC_NOME_FUNCAO, 0 },  /* exp2 */
+    { 6162, 6168, 63, 0, 5, PSC_NOME_FUNCAO, 0 },  /* exp2f */
+    { 6189, 6195, 64, 0, 5, PSC_NOME_FUNCAO, 0 },  /* exp2l */
+    { 6228, 6233, 65, 0, 5, PSC_NOME_FUNCAO, 0 },  /* expf */
+    { 6253, 6258, 66, 0, 5, PSC_NOME_FUNCAO, 0 },  /* expl */
+    { 6290, 6296, 67, 0, 5, PSC_NOME_FUNCAO, 0 },  /* expm1 */
+    { 6319, 6326, 68, 0, 5, PSC_NOME_FUNCAO, 0 },  /* expm1f */
+    { 6348, 6355, 69, 0, 5, PSC_NOME_FUNCAO, 0 },  /* expm1l */
+    { 6389, 6394, 70, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fabs */
+    { 6416, 6422, 71, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fabsf */
+    { 6443, 6449, 72, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fabsl */
+    { 6482, 6489, 73, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fclose */
+    { 6514, 6519, 74, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fdim */
+    { 6551, 6557, 75, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fdimf */
+    { 6587, 6593, 76, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fdiml */
+    { 6641, 6646, 77, 0, 9, PSC_NOME_FUNCAO, 0 },  /* feof */
+    { 6669, 6676, 78, 0, 9, PSC_NOME_FUNCAO, 0 },  /* ferror */
+    { 6701, 6708, 79, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fflush */
+    { 6733, 6739, 80, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fgetc */
+    { 6763, 6771, 81, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fgetpos */
+    { 6830, 6836, 82, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fgets */
+    { 6898, 0, 3, 0, 5, PSC_NOME_TIPO, 0 },  /* float_t */
+    { 6906, 6912, 83, 0, 5, PSC_NOME_FUNCAO, 0 },  /* floor */
+    { 6935, 6942, 84, 0, 5, PSC_NOME_FUNCAO, 0 },  /* floorf */
+    { 6964, 6971, 85, 0, 5, PSC_NOME_FUNCAO, 0 },  /* floorl */
+    { 7005, 7009, 86, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fma */
+    { 7050, 7055, 87, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmaf */
+    { 7093, 7098, 88, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmal */
+    { 7160, 7165, 89, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmax */
+    { 7197, 7203, 90, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmaxf */
+    { 7233, 7239, 91, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmaxl */
+    { 7287, 7292, 92, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmin */
+    { 7324, 7330, 93, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fminf */
+    { 7360, 7366, 94, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fminl */
+    { 7414, 7419, 95, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmod */
+    { 7451, 7457, 96, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmodf */
+    { 7487, 7493, 97, 0, 5, PSC_NOME_FUNCAO, 0 },  /* fmodl */
+    { 7541, 7547, 98, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fopen */
+    { 7619, 7630, 0, 0, 5, PSC_NOME_MACRO, 0 },  /* fpclassify */
+    { 7655, 0, 1, 0, 9, PSC_NOME_OPACO, 0 },  /* fpos_t */
+    { 7662, 7670, 99, 0, 9, PSC_NOME_FUNCAO, PSC_MARCA_PRINTF },  /* fprintf */
+    { 7741, 7747, 100, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fputc */
+    { 7778, 7784, 101, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fputs */
+    { 7843, 7849, 102, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fread */
+    { 7934, 7939, 103, 0, 10, PSC_NOME_FUNCAO, 0 },  /* free */
+    { 7960, 7968, 104, 0, 9, PSC_NOME_FUNCAO, 0 },  /* freopen */
+    { 8066, 8072, 105, 0, 5, PSC_NOME_FUNCAO, 0 },  /* frexp */
+    { 8109, 8116, 106, 0, 5, PSC_NOME_FUNCAO, 0 },  /* frexpf */
+    { 8152, 8159, 107, 0, 5, PSC_NOME_FUNCAO, 0 },  /* frexpl */
+    { 8207, 8214, 108, 8284, 9, PSC_NOME_FUNCAO, PSC_MARCA_SCANF },  /* fscanf */
+    { 8300, 8306, 109, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fseek */
+    { 8359, 8367, 110, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fsetpos */
+    { 8412, 8418, 111, 0, 9, PSC_NOME_FUNCAO, 0 },  /* ftell */
+    { 8447, 8454, 112, 0, 9, PSC_NOME_FUNCAO, 0 },  /* fwrite */
+    { 8546, 8551, 113, 0, 9, PSC_NOME_FUNCAO, 0 },  /* getc */
+    { 8574, 8582, 114, 0, 9, PSC_NOME_FUNCAO, 0 },  /* getchar */
+    { 8600, 8607, 115, 0, 10, PSC_NOME_FUNCAO, 0 },  /* getenv */
+    { 8638, 8645, 116, 0, 12, PSC_NOME_FUNCAO, 0 },  /* gmtime */
+    { 8684, 8690, 117, 0, 5, PSC_NOME_FUNCAO, 0 },  /* hypot */
+    { 8723, 8730, 118, 0, 5, PSC_NOME_FUNCAO, 0 },  /* hypotf */
+    { 8761, 8768, 119, 0, 5, PSC_NOME_FUNCAO, 0 },  /* hypotl */
+    { 8817, 8823, 120, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ilogb */
+    { 8843, 8850, 121, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ilogbf */
+    { 8870, 8877, 122, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ilogbl */
+    { 8903, 8911, 123, 0, 3, PSC_NOME_FUNCAO, 0 },  /* imaxabs */
+    { 8940, 8948, 124, 0, 3, PSC_NOME_FUNCAO, 0 },  /* imaxdiv */
+    { 8998, 8998, 1, 0, 3, PSC_NOME_ESTRUTURA, 0 },  /* imaxdiv_t */
+    { 9035, 0, 4, 0, 8, PSC_NOME_TIPO, 0 },  /* int16_t */
+    { 9043, 0, 5, 0, 8, PSC_NOME_TIPO, 0 },  /* int32_t */
+    { 9051, 0, 6, 0, 8, PSC_NOME_TIPO, 0 },  /* int64_t */
+    { 9059, 0, 7, 0, 8, PSC_NOME_TIPO, 0 },  /* int8_t */
+    { 9066, 0, 8, 0, 8, PSC_NOME_TIPO, 0 },  /* int_fast16_t */
+    { 9079, 0, 9, 0, 8, PSC_NOME_TIPO, 0 },  /* int_fast32_t */
+    { 9092, 0, 10, 0, 8, PSC_NOME_TIPO, 0 },  /* int_fast64_t */
+    { 9105, 0, 11, 0, 8, PSC_NOME_TIPO, 0 },  /* int_fast8_t */
+    { 9117, 0, 12, 0, 8, PSC_NOME_TIPO, 0 },  /* int_least16_t */
+    { 9131, 0, 13, 0, 8, PSC_NOME_TIPO, 0 },  /* int_least32_t */
+    { 9145, 0, 14, 0, 8, PSC_NOME_TIPO, 0 },  /* int_least64_t */
+    { 9159, 0, 15, 0, 8, PSC_NOME_TIPO, 0 },  /* int_least8_t */
+    { 9172, 0, 16, 0, 8, PSC_NOME_TIPO, 0 },  /* intmax_t */
+    { 9181, 0, 17, 0, 8, PSC_NOME_TIPO, 0 },  /* intptr_t */
+    { 9190, 9198, 125, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isalnum */
+    { 9217, 9225, 126, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isalpha */
+    { 9244, 9252, 127, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isblank */
+    { 9271, 9279, 128, 0, 0, PSC_NOME_FUNCAO, 0 },  /* iscntrl */
+    { 9298, 9306, 129, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isdigit */
+    { 9325, 9334, 1, 0, 5, PSC_NOME_MACRO, 0 },  /* isfinite */
+    { 9357, 9365, 130, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isgraph */
+    { 9384, 9394, 2, 0, 5, PSC_NOME_MACRO, 0 },  /* isgreater */
+    { 9428, 9443, 3, 0, 5, PSC_NOME_MACRO, 0 },  /* isgreaterequal */
+    { 9482, 9488, 4, 0, 5, PSC_NOME_MACRO, 0 },  /* isinf */
+    { 9508, 9515, 5, 0, 5, PSC_NOME_MACRO, 0 },  /* isless */
+    { 9546, 9558, 6, 0, 5, PSC_NOME_MACRO, 0 },  /* islessequal */
+    { 9594, 9608, 7, 0, 5, PSC_NOME_MACRO, 0 },  /* islessgreater */
+    { 9646, 9654, 131, 0, 0, PSC_NOME_FUNCAO, 0 },  /* islower */
+    { 9673, 9679, 8, 0, 5, PSC_NOME_MACRO, 0 },  /* isnan */
+    { 9699, 9708, 9, 0, 5, PSC_NOME_MACRO, 0 },  /* isnormal */
+    { 9731, 9739, 132, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isprint */
+    { 9758, 9766, 133, 0, 0, PSC_NOME_FUNCAO, 0 },  /* ispunct */
+    { 9785, 9793, 134, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isspace */
+    { 9812, 9824, 10, 0, 5, PSC_NOME_MACRO, 0 },  /* isunordered */
+    { 9860, 9868, 135, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isupper */
+    { 9887, 9896, 136, 0, 0, PSC_NOME_FUNCAO, 0 },  /* isxdigit */
+    { 9916, 9921, 137, 0, 10, PSC_NOME_FUNCAO, 0 },  /* labs */
+    { 9947, 9953, 138, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ldexp */
+    { 9985, 9992, 139, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ldexpf */
+    { 10023, 10030, 140, 0, 5, PSC_NOME_FUNCAO, 0 },  /* ldexpl */
+    { 10073, 10078, 141, 0, 10, PSC_NOME_FUNCAO, 0 },  /* ldiv */
+    { 10122, 10122, 2, 0, 10, PSC_NOME_ESTRUTURA, 0 },  /* ldiv_t */
+    { 10156, 10163, 142, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lgamma */
+    { 10187, 10195, 143, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lgammaf */
+    { 10218, 10226, 144, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lgammal */
+    { 10261, 10267, 145, 0, 10, PSC_NOME_FUNCAO, 0 },  /* llabs */
+    { 10304, 10310, 146, 0, 10, PSC_NOME_FUNCAO, 0 },  /* lldiv */
+    { 10366, 10366, 3, 0, 10, PSC_NOME_ESTRUTURA, 0 },  /* lldiv_t */
+    { 10411, 10418, 147, 0, 5, PSC_NOME_FUNCAO, 0 },  /* llrint */
+    { 10449, 10457, 148, 0, 5, PSC_NOME_FUNCAO, 0 },  /* llrintf */
+    { 10488, 10496, 149, 0, 5, PSC_NOME_FUNCAO, 0 },  /* llrintl */
+    { 10533, 10541, 150, 0, 5, PSC_NOME_FUNCAO, 0 },  /* llround */
+    { 10573, 10582, 151, 0, 5, PSC_NOME_FUNCAO, 0 },  /* llroundf */
+    { 10614, 10623, 152, 0, 5, PSC_NOME_FUNCAO, 0 },  /* llroundl */
+    { 10661, 10671, 153, 0, 12, PSC_NOME_FUNCAO, 0 },  /* localtime */
+    { 10713, 10717, 154, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log */
+    { 10738, 10744, 155, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log10 */
+    { 10767, 10774, 156, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log10f */
+    { 10796, 10803, 157, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log10l */
+    { 10837, 10843, 158, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log1p */
+    { 10866, 10873, 159, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log1pf */
+    { 10895, 10902, 160, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log1pl */
+    { 10936, 10941, 161, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log2 */
+    { 10963, 10969, 162, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log2f */
+    { 10990, 10996, 163, 0, 5, PSC_NOME_FUNCAO, 0 },  /* log2l */
+    { 11029, 11034, 164, 0, 5, PSC_NOME_FUNCAO, 0 },  /* logb */
+    { 11056, 11062, 165, 0, 5, PSC_NOME_FUNCAO, 0 },  /* logbf */
+    { 11083, 11089, 166, 0, 5, PSC_NOME_FUNCAO, 0 },  /* logbl */
+    { 11122, 11127, 167, 0, 5, PSC_NOME_FUNCAO, 0 },  /* logf */
+    { 11147, 11152, 168, 0, 5, PSC_NOME_FUNCAO, 0 },  /* logl */
+    { 11184, 11190, 169, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lrint */
+    { 11215, 11222, 170, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lrintf */
+    { 11247, 11254, 171, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lrintl */
+    { 11285, 11292, 172, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lround */
+    { 11318, 11326, 173, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lroundf */
+    { 11352, 11360, 174, 0, 5, PSC_NOME_FUNCAO, 0 },  /* lroundl */
+    { 11392, 11399, 175, 0, 10, PSC_NOME_FUNCAO, 0 },  /* malloc */
+    { 11425, 11442, 3, 0, 5, PSC_NOME_VALOR, 0 },  /* math_errhandling */
+    { 11463, 0, 2, 0, 7, PSC_NOME_OPACO, 0 },  /* max_align_t */
+    { 11475, 11481, 176, 0, 10, PSC_NOME_FUNCAO, 0 },  /* mblen */
+    { 11516, 11525, 177, 0, 10, PSC_NOME_FUNCAO, 0 },  /* mbstowcs */
+    { 11601, 11608, 178, 0, 10, PSC_NOME_FUNCAO, 0 },  /* mbtowc */
+    { 11678, 11685, 179, 0, 11, PSC_NOME_FUNCAO, 0 },  /* memchr */
+    { 11730, 11737, 180, 0, 11, PSC_NOME_FUNCAO, 0 },  /* memcmp */
+    { 11790, 11797, 181, 0, 11, PSC_NOME_FUNCAO, 0 },  /* memcpy */
+    { 11866, 11874, 182, 0, 11, PSC_NOME_FUNCAO, 0 },  /* memmove */
+    { 11924, 11931, 183, 0, 11, PSC_NOME_FUNCAO, 0 },  /* memset */
+    { 11970, 11977, 184, 0, 12, PSC_NOME_FUNCAO, 0 },  /* mktime */
+    { 12011, 12016, 185, 0, 5, PSC_NOME_FUNCAO, 0 },  /* modf */
+    { 12056, 12062, 186, 0, 5, PSC_NOME_FUNCAO, 0 },  /* modff */
+    { 12100, 12106, 187, 0, 5, PSC_NOME_FUNCAO, 0 },  /* modfl */
+    { 12162, 12166, 188, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nan */
+    { 12195, 12200, 189, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nanf */
+    { 12229, 12234, 190, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nanl */
+    { 12269, 12279, 191, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nearbyint */
+    { 12306, 12317, 192, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nearbyintf */
+    { 12343, 12354, 193, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nearbyintl */
+    { 12392, 12402, 194, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nextafter */
+    { 12439, 12450, 195, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nextafterf */
+    { 12485, 12496, 196, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nextafterl */
+    { 12549, 12560, 197, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nexttoward */
+    { 12603, 12615, 198, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nexttowardf */
+    { 12657, 12669, 199, 0, 5, PSC_NOME_FUNCAO, 0 },  /* nexttowardl */
+    { 12723, 12732, 0, 0, 7, PSC_NOME_SINTAXE, 0 },  /* offsetof */
+    { 12766, 12773, 200, 0, 9, PSC_NOME_FUNCAO, 0 },  /* perror */
+    { 12800, 12804, 201, 0, 5, PSC_NOME_FUNCAO, 0 },  /* pow */
+    { 12835, 12840, 202, 0, 5, PSC_NOME_FUNCAO, 0 },  /* powf */
+    { 12869, 12874, 203, 0, 5, PSC_NOME_FUNCAO, 0 },  /* powl */
+    { 12921, 12928, 204, 0, 9, PSC_NOME_FUNCAO, PSC_MARCA_PRINTF },  /* printf */
+    { 12974, 0, 18, 0, 7, PSC_NOME_TIPO, 0 },  /* ptrdiff_t */
+    { 12984, 12989, 205, 0, 9, PSC_NOME_FUNCAO, 0 },  /* putc */
+    { 13019, 13027, 206, 0, 9, PSC_NOME_FUNCAO, 0 },  /* putchar */
+    { 13046, 13051, 207, 0, 9, PSC_NOME_FUNCAO, 0 },  /* puts */
+    { 13075, 13081, 208, 0, 10, PSC_NOME_FUNCAO, 0 },  /* qsort */
+    { 13174, 13185, 209, 0, 10, PSC_NOME_FUNCAO, PSC_MARCA_VM },  /* quick_exit */
+    { 13223, 13228, 210, 0, 10, PSC_NOME_FUNCAO, 0 },  /* rand */
+    { 13243, 13251, 211, 0, 10, PSC_NOME_FUNCAO, 0 },  /* realloc */
+    { 13289, 13299, 212, 0, 5, PSC_NOME_FUNCAO, 0 },  /* remainder */
+    { 13336, 13347, 213, 0, 5, PSC_NOME_FUNCAO, 0 },  /* remainderf */
+    { 13382, 13393, 214, 0, 5, PSC_NOME_FUNCAO, 0 },  /* remainderl */
+    { 13446, 13453, 215, 0, 9, PSC_NOME_FUNCAO, 0 },  /* remove */
+    { 13486, 13493, 216, 0, 5, PSC_NOME_FUNCAO, 0 },  /* remquo */
+    { 13537, 13545, 217, 0, 5, PSC_NOME_FUNCAO, 0 },  /* remquof */
+    { 13587, 13595, 218, 0, 5, PSC_NOME_FUNCAO, 0 },  /* remquol */
+    { 13655, 13662, 219, 0, 9, PSC_NOME_FUNCAO, 0 },  /* rename */
+    { 13707, 13714, 220, 0, 9, PSC_NOME_FUNCAO, 0 },  /* rewind */
+    { 13740, 13745, 221, 0, 5, PSC_NOME_FUNCAO, 0 },  /* rint */
+    { 13767, 13773, 222, 0, 5, PSC_NOME_FUNCAO, 0 },  /* rintf */
+    { 13794, 13800, 223, 0, 5, PSC_NOME_FUNCAO, 0 },  /* rintl */
+    { 13833, 13839, 224, 0, 5, PSC_NOME_FUNCAO, 0 },  /* round */
+    { 13862, 13869, 225, 0, 5, PSC_NOME_FUNCAO, 0 },  /* roundf */
+    { 13891, 13898, 226, 0, 5, PSC_NOME_FUNCAO, 0 },  /* roundl */
+    { 13932, 13940, 227, 0, 5, PSC_NOME_FUNCAO, 0 },  /* scalbln */
+    { 13977, 13986, 228, 0, 5, PSC_NOME_FUNCAO, 0 },  /* scalblnf */
+    { 14022, 14031, 229, 0, 5, PSC_NOME_FUNCAO, 0 },  /* scalblnl */
+    { 14079, 14086, 230, 0, 5, PSC_NOME_FUNCAO, 0 },  /* scalbn */
+    { 14117, 14125, 231, 0, 5, PSC_NOME_FUNCAO, 0 },  /* scalbnf */
+    { 14155, 14163, 232, 0, 5, PSC_NOME_FUNCAO, 0 },  /* scalbnl */
+    { 14205, 14211, 233, 14256, 9, PSC_NOME_FUNCAO, PSC_MARCA_SCANF },  /* scanf */
+    { 14271, 14278, 234, 0, 9, PSC_NOME_FUNCAO, 0 },  /* setbuf */
+    { 14335, 14343, 235, 0, 9, PSC_NOME_FUNCAO, 0 },  /* setvbuf */
+    { 14423, 14431, 11, 0, 5, PSC_NOME_MACRO, 0 },  /* signbit */
+    { 14453, 14457, 236, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sin */
+    { 14478, 14483, 237, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sinf */
+    { 14503, 14508, 238, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sinh */
+    { 14530, 14536, 239, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sinhf */
+    { 14557, 14563, 240, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sinhl */
+    { 14596, 14601, 241, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sinl */
+    { 14633, 0, 19, 0, 7, PSC_NOME_TIPO, 0 },  /* size_t */
+    { 14640, 14649, 242, 0, 9, PSC_NOME_FUNCAO, PSC_MARCA_PRINTF },  /* snprintf */
+    { 14726, 14734, 243, 0, 9, PSC_NOME_FUNCAO, PSC_MARCA_PRINTF },  /* sprintf */
+    { 14800, 14805, 244, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sqrt */
+    { 14827, 14833, 245, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sqrtf */
+    { 14854, 14860, 246, 0, 5, PSC_NOME_FUNCAO, 0 },  /* sqrtl */
+    { 14893, 14899, 247, 0, 10, PSC_NOME_FUNCAO, 0 },  /* srand */
+    { 14929, 14936, 248, 15007, 9, PSC_NOME_FUNCAO, PSC_MARCA_SCANF },  /* sscanf */
+    { 15023, 15030, 4, 0, 9, PSC_NOME_VALOR, 0 },  /* stderr */
+    { 15043, 15049, 5, 0, 9, PSC_NOME_VALOR, 0 },  /* stdin */
+    { 15061, 15068, 6, 0, 9, PSC_NOME_VALOR, 0 },  /* stdout */
+    { 15081, 15088, 249, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strcat */
+    { 15147, 15154, 250, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strchr */
+    { 15189, 15196, 251, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strcmp */
+    { 15239, 15247, 252, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strcoll */
+    { 15291, 15298, 253, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strcpy */
+    { 15357, 15365, 254, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strcspn */
+    { 15412, 15421, 255, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strerror */
+    { 15448, 15457, 256, 0, 12, PSC_NOME_FUNCAO, 0 },  /* strftime */
+    { 15574, 15581, 257, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strlen */
+    { 15610, 15618, 258, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strncat */
+    { 15688, 15696, 259, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strncmp */
+    { 15750, 15758, 260, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strncpy */
+    { 15828, 15836, 261, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strpbrk */
+    { 15882, 15890, 262, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strrchr */
+    { 15926, 15933, 263, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strspn */
+    { 15979, 15986, 264, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strstr */
+    { 16031, 16038, 265, 0, 10, PSC_NOME_FUNCAO, 0 },  /* strtod */
+    { 16105, 16112, 266, 0, 10, PSC_NOME_FUNCAO, 0 },  /* strtof */
+    { 16178, 16188, 267, 0, 3, PSC_NOME_FUNCAO, 0 },  /* strtoimax */
+    { 16270, 16277, 268, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strtok */
+    { 16336, 16343, 269, 0, 10, PSC_NOME_FUNCAO, 0 },  /* strtol */
+    { 16422, 16430, 270, 0, 10, PSC_NOME_FUNCAO, 0 },  /* strtold */
+    { 16503, 16511, 271, 0, 10, PSC_NOME_FUNCAO, 0 },  /* strtoll */
+    { 16596, 16604, 272, 0, 10, PSC_NOME_FUNCAO, 0 },  /* strtoul */
+    { 16693, 16702, 273, 0, 10, PSC_NOME_FUNCAO, 0 },  /* strtoull */
+    { 16797, 16807, 274, 0, 3, PSC_NOME_FUNCAO, 0 },  /* strtoumax */
+    { 16890, 16890, 4, 0, 12, PSC_NOME_ESTRUTURA, 0 },  /* struct timespec */
+    { 16948, 16948, 5, 0, 12, PSC_NOME_ESTRUTURA, 0 },  /* struct tm */
+    { 17134, 17142, 275, 0, 11, PSC_NOME_FUNCAO, 0 },  /* strxfrm */
+    { 17213, 17220, 276, 0, 10, PSC_NOME_FUNCAO, 0 },  /* system */
+    { 17251, 17255, 277, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tan */
+    { 17276, 17281, 278, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tanf */
+    { 17301, 17306, 279, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tanh */
+    { 17328, 17334, 280, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tanhf */
+    { 17355, 17361, 281, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tanhl */
+    { 17394, 17399, 282, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tanl */
+    { 17431, 17438, 283, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tgamma */
+    { 17462, 17470, 284, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tgammaf */
+    { 17493, 17501, 285, 0, 5, PSC_NOME_FUNCAO, 0 },  /* tgammal */
+    { 17536, 17541, 286, 0, 12, PSC_NOME_FUNCAO, 0 },  /* time */
+    { 17568, 0, 20, 0, 12, PSC_NOME_TIPO, 0 },  /* time_t */
+    { 17575, 17588, 287, 0, 12, PSC_NOME_FUNCAO, 0 },  /* timespec_get */
+    { 17636, 17644, 288, 0, 9, PSC_NOME_FUNCAO, 0 },  /* tmpfile */
+    { 17664, 17671, 289, 0, 9, PSC_NOME_FUNCAO, 0 },  /* tmpnam */
+    { 17693, 17701, 290, 0, 0, PSC_NOME_FUNCAO, 0 },  /* tolower */
+    { 17720, 17728, 291, 0, 0, PSC_NOME_FUNCAO, 0 },  /* toupper */
+    { 17747, 17753, 292, 0, 5, PSC_NOME_FUNCAO, 0 },  /* trunc */
+    { 17776, 17783, 293, 0, 5, PSC_NOME_FUNCAO, 0 },  /* truncf */
+    { 17805, 17812, 294, 0, 5, PSC_NOME_FUNCAO, 0 },  /* truncl */
+    { 17846, 0, 21, 0, 8, PSC_NOME_TIPO, 0 },  /* uint16_t */
+    { 17855, 0, 22, 0, 8, PSC_NOME_TIPO, 0 },  /* uint32_t */
+    { 17864, 0, 23, 0, 8, PSC_NOME_TIPO, 0 },  /* uint64_t */
+    { 17873, 0, 24, 0, 8, PSC_NOME_TIPO, 0 },  /* uint8_t */
+    { 17881, 0, 25, 0, 8, PSC_NOME_TIPO, 0 },  /* uint_fast16_t */
+    { 17895, 0, 26, 0, 8, PSC_NOME_TIPO, 0 },  /* uint_fast32_t */
+    { 17909, 0, 27, 0, 8, PSC_NOME_TIPO, 0 },  /* uint_fast64_t */
+    { 17923, 0, 28, 0, 8, PSC_NOME_TIPO, 0 },  /* uint_fast8_t */
+    { 17936, 0, 29, 0, 8, PSC_NOME_TIPO, 0 },  /* uint_least16_t */
+    { 17951, 0, 30, 0, 8, PSC_NOME_TIPO, 0 },  /* uint_least32_t */
+    { 17966, 0, 31, 0, 8, PSC_NOME_TIPO, 0 },  /* uint_least64_t */
+    { 17981, 0, 32, 0, 8, PSC_NOME_TIPO, 0 },  /* uint_least8_t */
+    { 17995, 0, 33, 0, 8, PSC_NOME_TIPO, 0 },  /* uintmax_t */
+    { 18005, 0, 34, 0, 8, PSC_NOME_TIPO, 0 },  /* uintptr_t */
+    { 18015, 18022, 295, 0, 9, PSC_NOME_FUNCAO, 0 },  /* ungetc */
+    { 18054, 0, 3, 0, 7, PSC_NOME_OPACO, 0 },  /* va_list */
+    { 18062, 18071, 296, 0, 9, PSC_NOME_FUNCAO, 0 },  /* vfprintf */
+    { 18151, 18159, 297, 18238, 9, PSC_NOME_FUNCAO, 0 },  /* vfscanf */
+    { 18255, 18263, 298, 0, 9, PSC_NOME_FUNCAO, 0 },  /* vprintf */
+    { 18318, 18325, 299, 18379, 9, PSC_NOME_FUNCAO, 0 },  /* vscanf */
+    { 18395, 18405, 300, 0, 9, PSC_NOME_FUNCAO, 0 },  /* vsnprintf */
+    { 18491, 18500, 301, 0, 9, PSC_NOME_FUNCAO, 0 },  /* vsprintf */
+    { 18575, 18583, 302, 18663, 9, PSC_NOME_FUNCAO, 0 },  /* vsscanf */
+    { 18680, 0, 35, 0, 7, PSC_NOME_TIPO, 0 },  /* wchar_t */
+    { 18688, 18698, 303, 0, 3, PSC_NOME_FUNCAO, 0 },  /* wcstoimax */
+    { 18786, 18795, 304, 0, 10, PSC_NOME_FUNCAO, 0 },  /* wcstombs */
+    { 18871, 18881, 305, 0, 3, PSC_NOME_FUNCAO, 0 },  /* wcstoumax */
+    { 18970, 18977, 306, 0, 10, PSC_NOME_FUNCAO, 0 },  /* wctomb */
 };
 
 /* ── os protótipos, conferidos contra os do sistema ───────────────────────
@@ -2212,6 +2100,13 @@ double (trunc)(double x);
 float (truncf)(float x);
 long double (truncl)(long double x);
 int (ungetc)(int c, FILE *stream);
+int (vfprintf)(FILE * restrict stream, const char * restrict format, va_list arg);
+int (vfscanf)(FILE * restrict stream, const char * restrict format, va_list arg);
+int (vprintf)(const char * restrict format, va_list arg);
+int (vscanf)(const char * restrict format, va_list arg);
+int (vsnprintf)(char * restrict s, size_t n, const char * restrict format, va_list arg);
+int (vsprintf)(char * restrict s, const char * restrict format, va_list arg);
+int (vsscanf)(const char * restrict s, const char * restrict format, va_list arg);
 intmax_t (wcstoimax)(const wchar_t * restrict nptr, wchar_t ** restrict endptr, int base);
 size_t (wcstombs)(char * restrict s, const wchar_t * restrict pwcs, size_t n);
 uintmax_t (wcstoumax)(const wchar_t * restrict nptr, wchar_t ** restrict endptr, int base);
@@ -2266,29 +2161,29 @@ static void (*ps_c_local(int i))(void)
         case 62: return (void (*)(void))ps_c_m_INT64_C;
         case 65: return (void (*)(void))ps_c_m_INT8_C;
         case 68: return (void (*)(void))ps_c_m_INTMAX_C;
-        case 287: return (void (*)(void))ps_c_m_UINT16_C;
-        case 289: return (void (*)(void))ps_c_m_UINT32_C;
-        case 291: return (void (*)(void))ps_c_m_UINT64_C;
-        case 293: return (void (*)(void))ps_c_m_UINT8_C;
-        case 295: return (void (*)(void))ps_c_m_UINTMAX_C;
-        case 431: return (void (*)(void))ps_c_m_fpclassify;
-        case 487: return (void (*)(void))ps_c_m_isfinite;
-        case 489: return (void (*)(void))ps_c_m_isgreater;
-        case 490: return (void (*)(void))ps_c_m_isgreaterequal;
-        case 491: return (void (*)(void))ps_c_m_isinf;
-        case 492: return (void (*)(void))ps_c_m_isless;
-        case 493: return (void (*)(void))ps_c_m_islessequal;
-        case 494: return (void (*)(void))ps_c_m_islessgreater;
-        case 496: return (void (*)(void))ps_c_m_isnan;
-        case 497: return (void (*)(void))ps_c_m_isnormal;
-        case 501: return (void (*)(void))ps_c_m_isunordered;
-        case 619: return (void (*)(void))ps_c_m_signbit;
-        case 637: return (void (*)(void))ps_c_v_stderr;
-        case 638: return (void (*)(void))ps_c_v_stdin;
-        case 639: return (void (*)(void))ps_c_v_stdout;
+        case 284: return (void (*)(void))ps_c_m_UINT16_C;
+        case 286: return (void (*)(void))ps_c_m_UINT32_C;
+        case 288: return (void (*)(void))ps_c_m_UINT64_C;
+        case 290: return (void (*)(void))ps_c_m_UINT8_C;
+        case 292: return (void (*)(void))ps_c_m_UINTMAX_C;
+        case 420: return (void (*)(void))ps_c_m_fpclassify;
+        case 468: return (void (*)(void))ps_c_m_isfinite;
+        case 470: return (void (*)(void))ps_c_m_isgreater;
+        case 471: return (void (*)(void))ps_c_m_isgreaterequal;
+        case 472: return (void (*)(void))ps_c_m_isinf;
+        case 473: return (void (*)(void))ps_c_m_isless;
+        case 474: return (void (*)(void))ps_c_m_islessequal;
+        case 475: return (void (*)(void))ps_c_m_islessgreater;
+        case 477: return (void (*)(void))ps_c_m_isnan;
+        case 478: return (void (*)(void))ps_c_m_isnormal;
+        case 482: return (void (*)(void))ps_c_m_isunordered;
+        case 590: return (void (*)(void))ps_c_m_signbit;
+        case 605: return (void (*)(void))ps_c_v_stderr;
+        case 606: return (void (*)(void))ps_c_v_stdin;
+        case 607: return (void (*)(void))ps_c_v_stdout;
 #ifdef _WIN32
-        case 111: return (void (*)(void))ps_c_v_MB_CUR_MAX;
-        case 546: return (void (*)(void))ps_c_v_math_errhandling;
+        case 110: return (void (*)(void))ps_c_v_MB_CUR_MAX;
+        case 526: return (void (*)(void))ps_c_v_math_errhandling;
 #endif
     }
     return NULL;
@@ -2878,27 +2773,28 @@ static const PSCOpacoPadrao PS_C_OPACOS[] = {
     { sizeof(FILE), _Alignof(FILE) },  /* FILE */
     { sizeof(fpos_t), _Alignof(fpos_t) },  /* fpos_t */
     { sizeof(max_align_t), _Alignof(max_align_t) },  /* max_align_t */
+    { sizeof(va_list), _Alignof(va_list) },  /* va_list */
 };
 static const PSCCampoPadrao PS_C_CAMPOS[] = {
-    { 6035, 6040, offsetof(div_t, quot) },  /* div_t.quot */
-    { 6049, 6053, offsetof(div_t, rem) },  /* div_t.rem */
-    { 6035, 9366, offsetof(imaxdiv_t, quot) },  /* imaxdiv_t.quot */
-    { 6049, 9380, offsetof(imaxdiv_t, rem) },  /* imaxdiv_t.rem */
-    { 6035, 10487, offsetof(ldiv_t, quot) },  /* ldiv_t.quot */
-    { 6049, 10501, offsetof(ldiv_t, rem) },  /* ldiv_t.rem */
-    { 6035, 10732, offsetof(lldiv_t, quot) },  /* lldiv_t.quot */
-    { 6049, 10751, offsetof(lldiv_t, rem) },  /* lldiv_t.rem */
-    { 17485, 17492, offsetof(struct timespec, tv_sec) },  /* struct timespec.tv_sec */
-    { 17506, 17514, offsetof(struct timespec, tv_nsec) },  /* struct timespec.tv_nsec */
-    { 17537, 17544, offsetof(struct tm, tm_sec) },  /* struct tm.tm_sec */
-    { 17555, 17562, offsetof(struct tm, tm_min) },  /* struct tm.tm_min */
-    { 17573, 17581, offsetof(struct tm, tm_hour) },  /* struct tm.tm_hour */
-    { 17593, 17601, offsetof(struct tm, tm_mday) },  /* struct tm.tm_mday */
-    { 17613, 17620, offsetof(struct tm, tm_mon) },  /* struct tm.tm_mon */
-    { 17631, 17639, offsetof(struct tm, tm_year) },  /* struct tm.tm_year */
-    { 17651, 17659, offsetof(struct tm, tm_wday) },  /* struct tm.tm_wday */
-    { 17671, 17679, offsetof(struct tm, tm_yday) },  /* struct tm.tm_yday */
-    { 17691, 17700, offsetof(struct tm, tm_isdst) },  /* struct tm.tm_isdst */
+    { 5842, 5847, offsetof(div_t, quot) },  /* div_t.quot */
+    { 5856, 5860, offsetof(div_t, rem) },  /* div_t.rem */
+    { 5842, 9008, offsetof(imaxdiv_t, quot) },  /* imaxdiv_t.quot */
+    { 5856, 9022, offsetof(imaxdiv_t, rem) },  /* imaxdiv_t.rem */
+    { 5842, 10129, offsetof(ldiv_t, quot) },  /* ldiv_t.quot */
+    { 5856, 10143, offsetof(ldiv_t, rem) },  /* ldiv_t.rem */
+    { 5842, 10374, offsetof(lldiv_t, quot) },  /* lldiv_t.quot */
+    { 5856, 10393, offsetof(lldiv_t, rem) },  /* lldiv_t.rem */
+    { 16906, 16913, offsetof(struct timespec, tv_sec) },  /* struct timespec.tv_sec */
+    { 16927, 16935, offsetof(struct timespec, tv_nsec) },  /* struct timespec.tv_nsec */
+    { 16958, 16965, offsetof(struct tm, tm_sec) },  /* struct tm.tm_sec */
+    { 16976, 16983, offsetof(struct tm, tm_min) },  /* struct tm.tm_min */
+    { 16994, 17002, offsetof(struct tm, tm_hour) },  /* struct tm.tm_hour */
+    { 17014, 17022, offsetof(struct tm, tm_mday) },  /* struct tm.tm_mday */
+    { 17034, 17041, offsetof(struct tm, tm_mon) },  /* struct tm.tm_mon */
+    { 17052, 17060, offsetof(struct tm, tm_year) },  /* struct tm.tm_year */
+    { 17072, 17080, offsetof(struct tm, tm_wday) },  /* struct tm.tm_wday */
+    { 17092, 17100, offsetof(struct tm, tm_yday) },  /* struct tm.tm_yday */
+    { 17112, 17121, offsetof(struct tm, tm_isdst) },  /* struct tm.tm_isdst */
 };
 static const PSCEstruturaPadrao PS_C_ESTRUTURAS[] = {
     { 0, 2, sizeof(div_t), _Alignof(div_t) },  /* div_t */
@@ -2917,301 +2813,308 @@ static const PSCEstruturaPadrao PS_C_ESTRUTURAS[] = {
 static void (*ps_c_endereco_win(int i))(void)
 {
     switch (i) {
-        case 314: return (void (*)(void))_Exit;
-        case 320: return (void (*)(void))abort;
-        case 322: return (void (*)(void))abs;
-        case 323: return (void (*)(void))acos;
-        case 324: return (void (*)(void))acosf;
-        case 325: return (void (*)(void))acosh;
-        case 326: return (void (*)(void))acoshf;
-        case 327: return (void (*)(void))acoshl;
-        case 328: return (void (*)(void))acosl;
-        case 330: return (void (*)(void))asctime;
-        case 332: return (void (*)(void))asin;
-        case 333: return (void (*)(void))asinf;
-        case 334: return (void (*)(void))asinh;
-        case 335: return (void (*)(void))asinhf;
-        case 336: return (void (*)(void))asinhl;
-        case 337: return (void (*)(void))asinl;
-        case 339: return (void (*)(void))atan;
-        case 340: return (void (*)(void))atan2;
-        case 341: return (void (*)(void))atan2f;
-        case 342: return (void (*)(void))atan2l;
-        case 343: return (void (*)(void))atanf;
-        case 344: return (void (*)(void))atanh;
-        case 345: return (void (*)(void))atanhf;
-        case 346: return (void (*)(void))atanhl;
-        case 347: return (void (*)(void))atanl;
-        case 349: return (void (*)(void))atof;
-        case 350: return (void (*)(void))atoi;
-        case 351: return (void (*)(void))atol;
-        case 352: return (void (*)(void))atoll;
-        case 354: return (void (*)(void))bsearch;
-        case 356: return (void (*)(void))calloc;
-        case 357: return (void (*)(void))cbrt;
-        case 358: return (void (*)(void))cbrtf;
-        case 359: return (void (*)(void))cbrtl;
-        case 360: return (void (*)(void))ceil;
-        case 361: return (void (*)(void))ceilf;
-        case 362: return (void (*)(void))ceill;
-        case 363: return (void (*)(void))clearerr;
-        case 364: return (void (*)(void))clock;
-        case 367: return (void (*)(void))copysign;
-        case 368: return (void (*)(void))copysignf;
-        case 369: return (void (*)(void))copysignl;
-        case 370: return (void (*)(void))cos;
-        case 371: return (void (*)(void))cosf;
-        case 372: return (void (*)(void))cosh;
-        case 373: return (void (*)(void))coshf;
-        case 374: return (void (*)(void))coshl;
-        case 375: return (void (*)(void))cosl;
-        case 376: return (void (*)(void))ctime;
-        case 378: return (void (*)(void))difftime;
-        case 379: return (void (*)(void))div;
-        case 382: return (void (*)(void))erf;
-        case 383: return (void (*)(void))erfc;
-        case 384: return (void (*)(void))erfcf;
-        case 385: return (void (*)(void))erfcl;
-        case 386: return (void (*)(void))erff;
-        case 387: return (void (*)(void))erfl;
-        case 391: return (void (*)(void))exp;
-        case 392: return (void (*)(void))exp2;
-        case 393: return (void (*)(void))exp2f;
-        case 394: return (void (*)(void))exp2l;
-        case 395: return (void (*)(void))expf;
-        case 396: return (void (*)(void))expl;
-        case 397: return (void (*)(void))expm1;
-        case 398: return (void (*)(void))expm1f;
-        case 399: return (void (*)(void))expm1l;
-        case 400: return (void (*)(void))fabs;
-        case 401: return (void (*)(void))fabsf;
-        case 402: return (void (*)(void))fabsl;
-        case 403: return (void (*)(void))fclose;
-        case 404: return (void (*)(void))fdim;
-        case 405: return (void (*)(void))fdimf;
-        case 406: return (void (*)(void))fdiml;
-        case 407: return (void (*)(void))feof;
-        case 408: return (void (*)(void))ferror;
-        case 409: return (void (*)(void))fflush;
-        case 410: return (void (*)(void))fgetc;
-        case 411: return (void (*)(void))fgetpos;
-        case 412: return (void (*)(void))fgets;
-        case 414: return (void (*)(void))floor;
-        case 415: return (void (*)(void))floorf;
-        case 416: return (void (*)(void))floorl;
-        case 417: return (void (*)(void))fma;
-        case 418: return (void (*)(void))fmaf;
-        case 419: return (void (*)(void))fmal;
-        case 420: return (void (*)(void))fmax;
-        case 421: return (void (*)(void))fmaxf;
-        case 422: return (void (*)(void))fmaxl;
-        case 423: return (void (*)(void))fmin;
-        case 424: return (void (*)(void))fminf;
-        case 425: return (void (*)(void))fminl;
-        case 426: return (void (*)(void))fmod;
-        case 427: return (void (*)(void))fmodf;
-        case 428: return (void (*)(void))fmodl;
-        case 429: return (void (*)(void))fopen;
-        case 433: return (void (*)(void))fprintf;
-        case 435: return (void (*)(void))fputc;
-        case 436: return (void (*)(void))fputs;
-        case 437: return (void (*)(void))fread;
-        case 438: return (void (*)(void))free;
-        case 439: return (void (*)(void))freopen;
-        case 441: return (void (*)(void))frexp;
-        case 442: return (void (*)(void))frexpf;
-        case 443: return (void (*)(void))frexpl;
-        case 444: return (void (*)(void))fscanf;
-        case 446: return (void (*)(void))fseek;
-        case 447: return (void (*)(void))fsetpos;
-        case 448: return (void (*)(void))ftell;
-        case 449: return (void (*)(void))fwrite;
-        case 450: return (void (*)(void))getc;
-        case 451: return (void (*)(void))getchar;
-        case 452: return (void (*)(void))getenv;
-        case 456: return (void (*)(void))gmtime;
-        case 458: return (void (*)(void))hypot;
-        case 459: return (void (*)(void))hypotf;
-        case 460: return (void (*)(void))hypotl;
-        case 462: return (void (*)(void))ilogb;
-        case 463: return (void (*)(void))ilogbf;
-        case 464: return (void (*)(void))ilogbl;
-        case 465: return (void (*)(void))imaxabs;
-        case 466: return (void (*)(void))imaxdiv;
-        case 482: return (void (*)(void))isalnum;
-        case 483: return (void (*)(void))isalpha;
-        case 484: return (void (*)(void))isblank;
-        case 485: return (void (*)(void))iscntrl;
-        case 486: return (void (*)(void))isdigit;
-        case 488: return (void (*)(void))isgraph;
-        case 495: return (void (*)(void))islower;
-        case 498: return (void (*)(void))isprint;
-        case 499: return (void (*)(void))ispunct;
-        case 500: return (void (*)(void))isspace;
-        case 502: return (void (*)(void))isupper;
-        case 503: return (void (*)(void))isxdigit;
-        case 504: return (void (*)(void))labs;
-        case 505: return (void (*)(void))ldexp;
-        case 506: return (void (*)(void))ldexpf;
-        case 507: return (void (*)(void))ldexpl;
-        case 508: return (void (*)(void))ldiv;
-        case 510: return (void (*)(void))lgamma;
-        case 511: return (void (*)(void))lgammaf;
-        case 512: return (void (*)(void))lgammal;
-        case 513: return (void (*)(void))llabs;
-        case 514: return (void (*)(void))lldiv;
-        case 516: return (void (*)(void))llrint;
-        case 517: return (void (*)(void))llrintf;
-        case 518: return (void (*)(void))llrintl;
-        case 519: return (void (*)(void))llround;
-        case 520: return (void (*)(void))llroundf;
-        case 521: return (void (*)(void))llroundl;
-        case 522: return (void (*)(void))localtime;
-        case 524: return (void (*)(void))log;
-        case 525: return (void (*)(void))log10;
-        case 526: return (void (*)(void))log10f;
-        case 527: return (void (*)(void))log10l;
-        case 528: return (void (*)(void))log1p;
-        case 529: return (void (*)(void))log1pf;
-        case 530: return (void (*)(void))log1pl;
-        case 531: return (void (*)(void))log2;
-        case 532: return (void (*)(void))log2f;
-        case 533: return (void (*)(void))log2l;
-        case 534: return (void (*)(void))logb;
-        case 535: return (void (*)(void))logbf;
-        case 536: return (void (*)(void))logbl;
-        case 537: return (void (*)(void))logf;
-        case 538: return (void (*)(void))logl;
-        case 539: return (void (*)(void))lrint;
-        case 540: return (void (*)(void))lrintf;
-        case 541: return (void (*)(void))lrintl;
-        case 542: return (void (*)(void))lround;
-        case 543: return (void (*)(void))lroundf;
-        case 544: return (void (*)(void))lroundl;
-        case 545: return (void (*)(void))malloc;
-        case 548: return (void (*)(void))mblen;
-        case 549: return (void (*)(void))mbstowcs;
-        case 551: return (void (*)(void))mbtowc;
-        case 552: return (void (*)(void))memchr;
-        case 553: return (void (*)(void))memcmp;
-        case 554: return (void (*)(void))memcpy;
-        case 556: return (void (*)(void))memmove;
-        case 558: return (void (*)(void))memset;
-        case 560: return (void (*)(void))mktime;
-        case 561: return (void (*)(void))modf;
-        case 562: return (void (*)(void))modff;
-        case 563: return (void (*)(void))modfl;
-        case 564: return (void (*)(void))nan;
-        case 565: return (void (*)(void))nanf;
-        case 566: return (void (*)(void))nanl;
-        case 567: return (void (*)(void))nearbyint;
-        case 568: return (void (*)(void))nearbyintf;
-        case 569: return (void (*)(void))nearbyintl;
-        case 570: return (void (*)(void))nextafter;
-        case 571: return (void (*)(void))nextafterf;
-        case 572: return (void (*)(void))nextafterl;
-        case 573: return (void (*)(void))nexttoward;
-        case 574: return (void (*)(void))nexttowardf;
-        case 575: return (void (*)(void))nexttowardl;
-        case 577: return (void (*)(void))perror;
-        case 578: return (void (*)(void))pow;
-        case 579: return (void (*)(void))powf;
-        case 580: return (void (*)(void))powl;
-        case 581: return (void (*)(void))printf;
-        case 584: return (void (*)(void))putc;
-        case 585: return (void (*)(void))putchar;
-        case 586: return (void (*)(void))puts;
-        case 587: return (void (*)(void))qsort;
-        case 590: return (void (*)(void))rand;
-        case 591: return (void (*)(void))realloc;
-        case 592: return (void (*)(void))remainder;
-        case 593: return (void (*)(void))remainderf;
-        case 594: return (void (*)(void))remainderl;
-        case 595: return (void (*)(void))remove;
-        case 596: return (void (*)(void))remquo;
-        case 597: return (void (*)(void))remquof;
-        case 598: return (void (*)(void))remquol;
-        case 599: return (void (*)(void))rename;
-        case 600: return (void (*)(void))rewind;
-        case 601: return (void (*)(void))rint;
-        case 602: return (void (*)(void))rintf;
-        case 603: return (void (*)(void))rintl;
-        case 604: return (void (*)(void))round;
-        case 605: return (void (*)(void))roundf;
-        case 606: return (void (*)(void))roundl;
-        case 608: return (void (*)(void))scalbln;
-        case 609: return (void (*)(void))scalblnf;
-        case 610: return (void (*)(void))scalblnl;
-        case 611: return (void (*)(void))scalbn;
-        case 612: return (void (*)(void))scalbnf;
-        case 613: return (void (*)(void))scalbnl;
-        case 614: return (void (*)(void))scanf;
-        case 617: return (void (*)(void))setbuf;
-        case 618: return (void (*)(void))setvbuf;
-        case 620: return (void (*)(void))sin;
-        case 621: return (void (*)(void))sinf;
-        case 622: return (void (*)(void))sinh;
-        case 623: return (void (*)(void))sinhf;
-        case 624: return (void (*)(void))sinhl;
-        case 625: return (void (*)(void))sinl;
-        case 627: return (void (*)(void))snprintf;
-        case 629: return (void (*)(void))sprintf;
-        case 631: return (void (*)(void))sqrt;
-        case 632: return (void (*)(void))sqrtf;
-        case 633: return (void (*)(void))sqrtl;
-        case 634: return (void (*)(void))srand;
-        case 635: return (void (*)(void))sscanf;
-        case 640: return (void (*)(void))strcat;
-        case 642: return (void (*)(void))strchr;
-        case 643: return (void (*)(void))strcmp;
-        case 644: return (void (*)(void))strcoll;
-        case 645: return (void (*)(void))strcpy;
-        case 647: return (void (*)(void))strcspn;
-        case 648: return (void (*)(void))strerror;
-        case 651: return (void (*)(void))strftime;
-        case 652: return (void (*)(void))strlen;
-        case 653: return (void (*)(void))strncat;
-        case 655: return (void (*)(void))strncmp;
-        case 656: return (void (*)(void))strncpy;
-        case 659: return (void (*)(void))strpbrk;
-        case 660: return (void (*)(void))strrchr;
-        case 661: return (void (*)(void))strspn;
-        case 662: return (void (*)(void))strstr;
-        case 663: return (void (*)(void))strtod;
-        case 664: return (void (*)(void))strtof;
-        case 665: return (void (*)(void))strtoimax;
-        case 666: return (void (*)(void))strtok;
-        case 668: return (void (*)(void))strtol;
-        case 669: return (void (*)(void))strtold;
-        case 670: return (void (*)(void))strtoll;
-        case 671: return (void (*)(void))strtoul;
-        case 672: return (void (*)(void))strtoull;
-        case 673: return (void (*)(void))strtoumax;
-        case 676: return (void (*)(void))strxfrm;
-        case 677: return (void (*)(void))system;
-        case 678: return (void (*)(void))tan;
-        case 679: return (void (*)(void))tanf;
-        case 680: return (void (*)(void))tanh;
-        case 681: return (void (*)(void))tanhf;
-        case 682: return (void (*)(void))tanhl;
-        case 683: return (void (*)(void))tanl;
-        case 684: return (void (*)(void))tgamma;
-        case 685: return (void (*)(void))tgammaf;
-        case 686: return (void (*)(void))tgammal;
-        case 687: return (void (*)(void))time;
-        case 689: return (void (*)(void))timespec_get;
-        case 690: return (void (*)(void))tmpfile;
-        case 692: return (void (*)(void))tmpnam;
-        case 694: return (void (*)(void))tolower;
-        case 695: return (void (*)(void))toupper;
-        case 696: return (void (*)(void))trunc;
-        case 697: return (void (*)(void))truncf;
-        case 698: return (void (*)(void))truncl;
-        case 713: return (void (*)(void))ungetc;
-        case 729: return (void (*)(void))wcstoimax;
-        case 730: return (void (*)(void))wcstombs;
-        case 732: return (void (*)(void))wcstoumax;
-        case 733: return (void (*)(void))wctomb;
+        case 311: return (void (*)(void))_Exit;
+        case 316: return (void (*)(void))abort;
+        case 317: return (void (*)(void))abs;
+        case 318: return (void (*)(void))acos;
+        case 319: return (void (*)(void))acosf;
+        case 320: return (void (*)(void))acosh;
+        case 321: return (void (*)(void))acoshf;
+        case 322: return (void (*)(void))acoshl;
+        case 323: return (void (*)(void))acosl;
+        case 325: return (void (*)(void))asctime;
+        case 326: return (void (*)(void))asin;
+        case 327: return (void (*)(void))asinf;
+        case 328: return (void (*)(void))asinh;
+        case 329: return (void (*)(void))asinhf;
+        case 330: return (void (*)(void))asinhl;
+        case 331: return (void (*)(void))asinl;
+        case 333: return (void (*)(void))atan;
+        case 334: return (void (*)(void))atan2;
+        case 335: return (void (*)(void))atan2f;
+        case 336: return (void (*)(void))atan2l;
+        case 337: return (void (*)(void))atanf;
+        case 338: return (void (*)(void))atanh;
+        case 339: return (void (*)(void))atanhf;
+        case 340: return (void (*)(void))atanhl;
+        case 341: return (void (*)(void))atanl;
+        case 343: return (void (*)(void))atof;
+        case 344: return (void (*)(void))atoi;
+        case 345: return (void (*)(void))atol;
+        case 346: return (void (*)(void))atoll;
+        case 348: return (void (*)(void))bsearch;
+        case 349: return (void (*)(void))calloc;
+        case 350: return (void (*)(void))cbrt;
+        case 351: return (void (*)(void))cbrtf;
+        case 352: return (void (*)(void))cbrtl;
+        case 353: return (void (*)(void))ceil;
+        case 354: return (void (*)(void))ceilf;
+        case 355: return (void (*)(void))ceill;
+        case 356: return (void (*)(void))clearerr;
+        case 357: return (void (*)(void))clock;
+        case 359: return (void (*)(void))copysign;
+        case 360: return (void (*)(void))copysignf;
+        case 361: return (void (*)(void))copysignl;
+        case 362: return (void (*)(void))cos;
+        case 363: return (void (*)(void))cosf;
+        case 364: return (void (*)(void))cosh;
+        case 365: return (void (*)(void))coshf;
+        case 366: return (void (*)(void))coshl;
+        case 367: return (void (*)(void))cosl;
+        case 368: return (void (*)(void))ctime;
+        case 369: return (void (*)(void))difftime;
+        case 370: return (void (*)(void))div;
+        case 373: return (void (*)(void))erf;
+        case 374: return (void (*)(void))erfc;
+        case 375: return (void (*)(void))erfcf;
+        case 376: return (void (*)(void))erfcl;
+        case 377: return (void (*)(void))erff;
+        case 378: return (void (*)(void))erfl;
+        case 381: return (void (*)(void))exp;
+        case 382: return (void (*)(void))exp2;
+        case 383: return (void (*)(void))exp2f;
+        case 384: return (void (*)(void))exp2l;
+        case 385: return (void (*)(void))expf;
+        case 386: return (void (*)(void))expl;
+        case 387: return (void (*)(void))expm1;
+        case 388: return (void (*)(void))expm1f;
+        case 389: return (void (*)(void))expm1l;
+        case 390: return (void (*)(void))fabs;
+        case 391: return (void (*)(void))fabsf;
+        case 392: return (void (*)(void))fabsl;
+        case 393: return (void (*)(void))fclose;
+        case 394: return (void (*)(void))fdim;
+        case 395: return (void (*)(void))fdimf;
+        case 396: return (void (*)(void))fdiml;
+        case 397: return (void (*)(void))feof;
+        case 398: return (void (*)(void))ferror;
+        case 399: return (void (*)(void))fflush;
+        case 400: return (void (*)(void))fgetc;
+        case 401: return (void (*)(void))fgetpos;
+        case 402: return (void (*)(void))fgets;
+        case 404: return (void (*)(void))floor;
+        case 405: return (void (*)(void))floorf;
+        case 406: return (void (*)(void))floorl;
+        case 407: return (void (*)(void))fma;
+        case 408: return (void (*)(void))fmaf;
+        case 409: return (void (*)(void))fmal;
+        case 410: return (void (*)(void))fmax;
+        case 411: return (void (*)(void))fmaxf;
+        case 412: return (void (*)(void))fmaxl;
+        case 413: return (void (*)(void))fmin;
+        case 414: return (void (*)(void))fminf;
+        case 415: return (void (*)(void))fminl;
+        case 416: return (void (*)(void))fmod;
+        case 417: return (void (*)(void))fmodf;
+        case 418: return (void (*)(void))fmodl;
+        case 419: return (void (*)(void))fopen;
+        case 422: return (void (*)(void))fprintf;
+        case 423: return (void (*)(void))fputc;
+        case 424: return (void (*)(void))fputs;
+        case 425: return (void (*)(void))fread;
+        case 426: return (void (*)(void))free;
+        case 427: return (void (*)(void))freopen;
+        case 428: return (void (*)(void))frexp;
+        case 429: return (void (*)(void))frexpf;
+        case 430: return (void (*)(void))frexpl;
+        case 431: return (void (*)(void))fscanf;
+        case 432: return (void (*)(void))fseek;
+        case 433: return (void (*)(void))fsetpos;
+        case 434: return (void (*)(void))ftell;
+        case 435: return (void (*)(void))fwrite;
+        case 436: return (void (*)(void))getc;
+        case 437: return (void (*)(void))getchar;
+        case 438: return (void (*)(void))getenv;
+        case 439: return (void (*)(void))gmtime;
+        case 440: return (void (*)(void))hypot;
+        case 441: return (void (*)(void))hypotf;
+        case 442: return (void (*)(void))hypotl;
+        case 443: return (void (*)(void))ilogb;
+        case 444: return (void (*)(void))ilogbf;
+        case 445: return (void (*)(void))ilogbl;
+        case 446: return (void (*)(void))imaxabs;
+        case 447: return (void (*)(void))imaxdiv;
+        case 463: return (void (*)(void))isalnum;
+        case 464: return (void (*)(void))isalpha;
+        case 465: return (void (*)(void))isblank;
+        case 466: return (void (*)(void))iscntrl;
+        case 467: return (void (*)(void))isdigit;
+        case 469: return (void (*)(void))isgraph;
+        case 476: return (void (*)(void))islower;
+        case 479: return (void (*)(void))isprint;
+        case 480: return (void (*)(void))ispunct;
+        case 481: return (void (*)(void))isspace;
+        case 483: return (void (*)(void))isupper;
+        case 484: return (void (*)(void))isxdigit;
+        case 485: return (void (*)(void))labs;
+        case 486: return (void (*)(void))ldexp;
+        case 487: return (void (*)(void))ldexpf;
+        case 488: return (void (*)(void))ldexpl;
+        case 489: return (void (*)(void))ldiv;
+        case 491: return (void (*)(void))lgamma;
+        case 492: return (void (*)(void))lgammaf;
+        case 493: return (void (*)(void))lgammal;
+        case 494: return (void (*)(void))llabs;
+        case 495: return (void (*)(void))lldiv;
+        case 497: return (void (*)(void))llrint;
+        case 498: return (void (*)(void))llrintf;
+        case 499: return (void (*)(void))llrintl;
+        case 500: return (void (*)(void))llround;
+        case 501: return (void (*)(void))llroundf;
+        case 502: return (void (*)(void))llroundl;
+        case 503: return (void (*)(void))localtime;
+        case 504: return (void (*)(void))log;
+        case 505: return (void (*)(void))log10;
+        case 506: return (void (*)(void))log10f;
+        case 507: return (void (*)(void))log10l;
+        case 508: return (void (*)(void))log1p;
+        case 509: return (void (*)(void))log1pf;
+        case 510: return (void (*)(void))log1pl;
+        case 511: return (void (*)(void))log2;
+        case 512: return (void (*)(void))log2f;
+        case 513: return (void (*)(void))log2l;
+        case 514: return (void (*)(void))logb;
+        case 515: return (void (*)(void))logbf;
+        case 516: return (void (*)(void))logbl;
+        case 517: return (void (*)(void))logf;
+        case 518: return (void (*)(void))logl;
+        case 519: return (void (*)(void))lrint;
+        case 520: return (void (*)(void))lrintf;
+        case 521: return (void (*)(void))lrintl;
+        case 522: return (void (*)(void))lround;
+        case 523: return (void (*)(void))lroundf;
+        case 524: return (void (*)(void))lroundl;
+        case 525: return (void (*)(void))malloc;
+        case 528: return (void (*)(void))mblen;
+        case 529: return (void (*)(void))mbstowcs;
+        case 530: return (void (*)(void))mbtowc;
+        case 531: return (void (*)(void))memchr;
+        case 532: return (void (*)(void))memcmp;
+        case 533: return (void (*)(void))memcpy;
+        case 534: return (void (*)(void))memmove;
+        case 535: return (void (*)(void))memset;
+        case 536: return (void (*)(void))mktime;
+        case 537: return (void (*)(void))modf;
+        case 538: return (void (*)(void))modff;
+        case 539: return (void (*)(void))modfl;
+        case 540: return (void (*)(void))nan;
+        case 541: return (void (*)(void))nanf;
+        case 542: return (void (*)(void))nanl;
+        case 543: return (void (*)(void))nearbyint;
+        case 544: return (void (*)(void))nearbyintf;
+        case 545: return (void (*)(void))nearbyintl;
+        case 546: return (void (*)(void))nextafter;
+        case 547: return (void (*)(void))nextafterf;
+        case 548: return (void (*)(void))nextafterl;
+        case 549: return (void (*)(void))nexttoward;
+        case 550: return (void (*)(void))nexttowardf;
+        case 551: return (void (*)(void))nexttowardl;
+        case 553: return (void (*)(void))perror;
+        case 554: return (void (*)(void))pow;
+        case 555: return (void (*)(void))powf;
+        case 556: return (void (*)(void))powl;
+        case 557: return (void (*)(void))printf;
+        case 559: return (void (*)(void))putc;
+        case 560: return (void (*)(void))putchar;
+        case 561: return (void (*)(void))puts;
+        case 562: return (void (*)(void))qsort;
+        case 564: return (void (*)(void))rand;
+        case 565: return (void (*)(void))realloc;
+        case 566: return (void (*)(void))remainder;
+        case 567: return (void (*)(void))remainderf;
+        case 568: return (void (*)(void))remainderl;
+        case 569: return (void (*)(void))remove;
+        case 570: return (void (*)(void))remquo;
+        case 571: return (void (*)(void))remquof;
+        case 572: return (void (*)(void))remquol;
+        case 573: return (void (*)(void))rename;
+        case 574: return (void (*)(void))rewind;
+        case 575: return (void (*)(void))rint;
+        case 576: return (void (*)(void))rintf;
+        case 577: return (void (*)(void))rintl;
+        case 578: return (void (*)(void))round;
+        case 579: return (void (*)(void))roundf;
+        case 580: return (void (*)(void))roundl;
+        case 581: return (void (*)(void))scalbln;
+        case 582: return (void (*)(void))scalblnf;
+        case 583: return (void (*)(void))scalblnl;
+        case 584: return (void (*)(void))scalbn;
+        case 585: return (void (*)(void))scalbnf;
+        case 586: return (void (*)(void))scalbnl;
+        case 587: return (void (*)(void))scanf;
+        case 588: return (void (*)(void))setbuf;
+        case 589: return (void (*)(void))setvbuf;
+        case 591: return (void (*)(void))sin;
+        case 592: return (void (*)(void))sinf;
+        case 593: return (void (*)(void))sinh;
+        case 594: return (void (*)(void))sinhf;
+        case 595: return (void (*)(void))sinhl;
+        case 596: return (void (*)(void))sinl;
+        case 598: return (void (*)(void))snprintf;
+        case 599: return (void (*)(void))sprintf;
+        case 600: return (void (*)(void))sqrt;
+        case 601: return (void (*)(void))sqrtf;
+        case 602: return (void (*)(void))sqrtl;
+        case 603: return (void (*)(void))srand;
+        case 604: return (void (*)(void))sscanf;
+        case 608: return (void (*)(void))strcat;
+        case 609: return (void (*)(void))strchr;
+        case 610: return (void (*)(void))strcmp;
+        case 611: return (void (*)(void))strcoll;
+        case 612: return (void (*)(void))strcpy;
+        case 613: return (void (*)(void))strcspn;
+        case 614: return (void (*)(void))strerror;
+        case 615: return (void (*)(void))strftime;
+        case 616: return (void (*)(void))strlen;
+        case 617: return (void (*)(void))strncat;
+        case 618: return (void (*)(void))strncmp;
+        case 619: return (void (*)(void))strncpy;
+        case 620: return (void (*)(void))strpbrk;
+        case 621: return (void (*)(void))strrchr;
+        case 622: return (void (*)(void))strspn;
+        case 623: return (void (*)(void))strstr;
+        case 624: return (void (*)(void))strtod;
+        case 625: return (void (*)(void))strtof;
+        case 626: return (void (*)(void))strtoimax;
+        case 627: return (void (*)(void))strtok;
+        case 628: return (void (*)(void))strtol;
+        case 629: return (void (*)(void))strtold;
+        case 630: return (void (*)(void))strtoll;
+        case 631: return (void (*)(void))strtoul;
+        case 632: return (void (*)(void))strtoull;
+        case 633: return (void (*)(void))strtoumax;
+        case 636: return (void (*)(void))strxfrm;
+        case 637: return (void (*)(void))system;
+        case 638: return (void (*)(void))tan;
+        case 639: return (void (*)(void))tanf;
+        case 640: return (void (*)(void))tanh;
+        case 641: return (void (*)(void))tanhf;
+        case 642: return (void (*)(void))tanhl;
+        case 643: return (void (*)(void))tanl;
+        case 644: return (void (*)(void))tgamma;
+        case 645: return (void (*)(void))tgammaf;
+        case 646: return (void (*)(void))tgammal;
+        case 647: return (void (*)(void))time;
+        case 649: return (void (*)(void))timespec_get;
+        case 650: return (void (*)(void))tmpfile;
+        case 651: return (void (*)(void))tmpnam;
+        case 652: return (void (*)(void))tolower;
+        case 653: return (void (*)(void))toupper;
+        case 654: return (void (*)(void))trunc;
+        case 655: return (void (*)(void))truncf;
+        case 656: return (void (*)(void))truncl;
+        case 671: return (void (*)(void))ungetc;
+        case 673: return (void (*)(void))vfprintf;
+        case 674: return (void (*)(void))vfscanf;
+        case 675: return (void (*)(void))vprintf;
+        case 676: return (void (*)(void))vscanf;
+        case 677: return (void (*)(void))vsnprintf;
+        case 678: return (void (*)(void))vsprintf;
+        case 679: return (void (*)(void))vsscanf;
+        case 681: return (void (*)(void))wcstoimax;
+        case 682: return (void (*)(void))wcstombs;
+        case 683: return (void (*)(void))wcstoumax;
+        case 684: return (void (*)(void))wctomb;
     }
     return NULL;
 }

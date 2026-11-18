@@ -269,7 +269,7 @@ const char *ps_c_por_que_nao(const char *nome, char *buf, size_t cap)
     const char *cab = PS_C_TEXTO + PS_C_CAB[n->cab];
     switch (n->especie) {
         case PSC_NOME_FORA:
-            snprintf(buf, cap, "%s fica de fora: %s (doc: o C na Jinga)", nome, PS_C_TEXTO + n->decl);
+            snprintf(buf, cap, "%s", nome);
             return buf;
         case PSC_NOME_TALVEZ:
             snprintf(buf, cap, "%s não está definida neste sistema (o %s a deixa opcional)", nome, cab);
@@ -312,14 +312,6 @@ int ps_c_cab_existe(const char *cab, const char **motivo)
     if (!cab) return 0;
     for (int k = 0; k < PS_C_NCAB; k++)
         if (strcmp(PS_C_TEXTO + PS_C_CAB[k], cab) == 0) return 1;
-    for (const char *w = PS_C_CAB_FORA; *w; ) {
-        const char *m = w + strlen(w) + 1;
-        if (strcmp(w, cab) == 0) {
-            if (motivo) *motivo = m;
-            return 0;
-        }
-        w = m + strlen(m) + 1;
-    }
     return 0;
 }
 
@@ -330,19 +322,6 @@ static const char *par_do_bloco(const char *bloco, const char *chave)
         const char *v = w + strlen(w) + 1;
         if (strcmp(w, chave) == 0) return v;
         w = v + strlen(v) + 1;
-    }
-    return NULL;
-}
-
-const char *ps_c_cab_fora(int i, const char **motivo)
-{
-    for (const char *w = PS_C_CAB_FORA; *w; ) {
-        const char *m = w + strlen(w) + 1;
-        if (i-- == 0) {
-            if (motivo) *motivo = m;
-            return w;
-        }
-        w = m + strlen(m) + 1;
     }
     return NULL;
 }

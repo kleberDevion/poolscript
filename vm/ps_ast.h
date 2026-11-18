@@ -93,7 +93,11 @@ typedef enum {
      * objeto declarado no construtor, com visibilidade. Não é o
      * `N_ENTITY_FIELD` (que é `nome: tipo` no corpo da classe) nem o
      * `N_VAR_DECL` (que é local). texto = nome, texto2 = tipo, a = valor. */
-    N_FIELD_DECL
+    N_FIELD_DECL,
+    /* `import <stdio.h>`: o cabeçalho da biblioteca padrão do C (a lib do
+     * sistema), igual ao `#include`. texto = o nome do cabeçalho. O compilador
+     * recusa o que não é cabeçalho do C e o que fica de fora, com o motivo. */
+    N_C_IMPORT
 } PSNodeKind;
 
 /* Qual campo do literal vale */

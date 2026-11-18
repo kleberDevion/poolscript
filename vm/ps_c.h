@@ -140,7 +140,7 @@ typedef enum {
     PSC_NOME_OPACO,       /* tipo que só se usa pelo tamanho (FILE) */
     PSC_NOME_ESTRUTURA,   /* struct do padrão (struct tm, div_t) */
     PSC_NOME_SINTAXE,     /* operador com cara de função (offsetof) */
-    PSC_NOME_FORA         /* nome do padrão que fica de fora: a declaração é o motivo */
+    PSC_NOME_FORA         /* sem uso: não existe nome "de fora" */
 } PSCEspecie;
 
 #define PSC_MARCA_VM     1   /* a VM faz o papel (atexit, exit, errno) */
@@ -174,7 +174,6 @@ const char *ps_c_cab(int i);
 int         ps_c_cab_existe(const char *cab, const char **motivo);
 /* o i-ésimo cabeçalho do C11 que a Jinga não tem, com o motivo; NULL depois
  * do último */
-const char *ps_c_cab_fora(int i, const char **motivo);
 const char *ps_c_inclui(const char *cab);
 const char *ps_c_tambem(const char *nome);
 int         ps_c_vale_com(int i, const char *cab);

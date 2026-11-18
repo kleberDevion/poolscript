@@ -38,8 +38,11 @@
 #   estrutura <tipo> { <campo>; ... }   struct do padrão, com os campos que o
 #                                       padrão lista (o sistema pode ter mais)
 #   sintaxe <forma>                     operador escrito como função (offsetof)
-#   fora <NOME>... : <motivo>           nome do padrão que fica de fora; usá-lo
-#                                       é erro antes de rodar, com o motivo
+#
+# Não existe nome nem cabeçalho "de fora": o acesso ao C é total (decisão
+# dele de 2026-11-17). Esta tabela só dá a ASSINATURA dos nomes que ela lista;
+# nome do C que ela não lista vale igual, com a declaração escrita no
+# programa. Erro de C quem dá é o compilador C.
 #
 # Marcas no fim da linha de `funcao` e `valor`:
 #   @vm                 a VM faz o papel (atexit roda funct da Jinga; errno é a
@@ -87,7 +90,6 @@ funcao int toupper(int c);
 cabecalho errno.h
 const EDOM EILSEQ ERANGE
 valor int errno; @vm
-fora errno_t __STDC_WANT_LIB_EXT1__ : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS
 
 cabecalho float.h
 valor int FLT_ROUNDS;
@@ -323,10 +325,9 @@ const __bool_true_false_are_defined
 
 cabecalho stddef.h
 tipo ptrdiff_t size_t wchar_t
-opaco max_align_t
+opaco max_align_t va_list
 nulo NULL
 sintaxe offsetof(type, member-designator)
-fora rsize_t : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS
 
 cabecalho stdint.h
 tipo int8_t int16_t int32_t int64_t uint8_t uint16_t uint32_t uint64_t
@@ -351,7 +352,6 @@ literal uint_least32_t UINT32_C(uint_least32_t value);
 literal uint_least64_t UINT64_C(uint_least64_t value);
 literal intmax_t INTMAX_C(intmax_t value);
 literal uintmax_t UINTMAX_C(uintmax_t value);
-fora RSIZE_MAX : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS
 
 cabecalho stdio.h
 opaco FILE fpos_t
@@ -397,10 +397,13 @@ funcao void clearerr(FILE *stream);
 funcao int feof(FILE *stream);
 funcao int ferror(FILE *stream);
 funcao void perror(const char *s);
-fora vfprintf vfscanf vprintf vscanf vsnprintf vsprintf vsscanf : o va_list só existe dentro de uma função variádica do C
-fora gets : saiu do C11, porque lia sem limite e passava do fim do buffer; use fgets
-fora L_tmpnam_s TMP_MAX_S tmpfile_s tmpnam_s fopen_s freopen_s fprintf_s fscanf_s printf_s scanf_s snprintf_s sprintf_s sscanf_s : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS
-fora vfprintf_s vfscanf_s vprintf_s vscanf_s vsnprintf_s vsprintf_s vsscanf_s gets_s : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS
+funcao int vfprintf(FILE * restrict stream, const char * restrict format, va_list arg);
+funcao int vfscanf(FILE * restrict stream, const char * restrict format, va_list arg); @glibc __isoc99_vfscanf
+funcao int vprintf(const char * restrict format, va_list arg);
+funcao int vscanf(const char * restrict format, va_list arg); @glibc __isoc99_vscanf
+funcao int vsnprintf(char * restrict s, size_t n, const char * restrict format, va_list arg);
+funcao int vsprintf(char * restrict s, const char * restrict format, va_list arg);
+funcao int vsscanf(const char * restrict s, const char * restrict format, va_list arg); @glibc __isoc99_vsscanf
 
 cabecalho stdlib.h
 estrutura div_t { int quot; int rem; }
@@ -447,7 +450,6 @@ funcao int mbtowc(wchar_t * restrict pwc, const char * restrict s, size_t n);
 funcao int wctomb(char *s, wchar_t wchar);
 funcao size_t mbstowcs(wchar_t * restrict pwcs, const char * restrict s, size_t n);
 funcao size_t wcstombs(char * restrict s, const wchar_t * restrict pwcs, size_t n);
-fora constraint_handler_t set_constraint_handler_s abort_handler_s ignore_handler_s getenv_s bsearch_s qsort_s wctomb_s mbstowcs_s wcstombs_s : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS
 
 cabecalho string.h
 funcao void *memcpy(void * restrict s1, const void * restrict s2, size_t n);
@@ -472,7 +474,6 @@ funcao char *strtok(char * restrict s1, const char * restrict s2);
 funcao void *memset(void *s, int c, size_t n);
 funcao char *strerror(int errnum);
 funcao size_t strlen(const char *s);
-fora memcpy_s memmove_s strcpy_s strncpy_s strcat_s strncat_s strtok_s memset_s strerror_s strerrorlen_s strnlen_s : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS
 
 cabecalho time.h
 estrutura struct tm { int tm_sec; int tm_min; int tm_hour; int tm_mday; int tm_mon; int tm_year; int tm_wday; int tm_yday; int tm_isdst; }
@@ -489,7 +490,6 @@ funcao char *ctime(const time_t *timer);
 funcao struct tm *gmtime(const time_t *timer);
 funcao struct tm *localtime(const time_t *timer);
 funcao size_t strftime(char * restrict s, size_t maxsize, const char * restrict format, const struct tm * restrict timeptr);
-fora asctime_s ctime_s gmtime_s localtime_s : é do Anexo K do C11, que é opcional e não existe no Linux nem no macOS
 
 # ── o import (decisão dele de 2026-10-16: `import <stdio.h>`, igual ao
 # #include) ──────────────────────────────────────────────────────────────────
@@ -502,19 +502,13 @@ fora asctime_s ctime_s gmtime_s localtime_s : é do Anexo K do C11, que é opcio
 #   inclui <cabeçalho> <outro>          o primeiro traz os nomes do segundo
 #                                       (C11 7.8p1: o inttypes.h inclui o
 #                                       stdint.h)
-#   cabecalho_fora <cabeçalho>... : <motivo>
-#                                       cabeçalho do C11 que a Jinga não tem:
-#                                       o import dele é erro, com o motivo
+# NÃO existe cabeçalho "de fora": o acesso ao C é total (decisão dele de
+# 2026-11-17). Cabeçalho que a tabela não conhece (setjmp.h, threads.h,
+# assert.h...) é aceito pelo import: sem assinatura na tabela, o programa
+# escreve a declaração dele.
 tambem NULL : locale.h stdio.h stdlib.h string.h time.h wchar.h
 tambem size_t : stdio.h stdlib.h string.h time.h uchar.h wchar.h
 tambem wchar_t : stdlib.h wchar.h
 tambem FILE : wchar.h
 tambem struct tm : wchar.h
 inclui inttypes.h stdint.h
-cabecalho_fora setjmp.h : pular por cima da VM corrompe a VM; a Jinga tem try/catch
-cabecalho_fora stdarg.h : o va_list só existe dentro de uma função variádica do C
-cabecalho_fora threads.h stdatomic.h : a VM roda numa thread só, e funct da Jinga em outra thread corrompe a VM
-cabecalho_fora assert.h : o assert da Jinga faz esse papel (levanta AssertionError com a linha)
-cabecalho_fora iso646.h : são outros nomes pros operadores (bitand, xor, not_eq...), gramática e não biblioteca; o and, o or e o not a Jinga já tem
-cabecalho_fora stdalign.h stdnoreturn.h : são palavras da gramática do C (alignas, noreturn), não biblioteca
-cabecalho_fora signal.h locale.h wchar.h wctype.h uchar.h fenv.h complex.h tgmath.h : ainda não está na Jinga (é a segunda parte da biblioteca do C)

@@ -96,6 +96,7 @@
 #include "ps_ast.h"
 #include "ps_parser.h"
 #include "ps_compiler.h"
+#include "ps_c.h"          /* a biblioteca padrão do C: os nomes de `import <stdio.h>` */
 #include "ps_regex.h"
 #include "ps_vm.h"
 #include "ps_hash.h"
@@ -158,6 +159,7 @@ typedef enum {
     OBJ_REGEX,     /* regex.compile() — padrao ja compilado (re.Pattern) */
     OBJ_CELULA,    /* caixa de uma variável capturada por funct aninhada */
     OBJ_CLOSURE,   /* funct aninhada + as células que ela capturou */
+    OBJ_CFUNC,     /* função da biblioteca padrão do C (`printf`): o índice na tabela de ps_c.h */
     OBJ__COUNT     /* sentinela: nº de tipos — tamanho da tabela de GC */
 } ObjType;
 
@@ -1936,6 +1938,15 @@ typedef struct { GcKind kind; size_t off; void (*fn)(VM *, Obj *);
  * MESMA célula, então uma escrita de dentro da funct aninhada é vista de fora
  * (e vice-versa) — é o que separa closure de cópia. */
 typedef struct { Obj obj; Value v; } PSCelula;
+/* Função da biblioteca padrão do C como valor (`printf`, `f = strlen`): o
+ * índice na tabela de vm/ps_c.h, de onde saem o nome, o protótipo e o
+ * endereço (achado na primeira chamada). */
+typedef struct {
+    Obj     obj;
+    int32_t idx;
+} PSCFuncObj;
+#define COMO_CFUNC(v)  ((PSCFuncObj *)(v).as.obj)
+#define EH_CFUNC(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_CFUNC)
 
 /* Uma funct que captura: o proto mais o vetor de células. Continua sendo
  * "uma função" pra todo o resto da VM — os pontos de chamada aceitam os dois. */
@@ -2277,6 +2288,7 @@ static const GcInfo GC_INFO[OBJ__COUNT] = {
     [OBJ_MAILSRV]    = { GC_LEAF, 0, NULL, 0, fin_mailsrv },
     [OBJ_MAILMSG]    = { GC_LEAF, 0, NULL, 0, fin_mailmsg },
     [OBJ_MAILRD]     = { GC_LEAF, 0, NULL, 0, fin_mailrd },
+    [OBJ_CFUNC]      = { GC_LEAF, 0, NULL, sizeof(PSCFuncObj), NULL },
     [OBJ_RESPONSE]   = { GC_FN,   0, gct_response, 0, fin_response },
     [OBJ_QRFILE]     = { GC_ONE,  offsetof(PSQRFile, conteudo), NULL, 0, fin_qrfile },
     [OBJ_DBCONN]     = { GC_LEAF, 0, NULL, 0, fin_dbconn },
@@ -4782,6 +4794,60 @@ static const char *const NOME_DE_OBJ[OBJ__COUNT] = {
  * `esperava RouteRegistrar, recebeu _RouteRegistrar` (motor-13). O nome que
  * vale é o que a doc e o `--metadata` usam. */
 static const char *const NOMES_JREG[] = { "MiddlewareRegistrar", "RouteRegistrar" };
+
+/* ── os nomes da biblioteca do C ────────────────────────────────────────
+ * Ligados na carga do programa, como os builtins, e só para os nomes que o
+ * arquivo importou (`import <stdio.h>`): o import é obrigatório (decisão
+ * dele de 2026-11-17). A função vira valor chamável (`PSCFuncObj`, o índice
+ * na tabela), a constante o número dela, o `NULL` o Null, o valor lido na
+ * hora (`stdin`) o que ele é. Devolve 0, ou -1 com o erro em `vm->erro`. */
+static int c_liga_global(VM *vm, int32_t slot, int32_t idx)
+{
+    Value v = MK_UNSET();
+    switch (ps_c_especie(idx)) {
+        case PSC_NOME_CONST:
+        case PSC_NOME_TALVEZ: {
+            PSCTipo *t = NULL;
+            uint64_t u = 0;
+            if (ps_c_const_int(idx, &t, &u) != 0) {
+                snprintf(vm->erro, sizeof vm->erro, "%s nao esta definida neste sistema", ps_c_nome(idx));
+                snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "NameError");
+                return -1;
+            }
+            if (t && t->sem_sinal && u > (uint64_t)INT64_MAX)
+                v = MK_FLOAT((double)u);      /* acima do int64: perde precisão, mas não vira negativo */
+            else
+                v = MK_INT((int64_t)u);
+            break;
+        }
+        case PSC_NOME_CONSTFLO: {
+            PSCTipo *t = NULL;
+            long double ld = 0;
+            if (ps_c_const_flo(idx, &t, &ld) != 0) {
+                snprintf(vm->erro, sizeof vm->erro, "%s nao esta definida neste sistema", ps_c_nome(idx));
+                snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "NameError");
+                return -1;
+            }
+            v = MK_FLOAT((double)ld);
+            break;
+        }
+        case PSC_NOME_TEXTO: {
+            const char *s = ps_c_const_texto(idx);
+            if (!s) break;
+            PSString *ps = nova_string(vm, s, (int)strlen(s));
+            if (!ps) { snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "MemoryError"); return -1; }
+            v = MK_OBJ(ps);
+            break;
+        }
+        case PSC_NOME_NULO:
+            v = MK_NULL();
+            break;
+        default:
+            return 0;      /* função: fica para a parte da chamada */
+    }
+    if (v.t != V_UNSET) vm->globals[slot] = v;
+    return 0;
+}
 
 static const char *nome_do_tipo_valor(Value v)
 {
@@ -33280,6 +33346,16 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         if (!ligou) {
             int64_t k = excecao_indice(prog->globais[i]);
             if (k >= 0) { vm.globals[i] = MK_TIPO(TIPO_EXC_BASE + k); ligou = 1; }
+        }
+        /* Nome da biblioteca do C (`import <stdio.h>`): a constante vale o
+         * número ou o texto dela, o `NULL` vale o Null da Jinga. A função é a
+         * próxima parte (o valor chamável); sem ela aqui, o nome solto some. */
+        if (!ligou) {
+            int k = ps_c_busca(prog->globais[i]);
+            if (k >= 0 && c_liga_global(&vm, i, k) != 0) {
+                libera_vm(&vm); ps_compila_free(prog);
+                e->tipo = PS_ERRO_RUNTIME; return -1;
+            }
         }
     }
     /* Nomes das globais sobrevivem ao prog: o jinker usa pra achar o slot do

@@ -4388,6 +4388,22 @@ static PSNode *statement_no(P *p)
 
         if (aceita_kw(p, "import")) {
             n->texto = dup_str(p, "import");
+            /* `import <stdio.h>`: o cabeçalho do C (a lib do sistema). O lexer
+             * só produz o token do cabeçalho DEPOIS da palavra `import`; em
+             * qualquer outro lugar o `<...>` é cor (`<red>`). */
+            PSToken *cab = atual(p);
+            if (cab->type == T_HEADER) {
+                p->pos++;
+                PSNode *ci = ps_node_novo(p->arena, N_C_IMPORT, cab->line, cab->col);
+                if (!ci) return NULL;
+                ci->texto = dup_str(p, cab->texto ? cab->texto : "");
+                return ci;
+            }
+            if (checa_op(p, "<")) {
+                /* `<` solto depois de `import` (`import 2 < 3`): não é cabeçalho */
+                perro(p, "import <...> espera o nome do cabeçalho do C, como <stdio.h>", cab);
+                return NULL;
+            }
             int aspas = modulo_entre_aspas(p, n);
             if (aspas < 0) return NULL;
             if (!aspas && checa(p, T_DOT)) { recusa_import_relativo(p, "import"); return NULL; }

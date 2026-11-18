@@ -1337,6 +1337,29 @@ static void le_ident(Lexer *lx)
 }
 
 /* ── cor: <hex> ou <nome> ───────────────────────────────────────────────── */
+/* `import <stdio.h>`: o cabeçalho do C, como o `#include` do C, mas SÓ
+ * depois da palavra `import`. O `<...>` solto continua cor (`<red>`): o
+ * dicionário de cores é fechado e os cabeçalhos são de C, então não há dúvida
+ * por conteúdo. São duas coisas diferentes e a sintaxe não se confunde. */
+static int le_cabecalho(Lexer *lx)
+{
+    /* o `<` vem depois de `import` (ou `c`, no `import c "..."`, que não usa
+     * este caminho); o texto que vale é o que está entre `<` e `>` */
+    size_t p = lx->pos + 1;
+    size_t ini = p;
+    while (p < lx->len && (eh_alpha(lx->src[p]) || eh_digito(lx->src[p]) || lx->src[p] == '.'
+                           || lx->src[p] == '_' || lx->src[p] == '/')) p++;
+    if (p >= lx->len || lx->src[p] != '>') return 0;
+    size_t n = p - ini;
+    if (n == 0 || n >= 96) return 0;
+    int32_t c0 = lx->col;
+    PSToken *tk = novo_token(lx, T_HEADER, lx->linha, c0);
+    if (tk) guarda_texto(lx, tk, lx->src + ini, (int)n);
+    int total = (int)(p + 1 - lx->pos);
+    lx->pos += (size_t)total;
+    lx->col += total;
+    return 1;
+}
 static int le_cor(Lexer *lx)
 {
     /* <([A-Za-z0-9]{1,7})> */
@@ -1606,7 +1629,15 @@ static int lx_passo(Lexer *lx)
     if (eh_alpha(c) || c == '_') { le_ident(lx); return 1; }
 
     if (le_punct(lx)) return 1;
-    if (c == '<' && le_cor(lx)) return 1;
+    if (c == '<') {
+        /* `import <stdio.h>`: o cabeçalho do C, só depois da palavra
+         * `import`; em qualquer outro lugar o `<...>` é cor (`<red>`) ou
+         * comparação. */
+        PSTokenList *oc = lx->out;
+        int depois_de_import = oc->n > 0 && tok_de(oc, oc->n - 1)->type == T_KW
+            && tok_de(oc, oc->n - 1)->texto && !strcmp(tok_de(oc, oc->n - 1)->texto, "import");
+        if ((depois_de_import && le_cabecalho(lx)) || le_cor(lx)) return 1;
+    }
     if (le_operador(lx)) return 1;
 
     /* O caractere sai INTEIRO, não o primeiro byte dele.
@@ -1814,6 +1845,7 @@ const char *ps_tok_nome(PSTokType t)
         case T_BOOL:        return "BOOL";
         case T_NULL:        return "NULL";
         case T_COLOR:       return "COLOR";
+        case T_HEADER:      return "HEADER";
         case T_OP:          return "OP";
         case T_NEWLINE:     return "NEWLINE";
         case T_INDENT:      return "INDENT";

@@ -956,8 +956,6 @@ static void teste_c_tabela(void)
     const char *motivo_cab = NULL;
     CONF(ps_c_cab_existe("stdio.h", NULL) == 1 && ps_c_cab_existe("foo.h", &motivo_cab) == 0 && !motivo_cab,
          "stdio.h existe, foo.h nao");
-    CONF(ps_c_cab_existe("setjmp.h", &motivo_cab) == 0 && motivo_cab && strstr(motivo_cab, "try/catch"),
-         "setjmp.h fica de fora com o motivo");
     CONF(ps_c_vale_com(ps_c_busca("printf"), "stdio.h") && !ps_c_vale_com(ps_c_busca("printf"), "stdlib.h"),
          "printf so com o stdio.h");
     CONF(ps_c_vale_com(ps_c_busca("NULL"), "stdio.h") && ps_c_vale_com(ps_c_busca("NULL"), "time.h")
@@ -1035,8 +1033,8 @@ static void teste_c_tabela(void)
     CONF(ps_c_especie(i) == PSC_NOME_VALOR && (ps_c_marcas(i) & PSC_MARCA_VM) && ps_c_endereco(i) == NULL,
          "errno e da VM");
     i = ps_c_busca("vprintf");
-    CONF(ps_c_especie(i) == PSC_NOME_FORA && strstr(ps_c_decl(i), "va_list") != NULL,
-         "vprintf fica de fora, com o motivo");
+    CONF(i >= 0 && strstr(ps_c_decl(i), "va_list") != NULL,
+         "vprintf esta na tabela, com a assinatura do va_list (nao ha nome de fora)");
     CONF(strcmp(ps_c_cabecalho(ps_c_busca("printf")), "stdio.h") == 0, "printf e do stdio.h");
     CONF(ps_c_busca("nao_existe") == -1 && ps_c_busca("struct tm") >= 0, "busca pelo nome");
 }

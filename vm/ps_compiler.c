@@ -19,6 +19,7 @@
 #include "ps_regex.h"        /* `regex=` do campo de model: compilado aqui só pra validar */
 #include "ps_retornos.h"
 #include "ps_caminho.h"      /* nome do módulo a partir do caminho: `/` e, no Windows, `\` */
+#include "ps_c.h"            /* os cabeçalhos do C (`import <stdio.h>`) e o nome que eles declaram */
 
 #include <stdarg.h>
 
@@ -649,6 +650,12 @@ typedef struct {
      * regra do ponteiro: é a chamada direta da saída, que a funct tipada
      * confere; a leitura como valor é outro nó (`tp_saida_como_valor`). */
     PSNode     *alvo_chamado;
+    /* Os cabeçalhos do C que o arquivo importa (`import <stdio.h>`, igual ao
+     * `#include`): só os nomes deles valem, e só eles liberam a lib. Colhidos
+     * na 1ª passada; o texto é o da tabela do C (estático), que vive até o fim
+     * do processo. */
+    const char **cabs_c;
+    int32_t      ncabs_c, cap_cabs_c;
 } C;
 
 /* "method" se `n` é o membro que uma chamada chama; "attribute" se é leitura */
@@ -1721,6 +1728,12 @@ static void liga_direto_stmt(C *c, PSNode *s, char ***decl, int32_t *nd, int32_t
         case N_IMPORT_STMT:
             junta_nomes_do_import(c, s, decl, nd, cd);
             break;
+        case N_C_IMPORT:
+            /* o cabeçalho do C (`import <stdio.h>`) deixa `stdio.h` na pilha,
+             * como o `import` de módulo; o que ele libera (os nomes do C) já
+             * foi colhido na 1ª passada, em `declara_import_c`. */
+            junta_nomes(c, decl, nd, cd, s->texto ? s->texto : "");
+            break;
         case N_USING_STMT:
             junta_nomes(c, decl, nd, cd, s->texto ? s->texto : "_");
             if (s->b)
@@ -2471,6 +2484,20 @@ static void carrega_nome(C *c, Unidade *u, const char *nome)
     if (c->entity_no && !nome_e_local(u, nome) && campo_estatico_da_classe(c, nome)) {
         carrega_estatico(c, u, nome);
         return;
+    }
+    /* Nome da biblioteca do C com o cabeçalho importado: é um global, que a VM
+     * liga na carga (a função, a constante, o NULL do C). Sem o import ele nem
+     * chega aqui — `tp_nome_inexistente` já o acusou. */
+    if (!nome_e_local(u, nome) && c->ncabs_c > 0) {
+        int ci = ps_c_busca(nome);
+        if (ci >= 0) {
+            for (int32_t i = 0; i < c->ncabs_c; i++) {
+                if (!ps_c_vale_com(ci, c->cabs_c[i])) continue;
+                int32_t g = idx_global(c, nome);
+                if (g >= 0) emite(c, u, OP_LOAD_GLOBAL, g);
+                return;
+            }
+        }
     }
     carrega_nome_sem_estatico(c, u, nome);
 }
@@ -3403,6 +3430,16 @@ static int tp_ligado_no_escopo(C *c, Unidade *u, const char *nome)
 static int tp_nome_inexistente(C *c, Unidade *u, const char *nome)
 {
     if (tp_ligado_no_escopo(c, u, nome)) return 0;
+    /* Nome da biblioteca padrão do C com o cabeçalho dele importado
+     * (`import <stdio.h>`): vale como o de um módulo importado. Sem o import,
+     * ele não existe — a lib é o que o import libera (decisão dele). */
+    {
+        int ci = ps_c_busca(nome);
+        if (ci >= 0 && ps_c_especie(ci) != PSC_NOME_FORA) {
+            for (int32_t i = 0; i < c->ncabs_c; i++)
+                if (ps_c_vale_com(ci, c->cabs_c[i])) return 0;
+        }
+    }
     /* Nome de TIPO só existe como nome se a VM o liga: o parser faz do tipo
      * sozinho uma carga de tipo (`post(JSON)` é o `dict`), mas seguido de `(`
      * ou `.` ele é nome comum, e rodando o apelido não existe (`JSON.parse`,
@@ -3472,6 +3509,20 @@ static void tp_acusa_nome(C *c, Unidade *u, const char *nome, PSNode *onde, int 
 {
     if (!tp_ligado_no_escopo(c, u, nome) && c->nome_oculto) { tp_acusa_oculto(c, onde, nome); return; }
     if (ps_nativo_eh_modulo(nome)) { tp_acusa_sem_import(c, onde, nome); return; }
+    /* Nome da biblioteca padrão do C fora de qualquer cabeçalho importado: a
+     * lib não está liberada (o import é obrigatório), e a frase diz qual. */
+    {
+        int ci = ps_c_busca(nome);
+        if (ci >= 0) {
+            if (ps_c_especie(ci) == PSC_NOME_FORA) {
+                terro(c, onde, "NameError", "name '%s' is not defined: %s", nome, ps_c_decl(ci));
+            } else {
+                terro(c, onde, "NameError", "name '%s' is not defined. Did you forget to import <%s>?",
+                      nome, ps_c_cabecalho(ci));
+            }
+            return;
+        }
+    }
     /* Membro de instância lido pelo nome solto, dentro do método: só se
      * alcança por `self`, e a dica é essa. Saía o nome parecido de outro
      * lugar (`saldo` -> 'False', `m` -> 'A'), que não conserta nada. */
@@ -3483,7 +3534,7 @@ static void tp_acusa_nome(C *c, Unidade *u, const char *nome, PSNode *onde, int 
     const char *dica = NULL;
     const char *const *kw = palavras ? ps_lexer_keywords() : NULL;
     const char *const *mp = palavras ? ps_parser_mods_de_posicao() : NULL;
-    int32_t tot = c->nligados_mod + 1;
+    int32_t tot = c->nligados_mod + 1 + c->ncabs_c;
     for (Unidade *q = u; q; q = q->pai) tot += q->nligados;
     for (int i = 0; kw && kw[i]; i++) tot++;
     for (int i = 0; mp && mp[i]; i++) tot++;
@@ -3493,6 +3544,7 @@ static void tp_acusa_nome(C *c, Unidade *u, const char *nome, PSNode *onde, int 
         for (Unidade *q = u; q; q = q->pai)
             for (int32_t i = 0; i < q->nligados; i++) cands[n++] = q->ligados[i];
         for (int32_t i = 0; i < c->nligados_mod; i++) cands[n++] = c->ligados_mod[i];
+        for (int32_t i = 0; i < c->ncabs_c; i++) cands[n++] = c->cabs_c[i];
         const char *pre = ps_sugere_pre_ligado(nome);
         if (pre) cands[n++] = pre;
         for (int i = 0; kw && kw[i]; i++) cands[n++] = kw[i];
@@ -8790,6 +8842,11 @@ static void stmt_no_corpo(C *c, Unidade *u, PSNode *n)
             return;
         }
 
+        case N_C_IMPORT:
+            /* o cabeçalho do C (o `#include`): só libera a lib; nada é emitido.
+             * O compilador já o colheu na 1ª passada (`declara_import_c`). */
+            return;
+
         default:
             cerro(c, "statement ainda nao compila na VM", n);
             return;
@@ -9820,9 +9877,35 @@ static void tp_colhe_gravacoes(C *c, PSNode *n)
     for (int32_t i = 0; i < n->lista2_alias.n; i++) tp_colhe_gravacoes(c, n->lista2_alias.itens[i]);
 }
 
+/* `import <stdio.h>` no topo do arquivo: aceita QUALQUER cabeçalho do C — o
+ * acesso ao C é total, não existe "de fora" (decisão dele de 2026-11-17).
+ * Da tabela vem a assinatura dos nomes conhecidos; o cabeçalho que a tabela
+ * não conhece (setjmp.h, threads.h...) vale igual, e o programa escreve a
+ * declaração do que for chamar. Dentro de bloco ou funct, o stmt_no recusa. */
+static void declara_import_c(C *c, PSNode *s)
+{
+    if (!s || s->kind != N_C_IMPORT || !s->texto) return;
+    const char *estatico = NULL, *cb;
+    for (int k = 0; (cb = ps_c_cab(k)) != NULL; k++)
+        if (strcmp(cb, s->texto) == 0) estatico = cb;
+    /* Texto da tabela quando o cabeçalho é conhecido (ponteiro estável);
+     * senão o do próprio nó, que vive na arena do parse. */
+    const char *nome_cab = estatico ? estatico : s->texto;
+    for (int32_t i = 0; i < c->ncabs_c; i++)
+        if (!strcmp(c->cabs_c[i], nome_cab)) return;   /* importado de novo: vale uma vez, como no C */
+    if (c->ncabs_c == c->cap_cabs_c) {
+        int32_t novo = c->cap_cabs_c ? c->cap_cabs_c * 2 : 8;
+        const char **nv = realloc(c->cabs_c, sizeof(char *) * (size_t)novo);
+        if (!nv) { cerro(c, "sem memoria", s); return; }
+        c->cabs_c = nv;
+        c->cap_cabs_c = novo;
+    }
+    c->cabs_c[c->ncabs_c++] = estatico;
+}
 static void passada1_stmt(C *c, PSNode *cheia, PSNode *podada)
 {
     if (CFALHOU(c)) return;
+    declara_import_c(c, cheia);
     topo_campo_vira_var(cheia);
     topo_campo_vira_var(podada);
     tp_colhe_gravacoes(c, cheia);
@@ -10201,6 +10284,7 @@ static void compila_termina(C *c, Unidade *u)
     for (int32_t i = 0; i < c->n_tipos_topo; i++) free(c->tipos_topo_nomes[i]);
     free(c->tipos_topo_nomes);
     free(c->tipos_topo);
+    free(c->cabs_c);             /* os textos são os da tabela do C */
 }
 
 void ps_compila_free(PSPrograma *p)
