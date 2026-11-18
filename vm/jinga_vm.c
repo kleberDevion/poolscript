@@ -1943,7 +1943,11 @@ typedef struct { Obj obj; Value v; } PSCelula;
  * endereço (achado na primeira chamada). */
 typedef struct {
     Obj     obj;
-    int32_t idx;
+    int32_t idx;              /* na tabela do C; -1 quando o programa a declarou */
+    int32_t declarado;        /* 1 = assinatura escrita no programa */
+    void   *endereco;         /* declarado: o símbolo achado no sistema */
+    PSCTipo *tipo;            /* declarado: o tipo da declaração escrita */
+    char    nome[96];
 } PSCFuncObj;
 #define COMO_CFUNC(v)  ((PSCFuncObj *)(v).as.obj)
 #define EH_CFUNC(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_CFUNC)
@@ -4874,6 +4878,29 @@ static int c_liga_global(VM *vm, int32_t slot, int32_t idx)
     }
     if (v.t != V_UNSET) vm->globals[slot] = v;
     return 0;
+}
+
+/* A função do C escrita pelo PROGRAMA (`int soma(int a, int b)`), fora da
+ * tabela: o símbolo é achado pelo nome no próprio programa (dlsym) — o acesso
+ * ao C é total (decisão de 2026-11-17). O tipo é o da declaração escrita, que
+ * o parser já leu por `ps_c_le_decl`. Devolve 1 se ligou, 0 se o nome não é
+ * símbolo do sistema, -1 com o erro posto. */
+static int c_liga_declarado(VM *vm, int32_t slot, const char *nome, const char *texto)
+{
+    void *sim = ps_c_simbolo(nome);
+    if (!sim) return 0;
+    PSCFuncObj *f = nova_cfunc(vm, -1);
+    if (!f) {
+        snprintf(vm->erro, sizeof vm->erro, "sem memoria ao ligar %s", nome);
+        snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "MemoryError");
+        return -1;
+    }
+    f->declarado = 1;
+    f->endereco = sim;
+    if (texto) f->tipo = ps_c_le_decl(texto, NULL, 0, NULL, 0);
+    snprintf(f->nome, sizeof f->nome, "%s", nome);
+    vm->globals[slot] = MK_OBJ(f);
+    return 1;
 }
 
 static const char *nome_do_tipo_valor(Value v)
@@ -26038,8 +26065,8 @@ static int instancia_decor(VM *vm, PSClass *cl, Value *out)
 static int chama_cfunc(VM *vm, PSCFuncObj *cf, Value *args, int n, Value *out)
 {
     int32_t idx = cf->idx;
-    PSCTipo *ft = ps_c_tipo_de(idx);
-    const char *nome = ps_c_nome(idx);
+    PSCTipo *ft = cf->declarado ? cf->tipo : ps_c_tipo_de(idx);
+    const char *nome = cf->declarado ? cf->nome : ps_c_nome(idx);
     if (!ft || ft->kind != PSC_FUNC)
     {
         snprintf(vm->erro, sizeof vm->erro, "%s nao e funcao do C", nome);
@@ -33618,6 +33645,19 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
             if (k >= 0 && c_liga_global(&vm, i, k) != 0) {
                 libera_vm(&vm); ps_compila_free(prog);
                 e->tipo = PS_ERRO_RUNTIME; return -1;
+            }
+            /* fora da tabela: o programa escreveu a assinatura, e o símbolo
+             * vem do próprio programa (dlsym) — o acesso ao C é total */
+            if (k < 0 || vm.globals[i].t == V_UNSET) {
+                const char *txt = NULL;
+                for (int32_t q = 0; q < prog->nc_decls; q++)
+                    if (prog->c_decls_nome[q] && !strcmp(prog->c_decls_nome[q], prog->globais[i]))
+                        txt = prog->c_decls_texto[q];
+                int rc = c_liga_declarado(&vm, i, prog->globais[i], txt);
+                if (rc < 0) {
+                    libera_vm(&vm); ps_compila_free(prog);
+                    e->tipo = PS_ERRO_RUNTIME; return -1;
+                }
             }
         }
     }

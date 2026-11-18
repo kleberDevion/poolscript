@@ -552,6 +552,185 @@ static int corpo_depois_dos_parenteses(P *p, int j)
     }
 }
 
+static PSNode *expressao(P *p);
+
+/* Declaração de variável na FORMA do C (`const char *cu = "siu"`, `int n`,
+ * `size_t tam`): o tipo do C na frente do nome, e o `=` com o valor. A
+ * declaração é lida por `ps_c_le_decl` (a mesma do C), e vira a variável
+ * tipada que a linguagem já tem — com o tipo do C guardado para o `--metadata`
+ * e o `sizeof`. Sem `=`, o valor é o zero do tipo (NULL para ponteiro).
+ *
+ * Só chega aqui o que começa com um tipo do C e termina com NOME (`= valor`)?
+ * e é por isso que `int n = 3` continua sendo a declaração tipada da
+ * linguagem, sem diferença. */
+static PSNode *declaracao_c_var(P *p)
+{
+    PSToken *t0 = espia(p, 0);
+    if (!t0->texto) return NULL;
+    if (t0->type != T_KW && t0->type != T_IDENT && t0->type != T_IDENT_UPPER) return NULL;
+    /* O nome declarado é o identificador antes do `=` (ou antes do fim da
+     * linha, quando a declaração não tem valor: `const char *s`). */
+    int j = 0, tem_igual = 0;
+    for (; ; j++) {
+        PSToken *t = espia(p, j);
+        if (t->type == T_NEWLINE) {
+            if (!tem_igual && j > 1) break;    /* `const char *s` sem valor */
+            continue;
+        }
+        if (t->type == T_EOF || t->type == T_SEMI || t->type == T_LPAREN
+            || t->type == T_LBRACE || t->type == T_LBRACK) return NULL;
+        if (t->type == T_OP && t->texto && strcmp(t->texto, "=") == 0) { tem_igual = 1; break; }
+        if (t->type != T_IDENT && t->type != T_IDENT_UPPER && t->type != T_KW
+            && !(t->type == T_OP && t->texto && strcmp(t->texto, "*") == 0)) return NULL;
+    }
+    PSToken *nm = espia(p, j - 1);
+    if (!nm->texto || (nm->type != T_IDENT && nm->type != T_IDENT_UPPER)) return NULL;
+    /* o texto do tipo, do começo até o nome, lido pelo leitor do C */
+    char texto[256];
+    size_t w = 0;
+    for (int k = 0; k < j - 1; k++) {
+        PSToken *t = espia(p, k);
+        if (t->type == T_NEWLINE) continue;
+        int n2 = snprintf(texto + w, sizeof texto - w, "%s%s", w ? " " : "",
+                          t->texto ? t->texto : "");
+        if (n2 < 0 || (size_t)n2 >= sizeof texto - w) return NULL;
+        w += (size_t)n2;
+    }
+    char decl[320], nome[128], erro[200];
+    snprintf(decl, sizeof decl, "%s %s", texto, nm->texto);
+    PSCTipo *tipo = ps_c_le_decl(decl, nome, sizeof nome, erro, sizeof erro);
+    if (!tipo) return NULL;                       /* não é tipo do C */
+    if (strcmp(nome, nm->texto) != 0) return NULL; /* o nome não bateu */
+    /* `int n = 3` é a declaração tipada da LINGUAGEM (`int`, `str`, `flo`...):
+     * a do C só entra com o tipo que a linguagem não tem (`const char *`,
+     * `size_t`, `struct tm *`). O `const` e o `*` também são do C. */
+    if (ps_tipo_codigo(texto) >= 0 && strchr(texto, '*') == NULL) return NULL;
+    int32_t l0 = t0->line, c0 = t0->col;
+    p->pos += (size_t)j;   /* o cursor fica no `=` (ou no fim da linha) */
+    /* o valor: o que vem depois do `=` até o fim do comando; sem `=`, o zero
+     * do tipo (NULL para ponteiro, 0 para inteiro, 0.0 para ponto flutuante) */
+    PSNode *valor = NULL;
+    if (tem_igual) {
+        p->pos++;          /* pula o `=` */
+        valor = expressao(p);
+        if (!valor || FALHOU(p)) return NULL;
+    } else {
+        /* sem valor: o zero do tipo, para o nome existir já com o tipo dele */
+        if (tipo->kind == PSC_PONT || tipo->kind == PSC_OPACO) {
+            valor = ps_node_novo(p->arena, N_LITERAL, l0, c0);
+            if (valor) valor->lit = L_NULL;
+        } else if (tipo->kind == PSC_FLUT) {
+            valor = ps_node_novo(p->arena, N_LITERAL, l0, c0);
+            if (valor) { valor->lit = L_FLO; valor->texto = dup_str(p, "0.0"); }
+        } else {
+            valor = ps_node_novo(p->arena, N_LITERAL, l0, c0);
+            if (valor) { valor->lit = L_INT; valor->texto = dup_str(p, "0"); }
+        }
+        if (!valor) return NULL;
+    }
+    if (checa(p, T_SEMI)) p->pos++;
+    PSNode *n = ps_node_novo(p->arena, N_VAR_DECL, l0, c0);
+    if (!n) return NULL;
+    n->texto = dup_str(p, nome);
+    n->texto2 = dup_str(p, decl);
+    n->a = valor;
+    n->tipo_do_c = 1;      /* o tipo é do C, não da tabela da linguagem */
+    return n;
+}
+
+/* A ASSINATURA do C escrita no programa, no topo do arquivo:
+ *
+ *     int soma(int a, int b)
+ *     const char *saudacao(void)
+ *     int main() { ... }
+ *
+ * `int main()` é o caso que ele pediu: o programa escreve a função como no C.
+ * O acesso ao C é total (decisão de 2026-11-17) e a ASSINATURA vale sempre —
+ * é ela que dá o tipo quando o nome não está na tabela do C. O que decide se
+ * a linha é assinatura do C é a própria frase: o tipo de retorno, um NOME, e
+ * o `(` com a assinatura inteira entre parênteses, lida por `ps_c_le_decl`
+ * (a mesma que lê a tabela). Body entre `{ }` é aceito e pulado: a função é a
+ * do C; escritas por quem veio do C, `int main() { ... }` não é erro.
+ *
+ * Devolve o nó da assinatura, ou NULL: `p->erro` diz se é erro. */
+static PSNode *assinatura_c(P *p)
+{
+    /* um tipo de retorno do C na frente: `int`, `char *`, `void`, `size_t`,
+     * `struct tm *`... — nunca uma palavra da linguagem que abra comando */
+    PSToken *t0 = espia(p, 0);
+    if (!t0->texto || (t0->type != T_IDENT && t0->type != T_IDENT_UPPER && t0->type != T_KW)) return NULL;
+    if (checa_kw(p, "if") || checa_kw(p, "elif") || checa_kw(p, "else")
+        || checa_kw(p, "while") || checa_kw(p, "for") || checa_kw(p, "return")
+        || checa_kw(p, "funct") || checa_kw(p, "import") || checa_kw(p, "include")
+        || checa_kw(p, "from") || checa_kw(p, "PUSH") || checa_kw(p, "try")
+        || checa_kw(p, "catch") || checa_kw(p, "finally") || checa_kw(p, "using")) return NULL;
+    /* o nome declarado é o token antes do primeiro `(` */
+    int j = 0, tem_paren = 0;
+    for (; ; j++) {
+        PSToken *t = espia(p, j);
+        if (t->type == T_NEWLINE) continue;
+        if (t->type == T_EOF || t->type == T_SEMI) return NULL;
+        if (t->type == T_LPAREN) { tem_paren = 1; break; }
+        if (t->type != T_IDENT && t->type != T_IDENT_UPPER && t->type != T_OP
+            && t->type != T_KW) return NULL;
+        if (t->type == T_OP && t->texto && strcmp(t->texto, "*") != 0) return NULL;
+    }
+    if (!tem_paren || j < 2) return NULL;
+    PSToken *nm = espia(p, j - 1);
+    if (!nm->texto || (nm->type != T_IDENT && nm->type != T_IDENT_UPPER)) return NULL;
+    /* a declaração inteira, até o `)`, num texto só, e lida pelo leitor do C */
+    char texto[512];
+    size_t w = 0;
+    int prof = 0, fim = -1;
+    for (int k = 0; ; k++) {
+        PSToken *t = espia(p, k);
+        if (t->type == T_EOF || t->type == T_SEMI) return NULL;
+        if (t->type == T_NEWLINE) continue;
+        if (t->type == T_LPAREN) { prof++; }
+        else if (t->type == T_RPAREN) {
+            if (prof == 1) {
+                /* o `)` de fecho entra no texto: é ele que fecha a declaração */
+                int n2 = snprintf(texto + w, sizeof texto - w, "%s)", w ? " " : "");
+                if (n2 > 0) w += (size_t)n2;
+                fim = k;
+                break;
+            }
+            prof--;
+        }
+        if (t->type != T_NEWLINE) {
+            int n = snprintf(texto + w, sizeof texto - w, "%s%s", w ? " " : "",
+                             t->texto ? t->texto : "");
+            if (n < 0 || (size_t)n >= sizeof texto - w) return NULL;
+            w += (size_t)n;
+        }
+    }
+    if (fim < 0) return NULL;
+    char nome[128], erro[200];
+    PSCTipo *tipo = ps_c_le_decl(texto, nome, sizeof nome, erro, sizeof erro);
+    if (!tipo || !nome[0]) return NULL;
+    /* é assinatura: consome a linha (e o `{ ... }` do corpo, se vier, como o C
+     * escreve — o corpo NÃO roda: a função é a do C) */
+    int32_t l0 = espia(p, 0)->line, c0 = espia(p, 0)->col;
+    p->pos += (size_t)(fim + 1);
+    if (checa(p, T_SEMI)) p->pos++;
+    if (checa(p, T_LBRACE)) {
+        int prof2 = 0;
+        do {
+            PSToken *t = atual(p);
+            if (t->type == T_EOF) break;
+            if (t->type == T_LBRACE) prof2++;
+            else if (t->type == T_RBRACE && --prof2 == 0) { p->pos++; break; }
+            p->pos++;
+        } while (1);
+        if (checa(p, T_SEMI)) p->pos++;
+    }
+    PSNode *n = ps_node_novo(p->arena, N_C_DECL, l0, c0);
+    if (!n) return NULL;
+    n->texto = dup_str(p, nome);
+    n->texto2 = dup_str(p, texto);
+    return n;
+}
+
 /* A cabeça de funct com o `funct` ESQUECIDO: os modificadores da
  * `cabeca_de_funct`, em qualquer ordem, e logo um NOME seguido de `(`. Se for,
  * acusa no nome (ou na palavra que ocupa o lugar do `funct`) com a linha
@@ -5006,6 +5185,28 @@ static PSNode *statement_no(P *p)
             if (ad && cb.is_priv >= 0) ad->is_private = cb.is_priv;
             if (ad) { ad->is_static = cb.eh_static; ad->is_nonnull = cb.eh_nonnull; }
             return ad;
+        }
+
+        /* A assinatura de uma função do C escrita no programa
+         * (`int soma(int a, int b)`, `int main() { ... }`): a forma do C, com
+         * o tipo de retorno na frente e sem a palavra `funct`. O acesso ao C é
+         * total (decisão de 2026-11-17) — a assinatura VALE sempre, e é o
+         * programa que a escreve quando o nome não está na tabela. */
+        {
+            PSNode *ac = assinatura_c(p);
+            if (ac) return ac;
+            if (FALHOU(p)) return NULL;
+        }
+
+        /* Declaração de VARIÁVEL na forma do C, com a assinatura do C
+         * obrigatória: `const char *cu = "siu"`, `size_t tam`, `int n`.
+         * É a declaração tipada que a linguagem já tem (`str s = "a"`), com o
+         * tipo do C na frente. Só vale quando o arquivo importou um cabeçalho
+         * (o acesso ao C pede o `import`, decisão 8). */
+        {
+            PSNode *cv = declaracao_c_var(p);
+            if (cv) return cv;
+            if (FALHOU(p)) return NULL;
         }
 
         /* A cabeça com o `funct` esquecido (`int f(x) {`, `static Null f()`,

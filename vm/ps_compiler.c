@@ -1734,6 +1734,11 @@ static void liga_direto_stmt(C *c, PSNode *s, char ***decl, int32_t *nd, int32_t
              * foi colhido na 1ª passada, em `declara_import_c`. */
             junta_nomes(c, decl, nd, cd, s->texto ? s->texto : "");
             break;
+        case N_C_DECL:
+            /* a assinatura do C escrita no programa: o NOME vira global, e a
+             * VM o liga no símbolo do sistema (`int main`, `struct tm x`). */
+            junta_nomes(c, decl, nd, cd, s->texto ? s->texto : "");
+            break;
         case N_USING_STMT:
             junta_nomes(c, decl, nd, cd, s->texto ? s->texto : "_");
             if (s->b)
@@ -7198,7 +7203,14 @@ static void stmt_no_corpo(C *c, Unidade *u, PSNode *n)
                 if (n->a->line) c->linha_atual  = n->a->line;
                 if (n->a->col)  c->coluna_atual = n->a->col;
             }
-            if (!tp_tipo_existe(c, u, n->texto2)) {
+            if (n->tipo_do_c) {
+                /* o tipo é do C (`const char *`, `size_t`): o leitor do C já o
+                 * validou no parse, e o valor é o que a Jinga sabe conferir.
+                 * Cai no `guarda_nome_modo` abaixo como qualquer declaração —
+                 * é ele quem emite o STORE_GLOBAL. */
+                grava_valor(c, u, n->a);
+                memset(&c->grava, 0, sizeof(c->grava));
+            } else if (!tp_tipo_existe(c, u, n->texto2)) {
                 /* o erro é o nome do tipo; conferir o valor contra um tipo
                  * que não existe só repetiria o mesmo erro com outra frase */
                 terro(c, n, "AttributedValueError", "tipo %s não existe (variável %s)",
@@ -8828,6 +8840,12 @@ static void stmt_no_corpo(C *c, Unidade *u, PSNode *n)
              * O compilador já o colheu na 1ª passada (`declara_import_c`). */
             return;
 
+        case N_C_DECL:
+            /* a assinatura do C escrita no programa: o nome já virou global na
+             * 1ª passada, e a VM o liga no símbolo do sistema no `c_liga_global`
+             * (pelo ps_c_simbolo). Nada a emitir. */
+            return;
+
         default:
             cerro(c, "statement ainda nao compila na VM", n);
             return;
@@ -9428,8 +9446,9 @@ static void tp_pre_stmt(C *c, Unidade *mod, PSNode *s, int decorado)
             /* o tipo escrito que não existe é o erro da declaração, na
              * segunda passada ("tipo X não existe"): aqui ele não vira o tipo
              * do nome, senão o valor seria conferido contra ele e o mesmo
-             * erro sairia de novo, com outra frase */
-            c->grava.declara = tp_tipo_existe(c, mod, s->texto2) ? s->texto2 : NULL;
+             * erro sairia de novo, com outra frase. O tipo do C já foi
+             * validado pelo leitor do C, no parse. */
+            c->grava.declara = s->tipo_do_c || tp_tipo_existe(c, mod, s->texto2) ? s->texto2 : NULL;
             tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
             break;
         case N_ASSIGNMENT:
@@ -9865,6 +9884,24 @@ static void tp_colhe_gravacoes(C *c, PSNode *n)
  * declaração do que for chamar. Dentro de bloco ou funct, o stmt_no recusa. */
 static void declara_import_c(C *c, PSNode *s)
 {
+    if (s && s->kind == N_C_DECL && s->texto && s->texto2) {
+        /* a assinatura escrita no programa: guarda o nome e o texto, para a VM
+         * ligar o símbolo com o tipo que o programa escreveu */
+        if (c->out->nc_decls == c->out->cap_c_decls) {
+            int32_t novo = c->out->cap_c_decls ? c->out->cap_c_decls * 2 : 8;
+            char **nn = realloc(c->out->c_decls_nome, sizeof(char *) * (size_t)novo);
+            if (!nn) { cerro(c, "sem memoria", s); return; }
+            c->out->c_decls_nome = nn;
+            char **nt = realloc(c->out->c_decls_texto, sizeof(char *) * (size_t)novo);
+            if (!nt) { cerro(c, "sem memoria", s); return; }
+            c->out->c_decls_texto = nt;
+            c->out->cap_c_decls = novo;
+        }
+        c->out->c_decls_nome[c->out->nc_decls] = strdup(s->texto);
+        c->out->c_decls_texto[c->out->nc_decls] = strdup(s->texto2);
+        c->out->nc_decls++;
+        return;
+    }
     if (!s || s->kind != N_C_IMPORT || !s->texto) return;
     const char *estatico = NULL, *cb;
     for (int k = 0; (cb = ps_c_cab(k)) != NULL; k++)

@@ -50,5 +50,30 @@ const Caso CASOS_C[] = {
      "#include \"string.h\"\n"
      "post(strlen(42))\n",
      "", "TypeError: strlen: argumento 1 sem conversao para const char *", 1},
+    /* ── a assinatura escrita no programa (acesso total ao C) ──────────────── */
+    {"C: a funcao escrita no programa chama o simbolo do sistema",
+     "int abs(int x)\n"
+     "post(abs(-7))\n",
+     "7", NULL, 0},
+    {"C: int main() com corpo e aceito e o corpo nao roda (a funcao e a do C)",
+     "int main() { return 0 }\n"
+     "post(\"ok\")\n",
+     "ok", NULL, 0},
+    {"C: variavel com tipo do C (const char *)",
+     "const char *s = \"abc\"\n"
+     "post(s)\n",
+     "abc", NULL, 0},
+    {"C: variavel com typedef do C (size_t)",
+     "size_t n = 3\n"
+     "post(n)\n",
+     "3", NULL, 0},
+    {"C: variavel do C sem valor nasce com o zero do tipo",
+     "const char *s\n"
+     "post(s)\n",
+     "Null", NULL, 0},
+    {"C: int n = 3 continua sendo a declaracao da linguagem",
+     "int n = 3\n"
+     "post(n)\n",
+     "3", NULL, 0},
 };
 const int NC_C = N_CASOS(CASOS_C);

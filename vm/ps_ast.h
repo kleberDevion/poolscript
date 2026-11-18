@@ -94,10 +94,15 @@ typedef enum {
      * `N_ENTITY_FIELD` (que é `nome: tipo` no corpo da classe) nem o
      * `N_VAR_DECL` (que é local). texto = nome, texto2 = tipo, a = valor. */
     N_FIELD_DECL,
-    /* `import <stdio.h>`: o cabeçalho da biblioteca padrão do C (a lib do
+    /* `import "stdio.h"`: o cabeçalho da biblioteca padrão do C (a lib do
      * sistema), igual ao `#include`. texto = o nome do cabeçalho. O compilador
      * recusa o que não é cabeçalho do C e o que fica de fora, com o motivo. */
-    N_C_IMPORT
+    N_C_IMPORT,
+    /* A assinatura de uma função do C escrita no PROGRAMA, quando o nome não
+     * está na tabela (`int soma(int a, int b)`): texto = o nome, texto2 = a
+     * declaração inteira, e a VM liga o nome no símbolo do sistema. O corpo, se
+     * vier (`{ ... }`), é ignorado — a função é a do C. */
+    N_C_DECL
 } PSNodeKind;
 
 /* Qual campo do literal vale */
@@ -128,6 +133,10 @@ struct PSNode {
      * (pendente_static / pendente_nonnull). */
     uint8_t    is_static;
     uint8_t    is_nonnull;
+    /* VAR_DECL: o tipo veio do C (`const char *s = "a"`, `size_t n`), lido
+     * por `ps_c_le_decl`. O checador não o procura na tabela da linguagem:
+     * ele é do C, e o valor só é conferido contra ele no que a Jinga sabe. */
+    uint8_t    tipo_do_c;
     /* FUNCT_DECL: método sem `self` que o compilador acusou e ganhou um
      * `self` sintetizado na frente dos parâmetros — só durante a compilação
      * (o compilador desfaz no fim). Ver tp_self_dos_metodos. */

@@ -3785,7 +3785,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "nome solto com letras invertidas acha a palavra (whlie, fro, riase)",
   "int i = 0\nwhlie i < 3 {\n    i += 1\n}\n", "", "NameError: name 'whlie' is not defined. Did you mean: 'while'?", 2 },
 { "nome solto de outra linguagem e NameError nele, nao na palavra seguinte",
-  "const int x = 1\n", "", "NameError: name 'const' is not defined. Did you mean: 'count'?", 2 },
+  "consto int x = 1\n", "", "NameError: name 'consto' is not defined", 2 },
 { "nome solto que e tipo: declaracao sem =",
   "class Conta { int v = 0 }\nConta c\n", "", "SyntaxError: declaracao de variavel exige '='", 2 },
 { "nome solto que existe seguido de comando sao dois comandos mesmo",

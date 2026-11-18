@@ -271,6 +271,13 @@ typedef struct {
     char   **globais;   /* nome de cada global, indexado */
     int32_t  nglobais;
 
+    /* a assinatura do C escrita no programa (`int soma(int a, int b)`): o nome
+     * e o texto da declaração, para a VM ligar o símbolo com o tipo certo */
+    char   **c_decls_nome;
+    char   **c_decls_texto;
+    int32_t  nc_decls;
+    int32_t  cap_c_decls;
+
     PSClassDef *classes;
     int32_t     nclasses;
 

@@ -176,6 +176,7 @@ const char *ps_node_nome(PSNodeKind k)
         case N_UNPACK_TARGET:   return "UnpackTarget";
         case N_FIELD_DECL:      return "FieldDecl";
         case N_C_IMPORT:        return "CImport";
+        case N_C_DECL:          return "CDecl";
     }
     return "?";
 }
