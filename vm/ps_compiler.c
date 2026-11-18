@@ -6390,6 +6390,23 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
 static void expr_no_corpo(C *c, Unidade *u, PSNode *n)
 {
     switch (n->kind) {
+        case N_CAST_EXPR: {
+            /* cast do C: o valor convertido para o tipo. `char`/inteiro -> o
+             * inteiro truncado e alargado com sinal/zero, como a conversão do
+             * C; ponto flutuante -> o número. O tipo é lido por ps_c_le_decl. */
+            expr(c, u, n->a);
+            PSCTipo *tp = n->texto ? ps_c_le_decl(n->texto, NULL, 0, NULL, 0) : NULL;
+            if (!tp) return;
+            /* a conversão é a da própria linguagem: `flo(x)` para ponto
+             * flutuante e `int(x)` para inteiro (o truncamento do tamanho do
+             * tipo do C é assunto de memória, e entra com o ponteiro). */
+            if (tp->kind == PSC_FLUT) {
+                emite(c, u, OP_CAST_FLO, 0);
+            } else if (tp->kind == PSC_INT || tp->kind == PSC_BOOL) {
+                emite(c, u, OP_CAST_INT, (int)(tp->tam & 0xff) | (tp->sem_sinal << 8));
+            }
+            return;          /* ponteiro: o valor como está */
+        }
         case N_LITERAL:
             switch (n->lit) {
                 case L_INT:  emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, n->i, 0, NULL, 0)); break;

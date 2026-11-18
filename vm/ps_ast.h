@@ -102,7 +102,10 @@ typedef enum {
      * está na tabela (`int soma(int a, int b)`): texto = o nome, texto2 = a
      * declaração inteira, e a VM liga o nome no símbolo do sistema. O corpo, se
      * vier (`{ ... }`), é ignorado — a função é a do C. */
-    N_C_DECL
+    N_C_DECL,
+    /* CAST do C (`(char)65`, `(int)x`): a = o valor, texto = o tipo do C.
+     * O compilador converte para o tipo no momento de emitir. */
+    N_CAST_EXPR
 } PSNodeKind;
 
 /* Qual campo do literal vale */

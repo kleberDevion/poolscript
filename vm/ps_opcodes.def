@@ -283,3 +283,9 @@ PS_OP(ITER_DONO,          116, "ITER_DONO", 0, 0)
 /* `break`/`return` saindo do laço dono: fecha o gerador em stack[sp - arg],
  * se é dono. */
 PS_OP(DONO_SAI,           117, "DONO_SAI", 0, 0)
+/* Cast do C para inteiro: [x] -> [int(x)], truncando para o tamanho do tipo
+ * em arg (1, 2, 4 ou 8 bytes) e alargando com ou sem sinal. `(char)321` = 65,
+ * `(unsigned char)-1` = 255, como a conversão do C. CST_INT eh_sinal = arg>>8. */
+PS_OP(CAST_INT,           118, "CAST_INT", 0, 0)
+/* Cast do C para ponto flutuante: [x] -> [flo(x)] (int vira double). */
+PS_OP(CAST_FLO,           119, "CAST_FLO", 0, 0)

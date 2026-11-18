@@ -29336,6 +29336,42 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
+        PS_CASE(CAST_INT) {
+            /* cast do C para inteiro: trunca no tamanho do tipo e alarga com
+             * sinal (`arg` = tamanho em bytes | sem_sinal << 8). `(char)321`
+             * = 65 e `(unsigned char)-1` = 255, como a conversão do C. */
+            Value x = stack[sp - 1];
+            int64_t v = 0;
+            if (x.t == V_FLOAT) v = (int64_t)x.as.d;
+            else if (x.t == V_INT) v = x.as.i;
+            else if (x.t == V_BOOL) v = x.as.i;
+            else {
+                snprintf(vm->erro, sizeof vm->erro, "cast para inteiro de um valor que nao e numero");
+                snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "TypeError");
+                goto erro_runtime;
+            }
+            int tam = arg & 0xff;
+            int sem_sinal = (arg >> 8) & 1;
+            if (tam == 1) v = sem_sinal ? (int64_t)(uint8_t)v : (int64_t)(int8_t)v;
+            else if (tam == 2) v = sem_sinal ? (int64_t)(uint16_t)v : (int64_t)(int16_t)v;
+            else if (tam == 4) v = sem_sinal ? (int64_t)(uint32_t)v : (int64_t)(int32_t)v;
+            stack[sp - 1] = MK_INT(v);
+            break;
+        }
+
+        PS_CASE(CAST_FLO) {
+            /* cast do C para ponto flutuante: int vira double */
+            Value x = stack[sp - 1];
+            if (x.t == V_INT || x.t == V_BOOL) stack[sp - 1] = MK_FLOAT((double)x.as.i);
+            else if (x.t == V_FLOAT) break;
+            else {
+                snprintf(vm->erro, sizeof vm->erro, "cast para ponto flutuante de um valor que nao e numero");
+                snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "TypeError");
+                goto erro_runtime;
+            }
+            break;
+        }
+
         PS_CASE(ENGOLE)
             /* o `try` implícito de `int funct`/`bool funct` pegou um erro: o
              * sentinela sai (o compilador o empilha a seguir) e o erro sai

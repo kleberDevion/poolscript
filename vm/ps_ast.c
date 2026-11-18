@@ -177,6 +177,7 @@ const char *ps_node_nome(PSNodeKind k)
         case N_FIELD_DECL:      return "FieldDecl";
         case N_C_IMPORT:        return "CImport";
         case N_C_DECL:          return "CDecl";
+        case N_CAST_EXPR:       return "Cast";
     }
     return "?";
 }

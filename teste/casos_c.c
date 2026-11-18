@@ -74,6 +74,21 @@ const Caso CASOS_C[] = {
     {"C: int n = 3 continua sendo a declaracao da linguagem",
      "int n = 3\n"
      "post(n)\n",
-     "3", NULL, 0},
+     "3", NULL, 0},    /* ── sizeof e cast: a assinatura do C ───────────────────────────────────── */
+    {"C: sizeof de tipos do C bate com o cc",
+     "post(sizeof(int), sizeof(char *), sizeof(size_t), sizeof(double))\n",
+     "4 8 8 8", NULL, 0},
+    {"C: sizeof(struct tm)",
+     "post(sizeof(struct tm))\n",
+     "56", NULL, 0},
+    {"C: cast trunca no tamanho do tipo como o C",
+     "post((char)321)\n"
+     "post((unsigned char)255)\n"
+     "post((short)70000)\n",
+     "65\n255\n4464", NULL, 0},
+    {"C: cast para ponto flutuante e para inteiro",
+     "post((double)3)\n"
+     "post((int)3.9)\n",
+     "3.0\n3", NULL, 0},
 };
 const int NC_C = N_CASOS(CASOS_C);

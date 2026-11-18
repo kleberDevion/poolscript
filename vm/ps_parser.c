@@ -621,10 +621,10 @@ static PSNode *declaracao_c_var(P *p)
             if (valor) valor->lit = L_NULL;
         } else if (tipo->kind == PSC_FLUT) {
             valor = ps_node_novo(p->arena, N_LITERAL, l0, c0);
-            if (valor) { valor->lit = L_FLO; valor->texto = dup_str(p, "0.0"); }
+            if (valor) valor->lit = L_FLO;
         } else {
             valor = ps_node_novo(p->arena, N_LITERAL, l0, c0);
-            if (valor) { valor->lit = L_INT; valor->texto = dup_str(p, "0"); }
+            if (valor) valor->lit = L_INT;
         }
         if (!valor) return NULL;
     }
@@ -1391,6 +1391,95 @@ static PSNode *lambda_apos_kw(P *p)
 static PSNode *primario(P *p)
 {
     PSToken *t = atual(p);
+
+    /* CAST do C: `(char)65`, `(int)x`, `(unsigned long)n`. Em posição de
+     * primário, um `(` seguido de um TIPO DO C e `)` é cast: o valor é o
+     * seguinte, convertido para o tipo. Não é cast quando o tipo é da
+     * linguagem (`(str)x` continua a chamada de conversor de sempre). */
+    if (t->type == T_LPAREN) {
+        int prof = 0, fim = -1;
+        for (int k = 0; ; k++) {
+            PSToken *q = espia(p, k);
+            if (q->type == T_EOF || q->type == T_NEWLINE) break;
+            if (q->type == T_LPAREN) prof++;
+            else if (q->type == T_RPAREN && --prof == 0) { fim = k; break; }
+            if (q->type == T_LBRACE || q->type == T_SEMI) break;
+        }
+        if (fim > 1) {
+            char texto[128];
+            size_t w = 0;
+            int ok = 1;
+            for (int k = 1; k < fim; k++) {
+                PSToken *q = espia(p, k);
+                if (q->type != T_IDENT && q->type != T_IDENT_UPPER && q->type != T_KW
+                    && !(q->type == T_OP && q->texto && !strcmp(q->texto, "*"))) { ok = 0; break; }
+                int n2 = snprintf(texto + w, sizeof texto - w, "%s%s", w ? " " : "",
+                                  q->texto ? q->texto : "");
+                if (n2 < 0 || (size_t)n2 >= sizeof texto - w) { ok = 0; break; }
+                w += (size_t)n2;
+            }
+            if (ok && w > 0 && espia(p, fim + 1)->type != T_NEWLINE
+                && espia(p, fim + 1)->type != T_EOF && espia(p, fim + 1)->type != T_SEMI) {
+                PSCTipo *tp = ps_c_le_decl(texto, NULL, 0, NULL, 0);
+                if (tp) {
+                    int32_t l0 = t->line, c0 = t->col;
+                    p->pos += (size_t)(fim + 1);
+                    PSNode *v = primario(p);
+                    if (!v || FALHOU(p)) return NULL;
+                    /* o cast é um literal conversor: o código do tipo do C
+                     * fica no nó, e o compilador emite a conversão */
+                    PSNode *n = ps_node_novo(p->arena, N_CAST_EXPR, l0, c0);
+                    if (!n) return NULL;
+                    n->a = v;
+                    n->texto = dup_str(p, texto);
+                    return n;
+                }
+            }
+        }
+    }
+
+    /* `sizeof(tipo)` e `sizeof expressao` — o operador do C, que a assinatura
+     * do C usa. O tamanho vem de `ps_c_le_decl`, medido pelo motor (o `long`
+     * tem 8 bytes no Linux e no macOS, 4 no Windows). Aceita:
+     *   sizeof(int), sizeof(char *), sizeof(size_t), sizeof(struct tm)
+     *   sizeof(expr)  — o tipo do valor em tempo de execução
+     * A forma sem parênteses com tipo é recusada com a frase que ensina. */
+    if (t->texto && !strcmp(t->texto, "sizeof")) {
+        int32_t l0 = t->line, c0 = t->col;
+        if (espia(p, 1)->type == T_LPAREN) {
+            /* o texto do tipo: do `(` até o `)` que fecha */
+            int prof = 0, ini = 2, fim = -1;
+            for (int k = 1; ; k++) {
+                PSToken *q = espia(p, k);
+                if (q->type == T_EOF) break;
+                if (q->type == T_LPAREN) prof++;
+                else if (q->type == T_RPAREN && --prof == 0) { fim = k; break; }
+            }
+            if (fim > ini) {
+                char texto[256];
+                size_t w = 0;
+                for (int k = ini; k < fim; k++) {
+                    PSToken *q = espia(p, k);
+                    if (q->type == T_NEWLINE) continue;
+                    int n2 = snprintf(texto + w, sizeof texto - w, "%s%s", w ? " " : "",
+                                      q->texto ? q->texto : "");
+                    if (n2 < 0 || (size_t)n2 >= sizeof texto - w) break;
+                    w += (size_t)n2;
+                }
+                PSCTipo *tp = ps_c_le_decl(texto, NULL, 0, NULL, 0);
+                if (tp) {
+                    p->pos += (size_t)(fim + 1);
+                    PSNode *n = ps_node_novo(p->arena, N_LITERAL, l0, c0);
+                    if (!n) return NULL;
+                    n->lit = L_INT;
+                    n->i = (int64_t)tp->tam;
+                    return n;
+                }
+            }
+        }
+        perro(p, "sizeof espera um tipo do C entre parenteses: sizeof(int), sizeof(char *)", t);
+        return NULL;
+    }
 
     /* LAMBDA COM MODIFICADORES — `async funct(x) { ... }`, `int funct(x) {...}`.
      *
