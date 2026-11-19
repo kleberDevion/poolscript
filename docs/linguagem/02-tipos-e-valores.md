@@ -251,6 +251,16 @@ str  s = 42       # AttributedValueError — não "stringifica"; escreva str(42)
 int  z = "abc"    # AttributedValueError — o mesmo caso do "7"
 ```
 
+`T[]` é essa lista, com o tipo de cada item escrito:
+
+```ps
+int[] notas = [7, 8]
+str[] nomes = []
+addEnd(notas, 9)
+```
+
+O valor continua sendo lista: cresce com `addEnd`, e `type(notas)` responde `list`. Cada item e cada escrita são conferidos contra `T`. Item errado que já se sabe na compilação é `AttributedValueError` antes de rodar (`item de notas esperava int, recebeu str`). Item que só se sabe rodando é o mesmo erro na hora. `int v[3]` é o array do C, outra forma: os colchetes ficam depois do nome.
+
 Já foi diferente: `int x = "7"` virava `7` e `flo f = 5` virava `5.0`
 ("conversões que não perdem informação"). Saiu porque conversão que ninguém
 escreveu é conversão que ninguém vê — e a regra da linguagem é uma só:

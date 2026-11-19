@@ -2175,6 +2175,38 @@ function paramsDeCampoDeModel(doc, pos) {
   }));
 }
 
+/* Nomes da tabela do C que o import DESTE arquivo alcança. Cabeçalho filtra
+ * por `vale` (o que ps_c_vale_com publicou). `import c "libc"` / `.so` oferece
+ * o que a tabela marca como valor, porque a libc é a lib padrão. Sem import,
+ * a lista é vazia: chamar sem import é NameError. */
+function nomesCAlcancados(idx) {
+  const imps = (idx && idx.cImports) || [];
+  if (!imps.length) return [];
+  const bin = imps.some((i) => i.bin);
+  const cabs = [];
+  for (const i of imps) if (!i.bin && i.cab && cabs.indexOf(i.cab) < 0) cabs.push(i.cab);
+  const out = [];
+  for (const n of META.c || []) {
+    if (!n || !n.nome) continue;
+    const peloCab = cabs.some((c) => (n.vale || []).indexOf(c) >= 0);
+    if ((peloCab && (n.valor || n.tipo)) || (bin && n.valor)) out.push(n);
+  }
+  return out;
+}
+
+function detalheC(n) {
+  if (n.decl) return n.decl;
+  const oque = n.tipo ? 'tipo' : (n.especie || 'c');
+  return oque + ' ' + n.nome + (n.cab ? ' · ' + n.cab : '');
+}
+
+function kindC(n) {
+  if (!n.valor) return CompletionItemKind.Struct;
+  if (n.especie === 'funcao' || n.especie === 'macro' || n.especie === 'literal')
+    return CompletionItemKind.Function;
+  return CompletionItemKind.Constant;
+}
+
 function completa(doc, p) {
 
   /* `import <cursor>` — AQUI é onde os módulos do motor e as libs instaladas
@@ -2275,10 +2307,13 @@ function completa(doc, p) {
     class: CompletionItemKind.Class,
     model: CompletionItemKind.Struct,
     enum: CompletionItemKind.Enum,
+    'funcao c': CompletionItemKind.Function,
+    'tipo c': CompletionItemKind.Struct,
   };
 
   for (const b of A.visiveisEm(idx, p.position.line)) {
     const det = b.kind === 'funct' ? assinatura({ nome: b.nome, params: b.params })
+              : (b.kind === 'funcao c' || b.kind === 'tipo c') ? (b.tipo || b.nome)
               : b.tipo ? `${b.tipo} ${b.nome}` : b.kind;
     poe(b.nome, KIND[b.kind] || CompletionItemKind.Variable, det,
         (b.kind === 'parametro' || b.kind === 'variavel' || b.kind === 'variavel do laco') ? '0' : '1');
@@ -2338,6 +2373,9 @@ function completa(doc, p) {
   for (const b of META.builtins || []) {
     poe(b.nome, CompletionItemKind.Function, 'builtin · ' + assinatura({ nome: b.nome, params: b.params }), '3');
   }
+  /* A tabela do C, só o que o import alcança. O nome já ligado no arquivo
+   * (a assinatura escrita, o `funct`) entrou antes e fica. */
+  for (const n of nomesCAlcancados(idx)) poe(n.nome, kindC(n), detalheC(n), '3');
   for (const k of META.keywords || []) poe(k, CompletionItemKind.Keyword, 'palavra-chave', '4');
   /* As exceções são valores da linguagem (`raise erro`, `X is Exception`) e
    * vêm da MESMA tabela que o `catch` consulta no motor. */
@@ -3046,9 +3084,17 @@ conexao.onHover((p) => {
     }
   }
   for (const b of A.visiveisEm(idx, p.position.line)) {
-    if (b.nome !== nome) continue;
+    const tagC = b.kind === 'tipo c'
+      && (b.nome === 'struct ' + nome || b.nome === 'union ' + nome || b.nome === 'enum ' + nome);
+    if (b.nome !== nome && !tagC) continue;
     const no = b.no || {};
     const onde = 'linha ' + (b.linha + 1);
+    if (b.kind === 'funcao c' || b.kind === 'tipo c') {
+      const oque = b.kind === 'funcao c' ? 'função do C' : 'tipo do C';
+      const cab = b.kind === 'funcao c' ? (b.tipo || b.nome)
+                : b.nome + (b.tipo ? '\n' + b.tipo : '');
+      return md('```c\n' + cab + '\n```\n\n' + oque + ' · declarada na ' + onde);
+    }
     if (b.kind === 'funct') {
       /* a ordem dos modificadores é livre na linguagem; aqui sai a canônica
        * da doc (6.4): visibilidade, static/nonnull, tipo, async, funct */
@@ -3142,8 +3188,19 @@ conexao.onHover((p) => {
     return md('```ps\nprivate ' + assinatura(priv.b) + '\n```\n\n`' + nome + '` é `private` em `' + priv.mod
               + '`: o `import *` não o traz (rodando dá `NameError`)');
   }
+  const doC = hoverDaTabelaC(idx, nome);
+  if (doC) return doC;
   return md('```ps\n' + nome + '\n```\n\nnome não definido neste arquivo nem por import (rodando dá `NameError`)');
 });
+
+/* Nome da tabela do C que o import do arquivo alcança, e que ninguém ligou
+ * no próprio arquivo. O detalhe é a declaração publicada no `--metadata`. */
+function hoverDaTabelaC(idx, nome) {
+  const n = nomesCAlcancados(idx).find((x) => x.nome === nome);
+  if (!n) return null;
+  const oque = n.valor ? 'valor do C' : 'tipo do C';
+  return md('```c\n' + detalheC(n) + '\n```\n\n' + oque + (n.cab ? ' · ' + n.cab : ''));
+}
 
 /* O nome que a LINGUAGEM liga sozinha, depois do escopo e dos imports (que o
  * sombreiam, como no motor): builtin (`len`, `range`), tipo (`PoolFile`,
@@ -3208,6 +3265,16 @@ function semMembro(tipo, nome) {
             + (ms.length ? ' — tem: ' + listaMembros(tipo, 12) : ''));
 }
 
+/* Onde o nome está na linha da declaração. Varredura, sem segunda gramática. */
+function colunaNaLinha(doc, linha, nome) {
+  const texto = doc.getText({
+    start: { line: linha, character: 0 },
+    end: { line: linha + 1, character: 0 },
+  });
+  const i = texto.indexOf(nome);
+  return i >= 0 ? i : 0;
+}
+
 conexao.onDefinition((p) => {
   const doc = docs.get(p.textDocument.uri);
   if (!doc) return null;
@@ -3262,10 +3329,13 @@ conexao.onDefinition((p) => {
     }
   }
   for (const b of A.visiveisEm(idx, p.position.line)) {
-    if (b.nome !== nome) continue;
+    const tag = b.kind === 'tipo c'
+      && (b.nome === 'struct ' + nome || b.nome === 'union ' + nome || b.nome === 'enum ' + nome);
+    if (b.nome !== nome && !tag) continue;
+    const col = (b.kind === 'funcao c' || b.kind === 'tipo c') ? colunaNaLinha(doc, b.linha, nome) : 0;
     return { uri: doc.uri,
-             range: { start: { line: b.linha, character: 0 },
-                      end: { line: b.linha, character: nome.length } } };
+             range: { start: { line: b.linha, character: col },
+                      end: { line: b.linha, character: col + nome.length } } };
   }
   const alvo = alvoDoImport(doc, nome, p.position.line);
   return definicaoDoImportado(doc, alvo, nome);

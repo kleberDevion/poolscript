@@ -296,3 +296,7 @@ PS_OP(ADDR,               120, "ADDR", 0, 0)
 PS_OP(DEREF,              121, "DEREF", 0, 0)
 /* `*p = v`: [p, v] -> [], guarda o valor no endereço. */
 PS_OP(DEREF_SET,          122, "DEREF_SET", 0, 0)
+/* `T[]`: [lista] -> [lista]. consts[arg] é a spec do CONFERE_TIPO
+ * ("D<nome>\x1f<tipo do item>"). A lista tem de ser lista e cada item tem de
+ * ser desse tipo. Lista vazia passa. */
+PS_OP(CONFERE_ITENS,      123, "CONFERE_ITENS", 1, 1)

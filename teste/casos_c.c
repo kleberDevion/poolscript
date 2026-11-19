@@ -11,52 +11,64 @@
 #include "ps_teste.h"
 const Caso CASOS_C[] = {
     /* ── o nome existe só com o cabeçalho dele (o import é obrigatório) ──────── */
-    {"C: strlen sem o cabecalho da NameError que diz qual importar",
+    {"C: strlen sem assinatura e NameError",
      "post(strlen(\"abc\"))\n",
-     "", "NameError: name 'strlen' is not defined. Did you forget to import <string.h>?", 2},
-    {"C: com string.h, strlen chama o C e devolve o tamanho",
-     "#include \"string.h\"\n"
+     "", "NameError: name 'strlen' is not defined", 2},
+    {"C: assinatura escrita e import c libc chamam strlen",
+     "import c \"libc\"\n"
+     "int strlen(const char *s)\n"
      "str a = \"abc\"\n"
      "post(strlen(a))\n",
      "3", NULL, 0},
-    {"C: import \"string.h\" (sem o #) e a mesma coisa",
-     "import \"string.h\"\n"
+    {"C: a mesma chamada com o nome da .so",
+     "import c \"libc.so.6\"\n"
+     "int strlen(const char *s)\n"
      "post(strlen(\"quatro\"))\n",
-     "6", NULL, 0},
-    {"C: include sem o # e a mesma coisa",
-     "include \"string.h\"\n"
-     "post(strlen(\"xy\"))\n",
-     "2", NULL, 0},
+     "6", NULL, 0, NULL, 0, "linux"},
     /* ── variádica: o formato diz o tipo de cada argumento ──────────────────── */
     {"C: printf variadico com %d e %s",
-     "#include \"stdio.h\"\n"
+     "import c \"libc\"\n"
+     "int printf(const char *format, ...)\n"
      "printf(\"n=%d s=%s\\n\", 42, \"ana\")\n",
      "n=42 s=ana", NULL, 0},
     {"C: printf com mais argumentos do que o formato pede e TypeError",
-     "#include \"stdio.h\"\n"
+     "import c \"libc\"\n"
+     "int printf(const char *format, ...)\n"
      "printf(\"%d\\n\", 1, 2)\n",
      "", "TypeError: printf: o formato pede 1 argumento depois dele, e vieram 2", 1},
     /* ── devolucao: inteiro, comparacao e void ──────────────────────────────── */
     {"C: strcmp devolve negativo como o C",
-     "#include \"string.h\"\n"
+     "import c \"libc\"\n"
+     "int strcmp(const char *a, const char *b)\n"
      "post(strcmp(\"abc\", \"abd\"))\n",
      "-1", NULL, 0},
     {"C: funcao void (free de NULL) devolve Null e nao estoura",
-     "#include \"stdlib.h\"\n"
+     "import c \"libc\"\n"
+     "void free(void *p)\n"
      "post(free(Null))\n",
      "Null", NULL, 0},
     /* ── argumento sem conversao: a frase e da Jinga, antes do C ────────────── */
     {"C: strlen(42) e TypeError com o tipo que o C pede",
-     "#include \"string.h\"\n"
+     "import c \"libc\"\n"
+     "int strlen(const char *s)\n"
      "post(strlen(42))\n",
      "", "TypeError: strlen: argumento 1 sem conversao para const char *", 1},
-    /* ── a assinatura escrita no programa (acesso total ao C) ──────────────── */
-    {"C: a funcao escrita no programa chama o simbolo do sistema",
+    /* ── a assinatura escrita no programa, sem catalogo de nomes ────────────── */
+    {"C: a funcao escrita no programa chama o simbolo da lib",
+     "import c \"libc\"\n"
      "int abs(int x)\n"
      "post(abs(-7))\n",
      "7", NULL, 0},
-    {"C: int main() com corpo e aceito e o corpo nao roda (a funcao e a do C)",
-     "int main() { return 0 }\n"
+    {"C: .so propria, criada no programa, chamada pela assinatura",
+     "import os\n"
+     "import c \"./libjinga_c_prova.so\"\n"
+     "int jinga_c_prova(int x)\n"
+     "os.writeFile(\"p.c\", \"int jinga_c_prova(int x) { return x + 1; }\\n\")\n"
+     "os.run([\"cc\", \"-shared\", \"-fPIC\", \"-o\", \"libjinga_c_prova.so\", \"p.c\"], capture=True)\n"
+     "post(jinga_c_prova(41))\n",
+     "42", NULL, 0, NULL, 0, "unix"},
+    {"C: int main() com corpo valido compila e a Jinga segue",
+     "int main(void) { return 0; }\n"
      "post(\"ok\")\n",
      "ok", NULL, 0},
     {"C: variavel com tipo do C (const char *)",
@@ -132,6 +144,62 @@ const Caso CASOS_C[] = {
      "double *q = &d\n"
      "post(*q)\n",
      "1.5", NULL, 0},
+    {"C: for e while no corpo da funcao",
+     "int acumula(int a, int b) {\n"
+     "    int s;\n"
+     "    int i;\n"
+     "    s = 0;\n"
+     "    for (i = 0; i < a; i = i + 1) {\n"
+     "        s = s + b;\n"
+     "    }\n"
+     "    while (s > 100) {\n"
+     "        s = s - 1;\n"
+     "    }\n"
+     "    return s;\n"
+     "}\n"
+     "post(acumula(3, 4))\n",
+     "12", NULL, 0},
+    {"C: comentario de linha e seta",
+     "int pega(void) {\n"
+     "    struct par { int a; int b; };\n"
+     "    struct par v;\n"
+     "    struct par *p;\n"
+     "    v.a = 7; // comentario do C\n"
+     "    p = &v;\n"
+     "    return p->a + 1;\n"
+     "}\n"
+     "post(pega())\n",
+     "8", NULL, 0},
+    {"C: funct da Jinga no meio de duas funcoes de C",
+     "int dobro(int x) {\n"
+     "    return x * 2;\n"
+     "}\n"
+     "int funct triplo(int x) {\n"
+     "    return x * 3\n"
+     "}\n"
+     "int mais(int x) {\n"
+     "    return dobro(x) + 1;\n"
+     "}\n"
+     "post(mais(4))\n"
+     "post(triplo(4))\n",
+     "9\n12", NULL, 0},
+    {"C: define colado em cima da funcao",
+     "#define DOBRO(x) ((x) * 2)\n"
+     "int usa(int x) {\n"
+     "    return DOBRO(x);\n"
+     "}\n"
+     "post(usa(5))\n",
+     "10", NULL, 0},
+    {"C: struct do arquivo a funcao de C enxerga",
+     "struct caixa { int a; int b; };\n"
+     "int soma_caixa(void) {\n"
+     "    struct caixa v;\n"
+     "    v.a = 3;\n"
+     "    v.b = 4;\n"
+     "    return v.a + v.b;\n"
+     "}\n"
+     "post(soma_caixa())\n",
+     "7", NULL, 0},
     {"C: *lista continua o spread da linguagem",
      "lista = [1, 2]\n"
      "post(*lista)\n",

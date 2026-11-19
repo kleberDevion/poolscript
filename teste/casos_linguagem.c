@@ -7066,6 +7066,26 @@ const Caso CASOS_LINGUAGEM[] = {
   "int x = 2\nx **= 3\n",
   "", "SyntaxError: '**=' nao existe: escreva x = x ** valor (atribuicao com operador so com +=, -=, *=, /= e %=)", 2 },
 
+/* ── T[]: a lista de hoje com o item conferido ── */
+{ "int[] guarda int e cresce com addEnd",
+  "int[] notas = [7, 8]\naddEnd(notas, 9)\npost(notas[0])\npost(notas[1])\npost(notas[2])\npost(type(notas))\n",
+  "7\n8\n9\nlist", NULL, 0 },
+{ "str[] guarda str",
+  "str[] nomes = [\"ana\"]\npost(nomes[0])\n",
+  "ana", NULL, 0 },
+{ "int[] recusa item de outro tipo antes de rodar",
+  "int[] notas = [7, \"a\"]\n",
+  "", "AttributedValueError: item de notas esperava int, recebeu str", 2 },
+{ "addEnd em int[] recusa str antes de rodar",
+  "int[] notas = []\naddEnd(notas, \"a\")\n",
+  "", "AttributedValueError: item de notas esperava int, recebeu str", 2 },
+{ "int[] recusa lista de outro item",
+  "funct pega(v) { return v }\nint[] notas = []\naddEnd(notas, pega(\"a\"))\n",
+  "", "AttributedValueError: item de notas esperava int, recebeu str", 1 },
+{ "int v[3] continua sendo o array do C, nao o T[]",
+  "int v[3] = [1, 2, 3]\npost(v[0])\n",
+  "1", NULL, 0 },
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

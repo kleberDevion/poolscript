@@ -4849,68 +4849,6 @@ static PSCFuncObj *nova_cfunc(VM *vm, int32_t idx)
  * dele de 2026-11-17). A função vira valor chamável (`PSCFuncObj`, o índice
  * na tabela), a constante o número dela, o `NULL` o Null, o valor lido na
  * hora (`stdin`) o que ele é. Devolve 0, ou -1 com o erro em `vm->erro`. */
-static int c_liga_global(VM *vm, int32_t slot, int32_t idx)
-{
-    Value v = MK_UNSET();
-    switch (ps_c_especie(idx)) {
-        case PSC_NOME_CONST:
-        case PSC_NOME_TALVEZ: {
-            PSCTipo *t = NULL;
-            uint64_t u = 0;
-            if (ps_c_const_int(idx, &t, &u) != 0) {
-                snprintf(vm->erro, sizeof vm->erro, "%s nao esta definida neste sistema", ps_c_nome(idx));
-                snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "NameError");
-                return -1;
-            }
-            if (t && t->sem_sinal && u > (uint64_t)INT64_MAX)
-                v = MK_FLOAT((double)u);      /* acima do int64: perde precisão, mas não vira negativo */
-            else
-                v = MK_INT((int64_t)u);
-            break;
-        }
-        case PSC_NOME_CONSTFLO: {
-            PSCTipo *t = NULL;
-            long double ld = 0;
-            if (ps_c_const_flo(idx, &t, &ld) != 0) {
-                snprintf(vm->erro, sizeof vm->erro, "%s nao esta definida neste sistema", ps_c_nome(idx));
-                snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "NameError");
-                return -1;
-            }
-            v = MK_FLOAT((double)ld);
-            break;
-        }
-        case PSC_NOME_TEXTO: {
-            const char *s = ps_c_const_texto(idx);
-            if (!s) break;
-            PSString *ps = nova_string(vm, s, (int)strlen(s));
-            if (!ps) { snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "MemoryError"); return -1; }
-            v = MK_OBJ(ps);
-            break;
-        }
-        case PSC_NOME_NULO:
-            v = MK_NULL();
-            break;
-        case PSC_NOME_FUNCAO:
-        case PSC_NOME_MACRO:
-        case PSC_NOME_LITERAL: {
-            /* a função em si: o valor chamável que `chama_cfunc` chama. As
-             * que a VM faz (atexit, exit, errno) ficam de fora: são nativas. */
-            if (ps_c_marcas(idx) & PSC_MARCA_VM) return 0;
-            PSCFuncObj *f = nova_cfunc(vm, idx);
-            if (!f) {
-                snprintf(vm->erro, sizeof vm->erro, "sem memoria ao ligar %s", ps_c_nome(idx));
-                snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "MemoryError");
-                return -1;
-            }
-            v = MK_OBJ(f);
-            break;
-        }
-        default:
-            return 0;      /* valor lido na hora: ver ps_c_le_valor */
-    }
-    if (v.t != V_UNSET) vm->globals[slot] = v;
-    return 0;
-}
 
 /* A função do C escrita pelo PROGRAMA (`int soma(int a, int b)`), fora da
  * tabela: o símbolo é achado pelo nome no próprio programa (dlsym) — o acesso
@@ -4919,8 +4857,7 @@ static int c_liga_global(VM *vm, int32_t slot, int32_t idx)
  * símbolo do sistema, -1 com o erro posto. */
 static int c_liga_declarado(VM *vm, int32_t slot, const char *nome, const char *texto)
 {
-    void *sim = ps_c_simbolo(nome);
-    if (!sim) return 0;
+    if (!texto || !nome) return 0;
     PSCFuncObj *f = nova_cfunc(vm, -1);
     if (!f) {
         snprintf(vm->erro, sizeof vm->erro, "sem memoria ao ligar %s", nome);
@@ -4928,9 +4865,11 @@ static int c_liga_declarado(VM *vm, int32_t slot, const char *nome, const char *
         return -1;
     }
     f->declarado = 1;
-    f->endereco = sim;
-    if (texto) f->tipo = ps_c_le_decl(texto, NULL, 0, NULL, 0);
+    f->tipo = ps_c_le_decl(texto, NULL, 0, NULL, 0);
     snprintf(f->nome, sizeof f->nome, "%s", nome);
+    /* o símbolo pode ainda não existir: a lib é aberta na chamada, e o
+     * programa pode criar o .so antes de chamar */
+    if (ps_c_tem_lib()) f->endereco = ps_c_simbolo(nome);
     vm->globals[slot] = MK_OBJ(f);
     return 1;
 }
@@ -26242,10 +26181,30 @@ static int chama_cfunc(VM *vm, PSCFuncObj *cf, Value *args, int n, Value *out)
         return -1;
     }
 
-    void (*f)(void) = ps_c_endereco(idx);
+    void (*f)(void) = NULL;
+    if (cf->declarado) {
+        if (!cf->endereco) {
+            if (!ps_c_tem_lib()) {
+                snprintf(vm->erro, sizeof vm->erro,
+                         "%s: falta o import da lib (import c \"libc\" ou import c \"libfoo.so\")", nome);
+                snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "NameError");
+                return -1;
+            }
+            void *s = ps_c_simbolo(nome);
+            if (!s) {
+                snprintf(vm->erro, sizeof vm->erro, "%s nao esta na lib importada", nome);
+                snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "RuntimeError");
+                return -1;
+            }
+            cf->endereco = s;
+        }
+        f = (void (*)(void))cf->endereco;
+    } else {
+        f = ps_c_endereco(idx);
+    }
     if (!f)
     {
-        snprintf(vm->erro, sizeof vm->erro, "%s nao esta no sistema", nome);
+        snprintf(vm->erro, sizeof vm->erro, "%s nao esta na lib importada", nome);
         snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "RuntimeError");
         return -1;
     }
@@ -29687,6 +29646,30 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     nrot, ss->chars + 1, ntipos, tipos, nome_do_tipo_valor(v));
         }
 
+        PS_CASE(CONFERE_ITENS) {
+            Value sv = p->consts[arg];
+            if (!EH_STRING(sv)) ERRO(vm, "especificacao de tipo invalida");
+            PSString *ss = COMO_STRING(sv);
+            const char *sep = ss->len > 1 ? memchr(ss->chars, '\x1f', (size_t)ss->len) : NULL;
+            if (!sep) ERRO(vm, "especificacao de tipo invalida");
+            const char *tipos = sep + 1;
+            int ntipos = (int)(ss->chars + ss->len - tipos);
+            int nrot = (int)(sep - ss->chars) - 1;
+            Value v = stack[sp - 1];
+            if (!EH_LIST(v))
+                ERRO_TF(vm, "AttributedValueError", "variável %.*s esperava %.*s[], recebeu %s",
+                        nrot, ss->chars + 1, ntipos, tipos, nome_do_tipo_valor(v));
+            {
+                PSList *l = (PSList *)v.as.obj;
+                for (int i = 0; i < l->len; i++) {
+                    if (valor_casa_spec(vm, &l->itens[i], tipos, (size_t)ntipos, 1)) continue;
+                    ERRO_TF(vm, "AttributedValueError", "item de %.*s esperava %.*s, recebeu %s",
+                            nrot, ss->chars + 1, ntipos, tipos, nome_do_tipo_valor(l->itens[i]));
+                }
+            }
+            break;
+        }
+
         PS_CASE(NOT)
             if (stack[sp - 1].t == V_BOOL) { stack[sp - 1].as.b = !stack[sp - 1].as.b; PROXIMA(); }
             stack[sp - 1] = MK_BOOL(!val_truthy(&stack[sp - 1]));
@@ -33104,6 +33087,65 @@ int ps_nativo_tem_membro(const char *dono, const char *membro)
     return 0;
 }
 
+/* O nome da espécie, o mesmo do enum em ps_c.h. Não é uma segunda tabela de
+ * assinaturas: a lista sai de ps_c_nnomes e o texto daqui só rotula o número. */
+static const char *jm_c_especie(PSCEspecie e)
+{
+    switch (e) {
+        case PSC_NOME_FUNCAO:     return "funcao";
+        case PSC_NOME_MACRO:      return "macro";
+        case PSC_NOME_LITERAL:    return "literal";
+        case PSC_NOME_CONST:      return "const";
+        case PSC_NOME_CONSTFLO:   return "constflo";
+        case PSC_NOME_TEXTO:      return "texto";
+        case PSC_NOME_TALVEZ:     return "talvez";
+        case PSC_NOME_VALOR:      return "valor";
+        case PSC_NOME_NULO:       return "nulo";
+        case PSC_NOME_TIPO:       return "tipo";
+        case PSC_NOME_OPACO:      return "opaco";
+        case PSC_NOME_ESTRUTURA:  return "estrutura";
+        case PSC_NOME_SINTAXE:    return "sintaxe";
+        case PSC_NOME_FORA:       return "fora";
+        default:                  return "";
+    }
+}
+
+/* A tabela do C (vm/c_padrao.decl) para o editor. `valor` é o que
+ * ps_c_valor_indice aceita como valor; `tipo` é opaco, struct ou typedef.
+ * `vale` são os cabeçalhos com que ps_c_vale_com diz que o nome vale. */
+static void jm_c_tabela(FILE *f)
+{
+    int n = ps_c_nnomes();
+    int primeiro = 1;
+    for (int i = 0; i < n; i++) {
+        const char *nome = ps_c_nome(i);
+        if (!nome) continue;
+        PSCEspecie e = ps_c_especie(i);
+        int eh_tipo = e == PSC_NOME_TIPO || e == PSC_NOME_OPACO || e == PSC_NOME_ESTRUTURA;
+        int eh_valor = ps_c_valor_indice(nome) >= 0;
+        if (!primeiro) fputc(',', f);
+        primeiro = 0;
+        fprintf(f, "\n  {\"nome\": ");
+        jm_txt(f, nome);
+        fprintf(f, ", \"decl\": ");
+        jm_txt(f, ps_c_decl(i) ? ps_c_decl(i) : "");
+        fprintf(f, ", \"cab\": ");
+        jm_txt(f, ps_c_cabecalho(i) ? ps_c_cabecalho(i) : "");
+        fprintf(f, ", \"especie\": \"%s\", \"valor\": %s, \"tipo\": %s, \"vale\": [",
+                jm_c_especie(e), eh_valor ? "true" : "false", eh_tipo ? "true" : "false");
+        int pv = 1;
+        for (int k = 0; ; k++) {
+            const char *cab = ps_c_cab(k);
+            if (!cab) break;
+            if (!ps_c_vale_com(i, cab)) continue;
+            if (!pv) fputc(',', f);
+            pv = 0;
+            jm_txt(f, cab);
+        }
+        fputs("]}", f);
+    }
+}
+
 void ps_metadata_json(FILE *saida)
 {
     FILE *f = saida ? saida : stdout;
@@ -33314,7 +33356,12 @@ void ps_metadata_json(FILE *saida)
             jm_txt(f, TIPOS[AP[i].cod].nome);
         }
     }
-    fprintf(f, "\n }\n}\n");
+    /* A tabela de assinaturas do C, a mesma de ps_c_nnomes. O editor só
+     * sugere o que um import do arquivo alcança; sem esta chave ele não tem
+     * de onde tirar printf. */
+    fprintf(f, "\n },\n \"c\": [");
+    jm_c_tabela(f);
+    fprintf(f, "\n ]\n}\n");
 }
 
 /* Despeja os avisos do lexer no STDERR.
@@ -33754,6 +33801,19 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
             if (!vm.protos[i].arquivo) vm.protos[i].arquivo = arq;
     }
 
+    ps_c_libs_zera();
+    if (prog->nc_fontes > 0) {
+        char erro_cc[sizeof e->msg];
+        if (ps_c_compila(prog->c_fontes, prog->nc_fontes, erro_cc, sizeof erro_cc) != 0) {
+            libera_vm(&vm); ps_compila_free(prog);
+            e->tipo = PS_ERRO_RUNTIME;
+            snprintf(e->msg, sizeof(e->msg), "%s", erro_cc[0] ? erro_cc : "o cc recusou o C deste arquivo");
+            return -1;
+        }
+    }
+    for (int32_t i = 0; i < prog->nc_libs; i++)
+        if (prog->c_libs[i]) ps_c_pede_lib(prog->c_libs[i]);
+
     /* liga os builtins nativos pelos nomes que o compilador registrou */
     for (int32_t i = 0; i < prog->nglobais; i++) {
         int ligou = 0;
@@ -33793,27 +33853,16 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
             int64_t k = excecao_indice(prog->globais[i]);
             if (k >= 0) { vm.globals[i] = MK_TIPO(TIPO_EXC_BASE + k); ligou = 1; }
         }
-        /* Nome da biblioteca do C (`import <stdio.h>`): a constante vale o
-         * número ou o texto dela, o `NULL` vale o Null da Jinga. A função é a
-         * próxima parte (o valor chamável); sem ela aqui, o nome solto some. */
+        /* Assinatura de C escrita no arquivo. O símbolo sai da lib
+         * importada, na chamada. Sem a assinatura o nome não existe. */
         if (!ligou) {
-            int k = ps_c_busca(prog->globais[i]);
-            if (k >= 0 && c_liga_global(&vm, i, k) != 0) {
+            const char *txt = NULL;
+            for (int32_t q = 0; q < prog->nc_decls; q++)
+                if (prog->c_decls_nome[q] && !strcmp(prog->c_decls_nome[q], prog->globais[i]))
+                    txt = prog->c_decls_texto[q];
+            if (txt && c_liga_declarado(&vm, i, prog->globais[i], txt) < 0) {
                 libera_vm(&vm); ps_compila_free(prog);
                 e->tipo = PS_ERRO_RUNTIME; return -1;
-            }
-            /* fora da tabela: o programa escreveu a assinatura, e o símbolo
-             * vem do próprio programa (dlsym) — o acesso ao C é total */
-            if (k < 0 || vm.globals[i].t == V_UNSET) {
-                const char *txt = NULL;
-                for (int32_t q = 0; q < prog->nc_decls; q++)
-                    if (prog->c_decls_nome[q] && !strcmp(prog->c_decls_nome[q], prog->globais[i]))
-                        txt = prog->c_decls_texto[q];
-                int rc = c_liga_declarado(&vm, i, prog->globais[i], txt);
-                if (rc < 0) {
-                    libera_vm(&vm); ps_compila_free(prog);
-                    e->tipo = PS_ERRO_RUNTIME; return -1;
-                }
             }
         }
     }

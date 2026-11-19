@@ -278,6 +278,18 @@ typedef struct {
     int32_t  nc_decls;
     int32_t  cap_c_decls;
 
+    /* `import c "lib"`: o caminho ou o nome da lib, como o programa escreveu.
+     * Não é catálogo: é a lista do que este arquivo abriu. */
+    char   **c_libs;
+    int32_t  nc_libs;
+    int32_t  cap_c_libs;
+
+    /* Corpo de função do C, o texto do arquivo. O cc compila; a chamada
+     * acha o símbolo na .so que saiu daí. */
+    char   **c_fontes;
+    int32_t  nc_fontes;
+    int32_t  cap_c_fontes;
+
     PSClassDef *classes;
     int32_t     nclasses;
 

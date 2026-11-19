@@ -34,6 +34,7 @@
 
 #ifndef _WIN32
 #include <dlfcn.h>
+#include <unistd.h>
 #endif
 
 /* O macOS traz a libffi no próprio sistema, com o cabeçalho em `ffi/` (o
@@ -467,10 +468,144 @@ static void *simbolo_do_sistema(const char *nome)
  * partida de todo programa (medido no `partida` do bench: 2 nomes a mais,
  * 11.165 instruções, +0,7%). O que só quem usa o C precisa (o `sigaltstack`
  * do tratador de queda) é achado aqui, no 1º uso. */
+/* As libs nomeadas pelo programa. O símbolo sai daqui, não de uma tabela
+ * de funções. Uma abertura que falhou é tentada de novo: o arquivo pode
+ * ser criado pelo próprio programa antes da chamada. */
+#define PS_C_MAX_LIBS 32
+static char *g_lib_nome[PS_C_MAX_LIBS];
+static void *g_lib_h[PS_C_MAX_LIBS];
+static int   g_nlibs;
+
+void ps_c_libs_zera(void)
+{
+    for (int i = 0; i < g_nlibs; i++) {
+#ifndef _WIN32
+        if (g_lib_h[i] && g_lib_h[i] != g_programa) dlclose(g_lib_h[i]);
+        if (g_lib_nome[i] && !strncmp(g_lib_nome[i], "/tmp/jinga_c_", 13))
+            unlink(g_lib_nome[i]);
+#endif
+        free(g_lib_nome[i]);
+        g_lib_nome[i] = NULL;
+        g_lib_h[i] = NULL;
+    }
+    g_nlibs = 0;
+}
+
+int ps_c_compila(char **fontes, int n, char *erro, size_t ecap)
+{
+    if (n <= 0) return 0;
+    if (erro && ecap) erro[0] = '\0';
+#ifdef _WIN32
+    if (erro && ecap)
+        snprintf(erro, ecap, "o corpo do C compila com o cc; neste sistema ele nao esta");
+    return -1;
+#else
+    char base[] = "/tmp/jinga_c_XXXXXX";
+    int fd = mkstemp(base);
+    if (fd < 0) {
+        if (erro && ecap) snprintf(erro, ecap, "nao consegui criar o arquivo do C");
+        return -1;
+    }
+    close(fd);
+    char cfile[80], sofile[80], efile[80];
+    snprintf(cfile, sizeof cfile, "%s.c", base);
+    snprintf(sofile, sizeof sofile, "%s.so", base);
+    snprintf(efile, sizeof efile, "%s.err", base);
+    unlink(base);
+    FILE *f = fopen(cfile, "w");
+    if (!f) {
+        if (erro && ecap) snprintf(erro, ecap, "nao consegui escrever o arquivo do C");
+        return -1;
+    }
+    fputs("#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n"
+          "#include <math.h>\n#include <stdint.h>\n#include <stddef.h>\n"
+          "#include <stdbool.h>\n#include <stdarg.h>\n#include <time.h>\n"
+          "#include <errno.h>\n#include <ctype.h>\n", f);
+    for (int i = 0; i < n; i++)
+        if (fontes[i]) { fputs(fontes[i], f); fputc('\n', f); }
+    fclose(f);
+    char cmd[420];
+    snprintf(cmd, sizeof cmd, "cc -shared -fPIC -o '%s' '%s' -lm >'%s' 2>&1",
+             sofile, cfile, efile);
+    int rc = system(cmd);
+    unlink(cfile);
+    if (rc != 0) {
+        if (erro && ecap) {
+            FILE *e = fopen(efile, "r");
+            size_t k = 0;
+            if (e) {
+                k = fread(erro, 1, ecap > 0 ? ecap - 1 : 0, e);
+                erro[k] = '\0';
+                fclose(e);
+                for (size_t i = 0; i < k; i++)
+                    if (erro[i] == '\n' || erro[i] == '\r') erro[i] = ' ';
+            }
+            if (!k) snprintf(erro, ecap, "o cc recusou o C deste arquivo");
+        }
+        unlink(efile);
+        unlink(sofile);
+        return -1;
+    }
+    unlink(efile);
+    ps_c_pede_lib(sofile);
+    return 0;
+#endif
+}
+
+void ps_c_pede_lib(const char *nome)
+{
+    if (!nome || !nome[0] || g_nlibs >= PS_C_MAX_LIBS) return;
+    for (int i = 0; i < g_nlibs; i++)
+        if (strcmp(g_lib_nome[i], nome) == 0) return;
+    char *d = strdup(nome);
+    if (!d) return;
+    g_lib_nome[g_nlibs] = d;
+    g_lib_h[g_nlibs] = NULL;
+    g_nlibs++;
+}
+
+int ps_c_tem_lib(void) { return g_nlibs > 0; }
+
+#ifndef _WIN32
+static void *abre_lib(const char *nome)
+{
+    void *h = dlopen(nome, RTLD_NOW | RTLD_LOCAL);
+    if (h) return h;
+    if (!strchr(nome, '/')) {
+        char b[256];
+        snprintf(b, sizeof b, "lib%s.so", nome);
+        h = dlopen(b, RTLD_NOW | RTLD_LOCAL);
+        if (h) return h;
+        snprintf(b, sizeof b, "%s.so", nome);
+        h = dlopen(b, RTLD_NOW | RTLD_LOCAL);
+        if (h) return h;
+    }
+    /* `libc` e `c` são a biblioteca do processo: o soname, e por último
+     * o próprio programa, que já está ligado à libc. */
+    if (!strcmp(nome, "c") || !strcmp(nome, "libc")) {
+        h = dlopen("libc.so.6", RTLD_NOW | RTLD_LOCAL);
+        if (h) return h;
+        h = dlopen("libSystem.B.dylib", RTLD_NOW | RTLD_LOCAL);
+        if (h) return h;
+        if (!g_programa) g_programa = dlopen(NULL, RTLD_LAZY);
+        return g_programa;
+    }
+    return NULL;
+}
+#endif
+
 void *ps_c_simbolo(const char *nome)
 {
+    if (!nome) return NULL;
 #ifndef _WIN32
-    return simbolo_do_sistema(nome);
+    for (int i = 0; i < g_nlibs; i++) {
+        if (!g_lib_h[i]) g_lib_h[i] = abre_lib(g_lib_nome[i]);
+        if (!g_lib_h[i]) continue;
+        dlerror();
+        void *s = dlsym(g_lib_h[i], nome);
+        if (s) return s;
+    }
+    return NULL;
 #else
     (void)nome;
     return NULL;

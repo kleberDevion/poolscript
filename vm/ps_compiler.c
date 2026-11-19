@@ -108,6 +108,7 @@ void ps_desmonta(const PSPrograma *prog, FILE *f)
                 case OP_LOAD_CONST: case OP_SET_MEMBER:
                 case OP_IMPORT_MOD: case OP_IMPORT_FROM: case OP_LOAD_METODO:
                 case OP_SET_METODO: case OP_IMPORT_FROM_ESTRELA: case OP_CONFERE_TIPO:
+                case OP_CONFERE_ITENS:
                     if (arg >= 0 && arg < p->nconsts) { fputs("; ", f); desmonta_const(&p->consts[arg], f); }
                     break;
                 case OP_COERCE_DECL:
@@ -640,6 +641,11 @@ typedef struct {
     const char *saida_tipo;
     int         saida_indice;       /* -2 = todos os posicionais */
     char        saida_rotulo[300];
+    /* `addEnd(notas, item)` com `notas` em `T[]` e o item só conhecido
+     * rodando: a conferência sai depois desse argumento. */
+    const char *item_tipo;
+    int         item_i;
+    char        item_rot[160];
     /* O `x.m` que a chamada em curso vai chamar (o N_MEMBER_ACCESS do
      * N_CALL): o erro de membro ausente diz "method" nele e "attribute" numa
      * leitura, e o GET_MEMBER dele leva PS_ARG_CHAMADO pro runtime dizer o
@@ -1729,10 +1735,11 @@ static void liga_direto_stmt(C *c, PSNode *s, char ***decl, int32_t *nd, int32_t
             junta_nomes_do_import(c, s, decl, nd, cd);
             break;
         case N_C_IMPORT:
-            /* o cabeçalho do C (`import <stdio.h>`) deixa `stdio.h` na pilha,
-             * como o `import` de módulo; o que ele libera (os nomes do C) já
-             * foi colhido na 1ª passada, em `declara_import_c`. */
-            junta_nomes(c, decl, nd, cd, s->texto ? s->texto : "");
+            /* `import c "lib"` não liga nome: a lib é o arquivo, a função
+             * é a assinatura escrita. O cabeçalho (`include "stdio.h"`)
+             * continua deixando o nome do arquivo no escopo. */
+            if (!(s->texto2 && !strcmp(s->texto2, "bin")))
+                junta_nomes(c, decl, nd, cd, s->texto ? s->texto : "");
             break;
         case N_C_DECL:
             /* a assinatura do C escrita no programa: o NOME vira global, e a
@@ -2336,6 +2343,11 @@ static void emite_args_e_chama(C *c, Unidade *u, PSNode *no, PSNodeVec *args)
     char saida_rot[300];
     if (saida_t) snprintf(saida_rot, sizeof(saida_rot), "%s", c->saida_rotulo);
     c->saida_tipo = NULL;
+    const char *item_t = c->item_tipo;
+    int item_i = c->item_i;
+    char item_rot[160];
+    if (item_t) snprintf(item_rot, sizeof item_rot, "%s", c->item_rot);
+    c->item_tipo = NULL;
     int32_t n = args->n, nkw = 0, estrelas = 0;
     int viu_nome = 0;
     for (int32_t i = 0; i < n; i++) {
@@ -2357,6 +2369,9 @@ static void emite_args_e_chama(C *c, Unidade *u, PSNode *no, PSNodeVec *args)
             if (saida_t && !args->itens[i]->texto && (saida_i == -2 || saida_i == i)
                     && tp_aceita(c, saida_t, tp_de(c, u, args->itens[i]->a), args->itens[i]->a, 1) == T_TALVEZ)
                 tp_emite_confere(c, u, saida_rot, saida_t, 1);
+            if (item_t && !args->itens[i]->texto && item_i == i
+                    && tp_aceita(c, item_t, tp_de(c, u, args->itens[i]->a), args->itens[i]->a, 1) == T_TALVEZ)
+                tp_emite_confere(c, u, item_rot, item_t, 1);
         }
         if (nkw == 0) { emite(c, u, OP_CALL, n); return; }
         /* nomes dos kwargs entram como uma tupla de constantes */
@@ -2489,20 +2504,6 @@ static void carrega_nome(C *c, Unidade *u, const char *nome)
     if (c->entity_no && !nome_e_local(u, nome) && campo_estatico_da_classe(c, nome)) {
         carrega_estatico(c, u, nome);
         return;
-    }
-    /* Nome da biblioteca do C com o cabeçalho importado: é um global, que a VM
-     * liga na carga (a função, a constante, o NULL do C). Sem o import ele nem
-     * chega aqui — `tp_nome_inexistente` já o acusou. */
-    if (!nome_e_local(u, nome) && c->ncabs_c > 0) {
-        int ci = ps_c_busca(nome);
-        if (ci >= 0) {
-            for (int32_t i = 0; i < c->ncabs_c; i++) {
-                if (!ps_c_vale_com(ci, c->cabs_c[i])) continue;
-                int32_t g = idx_global(c, nome);
-                if (g >= 0) emite(c, u, OP_LOAD_GLOBAL, g);
-                return;
-            }
-        }
     }
     carrega_nome_sem_estatico(c, u, nome);
 }
@@ -3078,6 +3079,20 @@ static int tp_conta_utf8(const char *s, int32_t n)
     return k;
 }
 
+/* `int[]` guarda o tipo do item em `elem` e devolve 1. `int` e o array do C
+ * (`v[3]`, que não é um tipo) devolvem 0. */
+static int tp_parte_arr(const char *t, char *elem, size_t cap)
+{
+    size_t n;
+    if (!t || !elem || cap < 2) return 0;
+    n = strlen(t);
+    if (n < 3 || t[n - 2] != '[' || t[n - 1] != ']') return 0;
+    if (n - 2 >= cap) return 0;
+    memcpy(elem, t, n - 2);
+    elem[n - 2] = '\0';
+    return elem[0] != '\0';
+}
+
 /* Um tipo `d` (sem união) aceita um valor de tipo `v` (sem união)?
  * `declarado`: 0 = a regra do tipo fixado pela primeira atribuição; 1 = a do
  * tipo ESCRITO; 2 = tipo escrito numa DECLARAÇÃO (`char c = 64` é o
@@ -3088,6 +3103,17 @@ static int tp_aceita_um(C *c, const char *d, const char *v, PSNode *no, int decl
 {
     /* Null só serve declarado onde o tipo É `Null` (o retorno da `Null funct`) */
     if (strcmp(v, "Null") == 0) return declarado && strcmp(d, "Null") != 0 ? T_NAO : T_SIM;
+    /* `T[]` é a lista de hoje com o item conferido à parte. A lista cabe em
+     * `T[]` e `T[]` cabe onde se pede `list`. Dois `T[]` casam pelo item. */
+    {
+        char ed[128], ev[128];
+        int da = tp_parte_arr(d, ed, sizeof ed);
+        int va = tp_parte_arr(v, ev, sizeof ev);
+        if (da && va) return tp_aceita_um(c, ed, ev, NULL, declarado);
+        if (da && strcmp(v, "list") == 0) return T_SIM;
+        if (va && strcmp(d, "list") == 0) return T_SIM;
+        if (da) return T_NAO;
+    }
     /* `Object` é qualquer valor (o Null saiu acima): aceita todo tipo, e um
      * valor que só se sabe ser `Object` pode ser de qualquer tipo — quem
      * decide é a VM rodando (`aceita_obj`, a mesma regra) */
@@ -3169,7 +3195,9 @@ static int tp_aceita(C *c, const char *d, const char *v, PSNode *no, int declara
 static SimInfo *tp_sim_de(C *c, Unidade *u, const char *nome);
 static int tp_tipo_existe(C *c, Unidade *u, const char *t)
 {
+    char elem[128];
     if (!t) return 1;
+    if (tp_parte_arr(t, elem, sizeof elem)) return tp_tipo_existe(c, u, elem);
     if (ps_tipo_info(t) || tp_tipo_decl_arq(c, t)) return 1;
     if (ps_retorno_tipo_existe(t) || ps_nativo_eh_tipo(t)) return 1;
     SimInfo *s = tp_sim_de(c, u, t);
@@ -3201,6 +3229,12 @@ static const char *tp_uniao(C *c, const char *a, const char *b);
  * antes de rodar. Item de tipo que não se sabe deixa o laço sem tipo. */
 static const char *tp_elemento_de(C *c, Unidade *u, PSNode *it)
 {
+    if (it && it->kind == N_NAME && it->texto) {
+        SimInfo *s = tp_sim_de(c, u, it->texto);
+        char elem[128];
+        if (s && s->tipo && tp_parte_arr(s->tipo, elem, sizeof elem))
+            return tp_canon_guarda(c, elem);
+    }
     if (it && (it->kind == N_LIST_LITERAL || it->kind == N_TUPLE_LITERAL) && it->lista.n > 0) {
         const char *t = NULL;
         for (int32_t i = 0; i < it->lista.n; i++) {
@@ -3346,6 +3380,10 @@ static void tp_junta_ligados(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *
         case N_FUNCT_DECL:
             junta_nomes(c, v, cnt, cap, n->texto);
             return;                          /* o corpo é outro escopo */
+        case N_C_DECL:
+            /* a função do C escrita no arquivo: o nome existe, como o de uma funct */
+            junta_nomes(c, v, cnt, cap, n->texto);
+            return;
         case N_LAMBDA_EXPR:
             return;
         case N_IMPORT_STMT:
@@ -3437,16 +3475,6 @@ static void passada2_stmt(C *c, Unidade *u, PSNode *s);
 static int tp_nome_inexistente(C *c, Unidade *u, const char *nome)
 {
     if (tp_ligado_no_escopo(c, u, nome)) return 0;
-    /* Nome da biblioteca padrão do C com o cabeçalho dele importado
-     * (`import <stdio.h>`): vale como o de um módulo importado. Sem o import,
-     * ele não existe — a lib é o que o import libera (decisão dele). */
-    {
-        int ci = ps_c_busca(nome);
-        if (ci >= 0 && ps_c_especie(ci) != PSC_NOME_FORA) {
-            for (int32_t i = 0; i < c->ncabs_c; i++)
-                if (ps_c_vale_com(ci, c->cabs_c[i])) return 0;
-        }
-    }
     /* Nome de TIPO só existe como nome se a VM o liga: o parser faz do tipo
      * sozinho uma carga de tipo (`post(JSON)` é o `dict`), mas seguido de `(`
      * ou `.` ele é nome comum, e rodando o apelido não existe (`JSON.parse`,
@@ -3516,20 +3544,6 @@ static void tp_acusa_nome(C *c, Unidade *u, const char *nome, PSNode *onde, int 
 {
     if (!tp_ligado_no_escopo(c, u, nome) && c->nome_oculto) { tp_acusa_oculto(c, onde, nome); return; }
     if (ps_nativo_eh_modulo(nome)) { tp_acusa_sem_import(c, onde, nome); return; }
-    /* Nome da biblioteca padrão do C fora de qualquer cabeçalho importado: a
-     * lib não está liberada (o import é obrigatório), e a frase diz qual. */
-    {
-        int ci = ps_c_busca(nome);
-        if (ci >= 0) {
-            if (ps_c_especie(ci) == PSC_NOME_FORA) {
-                terro(c, onde, "NameError", "name '%s' is not defined: %s", nome, ps_c_decl(ci));
-            } else {
-                terro(c, onde, "NameError", "name '%s' is not defined. Did you forget to import <%s>?",
-                      nome, ps_c_cabecalho(ci));
-            }
-            return;
-        }
-    }
     /* Membro de instância lido pelo nome solto, dentro do método: só se
      * alcança por `self`, e a dica é essa. Saía o nome parecido de outro
      * lugar (`saldo` -> 'False', `m` -> 'A'), que não conserta nada. */
@@ -4744,7 +4758,7 @@ static void tp_emite_confere(C *c, Unidade *u, const char *rotulo, const char *t
 
 /* Escrita do valor de `c->grava` no nome cujo SimInfo é `s`: confere o que dá
  * pra saber e atualiza o que se sabe do nome. Devolve T_SIM/T_NAO/T_TALVEZ. */
-static int tp_escreve(C *c, SimInfo *s, const char *nome)
+static int tp_escreve(C *c, Unidade *u, SimInfo *s, const char *nome)
 {
     if (!s) return T_TALVEZ;
     PSNode *onde = c->grava.no;
@@ -4825,6 +4839,27 @@ static int tp_escreve(C *c, SimInfo *s, const char *nome)
             terro(c, onde, "AttributedValueError",
                   "variável %s é %s (tipo fixado na primeira atribuição), recebeu %s", nome, s->tipo, vt);
     }
+    if (v != T_NAO && s->estado == 2 && s->tipo) {
+        char elem[128];
+        if (tp_parte_arr(s->tipo, elem, sizeof elem) && c->grava.no && c->grava.no->kind == N_LIST_LITERAL) {
+            int pior = T_SIM;
+            for (int32_t i = 0; i < c->grava.no->lista.n; i++) {
+                PSNode *it = c->grava.no->lista.itens[i];
+                const char *ti = it ? tp_de(c, u, it) : NULL;
+                int a = tp_aceita(c, elem, ti, it, 1);
+                if (a == T_NAO)
+                    terro(c, it ? it : onde, "AttributedValueError",
+                          "item de %s esperava %s, recebeu %s", nome, elem, ti ? ti : "?");
+                if (a == T_NAO) pior = T_NAO;
+                else if (a == T_TALVEZ && pior == T_SIM) pior = T_TALVEZ;
+            }
+            if (pior == T_NAO) return T_NAO;
+            if (pior == T_TALVEZ) v = T_TALVEZ;
+            else v = T_SIM;
+        } else if (tp_parte_arr(s->tipo, elem, sizeof elem)) {
+            v = T_TALVEZ;
+        }
+    }
     return v;
 }
 
@@ -4833,6 +4868,15 @@ static int tp_escreve(C *c, SimInfo *s, const char *nome)
  * no caso do `char`. */
 static void tp_emite_escrita(C *c, Unidade *u, const char *nome, SimInfo *s, int veredito, int cod1)
 {
+    char elem[128];
+    if (s && s->tipo && tp_parte_arr(s->tipo, elem, sizeof elem)) {
+        if (veredito == T_SIM || veredito == T_NAO) return;
+        char spec[512];
+        int n = snprintf(spec, sizeof spec, "D%s\x1f%s", nome, elem);
+        if (n > 0 && n < (int)sizeof spec)
+            emite(c, u, OP_CONFERE_ITENS, idx_const(c, u, K_STR, 0, 0, spec, n));
+        return;
+    }
     if (veredito == T_SIM || veredito == T_NAO) return;
     if (cod1 > 0) { emite_coerce_se_tipado(c, u, nome, cod1); return; }
     if (!s || !s->tipo || s->estado == 0) return;
@@ -5500,8 +5544,26 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
         if (!s || !s->decl || s->decorado) {
             /* builtin que o programa não sombreou: `len(5)`, `chr("a")`; e o
              * membro de módulo trazido pelo nome (`from os import getenv`) */
-            if (!tp_nome_ligado(c, u, f->texto) && ps_nome_pre_ligado(f->texto))
+            if (!tp_nome_ligado(c, u, f->texto) && ps_nome_pre_ligado(f->texto)) {
                 tp_confere_nativo(c, n, "builtins", f->texto, NULL, t_unico);
+                if (!strcmp(f->texto, "addEnd") && n->lista.n >= 2) {
+                    PSNode *a0 = n->lista.itens[0] ? n->lista.itens[0]->a : NULL;
+                    PSNode *a1 = n->lista.itens[1] ? n->lista.itens[1]->a : NULL;
+                    SimInfo *sl = (a0 && a0->kind == N_NAME && a0->texto) ? tp_sim_de(c, u, a0->texto) : NULL;
+                    char elem[128];
+                    if (sl && sl->tipo && tp_parte_arr(sl->tipo, elem, sizeof elem)) {
+                        const char *ti = a1 ? tp_de(c, u, a1) : NULL;
+                        if (tp_aceita(c, elem, ti, a1, 1) == T_NAO)
+                            terro(c, a1 ? a1 : n, "AttributedValueError",
+                                  "item de %s esperava %s, recebeu %s", a0->texto, elem, ti ? ti : "?");
+                        else if (tp_aceita(c, elem, ti, a1, 1) == T_TALVEZ) {
+                            c->item_tipo = tp_canon_guarda(c, elem);
+                            c->item_i = 1;
+                            snprintf(c->item_rot, sizeof c->item_rot, "item de %s", a0->texto);
+                        }
+                    }
+                }
+            }
             else if (s && s->mod_nativo && s->membro_nativo)
                 tp_confere_nativo(c, n, s->mod_nativo, s->membro_nativo, NULL, t_unico);
             return;
@@ -5791,7 +5853,7 @@ static void guarda_nome_modo_no(C *c, Unidade *u, const char *nome, int certa)
         mod_criados_add(c, u, nome);  /* p/ escopo de bloco */
         int32_t km = ix_busca(&u->ix_mod, nome);
         SimInfo *s = km >= 0 ? &u->mod_sim[km] : NULL;
-        int v = tp_escreve(c, s, nome);
+        int v = tp_escreve(c, u, s, nome);
         tp_emite_escrita(c, u, nome, s, v, tp_cod1(s, tipo_topo_de(c, nome)));
         /* variável de bloco capturada: grava na célula (a conferência de tipo
          * acima é a mesma da global) */
@@ -5802,7 +5864,7 @@ static void guarda_nome_modo_no(C *c, Unidade *u, const char *nome, int certa)
     }
     if (eh_global_declarada(u, nome)) {
         SimInfo *s = tp_sim_topo(c, nome);
-        int v = tp_escreve(c, s, nome);
+        int v = tp_escreve(c, u, s, nome);
         tp_emite_escrita(c, u, nome, s, v, tp_cod1(s, tipo_topo_de(c, nome)));
         global_gravado_add(c, nome);
         emite(c, u, OP_STORE_GLOBAL, idx_global(c, nome));
@@ -5818,7 +5880,7 @@ static void guarda_nome_modo_no(C *c, Unidade *u, const char *nome, int certa)
         int32_t up = resolve_upval(c, u, nome);
         if (up >= 0) {
             SimInfo *s = tp_sim_upval(u, nome);
-            int v = tp_escreve(c, s, nome);
+            int v = tp_escreve(c, u, s, nome);
             tp_emite_escrita(c, u, nome, s, v, tp_cod1(s, tipo_de_upval(u, nome)));
             emite(c, u, OP_STORE_UPVAL, up);
             return;
@@ -5836,7 +5898,7 @@ static void guarda_nome_modo_no(C *c, Unidade *u, const char *nome, int certa)
         SimInfo *t = tp_sim_topo(c, nome);
         if (t) s = t;
     }
-    int v = tp_escreve(c, s, nome);
+    int v = tp_escreve(c, u, s, nome);
     if (u->celula[i]) {
         tp_emite_escrita(c, u, nome, s, v, tp_cod1(s, u->tipo_decl[i]));
         if (u->certo[i]) { emite(c, u, OP_CELL_SET, i); return; }
@@ -8386,6 +8448,22 @@ static void stmt_no_corpo(C *c, Unidade *u, PSNode *n)
                 emite(c, u, op, 0);
             } else {
                 expr(c, u, n->c);
+                if (n->a && n->a->kind == N_NAME && n->a->texto) {
+                    SimInfo *sl = tp_sim_de(c, u, n->a->texto);
+                    char elem[128];
+                    if (sl && sl->tipo && tp_parte_arr(sl->tipo, elem, sizeof elem)) {
+                        const char *ti = tp_de(c, u, n->c);
+                        int a = tp_aceita(c, elem, ti, n->c, 1);
+                        if (a == T_NAO)
+                            terro(c, n->c, "AttributedValueError",
+                                  "item de %s esperava %s, recebeu %s", n->a->texto, elem, ti ? ti : "?");
+                        else if (a == T_TALVEZ) {
+                            char rot[160];
+                            snprintf(rot, sizeof rot, "item de %s", n->a->texto);
+                            tp_emite_confere(c, u, rot, elem, 1);
+                        }
+                    }
+                }
             }
             emite(c, u, OP_INDEX_SET, 0);
             return;
@@ -9534,12 +9612,12 @@ static void tp_pre_stmt(C *c, Unidade *mod, PSNode *s, int decorado)
              * erro sairia de novo, com outra frase. O tipo do C já foi
              * validado pelo leitor do C, no parse. */
             c->grava.declara = s->tipo_do_c || tp_tipo_existe(c, mod, s->texto2) ? s->texto2 : NULL;
-            tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
+            tp_escreve(c, mod, tp_topo_poe(c, s->texto), s->texto);
             break;
         case N_ASSIGNMENT:
             if (!s->texto || (s->texto2 && strcmp(s->texto2, "=") != 0)) return;
             grava_valor(c, mod, s->a);
-            tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
+            tp_escreve(c, mod, tp_topo_poe(c, s->texto), s->texto);
             break;
         case N_FUNCT_DECL:
             if (!s->texto) return;
@@ -9547,21 +9625,21 @@ static void tp_pre_stmt(C *c, Unidade *mod, PSNode *s, int decorado)
             c->grava.tem_valor = 1; c->grava.tipo = "funct"; c->grava.no = s;
             c->grava.decl = s; c->grava.decorado = (unsigned char)decorado;
             c->grava.declaracao = 1;
-            tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
+            tp_escreve(c, mod, tp_topo_poe(c, s->texto), s->texto);
             break;
         case N_ENTITY_DECL:
             if (!s->texto) return;
             memset(&c->grava, 0, sizeof(c->grava));
             c->grava.tem_valor = 1; c->grava.tipo = "Entity"; c->grava.no = s; c->grava.decl = s;
             c->grava.declaracao = 1;
-            tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
+            tp_escreve(c, mod, tp_topo_poe(c, s->texto), s->texto);
             break;
         case N_MODEL_DECL:
             if (!s->texto) return;
             memset(&c->grava, 0, sizeof(c->grava));
             c->grava.decl = s; c->grava.no = s;
             c->grava.declaracao = 1;
-            tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
+            tp_escreve(c, mod, tp_topo_poe(c, s->texto), s->texto);
             break;
         case N_IMPORT_STMT: {
             if (!s->texto || s->texto3 || (s->i2 > 0 && s->lista.n == 0)) return;
@@ -9572,7 +9650,7 @@ static void tp_pre_stmt(C *c, Unidade *mod, PSNode *s, int decorado)
             if (!eh_from) {
                 const char *nome = s->texto2 ? s->texto2 : (s->i2 == -1 || base[0] ? base : enc);
                 tp_grava_import(c, s, enc, NULL);
-                tp_escreve(c, tp_topo_poe(c, tp_guarda(c, nome)), nome);
+                tp_escreve(c, mod, tp_topo_poe(c, tp_guarda(c, nome)), nome);
             } else {
                 for (int32_t i = 0; i < s->lista2.n; i++) {
                     const char *membro = s->lista2.itens[i]->texto;
@@ -9580,7 +9658,7 @@ static void tp_pre_stmt(C *c, Unidade *mod, PSNode *s, int decorado)
                                         ? s->lista2_alias.itens[i]->texto : membro;
                     if (!membro || !apelido) continue;
                     tp_grava_import(c, s, enc, membro);
-                    tp_escreve(c, tp_topo_poe(c, apelido), apelido);
+                    tp_escreve(c, mod, tp_topo_poe(c, apelido), apelido);
                 }
             }
             break;
@@ -9966,8 +10044,49 @@ static void tp_colhe_gravacoes(C *c, PSNode *n)
  * Da tabela vem a assinatura dos nomes conhecidos; o cabeçalho que a tabela
  * não conhece (setjmp.h, threads.h...) vale igual, e o programa escreve a
  * declaração do que for chamar. Dentro de bloco ou funct, o stmt_no recusa. */
+static void guarda_lib_c(C *c, PSNode *s)
+{
+    if (!s->texto) return;
+    if (c->out->nc_libs == c->out->cap_c_libs) {
+        int32_t novo = c->out->cap_c_libs ? c->out->cap_c_libs * 2 : 4;
+        char **nv = realloc(c->out->c_libs, sizeof(char *) * (size_t)novo);
+        if (!nv) { cerro(c, "sem memoria", s); return; }
+        c->out->c_libs = nv;
+        c->out->cap_c_libs = novo;
+    }
+    c->out->c_libs[c->out->nc_libs++] = strdup(s->texto);
+}
+
+static void guarda_fonte_c(C *c, PSNode *s, const char *txt)
+{
+    if (!txt || !txt[0]) return;
+    size_t n = strlen(txt);
+    while (n && (txt[n - 1] == ' ' || txt[n - 1] == '\n' || txt[n - 1] == '\t' || txt[n - 1] == '\r')) n--;
+    int poe = n && txt[n - 1] != ';';
+    if (c->out->nc_fontes == c->out->cap_c_fontes) {
+        int32_t novo = c->out->cap_c_fontes ? c->out->cap_c_fontes * 2 : 4;
+        char **nv = realloc(c->out->c_fontes, sizeof(char *) * (size_t)novo);
+        if (!nv) { cerro(c, "sem memoria", s); return; }
+        c->out->c_fontes = nv;
+        c->out->cap_c_fontes = novo;
+    }
+    if (!poe) {
+        c->out->c_fontes[c->out->nc_fontes++] = strdup(txt);
+        return;
+    }
+    char *b = malloc(n + 3);
+    if (!b) { cerro(c, "sem memoria", s); return; }
+    memcpy(b, txt, n);
+    b[n] = ';'; b[n + 1] = '\n'; b[n + 2] = '\0';
+    c->out->c_fontes[c->out->nc_fontes++] = b;
+}
+
 static void declara_import_c(C *c, PSNode *s)
 {
+    if (s && s->kind == N_C_IMPORT && s->texto2 && !strcmp(s->texto2, "bin")) {
+        guarda_lib_c(c, s);
+        return;
+    }
     if (s && s->kind == N_C_DECL && s->texto && s->texto2) {
         /* a assinatura escrita no programa: guarda o nome e o texto, para a VM
          * ligar o símbolo com o tipo que o programa escreveu */
@@ -9984,6 +10103,15 @@ static void declara_import_c(C *c, PSNode *s)
         c->out->c_decls_nome[c->out->nc_decls] = strdup(s->texto);
         c->out->c_decls_texto[c->out->nc_decls] = strdup(s->texto2);
         c->out->nc_decls++;
+        if (s->texto3) guarda_fonte_c(c, s, s->texto3);
+        return;
+    }
+    if (s && s->kind == N_C_TIPO_DECL && s->texto3) {
+        guarda_fonte_c(c, s, s->texto3);
+        return;
+    }
+    if (s && s->kind == N_BLOCK && s->texto3 && !strcmp(s->texto3, "c") && s->texto2) {
+        guarda_fonte_c(c, s, s->texto2);
         return;
     }
     if (!s || s->kind != N_C_IMPORT || !s->texto) return;
@@ -10002,7 +10130,7 @@ static void declara_import_c(C *c, PSNode *s)
         c->cabs_c = nv;
         c->cap_cabs_c = novo;
     }
-    c->cabs_c[c->ncabs_c++] = estatico;
+    c->cabs_c[c->ncabs_c++] = nome_cab;
 }
 static void passada1_stmt(C *c, PSNode *cheia, PSNode *podada)
 {
@@ -10469,6 +10597,16 @@ void ps_compila_free(PSPrograma *p)
     free(p->priv_cols);
     for (int32_t i = 0; i < p->nexportados; i++) free(p->exportados[i]);
     free(p->exportados);
+    for (int32_t i = 0; i < p->nc_decls; i++) {
+        free(p->c_decls_nome[i]);
+        free(p->c_decls_texto[i]);
+    }
+    free(p->c_decls_nome);
+    free(p->c_decls_texto);
+    for (int32_t i = 0; i < p->nc_libs; i++) free(p->c_libs[i]);
+    free(p->c_libs);
+    for (int32_t i = 0; i < p->nc_fontes; i++) free(p->c_fontes[i]);
+    free(p->c_fontes);
     free(p->erros_tipo);
     free(p);
 }

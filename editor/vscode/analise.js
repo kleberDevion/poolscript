@@ -171,6 +171,12 @@ function ligacoesDe(no, poe) {
     case 'EnumDecl':
       poe(no.texto, 'enum', null, no);
       break;
+    case 'CDecl':                                        /* int strlen(const char *s) */
+      poe(no.texto, 'funcao c', no.texto2, no);
+      break;
+    case 'CTipoDecl':                                    /* struct ponto / typedef */
+      poe(no.texto, 'tipo c', no.texto2, no);
+      break;
     case 'UnpackAssignment':                             /* a, b = 1, 2 */
       alvosDoUnpack(no.a, poe, no);
       break;
@@ -710,6 +716,15 @@ function escoposDaArvore(arvore) {
         liga(esc, no.texto, 'enum', null, no);
         return;
 
+      case 'CDecl':
+        /* a função do C escrita no arquivo: o nome convive com o `funct` */
+        liga(esc, no.texto, 'funcao c', no.texto2 || null, no);
+        return;
+
+      case 'CTipoDecl':
+        liga(esc, no.texto, 'tipo c', no.texto2 || null, no);
+        return;
+
       case 'ListComp': {
         if (no.a) anda(no.a, esc);
         const ce = cria('compreensao', no.texto, no.l, ultimaLinha(no), esc);
@@ -737,7 +752,7 @@ function escoposDaArvore(arvore) {
 /* ── a fachada ──────────────────────────────────────────────────────────── */
 
 function indexa(arvore) {
-  if (!arvore) return { arvore: null, escopos: [], entidades: [], imports: new Map(), estrelas: [], topo: [] };
+  if (!arvore) return { arvore: null, escopos: [], entidades: [], imports: new Map(), estrelas: [], topo: [], cImports: [] };
   const imps = importsDaArvore(arvore);
   return {
     /* a árvore VIAJA no índice: quem precisa de uma pergunta que o índice não
@@ -750,7 +765,24 @@ function indexa(arvore) {
     estrelas: imps.estrelas,
     /* o que o arquivo liga no topo — é o que ele EXPORTA quando é importado */
     topo: topoDaArvore(arvore),
+    /* `import <stdio.h>` / `include "stdio.h"` / `import c "libc"`: o que o
+     * arquivo importou do C. O nome da tabela entra no completion só daqui. */
+    cImports: importsCDaArvore(arvore),
   };
+}
+
+/* Cabeçalho (`texto` = "stdio.h") ou lib (`texto2` = "bin", `texto` = "libc"
+ * / "libfoo.so"). Sem nenhum destes o editor não oferece a tabela. */
+function importsCDaArvore(arvore) {
+  const out = [];
+  const anda = (no) => {
+    if (!no || typeof no !== 'object') return;
+    if (no.k === 'CImport' && no.texto)
+      out.push({ cab: no.texto, bin: no.texto2 === 'bin', linha: (no.l || 1) - 1 });
+    cada(no, anda);
+  };
+  anda(arvore);
+  return out;
 }
 
 /* Tudo que está em escopo na LINHA `linha` (base 0). Do mais interno pro mais
@@ -767,7 +799,8 @@ function visiveisEm(idx, linha) {
     for (const b of e.liga) {
       /* só o que foi ligado ANTES do cursor: sugerir variável de baixo é
        * oferecer o que ainda não existe */
-      if (b.linha > linha && b.kind !== 'funct' && b.kind !== 'class') continue;
+      if (b.linha > linha && b.kind !== 'funct' && b.kind !== 'class'
+          && b.kind !== 'funcao c' && b.kind !== 'tipo c') continue;
       if (jaTem.has(b.nome)) continue;
       jaTem.add(b.nome);
       out.push(b);

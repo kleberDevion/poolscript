@@ -161,6 +161,12 @@ typedef struct {
     /* Quantos `{...}` já foram anotados desde o começo do arquivo: o teto de
      * `interps` conta o arquivo inteiro, mesmo depois que os velhos saem. */
     int32_t  interps_total;
+
+    /* O fonte que gerou a lista. Vive enquanto quem chamou o lexer viver
+     * (o modo fluxo pede isso). Serve pra recortar o texto cru de uma função
+     * do C e entregar ao cc, sem remontar pelos tokens. */
+    const char *fonte;
+    size_t      fonte_len;
 } PSTokenList;
 
 /* Lê UM caractere UTF-8 em `b[i]` VALIDANDO (sequência curta, continuação
@@ -202,6 +208,8 @@ PSTokenList *ps_lexer_tokenize_modo(const char *fonte, size_t len,
  * das passadas de `ps_lexer_tokenize_modo`. */
 PSTokenList *ps_lexer_fluxo(const char *fonte, size_t len, int recupera,
                             const struct PSFechado *alvos, int32_t nalvos);
+/* O fonte da lista, ou NULL. `len` pode ser NULL. */
+const char *ps_lexer_fonte(const PSTokenList *o, size_t *len);
 
 /* O token `i` (índice absoluto), lendo o fonte até ele se preciso. NULL = o
  * arquivo acabou antes dele. Nas duas formas de lista. No modo fluxo, se o

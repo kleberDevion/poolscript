@@ -441,8 +441,8 @@ include "stdio.h"
 
 O `#` da frente é a macro do C, e é a única coisa com `#` que o motor executa —
 todo o resto de `#` continua sendo comentário de linha. O `;` do fim do C pode
-ficar. O cabeçalho tem que vir entre **aspas**: `#include <stdio.h>` é erro com
-a frase que diz a forma certa.
+ficar. O cabeçalho vem entre aspas (`import "stdio.h"`) ou entre `<` e `>`
+(`import <stdio.h>`, `#include <stdio.h>`): as duas formas são o mesmo import.
 
 Da tabela do C (`vm/c_padrao.decl`) vem a **assinatura** de cada nome — tipo e
 aridade —, e a chamada vai de verdade pela libffi:
@@ -516,6 +516,7 @@ post(mymod.saudar("ana"))
 - Resolução (nome, sem caminho): **stdlib → lib global → arquivo ao lado de
   quem importa → arquivo do projeto**; senão `ImportError`.
 - **`#include "stdio.h"`** / **`import "stdio.h"`** / **`include "stdio.h"`**
-  — o cabeçalho do C; o import libera a lib e a chamada vai pela libffi.
+  / **`import <stdio.h>`** — o cabeçalho do C; o import libera a lib e a
+  chamada vai pela libffi.
 - **Importar não dispara** o guard `if __name__ == "main"` do módulo; no
   arquivo executado, `__name__` vale `"main"`.

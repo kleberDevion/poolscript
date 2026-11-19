@@ -3122,7 +3122,7 @@ Ordem: **8 -> 5 -> 1 -> 3**.
 10. **Item 14: generics** (anotado em 2026-10-21, sem posição na ordem acima; entra depois da correção da base).
    - Você escreveu: "implementação generics". É o tipo como parâmetro de funct, de classe e de coleção (uma funct que serve pra `int` e pra `str` com o tipo conferido, uma `class Caixa` de qualquer tipo).
    - Depende da tipagem estática do Plano 4 (o tipo de cada nome conhecido na compilação) e do item 13 (o `T[]`).
-   - **Decisão sua, perguntada no plano:** a sintaxe (a do Java e do C#, `Caixa<T>`, ou outra); se o tipo é conferido só antes de rodar (apagado depois, como no Java) ou também rodando; e se o parâmetro de tipo aceita limite (`T` que é `Conta` ou filha dela).
+   - **Sintaxe decidida em 2026-11-19: a do Java** (`Caixa<T>`). Tipo criado por ele (classe, `struct`/`typedef` do C) vale como argumento de tipo, igual a `int` e `str`. Ainda em aberto: se o tipo é conferido só antes de rodar (apagado, como no Java) ou também rodando, e se o parâmetro aceita limite (`T extends Conta`).
 11. **Item 15: os algoritmos de criptografia, quando a integração com o C entrar** (anotado em 2026-10-21).
    - Você escreveu: "uso de algoritmos de cripto serão acessíveis quando ocorrer a integração com o C". O motor já liga a biblioteca de criptografia do OpenSSL pro TLS da jinker e do `request`; com o C na Jinga (Plano 1, parado no ramo `obra/c1`), as funções dela ficam ao alcance do programa.
    - Junto do item 8 (bcrypt na lib `hash`): o plano do C diz se o bcrypt sai daí ou continua escrito no motor.

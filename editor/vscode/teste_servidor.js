@@ -2145,6 +2145,99 @@ async function main() {
          t.includes('origins = Null') && t.includes('parâmetro de `cors`'), t);
   }
 
+  /* O editor não sugeria nada do C: a assinatura escrita no arquivo
+   * (`int strlen(...)`) não entrava no completion, e `import <stdio.h>` não
+   * oferecia o printf da tabela do motor. */
+  {
+    const tab = META_LOCAL.c || [];
+    const acha = (nome) => tab.find((n) => n.nome === nome);
+    const printf = acha('printf');
+    const malloc = acha('malloc');
+    const file = acha('FILE');
+    const deFora = tab.find((n) => n && n.nome && n.valor && !(n.vale || []).includes('stdio.h'));
+    conf('metadata publica a tabela do C (printf, e um nome que stdio.h nao traz)',
+         !!printf && !!printf.decl && Array.isArray(printf.vale) && printf.vale.includes('stdio.h')
+         && !!deFora && !deFora.vale.includes('stdio.h'),
+         { printf: printf && printf.decl, deFora: deFora && deFora.nome });
+
+    const escrito = [
+      'int strlen(const char *s)',
+      'funct dobra(int x) { return x }',
+      'struct ponto { int x; int y }',
+      'strlen(dobra(1))',
+    ].join('\n');
+    const hv = (id, l, c) => ({ jsonrpc: '2.0', id, method: 'textDocument/hover',
+      params: { textDocument: { uri: URI }, position: { line: l, character: c } } });
+    const df = (id, l, c) => ({ jsonrpc: '2.0', id, method: 'textDocument/definition',
+      params: { textDocument: { uri: URI }, position: { line: l, character: c } } });
+    const m = await conversa(escrito + '\n', [
+      compl(600, 3, 0),
+      hv(601, 3, 0),
+      hv(602, 3, 8),
+      hv(603, 2, 7),
+      df(604, 3, 0),
+      df(605, 3, 8),
+      df(606, 2, 7),
+    ]);
+    const L = rotulos(resp(m, 600));
+    const tx = (id) => { const h = resp(m, id); return h && h.result && h.result.contents ? (h.result.contents.value || '') : ''; };
+    const loc = (id) => { const r = resp(m, id); return r && r.result && r.result.range ? r.result.range.start : null; };
+    conf('completion traz a funcao de C escrita no arquivo e o funct da Jinga, os dois',
+         L.includes('strlen') && L.includes('dobra') && L.includes('struct ponto'), L.filter((x) => x === 'strlen' || x === 'dobra' || x === 'struct ponto'));
+    conf('hover de strlen mostra a assinatura escrita',
+         tx(601).includes('strlen') && tx(601).includes('const char') && tx(601).includes('função do C'), tx(601));
+    conf('hover do funct no mesmo arquivo continua sendo o funct',
+         tx(602).includes('funct') && tx(602).includes('dobra'), tx(602));
+    conf('hover do struct escrito mostra o tipo do C',
+         tx(603).includes('struct ponto') && tx(603).includes('tipo do C'), tx(603));
+    const dStr = loc(604), dDob = loc(605), dPon = loc(606);
+    conf('ir-pra-definicao de strlen, do funct e do struct cai na declaracao de cada um',
+         !!dStr && dStr.line === 0 && dStr.character === 4
+         && !!dDob && dDob.line === 1
+         && !!dPon && dPon.line === 2 && dPon.character === 7,
+         { dStr, dDob, dPon });
+
+    const cab = 'import <stdio.h>\nprintf\n';
+    const m2 = await conversa(cab, [compl(610, 1, 0), hv(611, 1, 0)]);
+    const itens = (resp(m2, 610) && resp(m2, 610).result) || [];
+    const lista = Array.isArray(itens) ? itens : (itens.items || []);
+    const nomes = lista.map((i) => i.label);
+    const item = (nome) => lista.find((i) => i.label === nome);
+    const ip = item('printf');
+    const iFora = deFora ? item(deFora.nome) : null;
+    const iFile = file ? item('FILE') : null;
+    conf('import <stdio.h> oferece printf com a declaracao da tabela',
+         !!ip && !!printf && String(ip.detail || '').includes(printf.decl),
+         ip && ip.detail);
+    conf('import <stdio.h> nao oferece ' + (deFora ? deFora.nome : 'nome de outro cabecalho'),
+         !!deFora && !iFora, deFora && deFora.nome);
+    conf('FILE do stdio entra como tipo, nao como funcao',
+         !file || !!(iFile && ip && iFile.kind !== ip.kind && file.tipo),
+         iFile && { kind: iFile.kind, detail: iFile.detail });
+    const t611 = (resp(m2, 611) && resp(m2, 611).result && resp(m2, 611).result.contents)
+      ? resp(m2, 611).result.contents.value : '';
+    conf('hover de printf sem o nome no arquivo mostra a declaracao da tabela',
+         t611.includes('printf') && printf && t611.includes(printf.decl.slice(0, 12)), t611.slice(0, 180));
+
+    const m3 = await conversa('funct dobra(int x) { return x }\nprintf\n', [compl(620, 1, 0), hv(621, 1, 0)]);
+    const L3 = rotulos(resp(m3, 620));
+    const t621 = (resp(m3, 621) && resp(m3, 621).result && resp(m3, 621).result.contents)
+      ? resp(m3, 621).result.contents.value : '';
+    conf('arquivo sem import de C nao sugere printf',
+         L3.includes('dobra') && !L3.includes('printf'), L3.includes('printf'));
+    conf('hover de printf sem import diz que o nome nao esta definido',
+         t621.includes('não definido') || t621.includes('NameError'), t621.slice(0, 160));
+
+    const m4 = await conversa('import c "libc"\n\n', [compl(630, 1, 0)]);
+    const L4 = rotulos(resp(m4, 630));
+    const iFile4 = ((resp(m4, 630) && resp(m4, 630).result) || []);
+    const lista4 = Array.isArray(iFile4) ? iFile4 : (iFile4.items || []);
+    const temFile = lista4.some((i) => i.label === 'FILE');
+    conf('import c "libc" oferece os valores da tabela (printf e malloc) e nao o tipo FILE',
+         L4.includes('printf') && !!malloc && L4.includes('malloc') && !temFile,
+         { printf: L4.includes('printf'), malloc: L4.includes('malloc'), FILE: temFile });
+  }
+
   apagaPastaDeTeste();
   console.log('');
   const naoRodaram = pulos ? `; ${pulos} PULARAM (ver os PULOU acima)` : '';

@@ -166,16 +166,25 @@ quando o valor é escrito e rodando quando não é.
 
 ### Fase 4 — generics
 
-Depois de `T[]` e do sistema de tipos estável. Decidir a sintaxe (Java/C# ou
-outra), se o tipo é apagado ou reificado, e se aceita limite. Portão: suíte,
-P1–P4, editor, doc e bench.
+Depois de `T[]` e do sistema de tipos estável. **Sintaxe decidida por ele em
+2026-11-19: a do Java** (`class Caixa<T>`, `funct f<T>(T x)`, `Caixa<Conta>`).
+Tipo que ele cria (classe da Jinga, `struct`/`typedef` do C) entra como
+argumento de tipo do mesmo jeito que `int` e `str`. O que falta decidir: se o
+tipo é apagado ou reificado, e se aceita limite (`T extends Conta`). Portão:
+suíte, P1–P4, editor, doc e bench.
 
 ### Fase 5 — performance da linguagem (visão do dono, 2026-11-17)
 
-Depois da linkagem e dos generics. A régua é o `make bench` e o
-`teste/bench.pr`: medir antes, mudar, medir de novo. O alvo declarado por ele
-é **programas complexos e longos competitivos com Go e Rust**. Sem plano
-ainda; abre quando a Fase 4 fechar, com o estado medido do bench no dia.
+Depois da linkagem, do `T[]` e dos generics. A régua interna continua o
+`make bench` e o `teste/bench.pr`: medir antes, mudar, medir de novo. No fim
+dessa frente, o bench é contra **Go, Rust, C++ e o próprio C** (decisão dele,
+2026-11-19). O alvo de 2026-11-17 permanece: programas complexos e longos
+competitivos com Go e Rust. Sem plano ainda; abre quando a Fase 4 fechar, com
+o estado medido do bench no dia.
+
+Às **17:10** do dia de trabalho (pedido dele, 2026-11-19) a sessão guarda o estado
+atual — branch, versão, o que está feito, o que está pela metade e o que falta —
+para retomar no dia seguinte. Não se encerra no escuro.
 
 ### Fase 6 — as libs em Jinga, fora do binário (visão do dono, 2026-11-17)
 

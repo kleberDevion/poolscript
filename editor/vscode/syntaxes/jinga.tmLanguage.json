@@ -7,6 +7,17 @@
   ],
   "patterns": [
     {
+      "comment": "Função de C no topo (não é funct). O corpo pinta como C: // é comentário aqui.",
+      "name": "meta.embedded.c",
+      "applyEndPatternLast": 1,
+      "contentName": "source.c",
+      "begin": "^(?!\\s*funct\\b)\\s*(?:const|static|inline|unsigned|signed|struct|union|enum|void|int|char|long|short|float|double|size_t)\\b[^;{}\\n]*\\([^;{}]*\\)\\s*\\{",
+      "end": "\\}",
+      "patterns": [
+        { "include": "source.c" }
+      ]
+    },
+    {
       "include": "#comments"
     },
     {

@@ -197,6 +197,15 @@ void      (*ps_c_endereco(int i))(void);
 /* O símbolo do sistema pelo nome (dlsym no programa), pra função que o
  * binário não importa de propósito; NULL se não existe (e no Windows). */
 void       *ps_c_simbolo(const char *nome);
+/* As libs que o programa importou (`import c "libc"`, `import c "libfoo.so"`).
+ * Não há catálogo de nomes: o símbolo é procurado nessas libs, na chamada. */
+void        ps_c_libs_zera(void);
+void        ps_c_pede_lib(const char *nome);
+int         ps_c_tem_lib(void);
+/* Compila os corpos de função do C com o cc e abre a .so que saiu. O
+ * símbolo da função passa a existir para a chamada. 0, ou -1 com a frase
+ * do cc em `erro`. */
+int         ps_c_compila(char **fontes, int n, char *erro, size_t ecap);
 /* Função, macro e literal: o tipo da função. Valor: o tipo do valor (o
  * endereço é de uma função sem parâmetro que devolve esse tipo). Tipo,
  * opaco e estrutura: o próprio tipo. NULL nas outras espécies. */

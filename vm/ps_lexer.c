@@ -83,7 +83,9 @@ static const char *MULTI_OPS[] = {
     "+=", "-=", "*=", "/=", "%=", "++", "--", NULL
 };
 
-static const char SINGLE_OPS[] = "+-*/%=<>!.,@|^&~";
+/* `?` e `\` são do C (ternário, continuação de linha). No corpo de uma função
+ * do C o lexer só precisa não recusar o caractere: quem compila é o cc. */
+static const char SINGLE_OPS[] = "+-*/%=<>!.,@|^&~?\\";
 
 int ps_utf8_le_estrito(const unsigned char *b, size_t len, size_t i, uint32_t *cp)
 {
@@ -1741,11 +1743,20 @@ PSTokenList *ps_lexer_fluxo(const char *fonte, size_t len, int recupera,
     if (!out) return NULL;
     out->ok = 1;
     out->fluxo = 1;
+    out->fonte = fonte;
+    out->fonte_len = len;
     Lexer *lx = malloc(sizeof(Lexer));
     if (!lx) { free(out); return NULL; }
     lx_inicia(lx, out, fonte, len, 0, recupera, alvos, nalvos);
     out->lexer = lx;
     return out;
+}
+
+const char *ps_lexer_fonte(const PSTokenList *o, size_t *len)
+{
+    if (!o) { if (len) *len = 0; return NULL; }
+    if (len) *len = o->fonte_len;
+    return o->fonte;
 }
 
 /* Uma volta a mais do lexer do fluxo; no fim do fonte fecha a lista. */

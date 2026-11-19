@@ -403,6 +403,24 @@ ifneq ($(SO),Darwin)
 	  || { $(MAKE) --no-print-directory install-icone; \
 	       echo "  (o TIPO MIME em $(DADOS)/mime pede root: sudo make install-mime)"; }
 endif
+	# O bash da sessão já guardou o caminho (`~/.local/bin/jinga`). Apagar o
+	# arquivo faz o próximo `jinga` dizer "Arquivo ou diretório inexistente"
+	# até um shell novo. O atalho no mesmo lugar abre o binário que este alvo
+	# acabou de gravar em $(PREFIXO)/bin. ~/.jinga/bin entra porque o PATH o
+	# põe antes. Com sudo, a casa é a de quem chamou, não a do root.
+	@casa=""; \
+	if [ -n "$$SUDO_USER" ]; then casa=$$(getent passwd "$$SUDO_USER" | cut -d: -f6); \
+	else casa="$$HOME"; fi; \
+	if [ -n "$$casa" ]; then \
+	  for d in "$$casa/.local/bin" "$$casa/.jinga/bin"; do \
+	    [ -d "$$d" ] || continue; \
+	    [ "$$d" = "$(PREFIXO)/bin" ] && continue; \
+	    for c in jinga jpkg jinga-lsp pool psl poolscript-lsp; do \
+	      ln -sfn "$(PREFIXO)/bin/$$c" "$$d/$$c"; \
+	    done; \
+	    echo "atalho em $$d -> $(PREFIXO)/bin"; \
+	  done; \
+	fi
 	@echo "instalado em $(PREFIXO): jinga, jpkg, jinga-lsp (e os nomes antigos pool, psl, poolscript-lsp)"
 
 # A doc instalada é a da árvore, e só ela: a pasta sai inteira antes da

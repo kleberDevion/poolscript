@@ -316,6 +316,42 @@ static int checa_op(P *p, const char *op)
     return t->type == T_OP && t->texto && strcmp(t->texto, op) == 0;
 }
 
+/* `import <stdio.h>` e `#include <stdio.h>`: o nome do cabeçalho entre `<` e
+ * `>`, colado como o C escreve (`stdio` `.` `h` vira `stdio.h`). O cursor está
+ * no `<`. Devolve o nome, ou NULL com o erro já dito. */
+static const char *le_cabecalho_angulo(P *p)
+{
+    if (!checa_op(p, "<")) return NULL;
+    PSToken *abre = atual(p);
+    p->pos++;
+    char buf[256];
+    size_t w = 0;
+    while (!checa(p, T_EOF) && !checa(p, T_NEWLINE) && !checa_op(p, ">")
+           && !checa(p, T_SEMI) && !checa(p, T_INDENT) && !checa(p, T_DEDENT)) {
+        PSToken *t = atual(p);
+        const char *tx = t->texto ? t->texto : "";
+        size_t n = strlen(tx);
+        if (!n || w + n >= sizeof buf) {
+            perro(p, "cabeçalho do C incompleto entre < e >", t->texto ? t : abre);
+            return NULL;
+        }
+        memcpy(buf + w, tx, n);
+        w += n;
+        p->pos++;
+    }
+    buf[w] = '\0';
+    if (!checa_op(p, ">")) {
+        perro(p, "o cabeçalho do C entre < e > não fechou: import <stdio.h>", abre);
+        return NULL;
+    }
+    if (!w) {
+        perro(p, "o cabeçalho do C entre < e > está vazio", abre);
+        return NULL;
+    }
+    p->pos++;
+    return dup_str(p, buf);
+}
+
 /* `funct` e a palavra que declara funcao — a unica. `action` e `reaction`
  * SAIRAM da linguagem; o que sobrou delas e a recusa com nome, logo abaixo. */
 static int eh_kw_funct(PSToken *t)
@@ -612,6 +648,8 @@ static int chaves_sao_lista(P *p)
  * long tamanho`), e daí em diante `tamanho n = 5` vale. O tipo é registrado
  * com `ps_c_typedef`, e o leitor do C o acha pelo nome. Devolve o nó
  * (N_C_TIPO_DECL), ou NULL se não é typedef. */
+static const char *recorte_c_ate_cursor(P *p, int32_t l0, int32_t c0);
+
 static PSNode *declaracao_c_typedef(P *p)
 {
     PSToken *t0 = espia(p, 0);
@@ -654,6 +692,7 @@ static PSNode *declaracao_c_typedef(P *p)
     if (!n) return NULL;
     n->texto = dup_str(p, ult + 1);
     n->texto2 = dup_str(p, texto);
+    n->texto3 = recorte_c_ate_cursor(p, l0, c0);
     return n;
 }
 
@@ -722,6 +761,7 @@ static PSNode *declaracao_c_enum(P *p)
     bloco_n->lista.n = nlista;
     bloco_n->lista.cap = nlista;
     bloco_n->texto3 = dup_str(p, "c");   /* marca: enum do C (globais que ficam) */
+    bloco_n->texto2 = recorte_c_ate_cursor(p, l0, c0);
     return bloco_n;
 }
 
@@ -783,6 +823,7 @@ static PSNode *declaracao_c_struct(P *p)
     if (!n) return NULL;
     n->texto = dup_str(p, etiqueta);
     n->texto2 = dup_str(p, campos);
+    n->texto3 = recorte_c_ate_cursor(p, l0, c0);
     return n;
 }
 
@@ -903,6 +944,101 @@ static PSNode *declaracao_c_var(P *p)
     return n;
 }
 
+/* Byte do caractere na linha/coluna (1-based), na mesma conta do lexer. */
+static size_t byte_na_fonte(const char *s, size_t n, int32_t linha, int32_t col)
+{
+    int32_t l = 1, c = 1;
+    size_t i = 0;
+    while (i < n && !(l == linha && c == col)) {
+        if (s[i] == '\n') { l++; c = 1; i++; continue; }
+        if (s[i] == '\r') { i++; continue; }
+        if (((unsigned char)s[i] & 0xC0) != 0x80) c++;
+        i++;
+    }
+    return i;
+}
+
+static void linha_col_do_byte(const char *s, size_t i, int32_t *linha, int32_t *col)
+{
+    int32_t l = 1, c = 1;
+    for (size_t k = 0; k < i; k++) {
+        if (s[k] == '\n') { l++; c = 1; continue; }
+        if (s[k] == '\r') continue;
+        if (((unsigned char)s[k] & 0xC0) != 0x80) c++;
+    }
+    *linha = l;
+    *col = c;
+}
+
+/* Linhas em branco e diretivas `#` coladas em cima da declaração entram no
+ * texto do cc. `#include` não: essa linha já é o import da Jinga. */
+static size_t volta_prep(const char *s, size_t ini)
+{
+    size_t i = ini;
+    for (;;) {
+        while (i > 0 && (s[i - 1] == ' ' || s[i - 1] == '\t')) i--;
+        if (i == 0 || s[i - 1] != '\n') break;
+        size_t nl = i - 1, ps = nl;
+        while (ps > 0 && s[ps - 1] != '\n') ps--;
+        size_t k = ps;
+        while (k < nl && (s[k] == ' ' || s[k] == '\t')) k++;
+        int vazio = k == nl || s[k] == '\r';
+        int grade = 0;
+        if (k < nl && s[k] == '#') {
+            size_t w = k + 1;
+            while (w < nl && (s[w] == ' ' || s[w] == '\t')) w++;
+            grade = !(nl - w >= 7 && !strncmp(s + w, "include", 7));
+        }
+        if (!vazio && !grade) break;
+        i = ps;
+    }
+    return i;
+}
+
+/* Do começo da declaração (com as linhas `#` de cima) até o token atual. */
+static const char *recorte_c_ate_cursor(P *p, int32_t l0, int32_t c0)
+{
+    size_t fn = 0;
+    const char *src = ps_lexer_fonte(p->fl ? p->fl : p->tl, &fn);
+    if (!src || !fn) return NULL;
+    size_t ini = byte_na_fonte(src, fn, l0, c0);
+    if (ini > fn) return NULL;
+    ini = volta_prep(src, ini);
+    PSToken *t = atual(p);
+    size_t fim = t->type == T_EOF ? fn : byte_na_fonte(src, fn, t->line, t->col);
+    if (fim < ini || fim > fn) fim = fn;
+    if (fim <= ini) return NULL;
+    return ps_arena_strdup(p->arena, src + ini, (int)(fim - ini));
+}
+
+/* Do `{` em `i` até o `}` que o fecha, com comentário e string do C. */
+static size_t fecha_corpo_c(const char *s, size_t n, size_t i)
+{
+    int prof = 0, est = 0;
+    while (i < n) {
+        char c = s[i];
+        if (est == 1) { if (c == '\n') est = 0; i++; continue; }
+        if (est == 2) {
+            if (c == '*' && i + 1 < n && s[i + 1] == '/') { est = 0; i += 2; continue; }
+            i++; continue;
+        }
+        if (est == 3 || est == 4) {
+            char fecha = est == 3 ? '"' : '\'';
+            if (c == '\\' && i + 1 < n) { i += 2; continue; }
+            if (c == fecha) est = 0;
+            i++; continue;
+        }
+        if (c == '/' && i + 1 < n && s[i + 1] == '/') { est = 1; i += 2; continue; }
+        if (c == '/' && i + 1 < n && s[i + 1] == '*') { est = 2; i += 2; continue; }
+        if (c == '"') { est = 3; i++; continue; }
+        if (c == '\'') { est = 4; i++; continue; }
+        if (c == '{') prof++;
+        else if (c == '}') { if (--prof == 0) return i; }
+        i++;
+    }
+    return n;
+}
+
 /* A ASSINATURA do C escrita no programa, no topo do arquivo:
  *
  *     int soma(int a, int b)
@@ -914,8 +1050,9 @@ static PSNode *declaracao_c_var(P *p)
  * é ela que dá o tipo quando o nome não está na tabela do C. O que decide se
  * a linha é assinatura do C é a própria frase: o tipo de retorno, um NOME, e
  * o `(` com a assinatura inteira entre parênteses, lida por `ps_c_le_decl`
- * (a mesma que lê a tabela). Body entre `{ }` é aceito e pulado: a função é a
- * do C; escritas por quem veio do C, `int main() { ... }` não é erro.
+ * (a mesma que lê a tabela). O corpo entre `{ }` vai inteiro, como está no
+ * arquivo, para o cc: `for`, `while` e o resto do C compilam lá. Sem corpo,
+ * a linha é a assinatura de um símbolo de uma lib importada.
  *
  * Devolve o nó da assinatura, ou NULL: `p->erro` diz se é erro. */
 static PSNode *assinatura_c(P *p)
@@ -963,8 +1100,11 @@ static PSNode *assinatura_c(P *p)
             prof--;
         }
         if (t->type != T_NEWLINE) {
-            int n = snprintf(texto + w, sizeof texto - w, "%s%s", w ? " " : "",
-                             t->texto ? t->texto : "");
+            /* três `DOT` seguidos são o `...` do C; o espaço entre eles
+             * quebraria a reticência */
+            int cola = t->texto && t->texto[0] == '.' && w && texto[w - 1] == '.';
+            int n = snprintf(texto + w, sizeof texto - w, "%s%s",
+                             (w && !cola) ? " " : "", t->texto ? t->texto : "");
             if (n < 0 || (size_t)n >= sizeof texto - w) return NULL;
             w += (size_t)n;
         }
@@ -973,26 +1113,57 @@ static PSNode *assinatura_c(P *p)
     char nome[128], erro[200];
     PSCTipo *tipo = ps_c_le_decl(texto, nome, sizeof nome, erro, sizeof erro);
     if (!tipo || !nome[0]) return NULL;
-    /* é assinatura: consome a linha (e o `{ ... }` do corpo, se vier, como o C
-     * escreve — o corpo NÃO roda: a função é a do C) */
     int32_t l0 = espia(p, 0)->line, c0 = espia(p, 0)->col;
     p->pos += (size_t)(fim + 1);
     if (checa(p, T_SEMI)) p->pos++;
+    /* o `{` pode estar na linha de baixo; se não for corpo, a quebra fica
+     * onde está, porque ela separa o próximo comando */
+    size_t antes_corpo = p->pos;
+    while (checa(p, T_NEWLINE) || checa(p, T_INDENT) || checa(p, T_DEDENT)) p->pos++;
+    const char *corpo = NULL;
     if (checa(p, T_LBRACE)) {
-        int prof2 = 0;
-        do {
-            PSToken *t = atual(p);
-            if (t->type == T_EOF) break;
-            if (t->type == T_LBRACE) prof2++;
-            else if (t->type == T_RBRACE && --prof2 == 0) { p->pos++; break; }
-            p->pos++;
-        } while (1);
+        size_t fn = 0;
+        const char *src = ps_lexer_fonte(p->fl ? p->fl : p->tl, &fn);
+        if (src && fn) {
+            PSToken *abre = atual(p);
+            size_t bi = byte_na_fonte(src, fn, abre->line, abre->col);
+            size_t bf = fecha_corpo_c(src, fn, bi);
+            if (bf < fn && src[bf] == '}') {
+                size_t ini = byte_na_fonte(src, fn, l0, c0);
+                if (ini <= bf)
+                    corpo = ps_arena_strdup(p->arena, src + ini, (int)(bf - ini + 1));
+                int32_t el, ec;
+                linha_col_do_byte(src, bf + 1, &el, &ec);
+                while (atual(p)->type != T_EOF) {
+                    PSToken *t = atual(p);
+                    if (t->line > el || (t->line == el && t->col >= ec)) break;
+                    p->pos++;
+                }
+            }
+        }
+        if (!corpo) {
+            int prof2 = 0;
+            do {
+                PSToken *t = atual(p);
+                if (t->type == T_EOF) break;
+                if (t->type == T_LBRACE) prof2++;
+                else if (t->type == T_RBRACE && --prof2 == 0) { p->pos++; break; }
+                p->pos++;
+            } while (1);
+        }
         if (checa(p, T_SEMI)) p->pos++;
+        {
+            const char *amplo = recorte_c_ate_cursor(p, l0, c0);
+            if (amplo) corpo = amplo;
+        }
+    } else {
+        p->pos = antes_corpo;
     }
     PSNode *n = ps_node_novo(p->arena, N_C_DECL, l0, c0);
     if (!n) return NULL;
     n->texto = dup_str(p, nome);
     n->texto2 = dup_str(p, texto);
+    n->texto3 = corpo;
     return n;
 }
 
@@ -1157,6 +1328,13 @@ static int eh_nome_de_declaracao(P *p, int k, int parametro)
     PSToken *d = espia(p, k + 1);
     if (d->type == T_OP && d->texto && d->texto[0] == '=' && !d->texto[1]) return 1;
     return parametro && (d->type == T_COMMA || d->type == T_RPAREN);
+}
+
+/* `int[] notas`, `Conta[] contas`: os colchetes vazios vêm DEPOIS do tipo.
+ * `int v[3]` é o array do C (os colchetes vêm depois do nome) e não entra aqui. */
+static int colchete_vazio(P *p, int k)
+{
+    return espia(p, k)->type == T_LBRACK && espia(p, k + 1)->type == T_RBRACK;
 }
 
 /* O token que acaba um operando: nome, literal, `)` ou `]`, e as palavras
@@ -5067,15 +5245,21 @@ static PSNode *statement_no(P *p)
             PSToken *kw = atual(p);
             p->pos++;
             PSToken *tk = atual(p);
-            if (tk->type != T_STR || !tk->texto) {
-                perro(p, "include espera o cabeçalho entre aspas: include \"stdio.h\"", tk);
+            const char *cab = NULL;
+            if (tk->type == T_STR && tk->texto) {
+                cab = dup_str(p, tk->texto);
+                p->pos++;
+            } else if (checa_op(p, "<")) {
+                cab = le_cabecalho_angulo(p);
+                if (!cab) return NULL;
+            } else {
+                perro(p, "include espera o cabeçalho: include \"stdio.h\" ou include <stdio.h>", tk);
                 return NULL;
             }
-            p->pos++;
             if (checa_op(p, ";")) p->pos++;
             PSNode *ci = ps_node_novo(p->arena, N_C_IMPORT, kw->line, kw->col);
             if (!ci) return NULL;
-            ci->texto = dup_str(p, tk->texto);
+            ci->texto = cab;
             return ci;
         }
         PSNode *n = ps_node_novo(p->arena, N_IMPORT_STMT, t->line, t->col);
@@ -5083,6 +5267,21 @@ static PSNode *statement_no(P *p)
 
         if (aceita_kw(p, "import")) {
             n->texto = dup_str(p, "import");
+            /* `import c "libc"` ou `import c "libfoo.so"`: abre essa lib.
+             * O nome da função não vem de tabela: o programa escreve a
+             * assinatura. Sem as aspas, `import c` continua módulo. */
+            if (checa(p, T_IDENT) && atual(p)->texto && !strcmp(atual(p)->texto, "c")
+                && espia(p, 1)->type == T_STR && espia(p, 1)->texto) {
+                p->pos++;
+                PSToken *tk = atual(p);
+                p->pos++;
+                if (checa_op(p, ";")) p->pos++;
+                PSNode *ci = ps_node_novo(p->arena, N_C_IMPORT, tk->line, tk->col);
+                if (!ci) return NULL;
+                ci->texto = dup_str(p, tk->texto);
+                ci->texto2 = dup_str(p, "bin");
+                return ci;
+            }
             /* `import "stdio.h"`: o cabeçalho do C (a lib do sistema), o mesmo
              * do include. `import "modulo"` continua sendo módulo: o que decide
              * é o nome ser um cabeçalho da tabela. */
@@ -5095,9 +5294,15 @@ static PSNode *statement_no(P *p)
                 ci->texto = dup_str(p, tk->texto);
                 return ci;
             }
+            /* `import <stdio.h>`: o mesmo cabeçalho de `import "stdio.h"`. */
             if (checa_op(p, "<")) {
-                perro(p, "o cabeçalho do C vai entre aspas: import \"stdio.h\"", atual(p));
-                return NULL;
+                const char *cab = le_cabecalho_angulo(p);
+                if (!cab) return NULL;
+                if (checa_op(p, ";")) p->pos++;
+                PSNode *ci = ps_node_novo(p->arena, N_C_IMPORT, t->line, t->col);
+                if (!ci) return NULL;
+                ci->texto = cab;
+                return ci;
             }
             int aspas = modulo_entre_aspas(p, n);
             if (aspas < 0) return NULL;
@@ -5893,7 +6098,8 @@ static PSNode *statement_no(P *p)
      * um NOME — `list(x)`, `json.parse(s)`, `str(n)` como statement continuam
      * expressao (chamada/modulo), como o ramo de expressao ja tratava. */
     if (eh_tipo_kw_decl(t)
-            && (eh_kw_funct(espia(p, 1)) || eh_nome_de_declaracao(p, 1, 0))) {
+            && (eh_kw_funct(espia(p, 1)) || eh_nome_de_declaracao(p, 1, 0)
+                || (colchete_vazio(p, 1) && eh_nome_de_declaracao(p, 3, 0)))) {
         PSToken *nx = espia(p, 1);
         if (eh_kw_funct(nx)) {
             if (!eh_tipo_de_retorno(t)) {
@@ -5903,6 +6109,25 @@ static PSNode *statement_no(P *p)
             const char *tipo = tipo_retorno_dup(p, t);
             p->pos++;
             return funct_decl(p, 0, tipo);
+        }
+        /* `int[] notas = [7, 8]`: lista da Jinga cujo item tem de ser `int`. */
+        if (colchete_vazio(p, 1)) {
+            const char *elem = tipo_retorno_dup(p, t);
+            char rot[160];
+            snprintf(rot, sizeof rot, "%s[]", elem ? elem : "");
+            p->pos += 3;
+            PSToken *nt = atual(p);
+            const char *nome = exige_nome(p, "variavel");
+            if (FALHOU(p)) return NULL;
+            if (!checa_op(p, "=")) { perro(p, "declaracao de variavel exige '='", onde_falta(p, nt)); return NULL; }
+            p->pos++;
+            PSNode *n = ps_node_novo(p->arena, N_VAR_DECL, nt->line, nt->col);
+            if (!n) return NULL;
+            n->texto = nome;
+            n->texto2 = dup_str(p, rot);
+            n->a = expressao(p);
+            if (FALHOU(p)) return NULL;
+            return n;
         }
         /* declaração tipada: `int x = 1` — a árvore guarda o tipo canônico.
          * `int *p = &n`: o `*` no tipo declara PONTEIRO do C, e o tipo vira o
@@ -5964,6 +6189,25 @@ static PSNode *statement_no(P *p)
      * leitura pra isso — antes virava DUAS instruções caladas, um `Conta`
      * solto e um `c = Conta()` sem tipo nenhum. Se o tipo existe é o
      * compilador que diz: ele conhece as classes do arquivo e dos imports. */
+    if ((t->type == T_IDENT || t->type == T_IDENT_UPPER)
+            && colchete_vazio(p, 1)
+            && eh_nome_de_declaracao(p, 3, 0)
+            && espia(p, 4)->type == T_OP && espia(p, 4)->texto && strcmp(espia(p, 4)->texto, "=") == 0) {
+        char rot[160];
+        snprintf(rot, sizeof rot, "%s[]", t->texto ? t->texto : "");
+        PSToken *nt = espia(p, 3);
+        PSNode *n = ps_node_novo(p->arena, N_VAR_DECL, nt->line, nt->col);
+        if (!n) return NULL;
+        n->texto2 = dup_str(p, rot);
+        p->pos += 3;
+        n->texto = exige_nome(p, "variavel");
+        if (FALHOU(p)) return NULL;
+        p->pos++;
+        n->a = expressao(p);
+        if (FALHOU(p)) return NULL;
+        return n;
+    }
+
     if ((t->type == T_IDENT || t->type == T_IDENT_UPPER)
             && eh_nome_de_declaracao(p, 1, 0)
             && espia(p, 2)->type == T_OP && espia(p, 2)->texto && strcmp(espia(p, 2)->texto, "=") == 0) {
