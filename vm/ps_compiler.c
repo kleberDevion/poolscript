@@ -6392,6 +6392,41 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
 static void expr_no_corpo(C *c, Unidade *u, PSNode *n)
 {
     switch (n->kind) {
+        case N_ADDR_EXPR: {
+            /* `&x`: o valor do x vai para a memória do C no tipo dele, e a
+             * caixa guarda o endereço. O tipo vem da declaração do x quando ela
+             * é do C (`int n`, `double d`); senão é o inteiro de 8 bytes. */
+            if (!n->texto) return;
+            carrega_nome(c, u, n->texto);
+            int arg = 8;
+            /* O tipo do x decide o tamanho da memória: `double`/`flo` são o
+             * double do C (100); os tipos da linguagem `int` e `bool` são o
+             * inteiro de 8 bytes da VM; `char` é 1 byte; os tipos do C seguem
+             * o tamanho deles. */
+            SimInfo *si = tp_sim_topo(c, n->texto);
+            const char *td = si && si->tipo ? si->tipo : NULL;
+            PSCTipo *tp = td ? ps_c_le_decl(td, NULL, 0, NULL, 0) : NULL;
+            if (td && (!strcmp(td, "flo") || !strcmp(td, "double"))) arg = 100;
+            else if (td && !strcmp(td, "char")) arg = 1;
+            else if (td && (!strcmp(td, "int") || !strcmp(td, "bool"))) arg = 8;
+            else if (tp && tp->kind == PSC_FLUT) arg = 100;
+            else if (tp && tp->kind == PSC_INT) arg = (int)tp->tam;
+            /* o x é GLOBAL: o ponteiro aponta para o slot vivo (e não para a
+             * cópia), então `n = 9` aparece em `*p`, como no C. O arg leva o
+             * tamanho nos 8 bits baixos e o slot acima: `slot * 256 + tam`. */
+            int32_t g = idx_global(c, n->texto);
+            if (g >= 0) {
+                int tam8 = (arg == 100) ? 100 : (arg > 0 && arg <= 8 ? arg : 8);
+                arg = (g + 1) * 256 + tam8;
+            }
+            emite(c, u, OP_ADDR, arg);
+            return;
+        }
+        case N_DEREF_EXPR:
+            /* `*p`: o valor apontado */
+            expr(c, u, n->a);
+            emite(c, u, OP_DEREF, 0);
+            return;
         case N_CAST_EXPR: {
             /* cast do C: o valor convertido para o tipo. `char`/inteiro -> o
              * inteiro truncado e alargado com sinal/zero, como a conversão do

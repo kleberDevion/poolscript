@@ -46,6 +46,11 @@ typedef struct {
      * porque dentro de um agrupamento não há bloco pra abrir. */
     int        chave_abre_bloco;
     int        grupo_depth;
+    /* Nomes declarados PONTEIRO do C no arquivo (`int *p`, `const char *s`):
+     * `*p` é desreferência, e não o spread da linguagem. Lista de nomes, sem
+     * duplicata; só cresce. */
+    char     **ponteiros;
+    int        nponteiros, cap_ponteiros;
     /* Profundidade da descida recursiva. Ver PS_PARSE_PROF_MAX. */
     int        prof;
     /* Profundidade só dos BLOCOS (contador próprio, motor-1): o custo de
@@ -554,6 +559,30 @@ static int corpo_depois_dos_parenteses(P *p, int j)
 
 static PSNode *expressao(P *p);
 
+/* `nome` foi declarado ponteiro do C neste arquivo? A tabela é do ARQUIVO (e
+ * não da cópia de `P` de cada trecho): o `post(*p)` pode ser lido num `P`
+ * copiado, e o registro da declaração ficou no original. */
+static char *g_ponteiros[512];
+static int   g_nponteiros;
+static void  g_ponteiros_novo(void) { g_nponteiros = 0; }
+
+static int nome_e_ponteiro_declarado(P *p, const char *nome)
+{
+    (void)p;
+    for (int k = 0; k < g_nponteiros; k++)
+        if (g_ponteiros[k] && !strcmp(g_ponteiros[k], nome)) return 1;
+    return 0;
+}
+
+/* `nome` é declaração de ponteiro do C (`int *p`, `const char *s`). */
+static void ponteiro_declarado_poe(P *p, const char *nome)
+{
+    (void)p;
+    if (nome_e_ponteiro_declarado(NULL, nome)) return;
+    if (g_nponteiros >= 512) return;
+    g_ponteiros[g_nponteiros++] = strdup(nome);
+}
+
 /* `{` antes do dict: o conteúdo tem `:` na primeira posição de chave? Sem
  * `:`, é a LISTA do inicializador do C (`{1, 2, 3}`); com `:`, o dicionário
  * da linguagem (`{"a": 1}`). Um `{` vazio continua dicionário. */
@@ -832,6 +861,8 @@ static PSNode *declaracao_c_var(P *p)
     PSCTipo *tipo = ps_c_le_decl(decl, nome, sizeof nome, erro, sizeof erro);
     if (!tipo) return NULL;                       /* não é tipo do C */
     if (strcmp(nome, nm->texto) != 0) return NULL; /* o nome não bateu */
+    /* guarda que o nome é PONTEIRO, para `*p` ser desreferência */
+    if (tipo->kind == PSC_PONT) ponteiro_declarado_poe(p, nm->texto);
     /* `int n = 3` é a declaração tipada da LINGUAGEM (`int`, `str`, `flo`...):
      * a do C só entra com o tipo que a linguagem não tem (`const char *`,
      * `size_t`, `struct tm *`). O `const` e o `*` também são do C. */
@@ -866,6 +897,8 @@ static PSNode *declaracao_c_var(P *p)
     n->texto2 = dup_str(p, decl);
     n->a = valor;
     n->tipo_do_c = 1;      /* o tipo é do C, não da tabela da linguagem */
+    /* o nome é ponteiro do C (`int *p`): `*p` passa a ser desreferência */
+    if (tipo->kind == PSC_PONT) ponteiro_declarado_poe(p, nome);
     return n;
 }
 
@@ -1722,6 +1755,37 @@ static PSNode *primario(P *p)
         }
     }
 
+    /* PONTEIRO: `&x` (endereço de uma variável), `*p` (o valor apontado) e
+     * `p[i]` (índice do ponteiro). Só valem como ponteiro do C — a conferência
+     * de tipo é a da linguagem, e o diagnóstico fino é do `cc` (decisão 4.0). */
+    if (t->type == T_OP && t->texto && !strcmp(t->texto, "*")) {
+        int32_t l0 = t->line, c0 = t->col;
+        PSToken *nx = espia(p, 1);
+        /* `*p` em posição de expressão — não `a * b` (que chega aqui só se
+         * não houver operando à esquerda, e aí é desreferência) */
+        if (nx->type == T_IDENT || nx->type == T_IDENT_UPPER || nx->type == T_LPAREN) {
+            p->pos++;
+            PSNode *v = primario(p);
+            if (!v || FALHOU(p)) return NULL;
+            PSNode *n = ps_node_novo(p->arena, N_DEREF_EXPR, l0, c0);
+            if (!n) return NULL;
+            n->a = v;
+            return n;
+        }
+    }
+    if (t->type == T_OP && t->texto && !strcmp(t->texto, "&")) {
+        int32_t l0 = t->line, c0 = t->col;
+        PSToken *nx = espia(p, 1);
+        if (nx->type == T_IDENT || nx->type == T_IDENT_UPPER) {
+            p->pos += 2;
+            PSNode *n = ps_node_novo(p->arena, N_ADDR_EXPR, l0, c0);
+            if (!n) return NULL;
+            n->texto = dup_str(p, nx->texto);
+            /* o tipo vem da declaração do x, que o compilador conhece */
+            return n;
+        }
+    }
+
     /* `sizeof(tipo)` e `sizeof expressao` — o operador do C, que a assinatura
      * do C usa. O tamanho vem de `ps_c_le_decl`, medido pelo motor (o `long`
      * tem 8 bytes no Linux e no macOS, 4 no Windows). Aceita:
@@ -2309,7 +2373,16 @@ static PSNode *posfixo(P *p)
                     PSToken *at = atual(p);
                     int32_t ini_arg = p->pos;
                     const char *nome_arg = NULL;
-                    int estrela = estrela_de_argumento(p);   /* `*lista` / `**dict` */
+                    int estrela = 0;
+                    /* `f(*p)` com p declarado PONTEIRO do C é desreferência, e
+                     * não spread. Só o tipo declarado do programa decide —
+                     * `f(*lista)` continua spread. */
+                    if (checa_op(p, "*") && espia(p, 1)->type == T_IDENT && espia(p, 1)->texto
+                        && nome_e_ponteiro_declarado(p, espia(p, 1)->texto)) {
+                        /* deixa o `*` para o `unario`, que monta a desreferência */
+                    } else {
+                        estrela = estrela_de_argumento(p);   /* `*lista` / `**dict` */
+                    }
                     /* argumento nomeado: NOME '=' valor. O nome é só um
                      * rótulo, então keyword é aceita aqui (regex.sub(count=2)). */
                     if (!estrela
@@ -2526,6 +2599,31 @@ static PSNode *unario(P *p)
         n->texto = dup_tok(p, t);
         n->a = operando;
         return n;
+    }
+    /* `*p` e `&x` do C: desreferência e endereço, na posição de operando */
+    if (t->type == T_OP && t->texto
+            && (!strcmp(t->texto, "*") || !strcmp(t->texto, "&"))) {
+        PSToken *nx = espia(p, 1);
+        if (nx->type == T_IDENT || nx->type == T_IDENT_UPPER || nx->type == T_LPAREN) {
+            p->pos++;
+            PSNode *v = unario(p);
+            if (!v || FALHOU(p)) return NULL;
+            if (t->texto[0] == '*') {
+                PSNode *n = ps_node_novo(p->arena, N_DEREF_EXPR, t->line, t->col);
+                if (!n) return NULL;
+                n->a = v;
+                return n;
+            }
+            /* `&x`: só nome de variável */
+            if (v->kind == N_NAME && v->texto) {
+                PSNode *n = ps_node_novo(p->arena, N_ADDR_EXPR, t->line, t->col);
+                if (!n) return NULL;
+                n->texto = v->texto;
+                return n;
+            }
+            perro(p, "& espera o nome de uma variavel: &n", t);
+            return NULL;
+        }
     }
     return potencia(p);
 }
@@ -5805,12 +5903,18 @@ static PSNode *statement_no(P *p)
             p->pos++;
             return funct_decl(p, 0, tipo);
         }
-        /* declaração tipada: `int x = 1` — a árvore guarda o tipo canônico */
+        /* declaração tipada: `int x = 1` — a árvore guarda o tipo canônico.
+         * `int *p = &n`: o `*` no tipo declara PONTEIRO do C, e o tipo vira o
+         * tipo do C por inteiro (`int *`). */
         const char *tipo = tipo_retorno_dup(p, t);
         p->pos++;
+        int eh_pont_c = 0;
+        if (checa_op(p, "*")) { p->pos++; eh_pont_c = 1; }
         PSToken *nt = atual(p);
         const char *nome = exige_nome(p, "variavel");
         if (FALHOU(p)) return NULL;
+        /* `int *p`: o nome é ponteiro do C, e `*p` passa a ser desreferência */
+        if (eh_pont_c) ponteiro_declarado_poe(p, nome);
         /* `int v[3] = {1, 2, 3}`: o tamanho do array na declaração tipada. O
          * nome guardado é o do array com o tamanho (`v[3]`), e o valor é
          * uma lista da Jinga (`{1, 2, 3}` lê como lista). */
@@ -6023,6 +6127,7 @@ static PSParseResult *ps_parse_com(PSToken *toks, int32_t n, int recupera, PSTok
      * cara e 3968 casos da suíte falharam. Campo novo em struct inicializada à
      * mão é convite a exatamente isso. */
     P p = {0};
+    g_ponteiros_novo();
     p.toks = toks; p.n = n;
     p.arena = &r->arena; p.out = r;
     p.tl = tl;

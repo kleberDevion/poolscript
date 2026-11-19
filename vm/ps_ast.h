@@ -108,7 +108,11 @@ typedef enum {
     N_CAST_EXPR,
     /* `struct nome { ... }` / `union nome { ... }` do C: declara o TIPO (nada
      * a emitir; o tipo já foi registrado no ps_c.c pelo parser). */
-    N_C_TIPO_DECL
+    N_C_TIPO_DECL,
+    /* `&x` do C: o endereço da variável `x` (texto = nome). */
+    N_ADDR_EXPR,
+    /* `*p` do C: o valor apontado por `p` (a = a expressão do ponteiro). */
+    N_DEREF_EXPR
 } PSNodeKind;
 
 /* Qual campo do literal vale */

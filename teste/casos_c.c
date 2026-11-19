@@ -115,6 +115,26 @@ const Caso CASOS_C[] = {
     {"C: enum do C vale pelos nomes soltos",
      "enum d { A, B = 5, C }\n"
      "post(A, B, C)\n",
-     "0 5 6", NULL, 0},
+     "0 5 6", NULL, 0},    /* ── ponteiro: &x e *p ─────────────────────────────────────────────────── */
+    {"C: &x e *p de um int",
+     "int n = 3\n"
+     "int *p = &n\n"
+     "post(*p)\n",
+     "3", NULL, 0},
+    {"C: *p enxerga a escrita nova na variavel",
+     "int n = 3\n"
+     "int *p = &n\n"
+     "n = 9\n"
+     "post(*p)\n",
+     "9", NULL, 0},
+    {"C: &x e *p de um double",
+     "double d = 1.5\n"
+     "double *q = &d\n"
+     "post(*q)\n",
+     "1.5", NULL, 0},
+    {"C: *lista continua o spread da linguagem",
+     "lista = [1, 2]\n"
+     "post(*lista)\n",
+     "1 2", NULL, 0},
 };
 const int NC_C = N_CASOS(CASOS_C);

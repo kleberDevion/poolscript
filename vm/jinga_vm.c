@@ -160,6 +160,7 @@ typedef enum {
     OBJ_CELULA,    /* caixa de uma variável capturada por funct aninhada */
     OBJ_CLOSURE,   /* funct aninhada + as células que ela capturou */
     OBJ_CFUNC,     /* função da biblioteca padrão do C (`printf`): o índice na tabela de ps_c.h */
+    OBJ_CAIXA,     /* `&x` do C: ponteiro para a memória da variável */
     OBJ__COUNT     /* sentinela: nº de tipos — tamanho da tabela de GC */
 } ObjType;
 
@@ -1938,6 +1939,25 @@ typedef struct { GcKind kind; size_t off; void (*fn)(VM *, Obj *);
  * MESMA célula, então uma escrita de dentro da funct aninhada é vista de fora
  * (e vice-versa) — é o que separa closure de cópia. */
 typedef struct { Obj obj; Value v; } PSCelula;
+
+/* `&x` do C: um ponteiro de VERDADE para a memória da variável. O endereço é
+ * um bloco do malloc, e o valor da Jinga é copiado para ele no tipo do C
+ * (entrada `int`, `double`...); `*p` lê de volta, e `*p = v` grava. Assim o
+ * que o programa aponta vale também para função do C que recebe ponteiro
+ * (`scanf("%d", &n)`, `&resultado` de `strtol`), e a escrita do C aparece na
+ * variável da Jinga, como no C. */
+typedef struct {
+    Obj      obj;
+    void    *endereco;   /* o bloco de memória do C */
+    int      tipo;       /* 1..8 = inteiro desse tamanho; 100 = double; 200 = valor da Jinga */
+    int      sem_sinal;
+    int      dono;       /* 1 = criou o bloco (libera no GC) */
+    Value   *slot;       /* slot global da Jinga que originou `&x`; quando há, o
+                          * valor é lido/escrito lá (a variável viva), e não
+                          * na cópia do bloco */
+} PSCaixa;
+#define EH_CAIXA(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_CAIXA)
+#define COMO_CAIXA(v) ((PSCaixa *)(v).as.obj)
 /* Função da biblioteca padrão do C como valor (`printf`, `f = strlen`): o
  * índice na tabela de vm/ps_c.h, de onde saem o nome, o protótipo e o
  * endereço (achado na primeira chamada). */
@@ -2264,6 +2284,15 @@ static void fin_wsconn(VM *, Obj *);    static void fin_qrbuild(VM *, Obj *);
 static void fin_qrimage(VM *, Obj *);
 
 /* A tabela: TODO tipo aparece aqui. Esquecer um => GC_UNSET => aborta no boot. */
+/* `&x` do C: libera o bloco de memória quando a caixa morre */
+static void fin_caixa(VM *vm, Obj *o)
+{
+    (void)vm;
+    PSCaixa *k = (PSCaixa *)o;
+    if (k->dono && k->endereco) free(k->endereco);
+    k->endereco = NULL;
+}
+
 static const GcInfo GC_INFO[OBJ__COUNT] = {
     [OBJ_CELULA]     = { GC_FN,   0, gct_celula, sizeof(PSCelula), NULL },
     [OBJ_CLOSURE]    = { GC_FN,   0, gct_closure, sizeof(PSClosure), fin_closure },
@@ -2293,6 +2322,7 @@ static const GcInfo GC_INFO[OBJ__COUNT] = {
     [OBJ_MAILMSG]    = { GC_LEAF, 0, NULL, 0, fin_mailmsg },
     [OBJ_MAILRD]     = { GC_LEAF, 0, NULL, 0, fin_mailrd },
     [OBJ_CFUNC]      = { GC_LEAF, 0, NULL, sizeof(PSCFuncObj), NULL },
+    [OBJ_CAIXA]      = { GC_LEAF, 0, NULL, sizeof(PSCaixa), fin_caixa },
     [OBJ_RESPONSE]   = { GC_FN,   0, gct_response, 0, fin_response },
     [OBJ_QRFILE]     = { GC_ONE,  offsetof(PSQRFile, conteudo), NULL, 0, fin_qrfile },
     [OBJ_DBCONN]     = { GC_LEAF, 0, NULL, 0, fin_dbconn },
@@ -4738,12 +4768,14 @@ static int nativa_bool(VM *vm, Value *args, int n, Value *out)
  * (um tipo que já não existia) passou batido. Os dois casos que não cabem na
  * tabela (o nome da Entity da instância e o registrador do jinker, que varia
  * pelo kind) ficam explícitos na função. */
+
 static const struct { VType t; const char *nome; } NOMES_ESCALARES[] = {
     { V_NULL, "Null" }, { V_UNSET, "Null" }, { V_BOOL, "bool" }, { V_INT, "int" },
     { V_FLOAT, "flo" }, { V_FUNC, "funct" }, { V_NATIVE, "funct" }, { V_TIPO, "type" },
 };
 static const char *const NOME_DE_OBJ[OBJ__COUNT] = {
     [OBJ_BIGINT]     = "int",
+    [OBJ_CAIXA]      = "ptr",
     [OBJ_FUTURO]     = "future",
     [OBJ_STRING]     = "str",
     [OBJ_LIST]       = "list",
@@ -29369,6 +29401,94 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "TypeError");
                 goto erro_runtime;
             }
+            break;
+        }
+
+        PS_CASE(ADDR) {
+            /* `&x`: ponteiro de verdade para a memória do x. O valor da Jinga
+             * é copiado para um bloco do malloc no tipo do C (arg: tamanho em
+             * bytes; 100 = double). O C pode escrever nele, e `*p` lê de
+             * volta. */
+            Value x = stack[sp - 1];
+            PSCaixa *k = calloc(1, sizeof(PSCaixa));
+            if (!k) { snprintf(vm->erro, sizeof vm->erro, "sem memoria");
+                      snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "MemoryError"); goto erro_runtime; }
+            /* arg: `slot * 256 + tamanho` quando o x é global (o ponteiro
+             * aponta para o slot VIVO, e `n = 9` aparece em `*p`); senão, só
+             * o tamanho, e `100` é o double. */
+            int32_t slot_g = arg >> 8;
+            int tam_c = arg & 0xff;
+            if (tam_c == 0) { tam_c = (arg > 0 && arg <= 8) ? arg : 8; slot_g = 0; }
+            if (slot_g > 0) k->slot = &vm->globals[slot_g - 1];
+            int tam = tam_c == 100 ? (int)sizeof(double) : tam_c;
+            k->endereco = calloc(1, (size_t)tam);
+            if (!k->endereco) { free(k); snprintf(vm->erro, sizeof vm->erro, "sem memoria");
+                                snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "MemoryError"); goto erro_runtime; }
+            k->tipo = tam_c;
+            k->sem_sinal = 0;
+            k->dono = 1;
+            if (k->tipo == 100) {
+                double d = x.t == V_FLOAT ? x.as.d : (x.t == V_INT ? (double)x.as.i : 0);
+                memcpy(k->endereco, &d, sizeof d);
+            } else {
+                int64_t v = x.t == V_INT ? x.as.i : 0;
+                if (tam == 1) { int8_t q = (int8_t)v; memcpy(k->endereco, &q, 1); }
+                else if (tam == 2) { int16_t q = (int16_t)v; memcpy(k->endereco, &q, 2); }
+                else if (tam == 4) { int32_t q = (int32_t)v; memcpy(k->endereco, &q, 4); }
+                else memcpy(k->endereco, &v, 8);
+            }
+            k->obj.type = OBJ_CAIXA; k->obj.marked = 0;
+            k->obj.next = vm->objetos; vm->objetos = (Obj *)k;
+            vm->alocado += sizeof(PSCaixa);
+            stack[sp - 1] = MK_OBJ(k);
+            break;
+        }
+
+        PS_CASE(DEREF) {
+            /* `*p`: o valor apontado, lido da memória no tipo do ponteiro */
+            Value pv = stack[sp - 1];
+            if (!EH_CAIXA(pv) || !COMO_CAIXA(pv)->endereco) {
+                snprintf(vm->erro, sizeof vm->erro, "desreferencia de um valor que nao e ponteiro");
+                snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "TypeError");
+                goto erro_runtime;
+            }
+            PSCaixa *k = COMO_CAIXA(pv);
+            if (k->slot) { stack[sp - 1] = *k->slot; break; }
+            if (k->tipo == 100) {
+                double d = 0; memcpy(&d, k->endereco, sizeof d);
+                stack[sp - 1] = MK_FLOAT(d);
+            } else {
+                int64_t v = 0;
+                if (k->tipo == 1) { int8_t q; memcpy(&q, k->endereco, 1); v = q; }
+                else if (k->tipo == 2) { int16_t q; memcpy(&q, k->endereco, 2); v = q; }
+                else if (k->tipo == 4) { int32_t q; memcpy(&q, k->endereco, 4); v = q; }
+                else memcpy(&v, k->endereco, 8);
+                stack[sp - 1] = MK_INT(v);
+            }
+            break;
+        }
+
+        PS_CASE(DEREF_SET) {
+            /* `*p = v`: guarda o valor no endereço, no tipo do ponteiro */
+            Value v = stack[sp - 1], pv = stack[sp - 2];
+            if (!EH_CAIXA(pv) || !COMO_CAIXA(pv)->endereco) {
+                snprintf(vm->erro, sizeof vm->erro, "escrita num valor que nao e ponteiro");
+                snprintf(vm->erro_tipo, sizeof vm->erro_tipo, "TypeError");
+                goto erro_runtime;
+            }
+            PSCaixa *k = COMO_CAIXA(pv);
+            if (k->slot) { *k->slot = v; break; }
+            if (k->tipo == 100) {
+                double d = v.t == V_FLOAT ? v.as.d : (v.t == V_INT ? (double)v.as.i : 0);
+                memcpy(k->endereco, &d, sizeof d);
+            } else {
+                int64_t q = v.t == V_INT ? v.as.i : 0;
+                if (k->tipo == 1) { int8_t b = (int8_t)q; memcpy(k->endereco, &b, 1); }
+                else if (k->tipo == 2) { int16_t b = (int16_t)q; memcpy(k->endereco, &b, 2); }
+                else if (k->tipo == 4) { int32_t b = (int32_t)q; memcpy(k->endereco, &b, 4); }
+                else memcpy(k->endereco, &q, 8);
+            }
+            sp -= 2;
             break;
         }
 

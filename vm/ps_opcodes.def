@@ -289,3 +289,10 @@ PS_OP(DONO_SAI,           117, "DONO_SAI", 0, 0)
 PS_OP(CAST_INT,           118, "CAST_INT", 0, 0)
 /* Cast do C para ponto flutuante: [x] -> [flo(x)] (int vira double). */
 PS_OP(CAST_FLO,           119, "CAST_FLO", 0, 0)
+/* `&x` do C: [x] -> [ponteiro para a caixa do x], com o tipo do x em arg
+ * (1..8 = inteiro desse tamanho, 100 = ponto flutuante, 200 = valor da Jinga). */
+PS_OP(ADDR,               120, "ADDR", 0, 0)
+/* `*p`: [p] -> [valor apontado]. */
+PS_OP(DEREF,              121, "DEREF", 0, 0)
+/* `*p = v`: [p, v] -> [], guarda o valor no endereço. */
+PS_OP(DEREF_SET,          122, "DEREF_SET", 0, 0)
