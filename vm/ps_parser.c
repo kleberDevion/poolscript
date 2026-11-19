@@ -856,8 +856,9 @@ static PSNode *declaracao_c_var(P *p)
         if (n2 < 0 || (size_t)n2 >= sizeof texto - w) return NULL;
         w += (size_t)n2;
     }
-    char decl[320], nome[160], erro[200];
-    snprintf(decl, sizeof decl, "%s %s", texto, nome_decl);
+    char decl[sizeof texto + sizeof nome_decl + 2], nome[160], erro[200];
+    int ndecl = snprintf(decl, sizeof decl, "%s %s", texto, nome_decl);
+    if (ndecl < 0 || (size_t)ndecl >= sizeof decl) return NULL;
     PSCTipo *tipo = ps_c_le_decl(decl, nome, sizeof nome, erro, sizeof erro);
     if (!tipo) return NULL;                       /* não é tipo do C */
     if (strcmp(nome, nm->texto) != 0) return NULL; /* o nome não bateu */
