@@ -39,6 +39,11 @@ qual dos dois está errado e ele decide.
 - Recurso novo, sintaxe nova, módulo novo, lib nova.
 - Mexer no ramo `obra/c1` (a biblioteca do C, parada) ou fazer merge dele.
 - Dizer que algo está pronto sem ter rodado.
+- **Aceitar sintaxe que não é da linguagem nem do C só para o programa do dono
+  rodar** (decisão dele, 2026-11-19). Assinatura inválida é erro: o motor
+  recusa e diz o motivo. Exemplo do que nunca se faz: `const* str cu` não é C
+  (o C não tem tipo `str`) nem Jinga; fazer o leitor do C aceitar `str` para
+  não falhar é acobertar o defeito. Onde a regra não existe, o erro fica.
 
 ## Onde está cada coisa
 
